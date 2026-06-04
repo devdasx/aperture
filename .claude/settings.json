@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/Users/thuglifex/Documents/UniApp/.claude/hooks/check-new-strings.sh"
+          }
+        ]
+      }
+    ]
+  }
+}
