@@ -1,49 +1,52 @@
 import SwiftUI
+import Lottie
 
 /// Aperture's launch splash — the brand's first breath.
 ///
-/// Renders the iris diaphragm at the center of a full-bleed background and
-/// runs the canonical splash motion (closed → bloom open with overshoot →
-/// hold → fade) for ``ApertureMotion/splashDuration`` seconds, then calls
-/// ``onComplete`` so the app root can swap to onboarding.
+/// **2026-06-07 — Lottie splash.** Replaces the earlier SwiftUI-native
+/// `TimelineView` + `ApertureIrisView` bloom with the brand-kit-authored
+/// Lottie animation (`splash-tile.json`) — the canonical motion the brand
+/// owner designed for this moment. The tile variant carries the white iris
+/// on the Aperture Blue gradient squircle, matching what the user just
+/// tapped on the Home Screen so the splash feels like a continuation of
+/// the launch image rather than a separate event.
 ///
-/// The motion is driven by ``TimelineView`` with `.animation` schedule — the
-/// system supplies a frame tick at the display's refresh rate, we compute
-/// the iris frame from elapsed time, and the `Canvas` inside
-/// ``ApertureIrisView`` redraws each frame. No explicit `withAnimation`, no
-/// `@State` shadowing per-frame values — the timeline IS the animation.
+/// **Rule #3 §B exception.** Lottie iOS (Airbnb, MIT) is added as a
+/// project-wide SPM dependency in this same SHIPPED entry, joining
+/// Trust Wallet Core. The user explicitly authorized it 2026-06-07
+/// ("we've lottie splash screen why you don't add it!") for the new
+/// Aperture brand kit which ships a dedicated Lottie subkit. Used only
+/// at this call site (and any future surface that adopts the rest of
+/// the Lottie kit — refresh / loading / sending / success / empty /
+/// onboarding / error) via SwiftUI-native `LottieView`.
 ///
-/// Per Rule #2 / Rule #3: zero third-party packages, no Lottie, no SVG
-/// runtime. The iris is rendered live from native SwiftUI geometry.
+/// **Failure mode.** If the Lottie JSON fails to load (bundle path
+/// missing, corrupt JSON, etc.), `LottieView` renders empty. We still
+/// fire `onComplete` after `splashDuration` so the app doesn't sit on a
+/// blank screen — the user reaches onboarding either way.
 struct SplashView: View {
-    /// Called once the full splash animation has completed (i.e., at
-    /// `ApertureMotion.splashDuration`). The parent uses this to dismiss
-    /// the splash and present the first onboarding beat.
+    /// Called once the splash animation has played through. Driven by a
+    /// timer at `splashDuration` so the contract holds even if Lottie
+    /// fails silently.
     let onComplete: () -> Void
 
-    /// Captured at view creation. Every `TimelineView` tick computes
-    /// `elapsed = context.date - start`, so the animation phase doesn't
-    /// drift across re-renders.
-    @State private var start: Date = .init()
+    /// Total wall time the splash holds before calling onComplete.
+    /// Matches the brand-kit-documented splash duration (1.4s bloom +
+    /// modest hold so the user reads the brand mark) — `splash` is a
+    /// one-shot per the kit's README.
+    private static let splashDuration: TimeInterval = 1.8
 
     var body: some View {
         ZStack {
             UniColors.Background.primary.ignoresSafeArea()
 
-            TimelineView(.animation) { context in
-                let elapsed = context.date.timeIntervalSince(start)
-                let frame = ApertureMotion.splash(at: elapsed)
-
-                ApertureIrisView(rc: frame.rc, rot: frame.rot)
-                    .frame(width: 160, height: 160)
-                    .opacity(frame.opacity)
-                    .scaleEffect(frame.scale)
-            }
+            LottieView(animation: .named("splash-tile"))
+                .playing(loopMode: .playOnce)
+                .frame(width: 200, height: 200)
         }
         .accessibilityLabel(Text("Aperture"))
         .onAppear {
-            start = Date() // re-anchor in case the view was rebuilt
-            DispatchQueue.main.asyncAfter(deadline: .now() + ApertureMotion.splashDuration) {
+            DispatchQueue.main.asyncAfter(deadline: .now() + Self.splashDuration) {
                 onComplete()
             }
         }

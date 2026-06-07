@@ -16,18 +16,36 @@ settings:
     DEVELOPMENT_TEAM: 6C4X774L9H
     CODE_SIGN_STYLE: Automatic
 
-# Trust Wallet Core — Rule #3 §B exception logged in SHIPPED.md
-# 2026-06-06 ("Review wallet screen: Trust Wallet Core key derivation
-# for all 24 chains + max-parallel scan pipeline"). Battle-tested,
-# open-source cryptography library used by Trust Wallet, Coinbase
-# Wallet, Binance Wallet — the canonical Swift package for multi-
-# chain key derivation. Lives in the domain layer only; the UI never
-# imports it directly (Rule #3 §A.3 — no third-party SDK in the UI
-# layer).
+# Rule #3 §B exceptions — each logged in SHIPPED.md with the
+# justification at the time the dependency was added. The default
+# answer to "add an SPM dep?" remains NO.
+#
+# Trust Wallet Core (2026-06-06) — battle-tested open-source
+# cryptography library used by Trust Wallet, Coinbase Wallet, Binance
+# Wallet. The canonical Swift package for multi-chain key derivation.
+# Lives in the domain layer only; the UI never imports it directly
+# (Rule #3 §A.3 — no third-party SDK in the UI layer).
+#
+# Lottie iOS (2026-06-07) — Airbnb's open-source SwiftUI/UIKit
+# library for playing Lottie animation files (`.json`). User
+# explicitly authorized 2026-06-07 ("we've lottie splash screen why
+# you don't add it!") for the new Aperture brand kit which ships a
+# dedicated Lottie subkit: splash, refresh, loading, sending,
+# success, empty, onboarding, error — 8 animations × 3 colorways
+# (black / white / tile), 512×512, 60fps. The static SVG mark + the
+# `ApertureMotion.splash(at:)` ease curves preserved the splash
+# bloom character without Lottie, but the brand-kit-authored Lottie
+# JSONs ARE the canonical motion the brand owner designed, so this
+# follows the brand kit verbatim. Used at the call site only by
+# SwiftUI `LottieView` (Lottie's SwiftUI-native shim — no UIKit
+# hosting from feature code).
 packages:
   WalletCore:
     url: https://github.com/trustwallet/wallet-core
     from: "4.2.0"
+  Lottie:
+    url: https://github.com/airbnb/lottie-spm
+    from: "4.5.0"
 
 targets:
   UniApp:
@@ -42,6 +60,8 @@ targets:
         product: WalletCore
       - package: WalletCore
         product: WalletCoreSwiftProtobuf
+      - package: Lottie
+        product: Lottie
     settings:
       base:
         PRODUCT_NAME: Aperture

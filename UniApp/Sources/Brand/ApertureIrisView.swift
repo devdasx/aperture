@@ -74,7 +74,16 @@ struct ApertureIrisView: View {
     // MARK: - Body
 
     var body: some View {
-        Image("Brand/Mark")
+        // Image name is bare "Mark" because the parent `Brand/`
+        // folder in `Assets.xcassets` does NOT carry
+        // `provides-namespace: true` in its `Contents.json` — image
+        // assets inside Brand/ are addressed by their leaf name
+        // (this matches how `Color("BrandMark")` resolves from
+        // `Brand/BrandMark.colorset`). The 2026-06-07 brand-refresh
+        // first cut used `Image("Brand/Mark")`, which silently
+        // returned an empty image — the welcome slide rendered with
+        // a blank top half (user-reported 2026-06-07 13:59 screenshot).
+        Image("Mark")
             .renderingMode(.template)
             .resizable()
             .scaledToFit()
