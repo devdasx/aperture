@@ -71,7 +71,10 @@ struct WalletHomeView: View {
     /// the user's nav-stack position inside Settings.
     @AppStorage("languagePreference") private var sheetLanguageCode: String = LanguagePreference.systemCode
     @Environment(\.modelContext) private var modelContext
-    @Environment(\.autoLockController) private var lockController
+    // The auto-lock surface (`AppLockView`) is presented by
+    // `AppRoot` at the window root — not from this view. See
+    // `UniAppApp.swift` for the gating logic and the privacy
+    // mask that bridges the foreground reveal.
 
     /// Rule #12 §G direction-only key for sheet content rebuild.
     /// `"ltr"` or `"rtl"`. Identical pattern to `OnboardingView`.
@@ -210,19 +213,6 @@ struct WalletHomeView: View {
                 onCompleted: { _ in isShowingImport = false }
             )
             .uniAppEnvironment()
-        }
-        // Auto-lock surface. Lives on the wallet-home root so the
-        // cover renders over the entire UI (including any
-        // .sheet/.fullScreenCover already presented). When
-        // `lockController.isLocked` flips to false (successful auth),
-        // the cover dismisses and the user lands back where they
-        // were.
-        .fullScreenCover(isPresented: Binding(
-            get: { lockController.isLocked },
-            set: { newValue in if !newValue { lockController.unlock() } }
-        )) {
-            AppLockView()
-                .uniAppEnvironment()
         }
     }
 

@@ -4,6 +4,167 @@
 
 ---
 
+## 2026-06-07 — Lock surface moves from wallet-home to app-root; new privacy mask; no more flash of home before PIN
+
+**Summary:** Two related user reports landed back-to-back:
+
+1. *"when i close the app, then open it again, it shows the splash
+   screen then direct it shows the pin code screen before even
+   splash screen finishes it's animations"* — cold-launch with PIN
+   enabled showed the PIN over the still-running splash.
+2. *"now sometimes when i close the app (not fully close just go
+   our from the app) then i open the app, it shows the home
+   screen, and then it shows pin code, if pin code should be
+   presented it should show the pin screen direct before it show
+   any other screen, so the pin code shouldn't come only from
+   home screen, it from the whole app."* — backgrounding + re-
+   foregrounding showed a brief flash of the wallet home before
+   the lock cover slid in.
+
+Both reports trace to the same architectural fault: the lock
+surface was owned by `WalletHomeView` via `.fullScreenCover`. That
+view mounts from frame 1 inside `AppRoot`'s ZStack (which is what
+makes the splash dissolve into the wallet home with no jank — its
+layout is already settled by the time the splash unmounts). But
+`.fullScreenCover` is window-level — so the cover (a) raced the
+splash to the screen on cold-launch with PIN, and (b) presented
+with a slide animation on foreground that let one or two frames
+of home render underneath while the cover transitioned in.
+
+**The fix is a real restructure, not a patch.** The lock surface
+is now an **app-root concern**, not a wallet-home concern.
+`AppRoot` (in `UniAppApp.swift`) renders `AppLockView` as a
+**conditional ZStack child** — not via `.fullScreenCover` — with
+`.transition(.identity)` so there is no presentation animation
+whatsoever. The view either is in the hierarchy or it isn't; the
+moment `lockController.isLocked && phase == .onboarding` becomes
+true, the lock view is present on the very next render with no
+slide, no fade, no flash.
+
+**The new `PrivacyMaskView`.** A monochrome overlay (`LogoCircle`
+on `Background.primary`) rendered at the top of `AppRoot`'s
+ZStack whenever `scenePhase != .active && pinEnabled`. Two roles:
+
+- **iOS task-switcher snapshot.** When iOS backgrounds the app, it
+  captures a frame for the multitask switcher. Without a mask, the
+  user's wallet (balances, addresses, transactions) is visible to
+  anyone who can see the device's app-switcher. This is what
+  Banking, Wallet, and password managers do — Aperture now too.
+- **Foreground reveal bridge.** When the app returns active,
+  `AutoLockController.handleScenePhaseChange(.active)` evaluates
+  elapsed time and may flip `isLocked`. Even though the lock
+  layer mounts on the same render pass with `.transition(.identity)`,
+  there is a one-frame window where the scene becomes active
+  before the lock state propagates. The privacy mask covers that
+  window: it stays visible until `scenePhase == .active`, by
+  which point the lock layer is already mounted beneath it. The
+  mask is removed in the same frame, revealing the lock — never
+  the home.
+
+The ZStack ordering matters and is deliberate:
+
+```
+zIndex 0: RootGate (onboarding or wallet-home)
+zIndex 1: SplashView (while phase != .onboarding)
+zIndex 2: AppLockView (when locked && phase == .onboarding)
+zIndex 3: PrivacyMaskView (when scenePhase != .active && pinEnabled)
+```
+
+The mask sits ABOVE the lock so backgrounding from an unlocked
+session shows the mask (not the wallet); foregrounding into a
+locked state shows the mask, then reveals the lock as the mask
+removes — never the home.
+
+**Cold-launch flow now:**
+1. App launches. `phase = .splash`. Lock layer doesn't participate
+   yet (`phase != .onboarding`).
+2. Splash plays its 2.6s hold + 0.82s shared-element transition.
+3. `phase = .onboarding`. Lock layer activates if `isLocked`. On
+   a returning user with PIN, that's the case — PIN appears
+   instantly in the same frame the splash unmounts. One coherent
+   beat, no double-stage.
+
+**Background → foreground flow now:**
+1. User in wallet home; presses Home.
+2. `scenePhase = .inactive`. Privacy mask mounts immediately. The
+   iOS app-switcher snapshot will capture this frame — wallet
+   contents hidden.
+3. `scenePhase = .background`. `AutoLockController` stamps
+   `backgroundedAt`.
+4. User foregrounds. `scenePhase = .active`. Controller evaluates
+   elapsed time; if > threshold, `isLocked = true`. The lock
+   layer mounts in the same render pass, beneath the still-
+   visible mask.
+5. Mask removes (`scenePhase == .active` now). User sees PIN.
+   They never see the wallet home.
+
+If the elapsed time was below the threshold, step 4's `isLocked`
+stays false. The lock layer doesn't mount; the mask removes;
+the user sees the wallet home directly. Correct in both branches.
+
+**Rule audits:**
+- Rule #1 (BIG entry): multi-file architectural change (3 files),
+  security-touching surface, new component (`PrivacyMaskView`),
+  mistake correction for two user-reported bugs. Qualifies on
+  five separate criteria.
+- Rule #2 (Ive): one race fixed, one new primitive shipped, no
+  decorative motion. The privacy mask is the simplest possible
+  brand statement — logo on background, no motion, no copy. The
+  visual mass of restraint is what makes the lock-reveal feel
+  intentional rather than abrupt.
+- Rule #3 (native-only): `ZStack`, `.transition(.identity)`,
+  `@Environment(\.scenePhase)`. No third-party.
+- Rule #4 (color tokens): `UniColors.Background.primary` for the
+  mask; no literals.
+- Rule #7 (real visuals): mask uses the bundled `LogoCircle`
+  asset (provenance already in `Assets.xcassets/README.md`).
+- Rule #10 (haptics): unchanged.
+- Rule #11 (RTL): mask is direction-agnostic (centered circle on
+  centered background); same in LTR and RTL.
+- Rule #16 (security surfaces): the mask + lock combination is
+  the canonical "deliberately safe" sequence — user backgrounds,
+  sees the brand mark instead of their balances, foregrounds,
+  sees the PIN before anything else. Honest, restrained,
+  verifiable in the open source.
+- Rule #17 (one PIN component): unchanged. `AppLockView` still
+  hosts `PinCodeView(mode: .verify)`. The lock surface moves;
+  the PIN component does not.
+- Rule #22 (Thuglife install): built and installed
+  (`databaseSequenceNumber: 8204`).
+- Rule #23 (no push): local commit only.
+
+**Files added/modified/removed:**
+- `UniApp/Sources/App/UniAppApp.swift` — added the
+  `\.appPhase` environment key (used by the prior turn's
+  splash-gate fix; now used internally by `AppRoot` only).
+  Added the two ZStack children for `AppLockView` and
+  `PrivacyMaskView`, each gated on the appropriate predicate.
+  `@Environment(\.autoLockController)` + `@Environment(\.scenePhase)`
+  read directly inside `AppRoot`; gates derived as private
+  computed properties.
+- `UniApp/Sources/Features/Splash/PrivacyMaskView.swift` — NEW.
+  Monochrome overlay — `LogoCircle` at 96pt on
+  `Background.primary`. No motion, no copy. Accessibility label
+  `"Aperture"`; children ignored so VoiceOver reads one element.
+- `UniApp/Sources/Features/Wallet/WalletHomeView.swift` —
+  removed the `.fullScreenCover` that previously presented
+  `AppLockView`. Removed the `@Environment(\.autoLockController)`
+  and `@Environment(\.appPhase)` bindings since the view no
+  longer participates in lock presentation. The lock-surface
+  ownership comment in the same file now points readers to
+  `UniAppApp.swift`.
+
+**Build / Run:**
+- Target: iPhone 17 Pro Max ("Thuglife", id
+  `4B521D49-9843-55CC-AFEC-19D4CF4353A6`).
+- Configuration: Debug, iOS 26.5 SDK, arm64.
+- Outcome: clean build, install succeeded
+  (`databaseSequenceNumber: 8204`).
+
+**TODOs introduced:** none.
+
+---
+
 ## 2026-06-07 — Splash → onboarding shared-element logo transition; new circle logo on both screens; Lottie bloom + matchedGeometryEffect + medium-impact landing
 
 **Summary:** Per the design handoff at
@@ -286,6 +447,8 @@ phone is the only copy" promise.
   B reserves it to avoid catalog-file races).
   - aperture-i18n-translator-primary: 51 keys × 25 languages translated.
   - aperture-i18n-translator-secondary: 76 keys × 25 languages translated (1900 cells).
+  - aperture-i18n-translator-primary: 5 keys × 25 languages translated (125 cells; `...`, `Back up this wallet`, `No matching results.`, `Try a different search.`, `Watching %@ addresses on %@.`).
+  - aperture-i18n-translator-secondary: 5 keys × 25 languages translated (125 cells; same 5 keys; `%1$@`/`%2$@` indexed placeholders applied where natural reordering occurs, e.g. ko/tr/ur/ta/te/ml/mr/pa for the `Watching … on ….` string).
 - Rule #15 (sheet-as-screen) ✓ — `BackupExistingWalletFlow` wraps
   content in `NavigationStack`, sets title via `.navigationTitle("Back
   up this wallet")`, `inline` display mode, leading `xmark` Cancel in
