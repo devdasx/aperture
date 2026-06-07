@@ -1,103 +1,53 @@
 import SwiftUI
 
-/// Beat 1 — Identity. Welcome to Aperture.
+/// Beat 1 — Identity. The welcome slide's hero: the new circle logo
+/// (`Brand/LogoCircle.imageset`) at 64pt, carrying the
+/// `matchedGeometryEffect` identity that `SplashView` set as its
+/// source. When the splash → onboarding transition fires, the logo
+/// flies from its splash position (80pt at center Y ≈ 45%) into this
+/// frame over 0.82s.
 ///
-/// The iris IS the brand mark; on this slide it sits still as the
-/// identity beat. The animated bloom belongs to the cold-launch
-/// `SplashView` (the "first breath" — only fires once per launch);
-/// slide 1 is a calm restatement of the identity, not a second
-/// performance of the same motion. Ive restraint: one animation, one
-/// moment, earned.
+/// **2026-06-07 rewrite.** This used to render the bare 7-blade iris
+/// from the deleted `ApertureIrisView` Canvas implementation, with a
+/// tap-cycle Easter egg that closed/opened the shutter and presented
+/// `HelloSheet`. The new design handoff
+/// (`design_handoff_splash_to_onboarding/`) replaces that with the
+/// dark-gradient circle logo, and the Easter egg is dropped — the
+/// new logo is brand identity, not a tappable affordance. The
+/// `HelloSheet` view is left in the repo for any future surface that
+/// wants it, but no longer reachable from here.
 ///
-/// **Easter egg (2026-06-05).** A tap on the iris cycles the shutter
-/// — close (~600ms total close + open) — then plays a success
-/// scale-breath (~250ms) with a `.success` haptic — then presents
-/// `HelloSheet` ("Hi from Aperture."). Native end-to-end: `withAnimation`
-/// drives the existing `ApertureIrisView`'s `rc` + `rot` parameters; no
-/// Lottie (Rule #3). The Lottie files in `/Downloads/logo 5/lottie/`
-/// served as motion brief only.
-///
-/// `isActive` is accepted for API uniformity with the other illustration
-/// views but is unused here.
+/// **No bespoke motion in this view.** The logo blooms in via the
+/// splash's Lottie (`splash-logo.json`) on cold launch, then flies
+/// here via matchedGeometryEffect on the splash → onboarding
+/// transition. After landing, it's static — Ive restraint: one
+/// animation, one moment, earned. The `isActive` flag is accepted
+/// for API parity with the other illustration views but is unused.
 struct WordmarkIllustration: View {
     let isActive: Bool
 
-    // MARK: - Animation state
+    /// The namespace `AppRoot` owns. Wired through `OnboardingView`
+    /// → `OnboardingSlideView`. Used by `matchedGeometryEffect` to
+    /// claim the logo from the splash.
+    let logoNamespace: Namespace.ID
 
-    @State private var irisRc: CGFloat = ApertureIrisView.openValue
-    @State private var irisRot: CGFloat = 0
-    @State private var irisScale: CGFloat = 1.0
-    @State private var isAnimating: Bool = false
-    @State private var isShowingHelloSheet: Bool = false
-    @State private var tapHapticTrigger: Int = 0
-    @State private var successHapticTrigger: Int = 0
+    /// The 3-phase machine from `AppRoot`. While `.splash`, the
+    /// splash's logo is the matchedGeometryEffect source; once
+    /// `.transitioning` fires, this view becomes the source (so the
+    /// system resolves the destination frame from here).
+    let phase: AppPhase
 
     var body: some View {
-        ApertureIrisView(rc: irisRc, rot: irisRot)
-            .frame(width: 112, height: 112)
-            .scaleEffect(irisScale)
-            .contentShape(Circle())
-            .onTapGesture {
-                guard !isAnimating else { return }
-                runShutterCycle()
-            }
-            .accessibilityAddTraits(.isButton)
-            .accessibilityHint(Text("Opens a note from Aperture"))
-            .uniHaptic(.contextualImpact(.tap), trigger: tapHapticTrigger)
-            .uniHaptic(.success, trigger: successHapticTrigger)
-            .sheet(isPresented: $isShowingHelloSheet) {
-                HelloSheet(onDismiss: { isShowingHelloSheet = false })
-                    .uniAppEnvironment()
-                    .intrinsicHeightSheet()
-                    .presentationBackground(UniColors.Background.primary)
-            }
-    }
-
-    private func runShutterCycle() {
-        isAnimating = true
-        tapHapticTrigger &+= 1
-
-        // Stage A — shutter close (≈300ms): rc shrinks to near-closed
-        // while the iris rotates a soft 51° (~π/3.5). The half-rotation
-        // is deliberately asymmetric (not a clean 90°) — symmetry reads
-        // as decoration; asymmetry reads as motion.
-        withAnimation(.easeIn(duration: 0.28)) {
-            irisRc = ApertureIrisView.shutValue
-            irisRot += .pi / 3.5
-        }
-
-        // Stage A — shutter open (≈300ms) — continues the rotation
-        // while re-opening to fully open. Chains via asyncAfter so the
-        // close completes before the open begins (a real camera
-        // shutter, not a tween).
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.30) {
-            withAnimation(.easeOut(duration: 0.30)) {
-                irisRc = ApertureIrisView.openValue
-                irisRot += .pi / 3.5
-            }
-        }
-
-        // Stage B — success scale-breath (1.0 → 1.06 → 1.0) and the
-        // `.success` haptic. Restraint here is critical — anything
-        // bigger reads as a bug.
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.62) {
-            withAnimation(.spring(response: 0.28, dampingFraction: 0.58)) {
-                irisScale = 1.06
-            }
-            successHapticTrigger &+= 1
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.78) {
-            withAnimation(.spring(response: 0.30, dampingFraction: 0.70)) {
-                irisScale = 1.0
-            }
-        }
-
-        // Stage C — sheet presents while Stage B is still settling so
-        // the user feels the sheet as a consequence of the success
-        // beat, not as a separate event.
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.72) {
-            isShowingHelloSheet = true
-            isAnimating = false
-        }
+        Image("LogoCircle")
+            .resizable()
+            .scaledToFit()
+            .frame(width: 64, height: 64)
+            .matchedGeometryEffect(
+                id: "logo",
+                in: logoNamespace,
+                properties: .frame,
+                isSource: phase != .splash
+            )
+            .accessibilityHidden(true)
     }
 }

@@ -39,11 +39,22 @@ enum OnboardingIllustration: Sendable, Hashable {
 struct OnboardingIllustrationView: View {
     let kind: OnboardingIllustration
     let isActive: Bool
+    /// Logo namespace owned by `AppRoot` for the splash → onboarding
+    /// `matchedGeometryEffect`. Only consumed by `.wordmark`; other
+    /// illustrations ignore it.
+    let logoNamespace: Namespace.ID
+    /// App-wide phase from `AppRoot`. Same scope as `logoNamespace`.
+    let phase: AppPhase
 
     var body: some View {
         Group {
             switch kind {
-            case .wordmark:        WordmarkIllustration(isActive: isActive)
+            case .wordmark:
+                WordmarkIllustration(
+                    isActive: isActive,
+                    logoNamespace: logoNamespace,
+                    phase: phase
+                )
             case .constellation:   ConstellationIllustration(isActive: isActive)
             case .vault:           VaultIllustration(isActive: isActive)
             case .faceID:          FaceIDIllustration(isActive: isActive)

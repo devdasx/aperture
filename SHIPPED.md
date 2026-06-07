@@ -4,6 +4,176 @@
 
 ---
 
+## 2026-06-07 — Splash → onboarding shared-element logo transition; new circle logo on both screens; Lottie bloom + matchedGeometryEffect + medium-impact landing
+
+**Summary:** Per the design handoff at
+`/Users/thuglifex/Downloads/design_handoff_splash_to_onboarding/`, the
+splash and the welcome slide of onboarding now share a single circle
+logo asset, and the splash-to-onboarding transition is a real
+shared-element animation: the logo flies from its splash position
+(80pt at center Y ≈ 45%) into its onboarding position (64pt at center
+Y ≈ 36%) over **0.82s** with `cubic-bezier(0.52, 0, 0.12, 1)`, while
+every other onboarding chrome element fades in + rises 16pt with
+staggered delays (gear +0.04s, headline +0.10s, body +0.16s, Open
+source +0.22s, page dots +0.30s, primary CTA +0.36s, secondary CTA
++0.42s, Terms/Privacy +0.48s — each ~0.5s, eased
+`cubic-bezier(.2,.8,.2,1)`). A single **medium-impact haptic** fires
+at the exact moment the logo lands. The brief was: *"just the logo
+should move from splash to onboarding, in good way, and do same
+design in splash screen all assets in this folder, START building it
+with zero mistakes, now!"* and *"go without changing colors"* —
+honored: monochrome brand register preserved, no colour edits, only
+the logo motion landed.
+
+**Architecture (the new piece).** `UniAppApp` previously gated
+between `SplashView` and `RootGate` via a `hasFinishedSplash` boolean
+— the two views never coexisted in one hierarchy, which makes
+`matchedGeometryEffect` impossible (the canonical SwiftUI
+shared-element primitive requires source + destination in the SAME
+view tree sharing a `@Namespace`). The fix: a new `AppRoot` view
+owns the `@Namespace logoNamespace` and the **3-phase `AppPhase`
+machine** (`.splash` → `.transitioning` → `.onboarding`). Both
+splash and onboarding mount in a `ZStack` from frame 1; the splash
+sits on top with `.zIndex(1)` and `.transition(.opacity)`.
+`startTransition()` primes a `UIImpactFeedbackGenerator`, flips
+`phase` to `.transitioning` inside a `withAnimation(.timingCurve(0.52,
+0, 0.12, 1, duration: 0.82))` (the exact spec curve), schedules the
+haptic-landing flag flip at +0.82s, and at +1.10s unmounts the splash
+entirely. `RootGate` (in `WalletHomeView.swift` — extended, not
+duplicated) now accepts the namespace + phase and threads both into
+`OnboardingView`.
+
+**Logo source of truth.** Both screens render the same asset:
+`Brand/LogoCircle.imageset` (dark vertical-gradient disc `#3A3D45 →
+#0C0D11` containing a white 6-blade iris, 1000×1000 viewBox SVG,
+provided by the app owner). On the splash, the logo is the destination
+container for the bundled `splash-logo.json` Lottie animation (brand-
+owner-authored bloom). On onboarding it stands alone as a static 64pt
+`Image`. Both views attach `.matchedGeometryEffect(id: "logo", in:
+logoNamespace, properties: .frame, isSource: …)` — splash is `isSource`
+during `.splash`, onboarding becomes `isSource` from `.transitioning`
+onward.
+
+**Onboarding chrome staggered fade-in.** The system page-dot row
+ships as `TabView` chrome and can't be opacity-gated independently of
+the slide content (which now hosts the `matchedGeometryEffect`
+destination). The fix: switch the pager to `indexDisplayMode: .never`
+and render a custom `HStack` of capsule dots (`Capsule().fill(...)` —
+18pt × 6pt for the active index, 6pt × 6pt for the rest, animated
+between states with `.easeInOut(duration: 0.2)`). The custom dot row
+gets its own `OnboardingStaggeredFadeIn` modifier with delay 0.30s.
+Same modifier wraps every other non-logo chrome element. The modifier
+itself is a `ViewModifier` that gates `.opacity` + `.offset(y:)` on a
+visible bool and a per-element delay — applied once, ten call sites
+inherit it correctly.
+
+**The `WordmarkIllustration` rewrite.** This used to render the bare
+7-blade `ApertureIrisView` at 112pt with a tap-cycle Easter egg that
+opened/closed the shutter and presented `HelloSheet`. Replaced with a
+straight `Image("LogoCircle").resizable().scaledToFit().frame(width:
+64, height: 64)` carrying the matched-geometry destination. The
+Easter egg is dropped — the new logo is brand identity, not a
+tappable affordance. The `HelloSheet` view stays in the repo for any
+future surface that wants it; no longer reachable from here.
+
+**Brand color discipline.** The user's earlier 2026-06-07 correction
+("OUR BRAND COLOR ARE BLACK, NOT BLUE") and this turn's "go without
+changing colors" together mean: every existing color reference (the
+black "Create new wallet" CTA, the monochrome brand mark on Welcome,
+the `UniColors.Text.primary` page dots, the `Background.primary`
+canvas) stays exactly as it was. No color edits in this turn — the
+animation IS the work.
+
+**Rule audits:**
+- Rule #1 (BIG entry): full-feature transition spanning ~6 files and
+  introducing a new view + state machine + asset + Lottie integration
+  + custom modifier — qualifies as BIG.
+- Rule #2 (Ive + Liquid Glass): one motion gesture (the shared logo)
+  + restrained staggered reveals; no decorative animation, no
+  shadows on the logo, system Liquid Glass on CTAs preserved.
+- Rule #3 (native-only): `matchedGeometryEffect`, `@Namespace`,
+  `withAnimation(.timingCurve)`, `.uniHaptic` (Rule #10 wrapper over
+  `.sensoryFeedback`), `LottieView` (an existing Rule #3 §B
+  exception #2 — battle-tested motion library). No new dependencies.
+- Rule #4 (color tokens): unchanged. No new colors. All references
+  flow through `UniColors`.
+- Rule #7 (real visuals): logo SVG provided by the app owner;
+  Lottie JSON provided by the app owner. Provenance recorded in
+  `Assets.xcassets/README.md` from the prior turn.
+- Rule #10 (haptics): landing haptic routed through
+  `.uniHaptic(.contextualImpact(.commit), trigger: hasLanded)` —
+  `.commit` significance maps to `.impact(weight: .medium,
+  intensity: 1.0)` which matches the
+  `UIImpactFeedbackGenerator(style: .medium)` weight the handoff
+  names. Replaced the prior raw `.sensoryFeedback` call.
+- Rule #11 (RTL): all new layout uses `leading/trailing` semantics;
+  the matchedGeometryEffect doesn't change axis on RTL because the
+  logo is a vertical-symmetric circle.
+- Rule #19 (UniButton): both CTAs remain `UniButton(.primary)` and
+  `UniButton(.secondary)` — unchanged.
+- Rule #22 (Thuglife install): built clean and installed on
+  Thuglife (`databaseSequenceNumber: 8188`).
+- Rule #23 (no push): local commit only; will not push without
+  explicit user request.
+
+**Files added/modified/removed:**
+- `UniApp/Sources/App/UniAppApp.swift` — REWRITTEN (prior turn). This
+  turn: changed the landing haptic from raw `.sensoryFeedback` to
+  `.uniHaptic(.contextualImpact(.commit), trigger: hasLanded)` for
+  Rule #10 compliance, and removed the inline duplicate `RootGate`
+  (the canonical one lives in `WalletHomeView.swift`).
+- `UniApp/Sources/Features/Wallet/WalletHomeView.swift` — extended
+  the canonical `RootGate` signature to accept `logoNamespace:
+  Namespace.ID` and `phase: AppPhase`, threading both to
+  `OnboardingView`. The wallet-home branch ignores them (the
+  shared-element transition is splash → onboarding only).
+- `UniApp/Sources/Features/Onboarding/OnboardingView.swift` —
+  REWRITTEN. New required params `logoNamespace`, `phase`. Added
+  `OnboardingStaggeredFadeIn` view modifier (gate opacity + 16pt
+  offset on a visible bool + delay, eased
+  `cubic-bezier(.2,.8,.2,1)` over 0.5s). Switched the pager from
+  system page dots (`indexDisplayMode: .always`) to custom dots
+  (`indexDisplayMode: .never` + custom `Capsule` row) so the dot row
+  can fade independently of the slide content. Wrapped gear (delay
+  0.04s), page dots (0.30s), primary CTA (0.36s), secondary CTA
+  (0.42s), legal footer (0.48s) in the fade-in modifier.
+- `UniApp/Sources/Features/Onboarding/OnboardingSlideView.swift` —
+  added `logoNamespace`, `phase` params. The welcome slide gates
+  its non-logo content (title delay 0.10s, body 0.16s, open-source
+  badge 0.22s) on `phase != .splash` via
+  `OnboardingStaggeredFadeIn`; non-welcome slides render
+  unaffected.
+- `UniApp/Sources/Features/Onboarding/Illustrations/OnboardingIllustration.swift` —
+  added `logoNamespace`, `phase` params to
+  `OnboardingIllustrationView`. Only the `.wordmark` case consumes
+  them; every other illustration receives them and discards.
+- `UniApp/Sources/Features/Onboarding/Illustrations/WordmarkIllustration.swift` —
+  REWRITTEN. Was: `ApertureIrisView` at 112pt + tap-cycle Easter egg
+  + `HelloSheet` presentation. Now: `Image("LogoCircle")` at 64pt
+  + `.matchedGeometryEffect(id: "logo", in: logoNamespace,
+  properties: .frame, isSource: phase != .splash)`. Easter egg
+  dropped.
+- `UniApp/Sources/Features/Splash/SplashView.swift` — REWRITTEN
+  (prior turn) to render `LottieView(animation: .named("splash-
+  logo"))` over `Image("LogoCircle")` as the matchedGeometryEffect
+  source. No changes this turn.
+- `UniApp/Resources/Assets.xcassets/Brand/LogoCircle.imageset/` —
+  ADDED (prior turn). `logo-circle.svg` + `Contents.json` with
+  `preserves-vector-representation: true`.
+- `UniApp/Resources/Lottie/splash-logo.json` — ADDED (prior turn).
+
+**Build / Run:**
+- Target: iPhone 17 Pro Max ("Thuglife", id
+  `4B521D49-9843-55CC-AFEC-19D4CF4353A6`).
+- Configuration: Debug, iOS 26.5 SDK, arm64.
+- Outcome: clean build, install succeeded
+  (`databaseSequenceNumber: 8188`, bundle
+  `B569264C-AB4F-42F1-B631-60E74F5E2748`).
+
+**TODOs introduced:** none.
+
+---
+
 ## 2026-06-07 — Backup state moves off the wallet home onto the wallet-detail screen; two-state monochrome card with live A → B transition
 
 **Summary:** The persistent yellow `BackupRequiredBanner` is gone from
@@ -114,6 +284,8 @@ phone is the only copy" promise.
   `extractionState: "manual"` + `state: "translated"` on the English
   unit; closure chain dispatch left to the orchestrator (Rule #13 Part
   B reserves it to avoid catalog-file races).
+  - aperture-i18n-translator-primary: 51 keys × 25 languages translated.
+  - aperture-i18n-translator-secondary: 76 keys × 25 languages translated (1900 cells).
 - Rule #15 (sheet-as-screen) ✓ — `BackupExistingWalletFlow` wraps
   content in `NavigationStack`, sets title via `.navigationTitle("Back
   up this wallet")`, `inline` display mode, leading `xmark` Cancel in

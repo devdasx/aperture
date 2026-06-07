@@ -8,12 +8,23 @@ import SwiftData
 /// wallet, otherwise to `OnboardingView`. When the create/import
 /// flows insert a `WalletRecord`, the gate flips automatically — no
 /// explicit navigation needed from those flows.
+///
+/// **Splash → onboarding shared element (2026-06-07).** `AppRoot`
+/// (in `UniAppApp.swift`) wraps the gate so it can thread the
+/// `@Namespace logoNamespace` + `AppPhase` machine into onboarding —
+/// onboarding consumes both to attach `matchedGeometryEffect` to its
+/// welcome-slide logo and to drive the staggered chrome fade-in.
+/// The wallet-home branch ignores both: the shared-element transition
+/// only applies to first-launch onboarding, not to returning users.
 struct RootGate: View {
+    let logoNamespace: Namespace.ID
+    let phase: AppPhase
+
     @Query private var wallets: [WalletRecord]
 
     var body: some View {
         if wallets.isEmpty {
-            OnboardingView()
+            OnboardingView(logoNamespace: logoNamespace, phase: phase)
         } else {
             WalletHomeView()
         }
