@@ -464,6 +464,13 @@ struct WalletHomeView: View {
     }
 
     private var emptyHoldings: some View {
+        // 2026-06-07: removed the trailing `UniButton(.primary)` "Receive"
+        // CTA per user direction. The Receive surface is one tap away
+        // from the WalletActionRegion glass triplet directly above the
+        // holdings section — duplicating it inside the empty card was
+        // redundant and pulled visual weight into a passive empty state.
+        // Calm copy carries the meaning; the user reaches Receive
+        // through the chrome where it belongs.
         VStack(spacing: UniSpacing.m) {
             Image(systemName: "tray")
                 .font(.system(size: 32, weight: .light))
@@ -480,12 +487,6 @@ struct WalletHomeView: View {
                     color: UniColors.Text.tertiary
                 )
             }
-            UniButton(
-                title: "Receive",
-                variant: .primary,
-                action: { isShowingReceive = true }
-            )
-            .padding(.horizontal, UniSpacing.l)
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, UniSpacing.xl)
@@ -594,6 +595,20 @@ struct WalletHomeView: View {
         // account / folder picker is the nav-bar title. Disabled in
         // test mode so the user can't accidentally switch wallets
         // mid-test.
+        //
+        // **Liquid Glass capsule (2026-06-07 user direction).** The
+        // first cut shipped bare text + chevron in the toolbar slot
+        // — which read as a label, not as a tappable affordance.
+        // The wallet name + chevron is a tappable menu trigger, so
+        // it now uses `.buttonStyle(.glass)` to render as a native
+        // iOS 26 Liquid Glass capsule (Rule #2 §B.5 + Rule #3 —
+        // system API, all three behaviors free). This is the
+        // explicit M-002/M-003 exception: those mistakes were about
+        // BARE icon buttons (close X, overflow ellipsis) where the
+        // nav bar's own glass is enough. A labelled trigger with
+        // content (wallet name + chevron) needs the capsule chrome
+        // so the user reads it as interactive — same pattern Apple
+        // ships in Music (now-playing pill) and Safari (tabs).
         ToolbarItem(placement: .principal) {
             Button {
                 guard !isTestMode else { return }
@@ -605,12 +620,12 @@ struct WalletHomeView: View {
                         : (activeWallet?.name ?? String.apertureLocalized("Wallet"))
                     )
                     .font(UniTypography.subheadlineEmphasized)
-                    .foregroundStyle(UniColors.Text.primary)
                     Image(systemName: "chevron.down")
                         .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(UniColors.Icon.tertiary)
                 }
             }
+            .buttonStyle(.glass)
+            .tint(UniColors.Text.primary)
             .disabled(isTestMode)
             .accessibilityLabel(Text("Switch wallet, currently \(activeWallet?.name ?? "")"))
         }

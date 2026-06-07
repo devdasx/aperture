@@ -4,6 +4,89 @@
 
 ---
 
+## 2026-06-07 — Wallet home empty state strips redundant Receive CTA + toolbar wallet switcher gets native Liquid Glass capsule
+
+**Summary:** Two user-directed tweaks on the wallet-home empty
+state shipped together:
+
+1. **Removed `UniButton(.primary)` "Receive"** from the
+   `emptyHoldings` card. The user pointed out that the same
+   Receive action sits one tap away in the `WalletActionRegion`
+   glass triplet directly above — pulling the CTA into a
+   passive empty-state card duplicated visual weight without
+   adding new affordance. The empty state now carries calm
+   copy only ("Nothing here yet." / "Receive crypto to any of
+   your addresses to see it appear here.") with the `tray` SF
+   Symbol hero; the user reaches Receive through the chrome.
+
+2. **Toolbar wallet switcher promoted from bare text + chevron
+   to a native iOS 26 Liquid Glass capsule via
+   `.buttonStyle(.glass)`.** The first cut after moving the
+   wallet picker from the body into the nav-bar `.principal`
+   slot (per 2026-06-06 user direction) shipped as plain text +
+   `chevron.down`. The user flagged on 2026-06-07 that this read
+   as a label, not as a tappable affordance: "it should be
+   inside native liquid glass, not only as a text". This is an
+   explicit M-002/M-003 exception — those mistakes were about
+   **bare icon buttons** (close X, overflow ellipsis) where the
+   nav bar's own glass is sufficient. A **labelled** trigger
+   with text content needs the capsule chrome so the user reads
+   it as interactive. Same pattern Apple ships on the
+   now-playing pill in Music and the tab pill in Safari.
+
+**Intent (Rule #2 §D.1):** the wallet name + chevron is a
+tappable menu trigger; it should look tappable.
+
+**Files modified:**
+- `UniApp/Sources/Features/Wallet/WalletHomeView.swift` —
+  `emptyHoldings` loses its trailing UniButton; the
+  `ToolbarItem(.principal)` Button gains
+  `.buttonStyle(.glass)` + `.tint(UniColors.Text.primary)`.
+  The inner Text's `.foregroundStyle` is removed (the glass
+  button style handles the tint via the modifier above).
+
+**Files added:** none.
+
+**Build / Run:**
+- Simulator (iPhone 17) — `BUILD SUCCEEDED`.
+- On-device verification handed back to the user.
+
+**Per-rule audit:**
+- **Rule #1** ✓ — this entry.
+- **Rule #2** ✓ — Hierarchy: opaque content (empty-state card,
+  body rows) sits under functional Liquid Glass chrome (toolbar
+  + the new capsule). Harmony: the capsule's corner radius is
+  system-derived (continuous, matching the nav bar's own
+  rounding). Consistency: a single Liquid Glass capsule on the
+  principal nav-bar slot matches the Apple Music / Safari /
+  Mail account-pill pattern.
+- **Rule #3** ✓ — Native-only. `.buttonStyle(.glass)` is the
+  iOS 26 system primitive. No hand-rolled blur, no
+  `.background(.ultraThinMaterial)`, no `RoundedRectangle.fill`
+  approximation.
+- **Rule #4** ✓ — Tint resolved through `UniColors.Text.primary`.
+  No literals.
+- **M-002 / M-003 exception (documented):** the bare-toolbar
+  convention applies to icon buttons. The labelled wallet-name
+  trigger is the documented exception — labelled triggers in
+  the nav bar use `.buttonStyle(.glass)` per the new comment in
+  the `ToolbarItem(.principal)` block.
+- **Rule #19** ✓ — Empty state no longer ships a CTA, so
+  there's nothing for UniButton to govern there. The toolbar
+  pill is intentionally a system glass capsule rather than a
+  UniButton variant — UniButton's variants are
+  `.glassProminent` / `.glass` / `.plain` for content-region
+  buttons (47pt height, action verbs); the nav-bar pill is a
+  chrome trigger and lives in the system toolbar slot, which
+  is the correct surface for it.
+- **Rule #20** — i18n closure chain dispatched after this entry.
+  No new English source strings introduced; chain output
+  expected to be "0 new keys" for this turn (the 27
+  pre-existing drift keys reported by the prior scanner run
+  remain the same).
+
+---
+
 ## 2026-06-07 — Sheets fixed for small iPhones: ScrollView fallback for content overflow + horizontal padding tightened to Apple-native 16pt
 
 **Summary:** User reported two related sheet defects on a small
