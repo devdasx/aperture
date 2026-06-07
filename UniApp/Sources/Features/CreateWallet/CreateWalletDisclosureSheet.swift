@@ -108,6 +108,19 @@ struct CreateWalletDisclosureSheet: View {
     /// The single ack the user must make before continuing. Toggle copy
     /// is verbatim from `TODO.md` T-002 §A.1 — the honesty check explicitly
     /// requires this wording, not a softened paraphrase.
+    ///
+    /// **Horizontal indent.** The `UniCard` above this row has
+    /// `UniSpacing.m` (16pt) internal padding, so its content sits at
+    /// `sheetPadding + cardPadding` = 32pt from each sheet edge. The
+    /// toggle row is outside the card, so without compensating padding
+    /// it would sit at just `sheetPadding` (16pt) — visually 16pt
+    /// further left and right than the card content above it, breaking
+    /// the vertical rhythm and pushing the `Toggle`'s switch pill so
+    /// close to the sheet's right edge that on small iPhones it reads
+    /// as clipped. The explicit `.padding(.horizontal, UniSpacing.m)`
+    /// here adopts the card's internal indent for this row so the
+    /// label aligns under "Write it down." and the switch's right
+    /// pill ends at the same X as the card's right edge.
     private var acknowledgementRow: some View {
         Toggle(isOn: $didAcknowledge) {
             Text("I understand if I lose my recovery phrase, I lose my crypto.")
@@ -119,6 +132,7 @@ struct CreateWalletDisclosureSheet: View {
         .tint(UniColors.Button.primaryTint)
         .uniHaptic(.selection, trigger: didAcknowledge)
         .padding(.vertical, UniSpacing.xxs)
+        .padding(.horizontal, UniSpacing.m)
     }
 
 }
