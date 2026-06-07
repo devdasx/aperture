@@ -1,7 +1,7 @@
 {
   "images" : [
     {
-      "filename" : "wordmark-horizontal-light.svg",
+      "filename" : "mark-black.svg",
       "idiom" : "universal"
     },
     {
@@ -11,7 +11,7 @@
           "value" : "dark"
         }
       ],
-      "filename" : "wordmark-horizontal-dark.svg",
+      "filename" : "mark-white.svg",
       "idiom" : "universal"
     }
   ],

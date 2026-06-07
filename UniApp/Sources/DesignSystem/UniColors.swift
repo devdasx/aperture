@@ -239,9 +239,12 @@ enum UniColors {
 
     /// Brand-identity colors specific to Aperture. Defined as Assets.xcassets
     /// color sets with both light + dark appearance entries so the brand mark
-    /// reads correctly in both modes. The mark is graphite (`#1D1D1F`) on
-    /// light backgrounds and soft white (`#F4F5F7`) on dark, per the Aperture
-    /// brand spec (kept off-repo; values mirrored in `BrandMark.colorset`).
+    /// reads correctly in both modes. Per the 2026-06-07 brand kit refresh
+    /// the mark is now **Ink** (`#0B0D11`) on light backgrounds and **Cloud**
+    /// (`#F5F5F7`) on dark — see `BrandMark.colorset` for the canonical
+    /// values. The brand accent is **Aperture Blue** (`#0A66E8` light /
+    /// `#3AB0FF` dark), defined in `AccentColor.colorset` and surfaced
+    /// system-wide via `UniColors.Tint.accent`.
     enum Brand {
         /// Fill color for the Aperture iris mark — graphite in light mode,
         /// soft white in dark mode. Use for the splash iris and the
