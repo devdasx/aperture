@@ -49,6 +49,7 @@ struct BackupVerifyView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: UniSpacing.l) {
+                roleFootnote
                 subtitle
                 ForEach(challenges) { challenge in
                     challengeCard(challenge)
@@ -73,6 +74,20 @@ struct BackupVerifyView: View {
         .uniHaptic(.success, trigger: haptic == .success ? 1 : 0)
         .uniHaptic(.error, trigger: haptic == .error ? 1 : 0)
         .uniHaptic(.selection, trigger: selections.count)
+    }
+
+    // MARK: - Role footnote
+
+    /// Rule #16 §A.3 — names the user's role in their own safety. The
+    /// challenge is not punitive; it is the user proving to themselves
+    /// (and to the wallet) that they have written the words down.
+    /// Calling out the agency directly is what makes verification feel
+    /// like ownership rather than a test.
+    private var roleFootnote: some View {
+        UniFootnote(
+            text: "Proving you saved the phrase locks the wallet to you, not us.",
+            alignment: .leading
+        )
     }
 
     // MARK: - Subtitle
@@ -218,8 +233,12 @@ struct BackupVerifyView: View {
     // MARK: - Helpers
 
     private func positionLabel(for index: Int) -> String {
-        // 1-based, zero-padded to 2 digits — matches `WordCell`.
-        String(format: "Word %02d", index + 1)
+        // 1-based. Localized via `String(localized:)` — the prior raw
+        // `String(format: "Word %02d", ...)` bypassed the catalog and
+        // shipped "Word 01" in every locale. Now extracted as
+        // "Word \(Int)" → key "Word %lld" in the catalog, translated
+        // for all 50 supported languages.
+        String.apertureLocalized("Word \(index + 1)")
     }
 
     /// Builds three distinct, randomly-chosen challenges. Each challenge

@@ -6,9 +6,27 @@ import SwiftUI
 /// `.symbolEffect(.bounce)` greeting fired on each SF Symbol when the beat
 /// becomes active — that is system behavior on the symbol, not hand-built
 /// motion. `isActive` is the propagated current-beat flag.
+///
+/// **Open-source anchor (Rule #16 §A.4 / §C).** The welcome slide (the
+/// first surface a user sees in a session) carries a restrained "Open
+/// source" badge below the body copy. Tapping calls `onOpenSourceTap`,
+/// which the parent uses to present `OpenSourceSheet`. The badge only
+/// appears on the wordmark beat — other slides are marketing content,
+/// not security-touching surfaces, so they do not need the anchor.
 struct OnboardingSlideView: View {
     let slide: OnboardingSlide
     let isActive: Bool
+    /// Fires when the user taps the welcome slide's open-source badge.
+    /// Other slides (`illustration != .wordmark`) ignore this closure.
+    var onOpenSourceTap: () -> Void = {}
+
+    /// True for the welcome beat — the only slide carrying the
+    /// open-source anchor today. Slide identity is matched by the
+    /// illustration kind so the rule survives ordering changes in
+    /// `OnboardingSlide.all`.
+    private var isWelcomeSlide: Bool {
+        slide.illustration == .wordmark
+    }
 
     var body: some View {
         VStack(spacing: UniSpacing.xl) {
@@ -24,15 +42,42 @@ struct OnboardingSlideView: View {
                     alignment: .center,
                     color: UniColors.Text.secondary
                 )
+
+                if isWelcomeSlide {
+                    openSourceBadge
+                        .padding(.top, UniSpacing.xs)
+                }
             }
             .padding(.horizontal, UniSpacing.s)
 
             Spacer(minLength: UniSpacing.l)
         }
         .padding(.horizontal, UniSpacing.l)
-        .accessibilityElement(children: .combine)
-        // Concatenate two localized `Text`s so VoiceOver speaks the title
-        // and body together in the user's selected language (Rule #9).
-        .accessibilityLabel(Text(slide.title) + Text(verbatim: " ") + Text(slide.body))
+        .accessibilityElement(children: .contain)
+    }
+
+    // MARK: - Open-source badge
+
+    /// Restrained tappable badge — small `lock.shield` glyph, the words
+    /// "Open source", and a trailing `chevron.right`. All in
+    /// `UniColors.Text.tertiary` so the affordance reads as an honest
+    /// footnote, not a marketing banner (Rule #16 §B "Restraint, not
+    /// alarm"). Tap presents the `OpenSourceSheet` via the parent.
+    private var openSourceBadge: some View {
+        Button(action: onOpenSourceTap) {
+            HStack(spacing: UniSpacing.xs) {
+                Image(systemName: "lock.shield")
+                    .font(.system(size: 13, weight: .regular))
+                Text("Open source")
+                    .font(UniTypography.footnote)
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 11, weight: .semibold))
+            }
+            .foregroundStyle(UniColors.Text.tertiary)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(Text("Open source"))
+        .accessibilityHint(Text("Opens a sheet describing what you can verify in the source code"))
     }
 }

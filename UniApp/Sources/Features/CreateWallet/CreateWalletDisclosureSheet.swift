@@ -43,55 +43,26 @@ struct CreateWalletDisclosureSheet: View {
     @State private var didAcknowledge: Bool = false
 
     var body: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: UniSpacing.l) {
-                    hero
-                    copyBlock
-                    protectionRules
-                    acknowledgementRow
+        UniSheet(title: "Your recovery phrase") {
+            VStack(alignment: .leading, spacing: UniSpacing.l) {
+                protectionRules
+                acknowledgementRow
+            }
+        } actions: {
+            GlassEffectContainer(spacing: UniSpacing.s) {
+                VStack(spacing: UniSpacing.s) {
+                    UniButton(
+                        title: "Show recovery phrase",
+                        variant: .primary,
+                        isEnabled: didAcknowledge
+                    ) {
+                        onAccept()
+                    }
+                    UniButton(title: "Cancel", variant: .secondary) {
+                        onCancel()
+                    }
                 }
-                .padding(.horizontal, UniSpacing.l)
-                .padding(.top, UniSpacing.s)
-                .padding(.bottom, UniSpacing.l)
             }
-            .safeAreaInset(edge: .bottom) {
-                actionRegion
-                    .padding(.horizontal, UniSpacing.l)
-                    .padding(.bottom, UniSpacing.l)
-            }
-            .navigationTitle("Your recovery phrase is the only way back.")
-            .navigationBarTitleDisplayMode(.large)
-        }
-    }
-
-    // MARK: - Hero mark
-
-    private var hero: some View {
-        HStack {
-            Spacer()
-            Image(systemName: "lock.shield")
-                .font(.system(size: 56, weight: .regular))
-                .symbolRenderingMode(.hierarchical)
-                .foregroundStyle(UniColors.Brand.mark)
-                .accessibilityHidden(true)
-            Spacer()
-        }
-        .padding(.top, UniSpacing.s)
-    }
-
-    // MARK: - Body paragraph
-
-    /// The body paragraph names the consequence honestly. The screen's
-    /// thesis sentence ("Your recovery phrase is the only way back.")
-    /// lives in the nav title (Rule #15) — the headline that used to
-    /// duplicate it here was removed 2026-06-04.
-    private var copyBlock: some View {
-        VStack(alignment: .leading, spacing: UniSpacing.s) {
-            UniBody(
-                text: "In a moment, Aperture will show you 12 words. They are your wallet. No one — not Apple, not Aperture, not your bank — can recover them for you.",
-                color: UniColors.Text.secondary
-            )
         }
     }
 
@@ -150,31 +121,6 @@ struct CreateWalletDisclosureSheet: View {
         .padding(.vertical, UniSpacing.xxs)
     }
 
-    // MARK: - Action region
-
-    /// Both CTAs live inside one `GlassEffectContainer` so they read as a
-    /// single merged glass region (Rule #2 §B.3 — max two glass layers).
-    /// Primary disabled until the user acknowledges; secondary always
-    /// dismisses. The bottom-CTA pattern is the Rule #15 exception for
-    /// high-stakes commits (Create wallet, Sign transaction) — the
-    /// "Show recovery phrase" CTA is exactly that.
-    private var actionRegion: some View {
-        GlassEffectContainer(spacing: UniSpacing.s) {
-            VStack(spacing: UniSpacing.s) {
-                UniButton(
-                    title: "Show recovery phrase",
-                    variant: .primary,
-                    isEnabled: didAcknowledge
-                ) {
-                    onAccept()
-                }
-
-                UniButton(title: "Cancel", variant: .secondary) {
-                    onCancel()
-                }
-            }
-        }
-    }
 }
 
 // MARK: - Previews

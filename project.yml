@@ -16,6 +16,19 @@ settings:
     DEVELOPMENT_TEAM: 6C4X774L9H
     CODE_SIGN_STYLE: Automatic
 
+# Trust Wallet Core — Rule #3 §B exception logged in SHIPPED.md
+# 2026-06-06 ("Review wallet screen: Trust Wallet Core key derivation
+# for all 24 chains + max-parallel scan pipeline"). Battle-tested,
+# open-source cryptography library used by Trust Wallet, Coinbase
+# Wallet, Binance Wallet — the canonical Swift package for multi-
+# chain key derivation. Lives in the domain layer only; the UI never
+# imports it directly (Rule #3 §A.3 — no third-party SDK in the UI
+# layer).
+packages:
+  WalletCore:
+    url: https://github.com/trustwallet/wallet-core
+    from: "4.2.0"
+
 targets:
   UniApp:
     type: application
@@ -24,6 +37,11 @@ targets:
     sources:
       - path: UniApp/Sources
       - path: UniApp/Resources
+    dependencies:
+      - package: WalletCore
+        product: WalletCore
+      - package: WalletCore
+        product: WalletCoreSwiftProtobuf
     settings:
       base:
         PRODUCT_NAME: Aperture
@@ -37,6 +55,11 @@ targets:
         INFOPLIST_KEY_CFBundleDisplayName: Aperture
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+        # NSFaceIDUsageDescription — required when calling LocalAuthentication's
+        # .deviceOwnerAuthenticationWithBiometrics policy on a device with Face ID.
+        # Without this Info.plist key the app crashes on the first biometric prompt
+        # ("NSFaceIDUsageDescription must be set").
+        INFOPLIST_KEY_NSFaceIDUsageDescription: "Aperture uses Face ID to unlock the app and confirm transactions, so you don't have to type your PIN every time."
         TARGETED_DEVICE_FAMILY: "1"
         IPHONEOS_DEPLOYMENT_TARGET: "26.0"
         SUPPORTS_MACCATALYST: NO

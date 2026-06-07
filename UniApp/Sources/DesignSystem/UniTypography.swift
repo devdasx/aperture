@@ -31,4 +31,13 @@ enum UniTypography {
     // Numeric (use for balances / prices — tabular figures align decimals)
     static let monoBalance = Font.system(.title, design: .rounded, weight: .semibold).monospacedDigit()
     static let monoBody = Font.system(.body, design: .default, weight: .regular).monospacedDigit()
+
+    /// Hero balance — the wallet-home total. Rounded-design, semibold,
+    /// monospaced-digit so the decimals never shift as the balance
+    /// refreshes. Larger than `monoBalance` because it carries the
+    /// screen's single most important fact and the design's calm is
+    /// expressed through the size + space around it, not through
+    /// decoration. Tied to the system `largeTitle` style so Dynamic
+    /// Type still scales it.
+    static let heroBalance = Font.system(.largeTitle, design: .rounded, weight: .semibold).monospacedDigit()
 }

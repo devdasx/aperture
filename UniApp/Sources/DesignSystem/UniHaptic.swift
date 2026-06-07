@@ -1,89 +1,250 @@
 import SwiftUI
 
-/// Unified semantic haptic vocabulary. Every haptic the app emits names
-/// *meaning* (`.success`, `.warning`, `.mediumImpact`) — never raw weight
-/// or generator type. Each case maps internally to the matching iOS 26
-/// `SensoryFeedback` constant.
+/// Unified semantic haptic vocabulary — Aperture's tactile language.
 ///
-/// Per `CLAUDE.md` Rule #10, this is the **only** allowed way to fire a
-/// haptic from a view. Raw `UIImpactFeedbackGenerator` /
+/// Per the jony-ive 2026-06-05 redesign audit and `CLAUDE.md` Rule #10,
+/// every haptic in the app names **meaning** (`.selection`, `.success`,
+/// `.contextualImpact(.commit)`) — never raw weight or generator type.
+/// The implementation layer maps semantics to native iOS 26 primitives:
+/// `SensoryFeedback` for atomic platform-blessed beats, and
+/// `CHHapticEngine` (via `UniHapticEngine`) for Aperture's six signature
+/// AHAP patterns.
+///
+/// **Six families:**
+/// - **Selection** — discrete state change (picker, toggle, nav push).
+/// - **Impact** — physical tap acknowledgement at five significances.
+/// - **Notification** — the canonical triad (success / warning / error)
+///   plus a `successQuiet` for unlock-style "resumed access" moments.
+/// - **Stepwise** — continuous-control feedback (increase / decrease /
+///   alignment / levelChange) plus `progressTick(_:)` for state-driven
+///   progressive intensity escalation.
+/// - **Lifecycle** — long-running flow markers (start / stop).
+/// - **Signature** — Aperture's bespoke AHAP patterns; the wallet's
+///   tactile identity. Six total; new ones require SHIPPED.md
+///   justification per Rule #10 §I.
+///
+/// User preference: `@AppStorage("hapticFeedbackEnabled")`. When `false`
+/// every path through this enum short-circuits to no-op — `SensoryFeedback`,
+/// `CHHapticEngine`, sequences, signatures, frustration-window state,
+/// everything. One source of truth.
+///
+/// **Forbidden** (Rule #10): raw `UIImpactFeedbackGenerator` /
 /// `UINotificationFeedbackGenerator` / inline `.sensoryFeedback(...)` calls
-/// are forbidden outside this file.
-///
-/// ### Usage
-///
-/// ```swift
-/// SomeView()
-///     .uniHaptic(.selection, trigger: currentIndex)
-/// ```
-///
-/// `UniButton` fires the variant-appropriate haptic automatically; for
-/// non-button interactive surfaces (sliders, custom gestures, sheet
-/// dismissals, toggle changes), apply `.uniHaptic(_:trigger:)` to the view
-/// that owns the changing state.
-///
-/// User preference: `@AppStorage("hapticFeedbackEnabled")`, default `true`.
-/// When the preference is `false`, `.uniHaptic(_:trigger:)` resolves to a
-/// no-op and the underlying `.sensoryFeedback(...)` modifier is not
-/// installed — silent for the whole app, with one source of truth.
+/// anywhere except this file and `UniHapticEngine.swift`.
 enum UniHaptic: Hashable, Sendable {
-    /// Picker change, toggle on/off, list-row tap that opens detail.
+
+    // MARK: - Family A: selection
+
+    /// Picker change, toggle on, list-row tap, nav push, sheet open.
     case selection
-    /// Lightweight tap acknowledgement.
-    case softImpact
-    /// Primary CTA tap that commits to a flow.
-    case mediumImpact
-    /// Significant commit (sign transaction, confirm seed phrase).
-    case firmImpact
-    /// Wallet created, transaction confirmed, copy-to-clipboard succeeded.
+
+    /// Toggle off, list-row deselect — slightly softer counterpart to
+    /// `.selection`. Implemented as a faint light impact, not the
+    /// system selection sound (which is symmetrical for on/off).
+    case selectionDeselect
+
+    // MARK: - Family B: impact (significance-driven)
+
+    /// Physical tap acknowledgement at one of five significances.
+    /// Encapsulates the weight × flexibility × intensity matrix so call
+    /// sites name *what the tap means*, not its physics.
+    ///
+    /// - `.whisper`     — single character appearing, autofill accepted.
+    /// - `.tap`         — keypad digit, dice tile, hex glyph.
+    /// - `.commit`      — primary CTA that advances (Continue, Save).
+    /// - `.weighted`    — destructive confirmation tap.
+    /// - `.consequential` — irreversible commit (reset wallet); fires
+    ///   a double-beat impact for emphasis.
+    case contextualImpact(ImpactSignificance)
+
+    // MARK: - Family C: notification
+
+    /// Generic success — copy succeeded, save preference, all-three
+    /// challenges complete. The full system success triad.
     case success
-    /// Destructive CTA tap, confirmation about to show.
+
+    /// Subdued success — verify-unlock PIN match, per-step backup
+    /// challenge correct. The user isn't celebrating, they're resuming
+    /// access; the full `.success` triad reads as boastful here.
+    case successQuiet
+
+    /// Destructive CTA tap, confirmation about to show. The user is
+    /// about to do something reversible-but-weighty.
     case warning
-    /// Failed transaction, validation failure, biometric refused.
+
+    /// Validation failure — wrong PIN, biometric refused, network
+    /// unreachable. Subject to `UniHapticEngine`'s frustration
+    /// silencing (3 errors in 10s → next 2 silenced).
     case error
-    /// Stepper up, slider up, swap-amount up.
+
+    // MARK: - Family D: stepwise
+
+    /// Stepper up, slider up, swap-amount up, picker advance.
     case increase
+
     /// Stepper down, slider down, swap-amount down.
     case decrease
-    /// Animation start, beginning of a long-running flow.
-    case start
-    /// Animation end, end-of-list reached.
-    case stop
-    /// Snap to grid, snap to value.
+
+    /// Snap-to-grid, snap-to-value, picker detent.
     case alignment
-    /// Network change in a picker, chain switch.
+
+    /// Network / chain switch, account switch — level changed.
     case levelChange
 
-    /// Maps a semantic case to the iOS 26 native `SensoryFeedback` value.
-    /// Returns `nil` only if the case has no haptic (none currently —
-    /// reserved for future cases such as a deliberate `.silent`).
+    /// Progress milestone in a long-running collection (Roll-your-own,
+    /// future sync flows). The phase encodes intensity escalation so
+    /// call sites name "how far along" not "how hard to vibrate":
+    ///
+    /// - `.early`    — first quarter (whisper-soft).
+    /// - `.mid`      — first half (tap-light).
+    /// - `.late`     — third quarter (commit-medium).
+    /// - `.imminent` — final stretch (weighted-heavy).
+    case progressTick(ProgressPhase)
+
+    // MARK: - Family E: lifecycle
+
+    /// Long-running flow begins (sync starts, fetch initiated).
+    case start
+
+    /// End of scroll, end of long flow, sheet bottom reached.
+    case stop
+
+    // MARK: - Family F: signature (Core Haptics AHAP)
+
+    /// Aperture's six signature patterns. Fired via `UniHapticEngine`
+    /// — gated by both the AppStorage preference AND
+    /// `UIAccessibility.isReduceMotionEnabled` (signatures respect the
+    /// user's accessibility choice; atomic `SensoryFeedback` cases do
+    /// not because they're platform-blessed).
+    case signature(Signature)
+
+    /// Identity of an AHAP pattern bundled in
+    /// `UniApp/Resources/Haptics/*.ahap`. Add a case here AND ship
+    /// a corresponding `.ahap` file. Per Rule #10 §I, new signatures
+    /// require a SHIPPED.md justification.
+    enum Signature: String, Hashable, Sendable, CaseIterable {
+        case walletSealed
+        case phraseRevealed
+        case phraseRegenerated
+        case pinSealed
+        case transactionSigned    // T-018 placeholder
+        case transactionConfirmed // T-018 placeholder
+
+        /// Name of the AHAP file (without extension) under
+        /// `Resources/Haptics/`.
+        var resourceName: String { rawValue }
+    }
+}
+
+// MARK: - ImpactSignificance
+
+/// Encapsulates the weight × flexibility × intensity matrix of
+/// `SensoryFeedback.impact` so call sites stay semantic. Adding a sixth
+/// significance later means changing this file, not the 29+ call
+/// sites in the app.
+enum ImpactSignificance: Hashable, Sendable {
+    /// Single character appearing, autofill accepted — barely felt.
+    case whisper
+    /// Keypad digit press, dice tile tap, hex glyph tap.
+    case tap
+    /// Primary CTA that advances the user.
+    case commit
+    /// Destructive confirmation tap.
+    case weighted
+    /// Irreversible commit. Internally a double-beat: a heavy initial
+    /// impact, an 80ms gap, then a medium follow-through.
+    case consequential
+
+    /// Single-beat impacts map straight to `SensoryFeedback`. The
+    /// `.consequential` case returns nil here — `UniHapticEngine` plays
+    /// the double-beat directly through `UIImpactFeedbackGenerator`.
     fileprivate var feedback: SensoryFeedback? {
         switch self {
-        case .selection:     return .selection
-        case .softImpact:    return .impact(weight: .light)
-        case .mediumImpact:  return .impact(weight: .medium)
-        case .firmImpact:    return .impact(weight: .heavy)
-        case .success:       return .success
-        case .warning:       return .warning
-        case .error:         return .error
-        case .increase:      return .increase
-        case .decrease:      return .decrease
-        case .start:         return .start
-        case .stop:          return .stop
-        case .alignment:     return .alignment
-        case .levelChange:   return .levelChange
+        case .whisper:   return .impact(weight: .light, intensity: 0.55)
+        case .tap:       return .impact(flexibility: .solid, intensity: 0.85)
+        case .commit:    return .impact(weight: .medium, intensity: 1.0)
+        case .weighted:  return .impact(weight: .heavy, intensity: 1.0)
+        case .consequential: return nil // handled by UniHapticEngine
         }
     }
 }
 
+// MARK: - ProgressPhase
+
+/// Phase of a long-running collection. Used by `.progressTick(_:)` to
+/// escalate haptic intensity as the user approaches completion.
+enum ProgressPhase: Hashable, Sendable {
+    case early       // first quarter
+    case mid         // first half
+    case late        // third quarter
+    case imminent    // final stretch
+
+    /// Compute the phase from a fractional progress value (0...1). Used
+    /// by callers that want to derive the phase from their current
+    /// state instead of hardcoding boundaries.
+    static func phase(forFraction fraction: Double) -> ProgressPhase {
+        switch fraction {
+        case ..<0.25:  return .early
+        case ..<0.50:  return .mid
+        case ..<0.75:  return .late
+        default:       return .imminent
+        }
+    }
+
+    /// Map to the impact significance that drives the haptic.
+    var impactSignificance: ImpactSignificance {
+        switch self {
+        case .early:    return .whisper
+        case .mid:      return .tap
+        case .late:     return .commit
+        case .imminent: return .weighted
+        }
+    }
+}
+
+// MARK: - Mapping to SensoryFeedback
+
+extension UniHaptic {
+    /// Returns the `SensoryFeedback` value for cases that map directly
+    /// to one. Returns `nil` for cases that go through
+    /// `UniHapticEngine` (signatures, double-beat consequential
+    /// impacts).
+    fileprivate var feedback: SensoryFeedback? {
+        switch self {
+        case .selection:                  return .selection
+        case .selectionDeselect:          return .impact(weight: .light, intensity: 0.6)
+        case .contextualImpact(let sig):  return sig.feedback
+        case .success:                    return .success
+        case .successQuiet:               return .impact(weight: .light, intensity: 0.7)
+        case .warning:                    return .warning
+        case .error:                      return .error
+        case .increase:                   return .increase
+        case .decrease:                   return .decrease
+        case .alignment:                  return .alignment
+        case .levelChange:                return .levelChange
+        case .progressTick(let phase):    return phase.impactSignificance.feedback
+        case .start:                      return .start
+        case .stop:                       return .stop
+        case .signature:                  return nil // handled by UniHapticEngine
+        }
+    }
+
+    /// Whether this case is delegated to `UniHapticEngine` (i.e. needs
+    /// Core Haptics or double-beat playback).
+    fileprivate var requiresEngine: Bool {
+        switch self {
+        case .signature:                                  return true
+        case .contextualImpact(.consequential):           return true
+        default:                                          return false
+        }
+    }
+}
+
+// MARK: - View modifiers
+
 extension View {
-    /// Fire `haptic` when `trigger` changes, *if* the user has haptic
-    /// feedback enabled in Settings. The check is read fresh from
-    /// `@AppStorage` on every view update, so flipping the preference
-    /// takes effect immediately — no app restart, no cache invalidation.
-    ///
-    /// Multiple `.uniHaptic(...)` calls may be chained on one view to
-    /// react to different state changes:
+    /// Fire `haptic` when `trigger` changes, if the user has haptic
+    /// feedback enabled in Settings.
     ///
     /// ```swift
     /// SomeView()
@@ -93,10 +254,43 @@ extension View {
     func uniHaptic<T: Equatable>(_ haptic: UniHaptic, trigger: T) -> some View {
         modifier(UniHapticModifier(haptic: haptic, trigger: trigger))
     }
+
+    /// Fire one of two haptics depending on the direction of the
+    /// transition. The resolver receives `(oldValue, newValue)` and
+    /// returns the haptic to play, or `nil` for no haptic on this
+    /// transition. Useful for amount controls (increase / decrease).
+    ///
+    /// ```swift
+    /// AmountStepper(value: $amount)
+    ///     .uniHaptic(trigger: amount) { old, new in
+    ///         new > old ? .increase : .decrease
+    ///     }
+    /// ```
+    func uniHaptic<T: Equatable>(
+        trigger: T,
+        _ resolve: @escaping (T, T) -> UniHaptic?
+    ) -> some View {
+        modifier(UniHapticDirectionalModifier(trigger: trigger, resolve: resolve))
+    }
+
+    /// Fire a signature (AHAP) haptic when `trigger` changes. Routes
+    /// through `UniHapticEngine` so Reduce Motion silences correctly.
+    func uniHapticSignature<T: Equatable>(
+        _ signature: UniHaptic.Signature,
+        trigger: T
+    ) -> some View {
+        onChange(of: trigger) { _, _ in
+            Task { @MainActor in
+                UniHapticEngine.shared.play(.signature(signature))
+            }
+        }
+    }
 }
 
-/// Implementing modifier — exists only to host the `@AppStorage` read.
-/// The public `.uniHaptic(_:trigger:)` extension can't own state itself.
+// MARK: - Internal modifiers
+
+/// Single-shot haptic modifier. Hosts the `@AppStorage` read so the
+/// preference check fires fresh on every view update.
 private struct UniHapticModifier<T: Equatable>: ViewModifier {
     let haptic: UniHaptic
     let trigger: T
@@ -106,10 +300,49 @@ private struct UniHapticModifier<T: Equatable>: ViewModifier {
 
     @ViewBuilder
     func body(content: Content) -> some View {
-        if isEnabled, let feedback = haptic.feedback {
-            content.sensoryFeedback(feedback, trigger: trigger)
+        if isEnabled {
+            if let feedback = haptic.feedback {
+                content.sensoryFeedback(feedback, trigger: trigger)
+            } else if haptic.requiresEngine {
+                content.onChange(of: trigger) { _, _ in
+                    Task { @MainActor in
+                        UniHapticEngine.shared.play(haptic)
+                    }
+                }
+            } else {
+                content
+            }
         } else {
             content
+        }
+    }
+}
+
+/// Direction-aware modifier — resolves which haptic to fire by
+/// comparing old and new values of the trigger.
+private struct UniHapticDirectionalModifier<T: Equatable>: ViewModifier {
+    let trigger: T
+    let resolve: (T, T) -> UniHaptic?
+
+    @AppStorage(HapticPreference.storageKey)
+    private var isEnabled: Bool = HapticPreference.defaultValue
+
+    func body(content: Content) -> some View {
+        content.onChange(of: trigger) { old, new in
+            guard isEnabled else { return }
+            guard let haptic = resolve(old, new) else { return }
+            if let feedback = haptic.feedback {
+                // Direct sensoryFeedback fire via a temporary view-bound
+                // trigger isn't possible here; route through engine for
+                // a consistent fire pathway.
+                Task { @MainActor in
+                    UniHapticEngine.shared.fire(haptic)
+                }
+            } else if haptic.requiresEngine {
+                Task { @MainActor in
+                    UniHapticEngine.shared.play(haptic)
+                }
+            }
         }
     }
 }

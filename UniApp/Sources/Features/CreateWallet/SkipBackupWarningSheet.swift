@@ -7,49 +7,34 @@ import SwiftUI
 /// **Intent (one sentence):** persuade without trapping. The user keeps
 /// the choice; we make sure the consequence is named before they make it.
 ///
-/// **Sheet shape (Rule #15).** A `NavigationStack` wraps the content; the
-/// title lives in `.navigationTitle("Skip backup?")` with
-/// `.navigationBarTitleDisplayMode(.inline)` for the `.medium` detent.
-/// The body keeps the longer sentence ("Save your recovery phrase before
-/// you skip.") as a `UniHeadline` inside the content — the nav-bar title
-/// is the framing question, the headline is the answer. No `ScrollView`:
-/// one paragraph, one footnote, two CTAs — fits the medium detent.
-///
-/// **Layout.** `exclamationmark.shield.fill` hero in
-/// `UniColors.Status.warningForeground` at a modest 48-pt size. Not
-/// alarming, not flashing red — just the honest weight of "you are about
-/// to step out without a safety net."
+/// **Sheet shape.** Uses the unified `UniSheet` shell — same pattern as
+/// every other sheet in the app. Bare VStack-rooted so the
+/// `.intrinsicHeightSheet()` modifier can measure correctly and the
+/// sheet sizes to its content exactly.
 struct SkipBackupWarningSheet: View {
-    /// Fires when the user changes their mind and taps "Back up now".
-    /// The caller dismisses this sheet; the user stays on the recovery
-    /// phrase view.
     let onBackUpNow: () -> Void
-    /// Fires when the user confirms the skip. The caller dismisses this
-    /// sheet *and* the parent recovery-phrase cover, returning the user
-    /// to onboarding (with the unbacked-up wallet flagged in storage).
     let onSkipAnyway: () -> Void
 
     var body: some View {
-        NavigationStack {
+        UniSheet(title: "Skip backup?") {
             VStack(alignment: .leading, spacing: UniSpacing.l) {
                 hero
                 copyBlock
                 footnoteLine
-                Spacer(minLength: 0)
             }
-            .padding(.horizontal, UniSpacing.l)
-            .padding(.top, UniSpacing.s)
-            .safeAreaInset(edge: .bottom) {
-                actionRegion
-                    .padding(.horizontal, UniSpacing.l)
-                    .padding(.bottom, UniSpacing.l)
+        } actions: {
+            GlassEffectContainer(spacing: UniSpacing.s) {
+                VStack(spacing: UniSpacing.s) {
+                    UniButton(title: "Back up now", variant: .primary) {
+                        onBackUpNow()
+                    }
+                    UniButton(title: "Skip anyway", variant: .secondary) {
+                        onSkipAnyway()
+                    }
+                }
             }
-            .navigationTitle("Skip backup?")
-            .navigationBarTitleDisplayMode(.inline)
         }
     }
-
-    // MARK: - Hero
 
     private var hero: some View {
         HStack {
@@ -63,18 +48,18 @@ struct SkipBackupWarningSheet: View {
         }
     }
 
-    // MARK: - Copy
-
     private var copyBlock: some View {
         VStack(alignment: .leading, spacing: UniSpacing.s) {
             UniHeadline(
                 text: "Save your recovery phrase before you skip.",
                 alignment: .leading
             )
+            .fixedSize(horizontal: false, vertical: true)
             UniBody(
                 text: "Your wallet is on this iPhone only. If your iPhone is lost, broken, or wiped, your wallet — and everything in it — is gone. The recovery phrase is the only way back.",
                 color: UniColors.Text.secondary
             )
+            .fixedSize(horizontal: false, vertical: true)
         }
     }
 
@@ -83,36 +68,16 @@ struct SkipBackupWarningSheet: View {
             text: "You can back it up later in Settings.",
             alignment: .leading
         )
-    }
-
-    // MARK: - Actions
-
-    /// Two CTAs in one `GlassEffectContainer` — high-stakes commit moment,
-    /// the bigger buttons earn their place (Rule #15 allows the bottom
-    /// `GlassEffectContainer` exception for high-stakes commits over the
-    /// toolbar pattern).
-    private var actionRegion: some View {
-        GlassEffectContainer(spacing: UniSpacing.s) {
-            VStack(spacing: UniSpacing.s) {
-                UniButton(title: "Back up now", variant: .primary) {
-                    onBackUpNow()
-                }
-                UniButton(title: "Skip anyway", variant: .secondary) {
-                    onSkipAnyway()
-                }
-            }
-        }
+        .fixedSize(horizontal: false, vertical: true)
     }
 }
-
-// MARK: - Previews
 
 #Preview("Light") {
     Color.clear
         .sheet(isPresented: .constant(true)) {
             SkipBackupWarningSheet(onBackUpNow: {}, onSkipAnyway: {})
-                .presentationDetents([.medium])
-                .presentationDragIndicator(.visible)
+                .intrinsicHeightSheet()
+                .presentationBackground(UniColors.Background.primary)
         }
         .preferredColorScheme(.light)
 }
@@ -121,8 +86,8 @@ struct SkipBackupWarningSheet: View {
     Color.clear
         .sheet(isPresented: .constant(true)) {
             SkipBackupWarningSheet(onBackUpNow: {}, onSkipAnyway: {})
-                .presentationDetents([.medium])
-                .presentationDragIndicator(.visible)
+                .intrinsicHeightSheet()
+                .presentationBackground(UniColors.Background.primary)
         }
         .preferredColorScheme(.dark)
 }
