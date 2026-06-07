@@ -4,6 +4,105 @@
 
 ---
 
+## 2026-06-07 — Brand color correction: AccentColor reverted from Aperture Blue to monochrome Ink/Cloud (supersedes the brand-refresh entry's accent decision)
+
+**Summary:** User correction: *"OUR BRAND COLOR ARE BLACK, NOT
+BLUE."* The 2026-06-07 brand refresh entry below ("New brand
+identity landed") set `AccentColor.colorset` to **Aperture
+Blue** (`#0A66E8` light / `#3AB0FF` dark) — that was a
+misreading of the kit. The brand kit's blue gradient applies
+**only to the app-icon tile**; the rest of the brand is
+monochrome.
+
+The design handoff (`design_handoff_splash_screen/README.md`)
+makes this explicit:
+
+> **Brand note:** Aperture's brand colour is **black** (white
+> knockout in dark contexts). Keep this screen monochrome; do
+> not introduce accent colours.
+
+This entry **supersedes** the prior brand-refresh entry's
+AccentColor decision. The app-icon tile keeps the Aperture
+Blue gradient (that's the Home Screen identity moment); every
+other accent surface in the app — `.tint(.accentColor)`,
+`UniColors.Tint.accent`, system controls' default tint —
+adopts the monochrome brand identity.
+
+**Files modified:**
+- `UniApp/Resources/Assets.xcassets/AccentColor.colorset/Contents.json`
+  — light: Aperture Blue `#0A66E8` → Ink `#0B0D11`. Dark:
+  Sky 400 `#3AB0FF` → Cloud `#F5F5F7`. Now identical to
+  `BrandMark.colorset`.
+- `UniApp/Sources/DesignSystem/UniColors.swift` — `Brand.mark`
+  doc comment rewritten to cite the design handoff verbatim,
+  clarify that the blue gradient is icon-tile-only, and name
+  both `Brand.mark` and `Tint.accent` as resolving to the
+  same Ink/Cloud pair.
+- `UniApp/Resources/Assets.xcassets/README.md` — the
+  `mark-blue.svg` provenance line removed (the v2 brand kit
+  already dropped it), with a clarifying note that the brand
+  is monochrome black/white per the design handoff.
+
+**What changes visually app-wide:**
+- `UniButton(.primary)` background — was Aperture Blue, now
+  Ink (light) / Cloud (dark). The "Create new wallet" and
+  "Show recovery phrase" buttons render in the brand
+  monochrome.
+- Every `Toggle` tint — was blue, now Ink/Cloud.
+- Every system `Picker` checkmark, every selected `List`
+  row tint, every `.tint(.accentColor)` consumer in feature
+  code — same conversion.
+- `WalletActionRegion`'s Send / Receive / Swap glass
+  capsules — was tinted Aperture Blue, now monochrome.
+- `OpenSourceSheet`'s "View on GitHub" button — same.
+
+**What does NOT change:**
+- `AppIcon.appiconset/icon-light.png` — keeps the Aperture
+  Blue gradient tile (the icon IS the brand moment where the
+  blue lives; the handoff allows the icon tile its own
+  color treatment).
+- `BrandMark.colorset` — already Ink/Cloud, unchanged.
+- `Splash/` colorset family — already monochrome per the
+  handoff, unchanged.
+
+**Build / Run:**
+- Device build for Thuglife — `BUILD SUCCEEDED`.
+- `xcrun devicectl device install app` on Thuglife —
+  installed, **`databaseSequenceNumber 8172`**.
+
+**Per-rule audit:**
+
+- **Rule #1 (new)** ✓ — BIG: this is a brand-identity
+  correction at the token level that propagates to every
+  accent-tinted surface in the app. Multi-file change (3
+  files). Supersedes a prior SHIPPED entry's premise.
+- **Rule #2** ✓ — The monochrome brand matches the design
+  handoff's "no colour by design" instruction. Hierarchy /
+  Harmony / Consistency hold — every accent surface now
+  reads as one cohesive monochrome identity.
+- **Rule #3** ✓ — pure asset-catalog edit, no new code.
+- **Rule #4** ✓ — Tint continues to resolve through
+  `UniColors.Tint.accent` (which routes to
+  `AccentColor.colorset`). No hardcoded hex.
+- **Rule #7** ✓ — Asset provenance updated in
+  `Assets.xcassets/README.md` to reflect the v2 brand kit's
+  removal of the blue mark.
+- **Rule #22** ✓ — installed on Thuglife,
+  `databaseSequenceNumber 8172`.
+- **Rule #23** — this turn does NOT push. Commit will be
+  local-only.
+
+**M-001 pattern reminder.** This is the same shape as M-001
+(reaching for a non-canonical brand source). The canonical
+source for the brand color is the design handoff + the
+brand kit's monochrome mark variants — NOT my reading of
+the README's "colour" section, which listed Aperture Blue
+alongside Ink/Cloud/Graphite as the **palette**, not as
+**the accent**. Logged here so a future agent reading the
+SHIPPED history sees both the misread and the correction.
+
+---
+
 ## 2026-06-07 — Splash redesigned to handoff spec: glow + iris bloom + wordmark wipe-up + tagline + loader, hand-driven by TimelineView for cubic-bezier accuracy
 
 **Summary:** User shipped a full design handoff at

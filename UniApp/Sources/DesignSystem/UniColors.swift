@@ -266,12 +266,21 @@ enum UniColors {
 
     /// Brand-identity colors specific to Aperture. Defined as Assets.xcassets
     /// color sets with both light + dark appearance entries so the brand mark
-    /// reads correctly in both modes. Per the 2026-06-07 brand kit refresh
-    /// the mark is now **Ink** (`#0B0D11`) on light backgrounds and **Cloud**
-    /// (`#F5F5F7`) on dark — see `BrandMark.colorset` for the canonical
-    /// values. The brand accent is **Aperture Blue** (`#0A66E8` light /
-    /// `#3AB0FF` dark), defined in `AccentColor.colorset` and surfaced
-    /// system-wide via `UniColors.Tint.accent`.
+    /// reads correctly in both modes. Per the 2026-06-07 design handoff:
+    /// *"Aperture's brand colour is **black** (white knockout in dark
+    /// contexts). Keep this screen monochrome; do not introduce accent
+    /// colours."* The Aperture Blue gradient in the brand kit applies only
+    /// to the **app-icon tile** (the Home Screen mark) — it is NOT the
+    /// app's accent color. Everywhere else the brand is monochrome.
+    ///
+    /// - **`UniColors.Brand.mark`** → `BrandMark.colorset` → **Ink**
+    ///   `#0B0D11` light / **Cloud** `#F5F5F7` dark. Used by the iris
+    ///   mark, wordmark, and any brand-identity surface.
+    /// - **`UniColors.Tint.accent`** → `AccentColor.colorset` → **Ink**
+    ///   `#0B0D11` light / **Cloud** `#F5F5F7` dark — identical to the
+    ///   brand mark. Surfaced system-wide as `.accentColor`; consumed
+    ///   by every `.tint(...)`, every system control (Toggle, Picker,
+    ///   etc.), and every `UniButton(.primary)` background.
     enum Brand {
         /// Fill color for the Aperture iris mark — graphite in light mode,
         /// soft white in dark mode. Use for the splash iris and the
