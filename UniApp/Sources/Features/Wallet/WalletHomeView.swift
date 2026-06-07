@@ -266,20 +266,36 @@ struct WalletHomeView: View {
         .scrollIndicators(.hidden)
     }
 
+    /// Wallet-home banner cluster.
+    ///
+    /// The `BackupRequiredBanner` was REMOVED from the wallet home on
+    /// 2026-06-07 per direct user direction:
+    ///
+    /// > "remove this 'Save your recovery phrase' from the main screen
+    /// > at all, and instead in the wallet management screen, show
+    /// > modern warning that says he should do a backup to his wallet,
+    /// > and when it done, it should be marked as Done."
+    ///
+    /// **Why the move.** The wallet home is the daily-driver surface;
+    /// the user is here to read the calm truth of what they own
+    /// (balances, holdings, activity). A persistent backup nag on every
+    /// open pulled attention away from that truth and read as
+    /// alarm-class chrome — even though backup is a *responsibility*,
+    /// not a *danger* (Rule #2 §A.7 / Rule #16 §B). The backup state
+    /// now lives where the user goes to *think about this specific
+    /// wallet*: Settings → Wallets → [wallet]. There it is calm,
+    /// monochrome, and transitions to a Done state the moment the
+    /// user confirms.
+    ///
+    /// `BiometricReenrollmentBanner` remains here because it names a
+    /// *different* class of event: an iOS-level enrollment change
+    /// happened OUTSIDE Aperture, and the user needs to re-authorize
+    /// to restore biometric unlock. That's an event-driven prompt, not
+    /// a setup-time decision the user can navigate to.
     @ViewBuilder
     private var banners: some View {
-        VStack(spacing: UniSpacing.s) {
-            if let wallet = activeWallet, wallet.requiresBackup {
-                BackupRequiredBanner {
-                    // TODO: (T-046) Re-enter the backup flow against
-                    // this specific wallet rather than the default
-                    // create flow.
-                    isShowingCreate = true
-                }
-            }
-            if requiresBiometricReenrollment {
-                BiometricReenrollmentBanner()
-            }
+        if requiresBiometricReenrollment {
+            BiometricReenrollmentBanner()
         }
     }
 

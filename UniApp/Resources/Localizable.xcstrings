@@ -23170,6 +23170,17 @@
         }
       }
     },
+    "Back up this wallet.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Back up this wallet."
+          }
+        }
+      }
+    },
     "Back up your recovery phrase": {
       "extractionState": "manual",
       "localizations": {
@@ -23477,6 +23488,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "備份你的助記詞"
+          }
+        }
+      }
+    },
+    "Backed up.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Backed up."
           }
         }
       }
@@ -96267,6 +96289,17 @@
         }
       }
     },
+    "Preparing your phrase.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Preparing your phrase."
+          }
+        }
+      }
+    },
     "Price unavailable": {
       "comment": "Fallback shown when Coinbase doesn't list a token.",
       "extractionState": "manual",
@@ -105992,6 +106025,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "檢查僅監看"
+          }
+        }
+      }
+    },
+    "Right now, this wallet only exists on this iPhone. If you lose access before you write down the recovery phrase, the funds in it can't be recovered.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Right now, this wallet only exists on this iPhone. If you lose access before you write down the recovery phrase, the funds in it can't be recovered."
           }
         }
       }
@@ -125943,6 +125987,17 @@
         }
       }
     },
+    "There's no encrypted phrase stored for this wallet. If you saved it elsewhere, you're already its only copy.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "There's no encrypted phrase stored for this wallet. If you saved it elsewhere, you're already its only copy."
+          }
+        }
+      }
+    },
     "These 12 words are your wallet. Write them in order, exactly as shown.": {
       "comment": "Recovery-phrase view hero copy.",
       "extractionState": "manual",
@@ -143512,6 +143567,28 @@
         }
       }
     },
+    "We can't show this wallet's phrase.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "We can't show this wallet's phrase."
+          }
+        }
+      }
+    },
+    "We couldn't decrypt this wallet's phrase. Try restarting Aperture.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "We couldn't decrypt this wallet's phrase. Try restarting Aperture."
+          }
+        }
+      }
+    },
     "Welcome to Aperture.": {
       "comment": "Slide 1 hero title.",
       "extractionState": "manual",
@@ -151093,6 +151170,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "可以留空。"
+          }
+        }
+      }
+    },
+    "You have the recovery phrase. Aperture is one of two copies.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "You have the recovery phrase. Aperture is one of two copies."
           }
         }
       }

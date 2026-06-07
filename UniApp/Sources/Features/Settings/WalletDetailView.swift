@@ -25,6 +25,7 @@ struct WalletDetailView: View {
     @State private var editedName: String = ""
     @State private var isShowingDeleteConfirm: Bool = false
     @State private var isShowingPhrase: Bool = false
+    @State private var isShowingBackupFlow: Bool = false
     @State private var biometricChallenge: BiometricChallenge?
 
     init(walletId: UUID) {
@@ -54,16 +55,71 @@ struct WalletDetailView: View {
     @ViewBuilder
     private func content(_ wallet: WalletRecord) -> some View {
         List {
+            // **Backup state — the screen's lead surface.**
+            //
+            // Added 2026-06-07 per direct user direction (replaces the
+            // wallet-home `BackupRequiredBanner` — see
+            // `WalletHomeView.banners` for the deletion rationale).
+            // The card has two states, both calm and monochrome:
+            //
+            // - **A (`requiresBackup == true`):** a `UniCard` with a
+            //   `lock.shield` hero glyph, a headline that names the
+            //   responsibility ("Back up this wallet."), an honest
+            //   body line that states the irreversibility plainly, and
+            //   a `UniButton(.primary)` that opens the
+            //   `BackupExistingWalletFlow` sheet against this specific
+            //   wallet's stored mnemonic (T-046 honored).
+            //
+            // - **B (`requiresBackup == false`):** the same card slot,
+            //   with `checkmark.shield.fill`, a one-line "Backed up.",
+            //   and a single body line that names the co-existence
+            //   honestly ("Aperture is one of two copies."). No CTA —
+            //   the absence of work to do IS the moment.
+            //
+            // The transition between A and B is the screen's most
+            // important visual moment. SwiftUI's `@Query` reactivity
+            // on `WalletRecord` flips `requiresBackup` the moment
+            // `WalletRepository.markBackupComplete(id:)` lands; the
+            // `.animation(.smooth, value:)` on the section makes the
+            // crossfade feel deliberate. The symbol's
+            // `.symbolEffect(.bounce, options: .nonRepeating)` (gated
+            // by Reduce Motion via the engine) gives the user the
+            // one-beat acknowledgement they earned it.
+            //
+            // The card is OPAQUE — not glass, not warning-yellow.
+            // Content-layer per Rule #2 §B.3 (no glass on long-form
+            // content), monochrome per the brand handoff (Rule #2
+            // §A.5).
+            Section {
+                BackupStateCard(
+                    requiresBackup: wallet.requiresBackup,
+                    onBackUpNow: { isShowingBackupFlow = true }
+                )
+                .listRowBackground(Color.clear)
+                .listRowInsets(EdgeInsets(
+                    top: 0,
+                    leading: 0,
+                    bottom: 0,
+                    trailing: 0
+                ))
+                .listRowSeparator(.hidden)
+                .animation(.smooth(duration: 0.4), value: wallet.requiresBackup)
+            }
+
             Section {
                 renameRow(wallet)
             } header: {
                 Text("Name").font(UniTypography.footnote).foregroundStyle(UniColors.Text.tertiary)
             }
 
+            // Details lost the explicit "Backup · Pending/Complete" row
+            // when the lead card took on that role. Reading the same
+            // status in two places (top card + middle row) would have
+            // read as redundant chrome — the top card carries enough
+            // weight on its own.
             Section {
                 kindRow(wallet)
                 addressesRow(wallet)
-                backupStatusRow(wallet)
             } header: {
                 Text("Details").font(UniTypography.footnote).foregroundStyle(UniColors.Text.tertiary)
             }
@@ -105,6 +161,22 @@ struct WalletDetailView: View {
                 .uniAppEnvironment()
                 .presentationDetents([.large])
                 .presentationBackground(UniColors.Background.primary)
+        }
+        .sheet(isPresented: $isShowingBackupFlow) {
+            // The `BackupExistingWalletFlow` reads the stored mnemonic
+            // via `MnemonicVault.loadMnemonic`, presents the canonical
+            // `BackupVerifyView` against it, and on success calls
+            // `WalletRepository.markBackupComplete(id:)`. That flip
+            // propagates through `@Query` reactivity to this view; the
+            // backup card animates A → B in front of the user, the
+            // sheet dismisses, and the moment is felt.
+            BackupExistingWalletFlow(
+                walletId: wallet.id,
+                onCompleted: {}
+            )
+            .uniAppEnvironment()
+            .presentationDetents([.large])
+            .presentationBackground(UniColors.Background.primary)
         }
         .sheet(item: $biometricChallenge) { challenge in
             BiometricChallengeSheet(
@@ -155,26 +227,8 @@ struct WalletDetailView: View {
         .listRowBackground(UniColors.Background.secondary)
     }
 
-    private func backupStatusRow(_ wallet: WalletRecord) -> some View {
-        HStack {
-            Text("Backup").font(UniTypography.body).foregroundStyle(UniColors.Text.primary)
-            Spacer()
-            if wallet.requiresBackup {
-                Label("Pending", systemImage: "exclamationmark.shield.fill")
-                    .labelStyle(.titleAndIcon)
-                    .font(UniTypography.subheadline)
-                    .foregroundStyle(UniColors.Status.warningForeground)
-            } else {
-                Label("Complete", systemImage: "checkmark.shield.fill")
-                    .labelStyle(.titleAndIcon)
-                    .font(UniTypography.subheadline)
-                    .foregroundStyle(UniColors.Status.successForeground)
-            }
-        }
-        .padding(.vertical, UniSpacing.xxs)
-        .listRowBackground(UniColors.Background.secondary)
-    }
-
+    // `backupStatusRow` removed 2026-06-07. Its meaning is now carried
+    // by `BackupStateCard` at the top of the screen.
     private func viewPhraseRow(_ wallet: WalletRecord) -> some View {
         let hasMnemonic = MnemonicVault.hasMnemonic(for: wallet.id)
         return Button {
@@ -398,6 +452,132 @@ struct DeleteWalletConfirmationSheet: View {
                     dismiss()
                 }
                 UniButton(title: "Cancel", variant: .secondary) { dismiss() }
+            }
+        }
+    }
+}
+
+// MARK: - Backup state card (two-state lead surface)
+
+/// Two-state backup card on `WalletDetailView`. The single component
+/// handles both the "needs backup" and "backed up" states so the
+/// transition between them happens in-place — the user sees the card
+/// they were looking at change shape, not a card vanish and another
+/// one appear. That continuity is the load-bearing moment.
+///
+/// **State A (`requiresBackup == true`).** Monochrome `lock.shield`
+/// hero glyph (the brand mark color, not a status color — the user
+/// is being asked to take responsibility, not warned of danger),
+/// headline that names the work plainly ("Back up this wallet."), body
+/// that names the consequence honestly without alarm, and a single
+/// `UniButton(.primary)` "Back up now" that opens the verify flow
+/// against this specific wallet's stored mnemonic.
+///
+/// **State B (`requiresBackup == false`).** Same card slot. The hero
+/// glyph swaps to `checkmark.shield.fill` and gains a one-beat bounce
+/// (Reduce Motion → no bounce). Headline: "Backed up." Body names
+/// the post-backup co-existence ("You have the phrase. Aperture is
+/// one of two copies."). No CTA — the absence of work to do IS the
+/// confirmation.
+///
+/// **Visual register (Rule #2 §A.5 + Rule #16 §B).** Lean monochrome
+/// for both states — the headline + body sit in `Text.primary` /
+/// `Text.secondary` on `UniCard`'s default `Material.card` fill. No
+/// alarming yellow background (the old wallet-home banner), no
+/// celebratory green (would read as marketing). The shield glyph
+/// itself takes `UniColors.Brand.mark` so both states feel like the
+/// brand carrying the same care, just with different posture.
+///
+/// **iOS 26 concentric corners (Rule #2 §B.4).** The card is a
+/// `UniCard` (radius `UniRadius.card`, container shape declared by
+/// the primitive). Inside, the hero glyph + headline + body sit in a
+/// plain `VStack` — no inner container, so no concentric math is
+/// needed.
+private struct BackupStateCard: View {
+    let requiresBackup: Bool
+    let onBackUpNow: () -> Void
+
+    /// Drives `.symbolEffect(.bounce, options: .nonRepeating)` on the
+    /// State-B checkmark. Bumped in `onChange` when the requiresBackup
+    /// flag flips from true → false, so the user sees the bounce
+    /// exactly at the moment of earning the Done state — not on every
+    /// view rebuild and not on cold appears of an already-backed-up
+    /// wallet.
+    @State private var doneBounceTrigger: Int = 0
+
+    var body: some View {
+        UniCard {
+            VStack(alignment: .leading, spacing: UniSpacing.m) {
+                if requiresBackup {
+                    needsBackupContent
+                } else {
+                    backedUpContent
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            // Animation is keyed on the requiresBackup flag so SwiftUI
+            // crossfades the two content variants when SwiftData's
+            // `@Query` reactivity flips the value. Smooth (not spring)
+            // so the moment lands as quiet confirmation rather than
+            // celebration. Reduce Motion is honored automatically —
+            // SwiftUI shortens / suppresses the animation under that
+            // accessibility preference.
+            .transition(.opacity.combined(with: .move(edge: .top)))
+        }
+        .onChange(of: requiresBackup) { _, newValue in
+            if !newValue { doneBounceTrigger &+= 1 }
+        }
+    }
+
+    // MARK: - State A content (needs backup)
+
+    @ViewBuilder
+    private var needsBackupContent: some View {
+        HStack(alignment: .top, spacing: UniSpacing.s) {
+            Image(systemName: "lock.shield")
+                .font(.system(size: 28, weight: .regular))
+                .foregroundStyle(UniColors.Brand.mark)
+                .frame(width: 32, alignment: .leading)
+                .accessibilityHidden(true)
+
+            VStack(alignment: .leading, spacing: UniSpacing.xxs) {
+                UniHeadline(text: "Back up this wallet.")
+                UniBody(
+                    text: "Right now, this wallet only exists on this iPhone. If you lose access before you write down the recovery phrase, the funds in it can't be recovered.",
+                    color: UniColors.Text.secondary
+                )
+            }
+        }
+
+        UniButton(title: "Back up now", variant: .primary) {
+            onBackUpNow()
+        }
+    }
+
+    // MARK: - State B content (backed up)
+
+    @ViewBuilder
+    private var backedUpContent: some View {
+        HStack(alignment: .top, spacing: UniSpacing.s) {
+            Image(systemName: "checkmark.shield.fill")
+                .font(.system(size: 28, weight: .regular))
+                .foregroundStyle(UniColors.Brand.mark)
+                .frame(width: 32, alignment: .leading)
+                // One-beat bounce on the A → B transition. Trigger
+                // counter only ticks when the requiresBackup flag
+                // flips from true to false (see `onChange` on the
+                // card), so cold appears of an already-backed-up
+                // wallet don't get the bounce — it's reserved for the
+                // moment of earning.
+                .symbolEffect(.bounce, options: .nonRepeating, value: doneBounceTrigger)
+                .accessibilityHidden(true)
+
+            VStack(alignment: .leading, spacing: UniSpacing.xxs) {
+                UniHeadline(text: "Backed up.")
+                UniBody(
+                    text: "You have the recovery phrase. Aperture is one of two copies.",
+                    color: UniColors.Text.secondary
+                )
             }
         }
     }
