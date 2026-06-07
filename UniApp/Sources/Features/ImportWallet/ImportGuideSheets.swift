@@ -59,7 +59,7 @@ struct RecoveryPhraseGuideSheet: View {
                 .padding(UniSpacing.m)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(
-                    RoundedRectangle(cornerRadius: UniRadius.l, style: .continuous)
+                    RoundedRectangle(cornerRadius: UniRadius.card, style: .continuous)
                         .fill(UniColors.Background.secondary)
                 )
         }
@@ -146,7 +146,7 @@ struct PrivateKeyGuideSheet: View {
                 .padding(UniSpacing.m)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(
-                    RoundedRectangle(cornerRadius: UniRadius.l, style: .continuous)
+                    RoundedRectangle(cornerRadius: UniRadius.card, style: .continuous)
                         .fill(UniColors.Background.secondary)
                 )
         }
@@ -232,7 +232,7 @@ struct WatchOnlyGuideSheet: View {
                 .padding(UniSpacing.m)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(
-                    RoundedRectangle(cornerRadius: UniRadius.l, style: .continuous)
+                    RoundedRectangle(cornerRadius: UniRadius.card, style: .continuous)
                         .fill(UniColors.Background.secondary)
                 )
         }

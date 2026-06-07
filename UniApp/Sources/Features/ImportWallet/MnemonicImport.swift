@@ -340,7 +340,7 @@ struct MnemonicEntryView: View {
         }
         .frame(minHeight: 132, maxHeight: 220)
         .background(
-            RoundedRectangle(cornerRadius: UniRadius.l, style: .continuous)
+            RoundedRectangle(cornerRadius: UniRadius.card, style: .continuous)
                 .fill(UniColors.Background.secondary)
         )
         // Per Rule #11 §C "interactive input controls follow ambient"
@@ -681,7 +681,7 @@ struct MnemonicReviewView: View {
             }
         }
         .background(
-            RoundedRectangle(cornerRadius: UniRadius.l, style: .continuous)
+            RoundedRectangle(cornerRadius: UniRadius.card, style: .continuous)
                 .fill(UniColors.Background.secondary)
         )
     }

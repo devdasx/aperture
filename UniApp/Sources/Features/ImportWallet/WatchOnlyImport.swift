@@ -258,7 +258,7 @@ struct WatchOnlyReviewView: View {
             }
         }
         .background(
-            RoundedRectangle(cornerRadius: UniRadius.l, style: .continuous)
+            RoundedRectangle(cornerRadius: UniRadius.card, style: .continuous)
                 .fill(UniColors.Background.secondary)
         )
     }

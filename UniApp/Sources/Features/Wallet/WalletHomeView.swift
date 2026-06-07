@@ -321,7 +321,7 @@ struct WalletHomeView: View {
             .frame(maxWidth: .infinity)
             .padding(.vertical, UniSpacing.xl)
             .background(
-                RoundedRectangle(cornerRadius: UniRadius.l, style: .continuous)
+                RoundedRectangle(cornerRadius: UniRadius.card, style: .continuous)
                     .fill(UniColors.Material.card)
             )
         } else {
@@ -369,7 +369,7 @@ struct WalletHomeView: View {
             }
         }
         .background(
-            RoundedRectangle(cornerRadius: UniRadius.l, style: .continuous)
+            RoundedRectangle(cornerRadius: UniRadius.card, style: .continuous)
                 .fill(UniColors.Material.card)
         )
     }
@@ -413,7 +413,7 @@ struct WalletHomeView: View {
             }
         }
         .background(
-            RoundedRectangle(cornerRadius: UniRadius.l, style: .continuous)
+            RoundedRectangle(cornerRadius: UniRadius.card, style: .continuous)
                 .fill(UniColors.Material.card)
         )
     }
@@ -463,36 +463,23 @@ struct WalletHomeView: View {
         return groups.sorted { $0.totalFiat > $1.totalFiat }
     }
 
+    /// **Holdings empty state.** Redesigned 2026-06-07 against the
+    /// monochrome brand correction: the iris watermark anchors the
+    /// surface as Aperture's, the splash-family elliptical lift
+    /// threads visually back to the launch screen the user just saw,
+    /// and the copy names what holdings ARE plus how the user moves
+    /// from absence to presence. No CTA inside the empty surface —
+    /// the `WalletActionRegion` glass triplet directly above carries
+    /// Receive, and the user-direction 2026-06-07 removed the prior
+    /// CTA explicitly.
+    ///
+    /// The empty state composes the canonical `UniEmptyState`
+    /// primitive so siblings (this + `emptyActivity` + future
+    /// neutral empty states) share one visual register.
     private var emptyHoldings: some View {
-        // 2026-06-07: removed the trailing `UniButton(.primary)` "Receive"
-        // CTA per user direction. The Receive surface is one tap away
-        // from the WalletActionRegion glass triplet directly above the
-        // holdings section — duplicating it inside the empty card was
-        // redundant and pulled visual weight into a passive empty state.
-        // Calm copy carries the meaning; the user reaches Receive
-        // through the chrome where it belongs.
-        VStack(spacing: UniSpacing.m) {
-            Image(systemName: "tray")
-                .font(.system(size: 32, weight: .light))
-                .foregroundStyle(UniColors.Icon.tertiary)
-            VStack(spacing: UniSpacing.xs) {
-                UniBody(
-                    text: "Nothing here yet.",
-                    alignment: .center,
-                    color: UniColors.Text.secondary
-                )
-                UniFootnote(
-                    text: "Receive crypto to any of your addresses to see it appear here.",
-                    alignment: .center,
-                    color: UniColors.Text.tertiary
-                )
-            }
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, UniSpacing.xl)
-        .background(
-            RoundedRectangle(cornerRadius: UniRadius.l, style: .continuous)
-                .fill(UniColors.Material.card)
+        UniEmptyState(
+            title: "Your holdings will appear here.",
+            detail: "Receive crypto to any of your addresses and it'll show up the moment it lands on-chain."
         )
     }
 
@@ -525,31 +512,22 @@ struct WalletHomeView: View {
                     }
                 }
                 .background(
-                    RoundedRectangle(cornerRadius: UniRadius.l, style: .continuous)
+                    RoundedRectangle(cornerRadius: UniRadius.card, style: .continuous)
                         .fill(UniColors.Material.card)
                 )
             }
         }
     }
 
+    /// **Activity empty state.** Sibling to `emptyHoldings` — same
+    /// iris watermark, same elliptical lift, same copy register.
+    /// The two empty surfaces sit in the same scroll; reading them
+    /// as a pair (Holdings empty / Activity empty) confirms the
+    /// wallet is alive and waiting rather than broken or stuck.
     private var emptyActivity: some View {
-        VStack(spacing: UniSpacing.s) {
-            UniBody(
-                text: "No transactions yet.",
-                alignment: .center,
-                color: UniColors.Text.secondary
-            )
-            UniFootnote(
-                text: "Activity will appear here as it happens on-chain.",
-                alignment: .center,
-                color: UniColors.Text.tertiary
-            )
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, UniSpacing.xl)
-        .background(
-            RoundedRectangle(cornerRadius: UniRadius.l, style: .continuous)
-                .fill(UniColors.Material.card)
+        UniEmptyState(
+            title: "No activity yet.",
+            detail: "Transactions appear here as they confirm on-chain."
         )
     }
 
@@ -790,25 +768,14 @@ struct WalletHomeView: View {
     /// Calm empty activity surface for test mode. Honest per
     /// Rule #2 §A.7 — the test affordance reads balances, not
     /// transaction history, so we say so plainly instead of
-    /// faking a list.
+    /// faking a list. Uses the same `UniEmptyState` primitive as
+    /// the prod empty surfaces so the test variant doesn't read
+    /// as a different visual family (Rule #2 §A.5 consistency).
     private var testActivityEmpty: some View {
-        VStack(spacing: UniSpacing.s) {
-            UniBody(
-                text: "No transactions in test mode.",
-                alignment: .center,
-                color: UniColors.Text.secondary
-            )
-            UniFootnote(
-                text: "Test mode verifies balance reads only. Exit to see real activity for your wallet.",
-                alignment: .center,
-                color: UniColors.Text.tertiary
-            )
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, UniSpacing.xl)
-        .background(
-            RoundedRectangle(cornerRadius: UniRadius.l, style: .continuous)
-                .fill(UniColors.Material.card)
+        UniEmptyState(
+            title: "No transactions in test mode.",
+            detail: "Test mode verifies balance reads only. Exit to see real activity for your wallet.",
+            mark: .icon(systemName: "flask")
         )
     }
 

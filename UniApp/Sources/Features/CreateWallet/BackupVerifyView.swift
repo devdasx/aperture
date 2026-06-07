@@ -128,11 +128,11 @@ struct BackupVerifyView: View {
         }
         .padding(UniSpacing.m)
         .background(
-            RoundedRectangle(cornerRadius: UniRadius.l, style: .continuous)
+            RoundedRectangle(cornerRadius: UniRadius.card, style: .continuous)
                 .fill(UniColors.Background.secondary)
         )
         .overlay(
-            RoundedRectangle(cornerRadius: UniRadius.l, style: .continuous)
+            RoundedRectangle(cornerRadius: UniRadius.card, style: .continuous)
                 .stroke(
                     isError ? UniColors.Status.errorStroke : Color.clear,
                     lineWidth: isError ? 1.5 : 0

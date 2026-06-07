@@ -46,11 +46,11 @@ struct ReceiveQRCard: View {
         .padding(UniSpacing.l)
         .frame(maxWidth: .infinity)
         .background(
-            RoundedRectangle(cornerRadius: UniRadius.xl, style: .continuous)
+            RoundedRectangle(cornerRadius: UniRadius.hero, style: .continuous)
                 .fill(Color.white)
         )
         .overlay(
-            RoundedRectangle(cornerRadius: UniRadius.xl, style: .continuous)
+            RoundedRectangle(cornerRadius: UniRadius.hero, style: .continuous)
                 .stroke(UniColors.Separator.regular, lineWidth: 0.5)
         )
     }

@@ -94,7 +94,8 @@ struct OpenSourceSheet: View {
 
     /// Three "what you can verify" rows inside a single `UniCard`. The
     /// rows are flat (not nested surfaces) so no concentric-radius math
-    /// is needed beyond the card's own `UniRadius.xl`. The SF Symbols
+    /// is needed beyond the card's own `UniRadius.card` (18 pt). The
+    /// SF Symbols
     /// (`key.fill`, `lock.iphone`, `eye.slash.fill`) each correspond to
     /// a real protection mechanism in the codebase — per Rule #16 §E,
     /// no decorative shields without a verifiable mechanism behind
