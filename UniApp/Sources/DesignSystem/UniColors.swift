@@ -13,20 +13,53 @@ enum UniColors {
 
     // MARK: - Background
 
+    /// **iOS Settings register.** The whole app uses the iOS `…GroupedBackground`
+    /// palette — the same palette Settings / Health / Wallet (Apple's) / Files
+    /// use system-wide. The visual contract is:
+    ///
+    /// - **Page** is a subtly warm gray (light) / true black (dark) —
+    ///   `systemGroupedBackground`.
+    /// - **Cards / rows** are a step up to white (light) / `#1C1C1E` (dark) —
+    ///   `secondarySystemGroupedBackground`.
+    /// - **Nested cards** are a further step — `tertiarySystemGroupedBackground`.
+    ///
+    /// This was flipped on 2026-06-07 per direct user direction
+    /// ("cards should be white and the background in the whole app should
+    /// match the settings screen background in the iOS"). Previously the
+    /// roles pointed at `systemBackground` / `secondarySystemBackground`,
+    /// which produced *white* page + *gray* cards — exactly the inverse of
+    /// the iOS norm. The fix lives at the token level so every screen
+    /// re-skins for free (Rule #4 — no feature file edits).
     enum Background {
-        /// Primary screen background. Use as the outermost `ZStack` fill.
-        static let primary = Color(uiColor: .systemBackground)
-        /// One step elevated (cards on plain screens, grouped table backgrounds).
-        static let secondary = Color(uiColor: .secondarySystemBackground)
-        /// Two steps elevated (cards on top of cards — use sparingly).
-        static let tertiary = Color(uiColor: .tertiarySystemBackground)
+        /// Primary screen background — the page color on every screen.
+        /// Resolves to the iOS Settings page (warm gray in light, true
+        /// black in dark). Use as the outermost `ZStack` / `List`
+        /// `.background(…)` fill on every screen, sheet, and presentation
+        /// surface root.
+        static let primary = Color(uiColor: .systemGroupedBackground)
+        /// One step up from the page — the canonical "card / row" fill
+        /// (white in light, `#1C1C1E` in dark). Use as the `listRowBackground`
+        /// on grouped lists and as the fill on card / chip surfaces.
+        static let secondary = Color(uiColor: .secondarySystemGroupedBackground)
+        /// Two steps up — nested cards / chips inside a card. Use sparingly;
+        /// most surfaces only need primary + secondary.
+        static let tertiary = Color(uiColor: .tertiarySystemGroupedBackground)
 
-        /// Outer background for grouped lists (Settings-style screens).
-        static let groupedPrimary = Color(uiColor: .systemGroupedBackground)
-        /// Row background inside grouped lists.
-        static let groupedSecondary = Color(uiColor: .secondarySystemGroupedBackground)
-        /// Nested row background.
-        static let groupedTertiary = Color(uiColor: .tertiarySystemGroupedBackground)
+        /// Alias retained for source compatibility. Identical to `primary`
+        /// after the 2026-06-07 iOS-Settings-register flip — they
+        /// previously named distinct grouped vs. plain palettes; the
+        /// whole app now uses the grouped palette, so the alias is a
+        /// pointer to the canonical name. Prefer `Background.primary`
+        /// in new code.
+        static let groupedPrimary = Self.primary
+        /// Alias retained for source compatibility. Identical to
+        /// `secondary` after the 2026-06-07 flip. Prefer
+        /// `Background.secondary` in new code.
+        static let groupedSecondary = Self.secondary
+        /// Alias retained for source compatibility. Identical to
+        /// `tertiary` after the 2026-06-07 flip. Prefer
+        /// `Background.tertiary` in new code.
+        static let groupedTertiary = Self.tertiary
     }
 
     // MARK: - Text
@@ -211,12 +244,22 @@ enum UniColors {
 
     // MARK: - Material (non-glass card surfaces)
 
-    /// Card surfaces when Liquid Glass is not appropriate
-    /// (e.g., dense list rows where chrome would clutter).
-    /// Prefer `.glassEffect(...)` for interactive / chrome surfaces (Rule #3).
+    /// Card surfaces when Liquid Glass is not appropriate (e.g., dense list
+    /// rows where chrome would clutter). Prefer `.glassEffect(...)` for
+    /// interactive / chrome surfaces (Rule #3).
+    ///
+    /// Re-pointed 2026-06-07 to the grouped palette in lockstep with
+    /// `Background.*` (see the `Background` doc comment for the why) — so
+    /// every card surface across the app is now the iOS-canonical white
+    /// (light) / `#1C1C1E` (dark) sitting on the grouped page color.
     enum Material {
-        static let card = Color(uiColor: .secondarySystemBackground)
-        static let elevated = Color(uiColor: .tertiarySystemBackground)
+        /// Canonical card fill — `secondarySystemGroupedBackground`.
+        /// White in light, `#1C1C1E` in dark. Matches `Background.secondary`
+        /// by design: a "card" is a card whether it's a `UniCard`'s
+        /// `.fill(…)` or a `listRowBackground(…)`.
+        static let card = Color(uiColor: .secondarySystemGroupedBackground)
+        /// One step up — for cards inside cards (rare).
+        static let elevated = Color(uiColor: .tertiarySystemGroupedBackground)
     }
 
     // MARK: - Focus / Highlight (system selection)
