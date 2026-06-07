@@ -47,6 +47,18 @@ struct AppLockView: View {
                 isShowingForgotSheet = true
             }
         )
+        // Opaque backing. `AppLockView` used to ship inside a
+        // `.fullScreenCover`, which provided window-level opacity
+        // automatically — when the cover moved into `AppRoot`'s
+        // ZStack on 2026-06-07 (for the splash race + foreground
+        // flash fixes) the cover semantics went away and the
+        // wallet home started bleeding through the keypad gaps.
+        // The lock owning its own background is the honest fix:
+        // the surface guarantees its own opacity regardless of how
+        // it's presented, so any future caller (a sheet, a cover, a
+        // direct mount in another stack) gets correct behavior for
+        // free.
+        .background(UniColors.Background.primary.ignoresSafeArea())
         .interactiveDismissDisabled(true)
         .sheet(isPresented: $isShowingForgotSheet) {
             ForgotPinSheet()

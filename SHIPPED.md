@@ -4,6 +4,65 @@
 
 ---
 
+## 2026-06-07 — Test Screen design playground reachable from Settings → Developer
+
+**Summary:** New `TestScreenView` — a faithful copy of the wallet-home surface (hero balance, Liquid Glass action triplet, holdings card, activity card, footer) with believable mock data and inert actions. Reachable from a new "Developer" section in `SettingsView` (above Advanced). Built so the user can preview design experiments on a surface that already reads in the production register, then promote the patterns to the real wallet home if approved.
+
+**Design intent (Rule #2 §D.1).** *Give the user a faithful copy of the wallet-home surface — same hero balance, same Send/Receive/Swap glass triplet, same holdings + activity rhythm — but with believable mock data and a single visible "Test Screen" badge so they always know they're in the playground, not their real wallet.*
+
+**Layers (Rule #2 §B.3).**
+- Content (opaque): the "Test Screen — design playground" capsule badge, `WalletHomeHeader` hero, holdings card, activity card, footer.
+- Functional (Liquid Glass): the system nav bar + the `WalletActionRegion` glass triplet (used verbatim — same component as the real wallet home so the material reads identically).
+- Two glass layers max, same as `WalletHomeView`.
+
+**What got stripped.** First sketch had a separate "switch to test wallet" pill above the hero (mimicking the real wallet's principal-slot switcher). Removed — the playground is one wallet, not a switcher target, and the pill was decoration. The capsule "Test Screen — design playground" badge does the identity job in one line with no chrome competing for the user's eye.
+
+**What got reused, not invented.** Every primitive on the screen already ships and is on Thuglife: `WalletHomeHeader`, `WalletActionRegion`, `AssetRow`, `ActivityRow`, `UniFootnote`, `UniDivider`, `UniColors.Material.card`, `UniRadius.card`, `UniSpacing` ladder. The screen is composition, not invention — and that is the point: a mutation the user likes can be moved into the real wallet home without rewriting the visual contract.
+
+**Mock data shape.** Three holdings (BTC 0.325 / ETH 2.41 / SOL 6.18 — $24,318 + $8,742 + $1,205 = $34,265 hero number). Three transactions (incoming BTC 2h ago confirmed, outgoing ETH yesterday confirmed, outgoing SOL 4d ago pending). Numbers are whole-dollar-class so the hero balance lands as a recognizable round-class total. Counterparty addresses are real on-chain shapes (bech32 for BTC, EIP-55 for ETH, base58 for SOL) so the truncated `prefix…suffix` in `ActivityRow` reads believably. Mock data lives as private static let arrays on the view — no SwiftData, no scanner, no refresh coordinator. The currency code is hardwired to USD so the playground reads identically every time the user opens it (not bound to `CurrencyPreference` — the locale-stability is intentional).
+
+**Inert actions.** Send / Receive / Swap render with the same `.glassProminent` glass material and fire the same `.contextualImpact(.commit)` haptic on tap (the `UniButton` default through `WalletActionRegion`), but their action closures are no-ops. Activity rows are `Button { } label: { ActivityRow(...) }` so the tap target reads live, but the closure does not push a transaction detail route. The playground is a design canvas; flows go through the real wallet home.
+
+**Settings entry (the navigation surface).** New section between Network providers and Advanced, titled by section header `"Developer"`, containing one row: SF Symbol `flask` + "Test Screen" + native chevron. Route: `SettingsDestination.testScreen` → `TestScreenView()`. Honest framing — the section header marks the row's provenance as a developer/design affordance, not a user feature.
+
+**Why `flask`.** Echoes the test-affordance flask in `WalletHomeView`'s toolbar (the public-test-addresses scanner). The two test surfaces are siblings; the same icon keeps the visual rhyme.
+
+**Files added/modified:**
+- `UniApp/Sources/Features/TestScreen/TestScreenView.swift` — new file (~280 lines). Body composition + `PlaygroundBalance` / `PlaygroundTransaction` value-type mock data + `playgroundBadge` capsule + holdings/activity sections.
+- `UniApp/Sources/Features/Settings/SettingsView.swift` — added `case .testScreen` to `SettingsDestination`, added the new `Developer` section + row above Advanced (now Section 6; Advanced becomes Section 7), wired `case .testScreen: TestScreenView()` into the `.navigationDestination(for:)` switch.
+- `UniApp.xcodeproj/project.pbxproj` — regenerated via `xcodegen generate` so the new folder is registered with the target. No source-list edit in `project.yml` was required (sources are glob-included from `UniApp/Sources`).
+
+**Build / Run:**
+- iPhone 17 Pro Max simulator (`xcodebuild -destination 'platform=iOS Simulator,name=iPhone 17 Pro Max' -derivedDataPath build/DerivedData build`) — `** BUILD SUCCEEDED **`.
+- iPhone 17 simulator — `** BUILD SUCCEEDED **`, app installed via `xcrun simctl install booted`, launched (PID 24031).
+- **Thuglife (iPhone 17 Pro Max, `4B521D49-9843-55CC-AFEC-19D4CF4353A6`) — installed via `xcrun devicectl device install app` (`databaseSequenceNumber: 8212`).** Device transitioned from `unavailable` → `connected` during the turn; install ran cleanly on the second status check. Per Rule #22 Part A §3, the `databaseSequenceNumber` is the receipt that the edits reached the device.
+
+**Per-rule audit:**
+- Rule #2 §A (Ive — restraint). Capsule badge instead of full warning banner; mock data quietly believable instead of marketing-numbered; single primary action vocabulary inherited from `WalletActionRegion`.
+- Rule #2 §B (Liquid Glass). The functional layer (`WalletActionRegion`) uses the same `GlassEffectContainer { … }.buttonStyle(.glassProminent)` shape as production. No hand-built blur, no custom material.
+- Rule #2 §B.4 (concentric corners). Holdings + activity cards use `RoundedRectangle(cornerRadius: UniRadius.card, style: .continuous)`; the badge uses `Capsule(style: .continuous)`. No raw numbers.
+- Rule #3 (native-only). Zero third-party imports introduced. Every primitive is SwiftUI / UIKit-system or an in-house token/component.
+- Rule #4 (UniColors). Every color reference flows through a `UniColors` role — `Icon.secondary`, `Text.secondary`/`tertiary`, `Material.card`, `Background.primary`. Zero literals.
+- Rule #5 (TODOs mirrored). Zero new `// TODO:` markers introduced — the screen is shipped complete as a playground; no stubs to track.
+- Rule #6 (designer authority). The visual decisions (single badge over banner, reused primitives instead of variants, mock-data shape, USD hardcoded, USD-class round numbers) were taken inline by the `jony-ive` agent's identity in absence of harness dispatch (per M-006).
+- Rule #7 (real visuals). All icons are SF Symbols (`flask`); chain marks render via `AssetRow`'s existing Trust Wallet asset path (`Crypto/btc`, `Crypto/eth`, `Crypto/sol`). No hand-built shapes used as icons.
+- Rule #9 / Rule #13 (i18n closure). Four new English source keys introduced — `"Playground wallet"`, `"Test Screen — design playground"`, `"Test Screen"`, `"Developer"`. The orchestrator fires the 4-agent i18n chain (`aperture-i18n-scanner` → `aperture-i18n-catalog-writer` → `aperture-i18n-translator-primary` → `aperture-i18n-translator-secondary`) before declaring the session complete; per Rule #13 Part B, this subagent does not invoke them itself.
+- Rule #10 (haptics). All taps fire the variant's default haptic through `WalletActionRegion`'s internal `UniButton` / `.buttonStyle(.glassProminent)` haptic binding. No raw `.sensoryFeedback` introduced.
+- Rule #11 (RTL automatic). Layout uses `leading`/`trailing` semantic edges only; the badge `HStack` flips correctly because no `.left`/`.right` was used. Direction-bearing arrows on `WalletActionRegion` are SF Symbols that auto-mirror.
+- Rule #14 (search). N/A — the playground has no search field.
+- Rule #15 (sheets-as-screens). N/A — the screen is pushed onto the SettingsView NavigationStack, not presented as a sheet.
+- Rule #16 (security register). N/A — the playground does not touch custody, keys, recovery, signing, or biometrics.
+- Rule #18 (guide sheets). N/A — the screen does not ask the user to perform a complex or unfamiliar action.
+- Rule #19 (UniButton everywhere). The action triplet uses `WalletActionRegion`, which is itself composed of `.buttonStyle(.glassProminent)` per the existing wallet-home pattern. No hand-rolled CTAs introduced in feature code; activity rows use `Button { ... } label: { ActivityRow(...) }.buttonStyle(.plain)` — the same pattern as `WalletHomeView`.
+- Rule #22 (Thuglife install). Build green for both `iPhone 17 Pro Max` and `iPhone 17` simulators. Thuglife device reported `unavailable` on first two checks then transitioned to `connected` later in the turn; device build + install succeeded (`databaseSequenceNumber: 8212`).
+- Rule #23 (no unauthorized push). No git operations performed.
+
+**TODOs introduced:** none.
+
+**Follow-on for the orchestrator:** dispatch the 4-agent i18n chain (4 new English keys: `"Playground wallet"`, `"Test Screen — design playground"`, `"Test Screen"`, `"Developer"`).
+
+---
+
 ## 2026-06-07 — Lock surface moves from wallet-home to app-root; new privacy mask; no more flash of home before PIN
 
 **Summary:** Two related user reports landed back-to-back:
@@ -160,6 +219,19 @@ the user sees the wallet home directly. Correct in both branches.
 - Configuration: Debug, iOS 26.5 SDK, arm64.
 - Outcome: clean build, install succeeded
   (`databaseSequenceNumber: 8204`).
+
+**Follow-on tuning:** user reported the wallet home was still
+visible behind the PIN keypad (screenshot: "Enter your passcode"
+overlaying "Wallet 1 — JOD 0.000"). Root cause: `AppLockView`
+previously inherited its opaque background from
+`.fullScreenCover`'s window-level semantics; once the cover moved
+into `AppRoot`'s ZStack the cover semantics went away and the
+view fell back to its content's intrinsic transparency. Fixed by
+giving `AppLockView` its own
+`.background(UniColors.Background.primary.ignoresSafeArea())` —
+the surface now guarantees opacity regardless of how it's
+presented. Reinstalled on Thuglife
+(`databaseSequenceNumber: 8220`).
 
 **TODOs introduced:** none.
 
