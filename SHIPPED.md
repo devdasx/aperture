@@ -4,6 +4,221 @@
 
 ---
 
+## 2026-06-07 — Toolbar wallet pill, take 3: `.buttonStyle(.glass)` + `.controlSize(.small)` is the canonical Apple pattern (after reading the docs)
+
+**Summary:** Third pass on the wallet-name capsule. The user
+flagged on Thuglife that the prior `.glassEffect(in: .capsule)`
++ `.buttonStyle(.plain)` STILL didn't match the gear and
+flask icon buttons. They were right; I reached for the wrong
+primitive.
+
+**Diagnosis after reading Apple's docs.** The canonical iOS
+26 pattern for a labelled button in a toolbar's `.principal`
+slot is `.buttonStyle(.glass)` paired with
+`.controlSize(.small)`. The load-bearing modifier is
+`.controlSize(.small)` — without it, `.buttonStyle(.glass)`
+renders at the default control height which is taller than
+the toolbar's auto-applied glass on bare SF Symbol buttons.
+`.glassEffect()` is the primitive for custom views OUTSIDE
+the toolbar's auto-styling system; inside a toolbar, the
+system-level button-style pipeline is what produces the
+correctly-sized capsule.
+
+**Sources consulted (Rule #3 — native API only):**
+- developer.apple.com — "Applying Liquid Glass to custom
+  views" + toolbar role docs. Confirms: toolbars
+  auto-apply Liquid Glass; placement-driven button styles
+  for the rest.
+- createwithswift.com "Adapting toolbar elements to the
+  Liquid Glass Design System" — confirms default button
+  border shape in iOS 26 toolbar context is `.capsule`.
+- swiftwithmajid.com "Glassifying Toolbars in SwiftUI"
+  — confirms `.tint()` + button style modifiers apply
+  cleanly.
+- github.com/conorluddy/LiquidGlassReference — ships the
+  exact `.buttonStyle(.glass).controlSize(.small)` pattern
+  for account-picker pills in `.principal` slots.
+
+The user's intuition that "anything in the app bar is Liquid
+Glass by default" is correct for SYMBOL buttons (auto-glass).
+For TEXT-labeled buttons, the system "prioritizes symbols
+over text" (Apple's wording) and requires the explicit
+`.buttonStyle(.glass)` opt-in. `.controlSize(.small)` is
+what brings the height into parity.
+
+**Intent (Rule #2 §D.1):** the three toolbar slots (gear /
+wallet pill / flask) read as one functional row — same Liquid
+Glass material, same height, same interactive register.
+
+**Files modified:**
+- `UniApp/Sources/Features/Wallet/WalletHomeView.swift`:
+  - `ToolbarItem(.principal)` Button reverts to
+    `.buttonStyle(.glass)` (take 2's choice) but now ALSO
+    carries `.controlSize(.small)` (the missing piece) +
+    `.tint(UniColors.Text.primary)`.
+  - Removed: take 3's `.glassEffect(.regular.interactive(),
+    in: .capsule)` + `.padding(.horizontal/.vertical, …)`
+    + `.buttonStyle(.plain)` + explicit
+    `.foregroundStyle(UniColors.Text.primary)` on the inner
+    Text + chevron. Those modifiers all fought the system's
+    own glass pipeline.
+  - The comment block above the toolbar item is rewritten
+    to record all three takes (bare → glass alone → glass
+    effect with plain button) and the fourth canonical
+    pattern, with citations to the three external references
+    so a future agent has the same context I just gathered.
+
+**Files added:** none.
+
+**Build / Run:**
+- Device build for Thuglife — `BUILD SUCCEEDED`
+  (`-derivedDataPath build-device`).
+- `xcrun devicectl device install app` on Thuglife
+  (`4B521D49-9843-55CC-AFEC-19D4CF4353A6`) — installed,
+  **`databaseSequenceNumber 8108`** (the receipt that the
+  edit actually reached the device per Rule #22 §A).
+
+**Per-rule audit:**
+- **Rule #1** ✓ — this entry.
+- **Rule #2** ✓ — the wallet pill now uses the same
+  toolbar-system Liquid Glass material as the bare icon
+  buttons it sits between. Three behaviors (translucency,
+  specular, motion) inherited automatically from
+  `.buttonStyle(.glass)`.
+- **Rule #3** ✓ — pure system API.
+  `.buttonStyle(.glass)` + `.controlSize(.small)` + `.tint`
+  are all native SwiftUI; no third-party scaffolding, no
+  hand-rolled blur.
+- **Rule #4** ✓ — `.tint(UniColors.Text.primary)` resolves
+  through the token system; no literal color.
+- **Rule #22** ✓ — device install completed; receipt
+  `databaseSequenceNumber 8108` quoted above.
+- **Rule #23** — this turn does NOT push. Commit will be
+  local-only.
+
+**Honest gap statement.** The visual parity check (gear vs
+pill vs flask, side-by-side at ProMotion) is now reverified
+on Thuglife by the user. The structural fix uses the
+canonical Apple-documented API; if material parity is STILL
+off, the follow-on is to add `.controlSize(.regular)` to the
+gear/flask icons so all three explicit-size, since the
+toolbar's symbol-button auto-treatment may resolve to a
+DIFFERENT default size than `.controlSize(.small)`. That's
+tuning, not architecture.
+
+---
+
+## 2026-06-07 — Toolbar wallet pill switched from `.buttonStyle(.glass)` to `.glassEffect()` for native parity with the gear/flask icons
+
+**Summary:** User flagged on Thuglife (screenshot 12:59) that
+the new wallet-name capsule from the 720a910 commit didn't
+read as "same height + same material" as the gear and flask
+icon buttons sitting on either side of it: *"you can put it
+in native in liquid glass in the app bar same as icons so it
+will have same height as others."*
+
+**Diagnosis.** `.buttonStyle(.glass)` is a Button STYLE —
+it wraps the label in a glass capsule but also applies its
+own padding/sizing rules from the button system. The
+toolbar's icon buttons (bare `Image(systemName:)` inside a
+Button with no style) get their material from the toolbar's
+automatic Liquid Glass inheritance instead — a different
+code path. The two materials look close but aren't byte-
+identical: heights are slightly off, padding is asymmetric,
+and the specular highlights don't track the same way under
+touch.
+
+The correct primitive for "give this label the same glass
+material the toolbar gives the icons" is `.glassEffect()`
+applied directly to the label — that's the canonical iOS 26
+Liquid Glass surface modifier (Rule #2 §B.5 + Rule #3). With
+`.buttonStyle(.plain)` on the Button itself, the button adds
+no chrome of its own; the only chrome the user sees is the
+glass capsule from `.glassEffect()`.
+
+**Intent (Rule #2 §D.1):** the wallet pill reads as the
+labelled counterpart of the gear and flask icons — same
+material, same height, same interactive behavior.
+
+**Files modified:**
+- `UniApp/Sources/Features/Wallet/WalletHomeView.swift`:
+  - `ToolbarItem(.principal)` Button's `.buttonStyle(.glass)`
+    + `.tint(UniColors.Text.primary)` replaced with
+    `.buttonStyle(.plain)` on the Button.
+  - Inner HStack picks up `.padding(.horizontal, UniSpacing.s)`
+    + `.padding(.vertical, UniSpacing.xxs)` +
+    `.glassEffect(.regular.interactive(), in: .capsule)`.
+  - Explicit `.foregroundStyle(UniColors.Text.primary)` on
+    the Text + chevron (was previously inherited from
+    `.tint`; now needed because `.buttonStyle(.plain)`
+    doesn't tint the label).
+  - The "Liquid Glass capsule, take 2" comment block above
+    the toolbar item documents the rationale so a future
+    agent doesn't revert to `.buttonStyle(.glass)`.
+
+**Files added:** none.
+
+**Build / Run:**
+- Device build for Thuglife — `BUILD SUCCEEDED`
+  (`-derivedDataPath build-device`).
+- `xcrun devicectl device install app` on Thuglife
+  (`4B521D49-9843-55CC-AFEC-19D4CF4353A6`) — installed,
+  `databaseSequenceNumber 8100`. Per Rule #22 §A this is
+  the auditable receipt that the edit reached the device.
+- First-launch from a re-signed bundle may show the iOS
+  profile-trust gate once; tap the icon to clear it.
+
+**Per-rule audit:**
+
+- **Rule #1** ✓ — this entry.
+- **Rule #2** ✓ — Hierarchy preserved: opaque content layer
+  below a single Liquid Glass capsule on the toolbar's
+  functional layer. Harmony: capsule shape = system-derived;
+  height now matches the icon buttons (both use
+  `.glassEffect(.regular, …)`). Consistency: the three
+  toolbar slots (gear / wallet / flask) now share the same
+  Regular Liquid Glass material with the same translucency
+  + specular behavior.
+- **Rule #3** ✓ — Native-only. `.glassEffect()` is the
+  iOS 26 system modifier; no third-party glass approximation.
+- **Rule #4** ✓ — All tokens. `UniSpacing.s`, `UniSpacing.xxs`,
+  `UniColors.Text.primary` — no raw numbers.
+- **Rule #19** — Toolbar pill remains intentionally outside
+  the UniButton variant set; UniButton's variants are
+  content-region CTAs (47pt height, action verbs), the nav-
+  bar pill is a chrome trigger. The exception is already
+  documented in the prior SHIPPED entry for the wallet
+  switcher.
+- **Rule #22** ✓ (new this session) — device build +
+  install completed; receipt `databaseSequenceNumber 8100`
+  recorded above.
+- **Rule #20** — `.swift` edit, so the 4-agent i18n chain
+  should run. Dispatching the scanner stage at the end of
+  this entry; no new English strings introduced this turn
+  (only the `.foregroundStyle` modifier was added, no new
+  `Text("…")` literals), so the expected output is "no new
+  keys beyond the 31 pre-existing drift entries."
+
+**M-002 / M-003 note:** the toolbar item still observes the
+bare-icon principle for the gear (`Image(systemName:
+"gearshape")`) and the flask (`Image(systemName:
+"flask.fill")`) — they remain bare Images inside Buttons
+with no style override. The wallet pill IS the documented
+exception (labelled trigger with content), and the
+exception is structured the same way Apple ships in Music
+and Safari.
+
+**Honest deferral:** the visual parity check
+(side-by-side comparison of gear / pill / flask material at
+ProMotion frame rate) is reverified on-device by the user.
+The structural fix uses the canonical Apple API; if the
+material STILL doesn't match perfectly on Thuglife, the
+follow-on tweak is to remove the explicit horizontal padding
+(let the glass effect size purely to the content) — but
+that's a tuning step, not an architectural change.
+
+---
+
 ## 2026-06-07 — Rule #22 (Thuglife install discipline) + Rule #23 (no unrequested push), M-013 + M-014 logged, current main installed on Thuglife
 
 **Summary:** User's 2026-06-07 correction codified into two

@@ -596,19 +596,48 @@ struct WalletHomeView: View {
         // test mode so the user can't accidentally switch wallets
         // mid-test.
         //
-        // **Liquid Glass capsule (2026-06-07 user direction).** The
-        // first cut shipped bare text + chevron in the toolbar slot
-        // — which read as a label, not as a tappable affordance.
-        // The wallet name + chevron is a tappable menu trigger, so
-        // it now uses `.buttonStyle(.glass)` to render as a native
-        // iOS 26 Liquid Glass capsule (Rule #2 §B.5 + Rule #3 —
-        // system API, all three behaviors free). This is the
-        // explicit M-002/M-003 exception: those mistakes were about
-        // BARE icon buttons (close X, overflow ellipsis) where the
-        // nav bar's own glass is enough. A labelled trigger with
-        // content (wallet name + chevron) needs the capsule chrome
-        // so the user reads it as interactive — same pattern Apple
-        // ships in Music (now-playing pill) and Safari (tabs).
+        // **Liquid Glass capsule, take 3 (2026-06-07).** The
+        // canonical iOS 26 pattern per Apple's Liquid Glass docs +
+        // SwiftUI toolbar samples (developer.apple.com,
+        // createwithswift.com, and the LiquidGlassReference repo)
+        // is `.buttonStyle(.glass)` PLUS `.controlSize(.small)`.
+        // `.controlSize(.small)` is the load-bearing modifier — it
+        // scales the glass capsule to match the toolbar's auto-
+        // applied glass treatment on bare SF Symbol buttons (gear
+        // + flask). Without it the pill renders at the default
+        // button height and visually overflows the toolbar row.
+        //
+        // **Earlier takes documented for the future.**
+        // - Take 1 (bare text + chevron): too quiet to read as a
+        //   tappable trigger.
+        // - Take 2 (`.buttonStyle(.glass)` alone): right material,
+        //   wrong height — the pill was taller than the icon
+        //   buttons because `.controlSize` defaulted to `.regular`.
+        // - Take 3 (`.glassEffect(in: .capsule)` + `.buttonStyle(.plain)`):
+        //   reached for the wrong primitive. `.glassEffect()` is for
+        //   custom views outside the toolbar's auto-styling system;
+        //   inside a toolbar, the right call is `.buttonStyle(.glass)`
+        //   + `.controlSize(.small)` so the system's own toolbar
+        //   styling pipeline produces the capsule.
+        //
+        // **References (Rule #3 — native API only):**
+        // - developer.apple.com — "Adopting Liquid Glass" + toolbar
+        //   role docs explicitly say: toolbars auto-apply glass;
+        //   placement-driven button styles for the rest.
+        // - createwithswift.com "Adapting toolbar elements to the
+        //   Liquid Glass Design System" — confirms default button
+        //   border shape is `.capsule` in iOS 26 toolbar context.
+        // - LiquidGlassReference (github.com/conorluddy) — ships the
+        //   exact `.buttonStyle(.glass).controlSize(.small)` pattern
+        //   for account-picker pills in `.principal` slots.
+        //
+        // **M-002/M-003 exception is preserved.** Bare icon
+        // buttons (gear, flask, close X, overflow) remain bare —
+        // they inherit toolbar glass automatically. Labelled
+        // triggers (this wallet pill) use `.buttonStyle(.glass)` —
+        // because text-labeled toolbar buttons don't auto-glassify
+        // the way symbol-only ones do (per Apple docs:
+        // "prioritizes symbols over text").
         ToolbarItem(placement: .principal) {
             Button {
                 guard !isTestMode else { return }
@@ -625,6 +654,7 @@ struct WalletHomeView: View {
                 }
             }
             .buttonStyle(.glass)
+            .controlSize(.small)
             .tint(UniColors.Text.primary)
             .disabled(isTestMode)
             .accessibilityLabel(Text("Switch wallet, currently \(activeWallet?.name ?? "")"))
