@@ -101,6 +101,40 @@ private struct AppRoot: View {
     @State private var hasLanded: Bool = false
     @State private var hasPrepared: Bool = false
 
+    @Environment(\.autoLockController) private var lockController
+    @Environment(\.scenePhase) private var scenePhase
+
+    /// Reads the live PIN-enabled flag at body-evaluation time.
+    /// Used to decide whether the privacy mask + lock layers
+    /// participate in the ZStack at all. The flag is a fresh
+    /// `UserDefaults` read on every body pass so a Settings
+    /// toggle flips the gate without restart.
+    private var pinEnabled: Bool {
+        UserDefaults.standard.bool(forKey: "pinEnabled")
+    }
+
+    /// `true` whenever the privacy mask should be on screen — any
+    /// time the scene isn't fully active AND the user has PIN
+    /// protection enabled. Two roles per `PrivacyMaskView`'s
+    /// doc-comment: hides the wallet from the iOS task-switcher
+    /// snapshot, and bridges the foreground reveal so the home
+    /// never flashes before the lock arrives.
+    private var shouldShowPrivacyMask: Bool {
+        pinEnabled && scenePhase != .active
+    }
+
+    /// `true` when `AppLockView` should be the topmost interactive
+    /// surface. Gated on `phase == .onboarding` so a cold-launch
+    /// with PIN doesn't race the splash to the screen — the
+    /// previous architecture's bug. The lock cover used to live
+    /// on `WalletHomeView` via `.fullScreenCover`; it now lives at
+    /// the root as a conditional ZStack child with
+    /// `.transition(.identity)` so there is no presentation
+    /// animation that could let the underlying UI flash through.
+    private var shouldShowAppLock: Bool {
+        lockController.isLocked && phase == .onboarding
+    }
+
     var body: some View {
         ZStack {
             // Mount RootGate from frame 1 so its layout settles
@@ -119,6 +153,34 @@ private struct AppRoot: View {
                 .transition(.opacity)
                 .zIndex(1)
             }
+
+            // Lock surface — root-level, no presentation animation.
+            // Sits below the privacy mask in the ZStack so when the
+            // user foregrounds the app, the sequence is:
+            //   (1) mask visible (carried over from the inactive
+            //       scene)
+            //   (2) scene becomes active → mask removes
+            //   (3) lock layer is already in place underneath the
+            //       mask, so the user sees PIN immediately — no
+            //       home-screen flash.
+            if shouldShowAppLock {
+                AppLockView()
+                    .uniAppEnvironment()
+                    .transition(.identity)
+                    .zIndex(2)
+            }
+
+            // Privacy mask — topmost. Covers everything (including
+            // any active sheet / cover / the lock view itself)
+            // whenever the scene isn't fully active. Removed in
+            // the same frame the scene returns to `.active`, by
+            // which point the lock layer (if needed) is already
+            // mounted under it.
+            if shouldShowPrivacyMask {
+                PrivacyMaskView()
+                    .transition(.identity)
+                    .zIndex(3)
+            }
         }
         // Single medium-impact haptic at logo landing. Routed
         // through `UniHaptic.contextualImpact(.commit)` per Rule
@@ -129,6 +191,9 @@ private struct AppRoot: View {
         // call inside `startTransition` primes the engine to
         // minimize landing latency.
         .uniHaptic(.contextualImpact(.commit), trigger: hasLanded)
+        // Publish the live phase so descendant surfaces can gate
+        // window-level presentations on splash completion.
+        .environment(\.appPhase, phase)
     }
 
     /// Fired when the splash's `splashDuration` (2.6s, hand-coded
@@ -182,14 +247,42 @@ private struct AppRoot: View {
 /// Three-state machine for the splash → onboarding orchestration.
 /// Consumed by `AppRoot`, `SplashView`, and the onboarding
 /// composition to drive matchedGeometryEffect + staggered fades.
+///
+/// Also published into the SwiftUI environment as `\.appPhase` so
+/// returning-user surfaces (`WalletHomeView`) can suppress UI that
+/// would otherwise race the splash to the screen — the
+/// `AppLockView` `.fullScreenCover` is the canonical example:
+/// without gating, it promotes itself to the window level and
+/// renders above the splash before the splash's animation
+/// completes (user report 2026-06-07).
 enum AppPhase: Equatable {
     /// Initial cold-launch state. Splash is the active surface.
     case splash
     /// Logo flying to onboarding frame; splash chrome fading;
     /// onboarding content staggering in. Lasts ~0.82s.
     case transitioning
-    /// Splash unmounted; onboarding fully interactive.
+    /// Splash unmounted; onboarding (or wallet home) fully
+    /// interactive. The post-splash steady state.
     case onboarding
+}
+
+// MARK: - Environment plumbing
+
+/// Environment key carrying the live `AppPhase` from `AppRoot` to
+/// every descendant view. Default `.onboarding` so previews and
+/// any non-`AppRoot` host (test harnesses, isolated `#Preview`
+/// blocks) behave as if the splash has already finished — they
+/// would otherwise inherit a `.splash` default and inadvertently
+/// suppress every phase-gated surface.
+private struct AppPhaseEnvironmentKey: EnvironmentKey {
+    static let defaultValue: AppPhase = .onboarding
+}
+
+extension EnvironmentValues {
+    var appPhase: AppPhase {
+        get { self[AppPhaseEnvironmentKey.self] }
+        set { self[AppPhaseEnvironmentKey.self] = newValue }
+    }
 }
 
 // `RootGate` itself lives in `Features/Wallet/WalletHomeView.swift`
