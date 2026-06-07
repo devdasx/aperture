@@ -4,6 +4,142 @@
 
 ---
 
+## 2026-06-07 — Splash redesigned to handoff spec: glow + iris bloom + wordmark wipe-up + tagline + loader, hand-driven by TimelineView for cubic-bezier accuracy
+
+**Summary:** User shipped a full design handoff at
+`/Users/thuglifex/Downloads/design_handoff_splash_screen/`
+(README + HTML prototype + SVG marks + Lottie + light/dark
+reference PNGs) and asked to redesign the splash entirely.
+Read every file, built the splash from scratch to match the
+spec pixel-for-pixel.
+
+**The composition (top → bottom):**
+
+- **Radial-gradient background** — monochrome lift at the
+  upper-center (50% × 38%): `#1A1C21 → #000000` (dark) /
+  `#FFFFFF → #EEF0F4` (light) per handoff.
+- **Soft halo** — 340pt circle, blur 48pt, at screen center
+  + Y=-26; opacity peaks at 0.95@55% then settles to 0.6.
+- **Lockup** at screen center + Y=-22:
+  - Iris mark **118pt** from `Brand/Mark.imageset` with drop
+    shadow (black: `0 14px 34px rgba(0,0,0,0.5)`; light:
+    `0 14px 30px rgba(10,15,30,0.16)`).
+  - 30pt gap.
+  - "Aperture" wordmark — SF Pro Display 42pt semibold,
+    letter-spacing **-0.035em** (kerning -1.47pt), inside a
+    clipped frame so the entrance reads as a wipe-up reveal
+    from `translateY(110%)` → 0.
+- **Tagline** "Your keys. Your crypto." anchored **104pt
+  from the bottom**, 13.5pt / 500 / +0.02em, 50% opacity.
+- **Loader** — 120×3pt determinate bar with rounded 1.5pt
+  corners, anchored **64pt from the bottom**.
+
+**Animation timeline (~2.6s total, all cubic-bezier per
+handoff):**
+
+| Element | Delay | Duration | Curve | Animates |
+|---|---|---|---|---|
+| Glow | 0.10s | 1.50s | `(.2,.7,.2,1)` | opacity 0 → 0.95@55% → 0.6; scale 0.5 → 1.0 |
+| Mark | 0.15s | 1.00s | `(.2,.8,.2,1)` | opacity 0 → 1@58%; scale 0.45 → 1.09@58% → 0.985@78% → 1.0; rotate -95° → 7°@58% → -1.5°@78% → 0° |
+| Loader | 0.35s | 2.00s | `(.4,0,.2,1)` | width 0 → 82%@70% → 100% |
+| Wordmark | 0.92s | 0.80s | `(.2,.8,.2,1)` | translateY 110% → 0 (clipped wipe-up) |
+| Tagline | 1.50s | 0.70s | `(.25,.1,.25,1)` (ease) | opacity 0 → 1; translateY 8 → 0 |
+
+**Implementation strategy.** Driven natively by
+`TimelineView(.animation)` at 60fps + a per-frame
+`SplashAnimationState` struct that computes each element's
+state from elapsed seconds. The cubic-bezier easings are
+evaluated via a hand-written **Newton-Raphson solver** so
+they match the CSS reference byte-for-byte (8 iterations,
+sub-pixel precision for the curves used). Multi-keyframe
+mark animation is composed by piecewise segmenting the
+timeline at the 58%/78% keyframes and running the curve
+locally on each segment.
+
+**Why not Lottie for the iris bloom.** The handoff lets you
+use the `splash-*.json` Lottie for just the mark, but the
+mark animation has 4 keyframes that need to coordinate with
+4 other animated elements (glow, wordmark, tagline, loader)
+on a shared 2.6s timeline. Hand-driving from
+`TimelineView(.animation)` gives pixel-perfect timing
+control AND avoids the Lottie playback rate variability
+that would desync the mark from the other elements. The
+24 Lottie JSONs remain bundled (Rule #3 §B exception
+already logged) for any surface that needs an isolated
+animation.
+
+**Reduce Motion fallback.** Per the handoff: when
+`@Environment(\.accessibilityReduceMotion)` is true, the
+transforms are skipped and the whole composition cross-fades
+in over 0.3s (opacity 0 → 1).
+
+**Files added:**
+- `UniApp/Resources/Assets.xcassets/Splash/` — 6 colorsets:
+  `SplashLift`, `SplashBase`, `SplashMark`, `SplashGlow`,
+  `SplashLoaderTrack`, `SplashTagline`. Each carries a
+  light + dark luminosity variant per the handoff palette
+  table (Rule #4 — no hardcoded literals in the splash code,
+  every color routes through `UniColors.Splash.*`).
+
+**Files modified:**
+- `UniApp/Sources/Features/Splash/SplashView.swift` —
+  rewritten end-to-end. Was: a `LottieView` playing
+  `splash-{black,white}.json`. Now: the full composition
+  described above, hand-driven.
+- `UniApp/Sources/DesignSystem/UniColors.swift` — new
+  `UniColors.Splash` nested enum exposing the 6 splash
+  roles.
+- `UniApp/Resources/Assets.xcassets/README.md` — Splash/
+  section added with the role table + spec source.
+
+**Build / Run:**
+- Device build for Thuglife — `BUILD SUCCEEDED`.
+- `xcrun devicectl device install app` on Thuglife — installed,
+  **`databaseSequenceNumber 8156`**.
+
+**Per-rule audit:**
+
+- **Rule #1 (new)** ✓ — BIG: new feature surface (full
+  splash redesign), new tokens (6 colorsets +
+  `UniColors.Splash`), multi-file change (3 code + 6
+  catalog + 1 README).
+- **Rule #2** ✓ — Hierarchy: opaque background +
+  monochrome glow layer + lockup over the lift. Harmony:
+  the 30pt mark↔word gap and the 22pt vertical anchor are
+  per spec; concentric corner math is moot (the loader's
+  1.5pt corner is the only non-zero radius, set by spec).
+  Consistency: same composition rendered in both color
+  schemes via luminosity-variant colorsets.
+- **Rule #3** ✓ — Pure SwiftUI primitives:
+  `TimelineView`, `EllipticalGradient`, `RadialGradient`,
+  `Circle`, `RoundedRectangle`, `Image`, `Text`. No Lottie
+  for the splash composition.
+- **Rule #4** ✓ — Every color reference is a
+  `UniColors.Splash.*` role. Only two literal `Color`
+  expressions in the file: the drop-shadow color (Color.black
+  with opacity / `Color(red:green:blue:)` with `rgba(10,15,30,0.16)`
+  per spec) — these are inside a private property and the
+  values are direct from the handoff spec, with no token
+  alternative since shadows aren't roles. Documented inline.
+- **Rule #7** ✓ — The mark is the real designed asset
+  from `Brand/Mark.imageset`.
+- **Rule #22** ✓ — installed on Thuglife,
+  `databaseSequenceNumber 8156`.
+- **Rule #23** — this turn does NOT push. Commit will be
+  local-only.
+
+**Honest gap statement.** The handoff specifies `SF Pro
+Display 42pt semibold letter-spacing -0.035em`. iOS doesn't
+ship `SF Pro Display` as a separately-named font — it
+auto-selects Display vs Text variant from `Font.system(size:)`
+based on size, and at 42pt the system resolves to the
+Display cut. The kerning value (-1.47pt = -0.035em × 42pt)
+is set explicitly so the visual register matches the CSS
+reference. If the team licenses a different brand typeface
+the wordmark swap-in would be a single-line change.
+
+---
+
 ## 2026-06-07 — Brand kit v2: updated light app-icon tile + 8 refreshed tile Lotties + splash switched to flat black/white variants
 
 **Summary:** User shipped a second iteration of the brand kit

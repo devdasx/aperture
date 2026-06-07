@@ -235,6 +235,33 @@ enum UniColors {
         static let highlight = Color(uiColor: .tertiarySystemFill)
     }
 
+    // MARK: - Splash (radial-gradient brand surface)
+
+    /// Splash-only color roles for the launch screen. Per the 2026-06-07
+    /// design handoff (`design_handoff_splash_screen/README.md`) the
+    /// splash is a monochrome surface with a soft radial lift at
+    /// `(0.5, 0.38)` from `lift` → `base`. These are splash-only because
+    /// the rest of the app uses system semantic backgrounds; the splash
+    /// is a brand-controlled launch surface where the gradient is
+    /// load-bearing.
+    ///
+    /// **Black variant:** `lift = #1A1C21`, `base = #000000`.
+    /// **Light variant:** `lift = #FFFFFF`, `base = #EEF0F4`.
+    enum Splash {
+        /// Upper-center radial highlight stop.
+        static let lift = Color("SplashLift", bundle: .main)
+        /// Outer radial stop (falls off to this).
+        static let base = Color("SplashBase", bundle: .main)
+        /// Wordmark + mark tint (white in dark / Ink in light).
+        static let mark = Color("SplashMark", bundle: .main)
+        /// Halo behind the mark (white@.14 dark / ink@.08 light).
+        static let glow = Color("SplashGlow", bundle: .main)
+        /// Loader track (white@.16 dark / ink@.10 light).
+        static let loaderTrack = Color("SplashLoaderTrack", bundle: .main)
+        /// Tagline color (white@.5 dark / ink@.5 light).
+        static let tagline = Color("SplashTagline", bundle: .main)
+    }
+
     // MARK: - Brand (Aperture identity surfaces)
 
     /// Brand-identity colors specific to Aperture. Defined as Assets.xcassets
