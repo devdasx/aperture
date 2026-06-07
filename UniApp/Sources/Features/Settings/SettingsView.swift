@@ -34,6 +34,15 @@ enum SettingsDestination: Hashable, Codable {
     case currency
     case help
     case about
+
+    /// **Developer / Design playground.** Pushes `TestScreenView` — a
+    /// faithful copy of the wallet-home surface with mock data and
+    /// inert actions, used by the design team (and the user) to
+    /// evaluate design experiments before promoting them to the real
+    /// wallet screen. Lives under the dedicated "Developer" section
+    /// so its provenance is honest — this is not a user feature, it's
+    /// a design/dev affordance.
+    case testScreen
 }
 
 struct SettingsView: View {
@@ -196,7 +205,29 @@ struct SettingsView: View {
                     .listRowBackground(UniColors.Background.secondary)
                 }
 
-                // Section 6 — Advanced (terminal nuclear hatch)
+                // Section 6 — Developer (design playground)
+                //
+                // Surfaces the `TestScreen` route — a faithful copy of
+                // the wallet-home with mock data and inert actions, used
+                // by the design team (and the user) to evaluate design
+                // experiments before promoting them to the real wallet
+                // surface. Lives in a dedicated "Developer" section
+                // (header on the section) so its provenance is honest:
+                // this is a dev / design affordance, not a user feature.
+                Section {
+                    NavigationLink(value: SettingsDestination.testScreen) {
+                        SettingsRow(
+                            systemImage: "flask",
+                            title: "Test Screen",
+                            trailing: nil
+                        )
+                    }
+                    .listRowBackground(UniColors.Background.secondary)
+                } header: {
+                    Text("Developer")
+                }
+
+                // Section 7 — Advanced (terminal nuclear hatch)
                 Section {
                     NavigationLink(value: SettingsDestination.advanced) {
                         SettingsRow(
@@ -232,6 +263,7 @@ struct SettingsView: View {
                                                     onTapTerms: { isShowingTerms = true },
                                                     onTapPrivacy: { isShowingPrivacyPolicy = true }
                                                  )
+                case .testScreen:                TestScreenView()
                 }
             }
             .toolbar {

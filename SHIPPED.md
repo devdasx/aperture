@@ -4,6 +4,66 @@
 
 ---
 
+## 2026-06-07 — App-wide background register flipped to the iOS Settings palette (gray page + white cards)
+
+**Summary:** Single-file token-level re-point inside `UniColors.swift`. The five background/material roles that cascade through ~203 call sites — `Background.primary`, `Background.secondary`, `Background.tertiary`, `Material.card`, `Material.elevated` — switched from the *plain* `systemBackground` family (white page + gray cards) to the *grouped* `systemGroupedBackground` family (warm-gray page + white cards in light mode; true black page + `#1C1C1E` cards in dark mode). This is the canonical iOS Settings register — the surface ratio used by Settings, Health, Wallet (Apple's), Files, and every "screen of stacked information cards" pattern on iOS.
+
+**User direction (verbatim).** *"now we need to change the colors to the opessit as you see the background is white, and the cards is gray, we'll change this, the cards should be white and the background in the whole app should match the settings screen background in the iOS!"*
+
+**Design intent (Rule #2 §D.1).** *Match the most-trusted background ratio on iOS — the one a billion users see every day in Settings — so Aperture's cards float on a familiar warm-gray page instead of the inverted register the user (correctly) called out as wrong.*
+
+**Why this was a token-file change, not a feature-file change.** The system already had two parallel palettes defined in `UniColors.Background` (`primary` / `secondary` / `tertiary` pointing at `systemBackground` family; `groupedPrimary` / `groupedSecondary` / `groupedTertiary` pointing at `systemGroupedBackground` family) — but the grouped aliases were defined and used **nowhere**. Every feature view in the app references the canonical `Background.primary` / `Material.card` roles (Rule #4 enforcement holds — zero literal-color violations across `Sources/Features` and `Sources/DesignSystem/Components`, verified via grep before the edit). So re-pointing the canonical roles inside the token file cascades the new palette to all 203 call sites for free, with **zero feature edits, zero token-name churn, zero risk of split palettes living side-by-side**. The grouped aliases collapse to pointers at the canonical names (kept for source compatibility; new code prefers the canonical names).
+
+**The math behind the flip.** Pre-flip in light mode: `primary = .systemBackground = #FFFFFF`, `secondary = .secondarySystemBackground = #F2F2F7`. Post-flip: `primary = .systemGroupedBackground = #F2F2F7`, `secondary = .secondarySystemGroupedBackground = #FFFFFF`. The two roles literally swap their resolved values in light mode — a card that was `#F2F2F7` on `#FFFFFF` is now `#FFFFFF` on `#F2F2F7`. In dark mode the same swap holds: `primary` goes from `#000000` to slightly warmer grouped-dark, `secondary` becomes the canonical `#1C1C1E` card. This is the iOS Settings register, on every screen.
+
+**What gets re-skinned for free.**
+- **Wallet home** — `WalletHomeView` 4× `Material.card` fills become white cards on a gray page. The hero balance, action triplet glass, holdings card, activity card now read on the iOS Settings register.
+- **Settings + every Settings child screen** — `SettingsView`, `AdvancedSettingsView`, `WalletDetailView`, `PrivacySettingsView`, `SecuritySettingsView`, `AppearancePickerView`, `LanguagePickerView`, `CurrencyPickerView`, `NetworkProvidersView`, `HelpAndSupportView`, `WalletsListView`, `AcknowledgmentsView` — already use the canonical-role pair (`Background.primary` page + `Background.secondary` listRowBackground); they now resolve to the iOS-Settings ratio they were modeled after, instead of the inverted ratio.
+- **All sheets** — every `.presentationBackground(UniColors.Background.primary)` call site (20+) becomes the warm-gray sheet background that matches iOS Settings sub-sheets.
+- **Test Screen** — `TestScreenView`'s 3× `Material.card` fills become white cards on the gray page.
+- **Receive address rows, transaction detail, recovery phrase reveal sheet, empty states, all `UniCard` instances, all `UniTextField` instances** — every fill that referenced `Material.card` or `Background.secondary` participates.
+- **Splash + PrivacyMask** — `Background.primary` becomes the grouped-gray, matching the iOS launch surface convention.
+
+**What stays untouched.** PIN keypad (`PinCodeView`) uses `GlassEffectContainer` + `.buttonStyle(.glass)` for its 12 keys — translucent Liquid Glass, not solid `Material.card` fills. The keys pick up the warm-gray page through their translucency; if anything, the contrast improves (gray base lets the glass highlights read more cleanly than a white-on-white base would have). Dots use `UniColors.Brand.mark` (graphite ink) vs `UniColors.Fill.tertiary` (system fill that auto-adapts) — unaffected. The `splash` enum (custom radial-gradient brand surface), the `Brand.mark` color, all status / validation / crypto colors, all text colors — unaffected.
+
+**Pre-edit audit (Rule #4 enforcement).** Ran `rg -nE 'Color\.(red|blue|green|...|white|gray)|Color\(red:|Color\(hex|Color\(\.system|\.foregroundStyle\(\.|\.background\(\.|\.tint\(\.'` across `UniApp/Sources/Features` and `UniApp/Sources/DesignSystem/Components` — **zero hits**. Every color in feature + component code goes through `UniColors` as the rule demands. The token-level re-point is therefore the complete fix; no follow-up sweep of feature files is needed.
+
+**The 7 visual checks (Rule #2 §D.9).** Walked mentally through:
+1. **Liquid Glass behaviors** — unchanged (the keypad / WalletActionRegion / toolbar `.glass*` surfaces still produce translucency + specular + motion; they just sit on a different base color now).
+2. **Concentric corners** — unchanged (no radius edits).
+3. **Light + dark + Increase Contrast** — system grouped colors handle all three appearance modes natively; the same role resolves correctly in each.
+4. **Dynamic Type** — unchanged (no font/size edits).
+5. **VoiceOver** — unchanged (no semantic edits).
+6. **Copy honesty** — unchanged (no copy edits).
+7. **Boring states (empty/loading/error/offline)** — already designed; the new register applies to them automatically.
+
+**What got stripped.** Considered renaming the grouped aliases (`groupedPrimary` etc.) into `Background.page` / `Background.card` / `Background.cardElevated` for added clarity. Rejected — would have required touching every existing call site in the codebase, multiplying the diff for ~zero design benefit. The canonical names (`primary` / `secondary` / `tertiary`) already read as "the screen's main background tier" / "one step elevated" / "two steps elevated"; they don't need renaming. The grouped aliases stay as compatibility pointers with doc comments naming the canonical names as preferred in new code.
+
+**Files added/modified:**
+- `UniApp/Sources/DesignSystem/UniColors.swift` — re-pointed `Background.primary`, `Background.secondary`, `Background.tertiary` to the `systemGroupedBackground` family; re-pointed `Material.card`, `Material.elevated` to the same family; collapsed `groupedPrimary` / `groupedSecondary` / `groupedTertiary` to `Self.primary` / `.secondary` / `.tertiary`; rewrote the `Background` and `Material` doc comments to name the iOS Settings register as the design contract and the 2026-06-07 user direction as the why.
+
+**Build / Run:**
+- iPhone 17 simulator (`xcodebuild -destination 'platform=iOS Simulator,name=iPhone 17,OS=latest' -derivedDataPath build/DerivedData build`) — `** BUILD SUCCEEDED **`.
+- iPhone 17 Pro Max device build (`xcodebuild -destination 'platform=iOS,id=4B521D49-...' -allowProvisioningUpdates -derivedDataPath build-device build`) — `** BUILD SUCCEEDED **`.
+- **Thuglife (iPhone 17 Pro Max, `4B521D49-9843-55CC-AFEC-19D4CF4353A6`) — installed via `xcrun devicectl device install app` (`databaseSequenceNumber: 8228`).** Launch was blocked by the device's own lock screen (`FBSOpenApplicationServiceErrorDomain` → "Unable to launch because the device was not, or could not be, unlocked") — the install itself landed cleanly; the launch will resolve when the user next picks up the phone and unlocks. Per Rule #22 Part A §3, the `databaseSequenceNumber` is the receipt that the edits reached the device.
+
+**TODOs introduced:** none — pure token re-point, no new stubs.
+
+**Per-rule audit:**
+- **Rule #1 (this entry)** — written, includes the user-direction verbatim, the design intent, the math behind the flip, what re-skins, what stays untouched, the pre-edit audit, the 7 checks, files, build, install receipt.
+- **Rule #2 (Ive + Liquid Glass)** — restraint: one-file change, no feature edits, no new tokens, no decorative additions. Honesty: the new register IS the iOS Settings register — Aperture now feels like an iOS-native settings surface stack rather than an inverted-palette outlier. Liquid Glass behaviors on all `.glass*` surfaces unaffected.
+- **Rule #3 (native-only)** — `.systemGroupedBackground` / `.secondarySystemGroupedBackground` / `.tertiarySystemGroupedBackground` are native UIKit semantic colors via `Color(uiColor:)`; no third-party deps, no hand-rolled approximations.
+- **Rule #4 (UniColors only)** — re-point happens inside `UniColors.swift` per the rule's "only place a literal color may be defined" exception (Rule #4 §B exception #1). Pre-edit grep confirmed zero feature-code literal-color violations exist; the token-level change is the complete fix.
+- **Rule #6 (jony-ive)** — this work IS jony-ive work; I'm the designer; the orchestrator's design-delegation rule names me, the orchestrator authored the direction.
+- **Rule #7 (real visuals)** — no asset edits; no icons, logos, or illustrations touched.
+- **Rule #8 (mistakes)** — no recurrence of any logged mistake. M-012 (full-completion scope) honored: the user's "match the settings screen background in the iOS" is fully delivered via the cascade — every screen gets the new register, not a subset.
+- **Rule #9 / Rule #13 (i18n)** — no new user-facing strings (only Swift doc-comment edits inside `UniColors.swift`); translator chain is correctly skipped per Rule #20 skip conditions.
+- **Rule #20 (i18n loop)** — skip applies: the turn modified one `.swift` file but introduced zero new string literals (only doc-comment text); the scanner would find nothing to scan, so the chain is correctly not dispatched.
+- **Rule #22 (Thuglife install)** — `devicectl` confirmed `connected`, device build green, install landed with `databaseSequenceNumber 8228`. Launch blocked by lock screen (not a failure — the install is the verification of "edits reached the device" per the rule).
+- **Rule #23 (no push)** — no `git push`, no `git commit` initiated. Commit/push only on explicit per-turn user request.
+
+---
+
 ## 2026-06-07 — Test Screen design playground reachable from Settings → Developer
 
 **Summary:** New `TestScreenView` — a faithful copy of the wallet-home surface (hero balance, Liquid Glass action triplet, holdings card, activity card, footer) with believable mock data and inert actions. Reachable from a new "Developer" section in `SettingsView` (above Advanced). Built so the user can preview design experiments on a surface that already reads in the production register, then promote the patterns to the real wallet home if approved.
