@@ -591,53 +591,32 @@ struct WalletHomeView: View {
 
         // Wallet switcher in the nav-bar title slot (`.principal`) —
         // moved here from the body 2026-06-07 per user direction.
-        // Matches Apple's own Mail / Notes pattern where the
-        // account / folder picker is the nav-bar title. Disabled in
-        // test mode so the user can't accidentally switch wallets
-        // mid-test.
         //
-        // **Liquid Glass capsule, take 3 (2026-06-07).** The
-        // canonical iOS 26 pattern per Apple's Liquid Glass docs +
-        // SwiftUI toolbar samples (developer.apple.com,
-        // createwithswift.com, and the LiquidGlassReference repo)
-        // is `.buttonStyle(.glass)` PLUS `.controlSize(.small)`.
-        // `.controlSize(.small)` is the load-bearing modifier — it
-        // scales the glass capsule to match the toolbar's auto-
-        // applied glass treatment on bare SF Symbol buttons (gear
-        // + flask). Without it the pill renders at the default
-        // button height and visually overflows the toolbar row.
+        // **Liquid Glass material on a labelled toolbar item.** Per
+        // Apple's iOS 26 toolbar docs, items in `.confirmationAction`
+        // / `.cancellationAction` / `.automatic` placements auto-
+        // glassify; `.principal` does NOT. So this Button MUST opt
+        // in explicitly via `.buttonStyle(.glass)`. The system's
+        // toolbar pipeline then produces the same Liquid Glass
+        // capsule the gear and flask icons get from their auto-
+        // glass treatment in `.topBarLeading` / `.topBarTrailing`.
         //
-        // **Earlier takes documented for the future.**
-        // - Take 1 (bare text + chevron): too quiet to read as a
-        //   tappable trigger.
-        // - Take 2 (`.buttonStyle(.glass)` alone): right material,
-        //   wrong height — the pill was taller than the icon
-        //   buttons because `.controlSize` defaulted to `.regular`.
-        // - Take 3 (`.glassEffect(in: .capsule)` + `.buttonStyle(.plain)`):
-        //   reached for the wrong primitive. `.glassEffect()` is for
-        //   custom views outside the toolbar's auto-styling system;
-        //   inside a toolbar, the right call is `.buttonStyle(.glass)`
-        //   + `.controlSize(.small)` so the system's own toolbar
-        //   styling pipeline produces the capsule.
+        // **No `.controlSize` override.** Take 3 (this session) tried
+        // `.controlSize(.small)` to "match the icon height"; that
+        // went the wrong direction — `.small` makes the pill shorter
+        // than the toolbar's auto-glass icons, not equal. The
+        // toolbar's natural item height is what the icons render at,
+        // and `.buttonStyle(.glass)` at the default control size
+        // ships at that same height. Leaving `.controlSize` unset
+        // lets the system pick the toolbar-context default.
         //
-        // **References (Rule #3 — native API only):**
-        // - developer.apple.com — "Adopting Liquid Glass" + toolbar
-        //   role docs explicitly say: toolbars auto-apply glass;
-        //   placement-driven button styles for the rest.
-        // - createwithswift.com "Adapting toolbar elements to the
-        //   Liquid Glass Design System" — confirms default button
-        //   border shape is `.capsule` in iOS 26 toolbar context.
-        // - LiquidGlassReference (github.com/conorluddy) — ships the
-        //   exact `.buttonStyle(.glass).controlSize(.small)` pattern
-        //   for account-picker pills in `.principal` slots.
-        //
-        // **M-002/M-003 exception is preserved.** Bare icon
-        // buttons (gear, flask, close X, overflow) remain bare —
-        // they inherit toolbar glass automatically. Labelled
-        // triggers (this wallet pill) use `.buttonStyle(.glass)` —
-        // because text-labeled toolbar buttons don't auto-glassify
-        // the way symbol-only ones do (per Apple docs:
-        // "prioritizes symbols over text").
+        // **No `.tint` override.** Take 3 also added
+        // `.tint(UniColors.Text.primary)` — but on `.buttonStyle(.glass)`
+        // the tint colors the *content* (text + chevron) and the
+        // system already inherits the primary label color from the
+        // toolbar's environment. The explicit tint was redundant
+        // and risked drifting from system color in special states
+        // (Reduce Transparency, Increase Contrast).
         ToolbarItem(placement: .principal) {
             Button {
                 guard !isTestMode else { return }
@@ -654,8 +633,6 @@ struct WalletHomeView: View {
                 }
             }
             .buttonStyle(.glass)
-            .controlSize(.small)
-            .tint(UniColors.Text.primary)
             .disabled(isTestMode)
             .accessibilityLabel(Text("Switch wallet, currently \(activeWallet?.name ?? "")"))
         }

@@ -1,21 +1,89 @@
 # UniApp — Agent Rules
 
-## Rule #1 — Every change must be logged in `SHIPPED.md`
+## Rule #1 — Big changes get logged in `SHIPPED.md`. Small edits do not.
 
-Any edit, addition, removal, file move, build, install, configuration change, or
-deployment that happens in this project **MUST** be appended to `SHIPPED.md`
-in the same session it occurs — no exceptions.
+`SHIPPED.md` is the project's history of **meaningful** changes — the
+file a future agent or human reads to understand "what has actually
+been built." Drowning that history in single-line tweaks defeats its
+purpose. **Big edits land here; small edits do not.** The discipline
+of distinguishing the two is itself part of the rule.
 
-### What counts as "something to log"
-- New files created (Swift sources, asset catalogs, configs, docs)
-- Existing files modified (even tiny edits, even comments)
-- Files deleted, moved, or renamed
-- Build settings / `project.yml` / Xcode project changes
-- Dependency additions or removals
-- Signing / provisioning / team changes
-- Builds run, devices targeted, app installs, launches
-- Any new screen, view, component, model, or design-system token
-- TODO markers added (so future agents see what's stubbed)
+### What counts as "BIG" (MUST log)
+
+If the edit fits any of these, append a `SHIPPED.md` entry:
+
+- **New feature surface** — a new screen, flow, sheet, or interactive
+  surface the user can reach.
+- **New component / token** — a new `UniButton` variant, a new
+  `UniColors` role, a new `UniHaptic` case, a new SwiftData `@Model`,
+  a new repository, a new networking adapter.
+- **Architectural change** — schema migration, new module, new actor,
+  refactor that touches ≥3 files or a public protocol.
+- **Build / config change** — `project.yml`, signing, `Info.plist` keys,
+  SPM dependency addition or removal, xcodegen options, `Assets.xcassets`
+  catalog changes that introduce new assets (not just file rotations).
+- **Security-touching change** — anything under
+  `Brand/`, `Security/`, `Database/SeedVault*`, `Database/PinCode*`,
+  Keychain access policy, biometric flow.
+- **Rule / process change** — adding or amending a `CLAUDE.md` rule,
+  changing the agent definitions, adding/removing a hook, updating the
+  i18n closure chain.
+- **Mistake correction** — landing the fix for an open `MISTAKES.md` entry
+  (the SHIPPED entry is the audit trail that the mistake was addressed).
+- **Multi-file structural fix** — a change spanning ≥3 files that aren't
+  trivial mechanical reformatting.
+
+### What counts as "SMALL" (do NOT log)
+
+Single-purpose, single-surface edits that don't change the contract:
+
+- One file, ≤ ~20 lines of real code change, with no new public API.
+- Padding / spacing / radius tweaks within a single component.
+- SF Symbol swap, copy refinement on an existing string, color-role
+  swap from one existing role to another.
+- A modifier reordering that produces the same semantic result.
+- Reverting/iterating a previous SHIPPED entry's design without
+  changing its identity (e.g. "take 2 → take 3" tuning of the same
+  pill style). The original entry stays; the tuning does not get its
+  own entry.
+- Comment-only edits, docstring edits, log message edits.
+- Test additions for an already-shipped feature (unless the test
+  reveals a new behavior worth recording).
+
+When in doubt: ask "would a future agent reading this entry six months
+from now learn something they couldn't learn from the diff?" If yes,
+log it. If the answer is "the diff says it all", don't.
+
+### Bundling rule
+
+When a session contains BOTH big and small edits, the **big edit's
+SHIPPED entry is allowed to briefly mention the small tuning that
+followed** (in a single line under "Follow-on tuning" or similar) so
+the history stays threaded. Do NOT create a separate entry for the
+small tuning; mention it inside the big entry's closing paragraph or
+omit it entirely.
+
+### Why this rule was tightened
+
+Across 2026-06-07 the orchestrator added ~10 SHIPPED entries, many of
+them documenting single-modifier tuning passes (toolbar pill take 1
+→ 2 → 3 → 4, sheet padding 24 → 16). The user corrected:
+*"small edits shouldn't be added to shipped.md. just big edits."*
+The pre-correction text said *"even tiny edits, even comments"* — the
+post-correction text (this) is the explicit reversal. SHIPPED.md is
+the project's wall of plaques, not its commit log.
+
+### What still counts as "something to log" (the inventory rewritten)
+
+- New files created (Swift sources, asset catalogs, configs, docs) — IF
+  the file is a new feature/component/token, not a one-off helper.
+- New screens, views, components, models, design-system tokens — always.
+- Build / install on Thuglife — only the install event is logged inside
+  the big-change SHIPPED entry it accompanies (the
+  `databaseSequenceNumber` is the receipt per Rule #22). No standalone
+  "I installed" entries.
+- New `// TODO:` markers — these go to `TODO.md` per Rule #5; not
+  separately to SHIPPED.md.
 
 ### How to log
 
