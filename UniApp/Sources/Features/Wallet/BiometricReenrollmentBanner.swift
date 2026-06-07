@@ -42,11 +42,11 @@ struct BiometricReenrollmentBanner: View {
         }
         .padding(UniSpacing.m)
         .background(
-            RoundedRectangle(cornerRadius: UniRadius.l, style: .continuous)
+            RoundedRectangle(cornerRadius: UniRadius.card, style: .continuous)
                 .fill(UniColors.Status.infoBackground)
         )
         .overlay(
-            RoundedRectangle(cornerRadius: UniRadius.l, style: .continuous)
+            RoundedRectangle(cornerRadius: UniRadius.card, style: .continuous)
                 .stroke(UniColors.Status.infoStroke, lineWidth: 1)
         )
         .contentShape(Rectangle())

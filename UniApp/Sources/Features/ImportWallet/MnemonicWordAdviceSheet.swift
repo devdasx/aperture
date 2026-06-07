@@ -66,7 +66,7 @@ struct MnemonicWordAdviceSheet: View {
             }
         }
         .background(
-            RoundedRectangle(cornerRadius: UniRadius.l, style: .continuous)
+            RoundedRectangle(cornerRadius: UniRadius.card, style: .continuous)
                 .fill(UniColors.Background.secondary)
         )
     }
@@ -113,7 +113,7 @@ struct MnemonicWordAdviceSheet: View {
         }
         .padding(UniSpacing.m)
         .background(
-            RoundedRectangle(cornerRadius: UniRadius.l, style: .continuous)
+            RoundedRectangle(cornerRadius: UniRadius.card, style: .continuous)
                 .fill(UniColors.Background.secondary)
         )
     }

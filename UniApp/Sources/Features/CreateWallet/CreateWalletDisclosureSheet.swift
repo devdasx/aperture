@@ -68,11 +68,12 @@ struct CreateWalletDisclosureSheet: View {
 
     // MARK: - Protection rules
 
-    /// Four rules sit inside one `UniCard`. Concentric radius: card uses
-    /// `UniRadius.xl` (24) with `UniSpacing.m` (16) inner padding, so any
-    /// hypothetical inner shape would be `nested(parent: 24, padding: 16)`
-    /// = 8 — but the rows here are flat rows, not nested surfaces, so
-    /// no further radii are needed.
+    /// Four rules sit inside one `UniCard`. Concentric radius is now
+    /// system-driven: the card declares its surface radius via
+    /// `.containerShape(.rect(cornerRadius: UniRadius.card))` (18 pt)
+    /// in `UniCard`'s body, so any descendant `ConcentricRectangle()`
+    /// would auto-resolve. The rows here are flat rows, not nested
+    /// surfaces, so no inner shape is needed.
     private var protectionRules: some View {
         UniCard {
             VStack(alignment: .leading, spacing: UniSpacing.m) {

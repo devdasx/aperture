@@ -42,11 +42,11 @@ struct BackupRequiredBanner: View {
         }
         .padding(UniSpacing.m)
         .background(
-            RoundedRectangle(cornerRadius: UniRadius.l, style: .continuous)
+            RoundedRectangle(cornerRadius: UniRadius.card, style: .continuous)
                 .fill(UniColors.Status.warningBackground)
         )
         .overlay(
-            RoundedRectangle(cornerRadius: UniRadius.l, style: .continuous)
+            RoundedRectangle(cornerRadius: UniRadius.card, style: .continuous)
                 .stroke(UniColors.Status.warningStroke, lineWidth: 1)
         )
         .contentShape(Rectangle())

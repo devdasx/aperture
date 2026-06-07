@@ -66,7 +66,7 @@ struct ReceiveGuideSheet: View {
                 .padding(UniSpacing.m)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(
-                    RoundedRectangle(cornerRadius: UniRadius.l, style: .continuous)
+                    RoundedRectangle(cornerRadius: UniRadius.card, style: .continuous)
                         .fill(UniColors.Background.secondary)
                 )
         }
