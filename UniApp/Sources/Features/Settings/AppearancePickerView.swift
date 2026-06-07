@@ -3,14 +3,12 @@ import SwiftUI
 /// Picker for the three `ThemePreference` options — System, Light, Dark.
 ///
 /// Selection writes through `@AppStorage("themePreference")`, which
-/// `UniAppApp` reads and binds to `.preferredColorScheme(_:)`. The
-/// switch is animated by SwiftUI's native appearance transition — no
-/// hand-rolled motion. Implements T-006.
+/// `UniAppApp` reads and binds to `.preferredColorScheme(_:)`. Implements T-006.
 struct AppearancePickerView: View {
-    @AppStorage("themePreference") private var themeRaw: String = ThemePreference.light.rawValue
+    @AppStorage("themePreference") private var themeRaw: String = ThemePreference.defaultRaw
 
     private var current: ThemePreference {
-        ThemePreference(rawValue: themeRaw) ?? .light
+        ThemePreference(rawValue: themeRaw) ?? .system
     }
 
     var body: some View {
@@ -45,18 +43,18 @@ struct AppearancePickerView: View {
                     }
                     .buttonStyle(.plain)
                     .accessibilityAddTraits(current == option ? [.isSelected, .isButton] : .isButton)
+                    .listRowBackground(UniColors.Background.secondary)
                 }
             }
         }
         .listStyle(.insetGrouped)
+        .scrollContentBackground(.hidden)
+        .background(UniColors.Background.primary)
         .navigationTitle(Text("Choose appearance"))
-        .navigationBarTitleDisplayMode(.inline)
-        // Rule #10: every preference change fires one selection beat.
+        .navigationBarTitleDisplayMode(.large)
         .uniHaptic(.selection, trigger: themeRaw)
     }
 }
-
-// MARK: - Previews
 
 #Preview("Light") {
     NavigationStack {

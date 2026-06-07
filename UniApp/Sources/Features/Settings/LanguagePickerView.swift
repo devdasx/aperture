@@ -1,62 +1,16 @@
 import SwiftUI
 
-/// Picker for the 50 supported languages plus the "System" sentinel.
+/// Picker for the supported languages plus the "System" sentinel.
 ///
-/// **Row anatomy (updated 2026-06-04 to feel native in every locale).**
-/// Leading: the language's regional **flag emoji** (replacing the generic
-/// `globe` symbol — the flag carries identification cleanly, the globe
-/// was generic chrome). Primary line: the language's **native self-name**
-/// (per HIG — "show each language in its own language so users can find
-/// their own without reading English"). Secondary line: the language's
-/// name **rendered in the user's currently-selected locale** via
-/// `Locale.localizedString(forLanguageCode:)` — a Spanish user sees
-/// "Inglés / Árabe / Bengalí"; a Japanese user sees "英語 / アラビア語".
-/// Trailing region: a small **code chip** (e.g. "EN", "ZH-HANS") for
-/// audit, then a `checkmark` on the selected row.
-///
-/// The localized-name resolution is fully native — iOS ships every
-/// language name in every supported locale via `Locale.localizedString`.
-/// No catalog entries are needed. When the user picks a new language,
-/// the `\.locale` environment cascades and every secondary line
-/// re-renders automatically.
-///
-/// Selecting a row writes through `@AppStorage("languagePreference")`,
-/// which `UniAppApp` reads and binds to `.environment(\.locale, …)`.
-/// Every `Text(LocalizedStringKey)` in the app — including the slides
-/// behind this sheet — re-renders in the new language automatically.
-///
-/// RTL languages (`ar`, `fa`, `ur`, `he`) carry `isRTL = true` in their
-/// `SupportedLanguage` record. Row layout flips for free via
-/// `.environment(\.layoutDirection, …)` inherited from the locale — no
-/// per-row code path needed. The one allowed Rule #11 exception is the
-/// per-`Text` direction override on the native-name `Text`, so a Persian
-/// self-name renders right-aligned inside an LTR English picker (and
-/// vice-versa).
-///
-/// **Search.** On iOS 26, applying `.searchable(text:)` to a view inside
-/// a `NavigationStack` causes the system to render the search field in a
-/// **floating Liquid Glass container at the bottom of the screen** on
-/// iPhone (top-trailing on iPad/macOS). This is Apple's default and
-/// honors Rule #3 (native-only): we do not specify a `placement:` —
-/// the platform decides. Filtering uses `localizedStandardContains`
-/// against `nativeName`, `englishName`, the localized name, and `code`,
-/// which is locale-aware and folds case + diacritics across scripts
-/// (so "esp" finds "Español", "中" finds "简体中文", "ع" finds "العربية").
-/// The "System" sentinel row stays pinned at the top regardless of
-/// query — it is not a language entry.
+/// Selection writes through `@AppStorage("languagePreference")`. The
+/// secondary row line is rendered in the user's currently-selected
+/// locale via `Locale.localizedString(forLanguageCode:)`. Filtering via
+/// native `.searchable`.
 struct LanguagePickerView: View {
     @AppStorage("languagePreference") private var languageCode: String = LanguagePreference.systemCode
-
-    /// The user's currently-effective locale, propagated by the app-root
-    /// `.environment(\.locale, …)` binding. Used to render each row's
-    /// secondary line via `Locale.localizedString(forLanguageCode:)`.
     @Environment(\.locale) private var currentLocale
-
     @State private var searchText: String = ""
 
-    /// Languages that match the trimmed query against native name,
-    /// English name, the user-locale-resolved name, or BCP-47 code.
-    /// Empty query returns the full list.
     private var filteredLanguages: [SupportedLanguage] {
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !query.isEmpty else { return LanguagePreference.all }
@@ -76,13 +30,26 @@ struct LanguagePickerView: View {
                     code: LanguagePreference.systemCode,
                     flag: nil,
                     nativeName: "System",
-                    localizedName: String(localized: "Use iOS system language"),
+                    // Pass `locale:` explicitly. `String(localized:)`
+                    // without it resolves through `Bundle.main`'s
+                    // launch-time `preferredLocalizations`, which
+                    // does NOT honor SwiftUI's `\.environment(\.locale)`.
+                    // Aperture changes the in-app language via the
+                    // environment binding only (no `AppleLanguages`
+                    // UserDefaults rewrite, which would require an
+                    // app restart). Passing `locale: currentLocale`
+                    // routes the lookup through the user-selected
+                    // language. Same fix pattern needed at every
+                    // `String(localized:)` site whose output reaches
+                    // a `Text` view in the UI.
+                    localizedName: String(localized: "Use iOS system language", locale: currentLocale),
                     isRTL: false,
                     isSelected: languageCode == LanguagePreference.systemCode,
                     isSystemRow: true
                 ) {
                     languageCode = LanguagePreference.systemCode
                 }
+                .listRowBackground(UniColors.Background.secondary)
             }
 
             Section {
@@ -99,33 +66,24 @@ struct LanguagePickerView: View {
                     ) {
                         languageCode = language.code
                     }
+                    .listRowBackground(UniColors.Background.secondary)
                 }
             }
         }
         .listStyle(.insetGrouped)
+        .scrollContentBackground(.hidden)
+        .background(UniColors.Background.primary)
         .navigationTitle(Text("Choose language"))
-        .navigationBarTitleDisplayMode(.inline)
-        // Native iOS 26 behavior: the system renders this as a floating
-        // Liquid Glass search field at the bottom of the screen on iPhone.
-        // No `placement:` — the platform owns the decision.
+        .navigationBarTitleDisplayMode(.large)
         .searchable(text: $searchText, prompt: Text("Search"))
-        // Rule #10: every preference change fires one selection beat.
         .uniHaptic(.selection, trigger: languageCode)
     }
 }
 
-// MARK: - Row
-
 private struct LanguageRow: View {
     let code: String
-    /// Flag emoji for the row, or `nil` for the System sentinel row
-    /// (which uses an SF Symbol globe — no country represents "system").
     let flag: String?
     let nativeName: String
-    /// The language name rendered in the user's currently-selected
-    /// locale (e.g. "Inglés" for `en` when the locale is Spanish). For
-    /// the System sentinel row this carries the localized "Use iOS
-    /// system language" copy.
     let localizedName: String
     let isRTL: Bool
     let isSelected: Bool
@@ -136,12 +94,7 @@ private struct LanguageRow: View {
         Button(action: onTap) {
             HStack(spacing: UniSpacing.s) {
                 leadingMark
-
                 VStack(alignment: .leading, spacing: UniSpacing.xxs) {
-                    // Native name is the user's own-language self-name;
-                    // do not localize through the catalog — the string is
-                    // already in its target language. For the System row,
-                    // localize the word "System".
                     if isSystemRow {
                         Text("System")
                             .font(UniTypography.body)
@@ -165,11 +118,7 @@ private struct LanguageRow: View {
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
-
-                if !isSystemRow {
-                    codeChip
-                }
-
+                if !isSystemRow { codeChip }
                 if isSelected {
                     Image(systemName: "checkmark")
                         .font(.system(size: 15, weight: .semibold))
@@ -186,10 +135,6 @@ private struct LanguageRow: View {
         .accessibilityAddTraits(isSelected ? [.isSelected, .isButton] : .isButton)
     }
 
-    /// Leading column — a country/region flag emoji for language rows,
-    /// the SF Symbol globe for the System sentinel row. The flag IS the
-    /// visual identifier; the System row uses the canonical iOS
-    /// "no-region" mark so users recognize it from iOS Settings.
     @ViewBuilder
     private var leadingMark: some View {
         if let flag {
@@ -206,10 +151,6 @@ private struct LanguageRow: View {
         }
     }
 
-    /// Small capsule chip carrying the BCP-47 code (e.g. "EN",
-    /// "ZH-HANS"). Restrained — caption2 weight on a tertiary-fill pill
-    /// so it reads as a code, not as a label, and never competes with
-    /// the native name to its left.
     private var codeChip: some View {
         Text(verbatim: code.uppercased())
             .font(UniTypography.caption2.weight(.semibold))
@@ -223,8 +164,6 @@ private struct LanguageRow: View {
             .accessibilityHidden(true)
     }
 }
-
-// MARK: - Previews
 
 #Preview("Light") {
     NavigationStack {

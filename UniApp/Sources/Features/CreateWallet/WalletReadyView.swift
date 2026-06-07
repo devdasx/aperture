@@ -1,4 +1,5 @@
 import SwiftUI
+import SwiftData
 
 /// Terminal placeholder for the create-wallet flow, pushed onto the
 /// cover's `NavigationStack` after `BackupVerifyView` succeeds.
@@ -6,20 +7,47 @@ import SwiftUI
 /// **Intent (one sentence):** quietly acknowledge that the wallet exists
 /// and hand the user back to the app, without theatre.
 ///
-/// **Why a placeholder.** The real wallet home (`T-018`) is deferred. The
-/// alternative — silently dismissing the cover after verification —
-/// would leave the user without any signal that the flow had completed.
-/// One calm screen with a checkmark, two sentences, and a Done button
-/// is the smallest honest reading of "done".
+/// **What changed 2026-06-06.** This screen is now also the moment the
+/// wallet is **persisted to the local database**. On appear, the view
+/// runs `state.persist(into:requiresBackup:)` which encrypts and stores
+/// the BIP-39 seed in Keychain (`SeedVault`) and inserts a `WalletRecord`
+/// via `WalletRepository`. The Done button is disabled until persistence
+/// resolves so the user cannot dismiss with an unpersisted wallet. On
+/// failure, the view surfaces an error footnote with a Retry button
+/// rather than silently swallowing.
 ///
 /// **No back navigation.** The verify step is final — once the user has
 /// proven the phrase, they should land on the next surface, not be
 /// able to wander back into a generation step. The system back button
 /// is suppressed via `.navigationBarBackButtonHidden(true)`.
 struct WalletReadyView: View {
+    /// Shared mnemonic + passphrase state — same instance the cover
+    /// has been threading through every screen. Needed here to call
+    /// `state.persist(...)` once the user lands on the success screen.
+    let state: CreateWalletState
+
+    /// Set when the user reached this screen via the skip-backup
+    /// branch. Threaded through to `WalletRecord.requiresBackup` so
+    /// Settings → Wallets can surface a "back up your recovery phrase"
+    /// row later (T-016).
+    let requiresBackup: Bool
+
     /// Fires when the user taps Done. The caller dismisses the
     /// `fullScreenCover` and clears the unbacked-up flag.
     let onDone: () -> Void
+
+    /// SwiftData container injected by `UniAppApp`'s
+    /// `.modelContainer(...)` modifier. Used to construct a
+    /// `WalletRepository` actor for the one-shot persist call.
+    @Environment(\.modelContext) private var modelContext
+
+    private enum PersistState: Equatable {
+        case idle
+        case persisting
+        case persisted
+        case failed(String)
+    }
+    @State private var persistState: PersistState = .idle
 
     var body: some View {
         VStack(spacing: UniSpacing.l) {
@@ -44,6 +72,17 @@ struct WalletReadyView: View {
             }
             .padding(.horizontal, UniSpacing.l)
 
+            // Rule #16 §A.5 — the boundary statement anchored to the
+            // success moment. The user has just taken responsibility
+            // for their keys; the calm reminder of what we *don't* do
+            // is what makes that responsibility feel earned, not
+            // imposed.
+            UniFootnote(
+                text: "No accounts. No servers. Your wallet lives on your iPhone.",
+                alignment: .center
+            )
+            .padding(.horizontal, UniSpacing.l)
+
             Spacer()
         }
         .safeAreaInset(edge: .bottom) {
@@ -53,12 +92,83 @@ struct WalletReadyView: View {
         }
         .navigationBarBackButtonHidden(true)
         .navigationBarTitleDisplayMode(.inline)
+        // Rule #10 — Aperture's most weighted tactile moment. Plays
+        // the `.walletSealed` Core Haptics pattern exactly once when
+        // the view appears (the trigger is a fresh per-presentation
+        // sentinel). Reduce Motion silences automatically inside
+        // `UniHapticEngine`.
+        .uniHapticSignature(.walletSealed, trigger: walletSealedTrigger)
+        .onAppear {
+            walletSealedTrigger = UUID()
+            persistIfNeeded()
+        }
     }
 
+    @State private var walletSealedTrigger: UUID = UUID()
+
     private var actionRegion: some View {
-        GlassEffectContainer(spacing: UniSpacing.s) {
-            UniButton(title: "Done", variant: .primary) {
-                onDone()
+        VStack(spacing: UniSpacing.s) {
+            if case .failed(let message) = persistState {
+                UniFootnote(
+                    text: LocalizedStringKey(message),
+                    alignment: .center,
+                    color: UniColors.Status.errorForeground
+                )
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.horizontal, UniSpacing.m)
+            }
+
+            GlassEffectContainer(spacing: UniSpacing.s) {
+                UniButton(
+                    title: persistButtonTitle,
+                    variant: .primary,
+                    isEnabled: persistState != .persisting
+                ) {
+                    switch persistState {
+                    case .persisted:
+                        onDone()
+                    case .failed:
+                        persistIfNeeded(force: true)
+                    case .idle, .persisting:
+                        // Idle shouldn't be reachable (onAppear fires
+                        // persistIfNeeded), but if it is, kick it.
+                        persistIfNeeded()
+                    }
+                }
+            }
+        }
+    }
+
+    private var persistButtonTitle: LocalizedStringKey {
+        switch persistState {
+        case .idle, .persisting: return "Saving…"
+        case .persisted:         return "Done"
+        case .failed:            return "Retry"
+        }
+    }
+
+    /// One-shot persistence kick. Idempotent — won't re-run if already
+    /// persisting or persisted. Pass `force: true` from the Retry
+    /// button to override the persisted-state guard.
+    private func persistIfNeeded(force: Bool = false) {
+        if !force {
+            switch persistState {
+            case .persisting, .persisted: return
+            default: break
+            }
+        }
+        persistState = .persisting
+        let repository = WalletRepository(modelContainer: modelContext.container)
+        let requiresBackupFlag = requiresBackup
+        Task { @MainActor in
+            do {
+                _ = try await state.persist(
+                    into: repository,
+                    requiresBackup: requiresBackupFlag
+                )
+                persistState = .persisted
+            } catch {
+                persistState = .failed("Couldn't save your wallet. Tap Retry.")
             }
         }
     }
@@ -68,14 +178,16 @@ struct WalletReadyView: View {
 
 #Preview("Light") {
     NavigationStack {
-        WalletReadyView(onDone: {})
+        WalletReadyView(state: CreateWalletState(), requiresBackup: false, onDone: {})
     }
     .preferredColorScheme(.light)
+    .modelContainer(ApertureDatabase.shared.container)
 }
 
 #Preview("Dark") {
     NavigationStack {
-        WalletReadyView(onDone: {})
+        WalletReadyView(state: CreateWalletState(), requiresBackup: false, onDone: {})
     }
     .preferredColorScheme(.dark)
+    .modelContainer(ApertureDatabase.shared.container)
 }

@@ -10,6 +10,26 @@
           }
         ]
       }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/Users/thuglifex/Documents/UniApp/.claude/hooks/audit-rules.sh"
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cat /Users/thuglifex/Documents/UniApp/.claude/rule-audit.log 2>/dev/null || true"
+          }
+        ]
+      }
     ]
   }
 }

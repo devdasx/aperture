@@ -27,10 +27,14 @@ import SwiftUI
 struct OnboardingView: View {
     @State private var currentIndex: Int = 0
     @State private var isShowingSettings: Bool = false
+    /// Toggles the `OpenSourceSheet`. Presented from the welcome slide's
+    /// restrained "Open source" badge — the first security-touching
+    /// anchor a user sees per session (Rule #16 §A.4 / §C).
+    @State private var isShowingOpenSource: Bool = false
     /// Hoisted Settings navigation path. Lives here (not inside
-    /// `SettingsView`) so a sheet-content rebuild on direction flip
-    /// preserves the path — the rebuilt `NavigationStack` reconstructs
-    /// the same pushed picker the user was on. Reset on sheet dismiss.
+    /// Hoisted Settings navigation path so the sheet's content rebuild
+    /// on an RTL/LTR direction flip preserves the user's current picker
+    /// destination (Rule #12 §G).
     @State private var settingsPath: NavigationPath = .init()
 
     // MARK: - Create-wallet flow state (T-002 steps 1 & 3)
@@ -44,6 +48,11 @@ struct OnboardingView: View {
     /// cover's content (LTR/RTL flip) must preserve the path so the user
     /// stays where they were. Reset on cover dismiss.
     @State private var recoveryPath: NavigationPath = .init()
+
+    /// Toggles the full-screen cover hosting the `ImportWalletFlow`.
+    @State private var isShowingImportFlow: Bool = false
+    /// Hoisted navigation path for the import-wallet flow (Rule #12 §G).
+    @State private var importPath: NavigationPath = .init()
 
     /// Persists whether the user finished the create-wallet flow without
     /// backing up the recovery phrase. Surfaced later as a Settings row
@@ -70,40 +79,65 @@ struct OnboardingView: View {
     private let slides = OnboardingSlide.all
 
     var body: some View {
-        ZStack {
-            UniColors.Background.primary.ignoresSafeArea()
+        NavigationStack {
+            ZStack {
+                UniColors.Background.primary.ignoresSafeArea()
 
-            VStack(spacing: 0) {
-                topBar
-                    .padding(.horizontal, UniSpacing.l)
-                    .padding(.top, UniSpacing.xs)
+                VStack(spacing: 0) {
+                    slidePager
+                        .frame(maxHeight: .infinity)
 
-                slidePager
-                    .frame(maxHeight: .infinity)
-
-                bottomStack
-                    .padding(.horizontal, UniSpacing.l)
-                    .padding(.bottom, UniSpacing.l)
+                    bottomStack
+                        .padding(.horizontal, UniSpacing.l)
+                        .padding(.bottom, UniSpacing.l)
+                }
+            }
+            // Match the wallet-home pattern exactly: the settings gear
+            // lives inside a system `.toolbar { ToolbarItem(.topBarLeading) }`
+            // so iOS 26 renders it inside the native Liquid Glass nav
+            // bar — same chrome, same blur-on-scroll, same RTL flip,
+            // same accessibility. Per M-002/M-003 the symbol is bare
+            // `gearshape` (no `.circle` variant, no `.buttonStyle(.glass)`
+            // wrapper) — the nav bar IS the Liquid Glass surface; a
+            // glass wrapper would produce double-chrome.
+            //
+            // Empty `.navigationTitle("")` + `.inline` display mode
+            // keeps the nav bar minimal (matches wallet-home which also
+            // uses no title — the screen's hero IS the title).
+            .navigationTitle("")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button {
+                        isShowingSettings = true
+                    } label: {
+                        Image(systemName: "gearshape")
+                            .font(.system(size: 17, weight: .regular))
+                    }
+                    .accessibilityLabel(Text("Settings"))
+                }
             }
         }
         .sheet(isPresented: $isShowingSettings, onDismiss: {
-            // Reset the Settings navigation path when the sheet closes,
-            // so the next presentation starts at Settings root rather
-            // than wherever the user last navigated.
             settingsPath = NavigationPath()
         }) {
-            // Rule #12 Parts F–H: the sheet content is keyed ONLY to the
-            // layout direction (`rtl` / `ltr`), so the content tree is
-            // rebuilt **only** when crossing direction boundaries.
-            // `settingsPath` is hoisted to *this* view's `@State` so the
-            // path survives that rebuild — the rebuilt `NavigationStack`
-            // re-pushes the same picker the user was on, no bounce-back
-            // to Settings root.
-            SettingsView(navigationPath: $settingsPath)
+            // Rule #12 Parts F–H: sheet content keyed to layout
+            // direction so an RTL/LTR flip rebuilds the tree.
+            // `settingsPath` is hoisted to *this* view so the path
+            // survives that rebuild — the rebuilt NavigationStack
+            // re-pushes the same picker the user was on.
+            // Pre-wallet Settings — slim variant carrying only the
+            // rows that make sense before any wallet exists
+            // (Language, Appearance, Currency, Haptic, Help, About,
+            // Acknowledgments). The post-wallet sections (Wallets,
+            // Security, Privacy, Hide-balance toggles, Advanced) are
+            // only reachable from the wallet home's `SettingsView`.
+            OnboardingSettingsView(navigationPath: $settingsPath)
                 .id(sheetDirectionKey)
                 .uniAppEnvironment()
-                .presentationDetents([.medium, .large])
+                .presentationDetents([.large])
                 .presentationDragIndicator(.visible)
+                .presentationBackground(UniColors.Background.primary)
         }
         // Step 1 of the "Create new wallet" flow (T-002): risk disclosure
         // sheet. Acceptance dismisses this sheet, waits for its system
@@ -117,8 +151,8 @@ struct OnboardingView: View {
             )
             .id(sheetDirectionKey)
             .uniAppEnvironment()
-            .presentationDetents([.large])
-            .presentationDragIndicator(.visible)
+            .intrinsicHeightSheet()
+            .presentationBackground(UniColors.Background.primary)
         }
         // Step 3 of the "Create new wallet" flow (T-002): recovery-phrase
         // display, with its own NavigationStack and an internal skip-
@@ -134,6 +168,40 @@ struct OnboardingView: View {
             )
             .id(sheetDirectionKey)
             .uniAppEnvironment()
+        }
+        // Sibling cover for the Import Wallet flow (T-003). Mirrors the
+        // create-wallet pattern: hoisted NavigationPath, .id key on
+        // layout direction, .uniAppEnvironment for theme/locale, cover
+        // dismissed via `onDismiss`.
+        .fullScreenCover(isPresented: $isShowingImportFlow, onDismiss: {
+            importPath = NavigationPath()
+        }) {
+            ImportWalletFlow(
+                navigationPath: $importPath,
+                onDismiss: { isShowingImportFlow = false },
+                onCompleted: { _ in
+                    // Wallet imported — clear the no-wallet flag and
+                    // dismiss. Future T-018 wallet-home surfaces will
+                    // observe the persisted state and route here.
+                    hasUnbackedupWallet = false
+                    isShowingImportFlow = false
+                }
+            )
+            .id(sheetDirectionKey)
+            .uniAppEnvironment()
+        }
+        // Rule #16 §C — the open-source verification anchor. Presented
+        // from the welcome slide's badge (and reusable from any future
+        // custody surface). Per Rule #12 §G the content is `.id`-keyed
+        // to layout direction so an LTR ↔ RTL flip rebuilds the host;
+        // `.uniAppEnvironment()` re-applies theme/locale; opaque-white
+        // background per Rule #15.
+        .sheet(isPresented: $isShowingOpenSource) {
+            OpenSourceSheet()
+                .id(sheetDirectionKey)
+                .uniAppEnvironment()
+                .intrinsicHeightSheet()
+                .presentationBackground(UniColors.Background.primary)
         }
     }
 
@@ -155,51 +223,17 @@ struct OnboardingView: View {
         }
     }
 
-    // MARK: - Top bar (persistent chrome)
-
-    /// Brand iris mark left (the aperture diaphragm — the literal visual
-    /// rendering of the product name), settings gear right. Skip is
-    /// intentionally absent — the user navigates by swiping. The gear is
-    /// the only affordance for accessibility surfaces (Language /
-    /// Appearance). The mark is shipped as a template SVG and tinted via
-    /// `UniColors.Tint.accent` so it adapts to light/dark appearance for
-    /// free.
-    private var topBar: some View {
-        HStack {
-            Image("mark-aperture")
-                .resizable()
-                .scaledToFit()
-                .frame(width: 28, height: 28)
-                .foregroundStyle(UniColors.Tint.accent)
-                .accessibilityLabel(Text("Aperture"))
-            Spacer()
-            settingsButton
-        }
-        .frame(height: 44)
-    }
-
-    private var settingsButton: some View {
-        Button {
-            isShowingSettings = true
-        } label: {
-            Image(systemName: "gearshape")
-                .symbolRenderingMode(.hierarchical)
-                .font(.system(size: 17, weight: .regular))
-                .foregroundStyle(UniColors.Icon.secondary)
-                .frame(width: 32, height: 32)
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.glass)
-        .accessibilityLabel(Text("Open Settings"))
-    }
-
     // MARK: - Slide pager (system page indicator, native swipe)
 
     private var slidePager: some View {
         TabView(selection: $currentIndex) {
             ForEach(slides) { slide in
-                OnboardingSlideView(slide: slide, isActive: slide.id == currentIndex)
-                    .tag(slide.id)
+                OnboardingSlideView(
+                    slide: slide,
+                    isActive: slide.id == currentIndex,
+                    onOpenSourceTap: { isShowingOpenSource = true }
+                )
+                .tag(slide.id)
             }
         }
         .tabViewStyle(.page(indexDisplayMode: .always))
@@ -232,7 +266,7 @@ struct OnboardingView: View {
                 }
 
                 UniButton(title: "I already have a wallet", variant: .secondary) {
-                    // TODO: (T-003) navigate to "Import wallet" flow (seed phrase / private key / iCloud encrypted backup)
+                    isShowingImportFlow = true
                 }
             }
         }

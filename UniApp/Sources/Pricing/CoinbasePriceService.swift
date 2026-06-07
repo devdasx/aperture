@@ -63,9 +63,38 @@ actor CoinbasePriceService: PriceService {
             return cached.price
         }
 
-        let fetched = await fetchSpot(symbol: key.symbol, fiat: key.fiat)
-        cache[key] = CachedEntry(price: fetched, fetchedAt: Date())
-        return fetched
+        // First try the direct spot. Coinbase covers the majors
+        // (BTC, ETH, SOL, …) and the well-known stablecoins (USDC,
+        // USDT, DAI, GUSD, PYUSD, USD1, USDS, USDf).
+        if let direct = await fetchSpot(symbol: key.symbol, fiat: key.fiat) {
+            cache[key] = CachedEntry(price: direct, fetchedAt: Date())
+            return direct
+        }
+
+        // Stablecoin fallback (per `docs/coinbase-coverage.txt`).
+        // For known $1-pegged stablecoins Coinbase doesn't quote
+        // directly (USD0, USDe, AUSD, FRAX, TUSD, RLUSD, FDUSD, …)
+        // we proxy to USDT — the canonical "$1 with off-peg risk"
+        // stand-in, same risk profile. We re-stamp the returned
+        // `TokenPrice.symbol` to the **requested** symbol so the
+        // caller (and the cache key) stays accurate.
+        if KnownStablecoins.needsUSDTFallback(symbol: key.symbol),
+           let usdt = await fetchSpot(symbol: KnownStablecoins.fallbackSymbol, fiat: key.fiat) {
+            let proxied = TokenPrice(
+                symbol: key.symbol,
+                fiat: key.fiat,
+                amount: usdt.amount,
+                timestamp: usdt.timestamp
+            )
+            cache[key] = CachedEntry(price: proxied, fetchedAt: Date())
+            return proxied
+        }
+
+        // Genuine miss — cache the negative so we don't refetch
+        // for `cacheTTL` seconds. The UI surfaces this as
+        // "Price unavailable" (Rule #16 §A.6 honesty).
+        cache[key] = CachedEntry(price: nil, fetchedAt: Date())
+        return nil
     }
 
     func prices(symbols: [String], fiat: String) async -> [String: TokenPrice] {

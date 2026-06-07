@@ -12,11 +12,11 @@ import SwiftUI
 ///
 /// See `CLAUDE.md` Rule #12 for the full contract.
 struct UniAppEnvironmentModifier: ViewModifier {
-    @AppStorage("themePreference") private var themeRaw: String = ThemePreference.light.rawValue
+    @AppStorage("themePreference") private var themeRaw: String = ThemePreference.defaultRaw
     @AppStorage("languagePreference") private var languageCode: String = LanguagePreference.systemCode
 
     private var theme: ThemePreference {
-        ThemePreference(rawValue: themeRaw) ?? .light
+        ThemePreference(rawValue: themeRaw) ?? .system
     }
 
     func body(content: Content) -> some View {

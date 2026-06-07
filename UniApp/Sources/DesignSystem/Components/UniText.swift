@@ -18,6 +18,7 @@ struct UniLargeTitle: View {
             .font(UniTypography.largeTitle)
             .foregroundStyle(color)
             .multilineTextAlignment(alignment)
+            .fixedSize(horizontal: false, vertical: true)
     }
 }
 
@@ -31,6 +32,7 @@ struct UniTitle: View {
             .font(UniTypography.title1)
             .foregroundStyle(color)
             .multilineTextAlignment(alignment)
+            .fixedSize(horizontal: false, vertical: true)
     }
 }
 
@@ -44,6 +46,7 @@ struct UniTitle2: View {
             .font(UniTypography.title2)
             .foregroundStyle(color)
             .multilineTextAlignment(alignment)
+            .fixedSize(horizontal: false, vertical: true)
     }
 }
 
@@ -57,6 +60,7 @@ struct UniHeadline: View {
             .font(UniTypography.headline)
             .foregroundStyle(color)
             .multilineTextAlignment(alignment)
+            .fixedSize(horizontal: false, vertical: true)
     }
 }
 
@@ -72,6 +76,7 @@ struct UniSubtitle: View {
             .font(UniTypography.subheadline)
             .foregroundStyle(color)
             .multilineTextAlignment(alignment)
+            .fixedSize(horizontal: false, vertical: true)
     }
 }
 
@@ -86,6 +91,7 @@ struct UniBody: View {
             .font(emphasized ? UniTypography.bodyEmphasized : UniTypography.body)
             .foregroundStyle(color)
             .multilineTextAlignment(alignment)
+            .fixedSize(horizontal: false, vertical: true)
     }
 }
 
@@ -99,6 +105,7 @@ struct UniCallout: View {
             .font(UniTypography.callout)
             .foregroundStyle(color)
             .multilineTextAlignment(alignment)
+            .fixedSize(horizontal: false, vertical: true)
     }
 }
 
@@ -112,6 +119,7 @@ struct UniFootnote: View {
             .font(UniTypography.footnote)
             .foregroundStyle(color)
             .multilineTextAlignment(alignment)
+            .fixedSize(horizontal: false, vertical: true)
     }
 }
 
@@ -125,5 +133,6 @@ struct UniCaption: View {
             .font(UniTypography.caption1)
             .foregroundStyle(color)
             .multilineTextAlignment(alignment)
+            .fixedSize(horizontal: false, vertical: true)
     }
 }

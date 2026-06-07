@@ -47,46 +47,53 @@ struct PassphraseSheet: View {
 
     /// Local editing buffer. Initialised from the bound passphrase on
     /// appear so Cancel discards in-flight edits without touching the
-    /// parent's state.
+    /// parent's state. `UniTextField` owns its own reveal state + focus
+    /// binding, so no per-sheet `isRevealed` / `isFieldFocused` is needed.
     @State private var buffer: String = ""
 
-    /// `true` while the user has tapped the eye to reveal the passphrase
-    /// in plain text. Defaults to masked — the privacy-aware default for
-    /// any password-like field.
-    @State private var isRevealed: Bool = false
-
-    /// Field focus binding so the keyboard stays attached when the user
-    /// toggles reveal — iOS would otherwise drop focus on the
-    /// `SecureField → TextField` swap because the view identity changes.
-    @FocusState private var isFieldFocused: Bool
-
     var body: some View {
-        NavigationStack {
+        UniSheet(title: "Optional passphrase") {
             VStack(alignment: .leading, spacing: UniSpacing.l) {
+                hero
                 bodyCopy
                 input
                 footnoteLine
-                Spacer(minLength: 0)
             }
-            .padding(.horizontal, UniSpacing.l)
-            .padding(.top, UniSpacing.m)
-            .navigationTitle("Optional passphrase")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button("Cancel") { onDismiss() }
-                }
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("Save") {
+        } actions: {
+            GlassEffectContainer(spacing: UniSpacing.s) {
+                VStack(spacing: UniSpacing.s) {
+                    UniButton(title: "Save", variant: .primary) {
                         passphrase = buffer
                         onDismiss()
                     }
-                    .fontWeight(.semibold)
+                    UniButton(title: "Cancel", variant: .secondary) {
+                        onDismiss()
+                    }
                 }
             }
         }
         .onAppear {
             buffer = passphrase
+        }
+    }
+
+    // MARK: - Hero
+
+    /// Rule #16 §A.1 — a single quiet `key.viewfinder` glyph in
+    /// `UniColors.Brand.mark` (graphite/soft-white). The size is
+    /// restrained for the `.medium` detent — 40pt sits above the body
+    /// without competing with the inline nav title or pushing the
+    /// input below the fold. The symbol carries the meaning of the
+    /// surface (an extra key, scrutinized) without alarm.
+    private var hero: some View {
+        HStack {
+            Spacer()
+            Image(systemName: "key.viewfinder")
+                .font(.system(size: 40, weight: .regular))
+                .symbolRenderingMode(.hierarchical)
+                .foregroundStyle(UniColors.Brand.mark)
+                .accessibilityHidden(true)
+            Spacer()
         }
     }
 
@@ -104,50 +111,18 @@ struct PassphraseSheet: View {
 
     // MARK: - Input
 
-    /// Masked or plain text field plus a trailing eye toggle, both
-    /// hosted inside a single rounded surface so the row reads as one
-    /// input. `.trailing` padding inside the text field reserves room
-    /// for the eye button so the typed text never slides under it.
+    /// Passphrase input — `UniTextField` with the secure-reveal toggle
+    /// baked in. Direction is `.automatic` because a passphrase may be
+    /// any script the user remembers (Arabic, Hebrew, Latin, mixed).
     private var input: some View {
-        ZStack(alignment: .trailing) {
-            Group {
-                if isRevealed {
-                    TextField("Passphrase (optional)", text: $buffer)
-                        .focused($isFieldFocused)
-                } else {
-                    SecureField("Passphrase (optional)", text: $buffer)
-                        .focused($isFieldFocused)
-                }
-            }
-            .textInputAutocapitalization(.never)
-            .autocorrectionDisabled(true)
-            .textContentType(.newPassword)
-            .font(UniTypography.body)
-            .padding(.horizontal, UniSpacing.m)
-            .padding(.vertical, UniSpacing.s)
-            .padding(.trailing, 36) // room for the eye button
-            .background(
-                RoundedRectangle(cornerRadius: UniRadius.m, style: .continuous)
-                    .fill(UniColors.Background.secondary)
-            )
-
-            Button {
-                isRevealed.toggle()
-                // Preserve focus across the SecureField ↔ TextField swap.
-                // Without this, the keyboard briefly dismisses on toggle.
-                isFieldFocused = true
-            } label: {
-                Image(systemName: isRevealed ? "eye.slash" : "eye")
-                    .font(.system(size: 17, weight: .regular))
-                    .foregroundStyle(UniColors.Icon.secondary)
-                    .padding(.horizontal, UniSpacing.s)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel(
-                Text(isRevealed ? "Hide passphrase" : "Show passphrase")
-            )
-        }
+        UniTextField(
+            placeholder: "Passphrase (optional)",
+            text: $buffer,
+            directionPolicy: .automatic,
+            isSecure: true,
+            showsRevealToggle: true,
+            contentType: .newPassword
+        )
     }
 
     private var footnoteLine: some View {

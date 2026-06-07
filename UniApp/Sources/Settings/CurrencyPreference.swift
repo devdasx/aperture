@@ -26,8 +26,38 @@ struct SupportedCurrency: Identifiable, Hashable, Sendable {
 enum CurrencyPreference {
     /// `@AppStorage` key.
     static let storageKey = "currencyPreference"
-    /// Default fiat for fresh installs.
+    /// Hard fallback fiat when the device's region can't be resolved to a
+    /// supported currency (or `bootstrapIfNeeded()` hasn't run yet). Fresh
+    /// installs typically get the device-region currency via
+    /// `bootstrapIfNeeded()`; this constant only fires if `Locale.current`
+    /// returns nothing useful or returns a currency outside `all`.
     static let defaultCode = "USD"
+
+    /// Resolve the device's natural fiat from `Locale.current` and verify
+    /// it's in `SupportedCurrency.all`. Falls back to `defaultCode` (USD)
+    /// when the locale doesn't supply a currency or supplies one we don't
+    /// support — silent fallback per Rule #2 §A.7 (the user gets a
+    /// best-effort default and can change it in Settings).
+    static func defaultForCurrentRegion() -> String {
+        let candidate = Locale.current.currency?.identifier
+            ?? Locale.current.region.flatMap { Locale(identifier: $0.identifier).currency?.identifier }
+        if let candidate, all.contains(where: { $0.code == candidate }) {
+            return candidate
+        }
+        return defaultCode
+    }
+
+    /// On first launch, seed `UserDefaults[storageKey]` with the device's
+    /// natural fiat so the `@AppStorage("currencyPreference")` readers in
+    /// `SettingsView` / `CurrencyPickerView` / `MnemonicImport` resolve to
+    /// the right currency immediately. Idempotent — subsequent launches
+    /// (or anything after the user picks a currency) skip the write.
+    /// Call once from `UniAppApp.init()` before the WindowGroup renders.
+    static func bootstrapIfNeeded() {
+        let defaults = UserDefaults.standard
+        guard defaults.string(forKey: storageKey) == nil else { return }
+        defaults.set(defaultForCurrentRegion(), forKey: storageKey)
+    }
 
     /// ISO-4217 fiats Coinbase exposes via `/v2/exchange-rates`. Order
     /// chosen for picker UX: USD/EUR/GBP/JPY/CNY/INR first (most-used

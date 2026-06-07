@@ -171,6 +171,25 @@ enum UniColors {
         static let neutralStroke = Color(uiColor: .separator)
     }
 
+    /// Per-word validation feedback on the mnemonic editor surface.
+    /// Status (success/warning/error) reads as "operation finished
+    /// with this outcome"; per-word Validation reads as "mid-input
+    /// signal — this word is/is-not in the BIP-39 wordlist". Different
+    /// semantic, different role (Rule #4 §C).
+    enum Validation {
+        /// Word is in the BIP-39 wordlist. Calm, slightly desaturated
+        /// green so a phrase mid-correction doesn't read as alarming.
+        static let valid = Color(uiColor: .systemGreen).opacity(0.92)
+        /// Word committed (caret moved off it) and is not in the
+        /// BIP-39 wordlist. Slightly desaturated red — restrained
+        /// (Rule #16 §B).
+        static let invalid = Color(uiColor: .systemRed).opacity(0.92)
+        /// Word currently being typed — caret is inside it. Neutral
+        /// primary color so the user reads what they're typing without
+        /// color noise.
+        static let pending = Color(uiColor: .label)
+    }
+
     // MARK: - Crypto-specific (price/asset states)
 
     enum Crypto {
@@ -221,8 +240,8 @@ enum UniColors {
     /// Brand-identity colors specific to Aperture. Defined as Assets.xcassets
     /// color sets with both light + dark appearance entries so the brand mark
     /// reads correctly in both modes. The mark is graphite (`#1D1D1F`) on
-    /// light backgrounds and soft white (`#F4F5F7`) on dark, per the brand
-    /// spec in `/Users/thuglifex/Downloads/logo 2/README.txt`.
+    /// light backgrounds and soft white (`#F4F5F7`) on dark, per the Aperture
+    /// brand spec (kept off-repo; values mirrored in `BrandMark.colorset`).
     enum Brand {
         /// Fill color for the Aperture iris mark — graphite in light mode,
         /// soft white in dark mode. Use for the splash iris and the

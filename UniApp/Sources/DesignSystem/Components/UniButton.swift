@@ -10,12 +10,12 @@ import SwiftUI
 /// Per `CLAUDE.md` Rule #10 Part E, each variant fires a default semantic
 /// haptic on tap — no caller responsibility:
 ///
-/// | Variant         | Haptic           |
-/// |-----------------|------------------|
-/// | `.primary`      | `.mediumImpact`  |
-/// | `.secondary`    | `.selection`     |
-/// | `.destructive`  | `.warning`       |
-/// | `.tertiary`     | none             |
+/// | Variant         | Haptic                          |
+/// |-----------------|---------------------------------|
+/// | `.primary`      | `.contextualImpact(.commit)`    |
+/// | `.secondary`    | `.selection`                    |
+/// | `.destructive`  | `.warning`                      |
+/// | `.tertiary`     | none                            |
 ///
 /// The haptic is fired declaratively via `.uniHaptic(_:trigger:)`, which
 /// honors the user's `@AppStorage("hapticFeedbackEnabled")` preference and
@@ -34,7 +34,7 @@ struct UniButton: View {
         /// Default haptic fired on tap. `nil` means silent (`.tertiary`).
         fileprivate var defaultHaptic: UniHaptic? {
             switch self {
-            case .primary:     return .mediumImpact
+            case .primary:     return .contextualImpact(.commit)
             case .secondary:   return .selection
             case .destructive: return .warning
             case .tertiary:    return nil

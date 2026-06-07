@@ -12,6 +12,12 @@ enum ThemePreference: String, CaseIterable, Identifiable, Sendable {
 
     var id: String { rawValue }
 
+    /// Default raw value for fresh installs and any `@AppStorage` reader
+    /// whose key hasn't been written yet. Per the 2026-06-05 user
+    /// direction, fresh installs follow the device's appearance — same
+    /// shape as the Language and Currency defaults.
+    static let defaultRaw: String = ThemePreference.system.rawValue
+
     /// The value to pass to `.preferredColorScheme(_:)`. `nil` lets iOS
     /// follow the system Dark/Light setting.
     var colorScheme: ColorScheme? {

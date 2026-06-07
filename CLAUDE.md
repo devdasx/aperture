@@ -1374,9 +1374,42 @@ future. No screen needs to know it's in RTL; it just is.
 ### Part C — Forbidden
 
 - **Setting `\.environment(\.layoutDirection, …)` anywhere other than
-  `UniAppApp.swift`.** The only allowed exception is Part B's per-`Text`
-  override for a self-name rendered against the opposite-direction flow
-  (and that should be the smallest possible subtree).
+  `UniAppApp.swift`.** Allowed exceptions, each scoped to the smallest
+  possible subtree:
+  - Part B's per-`Text` override for a self-name rendered against the
+    opposite-direction flow.
+  - **Display-only English content (recovery phrase grid, derived
+    addresses display, transaction hash readouts, anything the user
+    READS but does not type)** must force LTR via `.environment(\.layoutDirection, .leftToRight)`
+    scoped to the grid / row / cell subtree. Rationale: English BIP-39
+    words / hex addresses / hashes have a strict ordinal reading order
+    that the user transcribes. RTL would silently flip the grid (position
+    1 to top-right, 2 to top-left) and the user would write the phrase
+    down in the wrong order. The chrome around the grid (title, body,
+    toolbar) stays in ambient direction so the screen still reads as
+    Arabic / Hebrew where appropriate. This is the most common case in
+    Aperture and the safest default for English-content display.
+  - **Interactive text input controls** follow the **ambient app
+    direction** by default — in an RTL app the empty placeholder is
+    right-aligned and the cursor starts on the right (matching iOS
+    Notes, Safari address bar, etc.). Once the user begins typing
+    English BIP-39 words / private keys / addresses, the Unicode BiDi
+    algorithm renders each English string as an LTR "island" inside the
+    line's alignment — this is the iOS-native pattern and is what users
+    expect. The `UniTextField` primitive's `TextDirection.Policy`
+    (`.automatic` / `.forceLTR` / `.ambient`) selects between policies
+    at the call site. The two transparent-`TextEditor` sites
+    (`MnemonicEntryView` in `MnemonicImport.swift`, `WatchOnlyEntryView`
+    in `WatchOnlyImport.swift`) do NOT force LTR — they follow ambient
+    so the empty/placeholder state matches the user's locale. (Prior
+    shipping forced LTR on the mnemonic editor; user feedback 2026-06-06
+    on RTL device confirmed the forced-LTR placeholder broke the mental
+    model of "typing into the field on the right side".) Per Rule #19's
+    "one canonical primitive" principle, new text input surfaces use
+    `UniTextField` and do NOT hand-roll `\.environment(\.layoutDirection, …)`
+    overrides.
+  - Rule #17 Part I — `PinCodeView`'s body root (PIN entry is LTR +
+    English in every locale).
 - **Using `.left`, `.right`, `.padding(.left:)`, `.padding(.right:)`,
   `Alignment.left`, `Alignment.right`** anywhere in feature code. Grep
   for these before any commit.
@@ -1972,6 +2005,863 @@ For every new sheet:
 - **Scroll-title animation for free.** The title compresses into the nav bar on scroll without any code on our side. Trying to replicate this manually is wasted work and almost always reads off.
 - **Accessibility for free.** `navigationTitle` is read by VoiceOver as the screen title; a manual `Text` title would need `.accessibilityAddTraits(.isHeader)` and still wouldn't trigger the screen-change announcement. The system pattern handles it.
 - **Consistent toolbar action placement.** `ToolbarItem(placement: .topBarTrailing)` for "Save", `topBarLeading` for "Cancel" — every iOS user already knows this geometry. Our sheets inherit that learning.
+
+---
+
+## Rule #16 — Security surfaces convey safety deliberately. Every surface a user touches that involves custody, keys, recovery, signing, or biometrics must *feel* as safe as it is.
+
+A crypto wallet's job is not merely to be secure — it is to **make the user
+feel secure enough to take responsibility for their own keys.** Honesty
+(Rule #2 §A.7) tells the user the truth; Rule #16 makes sure the truth
+*reads* as reassurance, not as alarm or as marketing.
+
+Every screen, sheet, modal, or surface that touches **custody** must visibly
+communicate three things:
+1. **What the user is protecting.** ("Your recovery phrase is your wallet.")
+2. **How it is protected.** ("Generated on-device. Stored on-device. Aperture has no copy.")
+3. **What the user can verify themselves.** ("Open source — read every line of how this works on GitHub.")
+
+This rule applies whenever a reasonable user would ask "is this safe?" —
+recovery-phrase screens, backup flows, send/receive sheets, sign-transaction
+dialogs, biometric prompts, Settings rows that affect custody. It does NOT
+apply to neutral surfaces (the language picker, the appearance toggle, the
+onboarding marketing slides not involving keys).
+
+---
+
+### Part A — Required ingredients on a security surface
+
+In priority order, every security-touching surface should carry at least three of the following six (more is better, up to the point of clutter):
+
+1. **A clear security SF Symbol at hero size** — `lock.shield.fill`,
+   `key.fill`, `checkmark.shield.fill`, `faceid`, `lock.iphone`, or
+   `eye.slash.fill`. Tinted `UniColors.Brand.mark` (graphite/soft-white)
+   for the standard case; tinted `UniColors.Status.successForeground`
+   for confirmation moments; tinted `UniColors.Status.warningForeground`
+   only for genuine warnings (T-013 Screenshot detection is the
+   canonical warning). Avoid the alarming red (`Status.errorForeground`)
+   except for true errors — overuse normalizes alarm and reduces signal.
+2. **A plainly stated safety property** — one sentence that names the
+   specific protection mechanism, not generic marketing. Good: "Your
+   keys never leave your iPhone." Bad: "Industry-leading security."
+3. **The user's role in the safety** — what THEY are doing to protect
+   themselves. "Lock with Face ID." "Save your recovery phrase before
+   continuing." Users feel safer when they see their own agency.
+4. **Open-source verification anchor** — a tappable "Open source" badge
+   or "View on GitHub" link on at least the first security-touching
+   surface a user sees per session. The link goes to
+   `https://github.com/devdasx/aperture`. Users feel safer when they
+   can audit. The badge is restrained (small SF Symbol +
+   `UniColors.Text.tertiary` text), not a marketing banner.
+5. **A boundary statement of what we DON'T do** — the absence of
+   surveillance/middleman is itself a safety feature. "Aperture can't
+   see your funds." "No accounts. No servers. No analytics on your
+   balances." These earn user trust because they're verifiable in the
+   open-source code.
+6. **An honest limit statement when the consequence is irreversible** —
+   the user must hear the truth before they commit. "If you lose your
+   recovery phrase, the funds are gone — there is no recovery."
+   Restraint here matters: state the consequence once, plainly, and let
+   the user feel the weight without alarm.
+
+### Part B — Visual register for security surfaces
+
+- **Color**: lean monochrome (brand graphite/soft-white) for the
+  identity-and-protection sections. Status colors (`Status.successForeground`
+  green, `Status.warningForeground` orange) used sparingly for genuine
+  status moments only. **Red is reserved for real errors** — never
+  decorative.
+- **Typography**: `UniLargeTitle` for the safety property (it carries
+  weight); `UniBody` for explanation; `UniFootnote` (`Text.tertiary`)
+  for the open-source verification link. Restraint, not alarm.
+- **Iconography**: SF Symbols only (Rule #7), used at hero size for the
+  identity element and at row-leading size for sub-points. The iris
+  brand mark (`ApertureIrisView`) may also appear on the first surface
+  a user sees — it associates Aperture's identity with the safety
+  property being stated.
+- **Motion**: minimal. Liquid Glass on the chrome (sheet,
+  `GlassEffectContainer` on CTAs). No bespoke micro-animations.
+  `.symbolEffect(.bounce, options: .nonRepeating)` is allowed on the
+  hero SF Symbol when the surface first appears — one beat,
+  acknowledging the user is now in a security moment, no more.
+- **Copy**: honest, brief, no marketing exclamation marks, no emoji in
+  UI text. The voice of the LoveFrom-era Apple compliance copy —
+  factual, restrained, respectful of the user's intelligence.
+
+### Part C — Open-source verification anchor
+
+Every session's **first security-touching surface** must carry the
+open-source link, exposed via a `Button` with `Image(systemName: "lock.shield")`
++ localized text `"Open source"`. Tapping presents a Liquid Glass sheet
+(per Rule #15) titled `"Open source"` containing:
+
+- Brief explanation of why open source matters for a wallet (3-5
+  sentences, honest, no marketing).
+- A canonical GitHub URL: `https://github.com/devdasx/aperture`
+- A `UniButton(.primary)` "View on GitHub" that opens the URL via
+  SwiftUI `Link(_:destination:)` — native, no in-app browser.
+- A small list of "what you can verify yourself in the code":
+  - Key generation (BIP-39 entropy + checksum)
+  - Seed derivation (PBKDF2-HMAC-SHA512)
+  - Biometric protection (Face ID via LocalAuthentication when T-012 lands)
+  - The fact that nothing is uploaded — no analytics, no telemetry, no servers
+
+The sheet is reusable. Both onboarding's welcome slide AND every future
+custody surface (send/receive/sign/Settings.security) can present it.
+A single `OpenSourceSheet.swift` view; multiple call sites.
+
+### Part D — Surfaces this rule applies to (and the audit per-surface)
+
+| Surface                              | Required ingredients (Part A) | Notes                                                  |
+|--------------------------------------|-------------------------------|--------------------------------------------------------|
+| Onboarding slide 1 (Welcome)         | #2, #4 (open-source anchor)   | First surface a user sees — set the tone                |
+| `CreateWalletDisclosureSheet`        | #1, #2, #3, #6                | Already does #2 + #6; needs hero icon + role statement |
+| `RecoveryPhraseView`                 | #1, #2, #3, #4                | The most consequential surface in the app              |
+| `PassphraseSheet`                    | #2, #3, #6                    | Honest about "not stored, cannot be recovered"         |
+| `BackupVerifyView`                   | #1, #2, #3                    | Reinforces that user has earned their wallet           |
+| `WalletReadyView`                    | #1, #5                        | Calm congratulation, anchor to "no servers"            |
+| `ScreenshotWarningSheet`             | #1, #2, #6                    | Warning, not error — `Status.warningForeground`        |
+| Future Settings → Security row       | #1, #2, #3, #4, #5            | The auditable home of safety affordances               |
+| Future Send / Receive / Sign sheets  | #1, #2, #3                    | Restate self-custody at the moment of commitment       |
+
+### Part E — Forbidden
+
+- **Marketing-class safety claims.** "Industry-leading," "Bank-grade,"
+  "Military-grade encryption," "World's safest" — all forbidden. They
+  read as marketing, they're impossible to verify, and they erode
+  trust. State what you actually do.
+- **Decorative shields, locks, badges** that don't correspond to a real
+  protection mechanism. If a `lock.shield.fill` is on screen, the user
+  must be able to point to what it locks.
+- **Hiding the consequence of irreversibility behind soft language.**
+  "Be careful — you might lose access" is dishonest. "If you lose it,
+  the funds are gone" is the honest form.
+- **Alarming red as decoration.** Reserve `Status.errorForeground` for
+  real errors. Reserve `Status.warningForeground` for real warnings
+  (screenshot detection is the canonical example).
+- **Pretending to be a server you're not.** "Aperture protects your
+  funds in the cloud" — forbidden, because we don't, and saying we do
+  would be the most damaging lie a wallet can tell.
+
+### Part F — Workflow gate
+
+Before any new security-touching surface is committed:
+
+1. Which three (or more) of Part A's six ingredients does it carry?
+2. Does it carry an open-source anchor — either directly, or by virtue
+   of being a sub-screen of one that does?
+3. Is every safety claim verifiable in the open-source code? (If a user
+   reads `CLAUDE.md` Rule #16 §C, can they find the file that
+   implements the claim?)
+4. Is the visual register restrained — monochrome brand colors, no
+   alarming red as decoration?
+5. Does the copy land honest, brief, and verifiable?
+6. Is the screen logged in `SHIPPED.md` per Rule #1 with a per-rule
+   audit including Rule #16?
+
+### Part G — Why this rule exists
+
+Self-custody is a transfer of responsibility. The user must take that
+responsibility on willingly — and that requires they feel safe taking
+it on. A wallet that is *technically* secure but *visually* alarming or
+confusing fails. A wallet that is *visually* reassuring but technically
+weak fails worse. Rule #16 closes both gaps simultaneously: every
+security surface communicates the truth of the protection (Rule #2's
+honesty), in the visual register of Apple-class care, with the
+open-source verification anchor so the user can trust the truth they're
+being told.
+
+---
+
+## Rule #17 — One PIN component, one biometric service. Every PIN-required action goes through them.
+
+Every surface in UniApp that asks the user for a PIN — first-time setup,
+app-launch unlock, transaction confirmation, Settings → Security gating,
+PIN change — uses the **same single `PinCodeView` component**, called with
+a different `mode`. There is exactly one PIN UI in the app, ever. The same
+applies to biometrics: there is exactly one `BiometricService` wrapper
+around `LocalAuthentication`, and feature code never imports `LAContext`
+directly.
+
+The PIN itself is **optional, with honest warning** — the user can skip
+it at first-time setup, and a sheet names the consequence ("Your wallet
+is only protected by your iPhone's lock screen"). Users who skip can
+enable PIN later via Settings.
+
+This rule has the same shape as Rules #14 (one search modifier), #15
+(one sheet-as-screen pattern), and #16 (one open-source anchor):
+**name the canonical primitive, forbid the variants**.
+
+---
+
+### Part A — The canonical `PinCodeView` API
+
+```swift
+struct PinCodeView: View {
+    enum Mode: Equatable {
+        /// User is setting a new PIN. On success, calls `onComplete(pin)`
+        /// with the freshly-entered PIN string (digits only).
+        case set
+        /// User is re-entering the PIN they just set. The expected PIN
+        /// is captured in the associated value. On match, calls
+        /// `onComplete(pin)`; on mismatch, the dots flash + clear and
+        /// the view stays in confirm mode.
+        case confirm(expected: String)
+        /// User is unlocking an existing PIN. The view calls
+        /// `PinCodeStorage.verify(pin)` internally; on success, calls
+        /// `onComplete(pin)`; on failure, the dots flash + clear.
+        case verify
+    }
+
+    let mode: Mode
+    /// Fires with the PIN the user entered (or empty string for verify
+    /// mode, since the storage layer holds the hash, not the plaintext).
+    let onComplete: (String) -> Void
+    /// Fires when the user taps the leading Cancel / X button.
+    let onCancel: () -> Void
+    /// Optional. For `.verify` mode, presents a "Forgot PIN?" affordance
+    /// at the bottom of the keypad. Tapping invokes this closure (the
+    /// caller decides what "forgot" means — typically a sheet explaining
+    /// the user must reset the wallet via the recovery phrase).
+    let onForgotPin: (() -> Void)?
+}
+```
+
+The view itself owns:
+- **Six dot indicators** at the top (filled / unfilled circles tied to
+  the digit count of the current input).
+- **A custom 12-button numeric keypad** (1–9, then 0, then Delete +
+  biometric-trigger if biometrics are enabled and applicable). The keypad
+  uses native SwiftUI buttons in a `LazyVGrid`, NOT `keyboardType(.numberPad)`
+  with a hidden TextField — the system keyboard's number pad has retained
+  digit buffers and is inappropriate for PIN entry.
+- **Mode-specific localized titles**:
+  - `.set` → "Set a PIN"
+  - `.confirm` → "Confirm your PIN"
+  - `.verify` → "Enter your PIN"
+- **Mode-specific body copy** under the dots — see Part D.
+
+PIN length is **6 digits**. Match Apple's iOS-passcode default. Don't ship
+a "PIN length" preference; pick one, ship it.
+
+### Part B — The canonical `BiometricService` API
+
+```swift
+/// Wraps `LocalAuthentication`. Feature code calls `authenticate(reason:)`
+/// — never imports `LAContext` directly.
+@MainActor
+final class BiometricService: Sendable {
+    enum BiometryType {
+        case none, touchID, faceID, opticID
+    }
+
+    enum AuthError: Error {
+        case unavailable      // device has no biometrics enrolled
+        case userCancelled    // user tapped Cancel on the system prompt
+        case authenticationFailed
+        case systemError(Error)
+    }
+
+    /// Resolved at init time from `LAContext.biometryType`.
+    var biometryType: BiometryType { get }
+    /// `true` iff at least one biometry is enrolled.
+    var isAvailable: Bool { get }
+
+    /// Presents the system biometric prompt with the localized `reason`
+    /// string. Returns `.success` if the user authenticated, `.failure`
+    /// otherwise. Never throws — feature code shouldn't try/catch around
+    /// biometrics; the failure modes are part of the UX.
+    func authenticate(reason: LocalizedStringResource) async -> Result<Void, AuthError>
+}
+```
+
+The reason string is passed through `LocalizedStringResource` so it flows
+through the String Catalog (Rule #9). Apple's iOS prompt renders the reason
+verbatim under the biometric glyph.
+
+### Part C — The canonical `PinCodeStorage` API
+
+```swift
+/// Keychain-backed PIN storage. Stores a PBKDF2-SHA256 hash of the PIN,
+/// never plaintext. Salt is generated once via `SecRandomCopyBytes` and
+/// stored alongside the hash in the Keychain. iterations = 100,000
+/// (OWASP 2023 PBKDF2-SHA256 minimum recommendation).
+enum PinCodeStorage {
+    /// `true` iff a PIN is currently set.
+    static var hasPin: Bool { get }
+    /// Set a new PIN. Overwrites any existing PIN. Returns `true` on
+    /// successful Keychain write, `false` otherwise.
+    @discardableResult static func setPin(_ pin: String) -> Bool
+    /// Verify a candidate PIN against the stored hash. Returns `true`
+    /// on match, `false` otherwise. Constant-time comparison — never
+    /// short-circuits on first-byte mismatch (timing-attack resistant).
+    static func verify(_ pin: String) -> Bool
+    /// Remove the stored PIN. Used by Settings → Security → Disable PIN
+    /// and by wallet-reset flows.
+    static func clear()
+}
+```
+
+**Why Keychain, not `UserDefaults` or `@AppStorage`:** Keychain encrypts
+at-rest using the Secure Enclave when available. `UserDefaults` is plain
+plist on disk. PIN material — even hashed — belongs in Keychain (`kSecAttrAccessibleWhenUnlockedThisDeviceOnly`).
+
+### Part D — Mode-specific copy (English source)
+
+Each mode of `PinCodeView` shows a short body line under the dots:
+
+- `.set` — "Choose a 6-digit PIN. You'll use it to unlock Aperture and confirm transactions."
+- `.confirm` — "Enter the same PIN again."
+- `.verify` — "Enter your PIN to continue."
+
+All three strings live in `Localizable.xcstrings` and are translated for
+all 50 languages.
+
+### Part E — First-time setup flow (the only PIN flow during create-wallet)
+
+After `BackupVerifyView` success — at the END of the create-wallet
+sequence per the user's 2026-06-04 direction — push `PinSetupFlow`:
+
+1. **Set step** — `PinCodeView(mode: .set)`. User enters 6 digits. On
+   completion, push **Confirm step**.
+2. **Confirm step** — `PinCodeView(mode: .confirm(expected: setPin))`.
+   User re-enters. On match, save via `PinCodeStorage.setPin(_:)` and
+   present the **biometric prompt**.
+3. **Biometric prompt** — Call `BiometricService.authenticate(reason:
+   "Enable Face ID to unlock Aperture")`. On success, set
+   `@AppStorage("biometricEnabled") = true`. On failure (user cancel,
+   no biometry, error) — silently leave `biometricEnabled = false`. No
+   shame, no re-prompt; the user can enable it later in Settings.
+4. **Skip path** — At any point during set or confirm, the user can tap
+   "Skip" in the trailing toolbar. Show `PinSkipWarningSheet`:
+   "Without a PIN, your wallet is only protected by your iPhone's lock
+   screen. If your iPhone is unlocked, anyone with it can use your
+   wallet." Two CTAs: "Set a PIN" (returns to PinCodeView) and "Skip
+   anyway" (sets `pinEnabled = false`, advances to WalletReadyView).
+5. After PIN + biometric resolution (or skip), push `WalletReadyView`.
+
+### Part F — Forbidden
+
+- **Building a second PIN UI** anywhere in the app. Settings → Change PIN,
+  the app-launch lock screen, the send-transaction confirmation gate —
+  all reuse `PinCodeView` with different `mode` values.
+- **Storing the PIN as plaintext** anywhere — `@AppStorage`, `UserDefaults`,
+  in-memory across app launches, file system. Only the salted PBKDF2
+  hash, in Keychain.
+- **Importing `LAContext` in feature code.** Only `BiometricService.swift`
+  imports `LocalAuthentication`.
+- **Auto-enabling biometrics without the user authenticating.** The
+  biometric prompt must succeed (user actually authenticates with Face
+  ID / Touch ID) before `biometricEnabled = true`. A user who taps
+  "Don't Allow" or who has no Face ID enrolled keeps `biometricEnabled
+  = false`.
+- **Hiding the skip affordance.** Per the user's 2026-06-04 direction,
+  PIN is optional. The toolbar's "Skip" must be visible from the moment
+  the user lands on the set step.
+- **Marketing the PIN as more security than it is.** A PIN protects
+  against casual access while the phone is unlocked; it does NOT
+  protect the recovery phrase, the seed, or funds in the
+  cryptographic sense. The skip warning sheet states this honestly
+  (Rule #2 §A.7 + Rule #16 §A.6).
+
+### Part G — Workflow gate
+
+For any new screen that asks for a PIN:
+
+1. Does it instantiate `PinCodeView` with an appropriate `mode`?
+2. Is biometrics handled through `BiometricService` (not raw `LAContext`)?
+3. Is PIN material stored only via `PinCodeStorage` (Keychain + PBKDF2)?
+4. If this is a brand-new "enter PIN" surface (not the create-wallet
+   setup), does the user have a path to recover if they forget the PIN
+   — typically by resetting the wallet via the recovery phrase?
+5. Is the mode-specific copy in `Localizable.xcstrings`?
+
+### Part H — Why this rule exists
+
+- **One muscle memory.** Every PIN entry feels the same — same dots,
+  same keypad geometry, same Face ID fallback button position. Users
+  recognize the screen across contexts and feel safer because the
+  affordance is consistent.
+- **One audit surface.** Reviewers (and security-conscious users
+  reading the open-source code) check `PinCodeView.swift`,
+  `PinCodeStorage.swift`, `BiometricService.swift` — three files, the
+  entirety of UniApp's local-auth posture. No hidden second
+  implementation.
+- **Optionality is honest.** A wallet that forces a weak PIN on a user
+  who already has a strong iPhone passcode + Face ID adds friction
+  without security. A wallet that warns the user about skipping but
+  respects their choice respects them. The user's 2026-06-04 direction
+  encodes this principle.
+
+### Part I — Passcode keypad is LTR + English (scoped to the keypad subtree only)
+
+Originally drafted from the user's 2026-06-04 direction ("even in RTL
+languages, in the PIN code it should be LTR, and English only. but
+for the alphabet it is okay if is translated to all languages.") as a
+**whole-view** override. **Refined 2026-06-06** after Thuglife
+Image #51 feedback: the title and body copy ("Set a passcode", "Choose
+a 6-digit passcode. You'll use it to unlock Aperture and confirm
+transactions.") are read-once descriptive text and benefit from
+translation — they are NOT muscle memory. The keypad geometry is the
+muscle memory. So the override scope tightens to **the keypad subtree
+only** (dot row + 12-button keypad + inline error footnote + forgot
+row). Title + body in the header follow the **ambient app locale**
+and are translated to all 50 supported languages like any other UI
+string.
+
+**Why the keypad subtree IS forced.** Apple's own iOS lock-screen
+passcode keypad is LTR with Western Arabic numerals in every locale.
+Dialer apps, banking apps, Apple Pay — every passcode entry affordance
+the user has ever touched is LTR with 0–9 in ASCII. Passcode entry is
+a security gesture; muscle memory IS a security property (Rule #17
+§H). A user who memorized "top-left, middle, top-right" for "1, 5, 3"
+should be able to enter that passcode in any language without the
+keypad reordering itself.
+
+**Why the header is NOT forced.** A user opening the passcode screen
+for the first time in Arabic wants to read "اختر رمزًا من ٦ أرقام"
+(or whatever the locale-appropriate copy is) before tapping. Forcing
+English on the title made the screen feel half-translated. The keypad
+geometry, which is what they're about to memorize, stays the same in
+every locale — that's the security-critical anchor.
+
+**Implementation.** Wrap only the keypad-subtree group with the
+overrides, NOT the body root:
+
+```swift
+var body: some View {
+    VStack {
+        header                                  // AMBIENT locale + direction
+        VStack {                                // keypad-subtree group
+            dotRow
+            keypad
+            inlineErrorRow
+            forgotRow
+        }
+        .environment(\.layoutDirection, .leftToRight)
+        .environment(\.locale, Locale(identifier: "en"))
+    }
+}
+```
+
+- `\.layoutDirection = .leftToRight` on the keypad group flips dot-fill
+  direction, keypad iteration order, and child layouts to L→R inside
+  the group ONLY.
+- `\.locale = Locale(identifier: "en")` on the keypad group forces
+  `LocalizedStringKey` lookups *inside the group* (inline error
+  footnote, "Forgot your passcode?") to the English catalog source.
+- Title + body in the `header` use `LocalizedStringKey` and resolve
+  via the ambient locale — they translate normally.
+- Digit glyphs are `Text(verbatim: "1")` etc., so they render as
+  ASCII U+0031–U+0039 in every locale (never Arabic-Indic numerals).
+
+**Why on `PinCodeView`, not on the parent flow.** The override is the
+view's contract: any caller anywhere in the app — Settings → Change
+passcode, app-launch lock, transaction confirmation — gets the LTR +
+English keypad automatically without having to remember to wrap the
+call site. The parent flow's toolbar items ("Skip", "X close"), the
+biometric-prompt step, AND the title + body copy follow normal
+localization — only the keypad subtree is the carve-out.
+
+**Forbidden.**
+- Applying `.environment(\.locale, ...)` overrides at PinCodeView call
+  sites. The override lives in `PinCodeView.swift` and only there.
+- Applying `.environment(\.layoutDirection, ...)` on the parent flow
+  to force RTL "back" inside the keypad group. The keypad's contract
+  is LTR; honor it.
+- Wrapping the WHOLE `PinCodeView` body with the overrides (the
+  pre-2026-06-06 shape). Title + body must translate.
+- Translating the digit glyphs. They are `Text(verbatim:)` and stay
+  ASCII forever.
+
+---
+
+## Rule #18 — Every complex or unfamiliar surface ships with a guide sheet.
+
+A crypto wallet asks the user to do things most users have never done before
+— write down twelve random words, paste a hex string they were told never to
+share, accept that there is no "forgot password". Aperture's design honesty
+(Rule #2 §A.7) and security-surface care (Rule #16) demand that when a user
+lands on such a surface, they have a way to ask "what is this?" and get a
+calm, restrained, on-system answer — without leaving the screen, without
+opening a browser, without reading marketing copy disguised as help.
+
+Every surface that asks the user to do something they may not already know
+how to do MUST carry a **guide sheet** — a single `UniSheet`-based modal
+explaining what the thing is, what it looks like, how it's used, and what
+Aperture's role in it is.
+
+### Part A — When a guide sheet is required
+
+A guide sheet is required if any of the following is true:
+
+1. The surface asks the user to enter or read a cryptographic artifact
+   (recovery phrase, private key, extended key, signing payload, address,
+   contract data).
+2. The surface presents an iOS or platform concept a first-time crypto user
+   may not recognize (BIP-39, derivation path, HD account, gas, slippage,
+   memo, network selection, watch-only).
+3. The surface presents an Aperture concept introduced for the first time
+   (PIN setup, biometric prompt, passphrase, recovery-phrase backup).
+4. The surface presents a destructive or irreversible action whose name
+   alone doesn't convey the consequence ("Reset wallet", "Remove account",
+   "Skip backup").
+
+If you find yourself writing copy that includes "if you don't know what
+this means, …", that is the test failing — split that material into a
+guide sheet.
+
+### Part B — The canonical guide-sheet shape
+
+A guide sheet is a `UniSheet`-based modal, presented from a small
+`info.circle` button in the top-trailing toolbar of the host surface
+(or from a `Button` in the surface's body when there is no toolbar).
+
+Required structure, in order, top to bottom:
+
+1. **Title** — a question or noun phrase the user would actually ask.
+   Examples: "What's a recovery phrase?", "What's a private key?",
+   "What does watch-only mean?", "Why does Aperture need a PIN?". Not
+   "Recovery phrase 101", not "Help: Recovery phrases" — the form is a
+   plain question.
+2. **Hero SF Symbol** — one symbol at hero size, tinted
+   `UniColors.Brand.mark`. Picks the same family as the host surface
+   (e.g., `text.book.closed` for recovery-phrase guide; `key.horizontal`
+   for private-key guide). One calm `.symbolEffect(.bounce, options: .nonRepeating)`
+   on first appearance is allowed; no decorative animation beyond that.
+3. **Body** — 3 to 5 short paragraphs (`UniBody`), each one focused on a
+   single question:
+   - **What it is.** One sentence. The technical noun in plain English.
+   - **What it looks like.** A real-looking example, rendered in
+     monospace inside a `UniCard`, **explicitly labeled as a public
+     example** ("Example only — never type this as your real phrase").
+   - **How you use it.** One or two sentences describing the user's
+     gesture.
+   - **What Aperture does with it.** One sentence anchoring the
+     on-device, no-server property (Rule #16 §A.5).
+4. **Single primary CTA** — `UniButton(title: "Got it", variant:
+   .primary)`. No secondary "Learn more on the web" — the guide IS the
+   learning, and Rule #3 forbids in-app browsers. If the user needs to
+   audit further, the open-source anchor (Rule #16 §C) is one tap away
+   from any security surface.
+
+The guide sheet is presented intrinsic-height (`.intrinsicHeightSheet()`)
+so it sizes to its content. Theme + locale propagate via
+`.uniAppEnvironment()` per Rule #12; direction-key per Rule #12 §G.
+
+### Part C — Surfaces in Aperture that require guide sheets
+
+Required (audit + ship if missing):
+
+| Surface                              | Guide sheet                          |
+|--------------------------------------|--------------------------------------|
+| `MnemonicEntryView` (Import)         | "What's a recovery phrase?"         |
+| `PrivateKeyEntryView` (Import)       | "What's a private key?"             |
+| `WatchOnlyEntryView` (Import)        | "What does watch-only mean?"        |
+| `RecoveryPhraseView` (Create)        | "What's a recovery phrase?" (reused) |
+| `PassphraseSheet` (Create/Import)    | "What's a passphrase?"              |
+| `PinSetupFlow` first step            | "Why does Aperture need a PIN?"     |
+| Future: Send / Receive / Sign sheets | per-surface, designed at landing time |
+
+Not required (the surface is self-evident or carries no specialized
+artifact): `ImportMethodSelectionView`, `ChainPickerView`,
+`AppearancePickerView`, `LanguagePickerView`, `CurrencyPickerView`,
+`OpenSourceSheet` (itself a guide).
+
+### Part D — Voice and visual register
+
+Same register as Rule #16 §B:
+
+- Restrained, factual, no marketing exclamation marks, no emoji in UI
+  text, no "industry-leading", no "blazing-fast".
+- Lean monochrome (brand graphite/soft-white). Status colors only when
+  a paragraph genuinely names a status. **No alarming red** on a guide
+  sheet — guide sheets explain; warning sheets warn.
+- Public-example block uses `UniCard` with monospace `UniBody`, prefixed
+  by a `UniCaption(text: "Example only — never type this as your real
+  phrase.", color: UniColors.Text.tertiary)` immediately above.
+- The Aperture-role sentence ("Aperture only uses this on this iPhone
+  to derive accounts. It never leaves your device.") is verbatim or
+  near-verbatim across guide sheets — the user learns the property by
+  repetition.
+
+### Part E — Forbidden
+
+- **Marketing copy disguised as education.** "Recovery phrases are the
+  safest way to store crypto!" — forbidden. State the mechanism, not
+  the promotion.
+- **Tutorials longer than 5 paragraphs.** If the guide sheet can't fit
+  the four questions in Part B §3 within ~5 short paragraphs, the
+  feature is over-complex; simplify the feature, not the sheet.
+- **In-app browsers, linked PDFs, or video walkthroughs.** Native-only
+  (Rule #3). External links use SwiftUI `Link(_:destination:)` and open
+  in the system browser — and only for the open-source anchor (Rule
+  #16 §C), never for help docs.
+- **Hiding the guide-sheet trigger.** The `info.circle` button is
+  always visible on a surface that requires a guide sheet — never
+  behind a long-press, never inside an "…" overflow menu.
+- **Auto-presenting the guide on first visit.** The user opens the
+  guide when the user wants the guide. Aperture does not interrupt.
+
+### Part F — Workflow gate
+
+Before any new feature surface is committed:
+
+1. Does this surface qualify as "complex or unfamiliar" per Part A?
+2. If yes, did you ship the guide sheet alongside it?
+3. Is the trigger an `info.circle` toolbar button (or equivalent
+   visible affordance), never hidden?
+4. Does the guide sheet follow Part B's structure (title, hero,
+   four-question body, one CTA)?
+5. Does the example block carry the "Example only" caption?
+6. Is the Aperture-role sentence present (on-device, no servers)?
+7. Are new strings extracted to `Localizable.xcstrings` with
+   `extractionState: "new"` per Rule #9?
+8. Is the guide sheet logged in `SHIPPED.md` per Rule #1?
+
+### Part G — Why this rule exists
+
+A wallet that doesn't explain itself either confuses its users (bad UX)
+or pretends they don't need explaining (insulting). A wallet that
+explains itself with marketing copy ("the safest, fastest, most
+secure!") lies. A wallet that explains itself with a calm, restrained
+guide sheet — at the moment the user is about to do the unfamiliar
+thing — respects the user, builds trust, and reduces the support
+burden Aperture's open-source nature already keeps minimal. Rule #18
+encodes the discipline.
+
+---
+
+## Rule #19 — Every CTA goes through `UniButton`. No hand-rolled button styling.
+
+UniApp has one canonical primitive for actions the user *commits to*:
+`UniButton`. The four variants — `.primary` / `.secondary` /
+`.destructive` / `.tertiary` — cover every meaning a button can carry
+in this app. A feature view that wants a CTA reaches for `UniButton`;
+it does not recompose one from `RoundedRectangle` + `Text` +
+`.buttonStyle(...)` inline, even when the inline version would "look
+the same."
+
+This rule is the action-surface counterpart to Rule #14 (one search
+modifier), Rule #15 (one sheet-as-screen pattern), and Rule #17 (one
+PIN component): **name the canonical primitive, forbid the variants**.
+
+### Part A — The principle
+
+`UniButton` owns three things that an inline button cannot reproduce
+by copy-paste:
+
+1. **Liquid Glass material** (Rule #2 §B.5) — `.glassProminent` for
+   `.primary` / `.destructive`, `.glass` for `.secondary`, `.plain`
+   for `.tertiary`. The translucency + specular + motion contract
+   (Rule #3) is delivered by `buttonStyle(.glass*)`, not by a
+   `.fill(UniColors.Tint.accent)`.
+2. **The variant's semantic haptic** (Rule #10 §E) — fired
+   declaratively via the internal trigger + `.uniHaptic(_:trigger:)`
+   binding, gated by `@AppStorage("hapticFeedbackEnabled")`. Inline
+   buttons have to remember to call `.uniHaptic(...)`, and they
+   almost never do, and when they do they often double-fire.
+3. **The disabled-state contract** — `isEnabled:` parameter, single
+   `.opacity` rule, single tap-suppression rule. No per-screen
+   "if `canContinue` else gray" branching at the call site.
+
+A new variant is a system-level concern, not a feature-level one. If
+a surface needs a shape `UniButton` doesn't yet express (e.g., a
+`.primaryConsequential` for irreversible commits with a `.firmImpact`
+haptic per Rule #10 §A), add the case to `UniButton.Variant`, wire
+its `defaultHaptic` and `VariantStyle`, and document the addition in
+Rule #10 §E + `SHIPPED.md`. Never invent the variant inline.
+
+### Part B — Forbidden patterns
+
+The following are CTA-shaped surfaces composed by hand and are not
+permitted in feature code. Grep your diff against each.
+
+| Forbidden                                                                 | Why                                                  |
+|---------------------------------------------------------------------------|------------------------------------------------------|
+| `Button { … } label: { Text(…).background(RoundedRectangle(…).fill(…)) }` | Hand-rolled background — bypasses Liquid Glass + haptic |
+| `RoundedRectangle(…).fill(UniColors.Tint.accent)` as a button background  | Same — and reads as a solid fill, not as glass        |
+| `RoundedRectangle(…).fill(UniColors.Tint.…)` behind any tap target        | Same                                                  |
+| Inline `.buttonStyle(.glass)` / `.buttonStyle(.glassProminent)` in features | Bypasses `UniButton`'s haptic + isEnabled contract    |
+| `.background(.ultraThinMaterial)` behind a `Text("Continue")`             | Rule #3 violation AND Rule #19 violation              |
+| `.opacity(canContinue ? 1 : 0.5)` on a manually-composed button           | UniButton's `isEnabled:` handles this once, correctly |
+| `canContinue ? UniColors.Tint.accent : UniColors.Background.secondary` as a fill | Disabled-state divergence — UniButton encodes it    |
+
+Grep target for the audit:
+
+```
+grep -rnE 'RoundedRectangle.*fill.*UniColors\.Tint|RoundedRectangle.*fill.*Tint\.accent|\.buttonStyle\(\.glass' UniApp/Sources/Features/
+```
+
+Expected output: zero hits in feature code. `.buttonStyle(.glass)` /
+`.glassProminent` may appear ONLY inside
+`UniApp/Sources/DesignSystem/Components/UniButton.swift`.
+
+### Part C — Allowed exceptions (non-CTA tappable affordances)
+
+A **CTA** commits the user to a next state — submit, continue, sign,
+import, delete. It is the primary action verb on a screen. CTAs go
+through `UniButton`.
+
+A **tappable affordance** is a row, cell, chip, or chrome item that
+*navigates* or *selects* but does not commit. These remain legitimately
+hand-composed:
+
+- **`NavigationLink` content** — settings rows, picker rows, list
+  cells. They route, they don't commit. Use `UniCard` /
+  `UniFeatureRow` / list-row composition.
+- **Selection chips inside a picker** — e.g., the `ChainPickerView`
+  chain rows, the mnemonic suggestion strip chips. These are
+  state-change affordances inside a screen, not the screen's commit
+  button.
+- **Toolbar items** — bare SF Symbols on a nav-bar trailing edge, per
+  M-002/M-003. They use the system's `.toolbar` slots and intentionally
+  inherit native nav-bar text styling.
+- **Inline text links** — e.g., "View on GitHub" inside a body
+  paragraph. Use `UniButton(variant: .tertiary)` when the link triggers
+  an action; use SwiftUI `Link(_:destination:)` when it opens a URL.
+
+The test: **if removing the surface breaks the user's path through the
+flow, it is a CTA — `UniButton`.** If removing it merely removes an
+optional shortcut or a navigation entry, it is an affordance — compose
+normally.
+
+### Part D — When to extend `UniButton`
+
+If a new visual shape is genuinely needed:
+
+1. State the meaning in one sentence. ("Irreversible commit — wallet
+   reset, transaction sign." not "a more important-looking primary.")
+2. Add the case to `UniButton.Variant`.
+3. Wire its `defaultHaptic` per the Rule #10 §A vocabulary.
+4. Wire its `VariantStyle` branch using only system APIs
+   (`.buttonStyle(.glass*)` or `.buttonStyle(.plain)`).
+5. Document the new variant + its haptic mapping in Rule #10 §E.
+6. Log the addition in `SHIPPED.md`.
+
+Until that work lands, the four existing variants are the entire
+vocabulary.
+
+### Part E — Workflow gate
+
+Before any feature surface ships:
+
+1. Every CTA is a `UniButton(...)` instance.
+2. Disabled states use `isEnabled:` — never `.opacity(0.5)` on a
+   composed button, never a ternary fill, never a `.disabled(...)`
+   modifier outside `UniButton`.
+3. Tap haptics are auto-fired by the variant — no `.uniHaptic(...)`
+   modifier on the call site of a `UniButton` (it would double-fire,
+   per the M-002 family of mistakes).
+4. The grep in Part B returns zero hits in your diff.
+
+### Part F — Why this rule exists
+
+- **One commit gesture, one feel.** Every "Continue", every "Import",
+  every "Confirm", every "Sign" lands in the user's hand with the same
+  Liquid Glass material, the same shape, the same haptic. That
+  sameness is the wallet's most felt trust signal.
+- **One audit surface.** Reviewers (and open-source readers per Rule
+  #16) read `UniButton.swift` and know they have read every CTA in the
+  app. There is no hidden second implementation in some feature file.
+- **One disabled-state rule.** A disabled CTA at reduced opacity with
+  suppressed taps and a silent haptic — defined once, applied
+  everywhere, never re-implemented incorrectly.
+
+---
+
+## Rule #20 — Self-sustaining i18n loop. Four background agents run after every editing turn that touches `.swift` or `.xcstrings`.
+
+The Rule #9 + Rule #13 i18n contract was repeatedly violated through 2026-06-06 because the closure work was never automated — the main agent would introduce new English strings, claim "translators will run next session," and never close the loop (see `MISTAKES.md` M-007 audit theater and M-009 self-sustaining loop). This rule prevents recurrence by binding the closure into the editing workflow itself.
+
+### The four agents (defined in `~/.claude/agents/aperture-i18n-*.md`)
+
+1. **`aperture-i18n-scanner`** — scans every `.swift` file under `UniApp/Sources/`, finds string literals not yet in `Localizable.xcstrings`, writes findings to `.claude/i18n-missing.json`. Read-only on the catalog.
+2. **`aperture-i18n-catalog-writer`** — reads `.claude/i18n-missing.json`, inserts each missing key into `Localizable.xcstrings` with `extractionState: "manual"` and an English source `stringUnit`. Truncates the JSON input + the legacy `.claude/translation-queue.log` on completion.
+3. **`aperture-i18n-translator-primary`** — translates every catalog entry with `state != "translated"` to **25 languages** (`es zh-Hans zh-Hant hi ar pt-BR bn ru ja de uk el ro cs hu sv nb da fi he ca hr sk sl sr`). Opus model. Honors per-language register conventions.
+4. **`aperture-i18n-translator-secondary`** — translates every catalog entry with `state != "translated"` to the **other 25 languages** (`fr ko it tr vi th id fa pl nl ur bg et lt lv is ms fil sw af ta te ml mr pa`). Opus model. Runs **after** primary completes — never in parallel; the two share the catalog as a write target.
+
+### When the loop runs
+
+**Every turn** that creates or modifies a `.swift` file under `UniApp/Sources/` OR `Localizable.xcstrings` triggers the four-agent chain at the end of the turn, **before** the main agent declares the turn complete.
+
+### How the main agent dispatches them
+
+In sequence, all four with `run_in_background: true`. Each next stage starts only after the prior stage's completion notification arrives:
+
+```
+1. Agent(subagent_type: "aperture-i18n-scanner", run_in_background: true)
+2. Agent(subagent_type: "aperture-i18n-catalog-writer", run_in_background: true)
+3. Agent(subagent_type: "aperture-i18n-translator-primary", run_in_background: true)
+4. Agent(subagent_type: "aperture-i18n-translator-secondary", run_in_background: true)
+```
+
+Each prompt is short: "Honor your agent definition. Process the inputs. Report back."
+
+### Skip conditions
+
+The chain skips when:
+- The turn only modified `.md` files (`MISTAKES.md`, `SHIPPED.md`, `TODO.md`, `PROJECT_REPORT.md`, `CLAUDE.md`, `README.md`).
+- The turn only modified `.claude/*` files (hooks, agent definitions, settings).
+- The turn only ran builds / installs / device commands without code edits.
+
+Any turn that edits a `.swift` file or `.xcstrings` file requires the chain. No exceptions: "I'll do it next session" is the M-007 anti-pattern and forbidden.
+
+### Stop-hook complement
+
+`.claude/hooks/audit-rules.sh` runs at every Stop event and prints drift to stderr + writes `.claude/rule-audit.log`. The `SessionStart` hook surfaces the log to the next session. If a turn ends with drift > 0 AND the chain wasn't run, the next session's main agent (reading the audit log at startup) MUST diagnose this as an M-007 recurrence and dispatch the chain immediately.
+
+### Why this is Rule-20-level (not Rule-9 or Rule-13 §)
+
+Rules #9 and #13 define the *contract*. Rule #20 defines the *mechanism* that makes the contract self-enforcing. Without the mechanism, the contract was being signed and broken every turn. With the mechanism, the contract is signed and *executed* every turn.
+
+### Forbidden
+
+- **Manually translating strings inline** instead of dispatching the agents. The specialized agents have the per-language register knowledge encoded in their definitions; the main agent has been wrong about translations 169 times in one day.
+- **Claiming "Rule #13 ✓" in `SHIPPED.md`** when the chain has not run OR the audit hook returns drift > 0. That is M-007 recurring.
+- **Running primary + secondary translator in parallel.** The catalog is a shared write target. Sequential is the contract.
+- **Skipping the chain on a turn that touched `.swift` files** because "the strings haven't changed." The scanner is the source of truth for what changed, not the main agent's memory.
+
+---
+
+## Rule #21 — When the user tells you to finish without stopping, finish.
+
+Some prompts carry an explicit "don't stop until this is done, build it production-ready, finish everything" instruction. When the user writes that — or any equivalent phrasing — the contract changes from "ship a credible slice this turn" to **"complete the entire scope before reporting back."**
+
+### Part A — What "finish without stopping" looks like
+
+The user has written, verbatim and on multiple occasions:
+
+- *"do it as PLAN, plan everything, make it real 100% and professional work"*
+- *"don't stop until you sure all of them works 100%"*
+- *"start NOW, build all features you've told me about"*
+- *"all chains/all tokens [from the spec] should be implemented in the app"*
+
+Each of these is a **full-completion instruction**. The right shape of the answer is not "I shipped the foundation; T-XXX tracks the rest." The right shape is "every item in the spec is now wired, tested, and shipped — here is the per-item proof."
+
+### Part B — The discipline
+
+When you read a full-completion instruction in the user's prompt:
+
+1. **Read every line of the source-of-truth spec** they pointed at (e.g. `SUPPORTED_ASSETS.md`, `TODO.md` entry, attached image, prior `SHIPPED.md` section). Count the items. Write the count in your plan so you and the user can both verify the scope was understood.
+2. **Plan the work as a checklist of every item**, not as a "phase 1 / phase 2" deferral. If the user said "all 24 chains", the plan has 24 bullets, not 4. If the user said "all tokens in the file", the plan has every `(symbol, network)` pair the file lists.
+3. **Implement every bullet**. Not the easy ones plus a TODO for the rest. The work isn't done until every bullet is shipped.
+4. **Test mode / verification surfaces must also cover the full set**, not the subset you implemented first.
+5. **No `// TODO:` comments in shipped code** for items the user told you to finish. If something genuinely can't ship this turn (third-party API down, missing spec data), surface it explicitly in your final reply — *"I could not ship X because Y; here is what's blocked"* — rather than burying it in a code comment.
+
+### Part C — What this rule does NOT mean
+
+- It does **not** mean every prompt is a full-completion prompt. Exploratory questions ("what do you think?", "should we add X?") still get a 2-3 sentence recommendation, not a 1000-line implementation. The rule activates only when the user's prompt carries the full-completion instruction.
+- It does **not** override Rule #6 (delegate design to `jony-ive`). Full completion goes through the designer when the work is design — but the orchestrator's job is to make sure the designer also delivers the full set, not a slice.
+- It does **not** override Rule #16 (security surfaces feel deliberate). When in doubt between speed and care on a custody surface, care wins.
+
+### Part D — Detection
+
+Before saying "done" on a turn that started with a full-completion instruction, re-read the user's original prompt and the source-of-truth spec. Count items implemented vs items listed. If the counts diverge, the turn is not done — keep working.
+
+If you cannot finish in one turn for legitimate reasons (the user denied a tool, the build broke from an external cause, the prompt was genuinely ambiguous about scope), surface that to the user **before** declaring partial work shipped — give them the choice of whether to accept the partial.
+
+This rule was added 2026-06-06 after the user reported (with `M-012`) that the Receive screen surfaced only 3 of 101 supported tokens from `SUPPORTED_ASSETS.md` despite the original ask being "implement all chains and tokens from this file." The full set was shippable; only the registry tables and per-chain token-balance adapters needed to land. Future me: when the spec is in front of you and the user says "finish it", you finish it.
 
 ---
 

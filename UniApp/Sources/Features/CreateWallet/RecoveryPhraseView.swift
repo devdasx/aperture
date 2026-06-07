@@ -68,6 +68,30 @@ struct RecoveryPhraseView: View {
     /// sheet itself decides what happens next.
     @State private var isShowingScreenshotWarning: Bool = false
 
+    /// Toggle for the "Roll your own" entropy sheet (user-supplied
+    /// dice / coin / hex entropy). Local state — the sheet is
+    /// self-contained and commits its result to `state.words` on
+    /// success.
+    @State private var isShowingRollYourOwn: Bool = false
+
+    /// Tracks whether this view is currently the topmost (visible) view
+    /// in the navigation stack. The screenshot notification is global —
+    /// `.onReceive` keeps firing even when `RecoveryPhraseView` has been
+    /// pushed-onto (e.g., the user is in `BackupVerifyView` or
+    /// `PinSetupFlow`). Without this gate, taking a screenshot in PIN
+    /// setup would surface the recovery-phrase regenerate warning, which
+    /// is wrong: the sensitive surface is only visible HERE, so only
+    /// here should the warning fire. Toggled by `.onAppear` /
+    /// `.onDisappear`, which fire on push/pop in `NavigationStack`.
+    @State private var isVisible: Bool = false
+
+    /// Toggle for the open-source verification sheet (Rule #16 §A.4).
+    /// Anchored to this surface because the recovery-phrase view is
+    /// the most consequential security moment in the app — the user
+    /// must be able to audit *here* how the words on screen were
+    /// generated.
+    @State private var isShowingOpenSource: Bool = false
+
     /// Visible iff the user just tapped Copy. Auto-clears after a short
     /// delay so the confirmation does not linger.
     @State private var isShowingCopiedConfirmation: Bool = false
@@ -116,9 +140,14 @@ struct RecoveryPhraseView: View {
                 onDismiss: { isShowingPassphraseSheet = false }
             )
             .uniAppEnvironment()
+            .intrinsicHeightSheet()
             .presentationBackground(UniColors.Background.primary)
-            .presentationDetents([.medium])
-            .presentationDragIndicator(.visible)
+        }
+        .sheet(isPresented: $isShowingOpenSource) {
+            OpenSourceSheet()
+                .uniAppEnvironment()
+                .intrinsicHeightSheet()
+                .presentationBackground(UniColors.Background.primary)
         }
         .sheet(isPresented: $isShowingScreenshotWarning) {
             ScreenshotWarningSheet(
@@ -136,15 +165,38 @@ struct RecoveryPhraseView: View {
                 }
             )
             .uniAppEnvironment()
+            .intrinsicHeightSheet()
             .presentationBackground(UniColors.Background.primary)
+        }
+        .sheet(isPresented: $isShowingRollYourOwn) {
+            // Per the jony-ive 2026-06-05 audit: this is a navigation
+            // experience (NavigationStack-rooted, three screens) — same
+            // family member as the Settings sheet, so the same
+            // presentation modifiers apply. NOT intrinsicHeightSheet —
+            // that's for content-card sheets (warning sheets, etc.).
+            RollYourOwnSheet(
+                state: state,
+                onDismiss: { isShowingRollYourOwn = false }
+            )
+            .uniAppEnvironment()
             .presentationDetents([.large])
             .presentationDragIndicator(.visible)
+            .presentationBackground(UniColors.Background.primary)
         }
+        .uniHapticSignature(.phraseRevealed, trigger: state.words.joined())
+        .onAppear { isVisible = true }
+        .onDisappear { isVisible = false }
         .onReceive(
             NotificationCenter.default.publisher(
                 for: UIApplication.userDidTakeScreenshotNotification
             )
         ) { _ in
+            // Only fire when the recovery-phrase view is actually on
+            // screen. If the user has navigated forward (BackupVerify,
+            // PinSetup) or backward (closed the cover), a screenshot
+            // taken elsewhere should NOT surface this sheet — the
+            // sensitive content (the 12/24 words) is no longer visible.
+            guard isVisible else { return }
             isShowingScreenshotWarning = true
         }
     }
@@ -173,20 +225,32 @@ struct RecoveryPhraseView: View {
     /// tint like every other iOS 26 toolbar item.
     private var optionsMenu: some View {
         Menu {
-            Picker(selection: $state.wordCount) {
-                Text("12 words").tag(BIP39WordCount.twelve)
-                Text("24 words").tag(BIP39WordCount.twentyFour)
-            } label: {
-                Text("Word count")
+            Section {
+                Picker(selection: $state.wordCount) {
+                    Text("12 words").tag(BIP39WordCount.twelve)
+                    Text("24 words").tag(BIP39WordCount.twentyFour)
+                } label: {
+                    Text("Word count")
+                }
             }
 
-            Button {
-                isShowingPassphraseSheet = true
-            } label: {
-                if state.passphrase.isEmpty {
-                    Label("Add passphrase", systemImage: "key.viewfinder")
-                } else {
-                    Label("Edit passphrase", systemImage: "key.viewfinder")
+            Section {
+                Button {
+                    isShowingPassphraseSheet = true
+                } label: {
+                    if state.passphrase.isEmpty {
+                        Label("Add passphrase", systemImage: "key.viewfinder")
+                    } else {
+                        Label("Edit passphrase", systemImage: "key.viewfinder")
+                    }
+                }
+            }
+
+            Section {
+                Button {
+                    isShowingRollYourOwn = true
+                } label: {
+                    Label("Roll your own…", systemImage: "dice")
                 }
             }
         } label: {
@@ -221,6 +285,18 @@ struct RecoveryPhraseView: View {
                 WordCell(position: index + 1, word: word)
             }
         }
+        // Force LTR per Rule #11 §C "English-only display content"
+        // exception. A recovery phrase has a STRICT ordinal sequence —
+        // position 1 → 2 → 3 → ... → 12 must read left-to-right,
+        // top-to-bottom regardless of the app's locale. In RTL the
+        // default would flip the grid (position 1 to top-right, 2 to
+        // top-left) which silently inverts the reading order and
+        // causes users to write the phrase down wrong. The words
+        // themselves are English BIP-39 entries (universally LTR);
+        // the surrounding chrome (title, body copy, toolbar items)
+        // stays in the ambient direction so the screen still reads
+        // as Arabic / Hebrew where appropriate.
+        .environment(\.layoutDirection, .leftToRight)
     }
 
     // MARK: - Copy row
@@ -286,17 +362,50 @@ struct RecoveryPhraseView: View {
 
     // MARK: - Footnote block
 
-    /// One line of guidance: the consequence-of-changing-word-count hint.
-    /// The "Aperture cannot show this phrase again" line was REMOVED per
-    /// user direction — the user can re-open the recovery phrase later
-    /// via Settings (T-016 "Back up your recovery phrase"). Per Rule #2
-    /// §A.7 (honesty), a wallet that CAN show the phrase later must not
-    /// claim otherwise.
+    /// One line of guidance plus the open-source verification anchor.
+    /// The "Aperture cannot show this phrase again" line was REMOVED
+    /// per user direction — the user can re-open the recovery phrase
+    /// later via Settings (T-016 "Back up your recovery phrase"). Per
+    /// Rule #2 §A.7 (honesty), a wallet that CAN show the phrase later
+    /// must not claim otherwise.
+    ///
+    /// Rule #16 §A.4 — the most consequential security surface in the
+    /// app carries its own open-source badge so the user can verify,
+    /// at the moment of seeing their words, exactly how those words
+    /// were generated.
     private var footnoteBlock: some View {
-        UniFootnote(
-            text: "Changing word count generates a new phrase.",
-            alignment: .leading
-        )
+        VStack(alignment: .leading, spacing: UniSpacing.s) {
+            UniFootnote(
+                text: "Changing word count generates a new phrase.",
+                alignment: .leading
+            )
+
+            openSourceBadge
+        }
+    }
+
+    /// Restrained tappable badge — same visual register as the welcome
+    /// slide's anchor: `lock.shield` glyph, "Open source" footnote
+    /// text, trailing chevron. All `UniColors.Text.tertiary` so the
+    /// affordance reads as honest footnote, not marketing banner.
+    private var openSourceBadge: some View {
+        Button {
+            isShowingOpenSource = true
+        } label: {
+            HStack(spacing: UniSpacing.xs) {
+                Image(systemName: "lock.shield")
+                    .font(.system(size: 13, weight: .regular))
+                Text("Open source")
+                    .font(UniTypography.footnote)
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 11, weight: .semibold))
+            }
+            .foregroundStyle(UniColors.Text.tertiary)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(Text("Open source"))
+        .accessibilityHint(Text("Opens a sheet describing how this recovery phrase was generated"))
     }
 
     // MARK: - Actions

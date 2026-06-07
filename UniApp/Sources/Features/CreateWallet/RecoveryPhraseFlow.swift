@@ -7,8 +7,14 @@ import SwiftUI
 enum RecoveryPhraseDestination: Hashable, Codable {
     /// Step 4 — re-enter the phrase via the multiple-choice verify view.
     case verify
-    /// Step 5 — biometric setup (Face ID / passcode) + Keychain encrypt.
-    /// Placeholder push target until `T-012` lands.
+    /// Step 5 — unified PIN + biometric setup (Rule #17). After
+    /// `BackupVerifyView` success, the user is invited to set a 6-digit
+    /// PIN and (optionally) enable Face ID. PIN is optional with honest
+    /// skip warning. Lands `PinSetupFlow`.
+    case pinSetup
+    /// (Legacy) biometric-only push target — preserved for back-compat;
+    /// no longer used by the current flow. Kept so any cached
+    /// `NavigationPath` from a prior session doesn't crash on decode.
     case biometric
     /// Terminal — the "your wallet is ready" placeholder for `T-018`.
     case walletReady
@@ -54,6 +60,12 @@ struct RecoveryPhraseFlow: View {
 
     @State private var isShowingSkipWarning: Bool = false
 
+    /// Tracks whether the user reached PinSetup / WalletReady via the
+    /// skip-backup branch or via the verify branch. Passed to
+    /// `WalletReadyView` so the persisted `WalletRecord.requiresBackup`
+    /// flag is honest (T-016).
+    @State private var didSkipBackup: Bool = false
+
     var body: some View {
         NavigationStack(path: $navigationPath) {
             RecoveryPhraseView(
@@ -70,13 +82,55 @@ struct RecoveryPhraseFlow: View {
                 switch destination {
                 case .verify:
                     BackupVerifyView(state: state) {
-                        navigationPath.append(RecoveryPhraseDestination.walletReady)
+                        // Rule #17 §E — after verify, route through the
+                        // unified PIN setup flow (set → confirm → biometric
+                        // prompt or honest skip). The PIN flow itself
+                        // pushes onto its own internal NavigationStack;
+                        // when it resolves, the parent advances to
+                        // WalletReadyView.
+                        //
+                        // **Skip if already configured.** The passcode is
+                        // a device-level setting protecting every wallet
+                        // in the app, not a per-wallet credential. If
+                        // the user already set one when they created the
+                        // first wallet (or imported it), DON'T re-prompt
+                        // — go straight to WalletReady. Also skip if the
+                        // user explicitly opted out earlier in this
+                        // session (`pinEnabled = false` after they took
+                        // the skip path). Settings → Security is where
+                        // they can change their mind later.
+                        navigationPath.append(nextStepAfterVerify())
                     }
+                case .pinSetup:
+                    PinSetupFlow(
+                        onFinish: {
+                            navigationPath.append(RecoveryPhraseDestination.walletReady)
+                        },
+                        onBack: {
+                            // User tapped the leading back chevron on the
+                            // `.set` step. Pop the parent NavigationStack
+                            // so the user returns to the previous step
+                            // (BackupVerifyView, or RecoveryPhraseView if
+                            // they reached PIN via the skip-backup path).
+                            // The closure guards against an empty path
+                            // because SwiftUI calls toolbar item actions
+                            // outside the regular layout pass.
+                            if !navigationPath.isEmpty {
+                                navigationPath.removeLast()
+                            }
+                        }
+                    )
                 case .biometric:
-                    // TODO: (T-012) biometric setup view (Face ID / passcode)
+                    // Legacy destination — never pushed by the current
+                    // flow. Reachable only if a cached NavigationPath
+                    // from a prior session is restored. Surface a calm
+                    // placeholder rather than crash. See T-012 history.
                     placeholderPushTarget(label: "Biometric setup")
                 case .walletReady:
-                    WalletReadyView {
+                    WalletReadyView(
+                        state: state,
+                        requiresBackup: didSkipBackup
+                    ) {
                         onUserCompletedBackup()
                         onDismiss()
                     }
@@ -100,17 +154,48 @@ struct RecoveryPhraseFlow: View {
                     navigationPath.append(RecoveryPhraseDestination.verify)
                 },
                 onSkipAnyway: {
-                    // Persist the unbacked-up flag (T-016) then dismiss
-                    // both the warning and the parent cover.
+                    // Persist the unbacked-up flag (T-016), dismiss the
+                    // warning, and route through PinSetup — per the
+                    // user's 2026-06-04 direction, BOTH paths (backup
+                    // or skip-backup) must land in the PIN-setup step.
+                    // PIN protects the local wallet whether or not the
+                    // user has saved the recovery phrase; the two
+                    // protections are independent and both should be
+                    // offered. PinSetupFlow itself is optional via its
+                    // own skip — the user can still finish without a
+                    // PIN if they choose, but they always pass through
+                    // the offer.
+                    didSkipBackup = true
                     onUserSkippedBackup()
                     isShowingSkipWarning = false
-                    onDismiss()
+                    navigationPath.append(nextStepAfterVerify())
                 }
             )
             .uniAppEnvironment()
-            .presentationDetents([.medium])
-            .presentationDragIndicator(.visible)
+            .intrinsicHeightSheet()
+            .presentationBackground(UniColors.Background.primary)
         }
+    }
+
+    /// Pick the next destination after the user finishes (or skips) the
+    /// recovery-phrase verification. The passcode + biometric offer is
+    /// a device-level decision, made once when the user has no wallets
+    /// yet. Re-prompting on every subsequent create/import is noise
+    /// (and per the user's 2026-06-06 report, alarming — they think
+    /// the app forgot their earlier choice). Two skip conditions, any
+    /// one of them sufficient:
+    /// 1. A passcode is already stored in Keychain (`PinCodeStorage.hasPin`).
+    ///    The new wallet is automatically protected by it; no setup needed.
+    /// 2. At least one wallet already exists (`activeWalletId` UserDefaults
+    ///    value non-empty). The user passed through PinSetupFlow on that
+    ///    first wallet and made their choice — even if they tapped Skip
+    ///    there, we honor that decision. Settings → Security is the
+    ///    place to change their mind later.
+    private func nextStepAfterVerify() -> RecoveryPhraseDestination {
+        if PinCodeStorage.hasPin { return .walletReady }
+        let activeWalletId = UserDefaults.standard.string(forKey: "activeWalletId") ?? ""
+        if !activeWalletId.isEmpty { return .walletReady }
+        return .pinSetup
     }
 
     /// Stand-in destination view used until the biometric flow (`T-012`)

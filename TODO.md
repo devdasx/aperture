@@ -86,6 +86,597 @@
 
 ---
 
+### T-024 · Bitcoin family key derivation (secp256k1 + BIP-32 + BIP-44 + base58check)
+- **Status:** RESOLVED — 2026-06-06 (Trust Wallet Core via WalletCore SPM; see SHIPPED.md entry titled "Trust Wallet Core key derivation for all 24 chains + max-parallel scan pipeline").
+- **Priority:** P1
+- **Area:** Brand · Cryptography · Import Wallet
+- **File:** `UniApp/Sources/Features/ImportWallet/KeyImportService.swift:79` (StubKeyImportService — `deriveAddress(fromPrivateKey:on:)` for Bitcoin-family chains, `deriveAddresses(fromExtendedKey:on:)`).
+- **Inline comment:** `// TODO: (T-024) Replace stub with real secp256k1 + BIP-32 derivation for Bitcoin family chains.`
+- **Context:** The Import Wallet flow (shipped 2026-06-05, stub-first per jony-ive design audit) returns mock addresses for Bitcoin-family chains. Real implementation needs: (a) Bitcoin WIF parsing (base58check decode → 32-byte private key + compressed/uncompressed flag), (b) secp256k1 public-key derivation (CryptoKit's `P256K` on iOS 18+, or vetted dependency under Rule #3 Part B exception), (c) double-SHA-256 + RIPEMD-160 for legacy P2PKH addresses, (d) BIP-32 child derivation from xpub/ypub/zpub for the watch-only extended-key path (m/0/0..N receive + m/1/0..N change), (e) bech32 encoding for native segwit (zpub → bc1q… addresses).
+- **What "done" looks like:**
+  1. `BitcoinKeyParser` (`Brand/BitcoinKeyParser.swift`) — `static func parseWIF(_:) -> (privateKey: Data, compressed: Bool)?` + `static func derivePublicKey(_:compressed:) -> Data` + `static func address(fromPublicKey:network:) -> String`.
+  2. `ExtendedKeyDerivation` — `static func deriveReceiveAddresses(xpub: String, count: Int) -> [String]` covering xpub (P2PKH), ypub (P2SH-wrapped segwit), zpub (native segwit / bc1q).
+  3. `StubKeyImportService` swaps to a `BitcoinKeyImportService` for `.bitcoin`/`.bitcoinCash`/`.litecoin`/`.dogecoin` cases, retaining the protocol contract.
+  4. Test vectors validated against the BIP-32 / BIP-44 spec appendix.
+- **Honesty checks (Rule #2 §A.7):** The review step must show the real derived address — no stub marker. If derivation fails the UI must say so explicitly ("Could not parse this WIF"); no silent fallback to a fake address.
+- **Depends on:** Rule #3 Part B exception decision (use pure-Swift secp256k1 vs vetted Swift package) — documented at implementation time.
+
+---
+
+### T-025 · EVM key derivation (secp256k1 + keccak256 + EIP-55)
+- **Status:** RESOLVED — 2026-06-06 (Trust Wallet Core via WalletCore SPM; see SHIPPED.md entry titled "Trust Wallet Core key derivation for all 24 chains + max-parallel scan pipeline").
+- **Priority:** P1
+- **Area:** Brand · Cryptography · Import Wallet
+- **File:** `UniApp/Sources/Features/ImportWallet/KeyImportService.swift:79` (StubKeyImportService — `deriveAddress(fromPrivateKey:on:)` for `.evm` family).
+- **Inline comment:** `// TODO: (T-025) Replace stub with real secp256k1 + keccak256 EVM address derivation.`
+- **Context:** EVM private keys are 32-byte hex (with or without `0x` prefix). Address = `keccak256(uncompressedPublicKey).suffix(20)` rendered as `0x…` with EIP-55 checksum casing. Single parser covers Ethereum + every EVM L1/L2 (Arbitrum, Base, Optimism, Scroll, zkSync, Polygon, BNB, opBNB, Avalanche, Celo, Kava EVM).
+- **What "done" looks like:**
+  1. `EVMKeyParser` (`Brand/EVMKeyParser.swift`) — `static func parsePrivateKey(_:) -> Data?` + `static func derivePublicKey(_:) -> Data` (uncompressed secp256k1 pub) + `static func address(fromPublicKey:) -> String` (lowercased 0x-prefixed).
+  2. `EIP55.checksumAddress(_:) -> String` — mixed-case checksum per EIP-55.
+  3. Swap into `KeyImportService` for the EVM-family branch.
+  4. Validated against EIP-55 reference vectors (e.g. `0x52908400098527886E0F7030069857D2E4169EE7`).
+- **Honesty checks:** EIP-55 casing must be correct — bad casing reads as "not your address" to anyone scanning.
+- **Depends on:** A secp256k1 implementation (shared with T-024) and a keccak256 implementation (pure Swift, ~100 lines, no dependency required).
+
+---
+
+### T-026 · Solana key derivation (ed25519 + base58)
+- **Status:** RESOLVED — 2026-06-06 (see SHIPPED.md entry "Review wallet screen: real ed25519 derivation + real RPC balances + honest 'Derivation pending' surface for stub chains"). `Brand/Base58.swift`, `Brand/SLIP0010.swift`, `Brand/Ed25519Derivation.swift` ship the real derivation; `KeyImportService.deriveAddresses(fromSeed:)` now returns the real Solana address at `m/44'/501'/0'/0'`.
+- **Priority:** P1
+- **Area:** Brand · Cryptography · Import Wallet
+- **File:** `UniApp/Sources/Features/ImportWallet/KeyImportService.swift:79` (StubKeyImportService — Solana branch of `deriveAddress(fromPrivateKey:on:)`).
+- **Inline comment:** `// TODO: (T-026) Replace stub with real ed25519 (Curve25519) + base58 Solana address derivation.`
+- **Context:** Solana keys: 64-byte expanded ed25519 secret key (base58-encoded, ~88 chars) OR 32-byte seed. Public key = ed25519(seed); address = base58(publicKey). CryptoKit ships `Curve25519.Signing.PrivateKey` (Apple-shipped ed25519 — no dependency needed). Base58 encoding is a ~50-line pure-Swift implementation.
+- **What "done" looks like:**
+  1. `Base58.encode(_:) -> String` + `Base58.decode(_:) -> Data?` (`Brand/Base58.swift`).
+  2. `SolanaKeyParser` — `static func parseSecretKey(_:) -> Curve25519.Signing.PrivateKey?` + `static func address(fromPrivateKey:) -> String`.
+  3. Swap into `KeyImportService` for `.solana`.
+- **Honesty checks:** Address validation against base58 + length (32-byte decoded). Reject any non-base58 character with a clear "Not a Solana address" message.
+- **Depends on:** Base58 (shared with T-027 XRP + T-028 Cosmos).
+
+---
+
+### T-027 · XRP key derivation (secp256k1 OR ed25519 + base58check with XRP alphabet)
+- **Status:** RESOLVED — 2026-06-06 (Trust Wallet Core via WalletCore SPM; see SHIPPED.md entry titled "Trust Wallet Core key derivation for all 24 chains + max-parallel scan pipeline").
+- **Priority:** P2
+- **Area:** Brand · Cryptography · Import Wallet
+- **File:** `UniApp/Sources/Features/ImportWallet/KeyImportService.swift:79` (XRP branch).
+- **Inline comment:** `// TODO: (T-027) Replace stub with real XRP family seed parsing + address derivation.`
+- **Context:** XRP family seeds are base58check-encoded with the XRP alphabet (different from Bitcoin base58 — `r` is allowed, `0` and capital `O` are not). Seed yields private key (secp256k1 by default, ed25519 if the seed has the ed25519 prefix byte `0xED`). Address = base58check(accountID) with type byte 0.
+- **What "done" looks like:**
+  1. `XRPBase58` (XRP's specific alphabet).
+  2. `XRPKeyParser` — parse `s...` seed, derive account ID, format `r...` address.
+  3. Swap into `KeyImportService` for `.ripple`.
+- **Honesty checks:** XRP addresses include a 4-byte checksum that must be verified — reject silently-wrong addresses.
+- **Depends on:** secp256k1 (T-024 dependency) and ed25519 (Curve25519, Apple-shipped).
+
+---
+
+### T-028 · Cosmos / Kava key derivation (secp256k1 + bech32 with chain-specific HRP)
+- **Status:** RESOLVED — 2026-06-06 (Trust Wallet Core via WalletCore SPM; see SHIPPED.md entry titled "Trust Wallet Core key derivation for all 24 chains + max-parallel scan pipeline").
+- **Priority:** P2
+- **Area:** Brand · Cryptography · Import Wallet
+- **File:** `UniApp/Sources/Features/ImportWallet/KeyImportService.swift:79` (Cosmos branch).
+- **Inline comment:** `// TODO: (T-028) Replace stub with real secp256k1 + bech32 Cosmos address derivation.`
+- **Context:** Cosmos SDK chains use secp256k1 keys and bech32 addresses with per-chain HRP (`kava` → `kava1…`). Address = bech32(HRP, RIPEMD-160(SHA-256(compressedPublicKey))).
+- **What "done" looks like:**
+  1. `Bech32` (`Brand/Bech32.swift`) — encode/decode per BIP-173. ~80 lines pure Swift.
+  2. `CosmosKeyParser` — given a private key and a chain's HRP, derive the bech32 address.
+  3. Swap into `KeyImportService` for `.kava`.
+- **Honesty checks:** HRP must match the chain. A `kava1…` address on a `cosmos…`-expecting view is a different account.
+- **Depends on:** secp256k1 (T-024).
+
+---
+
+### T-029 · NEAR key derivation (ed25519 + named accounts)
+- **Status:** PARTIAL — 2026-06-06 (see SHIPPED.md entry "Review wallet screen: real ed25519 derivation + real RPC balances + honest 'Derivation pending' surface for stub chains"). Implicit-account derivation ships via `Ed25519Derivation.nearImplicitAccount(seed:)` at `m/44'/397'/0'`. Named-account resolution (`alice.near` ↔ implicit account) remains OPEN — it requires an on-chain registration lookup and is not derivable from the seed.
+- **Priority:** P2
+- **Area:** Brand · Cryptography · Import Wallet
+- **File:** `UniApp/Sources/Features/ImportWallet/KeyImportService.swift:79` (NEAR branch).
+- **Inline comment:** `// TODO: (T-029) Replace stub with real ed25519 NEAR account derivation.`
+- **Context:** NEAR keys are ed25519 (Apple-shipped Curve25519). Accounts have two forms: (a) the canonical 64-hex-char `implicit account ID` derived from the public key, and (b) human-readable `.near` named accounts that map to the implicit account via NEAR's on-chain naming. Watch-only must accept both forms.
+- **What "done" looks like:**
+  1. `NEARKeyParser` — derive `implicit account ID` from ed25519 public key.
+  2. Address validation accepting both implicit and named (`*.near`) forms.
+- **Honesty checks:** A named account points to an implicit account that the user may not own — surface the mapping when known, but never claim ownership.
+- **Depends on:** ed25519 (Curve25519, Apple-shipped).
+
+---
+
+### T-030 · TON key derivation (ed25519 + TON address)
+- **Status:** RESOLVED — 2026-06-06 (Trust Wallet Core via WalletCore SPM; see SHIPPED.md entry titled "Trust Wallet Core key derivation for all 24 chains + max-parallel scan pipeline").
+- **Priority:** P2
+- **Area:** Brand · Cryptography · Import Wallet
+- **File:** `UniApp/Sources/Features/ImportWallet/KeyImportService.swift:79` (TON branch).
+- **Inline comment:** `// TODO: (T-030) Replace stub with real ed25519 + TON address derivation.`
+- **Context:** TON keys are ed25519. Addresses are 256-bit hashes of the smart-contract code + initial data, rendered as `EQ…` (bounceable) or `UQ…` (non-bounceable), base64url-encoded with a 2-byte tag + CRC-16. Watch-only import accepts either form.
+- **What "done" looks like:**
+  1. `TONAddress.encode(workchain:hash:bounceable:) -> String` + parser.
+  2. `TONKeyParser` — derive the standard wallet contract's address from an ed25519 public key (TON wallet v4 R2 by default).
+- **Honesty checks:** The same key derives different addresses per wallet contract version; the review step must name which contract version the displayed address corresponds to.
+- **Depends on:** ed25519 (Curve25519). CRC-16 (~30 lines pure Swift).
+
+---
+
+### T-032 · Expand `KnownLeakedSeeds` blocklist
+- **Status:** OPEN
+- **Priority:** P2
+- **Area:** Brand · Security · Import Wallet
+- **File:** `UniApp/Sources/Brand/KnownLeakedSeeds.swift` (extend the two `Set<String>` constants)
+- **Inline comment:** `// TODO: (T-032) Expand the blocklist over time as new tutorial seeds surface.`
+- **Context:** The v1 blocklist (shipped 2026-06-05) covers BIP-39 spec test vectors, Hardhat default, Anvil default, Ganache default, and one well-documented demo seed. Many more leaked seeds exist in the wild — every YouTube wallet-tutorial seed, every PoC exploit seed, every "Trezor recovery test" seed. Expansion is a community effort and should not gate the v1 ship.
+- **What "done" looks like:**
+  1. Reach at least 30 well-documented leaked mnemonics + 20 leaked private keys.
+  2. Each entry has a source URL or canonical reference in a code comment so future agents can audit.
+  3. Add a CI test that asserts `KnownLeakedSeeds.isLeaked(mnemonic:)` returns true for at least the top-50 most-googled crypto-tutorial mnemonics (test vectors stored in `Tests/Fixtures/`).
+- **Honesty checks:** the list is constant code; never a remote feed (Rule #3); no telemetry on which seeds users try.
+- **Depends on:** none.
+
+---
+
+### T-033 · Settings → Security → "Reset import warnings"
+- **Status:** RESOLVED 2026-06-06 — see SHIPPED entry "Full Settings — Wallets / Security / Preferences / Privacy / Help & About / Advanced". Shipped in `SecuritySettingsView`: conditional row visible only when `@AppStorage("hideImportKeyWarning") == true`, tap flips it back to `false`.
+- **Priority:** P3
+- **Area:** Features · Settings · Import Wallet
+- **File:** `UniApp/Sources/Features/Settings/SettingsView.swift` (add a row under a future Security section, or as a row in the existing list)
+- **Inline comment:** N/A (no inline marker yet — backlog until Settings → Security ships per T-022).
+- **Context:** Once a user taps "Don't show this warning again" on `ImportSecurityWarningSheet`, `@AppStorage("hideImportKeyWarning")` is set to true. There needs to be a way to un-suppress it for users who changed their mind. Lives naturally in Settings → Security.
+- **What "done" looks like:**
+  1. A Settings row labeled "Reset import warnings" appears only when `@AppStorage("hideImportKeyWarning") == true`.
+  2. Tapping the row sets the value to false and fires `UniHaptic.success`.
+  3. After reset, the warning sheet appears again on the next Import Wallet → Recovery phrase / Private key tap.
+- **Depends on:** T-022 (Settings → Security section landing).
+
+---
+
+### T-034 · `WatchOnlyEntryView` guide sheet — "What does watch-only mean?" — RESOLVED 2026-06-05
+- **Status:** RESOLVED — see SHIPPED entry titled "Import-flow comprehensive redesign: header + chain principal + example caption + WatchOnly guide".
+- **Priority:** P2
+- **Area:** Features · Import Wallet · Rule #18 audit
+- **File:** `UniApp/Sources/Features/ImportWallet/WatchOnlyImport.swift` (add `info.circle` toolbar item + `WatchOnlyGuideSheet` view in `ImportGuideSheets.swift`).
+- **Inline comment:** `// TODO: (T-034) Add WatchOnlyGuideSheet per Rule #18 Part C audit.`
+- **Context:** Per Rule #18 Part C, every entry surface that asks the user for a cryptographic artifact needs a guide sheet. Watch-only is the only Import method without one today.
+- **What "done" looks like:**
+  1. New `WatchOnlyGuideSheet` in `ImportGuideSheets.swift` mirroring `RecoveryPhraseGuideSheet`'s shape (hero `eye.fill`, 4-paragraph body: what watch-only is, what it looks like (a bech32 address example), how to use it, what Aperture does with it).
+  2. `info.circle` toolbar button on `WatchOnlyEntryView` triggers it.
+  3. New English source strings added to `Localizable.xcstrings` (~6 strings); translator agent dispatched per Rule #13.
+- **Depends on:** none.
+
+---
+
+### T-035 · `PinSetupFlow` guide sheet — "Why does Aperture need a PIN?"
+- **Status:** OPEN
+- **Priority:** P2
+- **Area:** Features · PIN · Rule #18 audit
+- **File:** `UniApp/Sources/Features/PinCode/PinSetupFlow.swift` (add `info.circle` to `.set` step toolbar + new `PinSetupGuideSheet` view).
+- **Inline comment:** `// TODO: (T-035) Add PinSetupGuideSheet per Rule #18 Part C audit.`
+- **Context:** Per Rule #18 Part C, PIN-setup first step needs a guide explaining why a PIN matters and what Aperture does with it. Builds trust by making the protection mechanism transparent (Rule #16 §A.2).
+- **What "done" looks like:**
+  1. New `PinSetupGuideSheet` (hero `lock.shield.fill`, paragraphs: what a PIN is in Aperture's context, what it protects, where it's stored — Keychain hash, never plaintext — and that it's optional with honest skip available).
+  2. `info.circle` toolbar button on `.set` step triggers the sheet.
+  3. New English strings + translator dispatch per Rule #13.
+- **Depends on:** none.
+
+---
+
+### T-036 · `PassphraseSheet` guide — "What's a passphrase?"
+- **Status:** OPEN
+- **Priority:** P2
+- **Area:** Features · Create Wallet · Import Wallet · Rule #18 audit
+- **File:** `UniApp/Sources/Features/CreateWallet/PassphraseSheet.swift` + new `PassphraseGuideSheet` view.
+- **Inline comment:** `// TODO: (T-036) Add PassphraseGuideSheet per Rule #18 Part C audit.`
+- **Context:** Passphrase is the most-misunderstood BIP-39 concept — many users confuse it with a wallet password. Guide sheet explains the "25th word" mechanism honestly: a memorised string that combines with the recovery phrase to derive a different wallet. State the irreversibility (we cannot recover or guess it).
+- **What "done" looks like:**
+  1. New `PassphraseGuideSheet` (hero `key.viewfinder`, paragraphs: what it is, what it looks like (example: an arbitrary memorable string), how it changes which wallet you get, what Aperture does — does NOT store it).
+  2. `info.circle` toolbar button on `PassphraseSheet` triggers.
+  3. The new disclosure-style passphrase entry in `MnemonicEntryView` (shipped 2026-06-05) also gets an `info.circle` inline (or links to the same sheet).
+  4. New strings + translator dispatch.
+- **Depends on:** none.
+
+---
+
+### T-037 · Bitcoin family balance scanner (Esplora REST)
+- **Status:** OPEN
+- **Priority:** P1
+- **Area:** Wallet · Balance Scanner · Phase 2
+- **File:** `UniApp/Sources/Wallet/BalanceScanner.swift` (new `BitcoinFamilyBalanceScanner` next to `StubBalanceScanner`).
+- **Inline comment:** `// TODO: (T-037) Real Bitcoin family balance + history via mempool.space Esplora REST.`
+- **Context:** Phase-1 ships `StubBalanceScanner` returning deterministic mock data. Phase 2 replaces the per-family output for `.bitcoin / .bitcoinCash / .litecoin / .dogecoin`. Endpoints: `mempool.space/api/address/<addr>` for BTC; equivalent Esplora deployments for the siblings (or chain-vendor explorers). Pure `URLSession` + JSON-RPC / REST — Rule #3.
+- **What "done" looks like:**
+  1. `BitcoinFamilyBalanceScanner` implementing `BalanceScanner` for the four BTC-family chains.
+  2. `nativeBalance` = confirmed `funded_txo_sum - spent_txo_sum` in chain base unit (BTC).
+  3. `isUsed = chain_stats.tx_count > 0 || mempool_stats.tx_count > 0`.
+  4. Fiat conversion via Coinbase or similar public price feed (already used by `CurrencyPreference`).
+  5. 5-second timeout, retry once on network failure.
+  6. Tested against one funded + one fresh address per chain.
+- **Honesty checks:** review-screen footer names `mempool.space` (and siblings) by host so the user knows where the read goes (Rule #16). No Aperture servers.
+- **Depends on:** T-024 (real Bitcoin BIP-32 derivation — `StubKeyImportService` mock addresses aren't on-chain; the scanner needs real addresses).
+
+---
+
+### T-038 · EVM family balance scanner (`eth_getBalance` + `eth_getTransactionCount`)
+- **Status:** OPEN
+- **Priority:** P1
+- **Area:** Wallet · Balance Scanner · Phase 2
+- **File:** `UniApp/Sources/Wallet/BalanceScanner.swift` (new `EVMFamilyBalanceScanner`).
+- **Inline comment:** `// TODO: (T-038) Real EVM family balance + history via JSON-RPC.`
+- **Context:** One scanner covers all 12 EVM chains (Ethereum, Arbitrum, Base, Optimism, Scroll, zkSync Era, Polygon, BNB Chain, opBNB, Avalanche, Celo, Kava EVM) via per-chain public RPC endpoints (Ankr, PublicNode, chain-vendor). JSON-RPC calls: `eth_getBalance` (latest) + `eth_getTransactionCount` (latest) per address.
+- **What "done" looks like:**
+  1. `EVMFamilyBalanceScanner` implementing `BalanceScanner` for the 12 EVM chains.
+  2. Per-chain endpoint table in code (no remote config — Rule #3).
+  3. Parallel fan-out via `withThrowingTaskGroup`.
+  4. `isUsed = (nonce > 0 || balance > 0)`.
+  5. Wei → native conversion (1e18 divisor for most, 1e8 for some L2s — verify per chain).
+- **Honesty checks:** Footer names the RPC providers (Ankr / PublicNode / etc.).
+- **Depends on:** T-025 (real EVM address derivation).
+
+---
+
+### T-039 · Solana balance scanner
+- **Status:** OPEN
+- **Priority:** P1
+- **Area:** Wallet · Balance Scanner · Phase 2
+- **File:** `UniApp/Sources/Wallet/BalanceScanner.swift` (new `SolanaBalanceScanner`).
+- **Inline comment:** `// TODO: (T-039) Real Solana balance + signature history via JSON-RPC.`
+- **Context:** `getBalance` (lamports → SOL) + `getSignaturesForAddress` (first page only — presence of any signature ⇒ `isUsed = true`). Endpoint: `api.mainnet-beta.solana.com` (Solana Foundation, public, rate-limited).
+- **What "done" looks like:** API as above. Lamports → SOL via 1e9 divisor.
+- **Depends on:** T-026 (real Solana address derivation).
+
+---
+
+### T-040 · Long-tail family scanners (XRP / Cosmos / NEAR / TON / Aptos / Sui / Stellar / Polkadot / TRON)
+- **Status:** OPEN
+- **Priority:** P2
+- **Area:** Wallet · Balance Scanner · Phase 2
+- **File:** `UniApp/Sources/Wallet/BalanceScanner.swift` (per-family scanners in subfiles).
+- **Inline comment:** `// TODO: (T-040) Real long-tail balance scanners.`
+- **Context:** One implementation per chain family. XRPL JSON-RPC, Cosmos REST (LCD), NEAR JSON-RPC, TON HTTP API v2, Aptos REST, Sui JSON-RPC, Horizon (Stellar), Subscan or substrate-RPC (Polkadot), TronGrid (TRON).
+- **What "done" looks like:** Each family ~80-120 lines, file-per-family. Tested against one funded + one fresh address per chain.
+- **Depends on:** T-027 (XRP), T-028 (Cosmos), T-029 (NEAR), T-030 (TON), T-031 (Aptos/Sui/Stellar/Polkadot/TRON).
+
+---
+
+### T-041 · BGTaskScheduler background balance refresh
+- **Status:** OPEN
+- **Priority:** P3
+- **Area:** Wallet · Balance Scanner · Background Fetch
+- **File:** new `UniApp/Sources/Wallet/BackgroundBalanceRefresher.swift`.
+- **Inline comment:** `// TODO: (T-041) Background balance refresh via BGTaskScheduler.`
+- **Context:** Apple's `BGAppRefreshTask`, ~once per hour budget. Out of Phase-1 scope. When implemented, runs all enabled scanners and writes results to a `BalanceCache` actor; review screens read cache on next foreground.
+- **What "done" looks like:**
+  1. Registered via `Info.plist` `BGTaskSchedulerPermittedIdentifiers`.
+  2. Battery-budget-aware (skip if `ProcessInfo.processInfo.isLowPowerModeEnabled == true`).
+  3. User preference toggle in Settings → Privacy.
+  4. Honors `@AppStorage("hideImportKeyWarning")`-style opt-out preference: `@AppStorage("backgroundBalanceRefresh")` Bool, default true.
+- **Honesty checks:** Settings copy plainly names that background refresh pings public RPC providers on Aperture's behalf — and the user can turn it off.
+- **Depends on:** T-037..T-040.
+
+---
+
+### T-031 · Aptos / Sui / Stellar / Polkadot / TRON key derivation (mixed families)
+- **Status:** RESOLVED — 2026-06-06 (Trust Wallet Core via WalletCore SPM; see SHIPPED.md entry titled "Trust Wallet Core key derivation for all 24 chains + max-parallel scan pipeline").
+- **Priority:** P3
+- **Area:** Brand · Cryptography · Import Wallet
+- **File:** `UniApp/Sources/Features/ImportWallet/KeyImportService.swift:79` (Aptos/Sui/Stellar/Polkadot/TRON branches).
+- **Inline comment:** `// TODO: (T-031) Replace stub with real per-chain key derivation for Aptos / Sui / Stellar / Polkadot / TRON.`
+- **Context:** Five remaining chains, three families:
+  - **Aptos / Sui** — ed25519 (Curve25519). Address = first 32 bytes of `SHA-3(publicKey ‖ scheme_id)`. Aptos uses scheme_id 0, Sui uses BLAKE2b.
+  - **Stellar** — ed25519. Address = StrKey-encoded public key (base32 + CRC-16). `GA…` prefix.
+  - **Polkadot** — sr25519 (Schnorrkel) OR ed25519. Address = SS58-encoded public key (base58 with network prefix byte + checksum). sr25519 requires a dedicated implementation — not Apple-shipped.
+  - **TRON** — secp256k1 + keccak256 (same crypto as EVM) but TRON's address encoding is base58check with a `0x41` version byte. Address starts with `T…`.
+- **What "done" looks like:**
+  1. Per-chain parser file in `Brand/` for each.
+  2. Swap into `KeyImportService` per case.
+  3. Polkadot may ship in watch-only-first mode if sr25519 implementation is deferred — explicitly state this in the UI.
+- **Honesty checks:** Different chains' encodings produce visually-similar addresses. The chain logo + name in the review step must be unmistakable.
+- **Depends on:** ed25519 (Apple-shipped), secp256k1 (T-024), BLAKE2b (pure Swift, ~150 lines).
+
+---
+
+### T-042 · Settings → Wallets (list + rename + reorder + delete)
+- **Status:** RESOLVED 2026-06-06 — see SHIPPED entry "Full Settings — Wallets / Security / Preferences / Privacy / Help & About / Advanced". Shipped via `WalletsListView` (list + drag-reorder + add-wallet entry rows + conditional searchable) and `WalletDetailView` (rename + view-phrase-when-available + delete with typed-name confirm). `WalletRepository` extended with `allWalletIds()` + `deleteAllWallets()`.
+- **Priority:** P1
+- **Area:** Features · Settings · Multi-wallet
+- **File:** future `UniApp/Sources/Features/Settings/WalletsListView.swift` + new row in `SettingsView`.
+- **Inline comment:** N/A (will land when the screen does).
+- **Context:** SwiftData (`WalletRecord`) now persists every wallet the user creates or imports per the 2026-06-06 database landing. Settings needs a surface to list, rename (`WalletRepository.renameWallet`), reorder (drag → update `sortOrder`), and delete (`WalletRepository.deleteWallet` + `SeedVault.deleteSeed`) those wallets — the multi-wallet UX entry point that the schema was built for.
+- **What "done" looks like:**
+  1. New row in `SettingsView` ("Wallets · N") leading `wallet.bifold` (or equivalent SF Symbol), trailing chevron + count.
+  2. `WalletsListView` — `@Query` of `WalletRecord` sorted by `sortOrder`, `insetGrouped` list; row shows name + kind + masked id; swipe-to-delete with two-tap confirm (Rule #16 honest irreversibility); drag-handle reorders.
+  3. Tap row → push `WalletDetailView` (rename field + show backup status + delete button).
+  4. Delete cascades: `WalletRepository.deleteWallet(id:)` removes the SwiftData row (cascading addresses/transactions/balances), then `SeedVault.deleteSeed(for:)` removes the Keychain item. Both wrapped in a single `do { try await ... }` so a Keychain failure surfaces as a footnote.
+- **Honesty checks (Rule #16):** delete confirmation names the consequence plainly ("This deletes the wallet from this iPhone. The recovery phrase is still yours.").
+- **Depends on:** T-018 (wallet home — to know what the multi-wallet UX should switch *between*).
+
+---
+
+### T-043 · Tests for persistence layer (SwiftData + SeedVault + BiometricEnrollmentTracker)
+- **Status:** OPEN
+- **Priority:** P1
+- **Area:** Database · Security · Testing
+- **File:** future `UniApp/Tests/` (no test target yet — needs xcodegen scheme + Swift Testing import).
+- **Inline comment:** N/A.
+- **Context:** Common testing rule (`~/.claude/rules/common-testing.md`) requires 80% coverage; the database layer landed 2026-06-06 with zero tests. This entry tracks the catch-up.
+- **What "done" looks like:**
+  1. Swift Testing target added via `xcodegen` (`@Test`, `#expect`).
+  2. `WalletRepositoryTests` — in-memory `ModelConfiguration(isStoredInMemoryOnly: true)` fixture, asserts insert/rename/delete/sortOrder behavior, asserts cascade deletion (deleting a wallet removes its addresses/transactions/balances).
+  3. `SeedVaultTests` — assert round-trip seed → AES-GCM → seed, assert wrong-key tamper rejection, assert `noSuchWallet` on missing items, assert delete idempotency. Use a UUID-namespaced Keychain service so tests don't collide with the app's items.
+  4. `BiometricEnrollmentTrackerTests` — assert snapshot capture, assert mismatch detection sets `requiresBiometricReenrollment`, assert acknowledge clears the flag. (Biometric domain state itself isn't mockable on simulator — these tests inject a synthetic snapshot via a test-only seam.)
+  5. CI coverage target ≥ 80% on `Database/` and `Security/` directories per global rule.
+- **Depends on:** none.
+
+---
+
+### T-044 · Background balance sync writing to SwiftData
+- **Status:** OPEN
+- **Priority:** P2
+- **Area:** Wallet · Background sync · Phase 2
+- **File:** consumer of T-037..T-040 scanners + `TransactionRepository.upsertBalance` / `upsertTransaction`.
+- **Inline comment:** N/A (lands when the scanners do).
+- **Context:** The `TransactionRepository` actor is built and exposes upsert methods; T-041 (BGTaskScheduler background refresh) and T-037..T-040 (per-family scanners) need a coordinator that drives them and writes to the repository. The wallet screen reads from the repository via `@Query`, so the path is one-way (scanner → DB → view) — no glue needed in feature views beyond the `@Query`.
+- **What "done" looks like:**
+  1. `BalanceSyncCoordinator` (`Wallet/BalanceSyncCoordinator.swift`) — actor that takes a list of `WalletAddressRecord.id`s + the appropriate per-family scanner + the `TransactionRepository`, fans out scans in parallel via `withThrowingTaskGroup`, upserts results.
+  2. Foreground trigger: call from the wallet screen's `.task { ... }` modifier so the first appear refreshes balances opportunistically.
+  3. Background trigger: invoked by `BGAppRefreshTask` (T-041).
+  4. Coalescing: per-address debounce so a foreground refresh + a near-simultaneous background refresh don't double-fetch.
+- **Depends on:** T-037..T-041 (scanners + BGTaskScheduler).
+
+---
+
+### T-045 · Optional CloudKit mirror for SwiftData store
+- **Status:** OPEN
+- **Priority:** P3 (defer until user demand)
+- **Area:** Database · Sync
+- **File:** `ApertureDatabase.swift` — switch `cloudKitDatabase: .none` to `.private(...)`.
+- **Inline comment:** N/A.
+- **Context:** SwiftData supports first-party CloudKit mirroring (`ModelConfiguration(cloudKitDatabase: .private(...))`). Today we use `.none` so the wallet metadata is iPhone-local matching Aperture's posture. A future user opt-in could enable cross-device sync of wallet *metadata* (names, addresses, txns) — but **NEVER** of seed material (Keychain ACL is `ThisDeviceOnly`; CloudKit Keychain sync is a separate user choice via Settings → iCloud Keychain). Surfacing this would require Settings → Wallets → "Sync wallet list across devices" toggle + clear copy explaining the boundary ("addresses sync; recovery phrases do not — they live on each device").
+- **What "done" looks like:**
+  1. CloudKit container provisioned + entitlement enabled.
+  2. Per-record `cloudKitDatabase` opt-in path (some `@Model` types might stay local-only).
+  3. Settings row with honest copy.
+  4. Schema additions tracked under a new schema version (`ApertureSchemaV2`).
+- **Honesty checks (Rule #16):** the toggle copy must state plainly that the seed (Keychain) does NOT sync via this toggle — that's a separate iOS-Keychain-iCloud concern.
+- **Depends on:** T-042 (Settings → Wallets surface exists first).
+
+---
+
+### T-046 · Re-enter backup flow against the *specific* unbacked wallet
+- **Status:** OPEN
+- **Priority:** P1
+- **Area:** Features · Wallet home · Backup recovery
+- **File:** `UniApp/Sources/Features/Wallet/WalletHomeView.swift` (`banners` view — inline `// TODO: (T-046)` placed at the `BackupRequiredBanner`'s `onBackUpNow` callback).
+- **Inline comment:** `// TODO: (T-046) Re-enter the backup flow against this specific wallet rather than the default create flow.`
+- **Context:** Today the wallet-home's `BackupRequiredBanner` taps simply present the default `RecoveryPhraseFlow` cover, which creates *a new* wallet — not what the user wants. The user wants to verify the *existing* unbacked wallet's mnemonic. Needs a variant of `RecoveryPhraseFlow` (or a new `BackupExistingWalletFlow`) that reads the active wallet's seed from `SeedVault.loadSeed(for:)`, reconstructs the mnemonic from the stored seed (BIP-39 reverse derivation isn't trivial — the seed alone doesn't reveal the mnemonic, so this needs to be handled at create time by storing the mnemonic separately in a second Keychain item OR by skipping seed-only persistence for unbacked wallets and instead persisting the mnemonic until verification clears the flag).
+- **What "done" looks like:**
+  1. Decide the seed-vs-mnemonic-storage policy for unbacked wallets.
+  2. Implement `BackupExistingWalletFlow` (or extend `RecoveryPhraseFlow` with a `mode: .new | .verifyExisting(walletId:)` parameter).
+  3. On verify success, call `WalletRepository.markBackupComplete(id:)` so the banner disappears.
+- **Honesty checks (Rule #16):** if the seed-vs-mnemonic decision is "store the mnemonic until verified, then delete it", the user must be told plainly at skip time that "your phrase is stored locally and encrypted on this iPhone until you back it up — backing up deletes the local copy." A user expecting "skip means we never store the phrase" deserves the truth.
+- **Depends on:** T-016 (Settings → Wallets "back up your recovery phrase" row — adjacent surface).
+
+---
+
+### T-047 · Receive screen — chain selection + QR code + share sheet
+- **Status:** OPEN (placeholder `ReceivePlaceholderView` shipped 2026-06-06)
+- **Priority:** P0
+- **Area:** Features · Wallet · Send / Receive
+- **File:** future `UniApp/Sources/Features/Wallet/Receive/ReceiveView.swift` (+ chain picker, address card, QR view).
+- **Inline comment:** N/A (placeholder is calm copy only).
+- **Context:** Receive needs: (1) chain picker per wallet's available addresses, (2) selected chain's address rendered as a copyable text + QR code (CoreImage's `CIFilter.qrCodeGenerator()` per Rule #3 — native-only, no SPM), (3) share sheet via `UIActivityViewController` / SwiftUI `ShareLink`, (4) optional "request specific amount" affordance (chain-specific URI generation: `bitcoin:`, `ethereum:`, `solana:`, etc.).
+- **What "done" looks like:**
+  1. Chain picker (Rule #14 native `.searchable` if > ~8 chains visible).
+  2. Address card: QR code centered, monospaced address below, "Copy address" `UniButton(.secondary)`.
+  3. ShareLink with a chain-specific URI when present, falling back to the bare address.
+  4. Per Rule #18: `info.circle` toolbar item → "What's an address?" guide sheet explaining that addresses are public and safe to share.
+- **Honesty checks (Rule #16):** the QR code is generated on-device. The address is the user's. Aperture sends nothing.
+- **Depends on:** none (the persisted addresses already exist in `WalletAddressRecord`).
+
+---
+
+### T-048 · Send screen — recipient + amount + fee + confirm + sign + broadcast
+- **Status:** OPEN (placeholder `SendPlaceholderView` shipped 2026-06-06)
+- **Priority:** P0
+- **Area:** Features · Wallet · Send / Receive
+- **File:** future `UniApp/Sources/Features/Wallet/Send/`.
+- **Context:** The complete flow: pick token → enter recipient → enter amount (with max button + fee estimate) → confirm → biometric/PIN gate → sign locally via the per-chain key derivation (T-024..T-031) → broadcast via per-chain RPC (T-037..T-040 shape, write side). Watch-only wallets cannot send (the wallet-home already disables the action; the Send screen never reaches signing on a watch-only).
+- **What "done" looks like:**
+  1. Recipient field with address validation per chain (clipboard-paste, QR-scan via `AVCaptureSession`).
+  2. Amount field with max-button + per-chain fee estimate.
+  3. Confirm screen with all parameters laid out plainly (Rule #16 — honest about what the user is about to commit to).
+  4. PIN/biometric gate before signing (`PinCodeView(mode: .verify)` per Rule #17).
+  5. Broadcast + tx-hash returned → optimistic `TransactionRecord` insert with `status: .pending`.
+- **Honesty checks (Rule #16):** the confirm screen names the destination, amount in native + fiat, fee in native + fiat, and the chain — never abstract. "You are sending 0.1 ETH to 0x… on Ethereum. Network fee 0.0003 ETH ($0.65). This cannot be undone."
+- **Depends on:** T-024..T-031 (per-chain signing), T-037..T-040 (per-chain broadcast endpoints — same RPCs the scanners use, write side), Rule #17 PIN/biometric gate.
+
+---
+
+### T-049 · `UniButton` circular icon-only variant (or `UniIconButton` companion)
+- **Status:** OPEN
+- **Priority:** P2
+- **Area:** Design system · Components
+- **File:** `UniApp/Sources/DesignSystem/Components/UniButton.swift` or new `UniIconButton.swift`.
+- **Inline comment:** N/A (the current inline `Button { ... }.buttonStyle(.glassProminent)` in `WalletActionRegion` is the unhonored Rule #19 surface).
+- **Context:** Rule #19 wants every CTA through `UniButton`. The current `UniButton` is text-label-only — circular glyph-only CTAs (the wallet-home action region's three round Send/Receive/Swap buttons, future floating actions on per-screen layouts) can't be expressed by it. Today's `WalletActionRegion` uses raw `Button { ... }.buttonStyle(.glassProminent)` calls as a scoped exception; making this a system primitive removes the exception.
+- **What "done" looks like:**
+  1. Either add a `UniButton.Style.icon(systemName: String, size: CGFloat)` variant OR introduce a companion `UniIconButton(systemImage:variant:action:)` with the four variants.
+  2. Migrate `WalletActionRegion` to the new primitive.
+  3. Document in `CLAUDE.md` Rule #19 §C as the canonical way to build circular glyph-only CTAs.
+  4. Per the variant's default haptic (Rule #10 §E), the icon button inherits its variant's haptic too.
+- **Depends on:** none.
+
+---
+
+### T-050 · Real per-chain decimals in the scan / persistence pipeline
+- **Status:** OPEN
+- **Priority:** P1
+- **Area:** Wallet · Balance pipeline · Database
+- **File:** `UniApp/Sources/Features/Wallet/WalletRefreshCoordinator.swift` (currently stores `decimals: 0` and `rawBalance` as a decimal-string).
+- **Inline comment:** Documented in the coordinator's per-address `scan` method.
+- **Context:** v1 stores the stub scanner's `nativeBalance` (already in chain base units, as a `Decimal`) as a decimal-string with `decimals: 0` so `WalletFormatting.decimalAmount` round-trips identity. This is a slight schema misuse — the `TokenBalanceRecord.rawBalance` documented contract is "the chain's base-unit integer" (satoshis for BTC, wei for ETH). When real per-family scanners land (T-037..T-040) they'll return on-chain raw integer values, and the persistence pipeline needs to know each chain's native decimals (8 / 18 / 9 / 6 / etc.).
+- **What "done" looks like:**
+  1. Add `SupportedChain.nativeDecimals: Int` (Bitcoin family = 8, EVM = 18, Solana = 9, Polkadot = 10, TRON = 6, NEAR = 24, …).
+  2. Update `WalletRefreshCoordinator.scan` to call into the real per-family scanner and persist with the chain's real decimals.
+  3. The wallet-home's `AssetRow` already calls `WalletFormatting.decimalAmount(rawBalance:decimals:)` correctly — no read-side change needed.
+- **Depends on:** T-037..T-040 (real per-chain scanners landing).
+
+---
+
+### T-051 · Transaction detail — block explorer link + contract data decoding
+- **Status:** OPEN (placeholder `TransactionDetailView` shipped 2026-06-06)
+- **Priority:** P3
+- **Area:** Features · Wallet · Transaction detail
+- **File:** `UniApp/Sources/Features/Wallet/TransactionDetailView.swift` (currently a read-only summary).
+- **Inline comment:** N/A.
+- **Context:** Today's detail surface lists hash / block / fee / counterparty / when / status. Two natural extensions: (1) a "View on \(explorer)" `Link` that opens the chain-appropriate block-explorer URL in Safari (mempool.space for BTC, etherscan/arbiscan/basescan/etc for EVM, solscan for SOL, …); (2) contract-call data decoding for EVM tx that interact with known contracts (ERC-20 transfer → "Sent 100 USDC to 0x…").
+- **What "done" looks like:**
+  1. `SupportedChain.explorerURL(forTxHash:)` returning a URL or nil.
+  2. `UniButton(.tertiary)` "View on \(host)" that opens via SwiftUI `Link` (no in-app browser per Rule #3).
+  3. EVM contract data decoding for the top-N stablecoins (ERC-20 `transfer(address,uint256)`); other contracts fall back to "Contract interaction."
+- **Honesty checks (Rule #16):** the explorer hostname is named in the link copy ("View on etherscan.io") so the user knows where the click goes (Rule #16 §A.5).
+- **Depends on:** none.
+
+---
+
+### T-052 · `AppLockView` — auto-trigger biometric prompt on appear when biometric is enabled
+- **Status:** OPEN
+- **Priority:** P1
+- **Area:** Security · App lock
+- **File:** `UniApp/Sources/Features/Wallet/AppLockView.swift`.
+- **Inline comment:** N/A.
+- **Context:** Today's `AppLockView` shows the PIN keypad and exposes the biometric trigger button. When biometric is enabled, the user expects the Face ID prompt to fire automatically on appear (matching iOS lock-screen behavior) so unlock is one glance rather than a tap. Easy add — `.task { if biometricEnabled { await trigger } }` calling `BiometricService.authenticate(reason:)` and on success calling `lockController.unlock()`.
+- **What "done" looks like:**
+  1. On `AppLockView` appear, if `@AppStorage("biometricEnabled") == true` and `BiometricService.isAvailable`, invoke `authenticate` automatically.
+  2. On success: `lockController.unlock()` + capture new snapshot.
+  3. On failure (user cancelled / failed): leave the PIN keypad available as fallback. No retry storm.
+  4. If biometric is disabled or unavailable, PIN-only path remains the unchanged default.
+- **Depends on:** none.
+
+---
+
+### T-053 · EVM family: full 12-chain RPC registry + adapter coverage
+- **Status:** OPEN (Ethereum-only Phase 1 shipped 2026-06-06 — `docs/RPC-ARCHITECTURE.md` Phases 0+1)
+- **Priority:** P1
+- **Area:** Networking · EVM · Phase 2
+- **File:** `UniApp/Sources/Networking/RPCRegistry.swift` (add 11 entries) + `UniApp/Sources/Features/Wallet/WalletRefreshCoordinator.swift` (broaden the `.ethereum`-only gate to all EVM chains)
+- **Context:** Phase 1 wires Ethereum end-to-end via `RPCClient` + `EVMChainAdapter`. The other 11 EVM chains use the same adapter — they just need registry entries. Per `docs/RPC-ARCHITECTURE.md` §2.2.1, publicnode is the primary for: arbitrum, base, optimism, polygon, bnbChain, opBNB, avalanche, celo, scroll, zkSync, kavaEvm. Each entry needs ≥ 1 alternative-provider fallback (Ankr / chain-vendor RPC) and ideally a third fallback.
+- **What "done" looks like:**
+  1. 11 new `SupportedChain → [RPCEndpoint]` entries in `RPCRegistry.catalog`.
+  2. `WalletRefreshCoordinator.scan` gate widened from `address.chain == .ethereum` to `address.chain.family == .evm` (or equivalent — needs `SupportedChain.family` accessor if not present).
+  3. Validated on Thuglife against a real test address on each chain with known on-chain balance.
+- **Depends on:** none (Phase 1 foundation is shipped).
+
+---
+
+### T-054 · Bitcoin family adapter (mempool.space REST + Esplora siblings)
+- **Status:** OPEN
+- **Priority:** P1
+- **Area:** Networking · Bitcoin family · Phase 3
+- **File:** new `UniApp/Sources/Networking/BitcoinFamilyAdapter.swift` + REST registry entries
+- **Context:** Per `docs/RPC-ARCHITECTURE.md` §3.2, mempool.space is the canonical REST pattern for Bitcoin. BCH/LTC/DOGE use Esplora-shaped siblings (blockchain.info, bch.loping.net, dogechain.info). REST not JSON-RPC — `RPCClient.callREST` already handles it.
+- **What "done" looks like:**
+  1. New adapter mirroring `EVMChainAdapter`'s shape: `fetchNativeBalance(address) -> Decimal`, `fetchAccountSummary -> (balance, isUsed)`.
+  2. Registry entries for `.bitcoin / .bitcoinCash / .litecoin / .dogecoin` with primary `mempool.space` + ≥ 1 fallback per chain.
+  3. Coordinator gate extended.
+- **Depends on:** T-053 (so the EVM path is stable before we open a second family).
+
+---
+
+### T-055 · Solana / XRP / Stellar adapters
+- **Status:** OPEN
+- **Priority:** P2
+- **Area:** Networking · Long-tail L1 · Phase 4
+- **File:** new `Networking/SolanaChainAdapter.swift`, `Networking/XRPChainAdapter.swift`, `Networking/StellarChainAdapter.swift`
+- **Context:** Solana → JSON-RPC against `api.mainnet-beta.solana.com` (`getBalance` for native, `getTokenAccountsByOwner` for SPL). XRP → JSON-RPC against `s1.ripple.com:51234` (`account_info`). Stellar → REST against `horizon.stellar.org` (`/accounts/{id}`).
+- **What "done" looks like:** three adapter files + registry entries + coordinator gates. Real-address validation on each chain.
+- **Depends on:** T-054 (REST path proven).
+
+---
+
+### T-056 · NEAR / TON / TRON / Polkadot / Aptos / Sui / Cosmos adapters
+- **Status:** OPEN
+- **Priority:** P2-P3
+- **Area:** Networking · Long-tail L1 · Phase 5
+- **File:** one adapter file per chain (~7 files).
+- **Context:** Per `docs/RPC-ARCHITECTURE.md` §2.2.1 list. Each chain ~80-120 lines.
+- **What "done" looks like:** each chain returns a real balance on its row in the wallet home. Registry entries with ≥ 2 fallbacks per chain.
+- **Depends on:** T-055.
+
+---
+
+### T-057 · Per-chain transaction history (logs / explorer REST)
+- **Status:** OPEN
+- **Priority:** P1
+- **Area:** Networking · Transaction history · Phase 6
+- **File:** extend each chain adapter with `fetchRecentTransactions(address, limit: Int) -> [TxRecord]`. `TransactionRepository.upsertTransaction(...)` already exists.
+- **Context:** Phase 1-5 deliver real balances. Phase 6 delivers real transaction history. EVM: `eth_getLogs` on ERC-20 `Transfer(address,address,uint256)` topic filtered by address. Bitcoin family: `mempool.space/api/address/{addr}/txs`. Solana: `getSignaturesForAddress`. Each chain has its own pagination model.
+- **What "done" looks like:** the wallet home's "Recent activity" section populates from real on-chain data per chain. Honest "loaded from <provider>" footnote per row.
+- **Depends on:** T-053..T-056 (balance path stable).
+
+---
+
+### T-058 · UI polish — "Last synced via X" footers + retry button
+- **Status:** OPEN
+- **Priority:** P2
+- **Area:** Wallet home · Honesty surfaces
+- **File:** `UniApp/Sources/Features/Wallet/WalletHomeHeader.swift`, new per-chain row footer.
+- **Context:** Per `docs/RPC-ARCHITECTURE.md` §7, every chain row should name the provider that served the read. Currently the header's roll-up just says "Last synced 2m ago" — should add "via publicnode.com." When `RPCError.allEndpointsFailed`, show a tap-to-retry chain-row footer.
+- **What "done" looks like:** every chain row shows provider attribution. Failed chains have an obvious retry path.
+- **Depends on:** T-053..T-056.
+
+---
+
+### T-059 · Settings → About → Network providers
+- **Status:** OPEN
+- **Priority:** P3
+- **Area:** Settings · Privacy · Transparency
+- **File:** new `Features/Settings/NetworkProvidersView.swift`.
+- **Context:** Per `docs/RPC-ARCHITECTURE.md` §7, the user should be able to see every chain's primary + fallback providers in honest order. Settings → About → Network providers lists them.
+- **What "done" looks like:** scrollable list of all 24 chains, each with primary + fallbacks named, in priority order.
+- **Depends on:** T-053..T-056 (the registry is populated).
+
+---
+
+### T-060 · Receive screen v2 — amount entry, memo / destination tag, brightness boost, save-as-image
+
+- **Status:** OPEN
+- **Priority:** P2
+- **Area:** Features/Receive
+- **Inline marker:** none yet (file: `UniApp/Sources/Features/Receive/ReceiveView.swift` — body's `actionRow` is the natural insertion point; a TODO marker will be added when v2 work starts).
+- **Context:** Receive v1 ships (SHIPPED.md 2026-06-06) with the
+  v1 contract — *show the address; share the address; warn about
+  the network*. v2 closes the bonus features intentionally
+  deferred there.
+- **What "done" looks like:**
+  1. **Amount field**: optional decimal entry with the chain's
+     native ticker label. When the user enters a value, the
+     screen's QR payload switches from the bare address to a
+     chain-URI: `bitcoin:bc1q…?amount=0.001` /
+     `ethereum:0x…?value=<wei>` / `solana:<addr>?amount=<lamports>`.
+     Pure URI encoding — no third-party package.
+  2. **Memo / destination tag**: only surfaced when
+     `chain ∈ {.ripple, .stellar, .ton}`. For other chains the
+     field is hidden (memos there are address-prefix nonsense
+     and would confuse the user). The memo is encoded into the
+     payment URI per each chain's convention.
+  3. **Brightness boost**: on `.onAppear` push
+     `UIScreen.main.brightness` to 1.0; restore on `.onDisappear`.
+     Store the original brightness in `@State` so the restore is
+     honest. Gated on a user preference
+     (`@AppStorage("autoBrightnessOnReceive")`, default `true`).
+  4. **Save QR as image**: trailing `UniButton(.secondary)` "Save
+     image" that renders the `ReceiveQRCard` body to a UIImage
+     via `ImageRenderer` and writes via `PHPhotoLibrary` with
+     prior auth. Requires `NSPhotoLibraryAddUsageDescription`
+     Info.plist key (`INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription`
+     in `project.yml`).
+- **Honesty checks:** the amount field must never display the
+  user's address-amount combo as if the funds had already
+  arrived. The amount is the *request* — copy in v2 should read
+  "Request 0.001 BTC" rather than "Amount: 0.001 BTC".
+- **Depends on:** none.
+
+---
+
 ## Backlog (anticipated TODOs not yet placed inline)
 
 These are known gaps that will become inline TODOs as soon as the relevant
@@ -130,16 +721,16 @@ forget them when we get there.
 - **Depends on:** T-012 (Keychain persistence), T-008 (domain protocol).
 
 ### T-012 · Biometric setup + Keychain encryption (Step 5 of T-002)
-- **Status:** OPEN
+- **Status:** SPLIT 2026-06-04. The PIN-side + biometric-toggle half **shipped** under Rule #17 (see `SHIPPED.md` entry titled "Unified PIN + Face ID per Rule #17 — PinCodeView, BiometricService, PinCodeStorage, PinSetupFlow"). The seed-encryption-by-PIN-derived-key half remains **OPEN**.
 - **Priority:** P0
 - **Area:** Onboarding · Create-wallet flow Step 5
-- **File:** future `UniApp/Sources/Features/CreateWallet/BiometricSetupView.swift`; pushed via `RecoveryPhraseDestination.biometric`.
-- **Context:** After seed verification, prompt Face ID / passcode (`LocalAuthentication` framework — Rule #3 Part A.6) and encrypt the seed into the Keychain with `kSecAttrAccessibleWhenPasscodeSetThisDeviceOnly`.
-- **What "done" looks like:**
-  1. `WalletService.persistSeed(_ words: [String]) async throws` — caller provides the verified phrase; service encrypts + stores.
-  2. The user sees a single Face ID prompt; on success, navigate to T-018 (wallet home).
-  3. On Face ID refusal, fall back to device passcode; on passcode unavailable, surface an honest "Your iPhone needs a passcode to protect your wallet" message + a "Set up passcode" deep link.
-- **Depends on:** T-010, T-008.
+- **File:** future addition wiring `PinCodeStorage`'s derived key into a `WalletService.persistSeed(_:)` Keychain write.
+- **Context (shipped half):** `BiometricService` (`UniApp/Sources/Security/BiometricService.swift`) wraps `LocalAuthentication` with a single `authenticate(reason:)` async API per Rule #17 §B — feature code never imports `LAContext` directly. `PinCodeStorage` (`UniApp/Sources/Security/PinCodeStorage.swift`) holds a PBKDF2-HMAC-SHA256 hash (100,000 iterations, 16-byte random salt, constant-time compare) in Keychain under `kSecAttrAccessibleWhenUnlockedThisDeviceOnly`. `PinSetupFlow` invites the user post-`BackupVerifyView` to set a 6-digit PIN and (optionally) enable biometrics. Skip is honest via `PinSkipWarningSheet`.
+- **What "done" looks like (remaining half — seed encryption):**
+  1. `WalletService.persistSeed(_ words: [String]) async throws` — derives a Keychain-stored encryption key from the user's PIN (when set) or directly from device-class protection (when no PIN), encrypts the 64-byte BIP-39 seed via AES-GCM, and writes the ciphertext to Keychain.
+  2. On every subsequent app launch, the unlock flow runs `PinCodeView(mode: .verify)` (when `pinEnabled == true`) or the biometric prompt (when `biometricEnabled == true`), then unwraps the seed for the session.
+  3. On Face ID refusal, fall back to PIN verify. On no-PIN, no-biometric path, the seed unlocks via device-passcode-protected Keychain item access.
+- **Depends on:** T-010 (shipped), T-008 (domain protocol still open). Closely related to T-019 (passphrase storage adopts the same PBKDF2-derived key when it lands).
 
 ### T-014 · Screen-recording / mirroring warning sheet on `RecoveryPhraseView`
 - **Status:** RE-SPECCED 2026-06-04 — mirrors the screenshot pattern shipped under T-013 today: warn-after-the-fact, do not blank the words.
@@ -186,6 +777,34 @@ forget them when we get there.
 - **Area:** Wallet · Home
 - **Context:** The destination after a successful create-or-import flow. Out of scope per user direction on 2026-06-04 ("for now do this job, plan it well — but don't create the main screen of the wallet"). The current `WalletReadyView` (`UniApp/Sources/Features/CreateWallet/WalletReadyView.swift`) is a one-screen placeholder ("Your wallet is ready.") that dismisses the create-wallet cover and clears the unbacked-up flag; it is **not** the real home and must be replaced by a proper wallet home in a future design pass.
 - **What "done" looks like:** TBD when the wallet-home design pass is requested. `WalletReadyView` is removed at that point and the cover dismisses straight into the real home.
+
+### T-022 · Settings → Security section (Change PIN / Disable PIN / Toggle biometrics)
+- **Status:** RESOLVED 2026-06-06 — see SHIPPED entry "Full Settings — Wallets / Security / Preferences / Privacy / Help & About / Advanced". Shipped via `SecuritySettingsView` (PIN enable/change/disable via `Menu`-driven row + `PinChangeFlow` + `PinDisableVerifyFlow`), biometric toggle (only when PIN enabled + `BiometricService.isAvailable`), auto-lock duration via `AutoLockPickerView` (5 options), reset import warnings row, plus the **auto-lock screen itself** via `AppLockView` + `AutoLockController` (ScenePhase-observed, cold-launch-locked when PIN enabled, configurable threshold). Resolves T-023 (App-launch lock screen) at the same time.
+- **Priority:** P1
+- **Area:** Settings · Security
+- **Context:** Rule #17 establishes one PIN UI (`PinCodeView`), one biometric service (`BiometricService`), and one storage layer (`PinCodeStorage`). The create-wallet flow now uses them once. The next surface that needs them is **Settings → Security** so a user who skipped PIN setup at create-wallet can enable it later, and a user who set one can change or disable it. Per Rule #17 §F, every PIN-required surface reuses `PinCodeView` with a different `mode`; no second PIN UI is built.
+- **What "done" looks like:**
+  1. New row group in `SettingsView` under a "Security" section header: "PIN" (toggle row showing on/off state + chevron to enter the PIN management screen) and "Face ID" / "Touch ID" / "Optic ID" (toggle row, only shown when `BiometricService.isAvailable`).
+  2. Tapping the PIN row pushes a `SecurityPinManagementView` that exposes three actions depending on `PinCodePreference.isPinEnabled()`:
+     - If PIN is enabled: "Change PIN" (verify current → set new → confirm new), "Disable PIN" (verify current → `PinCodeStorage.clear()` + `pinEnabled = false` + also flip `biometricEnabled = false` since biometric is a per-PIN convenience).
+     - If PIN is disabled: "Enable PIN" (set → confirm → invite biometric prompt — same `PinSetupFlow`-style sequence).
+  3. The biometric toggle row directly flips `biometricEnabled`; flipping to `true` invokes `BiometricService.authenticate(reason:)` and refuses the flip if authentication fails.
+  4. All copy flows through `Localizable.xcstrings` (Rule #9).
+- **Honesty checks (Rule #2 §A.7 + Rule #16):** "Disable PIN" must name the consequence ("Without a PIN, your wallet is only protected by your iPhone's lock screen") — reuses `PinSkipWarningSheet`'s shape. Biometric toggle to `false` is silent (the user is reducing convenience, not security).
+- **Depends on:** Settings surface for a "Security" section; T-012's seed-encryption half is independent.
+
+### T-023 · App-launch lock screen — `PinCodeView(mode: .verify)` when `pinEnabled == true`
+- **Status:** RESOLVED 2026-06-06 — see SHIPPED entry "Full Settings — Wallets / Security / Preferences / Privacy / Help & About / Advanced". Shipped via `AppLockView` + `AutoLockController`. Cold-launch policy: locked iff PIN is enabled. Background-return policy: locked when `(now - backgroundedAt) ≥ AutoLockPreference.resolvedDuration(raw)` (5 user-selectable options). Reuses `PinCodeView(mode: .verify)` per Rule #17 § H. "Forgot PIN?" presents a Rule #16-honest sheet explaining there is no PIN reset; recovery requires reinstalling + importing from the recovery phrase. **T-052 tracks the open follow-up: auto-trigger the biometric prompt on `AppLockView` appear when biometric is enabled.**
+- **Priority:** P1
+- **Area:** App shell · Security
+- **Context:** Once the user has set a PIN, every cold launch / foreground-from-background transition must gate the wallet home behind `PinCodeView(mode: .verify)` (or the biometric trigger when `biometricEnabled == true`). This is the second muscle-memory surface for the PIN per Rule #17 §H — same dots, same keypad, same Face ID fallback position as the create-wallet PIN. **Reuses `PinCodeView` — no second implementation built.**
+- **What "done" looks like:**
+  1. `UniAppApp` (or a `RootRouter`) reads `PinCodePreference.isPinEnabled()` at scene-active time. When `true`, present `PinCodeView(mode: .verify)` as a `.fullScreenCover` over the wallet home until the user authenticates.
+  2. If `biometricEnabled == true` and `BiometricService.isAvailable == true`, automatically invoke `BiometricService.authenticate(reason: "Unlock Aperture with Face ID.")` on present; the user can still fall back to PIN entry by tapping a digit.
+  3. The `onForgotPin` closure passed to `PinCodeView` presents a "Reset wallet via recovery phrase" path — losing the PIN is recoverable only by restoring from the BIP-39 mnemonic, never by Aperture (Rule #16 §A.6 honest limit).
+  4. Foreground-from-background re-presents the lock if the app was backgrounded for more than N seconds (TBD design — 30s is the iOS default for many wallet apps).
+- **Honesty checks:** the "Forgot PIN?" sheet must clearly state the trade-off — recovery via mnemonic re-imports the wallet, it does not "reset the PIN."
+- **Depends on:** T-018 (wallet home destination), T-012's seed-encryption half (so the unlock has something meaningful to unlock).
 
 ---
 

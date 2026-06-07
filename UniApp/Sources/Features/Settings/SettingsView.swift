@@ -1,70 +1,72 @@
 import SwiftUI
 
 /// Settings screen — presented as a `.sheet(...)` from the onboarding app
-/// bar (gear icon). Four sections by design, top to bottom:
+/// bar (gear icon).
 ///
-///   1. **Language** — picks one of 20 supported languages (or System).
-///   2. **Appearance** — Light / Dark / System (T-006).
-///   3. **Haptic feedback** — Rule #10 toggle (in section 1, after appearance).
-///   4. **Currency** — fiat-display preference (20 fiats, Coinbase-backed).
-///   5. **About** — app version, Terms, Privacy, design attribution.
+/// **Architecture note.** Settings is a *navigation experience* — a root
+/// list of options that pushes per-option pickers, each with its own
+/// `List` and (for Language / Currency) a `.searchable` field. That
+/// requires a real `NavigationStack`, which is incompatible with the
+/// content-sized `UniSheet` shell used by the app's warning /
+/// disclosure / passphrase / open-source sheets. So Settings keeps the
+/// classic iOS-Settings rendering: `NavigationStack` + `List` + `.insetGrouped`
+/// sections + native `.searchable` pickers. The sheet's presentation
+/// detents are `[.medium, .large]` so the user can drag-up if they need
+/// more room (e.g. for the 50-row Language picker).
 ///
 /// Layered honestly: the sheet itself carries the system Liquid Glass
-/// chrome; the `List` rows inside are opaque content (Rule #2 §B.3 — max
-/// two glass layers in a region). System `insetGrouped` style gives the
-/// native iOS 26 Settings feel without inventing chrome.
-///
+/// chrome; the `List` rows inside are opaque content (Rule #2 §B.3).
 /// All visible strings flow through `LocalizedStringKey` and the String
-/// Catalog (Rule #9). Language switching uses the iOS-level locale we
-/// override at the app root in `UniAppApp.swift`; it propagates here for
-/// free via the SwiftUI environment.
-/// Destinations the Settings sheet can push. Encoded as a value enum so
-/// the navigation path can be hoisted to the presenter (`OnboardingView`)
-/// and preserved across sheet content rebuilds (Rule #12 §G).
+/// Catalog (Rule #9).
 enum SettingsDestination: Hashable, Codable {
+    case wallets
+    case walletDetail(UUID)
+    case security
+    case autoLock
+    case privacy
+    case acknowledgments
+    case networkProviders
+    case advanced
+    case hideSmallBalances
+
     case language
     case appearance
     case currency
+    case help
     case about
 }
 
 struct SettingsView: View {
     @Environment(\.dismiss) private var dismiss
 
-    /// Hoisted navigation path. Lives on `OnboardingView` so that when
-    /// the sheet's content tree is rebuilt (on a layout-direction flip),
-    /// the path survives the rebuild and the rebuilt `NavigationStack`
-    /// reconstructs the same destination — the user stays on the picker
-    /// they were inside, no matter the trigger.
+    /// Hoisted navigation path. Lives on `OnboardingView` so the path
+    /// survives sheet-content rebuilds on RTL/LTR direction flips
+    /// (Rule #12 §G) and the rebuilt `NavigationStack` reconstructs the
+    /// same destination — the user stays on the picker they were inside.
     @Binding var navigationPath: NavigationPath
 
-    @AppStorage("themePreference") private var themeRaw: String = ThemePreference.light.rawValue
+    @AppStorage("themePreference") private var themeRaw: String = ThemePreference.defaultRaw
     @AppStorage("languagePreference") private var languageCode: String = LanguagePreference.systemCode
     @AppStorage(HapticPreference.storageKey) private var hapticEnabled: Bool = HapticPreference.defaultValue
     @AppStorage(CurrencyPreference.storageKey) private var currencyCode: String = CurrencyPreference.defaultCode
+    @AppStorage(HideBalancesPreference.hideBalanceOnHomeKey) private var hideBalanceOnHome: Bool = false
+    @AppStorage(HideBalancesPreference.thresholdKey) private var hideSmallThreshold: Double = HideBalancesPreference.defaultThreshold
+
+    @State private var isShowingTerms: Bool = false
+    @State private var isShowingPrivacyPolicy: Bool = false
 
     private var theme: ThemePreference {
-        ThemePreference(rawValue: themeRaw) ?? .light
+        ThemePreference(rawValue: themeRaw) ?? .system
     }
 
-    /// User-visible label for the language row — the *native* name of the
-    /// currently selected language, or the localized "System" sentinel.
     private var languageRowTrailing: LocalizedStringKey {
         if languageCode == LanguagePreference.systemCode {
             return "System"
         }
-        // SupportedLanguage.nativeName is a runtime String; wrap it so the
-        // row's trailing label still flows through `LocalizedStringKey`'s
-        // formatting (the value itself is the language's own self-name —
-        // not localized further, since the string IS the localization).
         let native = LanguagePreference.language(for: languageCode)?.nativeName ?? "System"
         return LocalizedStringKey(native)
     }
 
-    /// Trailing label for the Currency row — `<symbol> · <code>`. The symbol
-    /// (`$`, `€`, `¥`, …) is a glyph, not localized; the code (`USD`, `EUR`)
-    /// is an ISO-4217 string, also not localized. We wrap as `LocalizedStringKey`
-    /// to satisfy `SettingsRow`'s API; the value passes through verbatim.
     private var currencyRowTrailing: LocalizedStringKey {
         let currency = CurrencyPreference.currency(for: currencyCode)
             ?? CurrencyPreference.all[0]
@@ -74,6 +76,31 @@ struct SettingsView: View {
     var body: some View {
         NavigationStack(path: $navigationPath) {
             List {
+                // Section 1 — Wallets (multi-wallet management)
+                Section {
+                    NavigationLink(value: SettingsDestination.wallets) {
+                        SettingsRow(
+                            systemImage: "creditcard.and.123",
+                            title: "Wallets",
+                            trailing: nil
+                        )
+                    }
+                    .listRowBackground(UniColors.Background.secondary)
+                }
+
+                // Section 2 — Security
+                Section {
+                    NavigationLink(value: SettingsDestination.security) {
+                        SettingsRow(
+                            systemImage: "lock.shield",
+                            title: "Security",
+                            trailing: nil
+                        )
+                    }
+                    .listRowBackground(UniColors.Background.secondary)
+                }
+
+                // Section 3 — Preferences (existing + new hide toggles)
                 Section {
                     NavigationLink(value: SettingsDestination.language) {
                         SettingsRow(
@@ -82,6 +109,7 @@ struct SettingsView: View {
                             trailing: languageRowTrailing
                         )
                     }
+                    .listRowBackground(UniColors.Background.secondary)
 
                     NavigationLink(value: SettingsDestination.appearance) {
                         SettingsRow(
@@ -90,11 +118,8 @@ struct SettingsView: View {
                             trailing: theme.label
                         )
                     }
+                    .listRowBackground(UniColors.Background.secondary)
 
-                    HapticToggleRow(isOn: $hapticEnabled)
-                }
-
-                Section {
                     NavigationLink(value: SettingsDestination.currency) {
                         SettingsRow(
                             systemImage: "dollarsign.circle",
@@ -102,9 +127,47 @@ struct SettingsView: View {
                             trailing: currencyRowTrailing
                         )
                     }
+                    .listRowBackground(UniColors.Background.secondary)
+
+                    HapticToggleRow(isOn: $hapticEnabled)
+                        .listRowBackground(UniColors.Background.secondary)
+
+                    HideBalanceToggleRow(isOn: $hideBalanceOnHome)
+                        .listRowBackground(UniColors.Background.secondary)
+
+                    NavigationLink(value: SettingsDestination.hideSmallBalances) {
+                        SettingsRow(
+                            systemImage: "eye.slash.circle",
+                            title: "Hide small balances",
+                            trailing: LocalizedStringKey(HideBalancesPreference.option(for: hideSmallThreshold).label(currencyCode: currencyCode))
+                        )
+                    }
+                    .listRowBackground(UniColors.Background.secondary)
                 }
 
+                // Section 4 — Privacy
                 Section {
+                    NavigationLink(value: SettingsDestination.privacy) {
+                        SettingsRow(
+                            systemImage: "hand.raised",
+                            title: "Privacy",
+                            trailing: nil
+                        )
+                    }
+                    .listRowBackground(UniColors.Background.secondary)
+                }
+
+                // Section 5 — Help & About
+                Section {
+                    NavigationLink(value: SettingsDestination.help) {
+                        SettingsRow(
+                            systemImage: "questionmark.circle",
+                            title: "Help & Support",
+                            trailing: nil
+                        )
+                    }
+                    .listRowBackground(UniColors.Background.secondary)
+
                     NavigationLink(value: SettingsDestination.about) {
                         SettingsRow(
                             systemImage: "info.circle",
@@ -112,40 +175,96 @@ struct SettingsView: View {
                             trailing: LocalizedStringKey(AboutInfo.versionString)
                         )
                     }
+                    .listRowBackground(UniColors.Background.secondary)
+
+                    NavigationLink(value: SettingsDestination.acknowledgments) {
+                        SettingsRow(
+                            systemImage: "text.book.closed",
+                            title: "Acknowledgments",
+                            trailing: nil
+                        )
+                    }
+                    .listRowBackground(UniColors.Background.secondary)
+
+                    NavigationLink(value: SettingsDestination.networkProviders) {
+                        SettingsRow(
+                            systemImage: "network",
+                            title: "Network providers",
+                            trailing: nil
+                        )
+                    }
+                    .listRowBackground(UniColors.Background.secondary)
+                }
+
+                // Section 6 — Advanced (terminal nuclear hatch)
+                Section {
+                    NavigationLink(value: SettingsDestination.advanced) {
+                        SettingsRow(
+                            systemImage: "wrench.and.screwdriver",
+                            title: "Advanced",
+                            trailing: nil
+                        )
+                    }
+                    .listRowBackground(UniColors.Background.secondary)
                 }
             }
             .listStyle(.insetGrouped)
+            .scrollContentBackground(.hidden)
+            .background(UniColors.Background.primary)
             .navigationTitle(Text("Settings"))
-            .navigationBarTitleDisplayMode(.inline)
+            .navigationBarTitleDisplayMode(.large)
             .navigationDestination(for: SettingsDestination.self) { destination in
                 switch destination {
-                case .language:    LanguagePickerView()
-                case .appearance:  AppearancePickerView()
-                case .currency:    CurrencyPickerView()
-                case .about:       AboutView()
+                case .wallets:                   WalletsListView()
+                case .walletDetail(let id):      WalletDetailView(walletId: id)
+                case .security:                  SecuritySettingsView()
+                case .autoLock:                  AutoLockPickerView()
+                case .privacy:                   PrivacySettingsView()
+                case .acknowledgments:           AcknowledgmentsView()
+                case .networkProviders:          NetworkProvidersView()
+                case .advanced:                  AdvancedSettingsView()
+                case .hideSmallBalances:         HideSmallBalancesPicker()
+                case .language:                  LanguagePickerView()
+                case .appearance:                AppearancePickerView()
+                case .currency:                  CurrencyPickerView()
+                case .help:                      HelpAndSupportView()
+                case .about:                     AboutView(
+                                                    onTapTerms: { isShowingTerms = true },
+                                                    onTapPrivacy: { isShowingPrivacyPolicy = true }
+                                                 )
                 }
             }
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    UniButton(title: "Done", variant: .tertiary) {
-                        dismiss()
-                    }
+                    Button("Done") { dismiss() }
+                        .fontWeight(.semibold)
                 }
+            }
+            .sheet(isPresented: $isShowingTerms) {
+                TermsPlaceholderSheet()
+                    .uniAppEnvironment()
+                    .intrinsicHeightSheet()
+                    .presentationBackground(UniColors.Background.primary)
+            }
+            .sheet(isPresented: $isShowingPrivacyPolicy) {
+                PrivacyPolicyPlaceholderSheet()
+                    .uniAppEnvironment()
+                    .intrinsicHeightSheet()
+                    .presentationBackground(UniColors.Background.primary)
             }
         }
     }
 }
 
-// MARK: - Row primitive (Settings-local, not a design-system component)
+// MARK: - Row primitive
 
-/// Local List-row composition for Settings — leading SF Symbol + title +
-/// trailing detail. Not promoted to the design-system because it is
-/// specific to `List` rows (NavigationLink supplies the trailing chevron;
-/// promoting it would couple the system to NavigationStack).
 private struct SettingsRow: View {
     let systemImage: String
     let title: LocalizedStringKey
-    let trailing: LocalizedStringKey
+    /// Optional trailing summary. `nil` for rows that don't carry a
+    /// status (Help & Support, future external-link rows) — the row
+    /// collapses without the right-side `Text`.
+    let trailing: LocalizedStringKey?
 
     var body: some View {
         HStack(spacing: UniSpacing.s) {
@@ -161,11 +280,13 @@ private struct SettingsRow: View {
 
             Spacer()
 
-            Text(trailing)
-                .font(UniTypography.subheadline)
-                .foregroundStyle(UniColors.Text.secondary)
-                .lineLimit(1)
-                .truncationMode(.tail)
+            if let trailing {
+                Text(trailing)
+                    .font(UniTypography.subheadline)
+                    .foregroundStyle(UniColors.Text.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+            }
         }
         .padding(.vertical, UniSpacing.xxs)
     }
@@ -173,8 +294,10 @@ private struct SettingsRow: View {
 
 // MARK: - About
 
-/// Read-only About screen — Version, Terms, Privacy, design attribution.
 private struct AboutView: View {
+    let onTapTerms: () -> Void
+    let onTapPrivacy: () -> Void
+
     var body: some View {
         List {
             Section {
@@ -183,17 +306,12 @@ private struct AboutView: View {
                         .font(UniTypography.body)
                         .foregroundStyle(UniColors.Text.primary)
                     Spacer()
-                    // App version is data, not copy — render verbatim so it
-                    // does not try to localize through the catalog.
                     Text(verbatim: AboutInfo.versionString)
                         .font(UniTypography.subheadline)
                         .foregroundStyle(UniColors.Text.secondary)
                 }
                 .padding(.vertical, UniSpacing.xxs)
 
-                // Provenance line — token prices in Aperture come from
-                // Coinbase's public spot endpoint. Restrained, single line,
-                // tertiary text. Honesty over decoration (Rule #2 §A.3).
                 HStack {
                     Text("Prices")
                         .font(UniTypography.body)
@@ -207,9 +325,7 @@ private struct AboutView: View {
             }
 
             Section {
-                Button {
-                    // TODO: (T-004) present Terms of Service
-                } label: {
+                Button { onTapTerms() } label: {
                     HStack {
                         Text("Terms")
                             .font(UniTypography.body)
@@ -223,9 +339,7 @@ private struct AboutView: View {
                 }
                 .buttonStyle(.plain)
 
-                Button {
-                    // TODO: (T-005) present Privacy Policy
-                } label: {
+                Button { onTapPrivacy() } label: {
                     HStack {
                         Text("Privacy")
                             .font(UniTypography.body)
@@ -251,16 +365,13 @@ private struct AboutView: View {
         }
         .listStyle(.insetGrouped)
         .navigationTitle(Text("About"))
-        .navigationBarTitleDisplayMode(.inline)
+        .navigationBarTitleDisplayMode(.large)
     }
 }
 
-// MARK: - AboutInfo (bundle metadata helper)
+// MARK: - AboutInfo
 
-/// Bundle-version helper. Kept fileprivate so future agents looking for a
-/// reusable BundleInfo type promote it to the design-system intentionally
-/// rather than discovering an accidental dependency.
-private enum AboutInfo {
+enum AboutInfo {
     static var versionString: String {
         let short = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.0"
         let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "0"
@@ -270,18 +381,6 @@ private enum AboutInfo {
 
 // MARK: - Haptic toggle row
 
-/// Row primitive for the haptic-feedback preference. Native SwiftUI `Toggle`
-/// over an `@AppStorage`-bound `Bool`, dressed in the same leading-icon +
-/// title shape as the other Settings rows.
-///
-/// Per `CLAUDE.md` Rule #10 Part C, the storage default is `true`. The
-/// `.uniHaptic(.selection, trigger: isOn)` modifier provides on-flip
-/// confirmation: when the user turns the toggle ON, the modifier reads
-/// the freshly-updated preference (now `true`) and fires one selection
-/// beat — the user feels the change at the moment it lands. When the
-/// toggle is flipped OFF, the modifier reads the preference as `false`
-/// and short-circuits to silent — which is itself the correct feedback
-/// (the absence of a tap is what "haptics off" should feel like).
 private struct HapticToggleRow: View {
     @Binding var isOn: Bool
 
@@ -302,6 +401,72 @@ private struct HapticToggleRow: View {
         .tint(UniColors.Button.primaryTint)
         .padding(.vertical, UniSpacing.xxs)
         .uniHaptic(.selection, trigger: isOn)
+    }
+}
+
+// MARK: - Hide-balance toggle + threshold picker
+
+private struct HideBalanceToggleRow: View {
+    @Binding var isOn: Bool
+
+    var body: some View {
+        Toggle(isOn: $isOn) {
+            HStack(spacing: UniSpacing.s) {
+                Image(systemName: "eye.slash")
+                    .font(.system(size: 18, weight: .regular))
+                    .foregroundStyle(UniColors.Icon.secondary)
+                    .frame(width: 28, alignment: .center)
+                    .accessibilityHidden(true)
+                Text("Hide balance on home")
+                    .font(UniTypography.body)
+                    .foregroundStyle(UniColors.Text.primary)
+            }
+        }
+        .tint(UniColors.Button.primaryTint)
+        .padding(.vertical, UniSpacing.xxs)
+        .uniHaptic(.selection, trigger: isOn)
+    }
+}
+
+struct HideSmallBalancesPicker: View {
+    @AppStorage(HideBalancesPreference.thresholdKey) private var raw: Double = HideBalancesPreference.defaultThreshold
+    @AppStorage(CurrencyPreference.storageKey) private var currencyCode: String = CurrencyPreference.defaultCode
+
+    var body: some View {
+        List {
+            Section {
+                ForEach(HideBalancesPreference.ThresholdOption.allCases) { option in
+                    Button {
+                        raw = option.rawValue
+                    } label: {
+                        HStack {
+                            Text(LocalizedStringKey(option.label(currencyCode: currencyCode)))
+                                .font(UniTypography.body)
+                                .foregroundStyle(UniColors.Text.primary)
+                            Spacer()
+                            if raw == option.rawValue {
+                                Image(systemName: "checkmark")
+                                    .font(.system(size: 15, weight: .semibold))
+                                    .foregroundStyle(UniColors.Icon.accent)
+                            }
+                        }
+                        .padding(.vertical, UniSpacing.xxs)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .listRowBackground(UniColors.Background.secondary)
+                }
+            } footer: {
+                Text("Holdings worth less than this amount are hidden from the wallet screen. They're still in the local store — only the display is filtered.")
+                    .font(UniTypography.footnote)
+                    .foregroundStyle(UniColors.Text.tertiary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .listStyle(.insetGrouped)
+        .navigationTitle(Text("Hide small balances"))
+        .navigationBarTitleDisplayMode(.large)
+        .uniHaptic(.selection, trigger: raw)
     }
 }
 

@@ -1,0 +1,5 @@
+2026-06-06T21:27:08Z — aperture-i18n-translator-primary: 61 keys × 25 languages = 1525 translations applied; backup at /tmp/aperture-xcstrings-primary-1780780056.bak
+2026-06-07 translator-secondary: 61 keys × 25 langs = 1525 translations written. Final audit: 492/492 keys at full 50/50 coverage (0 missing primary, 0 missing secondary). Backup: /tmp/aperture-xcstrings-secondary-1780781369.bak
+2026-06-06T22:48:23Z translator-primary: 3 keys processed, 75 translations written (25 primary langs × 3 keys: Confirm to view your recovery phrase, Enable Face ID for Aperture, Fee)
+2026-06-06T22:50:25Z translator-secondary: 3 keys × 25 langs = 75 translations written; full audit 50/50 × 496 keys = 0 missing
+2026-06-07T11:32:37 aperture-i18n-translator-primary: 25 keys × 25 languages = 625 translations written; backup /tmp/aperture-xcstrings-primary-1780820922.bak
