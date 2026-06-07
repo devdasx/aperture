@@ -144,12 +144,10 @@ the mark on a transparent background.
   backgrounds via `.luminosity` light variant).
 - `Mark/mark-white.svg` — Cloud white mark (rendered against dark
   backgrounds via `.luminosity` dark variant).
-- `Mark/mark-blue.svg` — Aperture Blue mark (kept in the catalog as
-  the brand-color variant; tinted at the call site when needed via
-  `UniColors.Tint.accent`).
-
-Source: brand kit `svg/mark-{black,white,blue}.svg`. License: Proprietary
-— provided by app owner.
+Source: brand kit `svg/mark-{black,white}.svg`. License: Proprietary
+— provided by app owner. (The blue mark variant was removed in brand
+kit v2; the brand color is monochrome black/white per the design
+handoff.)
 
 ## Wordmark/ — brand wordmark (template SVGs)
 
