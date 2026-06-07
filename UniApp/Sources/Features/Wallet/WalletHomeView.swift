@@ -589,34 +589,43 @@ struct WalletHomeView: View {
             .accessibilityLabel(Text("Settings"))
         }
 
-        // Wallet switcher in the nav-bar title slot (`.principal`) —
-        // moved here from the body 2026-06-07 per user direction.
+        // Wallet switcher in the nav-bar title slot (`.principal`).
         //
-        // **Liquid Glass material on a labelled toolbar item.** Per
-        // Apple's iOS 26 toolbar docs, items in `.confirmationAction`
-        // / `.cancellationAction` / `.automatic` placements auto-
-        // glassify; `.principal` does NOT. So this Button MUST opt
-        // in explicitly via `.buttonStyle(.glass)`. The system's
-        // toolbar pipeline then produces the same Liquid Glass
-        // capsule the gear and flask icons get from their auto-
-        // glass treatment in `.topBarLeading` / `.topBarTrailing`.
+        // **Why the height matched the icons only after these two
+        // changes:**
         //
-        // **No `.controlSize` override.** Take 3 (this session) tried
-        // `.controlSize(.small)` to "match the icon height"; that
-        // went the wrong direction — `.small` makes the pill shorter
-        // than the toolbar's auto-glass icons, not equal. The
-        // toolbar's natural item height is what the icons render at,
-        // and `.buttonStyle(.glass)` at the default control size
-        // ships at that same height. Leaving `.controlSize` unset
-        // lets the system pick the toolbar-context default.
+        // 1. **Font size.** The toolbar's auto-glass on bare SF
+        //    Symbol buttons (gear, flask) renders the symbol at 17pt
+        //    — the toolbar's natural icon font size. My `Text` used
+        //    `subheadlineEmphasized` (~15pt), which made the
+        //    content shorter, which made `.buttonStyle(.glass)`
+        //    size its capsule shorter than the icon circles. Now
+        //    `body` (17pt). The chevron grows to 13pt to keep the
+        //    same relative proportion to the wallet name.
         //
-        // **No `.tint` override.** Take 3 also added
-        // `.tint(UniColors.Text.primary)` — but on `.buttonStyle(.glass)`
-        // the tint colors the *content* (text + chevron) and the
-        // system already inherits the primary label color from the
-        // toolbar's environment. The explicit tint was redundant
-        // and risked drifting from system color in special states
-        // (Reduce Transparency, Increase Contrast).
+        // 2. **`.controlSize(.large)`.** `.buttonStyle(.glass)`
+        //    defaults to `.controlSize(.regular)` — one rung below
+        //    what the toolbar's auto-glass icon treatment uses for
+        //    its circular backgrounds. Setting `.large` lifts the
+        //    capsule into the same vertical envelope. Per the
+        //    Liquid Glass docs (WWDC25 session 323 + "Glassifying
+        //    toolbars in SwiftUI"): the `controlSize` modifier "can
+        //    be applied to a single control or across an entire set
+        //    of controls" and is the canonical mechanism for
+        //    matching heights across button styles in a toolbar.
+        //
+        // The earlier four takes are recorded in SHIPPED.md for the
+        // historical thread:
+        // - Take 1 (bare text + chevron): too quiet — no glass.
+        // - Take 2 (`.buttonStyle(.glass)` only): right material,
+        //   wrong height (smaller than icons).
+        // - Take 3 (`.glassEffect()` + `.buttonStyle(.plain)`):
+        //   wrong primitive — `.glassEffect()` is for custom views
+        //   outside the toolbar's auto-styling pipeline.
+        // - Take 4 (`.glass` + `.controlSize(.small)`): SMALLER
+        //   than take 2 (`.small` literally means smaller).
+        // - Take 5 (`.glass` + 17pt font + `.controlSize(.large)`):
+        //   matches the toolbar's auto-glass icons.
         ToolbarItem(placement: .principal) {
             Button {
                 guard !isTestMode else { return }
@@ -627,12 +636,13 @@ struct WalletHomeView: View {
                         ? String.apertureLocalized("Public test addresses")
                         : (activeWallet?.name ?? String.apertureLocalized("Wallet"))
                     )
-                    .font(UniTypography.subheadlineEmphasized)
+                    .font(UniTypography.bodyEmphasized)
                     Image(systemName: "chevron.down")
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(.system(size: 13, weight: .semibold))
                 }
             }
             .buttonStyle(.glass)
+            .controlSize(.large)
             .disabled(isTestMode)
             .accessibilityLabel(Text("Switch wallet, currently \(activeWallet?.name ?? "")"))
         }
