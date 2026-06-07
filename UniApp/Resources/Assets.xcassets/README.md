@@ -110,6 +110,30 @@ six-blade "Iris Solid" mark filling ~60% of a 1024px superellipse tile.
 
 License: Proprietary — provided by app owner.
 
+## Splash/ — launch-screen colorsets (2026-06-07 design handoff)
+
+Splash-only colorsets per `/Users/thuglifex/Downloads/design_handoff_splash_screen/README.md`.
+The launch screen is a monochrome brand surface with a radial-gradient
+lift at center-upper; these roles are not used anywhere else in the app.
+Surfaced via `UniColors.Splash.*` for token-only access at the call
+site (Rule #4).
+
+- `SplashLift` — radial gradient inner stop (`#FFFFFF` light / `#1A1C21`
+  dark).
+- `SplashBase` — radial gradient outer stop (`#EEF0F4` light /
+  `#000000` dark).
+- `SplashMark` — iris + wordmark tint (`#0B0D11` Ink light / `#FFFFFF`
+  Cloud dark).
+- `SplashGlow` — halo behind the mark (ink @ 8% light / white @ 14%
+  dark).
+- `SplashLoaderTrack` — track of the determinate loader (ink @ 10%
+  light / white @ 16% dark).
+- `SplashTagline` — tagline copy color (ink @ 50% light / white @ 50%
+  dark).
+
+Source: design handoff spec verbatim. License: Proprietary — provided
+by app owner.
+
 ## Brand/ — flat brand mark (template SVGs)
 
 The flat six-blade "Iris Solid" mark, without a tile, in three brand
