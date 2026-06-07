@@ -3,27 +3,24 @@ import Lottie
 
 /// Aperture's launch splash — the brand's first breath.
 ///
-/// **2026-06-07 — Lottie splash.** Replaces the earlier SwiftUI-native
-/// `TimelineView` + `ApertureIrisView` bloom with the brand-kit-authored
-/// Lottie animation (`splash-tile.json`) — the canonical motion the brand
-/// owner designed for this moment. The tile variant carries the white iris
-/// on the Aperture Blue gradient squircle, matching what the user just
-/// tapped on the Home Screen so the splash feels like a continuation of
-/// the launch image rather than a separate event.
+/// **2026-06-07 — Lottie splash, take 2 (kit v2).** Replaces the brand-
+/// kit-v1 `splash-tile.json` (white iris on Aperture Blue gradient
+/// squircle) with the **flat mark** variants per the v2 user direction:
+/// `splash-black.json` in light mode, `splash-white.json` in dark mode.
+/// The flat mark on a `UniColors.Background.primary` surface (Cloud
+/// light / Ink dark) is the brand owner's chosen reading of the splash —
+/// the iris is the brand identity, the surface around it is the user's
+/// device chrome. The tile variant remains bundled for any future
+/// surface that wants the icon-tile feel (it's still in `Resources/Lottie/`)
+/// but the splash is now the flat mark on flat background.
 ///
-/// **Rule #3 §B exception.** Lottie iOS (Airbnb, MIT) is added as a
-/// project-wide SPM dependency in this same SHIPPED entry, joining
-/// Trust Wallet Core. The user explicitly authorized it 2026-06-07
-/// ("we've lottie splash screen why you don't add it!") for the new
-/// Aperture brand kit which ships a dedicated Lottie subkit. Used only
-/// at this call site (and any future surface that adopts the rest of
-/// the Lottie kit — refresh / loading / sending / success / empty /
-/// onboarding / error) via SwiftUI-native `LottieView`.
+/// **Rule #3 §B exception.** Lottie iOS is the second logged exception
+/// (joining Trust Wallet Core) per the v1 SHIPPED entry.
 ///
 /// **Failure mode.** If the Lottie JSON fails to load (bundle path
-/// missing, corrupt JSON, etc.), `LottieView` renders empty. We still
-/// fire `onComplete` after `splashDuration` so the app doesn't sit on a
-/// blank screen — the user reaches onboarding either way.
+/// missing, corrupt JSON), `LottieView` renders empty. We still fire
+/// `onComplete` after `splashDuration` so the app doesn't sit on a blank
+/// screen — the user reaches onboarding either way.
 struct SplashView: View {
     /// Called once the splash animation has played through. Driven by a
     /// timer at `splashDuration` so the contract holds even if Lottie
@@ -36,11 +33,23 @@ struct SplashView: View {
     /// one-shot per the kit's README.
     private static let splashDuration: TimeInterval = 1.8
 
+    /// Selects the dark variant in dark mode, the light variant in light
+    /// mode (and System-Auto resolves via the parent environment per
+    /// Rule #12's `.uniAppEnvironment()` propagation).
+    @Environment(\.colorScheme) private var colorScheme
+
+    /// Lottie animation name per the brand kit v2 split:
+    /// - Light mode → `splash-black` (black iris on transparent / Cloud surface)
+    /// - Dark mode  → `splash-white` (white iris on transparent / Ink surface)
+    private var animationName: String {
+        colorScheme == .dark ? "splash-white" : "splash-black"
+    }
+
     var body: some View {
         ZStack {
             UniColors.Background.primary.ignoresSafeArea()
 
-            LottieView(animation: .named("splash-tile"))
+            LottieView(animation: .named(animationName))
                 .playing(loopMode: .playOnce)
                 .frame(width: 200, height: 200)
         }
