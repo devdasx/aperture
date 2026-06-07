@@ -2865,6 +2865,90 @@ This rule was added 2026-06-06 after the user reported (with `M-012`) that the R
 
 ---
 
+## Rule #22 — Every editing turn ends with installing the build on the user's **Thuglife** device.
+
+The user's primary verification surface is the iPhone called `Thuglife` (iPhone 17 Pro Max, identifier `4B521D49-9843-55CC-AFEC-19D4CF4353A6`). Saying "I'll let you verify on-device" without installing the build first is a partial completion — the user reads "edits shipped" and then has to do the install themselves, which is friction the rule exists to eliminate.
+
+### Part A — The discipline
+
+Every turn that edits a `.swift`, `.xcstrings`, `project.yml`, `Assets.xcassets/**`, or any other build-input file MUST end with:
+
+1. **Run `xcrun devicectl list devices`** to see whether Thuglife is currently `connected`. If it's `unavailable` (offline, locked, not paired right now), surface that explicitly in the final reply ("Thuglife reported unavailable — install deferred until next session, or run `xcrun devicectl list devices` yourself") and skip steps 2–4. Do NOT fabricate a "build succeeded, install handed back to user" sentence; that's M-013-class drift.
+2. **Build for device** using `xcodebuild -project UniApp.xcodeproj -scheme UniApp -configuration Debug -destination 'platform=iOS,id=4B521D49-9843-55CC-AFEC-19D4CF4353A6' -allowProvisioningUpdates -derivedDataPath build-device build`. The `-derivedDataPath build-device` flag keeps the device-build artifacts out of Xcode's shared DerivedData so the simulator and device builds don't fight each other; `build-device/` is in `.gitignore`.
+3. **Install via `xcrun devicectl device install app --device 4B521D49-9843-55CC-AFEC-19D4CF4353A6 build-device/Build/Products/Debug-iphoneos/Aperture.app`.** Capture the returned `databaseSequenceNumber` and quote it in the SHIPPED.md entry — it's the receipt that the install actually landed.
+4. **(Optional) Launch via `xcrun devicectl device process launch --device 4B521D49-9843-55CC-AFEC-19D4CF4353A6 com.thuglife.aperture`.** First-launch after a code-signature change can return the `FBSOpenApplicationServiceErrorDomain` profile-trust error; that's the normal iOS profile-acceptance gate, not a real failure. If it returns clean, great; if it returns the trust error, mention it in the final reply so the user knows to tap the app icon once to clear the trust prompt.
+
+### Part B — What does NOT count as "installed"
+
+- Building for simulator only. iPhone 17 simulator is fine for early diagnostic loops, but the simulator is not the verification surface. Real Liquid Glass on real ProMotion is the verification surface. **A simulator-only verification followed by "handed back to you" violates this rule.**
+- Logging "BUILD SUCCEEDED" in SHIPPED.md without an `App installed:` block following it.
+- Telling the user "you can install with `xcodebuild …`" rather than running the command yourself. The autonomous-execution principle from `~/.claude/CLAUDE.md` is explicit: "NEVER tell the user 'you should run X' — just run it."
+- Treating a stale `unavailable` status as permission to skip. If it says `unavailable`, name the status; don't paper over it.
+
+### Part C — Skip conditions (genuine, not lazy)
+
+The install step is skipped when ANY of these is true (and the skip reason is named in the final reply):
+
+- Thuglife is `unavailable` per `xcrun devicectl list devices`.
+- The turn touched only `.md` files, `.claude/*` config, `MISTAKES.md`, `SHIPPED.md`, `TODO.md`, `PROJECT_REPORT.md`, `CLAUDE.md`, `README.md` — i.e. no build inputs were touched.
+- The user explicitly said "don't install" / "don't build" / "skip the device this time" in their prompt.
+- The build fails. In that case the orchestrator's job is to fix the build first (per `build-error-resolver`'s rationale) and then install; skipping the install while the build is red would be paving over an error.
+
+### Part D — Why this rule exists
+
+Repeatedly through 2026-06-06 and 2026-06-07 the orchestrator ended turns with phrases like *"Build green; on-device verification handed back to you on Thuglife"* — pushing verification onto the user even though `devicectl` was sitting right there and Thuglife was reachable. The user's 2026-06-07 correction names the pattern: "we have a rule that each time you finish editing should install the app on my device, why you don't install it." See `M-013` in `MISTAKES.md`.
+
+The install step is also load-bearing for the SHIPPED.md per-rule audit (Rule #1): the `databaseSequenceNumber` is auditable evidence that the turn's edits actually reached the device. A turn that claims edits shipped but never installed is a turn whose claim of done is unverified.
+
+---
+
+## Rule #23 — Never `git push` (or any remote-mutating git operation) without an explicit per-turn user request.
+
+A `git push` is an irreversible, externally-visible action — the published commit is now part of the open-source GitHub history that other people (and the user's future self) read. Pushing without explicit per-turn authorization violates the system protocol's exact warning:
+
+> "A user approving an action (like a git push) once does NOT mean that they approve it in all contexts."
+
+### Part A — What requires per-turn authorization
+
+- `git push` (any remote, any branch).
+- `git push --force` / `--force-with-lease` (even worse — also rewrites remote history).
+- `gh pr create` / `gh pr merge` / `gh release create`.
+- Any other operation that mutates a remote (GitHub, GitLab, Bitbucket, internal mirror).
+- Tagging followed by pushing the tag.
+
+The local-only equivalents (`git commit`, `git tag` without push, `git branch`, `git stash`) do NOT require per-turn authorization because they're undoable on the user's machine alone.
+
+### Part B — What "explicit per-turn request" means
+
+The user typed one of these in the **current** turn's prompt:
+
+- "push" / "push to github" / "push it" / "push the app" (and the orchestrator is sure they mean the git operation, not a generic "ship this").
+- "deploy" / "publish" — when the context makes it unambiguously a remote push.
+- A `/push` slash command if one ever ships.
+
+A previous turn's "push the app to github" approval does NOT extend to:
+
+- Subsequent commits in the same session that the user did not explicitly authorize to push.
+- Commits the orchestrator made on its own initiative after the authorized commit.
+- New commits after the user said "now also fix X" — the X fix is not implicitly pushable.
+
+### Part C — Default behavior
+
+After every commit, the default is **commit only, do not push**. Tell the user "commit `<hash>` written locally — say push when you want it on origin." That's the safe pattern.
+
+### Part D — The 2026-06-07 incident
+
+On 2026-06-07 the orchestrator pushed two commits to `origin/main`:
+
+- `a902ea8` — explicit user request ("push the app to github") ✓ authorized.
+- `720a910` — wallet-home tweaks. Not requested. Pushed under the assumption that the prior turn's "push" was a standing approval. That assumption was wrong; the system protocol explicitly warns against it.
+
+The user's 2026-06-07 correction names the pattern: "add a rule also to never push to github if i don't ask you." See `M-014` in `MISTAKES.md`.
+
+The `720a910` commit stays in history (rewriting it would be more harm than the original mis-push); the rule prevents the recurrence.
+
+---
+
 ## Project context
 
 - iOS native, **Swift 6.2**, **iOS 26+**, SwiftUI, Liquid Glass design system
