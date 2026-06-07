@@ -4,6 +4,104 @@
 
 ---
 
+## 2026-06-07 — Brand kit v2: updated light app-icon tile + 8 refreshed tile Lotties + splash switched to flat black/white variants
+
+**Summary:** User shipped a second iteration of the brand kit
+at `/Users/thuglifex/Downloads/Aperture Brand 2/` and asked
+to adopt it. The README's documented palette (Aperture Blue
+gradient, Ink, Graphite, Cloud) is unchanged — the kit's
+title "new brand colors" was approximate; the actual deltas
+are asset-level refinements, not a palette swap.
+
+**Side-by-side audit** of every file v1 → v2:
+- `png/light/icon-1024.png` — DIFFERENT. The light app-icon
+  tile was redesigned.
+- All 8 `Aperture Lottie/json/*-tile.json` files — DIFFERENT.
+  The brand owner refreshed the tile-variant animations.
+- `svg/mark-blue.svg` — REMOVED from the kit. v2 ships only
+  `mark-black.svg` + `mark-white.svg`.
+- New `svg/icon-{light,dark,tinted}.svg` + new
+  `svg/wordmark-stacked-{light,dark}.svg` — vector versions
+  not present in v1.
+- Everything else identical (icon-dark.png, icon-tinted.png,
+  wordmark PNGs, mark-black.svg, mark-white.svg, all 16
+  black/white Lotties, README).
+
+**Plus user direction on the splash variant.** v1 shipped
+the splash playing `splash-tile.json` (white iris on
+Aperture Blue gradient squircle). User explicit instruction
+2026-06-07: use `splash-white.json` in dark mode +
+`splash-black.json` in light mode — the FLAT mark variants,
+rendered on a `UniColors.Background.primary` surface (Cloud
+in light, Ink in dark). The tile variant is no longer the
+splash's surface; the iris IS the brand identity, and the
+device surface around it is the user's own chrome.
+
+**Intent (Rule #2 §D.1):** the splash now reads as the
+brand owner intended for v2 — the flat mark on the user's
+own device surface, color-scheme-aware, matching the
+identity-mark pattern Apple uses on its own splash images.
+
+**Files modified:**
+- `UniApp/Resources/Assets.xcassets/AppIcon.appiconset/icon-light.png`
+  — replaced with v2's redesigned 1024px source.
+- `UniApp/Resources/Lottie/{empty,error,loading,onboarding,refresh,sending,splash,success}-tile.json`
+  (8 files) — refreshed with v2 sources.
+- `UniApp/Sources/Features/Splash/SplashView.swift` —
+  splash animation switches from `splash-tile` to a
+  `@Environment(\.colorScheme)`-driven choice between
+  `splash-black` (light) and `splash-white` (dark). Doc
+  comment updated to record the v1 → v2 transition.
+
+**Files removed:**
+- `UniApp/Resources/Assets.xcassets/Brand/Mark.imageset/mark-blue.svg`
+  — v2 brand kit no longer ships the blue mark variant.
+  The Mark imageset's `Contents.json` already only
+  referenced `mark-black.svg` (light) + `mark-white.svg`
+  (dark), so the blue file was never wired anyway; removing
+  it keeps the catalog matching the kit verbatim.
+
+**Build / Run:**
+- Device build for Thuglife — `BUILD SUCCEEDED`.
+- `xcrun devicectl device install app` on Thuglife — installed,
+  **`databaseSequenceNumber 8148`**.
+
+**Per-rule audit:**
+
+- **Rule #1 (new)** ✓ — this is BIG: multi-file brand-asset
+  change + code change in `SplashView.swift` + removal of a
+  bundled asset.
+- **Rule #2** ✓ — Hierarchy / Harmony / Consistency
+  preserved. The splash now matches the v2 brand owner's
+  surface treatment (flat mark on device surface) instead
+  of v1's icon-tile continuation.
+- **Rule #3** ✓ — no new SPM dependencies. Lottie remains
+  the second logged Rule #3 §B exception; no new ones added.
+- **Rule #4** ✓ — palette unchanged.
+- **Rule #7** ✓ — assets continue to be real designed
+  brand kit sources, recorded in
+  `Assets.xcassets/README.md`.
+- **Rule #22** ✓ — installed on Thuglife,
+  `databaseSequenceNumber 8148`.
+- **Rule #23** — this turn does NOT push. Commit will be
+  local-only.
+
+**Honest gap statement.** The new v2 SVG vector icons
+(`svg/icon-{light,dark,tinted}.svg` and
+`svg/wordmark-stacked-{light,dark}.svg`) are NOT bundled in
+this entry. Apple's `AppIcon.appiconset` accepts PNGs (the
+canonical iOS format) and the existing 1024 PNGs cover the
+single-size app-icon contract for iOS 17+; vector app-icon
+variants would require Apple's `iconcomposer`-generated
+intermediate format, which the brand kit doesn't ship. The
+stacked wordmark (mark above text) isn't used by any current
+surface; the horizontal wordmark already in
+`Wordmark/mark-aperture.imageset` is what every existing
+call site references. If a future stacked-wordmark surface
+lands, it will pull from the new SVGs at that point.
+
+---
+
 ## 2026-06-07 — Lottie iOS SPM dep (Rule #3 §B exception) + Lottie splash + blank-iris bug fix on Welcome slide
 
 **Summary:** Two coordinated fixes ship together:
