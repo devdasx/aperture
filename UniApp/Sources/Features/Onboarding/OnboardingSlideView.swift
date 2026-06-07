@@ -19,6 +19,15 @@ struct OnboardingSlideView: View {
     /// Fires when the user taps the welcome slide's open-source badge.
     /// Other slides (`illustration != .wordmark`) ignore this closure.
     var onOpenSourceTap: () -> Void = {}
+    /// Logo namespace from `AppRoot`, threaded down for the welcome
+    /// slide's `matchedGeometryEffect`. Other slides ignore it.
+    let logoNamespace: Namespace.ID
+    /// App-wide phase from `AppRoot`. The welcome slide gates its
+    /// non-logo content (title + body + open-source badge) on
+    /// `phase != .splash` so they stagger in once the transition
+    /// starts; the logo itself stays present (it's the matched
+    /// geometry destination) and does not fade.
+    let phase: AppPhase
 
     /// True for the welcome beat — the only slide carrying the
     /// open-source anchor today. Slide identity is matched by the
@@ -28,24 +37,47 @@ struct OnboardingSlideView: View {
         slide.illustration == .wordmark
     }
 
+    /// Becomes true the instant the splash → onboarding transition
+    /// fires. Drives the per-element staggered fade-in below; the
+    /// logo (matchedGeometryEffect destination) is excluded so it
+    /// stays visible the moment it arrives.
+    private var contentVisible: Bool { phase != .splash }
+
     var body: some View {
         VStack(spacing: UniSpacing.xl) {
             Spacer(minLength: UniSpacing.l)
 
-            OnboardingIllustrationView(kind: slide.illustration, isActive: isActive)
+            OnboardingIllustrationView(
+                kind: slide.illustration,
+                isActive: isActive,
+                logoNamespace: logoNamespace,
+                phase: phase
+            )
 
             VStack(spacing: UniSpacing.m) {
                 UniLargeTitle(text: slide.title, alignment: .center)
+                    .modifier(OnboardingStaggeredFadeIn(
+                        visible: !isWelcomeSlide || contentVisible,
+                        delay: isWelcomeSlide ? 0.10 : 0
+                    ))
 
                 UniBody(
                     text: slide.body,
                     alignment: .center,
                     color: UniColors.Text.secondary
                 )
+                .modifier(OnboardingStaggeredFadeIn(
+                    visible: !isWelcomeSlide || contentVisible,
+                    delay: isWelcomeSlide ? 0.16 : 0
+                ))
 
                 if isWelcomeSlide {
                     openSourceBadge
                         .padding(.top, UniSpacing.xs)
+                        .modifier(OnboardingStaggeredFadeIn(
+                            visible: contentVisible,
+                            delay: 0.22
+                        ))
                 }
             }
             .padding(.horizontal, UniSpacing.s)

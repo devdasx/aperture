@@ -134,6 +134,22 @@ site (Rule #4).
 Source: design handoff spec verbatim. License: Proprietary — provided
 by app owner.
 
+## Brand/LogoCircle.imageset — shared-element splash → onboarding logo
+
+The dark-gradient circle containing the white 6-blade iris (1000×1000
+viewBox SVG). Per the design handoff
+`/Users/thuglifex/Downloads/design_handoff_splash_to_onboarding/`,
+this is the canonical logo shown on BOTH the splash and the welcome
+slide of onboarding — same asset, both screens, so the SwiftUI
+`matchedGeometryEffect` transition between them renders as a true
+shared element.
+
+- `logo-circle.svg` — dark vertical gradient `#3A3D45` → `#0C0D11` disc
+  + white iris filling ~60%.
+
+Source: brand kit `design_handoff_splash_to_onboarding/assets/logo-circle.svg`.
+License: Proprietary — provided by app owner.
+
 ## Brand/ — flat brand mark (template SVGs)
 
 The flat six-blade "Iris Solid" mark, without a tile, in three brand

@@ -24,6 +24,17 @@ import SwiftUI
 /// behind it. The gear is rendered with `.buttonStyle(.glass)` so it
 /// reads as functional Liquid Glass chrome, distinct from the opaque
 /// content layer of the slides (Rule #2 §B.3).
+///
+/// **2026-06-07 splash → onboarding shared element.** `AppRoot` owns the
+/// `@Namespace logoNamespace` and the `AppPhase` machine, and threads
+/// both into this view. The welcome slide carries the
+/// `matchedGeometryEffect` destination for the splash logo (id `"logo"`),
+/// and every other onboarding chrome element — gear, headline, body,
+/// open-source badge, page dots, primary/secondary CTAs, legal footer —
+/// fades + drops 16pt as the phase advances out of `.splash`, staggered
+/// per the design handoff (`design_handoff_splash_to_onboarding/README.md`).
+/// The logo itself is excluded from the fade (it owns the matched-geometry
+/// motion).
 struct OnboardingView: View {
     @State private var currentIndex: Int = 0
     @State private var isShowingSettings: Bool = false
@@ -78,6 +89,21 @@ struct OnboardingView: View {
 
     private let slides = OnboardingSlide.all
 
+    /// Logo namespace owned by `AppRoot`. Wired through to the welcome
+    /// slide's hero so `matchedGeometryEffect` can claim the logo as the
+    /// splash → onboarding shared element.
+    let logoNamespace: Namespace.ID
+    /// The 3-phase machine from `AppRoot`. Drives every non-logo
+    /// onboarding element's staggered fade-in once the splash starts
+    /// dissolving.
+    let phase: AppPhase
+
+    /// `true` once the splash has begun dissolving — drives the fade-in
+    /// of every onboarding chrome element. The logo itself is gated
+    /// inside `WordmarkIllustration` via `matchedGeometryEffect`, NOT
+    /// via this flag.
+    private var contentVisible: Bool { phase != .splash }
+
     var body: some View {
         NavigationStack {
             ZStack {
@@ -86,6 +112,13 @@ struct OnboardingView: View {
                 VStack(spacing: 0) {
                     slidePager
                         .frame(maxHeight: .infinity)
+
+                    pageDots
+                        .padding(.bottom, UniSpacing.m)
+                        .modifier(OnboardingStaggeredFadeIn(
+                            visible: contentVisible,
+                            delay: 0.30
+                        ))
 
                     bottomStack
                         .padding(.horizontal, UniSpacing.l)
@@ -113,6 +146,10 @@ struct OnboardingView: View {
                     } label: {
                         Image(systemName: "gearshape")
                             .font(.system(size: 17, weight: .regular))
+                            .modifier(OnboardingStaggeredFadeIn(
+                                visible: contentVisible,
+                                delay: 0.04
+                            ))
                     }
                     .accessibilityLabel(Text("Settings"))
                 }
@@ -223,21 +260,50 @@ struct OnboardingView: View {
         }
     }
 
-    // MARK: - Slide pager (system page indicator, native swipe)
+    // MARK: - Slide pager (custom dots, native swipe)
 
+    /// The page dots ship as system chrome by default
+    /// (`indexDisplayMode: .always`). We hide them and render our own
+    /// row below so the dots can fade in on their own delay (0.30s) per
+    /// the splash → onboarding design handoff, independent of the
+    /// TabView's content — which carries the matchedGeometryEffect
+    /// logo destination and therefore can't be opacity-gated as a unit.
     private var slidePager: some View {
         TabView(selection: $currentIndex) {
             ForEach(slides) { slide in
                 OnboardingSlideView(
                     slide: slide,
                     isActive: slide.id == currentIndex,
-                    onOpenSourceTap: { isShowingOpenSource = true }
+                    onOpenSourceTap: { isShowingOpenSource = true },
+                    logoNamespace: logoNamespace,
+                    phase: phase
                 )
                 .tag(slide.id)
             }
         }
-        .tabViewStyle(.page(indexDisplayMode: .always))
-        .indexViewStyle(.page(backgroundDisplayMode: .always))
+        .tabViewStyle(.page(indexDisplayMode: .never))
+    }
+
+    /// Custom page-dot row. Matches the iOS-26 system style — 6pt dots
+    /// at 8pt spacing, primary tint for the active index, tertiary for
+    /// the rest. The active dot uses a `Capsule` 18pt wide so the
+    /// current slide is unambiguous; iOS does the same in its first-
+    /// party page indicators.
+    private var pageDots: some View {
+        HStack(spacing: 8) {
+            ForEach(slides) { slide in
+                Capsule()
+                    .fill(slide.id == currentIndex
+                          ? UniColors.Text.primary
+                          : UniColors.Text.tertiary.opacity(0.4))
+                    .frame(
+                        width: slide.id == currentIndex ? 18 : 6,
+                        height: 6
+                    )
+                    .animation(.easeInOut(duration: 0.2), value: currentIndex)
+            }
+        }
+        .accessibilityHidden(true)
     }
 
     // MARK: - Bottom stack (action region + legal footer — present on every slide)
@@ -249,6 +315,10 @@ struct OnboardingView: View {
         VStack(spacing: UniSpacing.l) {
             actionRegion
             legalFooter
+                .modifier(OnboardingStaggeredFadeIn(
+                    visible: contentVisible,
+                    delay: 0.48
+                ))
         }
     }
 
@@ -264,10 +334,18 @@ struct OnboardingView: View {
                     // and passphrase persistence (T-019) still pending.
                     isShowingCreateDisclosure = true
                 }
+                .modifier(OnboardingStaggeredFadeIn(
+                    visible: contentVisible,
+                    delay: 0.36
+                ))
 
                 UniButton(title: "I already have a wallet", variant: .secondary) {
                     isShowingImportFlow = true
                 }
+                .modifier(OnboardingStaggeredFadeIn(
+                    visible: contentVisible,
+                    delay: 0.42
+                ))
             }
         }
     }
@@ -297,14 +375,51 @@ struct OnboardingView: View {
     }
 }
 
+// MARK: - Staggered fade-in modifier (shared by OnboardingView and OnboardingSlideView)
+
+/// Per the splash → onboarding design handoff:
+/// > Onboarding content fades in with a 16pt rise over 0.5s, eased with
+/// > `cubic-bezier(.2,.8,.2,1)`, staggered per element so the screen
+/// > settles into place beat by beat instead of slamming in all at once.
+///
+/// The logo is **excluded** from this modifier — it owns the
+/// `matchedGeometryEffect` motion and must be visible the moment the
+/// splash starts dissolving so the shared-element transition has a
+/// destination to fly into.
+struct OnboardingStaggeredFadeIn: ViewModifier {
+    let visible: Bool
+    let delay: Double
+
+    func body(content: Content) -> some View {
+        content
+            .opacity(visible ? 1 : 0)
+            .offset(y: visible ? 0 : 16)
+            .animation(
+                .timingCurve(0.2, 0.8, 0.2, 1, duration: 0.5).delay(delay),
+                value: visible
+            )
+    }
+}
+
 // MARK: - Previews
 
 #Preview("Light") {
-    OnboardingView()
+    OnboardingViewPreviewWrapper()
         .preferredColorScheme(.light)
 }
 
 #Preview("Dark") {
-    OnboardingView()
+    OnboardingViewPreviewWrapper()
         .preferredColorScheme(.dark)
+}
+
+/// Wraps `OnboardingView` for previews — the real call site receives
+/// the namespace + phase from `AppRoot`. Previews stand in with a
+/// dummy namespace and the post-transition phase so all chrome is
+/// visible.
+private struct OnboardingViewPreviewWrapper: View {
+    @Namespace private var ns
+    var body: some View {
+        OnboardingView(logoNamespace: ns, phase: .onboarding)
+    }
 }
