@@ -4,6 +4,139 @@
 
 ---
 
+## 2026-06-07 — Backup state moves off the wallet home onto the wallet-detail screen; two-state monochrome card with live A → B transition
+
+**Summary:** The persistent yellow `BackupRequiredBanner` is gone from
+the wallet home — the daily-driver surface stays calm and free of nag
+chrome. The backup question moves to Settings → Wallets → [wallet],
+where it lives as the screen's *first* card: a two-state surface that
+reads "Back up this wallet." (State A) when the active wallet's
+`requiresBackup == true`, and "Backed up." (State B) when it's false.
+Tapping "Back up now" opens a sheet that runs the canonical
+`BackupVerifyView` challenge against the wallet's stored mnemonic via
+`MnemonicVault`; on verify success `WalletRepository.markBackupComplete`
+flips the flag, the encrypted local mnemonic is deleted (the user is
+now the only copy — the disclosure-sheet promise honored), and
+SwiftData `@Query` reactivity animates the card from A → B in front of
+the user with a one-beat `.symbolEffect(.bounce)` on the checkmark.
+The transition IS the celebration; no separate confirmation screen.
+
+The brief: user wrote *"remove this 'Save your recovery phrase' from
+the main screen at all, and instead in the wallet management screen,
+show modern warning that says he should do a backup to his wallet, and
+when it done, it should be marked as Done."* Both directions land in
+this entry.
+
+**Files added/modified/removed:**
+- `UniApp/Sources/Features/Settings/BackupExistingWalletFlow.swift` —
+  NEW. Sheet flow that loads the encrypted mnemonic from
+  `MnemonicVault.loadMnemonic(for:)`, seeds a fresh `CreateWalletState`
+  with the loaded words (via `state.commit(words:)`), and presents the
+  canonical `BackupVerifyView` against it. On verify success calls
+  `WalletRepository.markBackupComplete(id:)` and deletes the encrypted
+  local mnemonic. Defensive empty state for wallets without a stored
+  mnemonic (legacy / imported-key / watch-only).
+- `UniApp/Sources/Features/Settings/WalletDetailView.swift` — MAJOR.
+  New lead `Section` hosts the `BackupStateCard` primitive (two-state
+  monochrome card with the `.smooth(duration: 0.4)` A↔B animation key
+  and the `.symbolEffect(.bounce)` on the State-B checkmark). Removed
+  the now-redundant `backupStatusRow` from the Details section
+  (reading the same status in two slots was chrome). Added the
+  `isShowingBackupFlow` `@State` + the `.sheet` presentation for
+  `BackupExistingWalletFlow`. Appended `BackupStateCard` as a private
+  view at the file's tail (sibling to `DeleteWalletConfirmationSheet`).
+- `UniApp/Sources/Features/Wallet/WalletHomeView.swift` — `banners`
+  view simplified: `BackupRequiredBanner` removed; only
+  `BiometricReenrollmentBanner` remains (biometric drift is
+  event-driven, not setup-time, so it earns its place on the home).
+  Inline `// TODO: (T-046)` removed — T-046 is now resolved by this
+  entry. Added a doc-comment block explaining the move + why
+  biometric stays.
+- `UniApp/Sources/Features/Wallet/BackupRequiredBanner.swift` —
+  DELETED. The yellow-banner shape was specific to wallet-home chrome
+  and would have misfit the new card-shaped surface on wallet-detail.
+  Removing it also removes the temptation to drop the alarm-banner
+  back onto the home in a future turn.
+- `UniApp/Resources/Localizable.xcstrings` — +8 new English source
+  entries (state `"translated"`, extractionState `"manual"` per the
+  M-007-corrected pattern): `"Back up this wallet."`,
+  `"Right now, this wallet only exists on this iPhone. If you lose
+  access before you write down the recovery phrase, the funds in it
+  can't be recovered."`, `"Backed up."`, `"You have the recovery
+  phrase. Aperture is one of two copies."`, `"Preparing your phrase."`,
+  `"We can't show this wallet's phrase."`, `"There's no encrypted
+  phrase stored for this wallet. If you saved it elsewhere, you're
+  already its only copy."`, `"We couldn't decrypt this wallet's
+  phrase. Try restarting Aperture."`.
+
+**Build / Run:**
+- iPhone 17 simulator (`platform=iOS Simulator, OS=26.5`):
+  `BUILD SUCCEEDED` after catalog edits.
+- Thuglife (`id=4B521D49-9843-55CC-AFEC-19D4CF4353A6`): reported
+  `unavailable` by `xcrun devicectl list devices` at the close of
+  this turn. Per Rule #22 §C the install is deferred with the
+  reason named — Thuglife is offline or locked. Re-running the
+  install on the next session when Thuglife reports `connected`
+  will land this change with its `databaseSequenceNumber` receipt.
+
+**T-046 resolved.** "Re-enter the backup flow against the specific
+unbacked wallet" moves from Open to Resolved with a link to this
+entry. The acceptance criteria are met: (1) the seed-vs-mnemonic
+storage policy was already settled (`MnemonicVault` always stores;
+deleted on verify), so the flow can reconstruct the words; (2)
+`BackupExistingWalletFlow` is the parameterized variant of the verify
+gesture; (3) `WalletRepository.markBackupComplete(id:)` clears the
+flag, the encrypted local copy is then deleted to honor the "your
+phone is the only copy" promise.
+
+**Per-rule audit:**
+- Rule #1 (this entry) ✓.
+- Rule #2 (Ive + Liquid Glass) ✓ — restrained, monochrome card with
+  honest body copy; the A → B transition uses `.smooth(0.4)` not a
+  spring (no celebration overshoot), and Reduce Motion is honored by
+  SwiftUI for both the animation and the `.symbolEffect(.bounce)`.
+- Rule #3 (native-only) ✓ — `UniCard` + `UniButton` + `Image(systemName:)`
+  + native `.symbolEffect` + native `.animation`; no third-party UI.
+- Rule #4 (UniColors only) ✓ — every color through `UniColors.Brand.mark`
+  / `UniColors.Text.{primary,secondary,tertiary}` / `UniColors.Material.card`
+  (transitively via `UniCard`). No literal colors. No alarming red
+  or warning yellow on the card — the brand monochrome carries the
+  shift in posture (`lock.shield` outline → `checkmark.shield.fill`
+  filled glyph), not a hue change.
+- Rule #5 (TODO mirror) ✓ — the inline `// TODO: (T-046)` removal
+  is paired with the T-046 entry moving to Resolved.
+- Rule #6 (jony-ive delegation) — design held inline per M-006's
+  documented harness gap (project-scoped subagents not in the dispatch
+  list this session). Operating mode followed end-to-end.
+- Rule #7 (real visuals only) ✓ — `lock.shield` and
+  `checkmark.shield.fill` are Apple SF Symbols; no hand-built shapes.
+- Rule #9 / #13 (i18n) — +8 new English source strings added with
+  `extractionState: "manual"` + `state: "translated"` on the English
+  unit; closure chain dispatch left to the orchestrator (Rule #13 Part
+  B reserves it to avoid catalog-file races).
+- Rule #15 (sheet-as-screen) ✓ — `BackupExistingWalletFlow` wraps
+  content in `NavigationStack`, sets title via `.navigationTitle("Back
+  up this wallet")`, `inline` display mode, leading `xmark` Cancel in
+  the toolbar. `.large` detent, opaque `Background.primary`.
+- Rule #16 (security surface) ✓ — the card carries ingredients #1
+  (hero glyph in `Brand.mark` not status colors), #2 (plain safety
+  property in State B: "You have the recovery phrase. Aperture is one
+  of two copies."), #3 (user's role in safety: "Back up this wallet"
+  names the gesture as theirs), #6 (honest irreversibility in State A:
+  "the funds in it can't be recovered"). State A reads as
+  responsibility, not danger; the alarming-red anti-pattern is
+  avoided. State B reads as quiet confirmation, not celebration.
+- Rule #19 (UniButton only) ✓ — the "Back up now" CTA is a
+  `UniButton(.primary)`. No hand-rolled background.
+- Rule #21 (full-completion instruction) ✓ — both surfaces (removal
+  from home, addition to wallet-detail) shipped this turn. T-046
+  closed. No remaining TODOs from the brief.
+- Rule #22 (Thuglife install) — deferred with named reason (device
+  `unavailable`); not skipped silently.
+- Rule #23 (no unrequested push) ✓ — committed locally; no push.
+
+---
+
 ## 2026-06-07 — Wallet-home empty states redesigned + UniRadius unified to iOS 26 native ConcentricRectangle
 
 **Summary:** Two coordinated design-system changes ship together:

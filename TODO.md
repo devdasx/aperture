@@ -440,21 +440,6 @@
 
 ---
 
-### T-046 · Re-enter backup flow against the *specific* unbacked wallet
-- **Status:** OPEN
-- **Priority:** P1
-- **Area:** Features · Wallet home · Backup recovery
-- **File:** `UniApp/Sources/Features/Wallet/WalletHomeView.swift` (`banners` view — inline `// TODO: (T-046)` placed at the `BackupRequiredBanner`'s `onBackUpNow` callback).
-- **Inline comment:** `// TODO: (T-046) Re-enter the backup flow against this specific wallet rather than the default create flow.`
-- **Context:** Today the wallet-home's `BackupRequiredBanner` taps simply present the default `RecoveryPhraseFlow` cover, which creates *a new* wallet — not what the user wants. The user wants to verify the *existing* unbacked wallet's mnemonic. Needs a variant of `RecoveryPhraseFlow` (or a new `BackupExistingWalletFlow`) that reads the active wallet's seed from `SeedVault.loadSeed(for:)`, reconstructs the mnemonic from the stored seed (BIP-39 reverse derivation isn't trivial — the seed alone doesn't reveal the mnemonic, so this needs to be handled at create time by storing the mnemonic separately in a second Keychain item OR by skipping seed-only persistence for unbacked wallets and instead persisting the mnemonic until verification clears the flag).
-- **What "done" looks like:**
-  1. Decide the seed-vs-mnemonic-storage policy for unbacked wallets.
-  2. Implement `BackupExistingWalletFlow` (or extend `RecoveryPhraseFlow` with a `mode: .new | .verifyExisting(walletId:)` parameter).
-  3. On verify success, call `WalletRepository.markBackupComplete(id:)` so the banner disappears.
-- **Honesty checks (Rule #16):** if the seed-vs-mnemonic decision is "store the mnemonic until verified, then delete it", the user must be told plainly at skip time that "your phrase is stored locally and encrypted on this iPhone until you back it up — backing up deletes the local copy." A user expecting "skip means we never store the phrase" deserves the truth.
-- **Depends on:** T-016 (Settings → Wallets "back up your recovery phrase" row — adjacent surface).
-
----
 
 ### T-047 · Receive screen — chain selection + QR code + share sheet
 - **Status:** OPEN (placeholder `ReceivePlaceholderView` shipped 2026-06-06)
@@ -809,6 +794,19 @@ forget them when we get there.
 ---
 
 ## Resolved
+
+### T-046 · Re-enter backup flow against the *specific* unbacked wallet — RESOLVED 2026-06-07
+- **Status:** RESOLVED
+- **Priority:** P1
+- **Area:** Features · Wallet detail · Backup recovery
+- **Resolved by:** `SHIPPED.md` entry titled "Backup state moves off the wallet home onto the wallet-detail screen; two-state monochrome card with live A → B transition" (2026-06-07).
+- **Original context:** The wallet-home `BackupRequiredBanner` tap dropped the user into the default `RecoveryPhraseFlow`, which would create a NEW wallet rather than verify the existing unbacked one. The architectural shape needed a parameterized verify path against an existing wallet's stored mnemonic.
+- **How it shipped:**
+  1. Seed-vs-mnemonic storage decision was already settled (2026-06-04 via `MnemonicVault` always-store policy). Created wallets store the mnemonic encrypted in Keychain under `kSecAttrAccessibleWhenPasscodeSetThisDeviceOnly` until backup verification, at which point it is deleted.
+  2. New `BackupExistingWalletFlow` (`Features/Settings/BackupExistingWalletFlow.swift`) loads the encrypted mnemonic via `MnemonicVault.loadMnemonic(for:)`, seeds a fresh `CreateWalletState` with the loaded words via `state.commit(words:)`, and presents the canonical `BackupVerifyView` against it — so the verification gesture is identical to the one the create flow uses.
+  3. On verify success, `WalletRepository.markBackupComplete(id:)` clears the flag and `MnemonicVault.deleteMnemonic(for:)` removes the encrypted local copy. The user is now the only copy — the disclosure-sheet promise honored.
+  4. The wallet-home `BackupRequiredBanner` is removed in the same turn; the backup state now lives on `WalletDetailView` as a calm two-state monochrome card with a live A → B transition animated via `.smooth(duration: 0.4)` and `.symbolEffect(.bounce, options: .nonRepeating)` on the State-B checkmark.
+- **Honesty achieved:** The disclosure-sheet promise that backed-up wallets exist as one user-held copy is now mechanically enforced — verification deletes the local copy, so a future user reading the open-source code can confirm Aperture stops being a co-copy the moment the user proves they have the phrase.
 
 ### T-020 · Localized currency display names via `Locale.localizedString(forCurrencyCode:)` — RESOLVED 2026-06-04
 - **Status:** RESOLVED
