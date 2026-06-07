@@ -4,6 +4,74 @@
 
 ---
 
+## 2026-06-07 — Rule #1 tightened: only BIG edits land in SHIPPED.md; small tuning follows the big entry
+
+**Summary:** User flagged that SHIPPED.md was filling up
+with single-modifier tuning entries (the toolbar pill
+take 1 → 2 → 3 → 4, the sheet padding 24 → 16, etc.) which
+defeats the file's purpose as the project's history of
+**meaningful** decisions. The pre-correction Rule #1 said
+*"even tiny edits, even comments"* land here; the
+post-correction Rule #1 explicitly reverses that.
+
+**The new contract.** Big edits land. Small edits don't.
+The discipline of distinguishing the two is itself part of
+the rule. CLAUDE.md Rule #1 now lists:
+
+- **BIG (MUST log)** — new feature surface; new component /
+  token; architectural change touching ≥3 files or a public
+  protocol; build/config change; security-touching change
+  (anything under `Brand/`, `Security/`, Keychain access,
+  biometric flow); rule/process change; mistake correction;
+  multi-file structural fix.
+- **SMALL (do NOT log)** — single file ≤ ~20 lines, no new
+  public API; padding/spacing/radius tweak inside a single
+  component; SF Symbol swap; copy refinement; color-role
+  swap from one existing role to another; modifier
+  reordering; reverting / iterating a previously-shipped
+  design without changing its identity (e.g. "take 2 →
+  take 3" tuning of the same pill); comment/docstring
+  edits; test additions for already-shipped features.
+
+A bundling clause covers mixed sessions: a big edit's
+SHIPPED entry may briefly mention small tuning that
+followed it in one closing line — don't make a separate
+entry for the small tuning.
+
+**Why this matters.** SHIPPED.md is the project's wall of
+plaques, not its commit log. Decisions a future agent
+reading the file six months from now would learn something
+from belong here. The diff already tells the story for
+small mechanical edits.
+
+**Files modified:**
+- `CLAUDE.md` — Rule #1 rewritten with the big-vs-small
+  decision tree and the bundling clause. The rule's prior
+  text is acknowledged in the "Why this rule was tightened"
+  section so future agents understand the inversion.
+
+**Per-rule audit:**
+- **Rule #1 (new)** ✓ — this entry IS a Rule/process change,
+  which is one of the "BIG" categories the new rule lists.
+- **Rule #22** ✓ — installed on Thuglife,
+  `databaseSequenceNumber 8116`.
+- **Rule #23** — no push.
+
+**Follow-on tuning (the small bit this rule was written to
+exclude its own entry for).** The wallet pill take 4 landed
+in the same turn: `.controlSize(.small)` was wrong (it
+literally makes the pill smaller — that's what `.small`
+means), `.tint(UniColors.Text.primary)` was redundant (the
+toolbar inherits primary label color anyway). Both removed;
+the pill now ships as `Button { … }.buttonStyle(.glass)`
+with no size override and no explicit tint. The toolbar
+pipeline picks the toolbar-context default control size,
+which matches the gear/flask icons' natural height. No
+separate SHIPPED entry per the new Rule #1 — this line is
+the bundled mention.
+
+---
+
 ## 2026-06-07 — Toolbar wallet pill, take 3: `.buttonStyle(.glass)` + `.controlSize(.small)` is the canonical Apple pattern (after reading the docs)
 
 **Summary:** Third pass on the wallet-name capsule. The user
