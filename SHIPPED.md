@@ -4,6 +4,180 @@
 
 ---
 
+## 2026-06-07 — New brand identity landed: 6-blade "Iris Solid" mark, Aperture Blue accent, new app icon set, new wordmark
+
+**Summary:** User shipped the new Aperture brand kit at
+`/Users/thuglifex/Downloads/Aperture Brand` and asked to update
+the whole app to use it. The kit replaces the 7-blade
+programmatic iris (the original `ApertureIrisView` Canvas
+geometry) with a solid 6-blade "Iris Solid" SVG mark, a new
+Aperture Blue gradient accent (`#3AB0FF → #0A66E8`), and a
+full app-icon set covering light / dark / tinted variants.
+Wordmark also replaced with the kit's horizontal lockup
+(light + dark).
+
+This is a BIG SHIPPED entry per the new Rule #1 (new
+component / token + build/config + multi-file change
+spanning ≥3 files).
+
+**Intent (Rule #2 §D.1):** every brand-mark surface in the
+app now uses the same designed mark from the kit, not a
+programmatic approximation; the accent throughout the app
+shifts to Aperture Blue.
+
+**§1 — Asset catalog changes**
+
+- **`AppIcon.appiconset/`** — `icon-light.png` /
+  `icon-dark.png` / `icon-tinted.png` replaced with the kit's
+  1024×1024 sources. The luminosity-variant structure in
+  `Contents.json` stays the same (light default, dark
+  appearance, tinted appearance). Light tile is Aperture
+  Blue gradient with the white iris; dark tile is near-black
+  with the white iris; tinted is the monochrome glyph iOS
+  retints for the Home Screen accent mode.
+
+- **`Brand/Mark.imageset/`** — new image set containing the
+  three flat mark colorways (`mark-blue.svg`,
+  `mark-black.svg`, `mark-white.svg`). Catalog wired with
+  `.luminosity` light/dark appearance: black for light mode,
+  white for dark mode (vector preserved). Blue variant is
+  available in the catalog for any surface that wants the
+  brand accent tone instead of the default Ink/Cloud.
+
+- **`Wordmark/mark-aperture.imageset/`** — the old single
+  graphite SVG (`mark-aperture.svg`) is replaced with the
+  kit's `wordmark-horizontal-light.svg` (Ink mark + text on
+  transparent) + `wordmark-horizontal-dark.svg` (Cloud mark
+  + text on transparent), wired through the
+  `.luminosity` appearance variant pattern. The imageset
+  asset name stays `mark-aperture` so every existing
+  `Image("mark-aperture")` callsite (e.g.
+  `WordmarkIllustration.swift`) continues to work without
+  edit.
+
+- **`AccentColor.colorset/`** — palette swap. Was graphite
+  (`#1D1D1F`) light / soft-white (`#F4F5F7`) dark. Now
+  **Aperture Blue** (`#0A66E8` light / `#3AB0FF` dark) per
+  the kit's "Blue 600 / Sky 400" spec. Every
+  `UniColors.Tint.accent` reference, every system
+  `.accentColor` consumer, and every `.tint(.accentColor)`
+  in feature code now resolves to the new blue.
+
+- **`Brand/BrandMark.colorset/`** — palette swap. Was the
+  same graphite/soft-white pair as AccentColor. Now **Ink**
+  (`#0B0D11` light) / **Cloud** (`#F5F5F7` dark) per the
+  kit. `UniColors.Brand.mark` now resolves to the new
+  Ink/Cloud tone.
+
+- **`Assets.xcassets/README.md`** — provenance ledger
+  updated for the four asset changes above per Rule #7 §D.
+  Each new asset has its kit source path and license
+  recorded.
+
+**§2 — Code changes**
+
+- **`UniApp/Sources/Brand/ApertureIrisView.swift`** —
+  rewritten. The 200+ lines of `Canvas`-based 7-blade
+  diaphragm geometry (port of `animated-logo.html`'s
+  `geom(rc, rot)` JS function) are replaced with a small
+  `Image("Brand/Mark")` view that takes the same constructor
+  signature (`rc`, `rot`, `ringColor`, `negativeColor`) so
+  every consumer continues to compile. The `rc` /
+  `negativeColor` parameters become no-ops (the static mark
+  has no opening to animate, and no negative-space carving
+  is needed); `rot` drives a `.rotationEffect`. The
+  splash's bloom character is preserved by the
+  `ApertureMotion.Frame.opacity` + `scale` values that the
+  call site still applies via `.opacity` + `.scaleEffect`.
+  Legacy `openValue` (17) + `shutValue` (2.4) constants are
+  kept for `ApertureMotion.swift`'s defaults.
+
+- **`UniApp/Sources/DesignSystem/UniColors.swift`** —
+  `Brand.mark` doc comment updated. Was "graphite (#1D1D1F)
+  / soft-white (#F4F5F7)" — now "Ink (#0B0D11) light / Cloud
+  (#F5F5F7) dark" and names Aperture Blue (#0A66E8 light /
+  #3AB0FF dark) as the brand accent, with values mirrored in
+  `AccentColor.colorset` and `BrandMark.colorset`.
+
+**§3 — Honest deferrals (Lottie animations)**
+
+The brand kit also ships an "Aperture Lottie" subkit with 8
+animations (`splash`, `refresh`, `loading`, `sending`,
+`success`, `empty`, `onboarding`, `error`) in three
+treatments (black / white / tile), at 512×512 / 60fps. They
+are NOT bundled in this entry because Lottie iOS playback
+requires the `lottie-ios` SPM dependency, which violates
+Rule #3 (native-only — only Trust Wallet Core has an
+explicit exception, and it's logged for cryptography, not
+animation). The splash bloom is preserved through
+SwiftUI's `TimelineView` + `ApertureMotion.splash(at:)` +
+`scaleEffect` / `opacity` / `rotationEffect` on the new
+static mark — same visual character, no third-party
+dependency.
+
+If a future surface needs an animation the static SVG mark
++ SwiftUI motion can't carry (e.g. the comet-spin loading
+indicator), the right path is to render that pattern
+natively (the geometry is now well-understood from the JS
+port) rather than to add Lottie.
+
+**Files added:**
+- `UniApp/Resources/Assets.xcassets/Brand/Mark.imageset/` —
+  three SVGs + `Contents.json`.
+- `UniApp/Resources/Assets.xcassets/Wordmark/mark-aperture.imageset/wordmark-horizontal-light.svg`
+  + `wordmark-horizontal-dark.svg`.
+
+**Files modified:**
+- `UniApp/Resources/Assets.xcassets/AppIcon.appiconset/icon-{light,dark,tinted}.png`.
+- `UniApp/Resources/Assets.xcassets/AccentColor.colorset/Contents.json`.
+- `UniApp/Resources/Assets.xcassets/Brand/BrandMark.colorset/Contents.json`.
+- `UniApp/Resources/Assets.xcassets/Wordmark/mark-aperture.imageset/Contents.json`.
+- `UniApp/Resources/Assets.xcassets/README.md`.
+- `UniApp/Sources/Brand/ApertureIrisView.swift` (rewrite).
+- `UniApp/Sources/DesignSystem/UniColors.swift` (doc comment).
+
+**Files removed:**
+- `UniApp/Resources/Assets.xcassets/Wordmark/mark-aperture.imageset/mark-aperture.svg`
+  (replaced by the new light/dark pair).
+
+**Build / Run:**
+- Device build for Thuglife — `BUILD SUCCEEDED`
+  (`-derivedDataPath build-device`).
+- `xcrun devicectl device install app` on Thuglife
+  (`4B521D49-9843-55CC-AFEC-19D4CF4353A6`) — installed,
+  **`databaseSequenceNumber 8132`** (Rule #22 receipt).
+
+**Per-rule audit:**
+
+- **Rule #1 (new)** ✓ — this entry IS big (new
+  component / token + build/config change + multi-file).
+- **Rule #2** ✓ — Hierarchy / Harmony / Consistency
+  preserved. The new mark + accent are one cohesive
+  identity, applied at the asset-catalog layer so every
+  feature consumer adopts it without per-feature edits.
+- **Rule #3** ✓ — Native-only. Image + asset catalog +
+  SwiftUI. No Lottie dependency (deferred honestly).
+- **Rule #4** ✓ — Colors entered through `UniColors`. The
+  new Aperture Blue surfaces via `UniColors.Tint.accent`
+  (resolving to `AccentColor.colorset`); the new Ink/Cloud
+  via `UniColors.Brand.mark` (resolving to
+  `BrandMark.colorset`).
+- **Rule #7** ✓ — The new mark is the real designed asset
+  from the brand kit, not a programmatic approximation.
+  Provenance recorded in `Assets.xcassets/README.md`.
+- **Rule #22** ✓ — installed on Thuglife,
+  `databaseSequenceNumber 8132`.
+- **Rule #23** — this turn does NOT push. Commit will be
+  local-only.
+
+**M-001 reminder for future readers.** The new mark is the
+brand-kit "Iris Solid" — sourced from the app owner's
+designed kit, not from a third-party icon repo. Per the
+M-001 corrective, brand assets always come from the
+authoritative source. This entry is that.
+
+---
+
 ## 2026-06-07 — Rule #1 tightened: only BIG edits land in SHIPPED.md; small tuning follows the big entry
 
 **Summary:** User flagged that SHIPPED.md was filling up

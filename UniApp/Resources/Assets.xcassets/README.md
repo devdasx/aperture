@@ -95,11 +95,50 @@ from the owner's `logo 2/` package (2026-06-04):
 - `icon-dark.png` — space-gray icon for dark home screens, from `logo 2/dark-mode/png/1024/icon.png` — Proprietary, provided by app owner
 - `icon-tinted.png` — marine `#0A84FF` icon source iOS retints, from `logo 2/accent/png/1024/icon.png` — Proprietary, provided by app owner
 
-## Wordmark/ — brand marks (template SVGs)
+## AppIcon.appiconset — full app icon tiles
 
-- mark-aperture — iris/diaphragm mark, monochrome template SVG tinted at the
-  call site via `UniColors.Tint.accent`. Source: provided by app owner
-  (graphite variant on transparent background). License: Proprietary — provided by app owner.
+Replaced 2026-06-07 with the new "Aperture — Brand Identity Kit" — solid
+six-blade "Iris Solid" mark filling ~60% of a 1024px superellipse tile.
+
+- `icon-light.png` — Aperture Blue gradient tile, white iris (1024×1024).
+  Source: brand kit `png/light/icon-1024.png` (provided by app owner).
+- `icon-dark.png` — near-black (Ink) tile, white iris (1024×1024). Source:
+  brand kit `png/dark/icon-1024.png` (provided by app owner).
+- `icon-tinted.png` — monochrome glyph for iOS tinted-home-screen mode
+  (1024×1024). Source: brand kit `png/tinted/icon-1024.png` (provided by
+  app owner).
+
+License: Proprietary — provided by app owner.
+
+## Brand/ — flat brand mark (template SVGs)
+
+The flat six-blade "Iris Solid" mark, without a tile, in three brand
+colorways. Used by `ApertureIrisView` and any future surface that needs
+the mark on a transparent background.
+
+- `Mark/mark-black.svg` — Ink black mark (rendered against light
+  backgrounds via `.luminosity` light variant).
+- `Mark/mark-white.svg` — Cloud white mark (rendered against dark
+  backgrounds via `.luminosity` dark variant).
+- `Mark/mark-blue.svg` — Aperture Blue mark (kept in the catalog as
+  the brand-color variant; tinted at the call site when needed via
+  `UniColors.Tint.accent`).
+
+Source: brand kit `svg/mark-{black,white,blue}.svg`. License: Proprietary
+— provided by app owner.
+
+## Wordmark/ — brand wordmark (template SVGs)
+
+Replaced 2026-06-07 with the new horizontal wordmark (mark + "Aperture"
+typesetting).
+
+- `mark-aperture/wordmark-horizontal-light.svg` — light-mode variant (Ink
+  mark + Ink text on transparent background).
+- `mark-aperture/wordmark-horizontal-dark.svg` — dark-mode variant (Cloud
+  mark + Cloud text on transparent background).
+
+Source: brand kit `svg/wordmark-horizontal-{light,dark}.svg`. License:
+Proprietary — provided by app owner.
 
 ## Onboarding/ — slide-specific glyphs (none yet bundled)
 
