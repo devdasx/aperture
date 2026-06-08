@@ -16,7 +16,18 @@ struct WalletActionRegion: View {
 
     var body: some View {
         GlassEffectContainer(spacing: UniSpacing.s) {
+            // `HStack` defaults to hugging its intrinsic content at
+            // the leading edge — fine when an outer VStack centers
+            // it, but inside a `List` row (post-2026-06-08 native-
+            // List rebuild) the row's content area is wider than the
+            // triplet, so the triplet was rendering shifted to the
+            // left. `Spacer()`s on both sides + `.frame(maxWidth:
+            // .infinity)` on the HStack distribute the buttons
+            // around the row's center regardless of the parent. The
+            // old ScrollView placement worked by coincidence; the
+            // List placement requires the explicit centering.
             HStack(spacing: UniSpacing.xl) {
+                Spacer(minLength: 0)
                 actionButton(
                     icon: "arrow.up.right",
                     label: "Send",
@@ -35,7 +46,9 @@ struct WalletActionRegion: View {
                     isEnabled: canSend,
                     action: onSwap
                 )
+                Spacer(minLength: 0)
             }
+            .frame(maxWidth: .infinity)
         }
         .padding(.vertical, UniSpacing.m)
     }
