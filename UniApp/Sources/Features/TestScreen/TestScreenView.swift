@@ -58,11 +58,14 @@ struct TestScreenView: View {
         let fiatValue: Decimal
     }
 
-    /// One playground transaction — a direction + amount + counterparty
-    /// + occurredAt + status. Drives a single `ActivityRow`. Mirrors
-    /// the shape of `TransactionRecord` for visual fidelity.
+    /// One playground transaction — a chain + direction + amount +
+    /// counterparty + occurredAt + status. Drives a single
+    /// `ActivityRow`. Mirrors the shape of `TransactionEvent` for
+    /// visual fidelity. The `chain` tells the row which bundled
+    /// coin mark to render as the leading visual.
     private struct PlaygroundTransaction: Identifiable {
         let id = UUID()
+        let chain: SupportedChain
         let direction: TransactionDirection
         let amount: Decimal
         let tokenSymbol: String
@@ -106,6 +109,7 @@ struct TestScreenView: View {
     /// "yesterday", "4d ago" through `WalletFormatting.relativeTime`.
     private static let playgroundTransactions: [PlaygroundTransaction] = [
         PlaygroundTransaction(
+            chain: .bitcoin,
             direction: .incoming,
             amount: Decimal(string: "0.05")!,
             tokenSymbol: "BTC",
@@ -114,6 +118,7 @@ struct TestScreenView: View {
             status: .confirmed
         ),
         PlaygroundTransaction(
+            chain: .ethereum,
             direction: .outgoing,
             amount: Decimal(string: "0.18")!,
             tokenSymbol: "ETH",
@@ -122,6 +127,7 @@ struct TestScreenView: View {
             status: .confirmed
         ),
         PlaygroundTransaction(
+            chain: .solana,
             direction: .outgoing,
             amount: Decimal(string: "1.2")!,
             tokenSymbol: "SOL",
@@ -281,6 +287,7 @@ struct TestScreenView: View {
                         // playground stays put.
                     } label: {
                         ActivityRow(
+                            chain: tx.chain,
                             direction: tx.direction,
                             amount: tx.amount,
                             tokenSymbol: tx.tokenSymbol,
@@ -292,7 +299,7 @@ struct TestScreenView: View {
                     }
                     .buttonStyle(.plain)
                     if idx < Self.playgroundTransactions.count - 1 {
-                        UniDivider().padding(.leading, UniSpacing.m + 32 + UniSpacing.s)
+                        UniDivider().padding(.leading, UniSpacing.m + 36 + UniSpacing.s)
                     }
                 }
             }
