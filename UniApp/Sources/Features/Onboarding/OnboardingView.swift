@@ -205,6 +205,18 @@ struct OnboardingView: View {
             )
             .id(sheetDirectionKey)
             .uniAppEnvironment()
+            // Tell iOS to paint the grouped-page color UNDER the
+            // cover's host view. Without this, the cover's default
+            // `systemBackground` (white) paints behind the
+            // NavigationStack and bleeds through anywhere the inner
+            // `.background()` doesn't reach (the safe-area top, the
+            // gaps around the seed-phrase grid). The 2026-06-07
+            // color flip exposed this: pre-flip every layer was
+            // approximately white so the bleed was invisible. Same
+            // treatment as `.sheet(...)` callers that use
+            // `.presentationBackground(...)` to opt out of the
+            // host-default white.
+            .presentationBackground(UniColors.Background.primary)
         }
         // Sibling cover for the Import Wallet flow (T-003). Mirrors the
         // create-wallet pattern: hoisted NavigationPath, .id key on
@@ -226,6 +238,9 @@ struct OnboardingView: View {
             )
             .id(sheetDirectionKey)
             .uniAppEnvironment()
+            // Same host-level backing as the recovery cover above —
+            // see that block for the why.
+            .presentationBackground(UniColors.Background.primary)
         }
         // Rule #16 §C — the open-source verification anchor. Presented
         // from the welcome slide's badge (and reusable from any future

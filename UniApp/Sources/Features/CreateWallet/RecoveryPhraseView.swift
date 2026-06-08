@@ -456,8 +456,17 @@ private struct WordCell: View {
         .padding(.horizontal, UniSpacing.s)
         .padding(.vertical, UniSpacing.s)
         .background(
+            // `Material.card` (white in light, near-black in dark)
+            // not `Background.secondary` — the cell IS a card on
+            // top of the page, so it has to read as one card-step
+            // above the page color. The pre-color-flip code (using
+            // `Background.secondary`) happened to land on a similar
+            // gray value for both tokens, masking the mis-naming;
+            // the 2026-06-07 flip to the iOS Settings register
+            // exposed it (the cells disappeared into the page on
+            // light mode). Rule #4-honest fix.
             RoundedRectangle(cornerRadius: UniRadius.m, style: .continuous)
-                .fill(UniColors.Background.secondary)
+                .fill(UniColors.Material.card)
         )
         // VoiceOver reads "01, abandon" not the styled stacked layout.
         .accessibilityElement(children: .ignore)

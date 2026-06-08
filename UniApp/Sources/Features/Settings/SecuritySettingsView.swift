@@ -71,6 +71,7 @@ struct SecuritySettingsView: View {
                 }
             }
             .uniAppEnvironment()
+            .presentationBackground(UniColors.Background.primary)
         }
     }
 
@@ -213,12 +214,14 @@ struct SecuritySettingsView: View {
                 onBack:   { isShowingPinSetup = false }
             )
             .uniAppEnvironment()
+            .presentationBackground(UniColors.Background.primary)
         }
         .fullScreenCover(isPresented: $isShowingPinChange) {
             PinChangeFlow(
                 onFinish: { isShowingPinChange = false }
             )
             .uniAppEnvironment()
+            .presentationBackground(UniColors.Background.primary)
         }
         .fullScreenCover(isPresented: $isShowingDisableVerify) {
             PinDisableVerifyFlow(
@@ -231,6 +234,7 @@ struct SecuritySettingsView: View {
                 onCancel: { isShowingDisableVerify = false }
             )
             .uniAppEnvironment()
+            .presentationBackground(UniColors.Background.primary)
         }
     }
 
