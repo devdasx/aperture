@@ -56,6 +56,142 @@ struct EVMTransactionAdapter: Sendable {
     private static let scanBlockRange: Int64 = 100_000
 
     func fetch(address: String, limit: Int) async throws -> [TransactionEvent] {
+        // Native + ERC-20 in parallel — neither blocks the other.
+        async let nativeEventsRaw = fetchNativeTransactions(address: address, limit: limit)
+        async let tokenEventsRaw = fetchTokenTransfers(address: address, limit: limit)
+        let nativeEvents = (try? await nativeEventsRaw) ?? []
+        let tokenEvents = (try? await tokenEventsRaw) ?? []
+        // Combine + sort + cap.
+        let combined = nativeEvents + tokenEvents
+        return combined
+            .sorted { $0.occurredAt > $1.occurredAt }
+            .prefix(limit)
+            .map { $0 }
+    }
+
+    // MARK: - Native ETH transactions (Blockscout indexer)
+
+    /// Native EVM transactions (`Transfer(address,address,uint256)` is
+    /// an ERC-20 event — native ETH/MATIC/BNB transfers don't emit
+    /// logs, so `eth_getLogs` can't see them). We fetch these from a
+    /// chain-specific Blockscout indexer instance — open-source,
+    /// Etherscan-compatible API, no key required.
+    ///
+    /// Chains without a public Blockscout (`bnbChain`, `opBNB`,
+    /// `avalanche` at the time of writing) return the empty array
+    /// honestly — the ERC-20 path still works for those, just not
+    /// native sends. Documented per chain in `blockscoutHost(for:)`.
+    private func fetchNativeTransactions(address: String, limit: Int) async throws -> [TransactionEvent] {
+        guard let host = Self.blockscoutHost(for: chain) else { return [] }
+        let urlString = "\(host)/api?module=account&action=txlist&address=\(address)&sort=desc&page=1&offset=\(limit)"
+        guard let url = URL(string: urlString) else { return [] }
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.timeoutInterval = 15
+        let (data, response) = try await URLSession.shared.data(for: request)
+        if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
+            return []
+        }
+        guard let root = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
+              let txs = root["result"] as? [[String: Any]] else {
+            return []
+        }
+        var events: [TransactionEvent] = []
+        events.reserveCapacity(txs.count)
+        let lower = address.lowercased()
+        for tx in txs.prefix(limit) {
+            guard let hash = tx["hash"] as? String,
+                  let from = tx["from"] as? String,
+                  let to = tx["to"] as? String,
+                  let valueStr = tx["value"] as? String,
+                  let timestampStr = tx["timeStamp"] as? String,
+                  let timestamp = Int64(timestampStr) else {
+                continue
+            }
+            // Skip zero-value transactions (contract calls without
+            // value) — they're not "received / sent" rows.
+            let valueRaw = Decimal(string: valueStr) ?? 0
+            if valueRaw == 0 { continue }
+            // Native EVM uses 18 decimals.
+            let amount = valueRaw / Self.scale(decimals: 18)
+            let isError = (tx["isError"] as? String) == "1" || (tx["isError"] as? Int) == 1
+            let blockStr = tx["blockNumber"] as? String
+            let blockNumber = blockStr.flatMap { Int64($0) }
+            let occurredAt = Date(timeIntervalSince1970: TimeInterval(timestamp))
+
+            let direction: TransactionDirection
+            let counterparty: String
+            if from.lowercased() == lower && to.lowercased() == lower {
+                direction = .internal
+                counterparty = ""
+            } else if from.lowercased() == lower {
+                direction = .outgoing
+                counterparty = to
+            } else if to.lowercased() == lower {
+                direction = .incoming
+                counterparty = from
+            } else {
+                continue
+            }
+
+            // Fee (only for outgoing): gasUsed × gasPrice in wei.
+            var fee: Decimal? = nil
+            if direction == .outgoing,
+               let gasUsedStr = tx["gasUsed"] as? String,
+               let gasUsed = Decimal(string: gasUsedStr),
+               let gasPriceStr = tx["gasPrice"] as? String,
+               let gasPrice = Decimal(string: gasPriceStr) {
+                fee = (gasUsed * gasPrice) / Self.scale(decimals: 18)
+            }
+
+            events.append(TransactionEvent(
+                chain: chain,
+                address: address,
+                txHash: hash,
+                direction: direction,
+                amount: amount,
+                tokenSymbol: chain.ticker,
+                tokenContract: nil,
+                blockNumber: blockNumber,
+                occurredAt: occurredAt,
+                status: isError ? .failed : .confirmed,
+                counterparty: counterparty,
+                fee: fee
+            ))
+        }
+        return events
+    }
+
+    /// Per-chain Blockscout host. Returns nil for chains without a
+    /// usable public instance — those chains get ERC-20 history via
+    /// `eth_getLogs` (the `fetchTokenTransfers` path) but no native
+    /// send history. Honest in code; the UI's empty-state stays
+    /// truthful when one chain has no usable indexer.
+    private static func blockscoutHost(for chain: SupportedChain) -> String? {
+        switch chain {
+        case .ethereum:   return "https://eth.blockscout.com"
+        case .arbitrum:   return "https://arbitrum.blockscout.com"
+        case .base:       return "https://base.blockscout.com"
+        case .optimism:   return "https://optimism.blockscout.com"
+        case .scroll:     return "https://scroll.blockscout.com"
+        case .zkSync:     return "https://zksync.blockscout.com"
+        case .polygon:    return "https://polygon.blockscout.com"
+        case .celo:       return "https://celo.blockscout.com"
+        case .kavaEvm:    return "https://kava-evm.blockscout.com"
+        // No public Blockscout instances we trust at time of writing:
+        // BSC (bnbChain) — official explorer is bscscan.com (key-only)
+        // opBNB — same
+        // Avalanche C — official explorer snowtrace.io (key-only)
+        case .bnbChain, .opBNB, .avalanche: return nil
+        // Non-EVM cases never reach this function via the switch in
+        // RealRPCTransactionScanner; included only for exhaustiveness.
+        default: return nil
+        }
+    }
+
+    // MARK: - ERC-20 transfers (eth_getLogs)
+
+    private func fetchTokenTransfers(address: String, limit: Int) async throws -> [TransactionEvent] {
         let latestBlock = try await fetchLatestBlock()
         let fromBlock = max(0, latestBlock - Self.scanBlockRange)
         let fromHex = "0x" + String(fromBlock, radix: 16)
