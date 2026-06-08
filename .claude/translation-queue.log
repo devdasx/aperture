@@ -1,5 +1,163 @@
-2026-06-06T21:27:08Z — aperture-i18n-translator-primary: 61 keys × 25 languages = 1525 translations applied; backup at /tmp/aperture-xcstrings-primary-1780780056.bak
-2026-06-07 translator-secondary: 61 keys × 25 langs = 1525 translations written. Final audit: 492/492 keys at full 50/50 coverage (0 missing primary, 0 missing secondary). Backup: /tmp/aperture-xcstrings-secondary-1780781369.bak
-2026-06-06T22:48:23Z translator-primary: 3 keys processed, 75 translations written (25 primary langs × 3 keys: Confirm to view your recovery phrase, Enable Face ID for Aperture, Fee)
-2026-06-06T22:50:25Z translator-secondary: 3 keys × 25 langs = 75 translations written; full audit 50/50 × 496 keys = 0 missing
-2026-06-07T11:32:37 aperture-i18n-translator-primary: 25 keys × 25 languages = 625 translations written; backup /tmp/aperture-xcstrings-primary-1780820922.bak
+2026-06-07T17:55:33Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Exit test mode
+2026-06-07T17:55:33Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Settings
+2026-06-07T17:55:33Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Switch wallet, currently \(activeWallet?.name ?? 
+2026-06-07T17:55:33Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Test against public addresses
+2026-06-07T17:55:50Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Exit test mode
+2026-06-07T17:55:50Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Settings
+2026-06-07T17:55:50Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Switch wallet, currently \(activeWallet?.name ?? 
+2026-06-07T17:55:50Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Test against public addresses
+2026-06-07T17:58:46Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Exit test mode
+2026-06-07T17:58:46Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Settings
+2026-06-07T17:58:46Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Switch wallet, currently \(activeWallet?.name ?? 
+2026-06-07T17:58:46Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Test against public addresses
+2026-06-07T17:58:56Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Exit test mode
+2026-06-07T17:58:56Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Settings
+2026-06-07T17:58:56Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Switch wallet, currently \(activeWallet?.name ?? 
+2026-06-07T17:58:56Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Test against public addresses
+2026-06-07T17:59:15Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Splash/PrivacyMaskView.swift	Aperture
+2026-06-07T18:05:28Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/TestScreen/TestScreenView.swift	Test Screen
+2026-06-07T18:05:28Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/TestScreen/TestScreenView.swift	Test Screen — design playground
+2026-06-07T18:05:36Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SettingsView.swift	About
+2026-06-07T18:05:36Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SettingsView.swift	Coinbase
+2026-06-07T18:05:36Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SettingsView.swift	Done
+2026-06-07T18:05:36Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SettingsView.swift	Haptic feedback
+2026-06-07T18:05:36Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SettingsView.swift	Hide balance on home
+2026-06-07T18:05:36Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SettingsView.swift	Hide small balances
+2026-06-07T18:05:36Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SettingsView.swift	Holdings worth less than this amount are hidden from the wallet screen. They're still in the local store — only the display is filtered.
+2026-06-07T18:05:36Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SettingsView.swift	Made with Liquid Glass
+2026-06-07T18:05:36Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SettingsView.swift	Prices
+2026-06-07T18:05:36Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SettingsView.swift	Privacy
+2026-06-07T18:05:36Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SettingsView.swift	Settings
+2026-06-07T18:05:36Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SettingsView.swift	Terms
+2026-06-07T18:05:36Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SettingsView.swift	Version
+2026-06-07T18:05:36Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SettingsView.swift	\(currency.symbol) · \(currency.code)
+2026-06-07T18:05:46Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SettingsView.swift	About
+2026-06-07T18:05:46Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SettingsView.swift	Coinbase
+2026-06-07T18:05:46Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SettingsView.swift	Developer
+2026-06-07T18:05:46Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SettingsView.swift	Done
+2026-06-07T18:05:46Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SettingsView.swift	Haptic feedback
+2026-06-07T18:05:46Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SettingsView.swift	Hide balance on home
+2026-06-07T18:05:46Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SettingsView.swift	Hide small balances
+2026-06-07T18:05:46Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SettingsView.swift	Holdings worth less than this amount are hidden from the wallet screen. They're still in the local store — only the display is filtered.
+2026-06-07T18:05:46Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SettingsView.swift	Made with Liquid Glass
+2026-06-07T18:05:46Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SettingsView.swift	Prices
+2026-06-07T18:05:46Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SettingsView.swift	Privacy
+2026-06-07T18:05:46Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SettingsView.swift	Settings
+2026-06-07T18:05:46Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SettingsView.swift	Terms
+2026-06-07T18:05:46Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SettingsView.swift	Version
+2026-06-07T18:05:46Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SettingsView.swift	\(currency.symbol) · \(currency.code)
+2026-06-07T18:05:55Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SettingsView.swift	About
+2026-06-07T18:05:55Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SettingsView.swift	Coinbase
+2026-06-07T18:05:55Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SettingsView.swift	Developer
+2026-06-07T18:05:55Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SettingsView.swift	Done
+2026-06-07T18:05:55Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SettingsView.swift	Haptic feedback
+2026-06-07T18:05:55Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SettingsView.swift	Hide balance on home
+2026-06-07T18:05:55Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SettingsView.swift	Hide small balances
+2026-06-07T18:05:55Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SettingsView.swift	Holdings worth less than this amount are hidden from the wallet screen. They're still in the local store — only the display is filtered.
+2026-06-07T18:05:55Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SettingsView.swift	Made with Liquid Glass
+2026-06-07T18:05:55Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SettingsView.swift	Prices
+2026-06-07T18:05:55Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SettingsView.swift	Privacy
+2026-06-07T18:05:55Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SettingsView.swift	Settings
+2026-06-07T18:05:55Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SettingsView.swift	Terms
+2026-06-07T18:05:55Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SettingsView.swift	Version
+2026-06-07T18:05:55Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SettingsView.swift	\(currency.symbol) · \(currency.code)
+2026-06-07T18:22:15Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/AppLockView.swift	Got it
+2026-06-08T06:19:08Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/CreateWallet/RecoveryPhraseView.swift	12 words
+2026-06-08T06:19:08Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/CreateWallet/RecoveryPhraseView.swift	24 words
+2026-06-08T06:19:08Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/CreateWallet/RecoveryPhraseView.swift	Add passphrase
+2026-06-08T06:19:08Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/CreateWallet/RecoveryPhraseView.swift	Back up now
+2026-06-08T06:19:08Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/CreateWallet/RecoveryPhraseView.swift	Close
+2026-06-08T06:19:08Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/CreateWallet/RecoveryPhraseView.swift	Copy
+2026-06-08T06:19:08Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/CreateWallet/RecoveryPhraseView.swift	Copy recovery phrase
+2026-06-08T06:19:08Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/CreateWallet/RecoveryPhraseView.swift	Edit passphrase
+2026-06-08T06:19:08Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/CreateWallet/RecoveryPhraseView.swift	Open source
+2026-06-08T06:19:08Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/CreateWallet/RecoveryPhraseView.swift	Opens a sheet describing how this recovery phrase was generated
+2026-06-08T06:19:08Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/CreateWallet/RecoveryPhraseView.swift	Options
+2026-06-08T06:19:08Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/CreateWallet/RecoveryPhraseView.swift	Roll your own…
+2026-06-08T06:19:08Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/CreateWallet/RecoveryPhraseView.swift	Skip for now
+2026-06-08T06:19:08Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/CreateWallet/RecoveryPhraseView.swift	Word count
+2026-06-08T06:19:08Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/CreateWallet/RecoveryPhraseView.swift	Your recovery phrase
+2026-06-08T06:19:08Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/CreateWallet/RecoveryPhraseView.swift	\(position), \(word)
+2026-06-08T06:23:06Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Onboarding/OnboardingView.swift	Create new wallet
+2026-06-08T06:23:06Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Onboarding/OnboardingView.swift	I already have a wallet
+2026-06-08T06:23:06Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Onboarding/OnboardingView.swift	Settings
+2026-06-08T06:23:36Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Onboarding/OnboardingView.swift	Create new wallet
+2026-06-08T06:23:36Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Onboarding/OnboardingView.swift	I already have a wallet
+2026-06-08T06:23:36Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Onboarding/OnboardingView.swift	Settings
+2026-06-08T06:24:30Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SecuritySettingsView.swift	Aperture locks when this much time has passed in the background. Re-opening requires PIN or Face ID.
+2026-06-08T06:24:30Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SecuritySettingsView.swift	Auto-lock
+2026-06-08T06:24:30Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SecuritySettingsView.swift	Back
+2026-06-08T06:24:30Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SecuritySettingsView.swift	Cancel
+2026-06-08T06:24:30Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SecuritySettingsView.swift	Change passcode
+2026-06-08T06:24:30Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SecuritySettingsView.swift	Disable passcode
+2026-06-08T06:24:30Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SecuritySettingsView.swift	Disabling the passcode removes the lock from this iPhone's copy of your wallets. Your seed and mnemonic stay encrypted in Keychain — but anyone with this phone unlocked will be able to open Aperture without proving they own it.
+2026-06-08T06:24:30Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SecuritySettingsView.swift	Enable Face ID for Aperture.
+2026-06-08T06:24:30Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SecuritySettingsView.swift	Face ID
+2026-06-08T06:24:30Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SecuritySettingsView.swift	Lock
+2026-06-08T06:24:30Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SecuritySettingsView.swift	On
+2026-06-08T06:24:30Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SecuritySettingsView.swift	Passcode
+2026-06-08T06:24:30Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SecuritySettingsView.swift	Re-enables the security warning that appears before you import a recovery phrase or private key.
+2026-06-08T06:24:30Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SecuritySettingsView.swift	Security
+2026-06-08T06:24:30Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SecuritySettingsView.swift	Set up
+2026-06-08T06:24:30Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SecuritySettingsView.swift	Timing
+2026-06-08T06:24:54Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SecuritySettingsView.swift	Aperture locks when this much time has passed in the background. Re-opening requires PIN or Face ID.
+2026-06-08T06:24:54Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SecuritySettingsView.swift	Auto-lock
+2026-06-08T06:24:54Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SecuritySettingsView.swift	Back
+2026-06-08T06:24:54Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SecuritySettingsView.swift	Cancel
+2026-06-08T06:24:54Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SecuritySettingsView.swift	Change passcode
+2026-06-08T06:24:54Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SecuritySettingsView.swift	Disable passcode
+2026-06-08T06:24:54Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SecuritySettingsView.swift	Disabling the passcode removes the lock from this iPhone's copy of your wallets. Your seed and mnemonic stay encrypted in Keychain — but anyone with this phone unlocked will be able to open Aperture without proving they own it.
+2026-06-08T06:24:54Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SecuritySettingsView.swift	Enable Face ID for Aperture.
+2026-06-08T06:24:54Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SecuritySettingsView.swift	Face ID
+2026-06-08T06:24:54Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SecuritySettingsView.swift	Lock
+2026-06-08T06:24:54Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SecuritySettingsView.swift	On
+2026-06-08T06:24:54Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SecuritySettingsView.swift	Passcode
+2026-06-08T06:24:54Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SecuritySettingsView.swift	Re-enables the security warning that appears before you import a recovery phrase or private key.
+2026-06-08T06:24:54Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SecuritySettingsView.swift	Security
+2026-06-08T06:24:54Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SecuritySettingsView.swift	Set up
+2026-06-08T06:24:54Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SecuritySettingsView.swift	Timing
+2026-06-08T06:25:39Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletsListView.swift	Active
+2026-06-08T06:25:39Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletsListView.swift	Not backed up
+2026-06-08T06:25:39Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletsListView.swift	Search wallets
+2026-06-08T06:25:39Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletsListView.swift	Wallets
+2026-06-08T06:26:13Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Exit test mode
+2026-06-08T06:26:13Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Settings
+2026-06-08T06:26:13Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Switch wallet, currently \(activeWallet?.name ?? 
+2026-06-08T06:26:13Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Test against public addresses
+2026-06-08T06:34:52Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Exit test mode
+2026-06-08T06:34:52Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Settings
+2026-06-08T06:34:52Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Switch wallet, currently \(activeWallet?.name ?? 
+2026-06-08T06:34:52Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Test against public addresses
+2026-06-08T06:36:12Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Exit test mode
+2026-06-08T06:36:12Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Settings
+2026-06-08T06:36:12Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Switch wallet, currently \(activeWallet?.name ?? 
+2026-06-08T06:36:12Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Test against public addresses
+2026-06-08T06:36:32Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Receive/ReceiveQRDetailView.swift	Share
+2026-06-08T06:36:32Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Receive/ReceiveQRDetailView.swift	Share address
+2026-06-08T06:36:32Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Receive/ReceiveQRDetailView.swift	What's a receive address?
+2026-06-08T06:36:43Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeHeader.swift	 · 
+2026-06-08T06:36:43Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeHeader.swift	Balance hidden, tap to reveal
+2026-06-08T06:36:43Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeHeader.swift	Last synced \(WalletFormatting.relativeTime(lastSyncedAt))
+2026-06-08T06:36:43Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeHeader.swift	Refreshing…
+2026-06-08T06:36:43Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeHeader.swift	Switch wallet, currently \(walletName)
+2026-06-08T06:36:43Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeHeader.swift	Total balance \(WalletFormatting.fiat(totalFiat, currencyCode: currencyCode))
+2026-06-08T06:36:43Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeHeader.swift	^[\(chainCount) chain](inflect: true)
+2026-06-08T06:36:43Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeHeader.swift	^[\(tokenCount) token](inflect: true)
+2026-06-08T06:36:43Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeHeader.swift	^[\(totalChainsSupported) chain](inflect: true) supported
+2026-06-08T06:37:02Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/PinCode/PinCodeView.swift	 
+2026-06-08T06:37:02Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/PinCode/PinCodeView.swift	Delete last digit
+2026-06-08T06:37:02Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/PinCode/PinCodeView.swift	Forgot PIN?
+2026-06-08T06:37:21Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/CreateWallet/RollYourOwn/RollYourOwnSheet.swift	%02d
+2026-06-08T06:37:21Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/CreateWallet/RollYourOwn/RollYourOwnSheet.swift	Cancel
+2026-06-08T06:37:21Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/CreateWallet/RollYourOwn/RollYourOwnSheet.swift	Clear last
+2026-06-08T06:37:21Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/CreateWallet/RollYourOwn/RollYourOwnSheet.swift	Die face \(n)
+2026-06-08T06:37:21Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/CreateWallet/RollYourOwn/RollYourOwnSheet.swift	Discard and start over
+2026-06-08T06:37:21Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/CreateWallet/RollYourOwn/RollYourOwnSheet.swift	Generate phrase
+2026-06-08T06:37:21Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/CreateWallet/RollYourOwn/RollYourOwnSheet.swift	Heads
+2026-06-08T06:37:21Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/CreateWallet/RollYourOwn/RollYourOwnSheet.swift	Need \(required - buffer.count) more
+2026-06-08T06:37:21Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/CreateWallet/RollYourOwn/RollYourOwnSheet.swift	Records this flip
+2026-06-08T06:37:21Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/CreateWallet/RollYourOwn/RollYourOwnSheet.swift	Tails
+2026-06-08T06:37:21Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/CreateWallet/RollYourOwn/RollYourOwnSheet.swift	U
+2026-06-08T06:37:21Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/CreateWallet/RollYourOwn/RollYourOwnSheet.swift	Use a fair die or coin. Patterns from birthdays or phone numbers reduce real randomness.
+2026-06-08T06:37:21Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/CreateWallet/RollYourOwn/RollYourOwnSheet.swift	Use this phrase
+2026-06-08T06:37:21Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/CreateWallet/RollYourOwn/RollYourOwnSheet.swift	\(buffer.count) of \(required)
