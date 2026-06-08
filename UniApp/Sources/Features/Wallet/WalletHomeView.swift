@@ -332,15 +332,15 @@ struct WalletHomeView: View {
     private var holdingsBody: some View {
         if isTestMode {
             holdingsListSection
-        } else if coinHoldings.isEmpty && tokenHoldings.isEmpty {
-            emptyHoldingsSection
         } else {
-            if !coinHoldings.isEmpty {
-                coinsSection
-            }
-            if !tokenHoldings.isEmpty {
-                tokensSection
-            }
+            // Both sections always render — per the 2026-06-08
+            // direction, the home screen shows ALL supported coins
+            // and tokens (zero-balance ones included). The empty
+            // gates are gone; the supported-rows builders return
+            // non-empty lists by construction (26 chains, 100+
+            // tokens across the registries).
+            coinsSection
+            tokensSection
         }
     }
 
@@ -432,34 +432,23 @@ struct WalletHomeView: View {
     /// for its "MOBILE DATA" / "GENERAL" labels.
     @ViewBuilder
     private var coinsSection: some View {
-        let displayed = Array(coinHoldings.prefix(holdingsDisplayCap))
-        let hasMore = coinHoldings.count > holdingsDisplayCap
+        // Use `coinDisplayRows` (every supported chain, held-first
+        // sort) — not `coinHoldings` (held only). Per the user's
+        // 2026-06-08 direction the home screen now shows all
+        // supported coins; zero-balance rows render honestly.
+        let rows = coinDisplayRows
+        let displayed = Array(rows.prefix(holdingsDisplayCap))
+        let hasMore = rows.count > holdingsDisplayCap
 
         Section {
             ForEach(Array(displayed.enumerated()), id: \.offset) { _, row in
                 AssetRow(
                     chain: row.chain,
-                    tokenSymbol: row.balance.tokenSymbol,
-                    nativeAmount: WalletFormatting.decimalAmount(
-                        rawBalance: row.balance.rawBalance,
-                        decimals: row.balance.decimals
-                    ),
-                    // Display decimals come from the chain, not the
-                    // stored field. The native-balance upsert path in
-                    // `WalletRefreshCoordinator` writes `decimals: 0`
-                    // because the scanner already divides
-                    // (`summary.nativeBalance` is in chain units, not
-                    // wei/sats). Reading `row.balance.decimals` here
-                    // would give 0 and the `0...0` fractional-length
-                    // range in `WalletFormatting.native` would round a
-                    // non-zero balance like 0.012345 ETH to "0". The
-                    // chain's `nativeDecimals` is the honest source of
-                    // truth — capped at 8 so the row stays legible
-                    // (ETH/NEAR don't need 18/24 digits on the home;
-                    // Send/Receive use full precision).
+                    tokenSymbol: row.chain.ticker,
+                    nativeAmount: row.amount,
                     nativeDecimals: min(row.chain.nativeDecimals, 8),
-                    fiatValue: row.balance.fiatValueCached > 0 ? row.balance.fiatValueCached : nil,
-                    fiatCurrencyCode: row.balance.fiatCurrencyCode
+                    fiatValue: row.fiatValue,
+                    fiatCurrencyCode: row.fiatCurrencyCode
                 )
             }
             if hasMore { showAllRow }
@@ -478,17 +467,67 @@ struct WalletHomeView: View {
     /// flat layout, not nested under a chain.
     @ViewBuilder
     private var tokensSection: some View {
-        let displayed = Array(tokenHoldings.prefix(holdingsDisplayCap))
-        let hasMore = tokenHoldings.count > holdingsDisplayCap
+        // Use `tokenDisplayRows` (every supported token across every
+        // registry, held-first sort). The display row carries
+        // (symbol, name, amount, fiat) — zero-balance rows render
+        // honestly per Rule #16.
+        let rows = tokenDisplayRows
+        let displayed = Array(rows.prefix(holdingsDisplayCap))
+        let hasMore = rows.count > holdingsDisplayCap
 
         Section {
-            ForEach(Array(displayed.enumerated()), id: \.offset) { _, row in
-                TokenHoldingRow(chain: row.chain, balance: row.balance)
+            ForEach(displayed, id: \.id) { row in
+                supportedTokenRow(row)
             }
             if hasMore { showAllRow }
         } header: {
             Text("Tokens")
         }
+    }
+
+    /// Inline renderer for a `WalletTokenSupportedDisplayRow`. Same
+    /// 44pt mark + symbol/chain subtitle + amount/fiat anatomy as
+    /// `TokenSupportedRow` in `AllSupportedAssetsView`. Inlined here
+    /// rather than lifted to a top-level component because it's two
+    /// call sites max and the spacing decisions are home-screen-
+    /// specific.
+    @ViewBuilder
+    private func supportedTokenRow(_ row: WalletTokenSupportedDisplayRow) -> some View {
+        HStack(spacing: UniSpacing.s) {
+            CoinMark(chain: row.chain, tokenSymbol: row.symbol)
+                .frame(width: 44, height: 44)
+                .accessibilityHidden(true)
+
+            VStack(alignment: .leading, spacing: UniSpacing.xxs) {
+                Text(verbatim: row.symbol)
+                    .font(UniTypography.bodyEmphasized)
+                    .foregroundStyle(UniColors.Text.primary)
+                Text(verbatim: row.chain.displayName)
+                    .font(UniTypography.footnote)
+                    .foregroundStyle(UniColors.Text.secondary)
+                    .lineLimit(1)
+            }
+
+            Spacer(minLength: UniSpacing.s)
+
+            VStack(alignment: .trailing, spacing: UniSpacing.xxs) {
+                Text(WalletFormatting.native(row.amount, decimals: 6))
+                    .font(UniTypography.monoBody)
+                    .foregroundStyle(UniColors.Text.primary)
+                if let fiat = row.fiatValue, fiat > 0 {
+                    Text(WalletFormatting.fiat(fiat, currencyCode: row.fiatCurrencyCode))
+                        .font(UniTypography.footnote)
+                        .foregroundStyle(UniColors.Text.tertiary)
+                        .monospacedDigit()
+                } else {
+                    Text("Price unavailable")
+                        .font(UniTypography.footnote)
+                        .foregroundStyle(UniColors.Text.tertiary)
+                }
+            }
+        }
+        .padding(.vertical, UniSpacing.xs)
+        .contentShape(Rectangle())
     }
 
     // MARK: - Empty holdings section
@@ -623,15 +662,80 @@ struct WalletHomeView: View {
 
     /// Tokens held — every non-native balance. One row per
     /// `(chain, token balance)`. Sorted by fiat desc.
-    ///
-    /// Anything that isn't a native coin is a token: contract is
-    /// non-nil OR the symbol doesn't match the chain's ticker
-    /// (the latter catches edge cases where a registry stores a
-    /// native-equivalent under a different symbol).
     private var tokenHoldings: [(chain: SupportedChain, balance: TokenBalanceRecord)] {
         balances.filter { entry in
             entry.balance.tokenContract != nil
                 || entry.balance.tokenSymbol != entry.chain.ticker
+        }
+    }
+
+    // MARK: - Display rows (held + supported, capped at 10)
+    //
+    // The two computed rows below feed the home screen's Coins and
+    // Tokens sections. They enumerate EVERY supported asset (held +
+    // not-held) per the user's 2026-06-08 direction ("show all
+    // supported coins and tokens — even if balance is 0"), then
+    // sort held-first so the user's actual holdings lead. The
+    // `WalletSupportedRowBuilders` builders enumerate every
+    // registry — same source the "Show all" destination uses.
+
+    /// All balances on the active wallet, raw — including zero-string
+    /// rows. The supported-rows builder needs the full set so it can
+    /// determine whether each registry entry is held; the existing
+    /// `balances` property filters to non-zero, so we re-compute here
+    /// without that filter.
+    private var allHeldRows: [(chain: SupportedChain, balance: TokenBalanceRecord)] {
+        guard let wallet = activeWallet else { return [] }
+        var result: [(SupportedChain, TokenBalanceRecord)] = []
+        for address in wallet.addresses {
+            guard let chain = SupportedChain(rawValue: address.chainRaw) else { continue }
+            for balance in address.balances where !balance.rawBalance.isEmpty {
+                result.append((chain, balance))
+            }
+        }
+        return result
+    }
+
+    /// Coins rows — every `SupportedChain.allCases`, held coins first
+    /// (fiat desc), then unheld in canonical chain order. The home
+    /// screen takes the first 10; the "Show all" destination shows
+    /// the rest.
+    var coinDisplayRows: [WalletCoinSupportedRow] {
+        let rows = WalletSupportedRowBuilders.coinRows(
+            heldRows: allHeldRows,
+            currencyCode: currencyCode
+        )
+        return rows.sorted { a, b in
+            if a.isHeld != b.isHeld { return a.isHeld }
+            if a.isHeld {
+                let aFiat = a.fiatValue ?? .zero
+                let bFiat = b.fiatValue ?? .zero
+                if aFiat != bFiat { return aFiat > bFiat }
+            }
+            return a.chain.displayName.localizedStandardCompare(b.chain.displayName) == .orderedAscending
+        }
+    }
+
+    /// Tokens rows — every supported token across all registries,
+    /// held first (fiat desc), then unheld alphabetically by
+    /// `(symbol, chain)`.
+    var tokenDisplayRows: [WalletTokenSupportedDisplayRow] {
+        let rows = WalletSupportedRowBuilders.tokenRows(
+            heldRows: allHeldRows,
+            currencyCode: currencyCode
+        )
+        return rows.sorted { a, b in
+            if a.isHeld != b.isHeld { return a.isHeld }
+            if a.isHeld {
+                let aFiat = a.fiatValue ?? .zero
+                let bFiat = b.fiatValue ?? .zero
+                if aFiat != bFiat { return aFiat > bFiat }
+            }
+            let symbolOrder = a.symbol.localizedStandardCompare(b.symbol)
+            if symbolOrder != .orderedSame {
+                return symbolOrder == .orderedAscending
+            }
+            return a.chain.displayName.localizedStandardCompare(b.chain.displayName) == .orderedAscending
         }
     }
 

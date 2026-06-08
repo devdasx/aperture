@@ -107,28 +107,15 @@ struct AllSupportedAssetsView: View {
     }
 
     // MARK: - Row models
+    //
+    // These types were lifted from `private` to file-internal so the
+    // main `WalletHomeView` can compose against the same shapes when
+    // it enumerates ALL supported coins / tokens on the home screen
+    // (with held-first, zero-balance-shown ordering). One canonical
+    // row shape, two consumers.
 
-    /// Display shape for one Coins row. Carries the chain plus the
-    /// current native amount + fiat value (zero when not held).
-    private struct CoinSupportedRow {
-        let chain: SupportedChain
-        let amount: Decimal
-        let fiatValue: Decimal?
-        let fiatCurrencyCode: String
-    }
-
-    /// Display shape for one Tokens row. Carries the registry-level
-    /// `(symbol, name, contract, decimals, chain)` tuple plus the
-    /// current native amount + fiat value (zero when not held).
-    fileprivate struct TokenSupportedDisplayRow: Identifiable {
-        let id: String
-        let chain: SupportedChain
-        let symbol: String
-        let name: String
-        let amount: Decimal
-        let fiatValue: Decimal?
-        let fiatCurrencyCode: String
-    }
+    typealias CoinSupportedRow = WalletCoinSupportedRow
+    typealias TokenSupportedDisplayRow = WalletTokenSupportedDisplayRow
 
     // MARK: - Active wallet + balance lookup
 
