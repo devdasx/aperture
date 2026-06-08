@@ -139,6 +139,17 @@ struct WalletRefreshCoordinator: Sendable {
         let maybeSummary = await summaryTask
         await priceTask
 
+        // Transaction-history fetch runs regardless of whether the
+        // balance scan succeeded — an address can have outgoing
+        // transactions on a chain where the current balance lookup
+        // happens to time out, and the user still deserves to see
+        // those rows in their activity feed.
+        await scanTransactionHistory(
+            address: address,
+            client: rpcClient,
+            txRepo: txRepo
+        )
+
         guard let summary = maybeSummary else {
             Self.log.error("Real RPC scan failed for \(address.address, privacy: .public)")
             try? await txRepo.markScanComplete(addressId: address.id, isUsed: address.isUsed)
