@@ -152,73 +152,100 @@ struct TestScreenView: View {
     // MARK: - Body
 
     var body: some View {
-        scrollSurface
-            .background(UniColors.Background.primary.ignoresSafeArea())
+        listSurface
             .navigationTitle(Text("Test Screen"))
             .navigationBarTitleDisplayMode(.inline)
     }
 
     // MARK: - Layout
 
-    /// The scroll surface. Same composition as `WalletHomeView`:
-    /// header → action triplet → holdings → activity → footer. No
-    /// banners, no test-mode toggle, no refreshable — this is a
-    /// playground, not a live data surface.
-    private var scrollSurface: some View {
-        ScrollView {
-            VStack(spacing: UniSpacing.l) {
-                playgroundBadge
-
-                WalletHomeHeader(
-                    walletName: String.apertureLocalized("Playground wallet"),
-                    totalFiat: playgroundTotalFiat,
-                    currencyCode: playgroundCurrencyCode,
-                    chainCount: Self.playgroundBalances.count,
-                    tokenCount: Self.playgroundBalances.count,
-                    totalChainsSupported: SupportedChain.allCases.count,
-                    hasAnyBalance: true,
-                    isRefreshing: false,
-                    lastSyncedAt: Date().addingTimeInterval(-30),
-                    hideBalance: false,
-                    onSwitchWallet: {
-                        // Switcher is a no-op in the playground. The
-                        // pill is rendered by `WalletHomeHeader` only
-                        // when the wallet-home toolbar is absent;
-                        // here the toolbar carries the nav-bar title
-                        // so the pill body is unused. Keep the
-                        // closure so the header signature is honored.
-                    }
-                )
-
-                WalletActionRegion(
-                    canSend: true,
-                    onSend: {
-                        // Inert. Same component as the real wallet so
-                        // the haptic + glass material read identically.
-                    },
-                    onReceive: {
-                        // Inert.
-                    },
-                    onSwap: {
-                        // Inert.
-                    }
-                )
-                .padding(.horizontal, UniSpacing.l)
-
-                holdingsSection
-
-                activitySection
-
-                footer
-            }
-            .padding(.horizontal, UniSpacing.l)
-            .padding(.bottom, UniSpacing.xxl)
+    /// Same architectural shape as the wallet home (2026-06-08): the
+    /// whole content is a native `List(.insetGrouped)`. Chrome rows
+    /// (playground badge + hero header + action triplet) sit in a
+    /// chrome section with cleared row backgrounds + hidden
+    /// separators so the floating chrome doesn't fight the inset
+    /// card chrome. Holdings + activity sit in native inset-card
+    /// sections with system separators. Footer is its own section.
+    ///
+    /// This is the design playground — converting it in lockstep
+    /// with the wallet home so the two surfaces stay in visual sync.
+    /// If the user mutates the playground and likes what they see,
+    /// the mutation maps 1:1 to the real wallet home.
+    private var listSurface: some View {
+        List {
+            chromeSection
+            holdingsListSection
+            activityListSection
+            footerSection
         }
-        .scrollIndicators(.hidden)
+        .listStyle(.insetGrouped)
+        .scrollContentBackground(.hidden)
+        .background(UniColors.Background.primary.ignoresSafeArea())
     }
 
-    /// **Playground identity badge.** A single restrained row near the
-    /// top of the scroll that names the surface as the test screen
+    /// Top chrome rows: playground badge, hero balance header, and
+    /// the Liquid Glass action triplet. Cleared row backgrounds +
+    /// hidden separators so the chrome reads as floating above the
+    /// data, not as data itself.
+    @ViewBuilder
+    private var chromeSection: some View {
+        Section {
+            playgroundBadge
+                .listRowBackground(Color.clear)
+                .listRowSeparator(.hidden)
+                .listRowInsets(EdgeInsets(
+                    top: 0,
+                    leading: UniSpacing.l,
+                    bottom: 0,
+                    trailing: UniSpacing.l
+                ))
+
+            WalletHomeHeader(
+                walletName: String.apertureLocalized("Playground wallet"),
+                totalFiat: playgroundTotalFiat,
+                currencyCode: playgroundCurrencyCode,
+                chainCount: Self.playgroundBalances.count,
+                tokenCount: Self.playgroundBalances.count,
+                totalChainsSupported: SupportedChain.allCases.count,
+                hasAnyBalance: true,
+                isRefreshing: false,
+                lastSyncedAt: Date().addingTimeInterval(-30),
+                hideBalance: false,
+                onSwitchWallet: {
+                    // Switcher is a no-op in the playground. Keep the
+                    // closure so the header signature is honored.
+                }
+            )
+            .listRowBackground(Color.clear)
+            .listRowSeparator(.hidden)
+            .listRowInsets(EdgeInsets())
+
+            WalletActionRegion(
+                canSend: true,
+                onSend: {
+                    // Inert. Same component as the real wallet so the
+                    // haptic + glass material read identically.
+                },
+                onReceive: {
+                    // Inert.
+                },
+                onSwap: {
+                    // Inert.
+                }
+            )
+            .listRowBackground(Color.clear)
+            .listRowSeparator(.hidden)
+            .listRowInsets(EdgeInsets(
+                top: 0,
+                leading: UniSpacing.l,
+                bottom: 0,
+                trailing: UniSpacing.l
+            ))
+        }
+    }
+
+    /// **Playground identity badge.** A single restrained row near
+    /// the top of the list that names the surface as the test screen
     /// without alarming the user (Rule #16 §B). Brand-mark monochrome
     /// (not status warning orange) — the user is not in danger; they
     /// are simply not in their real wallet. SF Symbol `flask` echoes
@@ -240,107 +267,80 @@ struct TestScreenView: View {
         .padding(.vertical, UniSpacing.xxs)
         .background(
             Capsule(style: .continuous)
-                .fill(UniColors.Material.card)
+                .fill(UniColors.Background.secondary)
         )
         .frame(maxWidth: .infinity)
+        .padding(.top, UniSpacing.xs)
     }
 
-    /// Holdings section — same chrome as the wallet home
-    /// (`sectionFrame(title:)` equivalent + a `Material.card` rounded
-    /// surface holding `AssetRow` rows + `UniDivider` separators).
-    private var holdingsSection: some View {
-        sectionFrame(title: "Holdings") {
-            VStack(spacing: 0) {
-                ForEach(Array(Self.playgroundBalances.enumerated()), id: \.element.id) { idx, balance in
-                    AssetRow(
-                        chain: balance.chain,
-                        tokenSymbol: balance.tokenSymbol,
-                        nativeAmount: balance.nativeAmount,
-                        nativeDecimals: min(balance.decimals, 8),
-                        fiatValue: balance.fiatValue,
-                        fiatCurrencyCode: playgroundCurrencyCode
+    /// Holdings section — native inset-grouped section holding one
+    /// `AssetRow` per playground balance. System-drawn separators
+    /// replace the old `UniDivider` rendering — the user's
+    /// 2026-06-08 direction was "REAL NATIVE LIST FROM iOS".
+    @ViewBuilder
+    private var holdingsListSection: some View {
+        Section {
+            ForEach(Self.playgroundBalances) { balance in
+                AssetRow(
+                    chain: balance.chain,
+                    tokenSymbol: balance.tokenSymbol,
+                    nativeAmount: balance.nativeAmount,
+                    nativeDecimals: min(balance.decimals, 8),
+                    fiatValue: balance.fiatValue,
+                    fiatCurrencyCode: playgroundCurrencyCode
+                )
+            }
+        } header: {
+            Text("Holdings")
+        }
+    }
+
+    /// Recent activity section — native inset-grouped section. Rows
+    /// wrap `ActivityRow` in a `Button { } label: { … }` so the
+    /// haptic + tap-target geometry matches the production wallet
+    /// home, but the action closure is a no-op (the playground does
+    /// not route to a transaction detail).
+    @ViewBuilder
+    private var activityListSection: some View {
+        Section {
+            ForEach(Self.playgroundTransactions) { tx in
+                Button {
+                    // Inert — playground stays put.
+                } label: {
+                    ActivityRow(
+                        chain: tx.chain,
+                        direction: tx.direction,
+                        amount: tx.amount,
+                        tokenSymbol: tx.tokenSymbol,
+                        counterparty: tx.counterparty,
+                        occurredAt: tx.occurredAt,
+                        status: tx.status
                     )
-                    .padding(.horizontal, UniSpacing.m)
-                    if idx < Self.playgroundBalances.count - 1 {
-                        UniDivider().padding(.leading, UniSpacing.m + 32 + UniSpacing.s)
-                    }
                 }
+                .buttonStyle(.plain)
             }
-            .background(
-                RoundedRectangle(cornerRadius: UniRadius.card, style: .continuous)
-                    .fill(UniColors.Material.card)
-            )
+        } header: {
+            Text("Recent activity")
         }
     }
 
-    /// Activity section — same chrome as wallet home. Rows are
-    /// `Button { } label: { ActivityRow(...) }` so the buttonStyle
-    /// gives the tap target, but the action closure is a no-op (the
-    /// playground does not route to a transaction detail).
-    private var activitySection: some View {
-        sectionFrame(title: "Recent activity") {
-            VStack(spacing: 0) {
-                ForEach(Array(Self.playgroundTransactions.enumerated()), id: \.element.id) { idx, tx in
-                    Button {
-                        // Inert. Real wallet home pushes
-                        // `WalletHomeDestination.transaction(id)`; the
-                        // playground stays put.
-                    } label: {
-                        ActivityRow(
-                            chain: tx.chain,
-                            direction: tx.direction,
-                            amount: tx.amount,
-                            tokenSymbol: tx.tokenSymbol,
-                            counterparty: tx.counterparty,
-                            occurredAt: tx.occurredAt,
-                            status: tx.status
-                        )
-                        .padding(.horizontal, UniSpacing.m)
-                    }
-                    .buttonStyle(.plain)
-                    if idx < Self.playgroundTransactions.count - 1 {
-                        UniDivider().padding(.leading, UniSpacing.m + 36 + UniSpacing.s)
-                    }
-                }
-            }
-            .background(
-                RoundedRectangle(cornerRadius: UniRadius.card, style: .continuous)
-                    .fill(UniColors.Material.card)
+    /// Footer section — boundary statement, calmly restates the
+    /// no-server property even though the playground does not touch
+    /// any server. Keeps the visual register identical to the real
+    /// wallet home.
+    @ViewBuilder
+    private var footerSection: some View {
+        Section {
+            UniFootnote(
+                text: "No accounts. No servers. Aperture lives on your iPhone.",
+                alignment: .center,
+                color: UniColors.Text.tertiary
             )
-        }
-    }
-
-    /// Footer — same boundary statement as the real wallet home.
-    /// Calmly restates the no-server property even though the
-    /// playground does not touch any server. Keeps the visual
-    /// register identical.
-    private var footer: some View {
-        UniFootnote(
-            text: "No accounts. No servers. Aperture lives on your iPhone.",
-            alignment: .center,
-            color: UniColors.Text.tertiary
-        )
-        .padding(.top, UniSpacing.l)
-    }
-
-    /// Section frame — verbatim copy of `WalletHomeView.sectionFrame`
-    /// so the small-caps title rhythm matches the real wallet home.
-    /// Lives here as a local helper rather than being lifted to a
-    /// component because (a) the wallet home's version is also a
-    /// local helper, and (b) factoring it out now would change two
-    /// surfaces' visual contract from one — premature.
-    private func sectionFrame<Content: View>(
-        title: LocalizedStringKey,
-        @ViewBuilder content: () -> Content
-    ) -> some View {
-        VStack(alignment: .leading, spacing: UniSpacing.s) {
-            Text(title)
-                .font(UniTypography.footnote)
-                .foregroundStyle(UniColors.Text.tertiary)
-                .textCase(.uppercase)
-                .tracking(0.6)
-                .padding(.leading, UniSpacing.xs)
-            content()
+            .frame(maxWidth: .infinity)
+            .padding(.top, UniSpacing.l)
+            .listRowBackground(Color.clear)
+            .listRowSeparator(.hidden)
+            .listRowInsets(EdgeInsets())
         }
     }
 }
