@@ -161,6 +161,23 @@ struct WatchOnlyEntryView: View {
                 )
                 .environment(\.layoutDirection, .leftToRight)
                 .multilineTextAlignment(.leading)
+                // Enter = dismiss keyboard, never newline. Detect the
+                // single-trailing-newline-on-prior-buffer signal (the
+                // user pressed Enter, not pasted multi-line content)
+                // and dismiss focus. Multi-line address pastes (where
+                // many characters land at once) pass through untouched
+                // — the parser already splits on `\n` further down, so
+                // those newlines remain meaningful as line separators.
+                // Aligns with the `UniTextField` contract; see
+                // `CLAUDE.md` Rule #19 §D.
+                .onChange(of: state.watchOnlyRaw) { oldValue, newValue in
+                    if newValue.count == oldValue.count + 1,
+                       newValue.last == "\n",
+                       newValue.dropLast() == oldValue {
+                        state.watchOnlyRaw = String(newValue.dropLast())
+                        isFieldFocused = false
+                    }
+                }
         }
     }
 

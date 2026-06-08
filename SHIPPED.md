@@ -4,6 +4,81 @@
 
 ---
 
+## 2026-06-08 — Enter dismisses the keyboard on every text input — never inserts a newline
+
+**Summary:** Pressing Return / Enter on any text input in Aperture now dismisses the keyboard instead of inserting a newline. Wired at three layers in priority order: (1) the canonical `UniTextField` primitive — `.submitLabel(.done)` + `.onSubmit { isFieldFocused = false }` for single-line, trailing-newline diff intercept in `.onChange(of: text)` for multi-line; (2) `MnemonicImport`'s raw `TextEditor` carve-out (Rule #11 §C content-aware ambient-direction editor) — same diff intercept added at the top of its existing `.onChange(of: editorText)` so the dismiss fires *before* the existing normalization filters `\n` as whitespace; (3) `WatchOnlyImport`'s raw `TextEditor` carve-out — new `.onChange(of: state.watchOnlyRaw)` with the same diff intercept. Single canonical contract, three call sites; BIG per Rule #1 because it changes the primitive's public submit behavior across the entire app.
+
+**User direction (verbatim).** *"now in the import wallet screen, and watch only, and all other textfield in the app when i press on enter in the keyboard it starts a new line, but instead it should hide the keyboard, not take a new line."*
+
+**Design intent (Rule #2 §D.1).** *Enter ends the input gesture — every keyboard in Aperture surrenders on Return, no exceptions.*
+
+### The fix, in one shape
+
+iOS treats Return differently on single-line vs multi-line text inputs:
+
+- **`TextField` (single-line, `axis: .horizontal`).** Return fires `.onSubmit { }`. `.submitLabel(.done)` relabels the Return key glyph to "Done". Clean — wire once on the primitive.
+- **`TextField(text:axis: .vertical)` and `TextEditor`.** Return inserts a literal `"\n"` into the text buffer; `.onSubmit` does NOT fire. The only honest signal is the text diff in `.onChange(of: text) { oldValue, newValue in ... }`. The intercept is defensive:
+
+```swift
+if newValue.count == oldValue.count + 1,
+   newValue.last == "\n",
+   newValue.dropLast() == oldValue {
+    text = String(newValue.dropLast())
+    isFocused = false
+}
+```
+
+Three predicates conjoined — length grew by exactly one, the new last char is `"\n"`, the prior buffer is exactly the prefix of the new buffer. Together they identify *the user pressed Enter at the end of the buffer*; anything else (multi-line paste, mid-buffer mutation, programmatic edits) passes through unchanged. Multi-line address pastes still flow correctly because the downstream parsers (mnemonic tokeniser at `MnemonicImport`, line splitter at `WatchOnlyImport.parsedLines`) treat `\n` as a separator anyway.
+
+### Why this lives on `UniTextField`, not on every call site
+
+Per Rule #19 §D — *the canonical primitive owns the contract*. Every single-line and multi-line `UniTextField` call site inherits the new submit behavior automatically: `PrivateKeyImport.keyField`, `WatchOnlyImport.inputField`'s extended-key variant, `AdvancedSettingsView`'s RESET APERTURE typed-confirmation field, `WalletDetailView`'s delete-wallet confirmation field, `PassphraseSheet.input`. No call-site changes; the doc comment on the primitive is extended to name the new contract.
+
+### Why the two raw `TextEditor` sites stay raw
+
+Rule #11 §C and prior `jony-ive` sessions deliberately carve out two text-input surfaces that follow ambient-locale layout direction (so the empty placeholder right-aligns in RTL locales, matching iOS Notes / Safari / Messages):
+
+- `MnemonicEntryView.editorSurface` (recovery-phrase entry).
+- `WatchOnlyEntryView.inputField` multi-address branch.
+
+These don't go through `UniTextField` because the primitive's `.forceLTR` / `.ambient` policy can't express the *content-aware direction detection* the recovery-phrase overlay needs. They keep their bespoke direction handling AND get the Enter-dismiss contract inline — copy of the same diff intercept, each one calling its own `@FocusState`'s setter.
+
+### Why no toolbar Done button
+
+The user named Enter specifically. Adding a separate Done-in-toolbar affordance speculatively would (a) add chrome the user didn't ask for, (b) violate Rule #2 §A.2 ("strip one thing"), and (c) duplicate signals — Enter dismissing already does the job. The screen stays calm.
+
+### Why no `// TODO:`
+
+The contract ships complete this turn. Every call site is wired (some via the primitive, two inline). No deferrals.
+
+### Per-rule audit
+
+- **Rule #1 (BIG).** Canonical-primitive extension + two carve-out updates — one SHIPPED entry, this one.
+- **Rule #2.** Restraint preserved — no new affordance, no toolbar Done button. Just the existing Return key, now honest about what it does. The doc comment on `UniTextField` is the design intent in prose.
+- **Rule #3 (native-only).** `.submitLabel(_:)`, `.onSubmit { }`, `.onChange(of: ... ) { oldValue, newValue in }`, `@FocusState` — all SwiftUI / iOS 26 first-party APIs. No third-party libs, no UIKit responder bridging.
+- **Rule #11 §C.** The two raw `TextEditor` carve-outs preserved; their direction-handling code untouched. Only the submit-on-Enter behavior added.
+- **Rule #14 / #15 / #16.** Unaffected — search, sheets, security surfaces stay as-shipped.
+- **Rule #19 §D.** `UniTextField` is the canonical text-input primitive and now owns the submit-on-Enter contract for every caller. The two raw `TextEditor` sites are legitimately out-of-primitive per Rule #11 §C; they implement the same contract by hand with an inline comment tying them back to the primitive.
+- **Rule #20.** No new English source strings; i18n chain skips per its `.swift`-but-zero-new-strings condition.
+- **Rule #22.** Built for Thuglife (iPhone 17 Pro Max, `4B521D49-9843-55CC-AFEC-19D4CF4353A6`), `BUILD SUCCEEDED`, installed via `xcrun devicectl device install app`. `databaseSequenceNumber: 8252` is the receipt.
+- **Rule #23.** No `git push` — work stays local pending the user's per-turn authorization.
+
+**Files modified:**
+- `UniApp/Sources/DesignSystem/Components/UniTextField.swift` — doc comment extended with the submit contract; `.submitLabel(.done)` + `.onSubmit { isFieldFocused = false }` applied unconditionally; `.onChange(of: text) { oldValue, newValue in ... }` trailing-newline diff intercept for `axis == .vertical`.
+- `UniApp/Sources/Features/ImportWallet/MnemonicImport.swift` — existing `.onChange(of: editorText)` block signature changed from `{ _, newValue }` to `{ oldValue, newValue }`; trailing-newline diff intercept added at the top so it fires *before* the existing lowercase/strip normalization (which would otherwise filter the `\n` and mask the signal).
+- `UniApp/Sources/Features/ImportWallet/WatchOnlyImport.swift` — new `.onChange(of: state.watchOnlyRaw)` modifier on the multi-line `TextEditor` carve-out with the same diff intercept; existing mode-toggle `.onChange(of: state.watchOnlyExtendedKeyMode)` left untouched.
+
+**Build / Run:**
+- Target: Thuglife (iPhone 17 Pro Max, identifier `4B521D49-9843-55CC-AFEC-19D4CF4353A6`).
+- Configuration: Debug.
+- Outcome: `BUILD SUCCEEDED`, installed (`databaseSequenceNumber: 8252`).
+
+**TODOs introduced:** none.
+
+**Verification on-device:** open Import wallet → Recovery phrase, tap the editor, type any word and press Return — the keyboard collapses. Tap again, paste a multi-line phrase from clipboard — newlines are preserved (tokenised as whitespace by the parser), keyboard stays up until the user explicitly presses Return. Same gesture on Import wallet → Watch-only address paste area, on Import wallet → Private key, on the Reset Aperture typed-confirmation field, on the Delete wallet typed-name field, on the Passphrase sheet input, on the wallet-rename inline field (already had its own `.onSubmit { commitRename }` and is preserved).
+
+---
+
 ## 2026-06-08 — Liquid Glass hit-test fix + two new `UniButton` variants unify every glass CTA
 
 **Summary:** Every Liquid Glass button in Aperture was hit-testing only its label's intrinsic bounds — the painted glass extended past the tap region, so corner taps fell through. Fix: `.contentShape(<the shape the glass paints>)` on every glass label, applied universally inside `UniButton` for the three glass variants AND on the two new variants (`.toolbarPill`, `.actionCircle`) the canonical primitive now exposes. Every `.buttonStyle(.glass)` / `.glassProminent` raw call site in feature code was either pulled into `UniButton` (per Rule #19 — one canonical CTA primitive) or — for surfaces the rule's §C carve-out allows (keypad chips, `ShareLink`) — given the matching `.contentShape` in place. Single SHIPPED entry per Rule #1; the change is BIG (canonical primitive extension + app-wide sweep).

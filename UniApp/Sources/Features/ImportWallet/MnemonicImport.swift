@@ -198,7 +198,22 @@ struct MnemonicEntryView: View {
             .padding(.horizontal, UniSpacing.l)
             .padding(.bottom, UniSpacing.l)
         }
-        .onChange(of: editorText) { _, newValue in
+        .onChange(of: editorText) { oldValue, newValue in
+            // Enter = dismiss keyboard, never newline. Detect the
+            // single-trailing-newline-on-prior-buffer signal that means
+            // the user pressed Enter (vs pasted multi-line content, vs
+            // deleted mid-buffer). On detection: strip the `"\n"`,
+            // dismiss focus, and stop here — the normalization below
+            // would otherwise filter the `"\n"` out as whitespace and
+            // mask the signal. Aligns with the `UniTextField` contract;
+            // see `CLAUDE.md` Rule #19 §D.
+            if newValue.count == oldValue.count + 1,
+               newValue.last == "\n",
+               newValue.dropLast() == oldValue {
+                editorText = String(newValue.dropLast())
+                isEditorFocused = false
+                return
+            }
             // Normalize: lowercase + strip non-letter/whitespace.
             let cleaned = newValue
                 .lowercased()

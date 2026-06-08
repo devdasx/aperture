@@ -106,6 +106,22 @@ enum TextDirection {
 /// always LTR-shaped regardless of the app's locale. Set `.ambient` to
 /// follow the app's locale unchanged (rare; usually the wrong choice for
 /// any field that accepts free-form user-script text).
+///
+/// **Submit contract (Enter = dismiss keyboard, never newline).** The
+/// Return / Enter key dismisses the keyboard on every variant of this
+/// primitive — single-line and multi-line. Single-line uses the native
+/// `.onSubmit { ... }` path. Multi-line (`axis: .vertical`) detects a
+/// trailing newline arriving in `.onChange(of: text)` — iOS treats Enter
+/// as a literal `"\n"` insertion on `TextField(axis: .vertical)` and
+/// `TextEditor`, so `.onSubmit` never fires and the only honest signal
+/// is the text diff. The intercept is defensive: it strips the newline
+/// AND dismisses focus only when the user's keystroke added one
+/// trailing `"\n"` to the prior buffer — multi-line paste (where many
+/// characters land at once, possibly including newlines) passes through
+/// untouched because the downstream parser (mnemonic tokeniser,
+/// watch-only line splitter, etc.) treats newlines as separators
+/// anyway. See `CLAUDE.md` Rule #19 §D for the canonical-primitive
+/// extension protocol this contract follows.
 struct UniTextField: View {
     let placeholder: LocalizedStringKey
     @Binding var text: String
@@ -146,6 +162,28 @@ struct UniTextField: View {
                 )
                 .modifier(DirectionOverride(direction: resolvedDirection))
                 .multilineTextAlignment(.leading)
+                // Single-line: Return key reads as "Done" and fires
+                // `.onSubmit { ... }` natively. `.submitLabel(.done)` is
+                // applied unconditionally — on multi-line the modifier
+                // is a no-op (iOS forces Return = newline glyph there).
+                .submitLabel(.done)
+                .onSubmit {
+                    isFieldFocused = false
+                }
+                // Multi-line: iOS inserts `"\n"` on Enter and does NOT
+                // fire `.onSubmit`. Detect a *single trailing newline
+                // appended to the prior buffer* (= the user pressed
+                // Enter) and dismiss; anything else (paste, deletion,
+                // mid-buffer mutation) passes through unchanged.
+                .onChange(of: text) { oldValue, newValue in
+                    guard axis == .vertical else { return }
+                    if newValue.count == oldValue.count + 1,
+                       newValue.last == "\n",
+                       newValue.dropLast() == oldValue {
+                        text = String(newValue.dropLast())
+                        isFieldFocused = false
+                    }
+                }
 
             if showsRevealToggle && isSecure {
                 revealButton
