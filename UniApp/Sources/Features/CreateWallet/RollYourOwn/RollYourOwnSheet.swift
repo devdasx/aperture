@@ -469,6 +469,12 @@ private struct RollYourOwnKeypadView: View {
                             .foregroundStyle(UniColors.Text.primary)
                             .frame(maxWidth: .infinity, minHeight: 56)
                             .glassEffect(.regular.interactive(), in: .rect(cornerRadius: UniRadius.m))
+                            // Hit-test fix (2026-06-08): mirror the
+                            // glass shape so taps in the painted glass
+                            // outside the glyph's intrinsic bounds
+                            // register. Same root cause as the
+                            // `UniButton` capsule fix.
+                            .contentShape(.rect(cornerRadius: UniRadius.m))
                     }
                     .buttonStyle(.plain)
                     .disabled(isComplete)
@@ -493,6 +499,8 @@ private struct RollYourOwnKeypadView: View {
                 .foregroundStyle(UniColors.Text.primary)
                 .frame(maxWidth: .infinity, minHeight: 56)
                 .glassEffect(.regular.interactive(), in: .rect(cornerRadius: UniRadius.m))
+                // Hit-test fix (2026-06-08) — see numbersGrid above.
+                .contentShape(.rect(cornerRadius: UniRadius.m))
         }
         .buttonStyle(.plain)
         .disabled(buffer.isEmpty)

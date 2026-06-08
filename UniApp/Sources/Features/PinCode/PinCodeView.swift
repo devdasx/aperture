@@ -270,6 +270,18 @@ struct PinCodeView: View {
             }
             .frame(width: 88, height: 88)
             .glassEffect(.regular.interactive(), in: .circle)
+            // Hit-test fix (2026-06-08, same root cause as Rule #19's
+            // UniButton fix): `.glassEffect(_:in: .circle)` paints a
+            // circle that fills the 88×88 frame, but `Button` with
+            // `.plain` style hit-tests the VStack's intrinsic bounds
+            // — the digit glyph and letter row. Taps in the corners
+            // of the circle fell through. `.contentShape(Circle())`
+            // brings the tap region back in line with the painted
+            // material. Apple's `.glassEffect(_:in:)` API takes the
+            // shape parameter for the visual *and* the interactive
+            // boundary; SwiftUI's `Button` does not infer the second
+            // one — we declare it explicitly.
+            .contentShape(Circle())
         }
         .buttonStyle(.plain)
         .accessibilityLabel(Text(verbatim: digit))
