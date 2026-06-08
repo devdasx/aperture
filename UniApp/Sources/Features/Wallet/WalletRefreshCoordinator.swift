@@ -170,6 +170,60 @@ struct WalletRefreshCoordinator: Sendable {
             Self.log.error("upsertBalance failed for \(address.address, privacy: .public): \(String(describing: error), privacy: .public)")
             try? await txRepo.markScanComplete(addressId: address.id, isUsed: summary.isUsed)
         }
+
+        // Transaction history fetch (2026-06-08). Runs after the
+        // balance upsert so the addressId is guaranteed present in
+        // SwiftData. Uses the unified `RealRPCTransactionScanner`
+        // which dispatches to the right family adapter per chain.
+        // Each event is `upsertTransaction`'d to the repository —
+        // idempotent on `(txHash, addressId)` so repeated refreshes
+        // don't duplicate rows. The scanner swallows per-chain
+        // adapter errors silently and returns the empty array, so a
+        // failing chain doesn't take down the rest of the refresh.
+        await scanTransactionHistory(
+            address: address,
+            client: rpcClient,
+            txRepo: txRepo
+        )
+    }
+
+    /// Drives the unified `RealRPCTransactionScanner` for one
+    /// address and upserts every event into SwiftData via
+    /// `TransactionRepository`. Same scanner powers the
+    /// `WalletHomeView` test-mode feed; this path is the
+    /// production sink that persists history for the user's real
+    /// wallet.
+    private func scanTransactionHistory(
+        address: AddressSnapshot,
+        client: RPCClient,
+        txRepo: TransactionRepository
+    ) async {
+        let scanner = RealRPCTransactionScanner(client: client)
+        let events = await scanner.scan(
+            addresses: [address.chain: address.address],
+            limit: 25
+        )
+        guard !events.isEmpty else { return }
+        for event in events {
+            do {
+                try await txRepo.upsertTransaction(
+                    addressId: address.id,
+                    txHash: event.txHash,
+                    direction: event.direction,
+                    amountRaw: String(describing: event.amount),
+                    tokenSymbol: event.tokenSymbol,
+                    tokenContract: event.tokenContract,
+                    blockNumber: event.blockNumber,
+                    occurredAt: event.occurredAt,
+                    status: event.status,
+                    counterparty: event.counterparty,
+                    feeRaw: event.fee.map { String(describing: $0) }
+                )
+            } catch {
+                Self.log.error("upsertTransaction failed for \(event.txHash, privacy: .public) on \(address.chain.rawValue, privacy: .public): \(String(describing: error), privacy: .public)")
+            }
+        }
+        Self.log.info("Transaction history for \(address.chain.rawValue, privacy: .public)/\(address.address, privacy: .public): persisted \(events.count, privacy: .public) events")
     }
 
     /// Dispatcher: pick the family adapter for the chain and call
