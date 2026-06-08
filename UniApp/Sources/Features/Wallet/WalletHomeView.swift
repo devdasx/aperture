@@ -205,6 +205,7 @@ struct WalletHomeView: View {
                 onUserCompletedBackup: {}
             )
             .uniAppEnvironment()
+            .presentationBackground(UniColors.Background.primary)
         }
         .fullScreenCover(isPresented: $isShowingImport, onDismiss: { importPath = NavigationPath() }) {
             ImportWalletFlow(
@@ -213,6 +214,7 @@ struct WalletHomeView: View {
                 onCompleted: { _ in isShowingImport = false }
             )
             .uniAppEnvironment()
+            .presentationBackground(UniColors.Background.primary)
         }
     }
 

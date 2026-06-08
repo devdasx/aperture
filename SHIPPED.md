@@ -49,6 +49,33 @@
 
 **TODOs introduced:** none — pure token re-point, no new stubs.
 
+**Follow-on tuning (2026-06-08).** User reported the recovery-phrase
+screen still rendered white even though every other screen had
+flipped to the gray-page / white-card register. Root cause: a
+SwiftUI + iOS interaction the flip exposed — when a view is
+presented via `fullScreenCover`, the cover's host paints its own
+opaque backing underneath the content (default `systemBackground`,
+which post-flip is still literal white). The
+`.background(UniColors.Background.primary)` applied inside the cover
+only covers the NavigationStack's own bounds; the host's white
+paints through the safe-area top and the gaps around the seed-phrase
+grid, making the whole screen read as white. Pre-flip every layer
+was approximately white so the bleed was invisible.
+
+Fix: add `.presentationBackground(UniColors.Background.primary)` to
+every `fullScreenCover` content modifier — this tells iOS at the
+host level to use the grouped-page color as the backing, the same
+way `.sheet(...)` callers do. Applied to 6 cover sites across 4
+files: `OnboardingView` (recovery + import), `WalletHomeView`
+(create + import), `SecuritySettingsView` (gate + PIN setup + PIN
+change + disable verify), `WalletsListView` (create + import). Also
+corrected `MnemonicCell`'s background token from `Background.secondary`
+to `Material.card` — semantically equivalent post-flip (both resolve
+to `secondarySystemGroupedBackground`) but the `Material.card` name
+is the honest token for a card surface and documents the intent for
+future readers. Reinstalled on Thuglife
+(`databaseSequenceNumber: 8236`).
+
 **Per-rule audit:**
 - **Rule #1 (this entry)** — written, includes the user-direction verbatim, the design intent, the math behind the flip, what re-skins, what stays untouched, the pre-edit audit, the 7 checks, files, build, install receipt.
 - **Rule #2 (Ive + Liquid Glass)** — restraint: one-file change, no feature edits, no new tokens, no decorative additions. Honesty: the new register IS the iOS Settings register — Aperture now feels like an iOS-native settings surface stack rather than an inverted-palette outlier. Liquid Glass behaviors on all `.glass*` surfaces unaffected.
