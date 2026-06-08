@@ -4,6 +4,58 @@
 
 ---
 
+## 2026-06-08 — Activity row redesigned around the token mark + corner status badge
+
+**Summary:** User direction (verbatim): *"in history, it should show the icon of the token or coin we received not just arrow that received, it should show the icon, with beautiful border and put on the border arrow if was sent, received, self transfer, swap, bridge, claim staked coins, failed, error, waiting, loading, etc.."* The old `ActivityRow` led with a generic green arrow circle that hid which asset was moving. Redesigned the row so the leading visual is the real bundled token mark (36pt — `Crypto/eth`, `Crypto/btc`, `Crypto/usdc`, …) with a 14pt status badge in the bottom-trailing corner carrying the verb: `arrow.down` incoming, `arrow.up` outgoing, `arrow.triangle.swap` internal, `clock.fill` pending, `xmark` failed. The badge wears a 2pt `Background.primary` halo so it reads as a cutout in the mark — the same composition iOS Messages uses for presence dots — rather than a floating sticker. Token mark + badge = one glance to "ETH came in" without parsing a separate column.
+
+**Design decisions that are load-bearing:**
+
+- **The mark IS the identity, the badge IS the verb.** The user's mental model when they glance at the activity list is "ETH came in" or "USDC went out" — not "an arrow happened." Putting the token mark first answers the asset question; the badge answers the action question. Two questions, two graphical layers, one composition.
+- **Outgoing is graphite, not red.** Rule #16 §B + Rule #2 §A.7 + the user's own brief in the prompt. Sending crypto is a deliberate user action, never a problem to alarm about. Coloring outgoing red trains the user to feel anxiety when they pay rent. The graphite glyph reads as "this happened because you asked it to."
+- **Failed IS red.** That's the one case where the consequence is unwanted and the user must notice — `Status.errorForeground` (system red) on the `xmark` glyph + on the amount text.
+- **Pending is orange (warning), not gray.** The brief suggested `Text.tertiary`; I deliberated and went orange. At 9pt glyph size, a tertiary-gray badge reads as "the system is showing me a color, nothing's happening." Orange communicates "in progress, watch it (might be stuck mempool / low fee)" — which is the honest signal for an unconfirmed transaction.
+- **The badge background is the surface color, not the foreground.** A colored disk with white glyph is the Material-Design pattern; we want the Apple pattern (Messages presence dots, Photos camera badge) — colored glyph on a *surface-colored* disk inside a halo of the row background. That's what makes the badge read as part of the same composition as the mark, not as two stacked stickers.
+- **Swap / bridge / claim badges DEFERRED.** The user named them; I'm not shipping the visual without the data path. The current `TransactionEvent` model carries only the 3-way `direction` (incoming/outgoing/internal) — no swap-flag, no bridge-counterparty-detection, no claim-source-tag. Shipping a swap badge that's wired to nothing would be M-012 territory ("UI implies a thing the data doesn't support"). The 3×3 = 9 (direction × status) combinations ship honestly today; swap/bridge/claim ship when the upstream `TransactionScanner` learns to detect them.
+- **36pt leading mark vs the prior 32pt arrow.** A 14pt status badge with a 2pt halo (18pt total) needs to sit on the bottom-trailing edge of the mark with enough room for the corner to read cleanly. 32pt + 14pt corner-overlap was too tight — the badge encroached on the glyph inside the mark. 36pt opens the space; the visual footprint still reads as restrained because the badge offset is small. Updated the two leading-divider math sites (`UniSpacing.m + 32 + UniSpacing.s` → `UniSpacing.m + 36 + UniSpacing.s`) to keep the divider aligned with the row's text column.
+- **Token-mark lookup honesty.** Native sends (`tokenSymbol == chain.ticker`) resolve to `chain.logoAssetName` — ETH on Ethereum renders the ETH mark; SOL on Solana renders the SOL mark; etc. Two bundled stablecoin marks (USDC, USDT) are explicitly resolved for token transfers. Everything else falls back to an *honest* initials chip on `Material.card` — 3-letter ticker in monospace-rounded, on a neutral disk. Rule #7: never invent a brand mark. A user who sees "DAI" on a neutral chip knows we don't ship a logo for it; a user who saw a fabricated yellow circle with a "D" inside would be lied to.
+- **Layout discipline (Rule #11).** Semantic edges only. The `ZStack(alignment: .bottomTrailing)` auto-flips to `.bottomLeading` in RTL, so the badge follows the mark in either direction. SF Symbol arrows auto-mirror — `arrow.down` still reads as down in RTL, `arrow.triangle.swap` reads correctly either way. No `.flipsForRightToLeftLayoutDirection(false)` needed.
+
+**The seven checks (Rule #2 §D):**
+- **Liquid Glass behaviors.** The row itself is content, not chrome (per Rule #2 §B.3 — activity is opaque, the toolbar above it is the glass layer). No change to that contract; the badge is an opaque pin on an opaque mark on an opaque card.
+- **Concentric corners.** N/A — the mark and badge are circles, not rounded rects. The activity card's `UniRadius.card` still wraps the whole list.
+- **Light + dark + Increase Contrast.** All badge colors route through `UniColors.Status.*` / `UniColors.Text.*` which all adapt. The halo is `Background.primary`, which is `systemBackground` → white in light, near-black in dark. The badge stays readable in both.
+- **Dynamic Type.** The leading mark + badge are bitmap glyphs at fixed size (the mark is an `Image`, the badge is a 9pt SF Symbol). They don't scale, which is correct for badge iconography — the surrounding text scales independently and the row height grows to fit. Same behavior as the prior arrow.
+- **VoiceOver.** Row-level `.accessibilityElement(children: .combine)` is unchanged. The new leading mark is `.accessibilityHidden(true)` — VoiceOver users hear the token symbol + counterparty + amount + status, which is the meaningful semantic content.
+- **Copy.** No new strings.
+- **Boring states.** Pending and failed each have their own badge glyph and color treatment. The empty state above this row is `UniEmptyState` and unaffected.
+
+**Files modified:**
+- `UniApp/Sources/Features/Wallet/ActivityRow.swift` — rewrote the leading visual as `leadingMark` (token mark + corner badge) replacing `directionGlyph` (single arrow circle). Added private `CoinMark` view that resolves `(chain, tokenSymbol)` → bundled mark or honest initials fallback. Added `chain: SupportedChain` to the public init. Trailing amount column unchanged.
+- `UniApp/Sources/Features/Wallet/WalletHomeView.swift` — both `ActivityRow(...)` call sites (production `activitySection` reading `TransactionRecord`, test-mode `testActivityList` reading `TransactionEvent`) updated to pass `chain:`. Added private `chainFor(_ tx:)` helper that resolves chain via `tx.address?.chainRaw`. Divider math `32 → 36`.
+- `UniApp/Sources/Features/TestScreen/TestScreenView.swift` — `PlaygroundTransaction` struct gained `chain: SupportedChain`; the three test rows now declare their chain (`.bitcoin`, `.ethereum`, `.solana`); the `ActivityRow(...)` call passes `chain: tx.chain`. Divider math `32 → 36`.
+
+**Per-rule audit:**
+- **Rule #1** — this entry.
+- **Rule #2** — Ive register: the design *removed* a thing (the loud green arrow circle that competed with the token's identity) and *resolved* a complexity (the user previously had to read the symbol text to know which asset moved). Restraint: badge is 14pt + 2pt halo, no shadow, no glow, no decorative outline. iOS 26 Liquid Glass: the surrounding card stays opaque content per Rule #2 §B.3; the toolbar above is the glass layer. No new glass usage in this change.
+- **Rule #3** — Native-only. SF Symbols for the badge glyph; bundled assets for the mark; zero third-party packages.
+- **Rule #4** — Every color through `UniColors`. Grep: no `Color.red`, `Color.green`, `Color(red:)`, `Color(hex:)`, `Color(.systemX)` in the diff. Badge colors are `Status.successForeground`, `Text.primary`, `Text.secondary`, `Status.warningForeground`, `Status.errorForeground`. Halo is `Background.primary`. Initials chip background is `Material.card`.
+- **Rule #5** — No new `// TODO:` markers. Swap/bridge/claim are deferred but not stubbed.
+- **Rule #6** — This is the `jony-ive` agent acting directly per Rule #6.
+- **Rule #7** — Real visuals. Bundled `Crypto/<ticker>` marks (Trust Wallet assets already shipped). SF Symbols for the badge glyphs. Honest initials fallback for tokens we don't ship a mark for — never a fake brand mark.
+- **Rule #11** — Semantic edges. `ZStack(alignment: .bottomTrailing)` auto-flips in RTL. SF Symbol arrows auto-mirror. No `.left`/`.right` introduced.
+- **Rule #19** — Not applicable (no CTA; this is a non-interactive row inside a `Button` that owns the tap target).
+- **Rule #13** — Zero new English source strings introduced. Translator chain not required for this turn.
+- **Rule #22** — Built for device + installed on Thuglife (sequence below).
+
+**Build / Run:**
+- Simulator build: `iPhone 17 Pro Max` — **BUILD SUCCEEDED**.
+- Device build: `Thuglife` (`4B521D49-9843-55CC-AFEC-19D4CF4353A6`) — **BUILD SUCCEEDED**.
+- App installed on Thuglife — `databaseSequenceNumber 8292`.
+
+**TODOs introduced:** none.
+
+---
+
 ## 2026-06-08 — Unified `TransactionScanner` covering all 26 chains; test mode + real wallet refresh both wired through it
 
 **Summary:** User direction (verbatim): *"as you see here, it

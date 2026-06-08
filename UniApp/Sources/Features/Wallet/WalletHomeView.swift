@@ -561,6 +561,7 @@ struct WalletHomeView: View {
                             navigationPath.append(WalletHomeDestination.transaction(tx.id))
                         } label: {
                             ActivityRow(
+                                chain: chainFor(tx),
                                 direction: TransactionDirection(rawValue: tx.directionRaw) ?? .outgoing,
                                 amount: Decimal(string: tx.amountRaw) ?? .zero,
                                 tokenSymbol: tx.tokenSymbol,
@@ -572,7 +573,7 @@ struct WalletHomeView: View {
                         }
                         .buttonStyle(.plain)
                         if idx < recentTransactions.count - 1 {
-                            UniDivider().padding(.leading, UniSpacing.m + 32 + UniSpacing.s)
+                            UniDivider().padding(.leading, UniSpacing.m + 36 + UniSpacing.s)
                         }
                     }
                 }
@@ -598,6 +599,7 @@ struct WalletHomeView: View {
         return LazyVStack(spacing: 0) {
             ForEach(Array(sorted.enumerated()), id: \.offset) { idx, event in
                 ActivityRow(
+                    chain: event.chain,
                     direction: event.direction,
                     amount: event.amount,
                     tokenSymbol: event.tokenSymbol,
@@ -607,7 +609,7 @@ struct WalletHomeView: View {
                 )
                 .padding(.horizontal, UniSpacing.m)
                 if idx < sorted.count - 1 {
-                    UniDivider().padding(.leading, UniSpacing.m + 32 + UniSpacing.s)
+                    UniDivider().padding(.leading, UniSpacing.m + 36 + UniSpacing.s)
                 }
             }
         }
@@ -777,6 +779,20 @@ struct WalletHomeView: View {
             .sorted { $0.occurredAt > $1.occurredAt }
             .prefix(10)
             .map { $0 }
+    }
+
+    /// Resolves the chain a `TransactionRecord` belongs to via its
+    /// back-pointer to `WalletAddressRecord.chainRaw`. The schema
+    /// guarantees the back-pointer (transactions are cascade-children
+    /// of addresses), so the fallback to `.ethereum` is defensive
+    /// only — it only fires if the record is orphaned, which the
+    /// repository never produces.
+    private func chainFor(_ tx: TransactionRecord) -> SupportedChain {
+        if let raw = tx.address?.chainRaw,
+           let chain = SupportedChain(rawValue: raw) {
+            return chain
+        }
+        return .ethereum
     }
 
     /// Latest `lastScannedAt` across all addresses, or nil if no scan
