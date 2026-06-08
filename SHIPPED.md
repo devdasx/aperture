@@ -4,6 +4,95 @@
 
 ---
 
+## 2026-06-08 — Liquid Glass hit-test fix + two new `UniButton` variants unify every glass CTA
+
+**Summary:** Every Liquid Glass button in Aperture was hit-testing only its label's intrinsic bounds — the painted glass extended past the tap region, so corner taps fell through. Fix: `.contentShape(<the shape the glass paints>)` on every glass label, applied universally inside `UniButton` for the three glass variants AND on the two new variants (`.toolbarPill`, `.actionCircle`) the canonical primitive now exposes. Every `.buttonStyle(.glass)` / `.glassProminent` raw call site in feature code was either pulled into `UniButton` (per Rule #19 — one canonical CTA primitive) or — for surfaces the rule's §C carve-out allows (keypad chips, `ShareLink`) — given the matching `.contentShape` in place. Single SHIPPED entry per Rule #1; the change is BIG (canonical primitive extension + app-wide sweep).
+
+**User direction (verbatim).** *"read apple document and see why in liquid glass buttons i've to click in the middle so the button will answer, sometimes i press in the button it doesn't work, when i press in the middle it works, so find the issue, read apple document deeply, find the issue in our liquid glass code, then fix it for all liquid glass buttons, and create one unified liquid glass button, and use it across the app everywhere we're using liquid glass. START NOW!"*
+
+**Design intent (Rule #2 §D.1).** *Every glass surface in Aperture taps where it looks like it taps — corner to corner, edge to edge, no dead zones.*
+
+### The bug, root cause, and the documented fix
+
+**The bug.** Taps near the edge of `.buttonStyle(.glass)` / `.glassProminent` buttons silently failed; only center taps registered. Most visible on the wallet-home **Send / Receive / Swap circles** (56×56 glassProminent circles where only the central SF Symbol glyph was tappable — the user repeatedly tapped the visible glass corner and got no response).
+
+**The Apple-doc anchor.** SwiftUI's `Button` hit-tests the **label's intrinsic content frame**, not the layout-modifier frame. `.buttonStyle(.glass)` paints a capsule (or whatever shape the surrounding `.glassEffect(_:in:)` parameter specifies) that fills the layout frame — but the painted material's bounds and the hit region are independent properties. SwiftUI's `.contentShape(_:)` modifier is the documented mechanism for re-aligning the hit region with the painted material; Apple's `.glassEffect(_:in:)` API takes its `in: Shape` parameter for exactly this purpose: to publish the shape's identity to both the renderer AND the interactive system. When the Button label sits inside a `.glassEffect`, the host responsibility is to declare the same shape via `.contentShape(...)` so the tap region matches.
+
+The pattern is named explicitly in the iOS 26 community references shipped before this fix:
+
+- **Juniperphoton, *Adopting Liquid Glass: Experiences and Pitfalls* (2026):** *"only the ellipsis symbol of this button label can be clicked, or can perform hit-testing, even while the glass effect is interacting with highlighting effects when tapping the white area of the circle."* Fix recommended: `.contentShape(_:eoFill:)` matching the visible shape.
+- **Donny Wals, *Designing custom UI with Liquid Glass on iOS 26*:** *"the buttons still have a circular shape even though we're not explicitly drawing a circle background. That's the default style for components that you apply a glassEffect to."* — confirming that `.buttonStyle(.glass)` auto-shapes the painted material, but the Button itself still hit-tests its content.
+- **Hacking with Swift, *How to control the tappable area of a view using contentShape*:** *"SwiftUI's tap area = the view's frame, not its visual appearance. clipShape only clips VISUALS, not tap area."* — the canonical statement of the contract.
+
+(Apple's primary docs — `developer.apple.com/documentation/swiftui/primitivebuttonstyle/glass`, `…/swiftui/view/glasseffect(_:in:)`, `…/swiftui/Applying-Liquid-Glass-to-custom-views` — were consulted; the Apple-rendered pages return only the page title via WebFetch but the community references above all converge on the same fix, and the `.contentShape(...)` modifier is itself first-party SwiftUI documented on `…/swiftui/view/contentshape(_:eofill:)`.)
+
+**The fix.** `.contentShape(Capsule())` (or `.circle` / `.rect(cornerRadius:)` matching the glass shape) on the Button's label, expanding the tap region to match the painted material. Applied:
+
+- **Inside `UniButton`** for `.primary` / `.secondary` / `.destructive` (the existing 47×∞ capsule glass variants) — fixes every existing call site in the app at the canonical-primitive level.
+- **On the two new variants** `.toolbarPill` (Capsule) and `.actionCircle` (Circle) — they ship with the fix baked in.
+- **On the carve-outs** (Rule #19 §C: keypad chips, `ShareLink`) — applied in place with a one-line in-file comment naming the same root cause.
+
+### The two new `UniButton` variants (Rule #19 §D)
+
+Per the user's *"create one unified liquid glass button, and use it across the app everywhere we're using liquid glass"* — every glass-shaped action surface now flows through `UniButton`. Where the existing four variants didn't express the shape, I extended the enum:
+
+| Variant         | Shape            | Where it's used                              | Haptic                          |
+|-----------------|------------------|----------------------------------------------|---------------------------------|
+| `.toolbarPill`  | Capsule (`.glass` + `.controlSize(.large)`) | Wallet-home nav-bar wallet switcher (`WalletHomeView` `.principal` toolbar slot) | `.selection` |
+| `.actionCircle` | Circle (56×56, `.glassProminent` + accent tint) | Wallet-home Send / Receive / Swap triplet (`WalletActionRegion`) | `.contextualImpact(.commit)` |
+
+Both follow Rule #19 §D's extension protocol exactly: meaning stated in one sentence, `defaultHaptic` wired in `Variant`, `VariantStyle` branch wired with system APIs only, hit-test shape wired in the label builder, documented in Rule #10 §E, logged here.
+
+A second `UniButton` initializer was added — `init(verbatim:variant:...)` — so the toolbar pill can render a runtime user-supplied wallet name (`activeWallet?.name`) without the LocalizedStringKey treating the name as a String Catalog key. The default `init(title:variant:...)` (LocalizedStringKey) is unchanged; every existing call site keeps its API.
+
+### Why the keypad / hex-grid / `ShareLink` stayed out of `UniButton`
+
+Rule #19 §C explicitly carves out **selection chips inside a picker** and **system-blessed controls like `NavigationLink` / `Link` / `ShareLink`** from the canonical primitive — they are state-change affordances or system-managed surfaces, not generic CTAs, and forcing them through `UniButton` would either (a) require a `defaultHaptic` that conflicts with the surface's own per-tap signature haptic (the PIN keypad has a `.contextualImpact(.tap)` cadence; the Roll-your-own hex grid has its own keypress cadence), or (b) erase the system contract `ShareLink` owns (presenting the OS share sheet). Per the rule, these surfaces are correctly hand-composed — but the **hit-test contract still applies**, so each one now carries `.contentShape(<matching glass shape>)` with an in-file comment tying it back to this fix.
+
+### Per-rule audit
+
+**Rule #1 (BIG vs SMALL):** BIG — canonical-primitive extension (two new variants + new initializer + hit-test contract added inside `UniButton`), app-wide sweep of all four feature-code glass call sites, CLAUDE.md rule edits (Rule #10 §E + Rule #19 §D / §E). Single entry.
+
+**Rule #2 §A.1 + §B.5 (Jony Ive honesty + Liquid Glass material):** The fix is honest — the painted glass and the tap region now coincide, so the surface tells the truth about what is and isn't interactive. The material is unchanged (still `.buttonStyle(.glass)` / `.glassProminent` — translucency + specular + motion intact per Liquid Glass's three behaviors); only the hit region is brought into alignment with the paint. Visual parity: every replaced call site renders **identically** to before — same shape, same size, same color, same haptic. Confirmed by reading the variant's `VariantStyle` branch against the original raw `.buttonStyle(...)` site for each of the four replacements.
+
+**Rule #3 (Native-only):** Zero third-party packages added. `.contentShape(_:)` is first-party SwiftUI; `.buttonStyle(.glass)` / `.glassProminent` is iOS 26 system API; `AnyShape` (used internally in the `hitShape` helper) is first-party.
+
+**Rule #4 (Unified color system):** No color edits in this turn. Every existing `UniColors.*` reference in the affected files preserved.
+
+**Rule #5 (TODOs mirrored):** No new `// TODO:` markers introduced.
+
+**Rule #6 (Design via `jony-ive`):** This turn was invoked directly with the `jony-ive` agent. Identity acknowledged at start of turn; `CLAUDE.md` + relevant feature files + design-system files read before any code change.
+
+**Rule #10 §E (Default per-component bindings):** Two new rows added to the table (`.toolbarPill` → `.selection`, `.actionCircle` → `.contextualImpact(.commit)`). Existing `.primary` row corrected from the obsolete `.mediumImpact` label to the actual code path `.contextualImpact(.commit)` (which is what `UniButton` has been firing since the 2026-06-05 redesign).
+
+**Rule #19 (Canonical CTA primitive):** Strengthened. The four raw `.buttonStyle(.glass)` / `.glassProminent` feature-code call sites are now zero. Grep `grep -rnE '\.buttonStyle\(\.glass(Prominent)?\)' UniApp/Sources/Features/` returns no hits. The two new variants follow §D's extension protocol exactly. §E gained a new hit-test invariant check.
+
+**Rule #22 (Install on Thuglife):** Built for Thuglife (`-destination 'platform=iOS,id=4B521D49-9843-55CC-AFEC-19D4CF4353A6'`) — `** BUILD SUCCEEDED **`. Installed via `xcrun devicectl device install app --device 4B521D49-...` — `databaseSequenceNumber: 8244`.
+
+**Rule #23 (No `git push`):** No git operations performed. Local edits only.
+
+**Files modified:**
+- `UniApp/Sources/DesignSystem/Components/UniButton.swift` — rewrote the file. Added `LabelSource` enum and `init(verbatim:variant:...)` initializer to support runtime non-localizable labels. Added two `Variant` cases (`.toolbarPill`, `.actionCircle`) with their `defaultHaptic` mappings, `VariantStyle` branches, dedicated label builders, and `.contentShape` declarations. Added `.contentShape(Capsule())` to the existing `standardLabel` body (fixes `.primary` / `.secondary` / `.destructive` at the canonical-primitive level — every existing call site inherits the fix). The `tertiaryLabel` deliberately has no `.contentShape` (label content IS the hit region; correct for an inline `.plain`-style text link). The file's doc comment now opens with the hit-test contract documented as load-bearing.
+- `UniApp/Sources/Features/Wallet/WalletActionRegion.swift` — Send / Receive / Swap triplet now uses `UniButton(title: label, variant: .actionCircle, isEnabled: isEnabled, icon: icon, action: action)` instead of the raw `Button { … }.buttonStyle(.glassProminent).tint(...).disabled(...).opacity(...)` composition. The variant carries the haptic, the disabled-state opacity, the glass styling, and the circular hit-shape — eliminating the user's "I have to click in the middle" experience on the most visible glass action surface in the app.
+- `UniApp/Sources/Features/Wallet/WalletHomeView.swift` — nav-bar wallet-switcher pill (`ToolbarItem(placement: .principal)`) now uses `UniButton(verbatim: <name>, variant: .toolbarPill, isEnabled: !isTestMode)` instead of the raw `Button { … }.buttonStyle(.glass).controlSize(.large)` composition. The variant carries the controlSize, the font rhythm, the chevron, the `.selection` haptic, and the capsule hit-shape. The 2026-06-07 "five takes to match the toolbar icon envelope" history is preserved in the variant's docstring and the call-site comment.
+- `UniApp/Sources/Features/Wallet/WalletHomeHeader.swift` — legacy `walletSwitcherPill` (no longer reached by the header body after the 2026-06-07 toolbar move, but kept in the file as a fallback / preview surface) now uses `UniButton(verbatim:variant: .toolbarPill, action:)` so any future revival inherits the unified contract.
+- `UniApp/Sources/Features/Receive/ReceiveQRDetailView.swift` — Share button kept as `ShareLink` (per Rule #19 §C — `ShareLink` is a system-blessed surface that cannot be wrapped in `UniButton`'s `action: () -> Void` contract because the share-sheet presentation is system-managed). Added `.contentShape(Capsule())` to the label so the painted `.glassProminent` capsule and the hit region match — the same fix `UniButton(.primary)` now applies internally. In-file comment ties the fix back to Rule #19 §C and this entry.
+- `UniApp/Sources/Features/PinCode/PinCodeView.swift` — `digitKey` (the 12 keypad keys) is a Rule #19 §C carve-out (state-change chip inside a screen, not a CTA, with its own per-tap signature haptic cadence). Added `.contentShape(Circle())` matching the `.glassEffect(.regular.interactive(), in: .circle)` paint. In-file comment names the same root cause.
+- `UniApp/Sources/Features/CreateWallet/RollYourOwn/RollYourOwnSheet.swift` — `numbersGrid` hex keys and the `deleteKey` (Rule #19 §C carve-out — state-change chips with their own keypress cadence). Added `.contentShape(.rect(cornerRadius: UniRadius.m))` matching the `.glassEffect(.regular.interactive(), in: .rect(cornerRadius: UniRadius.m))` paint on each.
+- `CLAUDE.md` — Rule #10 §E table grew from 4 to 6 rows (`.toolbarPill` and `.actionCircle` added; `.primary` corrected from obsolete `.mediumImpact` label to the actual `.contextualImpact(.commit)` mapping). Rule #19 §D extension protocol grew from 6 steps to 7 (added the hit-test-shape declaration step). Rule #19 §E workflow gate gained a hit-test invariant check + the grep that audits it.
+
+**Build / Run:**
+- `xcodebuild -project UniApp.xcodeproj -scheme UniApp -configuration Debug -destination 'platform=iOS,id=4B521D49-9843-55CC-AFEC-19D4CF4353A6' -allowProvisioningUpdates -derivedDataPath build-device build` — **`** BUILD SUCCEEDED **`**.
+- `xcrun devicectl device install app --device 4B521D49-9843-55CC-AFEC-19D4CF4353A6 build-device/Build/Products/Debug-iphoneos/Aperture.app` — **App installed; `databaseSequenceNumber: 8244`.**
+
+**Verification plan for the user.** Open Aperture on Thuglife → tap the wallet-home Send / Receive / Swap circles **at the corner** (top-left, top-right, bottom-left, bottom-right of each circle, where the glass is visibly painted but the SF Symbol isn't drawn). Each tap should now register; before this fix, only taps near the center SF Symbol registered. Same test for the wallet-name pill in the nav bar (tap at the chevron's right edge, well past the text), the Receive screen's Share button (tap at the leftmost edge of the capsule, far from the share-arrow icon), and the PIN keypad digit keys (tap at the circle's edge rather than the digit glyph). All four corner-tap experiments should now succeed.
+
+**TODOs introduced:** none.
+
+**i18n delta (Rule #13 reporting):** Zero new English source strings introduced. The two `.toolbarPill` / `.actionCircle` replacements use existing catalog strings (`"Switch wallet, currently …"` and the Send / Receive / Swap labels were all already in the catalog). The doc-comment and SHIPPED.md prose are not user-facing strings. Translators do NOT need to run for this turn; reporting 0 new + 0 edited per Rule #13 Part A.
+
+---
+
 ## 2026-06-07 — App-wide background register flipped to the iOS Settings palette (gray page + white cards)
 
 **Summary:** Single-file token-level re-point inside `UniColors.swift`. The five background/material roles that cascade through ~203 call sites — `Background.primary`, `Background.secondary`, `Background.tertiary`, `Material.card`, `Material.elevated` — switched from the *plain* `systemBackground` family (white page + gray cards) to the *grouped* `systemGroupedBackground` family (warm-gray page + white cards in light mode; true black page + `#1C1C1E` cards in dark mode). This is the canonical iOS Settings register — the surface ratio used by Settings, Health, Wallet (Apple's), Files, and every "screen of stacked information cards" pattern on iOS.

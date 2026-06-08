@@ -588,59 +588,38 @@ struct WalletHomeView: View {
 
         // Wallet switcher in the nav-bar title slot (`.principal`).
         //
-        // **Why the height matched the icons only after these two
-        // changes:**
+        // Per Rule #19, the pill goes through `UniButton(.toolbarPill)`
+        // — the canonical Liquid Glass capsule for nav-bar slots. The
+        // variant carries:
         //
-        // 1. **Font size.** The toolbar's auto-glass on bare SF
-        //    Symbol buttons (gear, flask) renders the symbol at 17pt
-        //    — the toolbar's natural icon font size. My `Text` used
-        //    `subheadlineEmphasized` (~15pt), which made the
-        //    content shorter, which made `.buttonStyle(.glass)`
-        //    size its capsule shorter than the icon circles. Now
-        //    `body` (17pt). The chevron grows to 13pt to keep the
-        //    same relative proportion to the wallet name.
-        //
-        // 2. **`.controlSize(.large)`.** `.buttonStyle(.glass)`
-        //    defaults to `.controlSize(.regular)` — one rung below
-        //    what the toolbar's auto-glass icon treatment uses for
-        //    its circular backgrounds. Setting `.large` lifts the
-        //    capsule into the same vertical envelope. Per the
-        //    Liquid Glass docs (WWDC25 session 323 + "Glassifying
-        //    toolbars in SwiftUI"): the `controlSize` modifier "can
-        //    be applied to a single control or across an entire set
-        //    of controls" and is the canonical mechanism for
-        //    matching heights across button styles in a toolbar.
-        //
-        // The earlier four takes are recorded in SHIPPED.md for the
-        // historical thread:
-        // - Take 1 (bare text + chevron): too quiet — no glass.
-        // - Take 2 (`.buttonStyle(.glass)` only): right material,
-        //   wrong height (smaller than icons).
-        // - Take 3 (`.glassEffect()` + `.buttonStyle(.plain)`):
-        //   wrong primitive — `.glassEffect()` is for custom views
-        //   outside the toolbar's auto-styling pipeline.
-        // - Take 4 (`.glass` + `.controlSize(.small)`): SMALLER
-        //   than take 2 (`.small` literally means smaller).
-        // - Take 5 (`.glass` + 17pt font + `.controlSize(.large)`):
-        //   matches the toolbar's auto-glass icons.
+        // 1. **The 17pt font + 13pt chevron** — the rhythm the toolbar's
+        //    auto-glass icon envelope expects (this had to be
+        //    rediscovered through five takes; recorded in SHIPPED.md).
+        // 2. **`.controlSize(.large)`** — lifts the capsule into the
+        //    same vertical envelope as the auto-glass icons sitting
+        //    next to it (WWDC25 session 323, "Glassifying toolbars in
+        //    SwiftUI": *the controlSize modifier "can be applied to a
+        //    single control or across an entire set of controls" and
+        //    is the canonical mechanism for matching heights across
+        //    button styles in a toolbar*).
+        // 3. **`.contentShape(Capsule())`** on the label — fixes the
+        //    2026-06-08 hit-test bug where taps in the painted glass
+        //    capsule but outside the text's intrinsic bounds fell
+        //    through (only the text glyphs were tappable, even though
+        //    the glass extended further). SwiftUI Button hit-tests the
+        //    content's frame, not the layout-modifier frame; the
+        //    contentShape brings the tap region back in line with the
+        //    visible material.
         ToolbarItem(placement: .principal) {
-            Button {
-                guard !isTestMode else { return }
+            UniButton(
+                verbatim: isTestMode
+                    ? String.apertureLocalized("Public test addresses")
+                    : (activeWallet?.name ?? String.apertureLocalized("Wallet")),
+                variant: .toolbarPill,
+                isEnabled: !isTestMode
+            ) {
                 isShowingSwitcher = true
-            } label: {
-                HStack(spacing: UniSpacing.xxs) {
-                    Text(verbatim: isTestMode
-                        ? String.apertureLocalized("Public test addresses")
-                        : (activeWallet?.name ?? String.apertureLocalized("Wallet"))
-                    )
-                    .font(UniTypography.bodyEmphasized)
-                    Image(systemName: "chevron.down")
-                        .font(.system(size: 13, weight: .semibold))
-                }
             }
-            .buttonStyle(.glass)
-            .controlSize(.large)
-            .disabled(isTestMode)
             .accessibilityLabel(Text("Switch wallet, currently \(activeWallet?.name ?? "")"))
         }
         // Test affordance — mirrors the MnemonicReviewView toolbar

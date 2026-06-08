@@ -82,6 +82,16 @@ struct ReceiveQRDetailView: View {
     private var shareButton: some View {
         // System ShareLink — opens the OS share sheet with the address.
         // No third-party share UI (Rule #3).
+        //
+        // **Not wrapped in `UniButton`** by design. Rule #19 reserves
+        // `UniButton` for generic action buttons; `ShareLink` is a
+        // system-blessed control that owns the share-sheet presentation
+        // contract and cannot be expressed as an `action: () -> Void`.
+        // To satisfy Rule #19's hit-test invariant, we apply the same
+        // `.contentShape(Capsule())` + 47pt frame + `.glassProminent`
+        // styling that `UniButton(.primary)` uses internally — so the
+        // visual identity AND the hit-test region match the canonical
+        // primary CTA exactly.
         ShareLink(
             item: address,
             subject: Text(verbatim: shareSubject),
@@ -95,6 +105,7 @@ struct ReceiveQRDetailView: View {
             }
             .frame(maxWidth: .infinity)
             .frame(height: 47)
+            .contentShape(Capsule())
         }
         .buttonStyle(.glassProminent)
         .tint(UniColors.Button.primaryTint)

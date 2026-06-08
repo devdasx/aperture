@@ -93,22 +93,17 @@ struct WalletHomeHeader: View {
         )
     }
 
+    /// Legacy pill — the wallet switcher was moved to the nav-bar
+    /// `.principal` slot 2026-06-07 (see comment at the top of `body`).
+    /// Kept as a fallback / preview-only surface; routed through
+    /// `UniButton(.toolbarPill)` per Rule #19 so any future revival
+    /// inherits the unified hit-test contract and the variant haptic.
     private var walletSwitcherPill: some View {
-        Button {
-            onSwitchWallet()
-        } label: {
-            HStack(spacing: UniSpacing.xxs) {
-                Text(walletName)
-                    .font(UniTypography.subheadlineEmphasized)
-                    .foregroundStyle(UniColors.Text.secondary)
-                Image(systemName: "chevron.down")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(UniColors.Icon.tertiary)
-            }
-            .padding(.horizontal, UniSpacing.s)
-            .padding(.vertical, UniSpacing.xxs)
-        }
-        .buttonStyle(.glass)
+        UniButton(
+            verbatim: walletName,
+            variant: .toolbarPill,
+            action: onSwitchWallet
+        )
         .accessibilityLabel(Text("Switch wallet, currently \(walletName)"))
     }
 

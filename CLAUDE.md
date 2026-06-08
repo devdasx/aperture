@@ -1348,13 +1348,21 @@ These are the bindings shipped with `UniButton`:
 
 | `UniButton.Variant` | Haptic fired on tap |
 |---------------------|----------------------|
-| `.primary`          | `.mediumImpact` — committing to a flow |
+| `.primary`          | `.contextualImpact(.commit)` — committing to a flow |
 | `.secondary`        | `.selection` — neutral acknowledgement |
 | `.destructive`      | `.warning` — deliberate weight; user should feel they triggered something irreversible |
 | `.tertiary`         | none — inline text links should feel as quiet as plain HTML links |
+| `.toolbarPill`      | `.selection` — picker-class commit (opens a sheet / switches a context); nav-bar wallet switcher |
+| `.actionCircle`     | `.contextualImpact(.commit)` — same weight as `.primary` (committing to a flow); Send / Receive / Swap on wallet home |
 
 These bindings are the default; future components that need a different
 haptic per state can override by composing `.uniHaptic(...)` themselves.
+
+The `.toolbarPill` and `.actionCircle` variants were added 2026-06-08
+alongside the Liquid Glass hit-test fix (see Rule #19 §D). Their
+addition followed the protocol: name the meaning, wire the
+`defaultHaptic`, wire the `VariantStyle`, document here, log in
+`SHIPPED.md`.
 
 ### Part F — Workflow gate
 
@@ -2804,11 +2812,23 @@ If a new visual shape is genuinely needed:
 3. Wire its `defaultHaptic` per the Rule #10 §A vocabulary.
 4. Wire its `VariantStyle` branch using only system APIs
    (`.buttonStyle(.glass*)` or `.buttonStyle(.plain)`).
-5. Document the new variant + its haptic mapping in Rule #10 §E.
-6. Log the addition in `SHIPPED.md`.
+5. **Wire its hit-test shape.** Every glass variant MUST apply
+   `.contentShape(<the same shape `.buttonStyle(.glass*)` paints>)`
+   to its label. The painted glass extends to the layout frame; the
+   hit region does not — Apple's `Button` hit-tests the content's
+   intrinsic bounds, not the layout-modifier frame. Without
+   `.contentShape`, corners of the visible glass are dead zones (the
+   2026-06-08 bug — see SHIPPED.md). The default shape is
+   `Capsule()`; for circular `.actionCircle`-class variants it's
+   `Circle()`; for `.rect(cornerRadius:)` glass it must match the
+   same radius. `.tertiary` is exempt (no glass, label content IS
+   the hit region).
+6. Document the new variant + its haptic mapping in Rule #10 §E.
+7. Log the addition in `SHIPPED.md`.
 
-Until that work lands, the four existing variants are the entire
-vocabulary.
+The current vocabulary (2026-06-08): `.primary` / `.secondary` /
+`.destructive` / `.tertiary` / `.toolbarPill` / `.actionCircle`. Six
+cases; each one named by meaning, not by shape.
 
 ### Part E — Workflow gate
 
@@ -2822,6 +2842,23 @@ Before any feature surface ships:
    modifier on the call site of a `UniButton` (it would double-fire,
    per the M-002 family of mistakes).
 4. The grep in Part B returns zero hits in your diff.
+5. **Hit-test invariant.** Every glass Button label (or `ShareLink`
+   /  glass-effect surface that uses `.buttonStyle(...)`) carries
+   `.contentShape(<the same shape the glass paints>)`. The
+   canonical primitive `UniButton` does this internally for its
+   variants; carve-outs (Part C: chips, keypad keys, `ShareLink`,
+   etc.) apply `.contentShape` explicitly. Without this, the
+   painted glass extends past the hit region and corner taps fall
+   through (2026-06-08 bug). Grep:
+
+   ```bash
+   grep -rnE '\.glassEffect\(.*interactive|\.buttonStyle\(\.glass(Prominent)?\)' UniApp/Sources/Features/
+   ```
+
+   For every hit, the surrounding `Button` label MUST also carry
+   a `.contentShape(...)` whose shape matches the `glassEffect`'s
+   `in:` parameter (or `Capsule()` for unparameterized
+   `.buttonStyle(.glass*)`).
 
 ### Part F — Why this rule exists
 

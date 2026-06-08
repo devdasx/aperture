@@ -47,16 +47,22 @@ struct WalletActionRegion: View {
         isEnabled: Bool,
         action: @escaping () -> Void
     ) -> some View {
+        // Per Rule #19: every glass CTA flows through `UniButton`. The
+        // `.actionCircle` variant carries the circular hit-shape that
+        // matches the painted glass — fixing the 2026-06-08 bug where
+        // taps near the corners of the 56×56 square frame fell outside
+        // the visible circle's hit region. (Hit-test was using the SF
+        // Symbol's intrinsic bounds — only the central glyph was
+        // tappable.) `UniButton` now owns the haptic, the disabled-state
+        // opacity, and the accessibility label.
         VStack(spacing: UniSpacing.xs) {
-            Button(action: action) {
-                Image(systemName: icon)
-                    .font(.system(size: 22, weight: .semibold))
-                    .frame(width: 56, height: 56)
-            }
-            .buttonStyle(.glassProminent)
-            .tint(UniColors.Button.primaryTint)
-            .disabled(!isEnabled)
-            .opacity(isEnabled ? 1.0 : 0.5)
+            UniButton(
+                title: label,
+                variant: .actionCircle,
+                isEnabled: isEnabled,
+                icon: icon,
+                action: action
+            )
             .accessibilityLabel(Text(label))
 
             Text(label)
