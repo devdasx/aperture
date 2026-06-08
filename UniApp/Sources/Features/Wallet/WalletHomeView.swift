@@ -441,7 +441,20 @@ struct WalletHomeView: View {
                         rawBalance: group.native.rawBalance,
                         decimals: group.native.decimals
                     ),
-                    nativeDecimals: min(group.native.decimals, 8),
+                    // **Display decimals come from the chain, not the
+                    // stored field.** The native-balance upsert path
+                    // in `WalletRefreshCoordinator` writes `decimals:
+                    // 0` because the scanner already divides
+                    // (`summary.nativeBalance` is in chain units, not
+                    // wei/sats). Reading `group.native.decimals` here
+                    // would give 0 and the `0...0` fractional-length
+                    // range in `WalletFormatting.native` would round
+                    // a non-zero balance like 0.012345 ETH to "0".
+                    // The chain's `nativeDecimals` is the honest
+                    // source of truth — capped at 8 so the row stays
+                    // legible (ETH/NEAR don't need 18/24 digits on
+                    // the home; Send/Receive use full precision).
+                    nativeDecimals: min(group.chain.nativeDecimals, 8),
                     fiatValue: group.native.fiatValueCached > 0 ? group.native.fiatValueCached : nil,
                     fiatCurrencyCode: group.native.fiatCurrencyCode
                 )
