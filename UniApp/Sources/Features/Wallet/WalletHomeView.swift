@@ -154,7 +154,22 @@ struct WalletHomeView: View {
                     }
                 }
                 .refreshable { await runRefresh() }
-                .task { ensureActiveWalletSet() }
+                .task {
+                    ensureActiveWalletSet()
+                    // Auto-refresh on appear so the wallet shows live
+                    // balances + transaction history without forcing
+                    // the user to pull-to-refresh on every open. Runs
+                    // once per view lifecycle (`.task` semantics) so
+                    // it doesn't thrash the RPC providers on every
+                    // re-render. The refresh is silent unless it
+                    // produces a change — the user sees the
+                    // `mostRecentScanAt` footer tick over honestly.
+                    //
+                    // Test mode does its own scan via the toolbar
+                    // toggle; we guard against double-firing here.
+                    guard !isTestMode else { return }
+                    await runRefresh()
+                }
                 .safeAreaInset(edge: .bottom) { testModeBanner }
                 .onChange(of: testScanTrigger) { _, _ in
                     Task { await runTestScan() }
