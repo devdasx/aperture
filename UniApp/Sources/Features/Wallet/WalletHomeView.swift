@@ -141,8 +141,7 @@ struct WalletHomeView: View {
 
     var body: some View {
         NavigationStack(path: $navigationPath) {
-            scrollSurface
-                .background(UniColors.Background.primary.ignoresSafeArea())
+            listSurface
                 .navigationTitle("")
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar { toolbarContent }
@@ -151,6 +150,7 @@ struct WalletHomeView: View {
                     case .send:                    SendPlaceholderView()
                     case .swap:                    SwapPlaceholderView()
                     case .transaction(let id):     TransactionDetailView(transactionId: id)
+                    case .allSupported:            AllSupportedAssetsView()
                     }
                 }
                 .refreshable { await runRefresh() }
@@ -249,115 +249,313 @@ struct WalletHomeView: View {
 
     // MARK: - Layout
 
-    private var scrollSurface: some View {
-        ScrollView {
-            VStack(spacing: UniSpacing.l) {
-                WalletHomeHeader(
-                    walletName: isTestMode
-                        ? String.apertureLocalized("Public test addresses")
-                        : (activeWallet?.name ?? String.apertureLocalized("Wallet")),
-                    totalFiat: isTestMode ? testTotalFiat : totalFiat,
-                    currencyCode: currencyCode,
-                    // Chains held (non-zero balance) — falls back to
-                    // total supported addresses on a fresh wallet so
-                    // the user sees "26 chains supported" rather than
-                    // an honest-but-noisy "0 chains · 0 tokens".
-                    chainCount: isTestMode ? testChainsHeldCount : chainsHeldCount,
-                    tokenCount: isTestMode ? testTokenRowCount : balances.count,
-                    totalChainsSupported: isTestMode
-                        ? TestAddresses.map.count
-                        : WalletFormatting.chainCount(activeWallet?.addresses ?? []),
-                    hasAnyBalance: isTestMode ? !testBalances.isEmpty : !balances.isEmpty,
-                    isRefreshing: isRefreshing,
-                    lastSyncedAt: mostRecentScanAt,
-                    hideBalance: hideBalanceOnHome,
-                    onSwitchWallet: { isShowingSwitcher = true }
-                )
-                .disabled(isTestMode)
-
-                banners
-
-                WalletActionRegion(
-                    canSend: !isTestMode && activeWallet?.kind != .watchOnly,
-                    onSend: { navigationPath.append(WalletHomeDestination.send) },
-                    onReceive: { isShowingReceive = true },
-                    onSwap: { navigationPath.append(WalletHomeDestination.swap) }
-                )
-                .padding(.horizontal, UniSpacing.l)
-                .disabled(isTestMode)
-
-                holdingsSection
-
-                activitySection
-
-                footer
-            }
-            .padding(.horizontal, UniSpacing.l)
-            .padding(.bottom, UniSpacing.xxl)
+    /// The whole wallet-home content is a native iOS grouped list
+    /// (`List(.insetGrouped)`) — the same chrome Apple's Settings,
+    /// Health, Mail, and Wallet use. Converted from a hand-built
+    /// `ScrollView { VStack { … } }` on 2026-06-08 per direct user
+    /// direction:
+    ///
+    /// > "instead of using just a card, it should use a REAL NATIVE
+    /// > LIST FROM iOS same as settings"
+    ///
+    /// **Section composition.**
+    /// 1. **Chrome section** — hero balance + banners + glass action
+    ///    triplet. These rows use `Color.clear` row backgrounds and
+    ///    hidden separators so the inset-card chrome doesn't fight
+    ///    the floating glass; the rows read as chrome above the data,
+    ///    not as list rows.
+    /// 2. **Coins section** — native inset card with one `AssetRow`
+    ///    per chain the wallet holds a native coin balance for.
+    ///    Capped at 10 rows, sorted by fiat desc. When the wallet
+    ///    holds more than 10 coins, a final "Show all" navigation
+    ///    row appears under the 10 — pushing
+    ///    `WalletHomeDestination.allSupported`. When the wallet
+    ///    holds fewer than 10, no Show all row (the section already
+    ///    shows everything held).
+    /// 3. **Tokens section** — sibling to Coins. One
+    ///    `TokenHoldingRow` per non-native token balance, capped
+    ///    + Show all under the same rules. Sections appear
+    ///    independently — a wallet that holds only coins skips the
+    ///    Tokens section entirely (and vice versa).
+    /// 4. **Holdings empty section** — appears ONLY when both
+    ///    `coinHoldings` and `tokenHoldings` are empty. Shows the
+    ///    single `UniEmptyState` in a section labeled "Holdings"
+    ///    so the empty state lives inside the same chrome the held
+    ///    rows would.
+    /// 5. **Recent activity section** — native inset card with one
+    ///    row per transaction. Each row wraps an `ActivityRow` in a
+    ///    `Button` so the row tap routes to the transaction detail
+    ///    via `WalletHomeDestination.transaction(id)`.
+    /// 6. **Footer section** — the boundary statement ("No accounts.
+    ///    No servers."). Cleared row background + hidden separators.
+    ///
+    /// **Why two sections, not one.** User direction 2026-06-08:
+    /// *"coins (native network) should be in a window, and all
+    /// other tokens should be in different window in the main
+    /// screen."* The split is honest about what each kind of
+    /// holding IS — a native coin is the chain's own unit; a token
+    /// is a smart-contract asset deployed onto a chain. Treating
+    /// them as one mixed list (the prior shape) blurred the
+    /// distinction and produced visually deep chain → tokens
+    /// nesting that the flat split now resolves.
+    ///
+    /// **Pull-to-refresh + auto-refresh** continue to attach to this
+    /// surface (`List` consumes `.refreshable` and `.task` the same
+    /// way `ScrollView` did). The bottom test-mode banner continues
+    /// to ride `.safeAreaInset(edge: .bottom)` on the body.
+    ///
+    /// **List background.** `.scrollContentBackground(.hidden)` strips
+    /// the system's default grouped-list page tone and lets the
+    /// `UniColors.Background.primary` page color (the canonical
+    /// `systemGroupedBackground`) show through — matching the rest of
+    /// the app's pages.
+    private var listSurface: some View {
+        List {
+            chromeSection
+            holdingsBody
+            activityListSection
+            footerSection
         }
-        .scrollIndicators(.hidden)
+        .listStyle(.insetGrouped)
+        .scrollContentBackground(.hidden)
+        .background(UniColors.Background.primary.ignoresSafeArea())
     }
 
-    /// Wallet-home banner cluster.
-    ///
-    /// The `BackupRequiredBanner` was REMOVED from the wallet home on
-    /// 2026-06-07 per direct user direction:
-    ///
-    /// > "remove this 'Save your recovery phrase' from the main screen
-    /// > at all, and instead in the wallet management screen, show
-    /// > modern warning that says he should do a backup to his wallet,
-    /// > and when it done, it should be marked as Done."
-    ///
-    /// **Why the move.** The wallet home is the daily-driver surface;
-    /// the user is here to read the calm truth of what they own
-    /// (balances, holdings, activity). A persistent backup nag on every
-    /// open pulled attention away from that truth and read as
-    /// alarm-class chrome — even though backup is a *responsibility*,
-    /// not a *danger* (Rule #2 §A.7 / Rule #16 §B). The backup state
-    /// now lives where the user goes to *think about this specific
-    /// wallet*: Settings → Wallets → [wallet]. There it is calm,
-    /// monochrome, and transitions to a Done state the moment the
-    /// user confirms.
-    ///
-    /// `BiometricReenrollmentBanner` remains here because it names a
-    /// *different* class of event: an iOS-level enrollment change
-    /// happened OUTSIDE Aperture, and the user needs to re-authorize
-    /// to restore biometric unlock. That's an event-driven prompt, not
-    /// a setup-time decision the user can navigate to.
+    /// Holdings region — branches by mode and by what's held.
+    /// Test mode keeps the prior single-section grouped-by-chain
+    /// shape (the playground reads as it always did). Production
+    /// branches three ways: empty (single `UniEmptyState` section),
+    /// only-coins (one Coins section), only-tokens (one Tokens
+    /// section), or both (Coins then Tokens). Each held section
+    /// caps at 10 rows + optional "Show all" row.
     @ViewBuilder
-    private var banners: some View {
-        if requiresBiometricReenrollment {
-            BiometricReenrollmentBanner()
+    private var holdingsBody: some View {
+        if isTestMode {
+            holdingsListSection
+        } else if coinHoldings.isEmpty && tokenHoldings.isEmpty {
+            emptyHoldingsSection
+        } else {
+            if !coinHoldings.isEmpty {
+                coinsSection
+            }
+            if !tokenHoldings.isEmpty {
+                tokensSection
+            }
         }
     }
 
-    private var holdingsSection: some View {
-        sectionFrame(title: "Holdings") {
-            if isTestMode {
-                testHoldingsContent
-            } else if balances.isEmpty {
-                emptyHoldings
-            } else {
-                holdingsList
+    /// Top chrome rows — hero balance, banners, glass action triplet.
+    /// Cleared row backgrounds and hidden separators so the inset
+    /// card chrome doesn't fight the floating glass.
+    @ViewBuilder
+    private var chromeSection: some View {
+        Section {
+            WalletHomeHeader(
+                walletName: isTestMode
+                    ? String.apertureLocalized("Public test addresses")
+                    : (activeWallet?.name ?? String.apertureLocalized("Wallet")),
+                totalFiat: isTestMode ? testTotalFiat : totalFiat,
+                currencyCode: currencyCode,
+                chainCount: isTestMode ? testChainsHeldCount : chainsHeldCount,
+                tokenCount: isTestMode ? testTokenRowCount : balances.count,
+                totalChainsSupported: isTestMode
+                    ? TestAddresses.map.count
+                    : WalletFormatting.chainCount(activeWallet?.addresses ?? []),
+                hasAnyBalance: isTestMode ? !testBalances.isEmpty : !balances.isEmpty,
+                isRefreshing: isRefreshing,
+                lastSyncedAt: mostRecentScanAt,
+                hideBalance: hideBalanceOnHome,
+                onSwitchWallet: { isShowingSwitcher = true }
+            )
+            .disabled(isTestMode)
+            .listRowBackground(Color.clear)
+            .listRowSeparator(.hidden)
+            .listRowInsets(EdgeInsets())
+
+            if requiresBiometricReenrollment {
+                BiometricReenrollmentBanner()
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
+                    .listRowInsets(EdgeInsets(
+                        top: 0,
+                        leading: UniSpacing.l,
+                        bottom: 0,
+                        trailing: UniSpacing.l
+                    ))
             }
+
+            WalletActionRegion(
+                canSend: !isTestMode && activeWallet?.kind != .watchOnly,
+                onSend: { navigationPath.append(WalletHomeDestination.send) },
+                onReceive: { isShowingReceive = true },
+                onSwap: { navigationPath.append(WalletHomeDestination.swap) }
+            )
+            .disabled(isTestMode)
+            .listRowBackground(Color.clear)
+            .listRowSeparator(.hidden)
+            .listRowInsets(EdgeInsets(
+                top: 0,
+                leading: UniSpacing.l,
+                bottom: 0,
+                trailing: UniSpacing.l
+            ))
         }
+    }
+
+    // MARK: - Holdings section (native List)
+
+    /// Test-mode holdings section. Per `holdingsBody`'s branching,
+    /// production never reaches this section — it routes through
+    /// `coinsSection` / `tokensSection` / `emptyHoldingsSection`
+    /// instead. Test mode keeps the original "Holdings" label +
+    /// the playground-style streaming rows.
+    @ViewBuilder
+    private var holdingsListSection: some View {
+        Section {
+            testHoldingsRows
+        } header: {
+            Text("Holdings")
+        }
+    }
+
+    // MARK: - Coins section (native coins, 10-row cap + Show all)
+
+    /// Coins section — one `AssetRow` per `coinHoldings` row.
+    /// Capped at `holdingsDisplayCap` (10). When the wallet holds
+    /// more than 10 coins, the trailing "Show all" navigation row
+    /// pushes to `WalletHomeDestination.allSupported`. When the
+    /// wallet holds 10 or fewer, no trailing row (everything held
+    /// fits in the section).
+    ///
+    /// Section header `"COINS"` rendered uppercase by
+    /// `.listStyle(.insetGrouped)` — same chrome iOS Settings uses
+    /// for its "MOBILE DATA" / "GENERAL" labels.
+    @ViewBuilder
+    private var coinsSection: some View {
+        let displayed = Array(coinHoldings.prefix(holdingsDisplayCap))
+        let hasMore = coinHoldings.count > holdingsDisplayCap
+
+        Section {
+            ForEach(Array(displayed.enumerated()), id: \.offset) { _, row in
+                AssetRow(
+                    chain: row.chain,
+                    tokenSymbol: row.balance.tokenSymbol,
+                    nativeAmount: WalletFormatting.decimalAmount(
+                        rawBalance: row.balance.rawBalance,
+                        decimals: row.balance.decimals
+                    ),
+                    // Display decimals come from the chain, not the
+                    // stored field. The native-balance upsert path in
+                    // `WalletRefreshCoordinator` writes `decimals: 0`
+                    // because the scanner already divides
+                    // (`summary.nativeBalance` is in chain units, not
+                    // wei/sats). Reading `row.balance.decimals` here
+                    // would give 0 and the `0...0` fractional-length
+                    // range in `WalletFormatting.native` would round a
+                    // non-zero balance like 0.012345 ETH to "0". The
+                    // chain's `nativeDecimals` is the honest source of
+                    // truth — capped at 8 so the row stays legible
+                    // (ETH/NEAR don't need 18/24 digits on the home;
+                    // Send/Receive use full precision).
+                    nativeDecimals: min(row.chain.nativeDecimals, 8),
+                    fiatValue: row.balance.fiatValueCached > 0 ? row.balance.fiatValueCached : nil,
+                    fiatCurrencyCode: row.balance.fiatCurrencyCode
+                )
+            }
+            if hasMore { showAllRow }
+        } header: {
+            Text("Coins")
+        }
+    }
+
+    // MARK: - Tokens section (registry tokens, 10-row cap + Show all)
+
+    /// Tokens section — one `TokenHoldingRow` per `tokenHoldings`
+    /// row. Capped at `holdingsDisplayCap` (10) with the same
+    /// "Show all" trailing-row rule. Rows display the token symbol,
+    /// the chain it lives on, the native amount, and the fiat
+    /// equivalent. Treeline-free — these are top-level rows in the
+    /// flat layout, not nested under a chain.
+    @ViewBuilder
+    private var tokensSection: some View {
+        let displayed = Array(tokenHoldings.prefix(holdingsDisplayCap))
+        let hasMore = tokenHoldings.count > holdingsDisplayCap
+
+        Section {
+            ForEach(Array(displayed.enumerated()), id: \.offset) { _, row in
+                TokenHoldingRow(chain: row.chain, balance: row.balance)
+            }
+            if hasMore { showAllRow }
+        } header: {
+            Text("Tokens")
+        }
+    }
+
+    // MARK: - Empty holdings section
+
+    /// Single empty-state row in a section labeled "Holdings".
+    /// Only appears when both `coinHoldings` and `tokenHoldings`
+    /// are empty (a fresh wallet whose scanner hasn't filled yet,
+    /// or a wallet that genuinely holds nothing).
+    @ViewBuilder
+    private var emptyHoldingsSection: some View {
+        Section {
+            UniEmptyState(
+                title: "Your holdings will appear here.",
+                detail: "Receive crypto to any of your addresses and it'll show up the moment it lands on-chain."
+            )
+            .listRowBackground(Color.clear)
+            .listRowSeparator(.hidden)
+            .listRowInsets(EdgeInsets())
+        } header: {
+            Text("Holdings")
+        }
+    }
+
+    // MARK: - Show all row
+
+    /// "Show all" navigation row that lives at the foot of an
+    /// overflowed Coins or Tokens section. Uses a value-based
+    /// `NavigationLink` so the parent `NavigationStack`'s
+    /// `.navigationDestination(for: WalletHomeDestination.self)`
+    /// owns the routing — same pattern as the transaction-detail
+    /// route. Rule #19 §C allows hand-composed NavigationLink
+    /// content (navigation, not commit).
+    ///
+    /// The row chrome matches a Settings-style "See All" footer:
+    /// uppercase-style text on the leading edge, system chevron on
+    /// the trailing. The chevron auto-mirrors in RTL.
+    @ViewBuilder
+    private var showAllRow: some View {
+        NavigationLink(value: WalletHomeDestination.allSupported) {
+            HStack(spacing: UniSpacing.s) {
+                Text("Show all")
+                    .font(UniTypography.body)
+                    .foregroundStyle(UniColors.Text.primary)
+                Spacer(minLength: UniSpacing.s)
+            }
+            .padding(.vertical, UniSpacing.xs)
+            .contentShape(Rectangle())
+        }
+        .accessibilityLabel(Text("Show all supported assets"))
     }
 
     // MARK: - Test-mode holdings + activity
     //
     // In test mode the SwiftData rows are NOT consulted — we render
     // straight from the in-memory `testBalances` + `testTokens`
-    // buckets populated by the streaming scanner. The visual
-    // register mirrors the Mnemonic Review screen exactly
-    // (`ReviewChainRow` + `ReviewTokenRow`) so the user gets one
-    // consistent "this is the test affordance" feel across both
-    // surfaces.
+    // buckets populated by the streaming scanner. The visual register
+    // mirrors the Mnemonic Review screen exactly (`ReviewChainRow` +
+    // `ReviewTokenRow`) so the user gets one consistent "this is the
+    // test affordance" feel across both surfaces.
+
+    /// Test-mode holdings rows. Until the streaming scanner yields
+    /// the first row, a centered `ProgressView` row stands in (a
+    /// single list row, separator hidden, cleared background — so it
+    /// reads as a momentary state, not as data the user could act on).
     @ViewBuilder
-    private var testHoldingsContent: some View {
+    private var testHoldingsRows: some View {
         if testBalances.isEmpty && testTokens.isEmpty {
-            // Streaming hasn't yielded a row yet — quiet progress
-            // surface inside the card so the layout doesn't jump
-            // as rows arrive.
             VStack(spacing: UniSpacing.s) {
                 ProgressView()
                 UniFootnote(
@@ -367,13 +565,22 @@ struct WalletHomeView: View {
                 )
             }
             .frame(maxWidth: .infinity)
-            .padding(.vertical, UniSpacing.xl)
-            .background(
-                RoundedRectangle(cornerRadius: UniRadius.card, style: .continuous)
-                    .fill(UniColors.Material.card)
-            )
+            .padding(.vertical, UniSpacing.l)
+            .listRowSeparator(.hidden)
         } else {
-            testHoldingsList
+            ForEach(Array(sortedTestChains.enumerated()), id: \.offset) { _, chain in
+                ReviewChainRow(
+                    chain: chain,
+                    address: TestAddresses.map[chain] ?? "",
+                    balance: testBalances[chain]
+                )
+                let chainTokens = (testTokens[chain] ?? []).sorted { a, b in
+                    (a.fiatBalance ?? 0) > (b.fiatBalance ?? 0)
+                }
+                ForEach(chainTokens) { token in
+                    ReviewTokenRow(token: token)
+                }
+            }
         }
     }
 
@@ -395,193 +602,92 @@ struct WalletHomeView: View {
         return nativeFiat + tokenFiat
     }
 
-    private var testHoldingsList: some View {
-        VStack(spacing: 0) {
-            ForEach(Array(sortedTestChains.enumerated()), id: \.offset) { idx, chain in
-                ReviewChainRow(
-                    chain: chain,
-                    address: TestAddresses.map[chain] ?? "",
-                    balance: testBalances[chain]
-                )
-                let chainTokens = (testTokens[chain] ?? []).sorted { a, b in
-                    (a.fiatBalance ?? 0) > (b.fiatBalance ?? 0)
-                }
-                if !chainTokens.isEmpty {
-                    ForEach(chainTokens) { token in
-                        ReviewTokenRow(token: token)
-                    }
-                }
-                if idx < sortedTestChains.count - 1 {
-                    UniDivider()
-                }
-            }
-        }
-        .background(
-            RoundedRectangle(cornerRadius: UniRadius.card, style: .continuous)
-                .fill(UniColors.Material.card)
-        )
-    }
+    /// Display cap for both the Coins and Tokens sections — the
+    /// home screen shows the first 10 of each, then a "Show all"
+    /// navigation row when the holdings exceed the cap.
+    private let holdingsDisplayCap: Int = 10
 
-    /// Groups balances by chain (chain native first per group, tokens
-    /// follow) and renders one card. Within a group, the native row
-    /// has the full chain logo + ticker; tokens render as quieter
-    /// indented rows under the native (matches the `ReviewTokenRow`
-    /// treeline pattern from the Import → Review screen, so the same
-    /// parent/child cue propagates across the app).
-    @ViewBuilder
-    private var holdingsList: some View {
-        let groups = groupedBalances
-        LazyVStack(spacing: 0) {
-            ForEach(Array(groups.enumerated()), id: \.offset) { groupIdx, group in
-                // Native chain row first.
-                AssetRow(
-                    chain: group.chain,
-                    tokenSymbol: group.native.tokenSymbol,
-                    nativeAmount: WalletFormatting.decimalAmount(
-                        rawBalance: group.native.rawBalance,
-                        decimals: group.native.decimals
-                    ),
-                    // **Display decimals come from the chain, not the
-                    // stored field.** The native-balance upsert path
-                    // in `WalletRefreshCoordinator` writes `decimals:
-                    // 0` because the scanner already divides
-                    // (`summary.nativeBalance` is in chain units, not
-                    // wei/sats). Reading `group.native.decimals` here
-                    // would give 0 and the `0...0` fractional-length
-                    // range in `WalletFormatting.native` would round
-                    // a non-zero balance like 0.012345 ETH to "0".
-                    // The chain's `nativeDecimals` is the honest
-                    // source of truth — capped at 8 so the row stays
-                    // legible (ETH/NEAR don't need 18/24 digits on
-                    // the home; Send/Receive use full precision).
-                    nativeDecimals: min(group.chain.nativeDecimals, 8),
-                    fiatValue: group.native.fiatValueCached > 0 ? group.native.fiatValueCached : nil,
-                    fiatCurrencyCode: group.native.fiatCurrencyCode
-                )
-                .padding(.horizontal, UniSpacing.m)
-                // Token sub-rows, indented under the native.
-                ForEach(Array(group.tokens.enumerated()), id: \.offset) { _, token in
-                    UniDivider().padding(.leading, UniSpacing.m + 32 + UniSpacing.s)
-                    HoldingsTokenRow(
-                        chain: group.chain,
-                        balance: token
-                    )
-                    .padding(.horizontal, UniSpacing.m)
-                }
-                if groupIdx < groups.count - 1 {
-                    UniDivider()
-                }
-            }
-        }
-        .background(
-            RoundedRectangle(cornerRadius: UniRadius.card, style: .continuous)
-                .fill(UniColors.Material.card)
-        )
-    }
-
-    /// One chain's holdings, sorted by per-group fiat desc and chain-
-    /// group fiat desc at the outer level. The native balance is the
-    /// row that carries the chain logo; `tokens` is the optional list
-    /// of token sub-rows (empty for chains where the user only holds
-    /// the native coin).
-    private struct ChainHoldingsGroup {
-        let chain: SupportedChain
-        let native: TokenBalanceRecord
-        let tokens: [TokenBalanceRecord]
-        var totalFiat: Decimal {
-            tokens.reduce(native.fiatValueCached) { $0 + $1.fiatValueCached }
-        }
-    }
-
-    private var groupedBalances: [ChainHoldingsGroup] {
-        // Re-use the filter from `balances` (which already applies
-        // `hideSmallBalances` + non-zero raw). Bucket by chain.
-        var buckets: [SupportedChain: [TokenBalanceRecord]] = [:]
-        for entry in balances {
-            buckets[entry.chain, default: []].append(entry.balance)
-        }
-        let groups: [ChainHoldingsGroup] = buckets.compactMap { chain, rows in
-            // Native row = the one whose tokenSymbol matches the chain
-            // ticker AND tokenContract is nil. If a chain hasn't had
-            // its native scanned but has tokens, synthesize a zero
-            // native placeholder so the user still sees the chain
-            // grouping cleanly.
-            let native = rows.first { $0.tokenContract == nil && $0.tokenSymbol == chain.ticker }
-            let tokens = rows.filter { $0.tokenContract != nil || $0.tokenSymbol != chain.ticker }
-            guard let nativeRow = native else {
-                // No native row but tokens exist — promote the first
-                // token to lead-row position so the group still renders.
-                guard let lead = tokens.first else { return nil }
-                let rest = Array(tokens.dropFirst())
-                return ChainHoldingsGroup(chain: chain, native: lead, tokens: rest)
-            }
-            // Sort tokens by fiat desc within the group.
-            let sortedTokens = tokens.sorted { $0.fiatValueCached > $1.fiatValueCached }
-            return ChainHoldingsGroup(chain: chain, native: nativeRow, tokens: sortedTokens)
-        }
-        // Sort groups by group totalFiat desc — the biggest holding's
-        // chain leads.
-        return groups.sorted { $0.totalFiat > $1.totalFiat }
-    }
-
-    /// **Holdings empty state.** Redesigned 2026-06-07 against the
-    /// monochrome brand correction: the iris watermark anchors the
-    /// surface as Aperture's, the splash-family elliptical lift
-    /// threads visually back to the launch screen the user just saw,
-    /// and the copy names what holdings ARE plus how the user moves
-    /// from absence to presence. No CTA inside the empty surface —
-    /// the `WalletActionRegion` glass triplet directly above carries
-    /// Receive, and the user-direction 2026-06-07 removed the prior
-    /// CTA explicitly.
+    /// Coins held — the wallet's native-coin balances. One row per
+    /// `(chain, native balance)`. Sorted by fiat desc so the
+    /// largest holding leads.
     ///
-    /// The empty state composes the canonical `UniEmptyState`
-    /// primitive so siblings (this + `emptyActivity` + future
-    /// neutral empty states) share one visual register.
-    private var emptyHoldings: some View {
-        UniEmptyState(
-            title: "Your holdings will appear here.",
-            detail: "Receive crypto to any of your addresses and it'll show up the moment it lands on-chain."
-        )
+    /// A "native" balance is identified by `tokenContract == nil`
+    /// AND `tokenSymbol == chain.ticker`. The native-balance upsert
+    /// path in `WalletRefreshCoordinator` writes exactly this shape.
+    private var coinHoldings: [(chain: SupportedChain, balance: TokenBalanceRecord)] {
+        balances.filter { entry in
+            entry.balance.tokenContract == nil
+                && entry.balance.tokenSymbol == entry.chain.ticker
+        }
     }
 
-    private var activitySection: some View {
-        sectionFrame(title: "Recent activity") {
+    /// Tokens held — every non-native balance. One row per
+    /// `(chain, token balance)`. Sorted by fiat desc.
+    ///
+    /// Anything that isn't a native coin is a token: contract is
+    /// non-nil OR the symbol doesn't match the chain's ticker
+    /// (the latter catches edge cases where a registry stores a
+    /// native-equivalent under a different symbol).
+    private var tokenHoldings: [(chain: SupportedChain, balance: TokenBalanceRecord)] {
+        balances.filter { entry in
+            entry.balance.tokenContract != nil
+                || entry.balance.tokenSymbol != entry.chain.ticker
+        }
+    }
+
+    // MARK: - Activity section (native List)
+
+    /// Recent-activity section. Branches three ways like the holdings
+    /// section: test mode (in-memory `testTransactions`), empty
+    /// production wallet (`UniEmptyState`), and the normal recent-ten
+    /// list. Each transaction row wraps `ActivityRow` in a `Button`
+    /// so the row tap routes to the transaction detail.
+    @ViewBuilder
+    private var activityListSection: some View {
+        Section {
             if isTestMode {
                 if testTransactions.isEmpty {
                     testActivityEmpty
+                        .listRowBackground(Color.clear)
+                        .listRowSeparator(.hidden)
+                        .listRowInsets(EdgeInsets())
                 } else {
-                    testActivityList
+                    testActivityRows
                 }
             } else if recentTransactions.isEmpty {
                 emptyActivity
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
+                    .listRowInsets(EdgeInsets())
             } else {
-                LazyVStack(spacing: 0) {
-                    ForEach(Array(recentTransactions.enumerated()), id: \.offset) { idx, tx in
-                        Button {
-                            navigationPath.append(WalletHomeDestination.transaction(tx.id))
-                        } label: {
-                            ActivityRow(
-                                chain: chainFor(tx),
-                                direction: TransactionDirection(rawValue: tx.directionRaw) ?? .outgoing,
-                                amount: Decimal(string: tx.amountRaw) ?? .zero,
-                                tokenSymbol: tx.tokenSymbol,
-                                counterparty: tx.counterparty,
-                                occurredAt: tx.occurredAt,
-                                status: TransactionStatus(rawValue: tx.statusRaw) ?? .confirmed
-                            )
-                            .padding(.horizontal, UniSpacing.m)
-                        }
-                        .buttonStyle(.plain)
-                        if idx < recentTransactions.count - 1 {
-                            UniDivider().padding(.leading, UniSpacing.m + 36 + UniSpacing.s)
-                        }
-                    }
-                }
-                .background(
-                    RoundedRectangle(cornerRadius: UniRadius.card, style: .continuous)
-                        .fill(UniColors.Material.card)
+                productionActivityRows
+            }
+        } header: {
+            Text("Recent activity")
+        }
+    }
+
+    /// Production activity rows — each `TransactionRecord` becomes
+    /// one tappable list row. The `Button` carries the navigation
+    /// dispatch; the row's tap target is the row itself thanks to
+    /// `.contentShape` on `ActivityRow` and `.buttonStyle(.plain)`.
+    @ViewBuilder
+    private var productionActivityRows: some View {
+        ForEach(recentTransactions, id: \.id) { tx in
+            Button {
+                navigationPath.append(WalletHomeDestination.transaction(tx.id))
+            } label: {
+                ActivityRow(
+                    chain: chainFor(tx),
+                    direction: TransactionDirection(rawValue: tx.directionRaw) ?? .outgoing,
+                    amount: Decimal(string: tx.amountRaw) ?? .zero,
+                    tokenSymbol: tx.tokenSymbol,
+                    counterparty: tx.counterparty,
+                    occurredAt: tx.occurredAt,
+                    status: TransactionStatus(rawValue: tx.statusRaw) ?? .confirmed
                 )
             }
+            .buttonStyle(.plain)
         }
     }
 
@@ -589,41 +695,34 @@ struct WalletHomeView: View {
     /// `testTransactions` buffer (populated by the unified
     /// `RealRPCTransactionScanner`) using the same `ActivityRow`
     /// component the real wallet uses — so visual consistency
-    /// between test mode and the production path is automatic.
-    /// Rows are sorted newest-first and capped at 10 (same cap as
+    /// between test mode and the production path is automatic. Rows
+    /// are sorted newest-first and capped at 10 (same cap as
     /// `recentTransactions`).
-    private var testActivityList: some View {
-        let sorted = testTransactions
-            .sorted { $0.occurredAt > $1.occurredAt }
-            .prefix(10)
-        return LazyVStack(spacing: 0) {
-            ForEach(Array(sorted.enumerated()), id: \.offset) { idx, event in
-                ActivityRow(
-                    chain: event.chain,
-                    direction: event.direction,
-                    amount: event.amount,
-                    tokenSymbol: event.tokenSymbol,
-                    counterparty: event.counterparty,
-                    occurredAt: event.occurredAt,
-                    status: event.status
-                )
-                .padding(.horizontal, UniSpacing.m)
-                if idx < sorted.count - 1 {
-                    UniDivider().padding(.leading, UniSpacing.m + 36 + UniSpacing.s)
-                }
-            }
-        }
-        .background(
-            RoundedRectangle(cornerRadius: UniRadius.card, style: .continuous)
-                .fill(UniColors.Material.card)
+    @ViewBuilder
+    private var testActivityRows: some View {
+        let sorted = Array(
+            testTransactions
+                .sorted { $0.occurredAt > $1.occurredAt }
+                .prefix(10)
         )
+        ForEach(Array(sorted.enumerated()), id: \.offset) { _, event in
+            ActivityRow(
+                chain: event.chain,
+                direction: event.direction,
+                amount: event.amount,
+                tokenSymbol: event.tokenSymbol,
+                counterparty: event.counterparty,
+                occurredAt: event.occurredAt,
+                status: event.status
+            )
+        }
     }
 
-    /// **Activity empty state.** Sibling to `emptyHoldings` — same
-    /// iris watermark, same elliptical lift, same copy register.
-    /// The two empty surfaces sit in the same scroll; reading them
-    /// as a pair (Holdings empty / Activity empty) confirms the
-    /// wallet is alive and waiting rather than broken or stuck.
+    /// **Activity empty state.** Sibling to `emptyHoldingsSection` — same
+    /// iris watermark, same elliptical lift, same copy register. The
+    /// two empty surfaces sit in the same list; reading them as a
+    /// pair (Holdings empty / Activity empty) confirms the wallet is
+    /// alive and waiting rather than broken or stuck.
     private var emptyActivity: some View {
         UniEmptyState(
             title: "No activity yet.",
@@ -631,27 +730,22 @@ struct WalletHomeView: View {
         )
     }
 
-    private var footer: some View {
-        UniFootnote(
-            text: "No accounts. No servers. Aperture lives on your iPhone.",
-            alignment: .center,
-            color: UniColors.Text.tertiary
-        )
-        .padding(.top, UniSpacing.l)
-    }
-
-    private func sectionFrame<Content: View>(
-        title: LocalizedStringKey,
-        @ViewBuilder content: () -> Content
-    ) -> some View {
-        VStack(alignment: .leading, spacing: UniSpacing.s) {
-            Text(title)
-                .font(UniTypography.footnote)
-                .foregroundStyle(UniColors.Text.tertiary)
-                .textCase(.uppercase)
-                .tracking(0.6)
-                .padding(.leading, UniSpacing.xs)
-            content()
+    /// Boundary statement at the foot of the list. Cleared row
+    /// background + hidden separators so it reads as a footer, not as
+    /// a list row.
+    @ViewBuilder
+    private var footerSection: some View {
+        Section {
+            UniFootnote(
+                text: "No accounts. No servers. Aperture lives on your iPhone.",
+                alignment: .center,
+                color: UniColors.Text.tertiary
+            )
+            .frame(maxWidth: .infinity)
+            .padding(.top, UniSpacing.l)
+            .listRowBackground(Color.clear)
+            .listRowSeparator(.hidden)
+            .listRowInsets(EdgeInsets())
         }
     }
 
@@ -994,4 +1088,10 @@ enum WalletHomeDestination: Hashable, Codable {
     case send
     case swap
     case transaction(UUID)
+    /// "All supported assets" destination — pushed when the user
+    /// taps a "Show all" row in the Coins or Tokens section.
+    /// Lands on `AllSupportedAssetsView` which lists every
+    /// `SupportedChain` + every curated registry token with the
+    /// active wallet's current balance per row.
+    case allSupported
 }

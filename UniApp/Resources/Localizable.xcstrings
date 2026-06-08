@@ -178548,6 +178548,39 @@
           }
         }
       }
+    },
+    "Coins": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Coins"
+          }
+        }
+      }
+    },
+    "Show all supported assets": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Show all supported assets"
+          }
+        }
+      }
+    },
+    "All supported assets": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "All supported assets"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

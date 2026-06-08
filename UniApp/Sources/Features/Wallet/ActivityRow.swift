@@ -6,14 +6,17 @@ import SwiftUI
 /// real token mark.
 ///
 /// **Visual register (Rule #2 + Rule #7):**
-/// - Leading is a **36-pt token mark** (the bundled `Crypto/<ticker>`
+/// - Leading is a **44-pt token mark** (the bundled `Crypto/<ticker>`
 ///   asset — `Crypto/eth`, `Crypto/btc`, `Crypto/usdc`, …) — the
-///   asset itself is the identity. A small **14-pt status badge**
-///   overlays the bottom-trailing corner carrying the verb: down
-///   arrow incoming, up arrow outgoing, swap glyph internal, clock
-///   pending, ✕ failed. The badge wears a `Background.primary` halo
-///   so it reads as a cutout in the mark, not a floating sticker —
-///   the same composition iOS Messages uses for presence dots.
+///   asset itself is the identity. Bumped from 36→44pt on 2026-06-08
+///   per user direction, matching the parallel bump on `AssetRow`
+///   so Holdings and Activity rows read as one family. A small
+///   **18-pt status badge** overlays the bottom-trailing corner
+///   carrying the verb: down arrow incoming, up arrow outgoing, swap
+///   glyph internal, clock pending, ✕ failed. The badge wears a
+///   `Background.secondary` halo so it reads as a cutout in the mark,
+///   not a floating sticker — the same composition iOS Messages uses
+///   for presence dots.
 /// - Token symbol + truncated counterparty in middle.
 /// - Signed amount + relative time on trailing edge.
 /// - Pending status surfaces "Pending" under the time;
@@ -75,23 +78,25 @@ struct ActivityRow: View {
 
     // MARK: - Leading mark + status badge
 
-    /// 36pt token mark + 14pt corner badge.
+    /// 44pt token mark + 18pt corner badge (with 22pt halo).
     ///
     /// `ZStack` with `.bottomTrailing` alignment is layout-direction
     /// aware — SwiftUI flips to `.bottomLeading` in RTL automatically
     /// (Rule #11 §B). The badge offset uses positive x in LTR and
     /// SwiftUI re-signs it for RTL.
+    ///
+    /// The 5pt offset (was 4pt at the 36pt mark size) keeps the badge
+    /// sitting on the corner of the larger mark rather than crowding
+    /// into it.
     private var leadingMark: some View {
         ZStack(alignment: .bottomTrailing) {
             CoinMark(chain: chain, tokenSymbol: tokenSymbol)
-                .frame(width: 36, height: 36)
+                .frame(width: 44, height: 44)
 
             statusBadge
-                // Outset the badge ~4pt beyond the mark's circumference
-                // so it sits on the corner rather than inside it.
-                .offset(x: 4, y: 4)
+                .offset(x: 5, y: 5)
         }
-        .frame(width: 36, height: 36, alignment: .topLeading)
+        .frame(width: 44, height: 44, alignment: .topLeading)
         .accessibilityHidden(true)
     }
 
@@ -99,15 +104,22 @@ struct ActivityRow: View {
         ZStack {
             // 2pt halo: the badge's outer ring matches the row's
             // surface so it reads as a cutout in the mark, not a
-            // floating chip. Total footprint = 14 + 2*2 = 18pt.
+            // floating chip. Total footprint = 18 + 2*2 = 22pt.
+            //
+            // Halo color is `Background.secondary` because the row
+            // now lives inside `List(.insetGrouped)`, whose row chrome
+            // is the secondary-grouped-background tone. The badge
+            // reads as cut out of the white inset card; if the halo
+            // were `Background.primary` (the page color), the user
+            // would see a thin gray ring around the badge.
             Circle()
-                .fill(UniColors.Background.primary)
-                .frame(width: 18, height: 18)
+                .fill(UniColors.Background.secondary)
+                .frame(width: 22, height: 22)
             Circle()
                 .fill(UniColors.Material.card)
-                .frame(width: 14, height: 14)
+                .frame(width: 18, height: 18)
             Image(systemName: badgeGlyph)
-                .font(.system(size: 9, weight: .bold))
+                .font(.system(size: 11, weight: .bold))
                 .foregroundStyle(badgeForeground)
         }
     }
@@ -179,71 +191,7 @@ struct ActivityRow: View {
     }
 }
 
-// MARK: - CoinMark
-
-/// Resolves a `(chain, tokenSymbol)` pair to a bundled coin mark and
-/// renders it at the caller's frame. Native sends fall through to the
-/// chain's own logo (`chain.logoAssetName`); known stablecoin
-/// transfers (USDC, USDT) route to the bundled token marks. Anything
-/// else — DAI, random ERC-20s, on-chain tokens we haven't bundled —
-/// falls back to an honest initials chip on `Material.card`.
-///
-/// **Honesty (Rule #7).** The fallback chip names the token by its
-/// ticker, never invents a brand mark. A user who sees "DAI" on a
-/// neutral chip knows we don't ship a logo for it; a user who sees a
-/// fabricated yellow circle with a "D" inside would be lied to.
-private struct CoinMark: View {
-    let chain: SupportedChain
-    let tokenSymbol: String
-
-    var body: some View {
-        if let assetName = resolvedAssetName {
-            Image(assetName)
-                .resizable()
-                .scaledToFit()
-                .clipShape(Circle())
-        } else {
-            initialsChip
-        }
-    }
-
-    /// The bundled asset name for this `(chain, symbol)` pair, or nil
-    /// if the symbol is a token we don't ship a mark for.
-    private var resolvedAssetName: String? {
-        // Native sends: the symbol matches the chain's native ticker.
-        // Compare uppercased to match the chain.ticker convention.
-        if tokenSymbol.uppercased() == chain.ticker.uppercased() {
-            return chain.logoAssetName
-        }
-        // Token transfers — only stablecoins we explicitly ship.
-        switch tokenSymbol.uppercased() {
-        case "USDC": return "Crypto/usdc"
-        case "USDT": return "Crypto/usdt"
-        default:     return nil
-        }
-    }
-
-    /// Up-to-3-letter initials chip. Renders the ticker on a neutral
-    /// `Material.card` disk — the same disk color as the surrounding
-    /// activity card, so the chip reads as restrained, not loud.
-    private var initialsChip: some View {
-        Circle()
-            .fill(UniColors.Material.card)
-            .overlay {
-                Text(initials)
-                    .font(.system(size: 12, weight: .semibold, design: .rounded))
-                    .foregroundStyle(UniColors.Text.primary)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.7)
-                    .padding(.horizontal, 2)
-            }
-    }
-
-    private var initials: String {
-        let trimmed = tokenSymbol.trimmingCharacters(in: .whitespacesAndNewlines)
-        if trimmed.isEmpty { return "—" }
-        // Cap at 3 chars; longer tickers (e.g. wstETH) compress to the
-        // first three letters which still read as the asset's family.
-        return String(trimmed.prefix(3)).uppercased()
-    }
-}
+// `CoinMark` (the `(chain, tokenSymbol)` → bundled-mark-or-honest-chip
+// view) lives in `CoinMark.swift` so both `ActivityRow` and
+// `TokenHoldingRow` can compose against the same resolution. Promoted
+// to internal 2026-06-08 with the Coins / Tokens split.

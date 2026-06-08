@@ -4,8 +4,12 @@ import SwiftUI
 /// ticker + chain name, the native amount, and the fiat equivalent.
 ///
 /// **Visual register (Rule #2):**
-/// - 32-pt circular logo (bundled Trust Wallet asset; `circle.dashed`
-///   fallback for chains without a bundled mark).
+/// - 44-pt circular logo (bundled Trust Wallet asset; `circle.dashed`
+///   fallback for chains without a bundled mark). Bumped from 32→44pt
+///   on 2026-06-08 per user direction — the larger size makes the
+///   asset identity announce itself at a glance and matches the
+///   iOS list-row leading-visual rhythm of Mail / Photos / Health
+///   (44pt is also the iOS standard touch-target floor).
 /// - Ticker is the loudest text; chain name in `Text.secondary`.
 /// - Native amount in `monoBody` (digits align across rows).
 /// - Fiat equivalent in `Text.tertiary` — secondary information.
@@ -60,14 +64,14 @@ struct AssetRow: View {
             Image(asset)
                 .resizable()
                 .scaledToFit()
-                .frame(width: 32, height: 32)
+                .frame(width: 44, height: 44)
                 .clipShape(Circle())
                 .accessibilityHidden(true)
         } else {
             Image(systemName: "circle.dashed")
-                .font(.system(size: 28, weight: .light))
+                .font(.system(size: 38, weight: .light))
                 .foregroundStyle(UniColors.Icon.tertiary)
-                .frame(width: 32, height: 32)
+                .frame(width: 44, height: 44)
                 .accessibilityHidden(true)
         }
     }
