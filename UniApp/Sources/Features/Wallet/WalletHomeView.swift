@@ -118,12 +118,26 @@ struct WalletHomeView: View {
     @State private var isTestMode: Bool = false
     @State private var testBalances: [SupportedChain: ChainBalance] = [:]
     @State private var testTokens: [SupportedChain: [TokenBalance]] = [:]
+    /// Test-mode transaction history. Mirrors `testBalances` /
+    /// `testTokens` — held in-memory only so SwiftData stays clean
+    /// while the user verifies the scanner against public addresses.
+    /// Populated by `runTestScan()` via the unified
+    /// `RealRPCTransactionScanner`. Same scanner powers the real
+    /// wallet's refresh path (which writes into `TransactionRepository`).
+    @State private var testTransactions: [TransactionEvent] = []
     @State private var testScanTrigger: Int = 0
 
     /// Shared streaming scanner — the same instance shape the
     /// Mnemonic Review screen uses. Holding it as a `let` on the
     /// view keeps the per-test rescan stream backed by one client.
     private let testScanner = RealRPCBalanceScanner()
+
+    /// Unified transaction-history scanner. One instance powers both
+    /// test mode (in-memory `testTransactions`) and the real
+    /// wallet's `runRefresh()` path (writes through
+    /// `TransactionRepository`). See `RealRPCTransactionScanner` for
+    /// the per-family dispatch table.
+    private let txScanner = RealRPCTransactionScanner()
 
     var body: some View {
         NavigationStack(path: $navigationPath) {
@@ -505,7 +519,11 @@ struct WalletHomeView: View {
     private var activitySection: some View {
         sectionFrame(title: "Recent activity") {
             if isTestMode {
-                testActivityEmpty
+                if testTransactions.isEmpty {
+                    testActivityEmpty
+                } else {
+                    testActivityList
+                }
             } else if recentTransactions.isEmpty {
                 emptyActivity
             } else {
@@ -536,6 +554,39 @@ struct WalletHomeView: View {
                 )
             }
         }
+    }
+
+    /// Test-mode activity feed. Renders the in-memory
+    /// `testTransactions` buffer (populated by the unified
+    /// `RealRPCTransactionScanner`) using the same `ActivityRow`
+    /// component the real wallet uses — so visual consistency
+    /// between test mode and the production path is automatic.
+    /// Rows are sorted newest-first and capped at 10 (same cap as
+    /// `recentTransactions`).
+    private var testActivityList: some View {
+        let sorted = testTransactions
+            .sorted { $0.occurredAt > $1.occurredAt }
+            .prefix(10)
+        return LazyVStack(spacing: 0) {
+            ForEach(Array(sorted.enumerated()), id: \.offset) { idx, event in
+                ActivityRow(
+                    direction: event.direction,
+                    amount: event.amount,
+                    tokenSymbol: event.tokenSymbol,
+                    counterparty: event.counterparty,
+                    occurredAt: event.occurredAt,
+                    status: event.status
+                )
+                .padding(.horizontal, UniSpacing.m)
+                if idx < sorted.count - 1 {
+                    UniDivider().padding(.leading, UniSpacing.m + 32 + UniSpacing.s)
+                }
+            }
+        }
+        .background(
+            RoundedRectangle(cornerRadius: UniRadius.card, style: .continuous)
+                .fill(UniColors.Material.card)
+        )
     }
 
     /// **Activity empty state.** Sibling to `emptyHoldings` — same
@@ -816,6 +867,7 @@ struct WalletHomeView: View {
     private func enterTestMode() {
         testBalances = [:]
         testTokens = [:]
+        testTransactions = []
         isTestMode = true
         testScanTrigger &+= 1
     }
@@ -824,24 +876,57 @@ struct WalletHomeView: View {
         isTestMode = false
         testBalances = [:]
         testTokens = [:]
+        testTransactions = []
     }
 
     /// Consume the streaming scan against `TestAddresses.map`.
     /// Mirrors `MnemonicReviewView.runScan()` — replacements per
     /// `(chain, contract)` are atomic so refreshed rows overwrite
     /// stale ones.
+    ///
+    /// **Transactions (2026-06-08).** In addition to the balance
+    /// stream, we kick off a concurrent task that drives the
+    /// unified `RealRPCTransactionScanner` against the same address
+    /// map and appends events to `testTransactions` as each chain's
+    /// adapter resolves. The two streams are independent — balances
+    /// land via `testScanner`, transactions via `txScanner`. Both
+    /// observe `isTestMode` so a mid-flight toggle clears the
+    /// buckets and stops both feeds cleanly.
     private func runTestScan() async {
         let snapshot = isTestMode
         guard snapshot else { return }
         let currency = CurrencyPreference.currency(for: currencyCode)
             ?? CurrencyPreference.all[0]
+
+        // Transactions: run in parallel with the balance stream so
+        // the user sees rows landing chain-by-chain in the activity
+        // feed AT THE SAME TIME as the holdings rows fill in.
+        let txTask = Task { [txScanner] in
+            let txStream = txScanner.streamScan(
+                addresses: TestAddresses.map,
+                limit: 10
+            )
+            for await event in txStream {
+                guard isTestMode else { return }
+                // De-dup per (chain, hash) so repeated rescans don't
+                // double-count.
+                testTransactions.removeAll {
+                    $0.chain == event.chain && $0.txHash == event.txHash
+                }
+                testTransactions.append(event)
+            }
+        }
+
         let stream = testScanner.streamScan(
             addresses: TestAddresses.map,
             currency: currency
         )
         for await row in stream {
             // Bail if the user exited test mode mid-stream.
-            guard isTestMode else { return }
+            guard isTestMode else {
+                txTask.cancel()
+                return
+            }
             switch row {
             case .native(let chainBalance):
                 testBalances[chainBalance.chain] = chainBalance
@@ -852,6 +937,10 @@ struct WalletHomeView: View {
                 testTokens[tokenBalance.chain] = existing
             }
         }
+        // Let the transaction stream finish on its own — balance
+        // stream completion shouldn't cut off the slower chain
+        // adapters.
+        _ = await txTask.value
     }
 }
 
