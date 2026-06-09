@@ -85,7 +85,17 @@ struct WalletSwitcherSheet: View {
             dismiss()
         } label: {
             HStack(spacing: UniSpacing.s) {
-                walletSwatch(for: wallet)
+                // 2026-06-09 — the wallet's customisable
+                // `WalletAvatar` replaces the prior kind-glyph
+                // swatch. Each wallet's identity reads here
+                // exactly as it reads in the tab bar and the
+                // toolbar pill — same color, same SF Symbol,
+                // same size.
+                WalletAvatar(
+                    symbol: wallet.iconSymbol.isEmpty ? WalletAvatarDefaults.symbol : wallet.iconSymbol,
+                    colorHex: wallet.iconColorHex.isEmpty ? WalletAvatarDefaults.colorHex : wallet.iconColorHex,
+                    size: .row
+                )
 
                 VStack(alignment: .leading, spacing: UniSpacing.xxs) {
                     Text(wallet.name)
@@ -113,18 +123,6 @@ struct WalletSwitcherSheet: View {
         .accessibilityAddTraits(.isButton)
     }
 
-    private func walletSwatch(for wallet: WalletRecord) -> some View {
-        ZStack {
-            Circle()
-                .fill(UniColors.Fill.secondary)
-                .frame(width: 36, height: 36)
-            Image(systemName: walletKindGlyph(wallet.kind))
-                .font(.system(size: 16, weight: .semibold))
-                .foregroundStyle(UniColors.Icon.secondary)
-        }
-        .accessibilityHidden(true)
-    }
-
     private func addRow(systemImage: String, title: LocalizedStringKey) -> some View {
         HStack(spacing: UniSpacing.s) {
             Image(systemName: systemImage)
@@ -149,15 +147,6 @@ struct WalletSwitcherSheet: View {
         case .importedMnemonic: return "Imported from recovery phrase"
         case .importedKey:      return "Imported from private key"
         case .watchOnly:        return "Watch-only"
-        }
-    }
-
-    private func walletKindGlyph(_ kind: WalletKind) -> String {
-        switch kind {
-        case .created:          return "sparkles"
-        case .importedMnemonic: return "text.book.closed"
-        case .importedKey:      return "key.horizontal"
-        case .watchOnly:        return "eye"
         }
     }
 }

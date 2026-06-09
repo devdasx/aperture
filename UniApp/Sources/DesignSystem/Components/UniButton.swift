@@ -41,6 +41,7 @@ import SwiftUI
 /// | `.destructive`  | `.warning`                      |
 /// | `.tertiary`     | none                            |
 /// | `.toolbarPill`  | `.selection`                    |
+/// | `.walletPill`   | `.selection`                    |
 /// | `.actionCircle` | `.contextualImpact(.commit)`    |
 ///
 /// The haptic is fired declaratively via `.uniHaptic(_:trigger:)`, which
@@ -65,6 +66,15 @@ struct UniButton: View {
         /// auto-glass icon envelope via `.controlSize(.large)` per the
         /// 2026-06-07 WalletHomeView audit. Capsule hit-shape.
         case toolbarPill
+        /// Wallet-home toolbar identity pill — leading `WalletAvatar` +
+        /// wallet name + trailing chevron, all inside a glass capsule.
+        /// Same vertical envelope and glass register as `.toolbarPill`;
+        /// only the leading slot differs. Drives the
+        /// `WalletSwitcherSheet` open on tap. The avatar's symbol +
+        /// colorHex are passed via `walletSymbol:` / `walletColorHex:`
+        /// on the initializer; if either is `nil` the pill collapses to
+        /// the `.toolbarPill` layout (text-only). 2026-06-09 addition.
+        case walletPill
         /// Wallet-home action triplet (Send / Receive / Swap). Circular
         /// 56×56 glass-prominent surface, accent-tinted. Pairs with an
         /// external label rendered beneath by the call site. Circle
@@ -79,6 +89,7 @@ struct UniButton: View {
             case .destructive:   return .warning
             case .tertiary:      return nil
             case .toolbarPill:   return .selection
+            case .walletPill:    return .selection
             case .actionCircle:  return .contextualImpact(.commit)
             }
         }
@@ -110,6 +121,12 @@ struct UniButton: View {
     /// today; kept on the public surface so future toolbar / action-class
     /// variants can adopt it without an API break.
     var icon: String? = nil
+    /// Wallet identity (`.walletPill` only). When both values are
+    /// non-nil the pill renders a leading `WalletAvatar`. When either is
+    /// nil the pill collapses to the `.toolbarPill` text-only layout.
+    /// Ignored by all other variants.
+    var walletSymbol: String? = nil
+    var walletColorHex: String? = nil
     let action: () -> Void
 
     /// Trigger counter for the variant's default haptic. Incremented inside
@@ -150,6 +167,8 @@ struct UniButton: View {
         isLoading: Bool = false,
         isEnabled: Bool = true,
         icon: String? = nil,
+        walletSymbol: String? = nil,
+        walletColorHex: String? = nil,
         action: @escaping () -> Void
     ) {
         self.labelSource = .verbatim(title)
@@ -158,6 +177,8 @@ struct UniButton: View {
         self.isLoading = isLoading
         self.isEnabled = isEnabled
         self.icon = icon
+        self.walletSymbol = walletSymbol
+        self.walletColorHex = walletColorHex
         self.action = action
     }
 
@@ -203,6 +224,8 @@ struct UniButton: View {
             tertiaryLabel
         case .toolbarPill:
             toolbarPillLabel
+        case .walletPill:
+            walletPillLabel
         case .actionCircle:
             actionCircleLabel
         }
@@ -258,6 +281,34 @@ struct UniButton: View {
         .contentShape(Capsule())
     }
 
+    /// Wallet-home toolbar identity pill (`.walletPill`). Same glass
+    /// envelope as `.toolbarPill` (so the pill height tracks the
+    /// toolbar's auto-glass icon envelope via `.controlSize(.large)`),
+    /// but the leading slot carries a `WalletAvatar` instead of being
+    /// empty. The pill's order: `[avatar] [wallet name] [chevron]`.
+    ///
+    /// When `walletSymbol` or `walletColorHex` is `nil` the label
+    /// renders the text-only `.toolbarPill` layout, so a caller that
+    /// hasn't yet wired the avatar (or that's gated on test mode)
+    /// still gets a working pill.
+    @ViewBuilder
+    private var walletPillLabel: some View {
+        HStack(spacing: UniSpacing.xs) {
+            if let walletSymbol, let walletColorHex {
+                WalletAvatar(
+                    symbol: walletSymbol,
+                    colorHex: walletColorHex,
+                    size: .toolbarPill
+                )
+            }
+            titleText
+                .font(UniTypography.bodyEmphasized)
+            Image(systemName: "chevron.down")
+                .font(.system(size: 13, weight: .semibold))
+        }
+        .contentShape(Capsule())
+    }
+
     /// Wallet-home action circle (Send/Receive/Swap). 56×56 SF Symbol
     /// inside a glass-prominent circle. The external `Text` label beneath
     /// is rendered by the call site, not by `UniButton`.
@@ -298,6 +349,12 @@ struct UniButton: View {
                     // the same vertical envelope as the toolbar's
                     // auto-glass icon backgrounds — the WWDC25 "Glassifying
                     // toolbars in SwiftUI" guidance.
+                    .controlSize(.large)
+            case .walletPill:
+                content
+                    .buttonStyle(.glass)
+                    // Same glass envelope as `.toolbarPill` — the only
+                    // difference is the leading avatar in the label.
                     .controlSize(.large)
             case .actionCircle:
                 content

@@ -26,6 +26,7 @@ struct WalletDetailView: View {
     @State private var isShowingDeleteConfirm: Bool = false
     @State private var isShowingPhrase: Bool = false
     @State private var isShowingBackupFlow: Bool = false
+    @State private var isShowingIconPicker: Bool = false
     @State private var biometricChallenge: BiometricChallenge?
 
     init(walletId: UUID) {
@@ -104,6 +105,38 @@ struct WalletDetailView: View {
                 ))
                 .listRowSeparator(.hidden)
                 .animation(.smooth(duration: 0.4), value: wallet.requiresBackup)
+            }
+
+            // 2026-06-09 — wallet-identity section. A `.preview`-sized
+            // `WalletAvatar` centered above a single "Customise..."
+            // row that pushes the icon picker sheet. The hero
+            // preview here matches the sheet's hero preview so the
+            // user reads the same affordance whether they enter
+            // from the long-press tab menu or from this detail
+            // screen. The avatar updates live via `@Query` when
+            // the picker writes through `WalletRepository`.
+            Section {
+                VStack(spacing: UniSpacing.s) {
+                    WalletAvatar(
+                        symbol: wallet.iconSymbol.isEmpty ? WalletAvatarDefaults.symbol : wallet.iconSymbol,
+                        colorHex: wallet.iconColorHex.isEmpty ? WalletAvatarDefaults.colorHex : wallet.iconColorHex,
+                        size: .preview
+                    )
+                    .padding(.top, UniSpacing.xs)
+
+                    UniButton(
+                        title: "Customise…",
+                        variant: .tertiary
+                    ) {
+                        isShowingIconPicker = true
+                    }
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, UniSpacing.xs)
+                .listRowBackground(Color.clear)
+                .listRowSeparator(.hidden)
+            } header: {
+                Text("Identity").font(UniTypography.footnote).foregroundStyle(UniColors.Text.tertiary)
             }
 
             Section {
@@ -187,6 +220,12 @@ struct WalletDetailView: View {
             .uniAppEnvironment()
             .intrinsicHeightSheet()
             .presentationBackground(UniColors.Background.primary)
+        }
+        .sheet(isPresented: $isShowingIconPicker) {
+            WalletIconPickerSheet(walletId: wallet.id)
+                .uniAppEnvironment()
+                .presentationDetents([.large])
+                .presentationBackground(UniColors.Background.primary)
         }
     }
 

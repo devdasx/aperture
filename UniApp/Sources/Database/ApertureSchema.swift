@@ -62,10 +62,39 @@ final class WalletRecord {
     /// prompt "Enter your passphrase" when needed (T-019).
     var hasPassphrase: Bool
 
-    /// User's chosen accent color tag (hex string in `UniColors.Wallet`
-    /// palette). Pickable later from Settings → Wallets. Default: tag of
-    /// the first palette entry.
+    /// Legacy palette tag retained for source compatibility with older
+    /// callers (the create / import flows wrote this as the literal
+    /// `"default"`). The 2026-06-09 wallet-avatar redesign promotes
+    /// `iconColorHex` to the canonical brand-color storage; `colorTag`
+    /// is now a non-load-bearing hint that's read only by code paths
+    /// pre-dating the avatar work. New code reads `iconColorHex`.
     var colorTag: String
+
+    /// SF Symbol name used as the wallet's identity glyph — rendered
+    /// inside the circular `WalletAvatar` that surfaces in the
+    /// MainTabView Wallet tab icon, the wallet-home toolbar pill, the
+    /// `WalletSwitcherSheet`, `WalletsListView`, `WalletDetailView`,
+    /// and the Wallet-tab long-press `contextMenu`. Default value
+    /// `"wallet.pass.fill"` (the iOS-native wallet glyph). Editable
+    /// from Settings → Wallets → <wallet> via the curated 18-symbol
+    /// picker; new symbols are added to the picker, not chosen freely
+    /// from the 5000+ SF Symbols library (Rule #2 §A.6 restraint).
+    ///
+    /// 2026-06-09 schema additive change (Rule #1 BIG — migration
+    /// + new identity surface). Old rows decode this field via the
+    /// Swift-level default in `init(...)` and are also seeded by
+    /// `ApertureDatabase.bootstrap()` to defend against future
+    /// schema-decode quirks.
+    var iconSymbol: String
+
+    /// Hex color (`"#RRGGBB"`) for the circular avatar background.
+    /// Selected by the user from the curated `UniColors.WalletAvatar`
+    /// palette (12 colors). The hex is the canonical storage because
+    /// it survives palette changes — adding / removing tokens in the
+    /// palette doesn't strand an existing wallet's chosen identity.
+    /// Default `"#0B0D11"` (Ink) — matches Aperture's monochrome
+    /// brand register (Rule #2 §A.5 + Rule #16 §B).
+    var iconColorHex: String
 
     /// Display order in the wallet list. Lower = earlier. Default:
     /// monotonically increasing on insert; user reorders via drag.
@@ -99,7 +128,9 @@ final class WalletRecord {
         hasPassphrase: Bool,
         colorTag: String,
         sortOrder: Int,
-        requiresBackup: Bool
+        requiresBackup: Bool,
+        iconSymbol: String = WalletAvatarDefaults.symbol,
+        iconColorHex: String = WalletAvatarDefaults.colorHex
     ) {
         self.id = id
         self.name = name
@@ -107,6 +138,8 @@ final class WalletRecord {
         self.mnemonicWordCount = mnemonicWordCount
         self.hasPassphrase = hasPassphrase
         self.colorTag = colorTag
+        self.iconSymbol = iconSymbol
+        self.iconColorHex = iconColorHex
         self.sortOrder = sortOrder
         self.isHidden = false
         self.requiresBackup = requiresBackup
@@ -129,6 +162,28 @@ enum WalletKind: String, Codable, CaseIterable, Sendable {
     case importedMnemonic // BIP-39 mnemonic imported from elsewhere
     case importedKey      // Single private key, one chain
     case watchOnly        // Read-only — public address or xpub
+}
+
+/// Default identity for a freshly-created wallet. Schema-level
+/// constants live next to the schema so the migration backfill
+/// path in `ApertureDatabase.bootstrap()` and every call site
+/// (create / import flows, repository inserts, schema decode
+/// fallback) reads from the same source of truth.
+///
+/// **Why a struct of static lets, not free vars.** Per the global
+/// Swift-style rules (`~/.claude/rules/swift/coding-style.md`):
+/// *"Use `static let` for constants over global constants."*
+enum WalletAvatarDefaults {
+    /// SF Symbol used when a wallet hasn't picked an identity glyph yet.
+    /// The iOS-native wallet mark — reads as "the thing where my value
+    /// lives" without borrowing Apple's own Wallet app's brand.
+    static let symbol: String = "wallet.pass.fill"
+
+    /// Default background hex — Ink (`#0B0D11`) — matches Aperture's
+    /// monochrome brand register (Rule #2 §A.5 + Rule #16 §B). A
+    /// fresh wallet's identity reads as the brand, not as a chosen
+    /// color.
+    static let colorHex: String = "#0B0D11"
 }
 
 // MARK: - WalletAddressRecord

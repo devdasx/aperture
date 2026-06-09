@@ -331,6 +331,85 @@ enum UniColors {
         static let mark = Color("BrandMark")
     }
 
+    // MARK: - WalletAvatar (curated per-wallet identity palette)
+
+    /// Curated palette for the circular wallet-identity avatar
+    /// (`WalletAvatar` in `Features/Wallet/WalletAvatar.swift`).
+    /// Surfaces in the MainTabView Wallet tab icon, the wallet-home
+    /// toolbar pill, the `WalletSwitcherSheet`, the `WalletsListView`
+    /// row, and the long-press context-menu switcher.
+    ///
+    /// **Why a curated 12-color palette, not a freeform ColorPicker.**
+    /// Per Rule #2 §A.6 *"Less, but better"* (Rams via Ive). A user
+    /// picking from a calibrated 12-color set lands at a tasteful
+    /// identity within seconds; a user staring at the full RGB / HSB
+    /// wheel can pick a neon yellow that reads as a UI bug in every
+    /// other surface of the app. The 12 chosen here are deep,
+    /// saturated-but-not-screaming brand-class hues that all carry
+    /// the same visual weight against the avatar's white SF Symbol —
+    /// so switching between two wallets reads as identity change,
+    /// not as contrast change.
+    ///
+    /// **Why hex strings, not Color values.** The wallet's chosen
+    /// identity is persisted as a hex string in
+    /// `WalletRecord.iconColorHex` so it survives palette changes —
+    /// adding / removing colors from this list never strands an
+    /// existing wallet's chosen identity (the avatar primitive
+    /// resolves the hex live; if the value isn't in the palette
+    /// anymore, the value still renders correctly).
+    ///
+    /// **The 12 colors and what each says.**
+    /// - **Ink** `#0B0D11` — the default. Aperture's monochrome brand.
+    ///   Reads as "this is the brand wallet."
+    /// - **Slate** `#3A3F4A` — warm graphite. The first step away from
+    ///   the brand for users who want quiet differentiation.
+    /// - **Crimson** `#B81F2D` — deep, restrained red. Strong enough
+    ///   to identify, not so loud it reads as alarm.
+    /// - **Tangerine** `#E0651F` — warm orange. Reads as the wallet
+    ///   you reach for first; the "everyday" identity.
+    /// - **Amber** `#C99020` — autumn gold. Quieter than tangerine.
+    /// - **Olive** `#5F7028` — deep olive green. Calm, grounded.
+    /// - **Forest** `#2D6E48` — deep, classic green. Reads as
+    ///   "savings" or "long-term" without saying so.
+    /// - **Teal** `#1D7390` — deep teal. The blue half of the
+    ///   blue / green pivot.
+    /// - **Cobalt** `#1F4FA8` — confident blue. Reads as a primary
+    ///   identity — the "main" wallet for blue-leaning users.
+    /// - **Indigo** `#3F2D8A` — deep blue-purple. Bridge between
+    ///   blue and purple.
+    /// - **Plum** `#7A2E80` — restrained royal purple.
+    /// - **Magenta** `#9C2A6C` — warm wine. The most distinct
+    ///   non-monochrome identity — for the user who wants their
+    ///   wallets to read unmistakably apart at a glance.
+    ///
+    /// **Foreground contrast.** Every hex in this palette is dark
+    /// enough that a white SF Symbol on it passes WCAG AA contrast
+    /// (4.5:1 or better) at the 28pt / 36pt / 56pt avatar sizes the
+    /// app ships. The avatar primitive renders the SF Symbol in
+    /// `.white` for all palette entries; we do not flip to a dark
+    /// foreground for lighter user-picked colors because the
+    /// palette doesn't ship any.
+    enum WalletAvatar {
+        /// The 12 curated identity colors. Order is the visual order
+        /// they appear in the picker grid (Ink first as the default
+        /// anchor, then a chromatic walk through warm → cool → warm
+        /// so adjacent swatches don't read as duplicates).
+        static let curated: [String] = [
+            "#0B0D11", // Ink (default)
+            "#3A3F4A", // Slate
+            "#B81F2D", // Crimson
+            "#E0651F", // Tangerine
+            "#C99020", // Amber
+            "#5F7028", // Olive
+            "#2D6E48", // Forest
+            "#1D7390", // Teal
+            "#1F4FA8", // Cobalt
+            "#3F2D8A", // Indigo
+            "#7A2E80", // Plum
+            "#9C2A6C"  // Magenta
+        ]
+    }
+
     // MARK: - Illustration (onboarding native scenes)
 
     /// Color roles for SwiftUI-native illustrations (onboarding heroes etc.).

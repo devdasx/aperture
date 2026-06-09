@@ -104,6 +104,17 @@ final class ApertureDatabase {
             }
 
             try touchLastOpened(context: context)
+
+            // 2026-06-09 — backfill avatar defaults onto rows that
+            // pre-date the `iconSymbol` / `iconColorHex` schema
+            // additive. Idempotent (only writes when a field is
+            // empty). Routes through `WalletRepository` so the
+            // domain layer owns the backfill — `ApertureDatabase`
+            // stays a pure container surface.
+            Task { @MainActor in
+                let repo = WalletRepository(modelContainer: container)
+                try? await repo.backfillAvatarDefaults()
+            }
         } catch {
             log.error("Bootstrap failed: \(String(describing: error), privacy: .public)")
         }

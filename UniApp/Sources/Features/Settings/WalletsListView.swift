@@ -98,15 +98,15 @@ struct WalletsListView: View {
 
     private func walletRow(_ wallet: WalletRecord) -> some View {
         HStack(spacing: UniSpacing.s) {
-            ZStack {
-                Circle()
-                    .fill(UniColors.Fill.secondary)
-                    .frame(width: 36, height: 36)
-                Image(systemName: glyph(for: wallet.kind))
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundStyle(UniColors.Icon.secondary)
-            }
-            .accessibilityHidden(true)
+            // 2026-06-09 — the wallet's customisable WalletAvatar
+            // replaces the prior kind-glyph swatch. Same identity
+            // surface as the tab icon, the toolbar pill, and the
+            // wallet switcher.
+            WalletAvatar(
+                symbol: wallet.iconSymbol.isEmpty ? WalletAvatarDefaults.symbol : wallet.iconSymbol,
+                colorHex: wallet.iconColorHex.isEmpty ? WalletAvatarDefaults.colorHex : wallet.iconColorHex,
+                size: .row
+            )
 
             VStack(alignment: .leading, spacing: UniSpacing.xxs) {
                 HStack(spacing: UniSpacing.xs) {
@@ -153,15 +153,6 @@ struct WalletsListView: View {
         }
         .padding(.vertical, UniSpacing.xxs)
         .contentShape(Rectangle())
-    }
-
-    private func glyph(for kind: WalletKind) -> String {
-        switch kind {
-        case .created:          return "sparkles"
-        case .importedMnemonic: return "text.book.closed"
-        case .importedKey:      return "key.horizontal"
-        case .watchOnly:        return "eye"
-        }
     }
 
     private func kindLabel(for kind: WalletKind) -> LocalizedStringKey {
