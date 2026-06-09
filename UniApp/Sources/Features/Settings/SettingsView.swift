@@ -77,6 +77,12 @@ struct SettingsView: View {
     /// (2026-06-09 — replaced the toolbar flask).
     @AppStorage("isTestMode") private var isTestMode: Bool = false
 
+    /// Deep-link token stamped by `MainTabView`'s long-press menu
+    /// ("Manage wallets" → Settings tab + push `.wallets`). The
+    /// token is consumed on appear and cleared so the push fires
+    /// exactly once. Empty string = no deep link.
+    @AppStorage("settingsDeepLink") private var settingsDeepLink: String = ""
+
     @State private var isShowingTerms: Bool = false
     @State private var isShowingPrivacyPolicy: Bool = false
 
@@ -318,7 +324,24 @@ struct SettingsView: View {
                     .intrinsicHeightSheet()
                     .presentationBackground(UniColors.Background.primary)
             }
+            .onAppear { consumeDeepLink() }
+            .onChange(of: settingsDeepLink) { _, _ in consumeDeepLink() }
         }
+    }
+
+    /// Consume the `settingsDeepLink` token. Currently supports
+    /// `"wallets"` (from `MainTabView`'s long-press "Manage
+    /// wallets" entry). Token is cleared after consumption so the
+    /// push fires exactly once per stamp; re-stamping pushes again.
+    private func consumeDeepLink() {
+        guard !settingsDeepLink.isEmpty else { return }
+        switch settingsDeepLink {
+        case "wallets":
+            navigationPath.append(SettingsDestination.wallets)
+        default:
+            break
+        }
+        settingsDeepLink = ""
     }
 }
 

@@ -996,17 +996,49 @@ struct WalletHomeView: View {
         // top-level navigation; the nav bar handles wallet
         // identity. Different facets, both legitimate.
         ToolbarItem(placement: .principal) {
-            UniButton(
-                verbatim: isTestMode
-                    ? String.apertureLocalized("Public test addresses")
-                    : (activeWallet?.name ?? String.apertureLocalized("Wallet")),
-                variant: .toolbarPill,
-                isEnabled: !isTestMode
-            ) {
-                isShowingSwitcher = true
+            // 2026-06-09 — the pill now leads with the active
+            // wallet's `WalletAvatar` (symbol + colorHex). The
+            // text remains the wallet's name; the trailing chevron
+            // signals "tap to switch." In test mode we fall back
+            // to the prior text-only `.toolbarPill` because test
+            // mode displays public addresses, not a user wallet —
+            // no identity to render.
+            if isTestMode {
+                UniButton(
+                    verbatim: String.apertureLocalized("Public test addresses"),
+                    variant: .toolbarPill,
+                    isEnabled: false
+                ) {
+                    isShowingSwitcher = true
+                }
+                .accessibilityLabel(Text("Test mode active"))
+            } else {
+                UniButton(
+                    verbatim: activeWallet?.name ?? String.apertureLocalized("Wallet"),
+                    variant: .walletPill,
+                    walletSymbol: avatarSymbol,
+                    walletColorHex: avatarColorHex
+                ) {
+                    isShowingSwitcher = true
+                }
+                .accessibilityLabel(Text("Switch wallet, currently \(activeWallet?.name ?? "")"))
             }
-            .accessibilityLabel(Text("Switch wallet, currently \(activeWallet?.name ?? "")"))
         }
+    }
+
+    /// Active wallet's avatar SF Symbol — defaults to
+    /// `WalletAvatarDefaults.symbol` when the wallet hasn't picked
+    /// one yet (fresh schema additive, see `ApertureSchema.swift`).
+    private var avatarSymbol: String {
+        let raw = activeWallet?.iconSymbol ?? ""
+        return raw.isEmpty ? WalletAvatarDefaults.symbol : raw
+    }
+
+    /// Active wallet's avatar background hex — defaults to
+    /// `WalletAvatarDefaults.colorHex` when not set.
+    private var avatarColorHex: String {
+        let raw = activeWallet?.iconColorHex ?? ""
+        return raw.isEmpty ? WalletAvatarDefaults.colorHex : raw
     }
 
     // MARK: - Derived state

@@ -173,6 +173,67 @@ actor WalletRepository {
         return record.persistentModelID
     }
 
+    /// Update a wallet's identity avatar (SF Symbol + background
+    /// hex color). Called from `WalletIconPickerSheet` whenever the
+    /// user taps a swatch or a symbol in the customisation grid.
+    /// Writes through SwiftData so every consumer (`MainTabView` tab
+    /// icon, wallet-home toolbar pill, `WalletSwitcherSheet` rows,
+    /// `WalletsListView` rows, `WalletDetailView` preview) reacts via
+    /// `@Query` and re-renders without per-surface plumbing.
+    ///
+    /// Returns `true` if the wallet was found and updated; `false`
+    /// if the id did not match (e.g. wallet was deleted concurrently).
+    @discardableResult
+    func updateAvatar(id: UUID, iconSymbol: String, iconColorHex: String) throws -> Bool {
+        var descriptor = FetchDescriptor<WalletRecord>(
+            predicate: #Predicate { $0.id == id }
+        )
+        descriptor.fetchLimit = 1
+        guard let record = try modelContext.fetch(descriptor).first else {
+            return false
+        }
+        record.iconSymbol = iconSymbol
+        record.iconColorHex = iconColorHex
+        record.updatedAt = Date()
+        try modelContext.save()
+        return true
+    }
+
+    /// One-shot backfill for the 2026-06-09 avatar schema additive.
+    /// Called from `ApertureDatabase.bootstrap()` after the
+    /// singleton-record bootstrap. Idempotent — touches only rows
+    /// whose `iconSymbol` or `iconColorHex` is empty (Swift-level
+    /// default values are non-empty, so this is a no-op for both
+    /// fresh-installs and already-migrated installs).
+    ///
+    /// **Why a backfill at all.** SwiftData's lightweight migration
+    /// path lands additive `var` fields with their Swift-level
+    /// `init`-time defaults — which works for the create path
+    /// (`WalletRecord.init(...)` uses `WalletAvatarDefaults`). But
+    /// the decode path for pre-2026-06-09 SQLite rows fills the new
+    /// columns with the schema's underlying-type default — empty
+    /// `String("")` — *not* the Swift-level default. Without this
+    /// backfill, an existing wallet's avatar renders as a blank
+    /// circle (empty SF Symbol name + invalid hex falling back to
+    /// the default Ink). The backfill resolves both fields the
+    /// first time the store opens after the upgrade.
+    func backfillAvatarDefaults() throws {
+        let descriptor = FetchDescriptor<WalletRecord>()
+        let rows = try modelContext.fetch(descriptor)
+        var didChange = false
+        for row in rows {
+            if row.iconSymbol.isEmpty {
+                row.iconSymbol = WalletAvatarDefaults.symbol
+                didChange = true
+            }
+            if row.iconColorHex.isEmpty {
+                row.iconColorHex = WalletAvatarDefaults.colorHex
+                didChange = true
+            }
+        }
+        if didChange { try modelContext.save() }
+    }
+
     /// Rename a wallet. Returns `true` if the wallet was found and
     /// updated; `false` if the id did not match (e.g. wallet was
     /// deleted concurrently).
