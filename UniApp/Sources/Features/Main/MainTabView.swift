@@ -141,13 +141,22 @@ struct MainTabView: View {
             // `selectedTab = .wallet`. Long-press surfaces the
             // menu without changing the selection — the user's
             // current tab is preserved.
+            // **Context menu placement (2026-06-09 correction).**
+            // iOS 26's `Tab` is system-managed chrome — applying
+            // `.contextMenu { … }` to the Tab value itself does
+            // not propagate to the rendered tab bar button (the
+            // system swallows the modifier on the way to UIKit).
+            // The native idiom is to attach `.contextMenu` to the
+            // label content INSIDE the `label:` closure so it
+            // binds to the actual long-pressable view the
+            // tab-bar renders. Verified live on Thuglife.
             Tab(value: MainTab.wallet) {
                 WalletHomeView()
             } label: {
                 walletTabLabel
-            }
-            .contextMenu {
-                walletContextMenu
+                    .contextMenu {
+                        walletContextMenu
+                    }
             }
 
             // MARK: - Swap
