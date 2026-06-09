@@ -153,11 +153,11 @@ struct BalanceHistoryChart: View {
                 .accessibilityLabel(Text("Balance history chart"))
                 .accessibilityValue(chartAccessibilityValue(points: points))
                 ChartPeriodPill(selection: selectedRange)
-                    // 10pt gap above the period pill row — the
+                    // 24pt gap above the period pill row — the
                     // sparkline above sits closer to the curve so
                     // the pill reads as the next discrete control,
                     // not as part of the chart canvas.
-                    .padding(.top, 10)
+                    .padding(.top, 24)
             }
         }
         // No outer vertical padding — caption sits flush against
