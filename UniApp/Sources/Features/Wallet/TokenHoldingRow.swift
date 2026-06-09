@@ -42,7 +42,11 @@ struct TokenHoldingRow: View {
 
     var body: some View {
         HStack(spacing: UniSpacing.s) {
-            CoinMark(chain: chain, tokenSymbol: balance.tokenSymbol)
+            CoinMark(
+                chain: chain,
+                tokenSymbol: balance.tokenSymbol,
+                contract: balance.tokenContract
+            )
                 .frame(width: 44, height: 44)
                 .accessibilityHidden(true)
 
