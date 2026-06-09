@@ -178724,6 +178724,628 @@
           }
         }
       }
+    },
+    "Browser": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Browser"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Navegador"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "浏览器"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "瀏覽器"
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ब्राउज़र"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "المتصفح"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Navegador"
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ব্রাউজার"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Браузер"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ブラウザ"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Browser"
+          }
+        },
+        "uk": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Браузер"
+          }
+        },
+        "el": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Πρόγραμμα περιήγησης"
+          }
+        },
+        "ro": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Browser"
+          }
+        },
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Prohlížeč"
+          }
+        },
+        "hu": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Böngésző"
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Webbläsare"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nettleser"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Browser"
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Selain"
+          }
+        },
+        "he": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "דפדפן"
+          }
+        },
+        "ca": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Navegador"
+          }
+        },
+        "hr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Preglednik"
+          }
+        },
+        "sk": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Prehliadač"
+          }
+        },
+        "sl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Brskalnik"
+          }
+        },
+        "sr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Прегледач"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Navigateur"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "브라우저"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Browser"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tarayıcı"
+          }
+        },
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Trình duyệt"
+          }
+        },
+        "th": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "เบราว์เซอร์"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Peramban"
+          }
+        },
+        "fa": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "مرورگر"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Przeglądarka"
+          }
+        },
+        "nl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Browser"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "براؤزر"
+          }
+        },
+        "bg": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Браузър"
+          }
+        },
+        "et": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Brauser"
+          }
+        },
+        "lt": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Naršyklė"
+          }
+        },
+        "lv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pārlūks"
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vafri"
+          }
+        },
+        "ms": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pelayar"
+          }
+        },
+        "fil": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Browser"
+          }
+        },
+        "sw": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kivinjari"
+          }
+        },
+        "af": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Blaaier"
+          }
+        },
+        "ta": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "உலாவி"
+          }
+        },
+        "te": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "బ్రౌజర్"
+          }
+        },
+        "ml": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ബ്രൗസർ"
+          }
+        },
+        "mr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ब्राउझर"
+          }
+        },
+        "pa": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ਬਰਾਊਜ਼ਰ"
+          }
+        }
+      }
+    },
+    "Browser is coming next. Aperture will open dApps in-wallet and sign their requests on your iPhone — no centralized wallet-connect relay in the middle.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Browser is coming next. Aperture will open dApps in-wallet and sign their requests on your iPhone — no centralized wallet-connect relay in the middle."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Próximamente, el navegador. Aperture abrirá las dApps dentro de la cartera y firmará sus solicitudes en tu iPhone — sin ningún relé wallet-connect centralizado de por medio."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "浏览器即将到来。Aperture 将在钱包内打开 dApp,并在你的 iPhone 上为其请求签名 —— 中间没有任何中心化的 wallet-connect 中继。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "瀏覽器即將推出。Aperture 將在錢包內開啟 dApp,並在你的 iPhone 上為其請求簽名 —— 中間沒有任何中心化的 wallet-connect 中繼。"
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ब्राउज़र अगला आ रहा है। Aperture वॉलेट के भीतर ही dApps खोलेगा और उनके अनुरोधों पर आपके iPhone पर हस्ताक्षर करेगा — बीच में कोई केंद्रीकृत wallet-connect रिले नहीं।"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "المتصفح هو التالي. سيفتح Aperture تطبيقات dApps داخل المحفظة ويوقّع طلباتها على جهاز iPhone الخاص بك — دون أي مُرحِّل wallet-connect مركزي في الوسط."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "O navegador vem a seguir. O Aperture abrirá os dApps dentro da carteira e assinará suas solicitações no seu iPhone — sem nenhum relé wallet-connect centralizado no meio."
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ব্রাউজার পরবর্তীতে আসছে। Aperture ওয়ালেটের মধ্যেই dApps খুলবে এবং তাদের অনুরোধে আপনার iPhone-এ স্বাক্ষর করবে — মাঝখানে কোনো কেন্দ্রীভূত wallet-connect রিলে ছাড়াই।"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Браузер появится следующим. Aperture будет открывать dApps прямо в кошельке и подписывать их запросы на вашем iPhone — без какого-либо централизованного wallet-connect-ретранслятора посередине."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ブラウザは次に登場します。Aperture はウォレット内で dApp を開き、そのリクエストをあなたの iPhone 上で署名します。間に中央集権型の wallet-connect リレーは入りません。"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Der Browser kommt als Nächstes. Aperture öffnet dApps direkt in der Wallet und signiert ihre Anfragen auf Ihrem iPhone — ohne einen zentralen wallet-connect-Relay dazwischen."
+          }
+        },
+        "uk": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Браузер з’явиться наступним. Aperture відкриватиме dApps безпосередньо в гаманці та підписуватиме їхні запити на Вашому iPhone — без жодного централізованого wallet-connect-ретранслятора посередині."
+          }
+        },
+        "el": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Το πρόγραμμα περιήγησης έρχεται στη συνέχεια. Το Aperture θα ανοίγει τις dApps μέσα στο πορτοφόλι και θα υπογράφει τα αιτήματά τους στο iPhone σας — χωρίς κανέναν κεντρικοποιημένο αναμεταδότη wallet-connect στη μέση."
+          }
+        },
+        "ro": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Browserul urmează. Aperture va deschide dApps direct în portofel și le va semna cererile pe iPhone-ul tău — fără niciun releu wallet-connect centralizat la mijloc."
+          }
+        },
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Prohlížeč přijde jako další. Aperture bude otevírat dApps přímo v peněžence a podepisovat jejich požadavky na Vašem iPhonu — bez jakéhokoli centralizovaného wallet-connect relay uprostřed."
+          }
+        },
+        "hu": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "A böngésző jön legközelebb. Az Aperture a tárcán belül nyitja meg a dAppokat, és az Ön iPhone-ján írja alá a kéréseiket — köztes, központosított wallet-connect-relé nélkül."
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Webbläsaren kommer härnäst. Aperture öppnar dApps direkt i plånboken och signerar deras förfrågningar på din iPhone — utan något centraliserat wallet-connect-relä däremellan."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nettleseren kommer som det neste. Aperture åpner dApps rett i lommeboken og signerer forespørslene deres på iPhonen din — uten noen sentralisert wallet-connect-relé i mellom."
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Browseren kommer som det næste. Aperture åbner dApps direkte i tegnebogen og signerer deres anmodninger på din iPhone — uden noget centraliseret wallet-connect-relæ imellem."
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Selain on seuraavana vuorossa. Aperture avaa dAppit suoraan lompakossa ja allekirjoittaa niiden pyynnöt iPhonessasi — ilman keskitettyä wallet-connect-välitintä välissä."
+          }
+        },
+        "he": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "הדפדפן בדרך. Aperture יפתח dApps בתוך הארנק עצמו ויחתום על בקשותיהם על ה־iPhone שלך — בלי שום ממסר wallet-connect מרכזי באמצע."
+          }
+        },
+        "ca": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "El navegador arriba a continuació. Aperture obrirà les dApps dins de la cartera i signarà les seves sol·licituds al teu iPhone — sense cap repetidor wallet-connect centralitzat enmig."
+          }
+        },
+        "hr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Preglednik dolazi sljedeći. Aperture će otvarati dApps unutar samog novčanika i potpisivati njihove zahtjeve na Vašem iPhoneu — bez ikakvog centraliziranog wallet-connect releja u sredini."
+          }
+        },
+        "sk": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Prehliadač príde ako ďalší. Aperture bude otvárať dApps priamo v peňaženke a podpisovať ich požiadavky na Vašom iPhone — bez akéhokoľvek centralizovaného wallet-connect relé v strede."
+          }
+        },
+        "sl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Brskalnik prihaja kot naslednji. Aperture bo dApps odpiral neposredno v denarnici in njihove zahteve podpisoval na Vašem iPhonu — brez kakršnega koli centraliziranega wallet-connect releja vmes."
+          }
+        },
+        "sr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Прегледач долази следећи. Aperture ће отварати dApps директно у новчанику и потписивати њихове захтеве на Вашем iPhone уређају — без иједног централизованог wallet-connect преноса у средини."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Le navigateur arrive ensuite. Aperture ouvrira les dApps directement dans le portefeuille et signera leurs requêtes sur votre iPhone — sans aucun relais wallet-connect centralisé au milieu."
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "브라우저는 곧 이어져요. Aperture는 지갑 안에서 dApps를 열고, 요청을 당신의 iPhone에서 서명해요 — 중간에 중앙화된 wallet-connect 릴레이는 없어요."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Il browser arriva a breve. Aperture aprirà le dApps direttamente nel portafoglio e firmerà le loro richieste sul Suo iPhone — senza alcun relè wallet-connect centralizzato nel mezzo."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sırada tarayıcı var. Aperture, dApps'leri doğrudan cüzdanın içinde açacak ve isteklerini iPhone'unuzda imzalayacak — arada hiçbir merkezi wallet-connect aktarıcısı olmadan."
+          }
+        },
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Trình duyệt sẽ đến tiếp theo. Aperture sẽ mở dApps ngay bên trong ví và ký các yêu cầu của chúng trên iPhone của bạn — không có bất kỳ rơ-le wallet-connect tập trung nào ở giữa."
+          }
+        },
+        "th": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "เบราว์เซอร์กำลังจะมาเป็นลำดับถัดไป Aperture จะเปิด dApps ภายในวอลเล็ตและลงนามคำขอของ dApps บน iPhone ของคุณ — โดยไม่มีรีเลย์ wallet-connect แบบรวมศูนย์อยู่ตรงกลาง"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Peramban segera hadir. Aperture akan membuka dApps langsung di dalam dompet dan menandatangani permintaannya di iPhone Anda — tanpa relai wallet-connect terpusat di tengahnya."
+          }
+        },
+        "fa": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "مرورگر در ادامه می‌آید. Aperture، dApps را درون کیف پول باز می‌کند و درخواست‌هایشان را روی iPhone شما امضا می‌کند — بدون هیچ رله‌ی wallet-connect متمرکزی در میانه."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Przeglądarka pojawi się w następnej kolejności. Aperture będzie otwierać dApps bezpośrednio w portfelu i podpisywać ich żądania na Twoim iPhone — bez żadnego scentralizowanego przekaźnika wallet-connect pośrodku."
+          }
+        },
+        "nl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "De browser komt hierna. Aperture opent dApps in de wallet zelf en ondertekent hun verzoeken op je iPhone — zonder een gecentraliseerde wallet-connect-relay ertussen."
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "براؤزر اگلا آ رہا ہے۔ Aperture والٹ کے اندر ہی dApps کھولے گا اور ان کی درخواستوں پر آپ کے iPhone پر دستخط کرے گا — درمیان میں کوئی مرکزی wallet-connect ریلے نہیں۔"
+          }
+        },
+        "bg": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Браузърът е следващият. Aperture ще отваря dApps директно в портфейла и ще подписва заявките им на Вашия iPhone — без никакъв централизиран wallet-connect препредавател помежду."
+          }
+        },
+        "et": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Järgmisena tuleb brauser. Aperture avab dApps-e otse rahakotis ja allkirjastab nende päringud sinu iPhone'is — ilma ühegi tsentraliseeritud wallet-connect-releeta vahepeal."
+          }
+        },
+        "lt": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Naršyklė pasirodys netrukus. Aperture atvers dApps tiesiai piniginėje ir pasirašys jų užklausas Jūsų iPhone — be jokio centralizuoto wallet-connect perdavėjo viduryje."
+          }
+        },
+        "lv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pārlūks ir nākamais. Aperture atvērs dApps tieši makā un parakstīs to pieprasījumus Jūsu iPhone — bez neviena centralizēta wallet-connect retranslatora vidū."
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vafrinn kemur næst. Aperture mun opna dApps inni í veskinu sjálfu og undirrita beiðnir þeirra á iPhone-inum þínum — án nokkurs miðstýrðs wallet-connect-tengiliðs á milli."
+          }
+        },
+        "ms": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pelayar akan menyusul. Aperture akan membuka dApps di dalam dompet itu sendiri dan menandatangani permintaannya pada iPhone anda — tanpa sebarang penyampai wallet-connect berpusat di tengah-tengah."
+          }
+        },
+        "fil": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Susunod na ang Browser. Bubuksan ng Aperture ang mga dApps sa loob mismo ng wallet at pipirmahan ang mga kahilingan ng mga ito sa iyong iPhone — walang sentralisadong wallet-connect relay sa gitna."
+          }
+        },
+        "sw": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kivinjari kinakuja baadaye. Aperture itafungua dApps ndani ya pochi yenyewe na kusaini maombi yake kwenye iPhone yako — bila kipitishi cha wallet-connect kilichowekwa katikati."
+          }
+        },
+        "af": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Die blaaier kom volgende. Aperture sal dApps binne-in die beursie self oopmaak en hul versoeke op jou iPhone teken — sonder enige gesentraliseerde wallet-connect-aanstuurder tussenin."
+          }
+        },
+        "ta": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "உலாவி அடுத்து வருகிறது. Aperture, dApps-ஐ வாலட்டுக்குள்ளேயே திறக்கும், அவற்றின் கோரிக்கைகளை உங்கள் iPhone-இல் கையொப்பமிடும் — நடுவில் எந்தவொரு மையப்படுத்தப்பட்ட wallet-connect ரிலேயும் இல்லாமல்."
+          }
+        },
+        "te": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "బ్రౌజర్ తదుపరిగా రాబోతోంది. Aperture వాలెట్‌లోనే dAppsను తెరుస్తుంది మరియు వాటి అభ్యర్థనలపై మీ iPhoneలో సంతకం చేస్తుంది — మధ్యలో ఏ కేంద్రీకృత wallet-connect రిలే లేకుండా."
+          }
+        },
+        "ml": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ബ്രൗസർ അടുത്തതായി വരുന്നു. Aperture, dApps-നെ വാലറ്റിനുള്ളിൽ തന്നെ തുറക്കും, അവയുടെ അഭ്യർത്ഥനകൾ നിങ്ങളുടെ iPhone-ൽ ഒപ്പിടും — ഇടയിൽ കേന്ദ്രീകൃതമായ ഒരു wallet-connect റിലേയും ഇല്ലാതെ."
+          }
+        },
+        "mr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ब्राउझर पुढे येत आहे. Aperture वॉलेटमध्येच dApps उघडेल आणि त्यांच्या विनंत्यांवर तुमच्या iPhone वर स्वाक्षरी करेल — मध्ये कोणताही केंद्रीकृत wallet-connect रिले न ठेवता."
+          }
+        },
+        "pa": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ਬਰਾਊਜ਼ਰ ਅਗਲਾ ਆ ਰਿਹਾ ਹੈ। Aperture ਵਾਲਿਟ ਦੇ ਅੰਦਰ ਹੀ dApps ਖੋਲ੍ਹੇਗਾ ਅਤੇ ਉਹਨਾਂ ਦੀਆਂ ਬੇਨਤੀਆਂ ਉੱਤੇ ਤੁਹਾਡੇ iPhone 'ਤੇ ਦਸਤਖ਼ਤ ਕਰੇਗਾ — ਵਿਚਕਾਰ ਕੋਈ ਕੇਂਦਰੀਕ੍ਰਿਤ wallet-connect ਰਿਲੇ ਤੋਂ ਬਿਨਾਂ।"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

@@ -67,6 +67,10 @@
 - `xcodebuild -destination 'platform=iOS,id=4B521D49-9843-55CC-AFEC-19D4CF4353A6' -allowProvisioningUpdates -derivedDataPath build-device build` — BUILD SUCCEEDED.
 - `xcrun devicectl device install app --device 4B521D49-9843-55CC-AFEC-19D4CF4353A6 build-device/Build/Products/Debug-iphoneos/Aperture.app` — App installed on **Thuglife** (iPhone 17 Pro Max), `databaseSequenceNumber 8500`.
 
+**Translator runs:**
+- aperture-i18n-translator-primary: 2 keys × 25 languages translated.
+- aperture-i18n-translator-secondary: 2 keys × 25 languages translated.
+
 **TODOs introduced:**
 - None.
 
