@@ -970,15 +970,16 @@ struct WalletHomeView: View {
 
     @ToolbarContentBuilder
     private var toolbarContent: some ToolbarContent {
-        // Settings gear + wallet switcher pill share the leading
-        // toolbar slot per 2026-06-09 user direction — the pill
-        // used to sit in the `.principal` (center) slot, which read
-        // as a disconnected island in the middle of the nav bar.
-        // Pairing it with the gear in a single leading group makes
-        // the two affordances read as one chrome cluster — the same
-        // pattern iOS Mail uses for its mailbox switcher next to
-        // the back chevron.
-        ToolbarItem(placement: .topBarLeading) {
+        // Settings gear + wallet switcher pill share one leading
+        // `ToolbarItemGroup` per 2026-06-09 user direction (and
+        // 2026-06-09 follow-up correction). Two SEPARATE
+        // `ToolbarItem(placement: .topBarLeading)` declarations
+        // caused iOS to squeeze the wallet-name pill into a
+        // chevron-only fragment — the leading slot doesn't grow
+        // for a second item; it splits. `ToolbarItemGroup` keeps
+        // both as one logical unit and the pill renders at full
+        // width next to the gear.
+        ToolbarItemGroup(placement: .topBarLeading) {
             Button {
                 isShowingSettings = true
             } label: {
@@ -986,12 +987,7 @@ struct WalletHomeView: View {
                     .font(.system(size: 17, weight: .regular))
             }
             .accessibilityLabel(Text("Settings"))
-        }
 
-        // The wallet-switcher pill — toolbarPill variant per Rule
-        // #19. Moved from `.principal` → `.topBarLeading` so it
-        // visually connects with the settings gear above.
-        ToolbarItem(placement: .topBarLeading) {
             UniButton(
                 verbatim: isTestMode
                     ? String.apertureLocalized("Public test addresses")
