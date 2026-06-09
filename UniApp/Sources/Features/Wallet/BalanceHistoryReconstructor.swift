@@ -105,27 +105,67 @@ enum BalanceHistoryReconstructor {
     /// points anchored at every transaction's timestamp plus the
     /// chart's leading-edge anchor (cutoff or oldest tx) and its
     /// trailing-edge anchor (`now`). Empty when the wallet has no
-    /// in-range transactions OR no current non-zero balances (the
-    /// honest "no history yet" state).
+    /// current non-zero balances AND no transactions — the honest
+    /// "no history yet" state.
     ///
     /// `currentBalances` contains the latest cached balance rows the
     /// wallet holds (non-zero only — the caller already filters).
     /// `transactions` is the full history across every address —
     /// the caller passes the un-prefixed feed (not the home's
     /// 10-most-recent slice).
+    ///
+    /// **Per-period guarantees (2026-06-09 hardening).**
+    ///
+    /// 1. **The curve's trailing-edge value equals the wallet's
+    ///    current total fiat.** Always. The rightmost sample is
+    ///    `(now, currentTotalFiat)` and the reverse-walk math
+    ///    never mutates that anchor.
+    ///
+    /// 2. **Zero in-range transactions + non-zero balance ⇒ flat
+    ///    horizontal line at the current balance.** The user's
+    ///    2026-06-09 direction: showing "no data" for a wallet
+    ///    that genuinely DID hold a balance for the whole period
+    ///    (nothing changed) was dishonest. A flat line at the
+    ///    current value IS the truthful shape for "the wallet sat
+    ///    here all week."
+    ///
+    /// 3. **Zero balance + zero in-range transactions ⇒ empty
+    ///    state.** Empty list. The caller's chart renders the
+    ///    "no history yet" copy. Honest because there's literally
+    ///    nothing to draw.
+    ///
+    /// 4. **`.all` with at least one transaction** anchors the
+    ///    leading edge at the oldest transaction's timestamp.
+    ///    Cutoff is `.distantPast` so no in-range filter excludes
+    ///    the oldest point.
+    ///
+    /// 5. **`.all` with zero transactions + non-zero balance** —
+    ///    we don't know when the wallet was created. Fall back to
+    ///    a synthetic 30-day-ago leading anchor at the current
+    ///    fiat so the line still reads as a flat plateau rather
+    ///    than collapsing to a single point.
     static func reconstruct(
         transactions: [TransactionRecord],
         currentBalances: [TokenBalanceRecord],
         range: BalanceHistoryRange,
         now: Date = Date()
     ) -> [BalancePoint] {
-        guard !currentBalances.isEmpty || !transactions.isEmpty else { return [] }
+        // Honest empty state — no balance, no history, nothing to
+        // draw. The caller renders the "balance changes will appear
+        // here" copy.
+        if currentBalances.isEmpty && transactions.isEmpty { return [] }
         let cutoff = range.cutoff(from: now)
 
         // Per-token current fiat-per-unit map, keyed by the
         // `(symbol, contract)` tuple. Native coins use `nil`
         // contract; tokens use the on-chain contract address as
         // written by the scanner. The map is read-only after build.
+        //
+        // Tokens whose `tokenSymbol` no longer appears in
+        // `currentBalances` (fully cashed-out assets) silently drop
+        // out of the fiat sum — they have no `fiatPerUnit[key]`
+        // entry, so they contribute zero. The honest behavior:
+        // we can't value a quantity we have no current price for.
         var fiatPerUnit: [TokenKey: Decimal] = [:]
         var currentQuantity: [TokenKey: Decimal] = [:]
         for balance in currentBalances {
@@ -151,6 +191,12 @@ enum BalanceHistoryReconstructor {
             }
         }
 
+        // The trailing-edge total — the rightmost sample's fiat.
+        // This MUST equal the wallet's current displayed total so
+        // the curve resolves to the hero number above it. Every
+        // other sample's fiat is back-propagated from this anchor.
+        let currentTotal = totalFiat(quantities: currentQuantity, prices: fiatPerUnit)
+
         // Walk newest-first. The running quantity map starts at
         // today's state and reverses each tx's effect.
         let sorted = transactions
@@ -159,7 +205,7 @@ enum BalanceHistoryReconstructor {
 
         var running = currentQuantity
         var points: [BalancePoint] = [
-            BalancePoint(timestamp: now, fiat: totalFiat(quantities: running, prices: fiatPerUnit))
+            BalancePoint(timestamp: now, fiat: currentTotal)
         ]
 
         for tx in sorted {
@@ -199,6 +245,27 @@ enum BalanceHistoryReconstructor {
                     fiat: totalFiat(quantities: running, prices: fiatPerUnit)
                 )
             )
+        }
+
+        // **The flat-line case (Rule #2 §A.7).** Exactly one point
+        // means zero in-range transactions. If the wallet does
+        // hold a non-zero balance, the honest shape for the
+        // period is a flat horizontal line at the current value —
+        // "nothing happened in this window." Synthesize a leading
+        // anchor at the appropriate edge so the chart renders a
+        // line, not a point. For `.all` with zero history we fall
+        // back to a 30-day synthetic span — long enough to read
+        // as a plateau rather than collapsing back to a single dot.
+        if points.count == 1, currentTotal > 0 {
+            let leadingAnchor: Date
+            switch range {
+            case .all:
+                leadingAnchor = Calendar.current.date(byAdding: .day, value: -30, to: now) ?? cutoff
+            default:
+                leadingAnchor = cutoff
+            }
+            points.append(BalancePoint(timestamp: leadingAnchor, fiat: currentTotal))
+            return points.reversed()
         }
 
         // Anchor the leading edge at the cutoff (or oldest tx for
