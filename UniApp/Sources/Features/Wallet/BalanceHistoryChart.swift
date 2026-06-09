@@ -10,13 +10,32 @@ import SwiftUI
 /// finger when they explore.
 ///
 /// **2026-06-09 redesign.** Replaces the original SwiftUI `Charts`
-/// LineMark surface with a hand-drawn quadratic-Bézier sparkline,
+/// LineMark surface with a hand-drawn Catmull-Rom-spline sparkline,
 /// a translucent gradient fill under the curve, a custom 6-pill
 /// period selector, a `DragGesture(minimumDistance: 0)` scrub layer
 /// with a thin guide line + filled point + outer ring, and slope-
 /// driven Core Haptics scrub feedback via `UniHapticEngine`'s new
 /// `playScrubTick(intensity:)` / `playScrubRelease()` entry points.
 /// The shape this draws now is the wallet's, the feel is Apple's.
+///
+/// **2026-06-09 follow-on tuning.** The original ship used quadratic
+/// midpoint smoothing ported from the Stabro reference. That algorithm
+/// reads silky on Stabro's dense intraday price data; on Aperture's
+/// sparse balance-history data (3–5 transactions over the visible
+/// range) it produced a series of visibly-joined arcs at each
+/// inflection. Switched to **Catmull-Rom-to-cubic-Bézier**
+/// interpolation: the curve still passes through every data point
+/// exactly (no smoothing-away of the actual transactions — Rule #2
+/// §A.7 honesty), but adjacent segments now share C¹-continuous
+/// tangents so the line reads as one flowing shape rather than as
+/// joined arcs. Endpoints clamp to zero tangent so the curve enters
+/// and exits horizontally rather than overshooting at the boundaries.
+///
+/// **Range persistence (2026-06-09).** The selected period now
+/// persists across launches via `@AppStorage` with the storage key
+/// `"walletHomeBalanceHistoryRange"`. Default on first launch is
+/// `.all` (show the user the whole shape of their wallet's history,
+/// not just this week).
 ///
 /// **Layer (Rule #2 §B.3):** content. No `.glassEffect()`. The
 /// chart is data, not chrome — the two glass layers already in the
@@ -64,7 +83,32 @@ struct BalanceHistoryChart: View {
     let currentBalances: [TokenBalanceRecord]
     let currencyCode: String
 
-    @State private var selectedRange: BalanceHistoryRange = .week
+    /// Persisted range selection. Default `.all` so a first-launch
+    /// user sees the full shape of their wallet's history; on
+    /// subsequent launches we honor whatever they last picked. The
+    /// storage key is namespaced under `walletHome*` so future chart
+    /// surfaces (asset detail, swap preview) can have their own
+    /// independent persistence without collision.
+    @AppStorage("walletHomeBalanceHistoryRange")
+    private var selectedRangeRaw: String = BalanceHistoryRange.all.rawValue
+
+    /// Computed binding over the raw `@AppStorage` string. Falls back
+    /// to `.all` if the persisted raw value can't be decoded — covers
+    /// the forward-compat case where we ever rename or remove a case.
+    private var selectedRange: Binding<BalanceHistoryRange> {
+        Binding(
+            get: { BalanceHistoryRange(rawValue: selectedRangeRaw) ?? .all },
+            set: { selectedRangeRaw = $0.rawValue }
+        )
+    }
+
+    /// Convenience read for the call sites that only need the value
+    /// (reconstructor input, accessibility readout, range-suffix
+    /// caption). The picker itself takes the `Binding` above.
+    private var currentRange: BalanceHistoryRange {
+        BalanceHistoryRange(rawValue: selectedRangeRaw) ?? .all
+    }
+
     @State private var scrubIndex: Int?
 
     var body: some View {
@@ -76,7 +120,7 @@ struct BalanceHistoryChart: View {
             let points = BalanceHistoryReconstructor.reconstruct(
                 transactions: transactions,
                 currentBalances: currentBalances,
-                range: selectedRange
+                range: currentRange
             )
 
             if points.count < 2 {
@@ -91,7 +135,7 @@ struct BalanceHistoryChart: View {
                 .accessibilityElement(children: .ignore)
                 .accessibilityLabel(Text("Balance history chart"))
                 .accessibilityValue(chartAccessibilityValue(points: points))
-                ChartPeriodPill(selection: $selectedRange)
+                ChartPeriodPill(selection: selectedRange)
             }
         }
         .padding(.vertical, UniSpacing.s)
@@ -169,7 +213,7 @@ struct BalanceHistoryChart: View {
     /// Localized "this week" / "this month" / "this year" / "all
     /// time" / "today" suffix on the resting delta caption.
     private var rangeLabel: LocalizedStringKey {
-        switch selectedRange {
+        switch currentRange {
         case .day:   return "today"
         case .week:  return "this week"
         case .month: return "this month"
@@ -212,7 +256,7 @@ struct BalanceHistoryChart: View {
         let start = WalletFormatting.fiat(first.fiat, currencyCode: currencyCode)
         let end = WalletFormatting.fiat(last.fiat, currencyCode: currencyCode)
         let delta = deltaText(delta: last.fiat - first.fiat)
-        return Text("Range \(selectedRange.shortLabel). From \(start) to \(end). Change \(delta).")
+        return Text("Range \(currentRange.shortLabel). From \(start) to \(end). Change \(delta).")
     }
 
     /// Bridge `Decimal` → `Double` for the canvas-space math the
@@ -395,43 +439,54 @@ private struct SparklineChart: View {
         }
     }
 
-    /// Smooth quadratic-Bézier path through the sample points.
-    /// Between every adjacent pair we route the curve via the
-    /// midpoint as a control vertex — the addQuadCurve(addQuad
-    /// Curve(mid)) pattern from the Stabro reference. This yields
-    /// silky rounded transitions without the over-correction a
-    /// Catmull-Rom spline would introduce.
+    /// Smooth interpolating spline through every sample point, drawn
+    /// as a sequence of cubic-Bézier segments derived from a uniform
+    /// Catmull-Rom spline.
+    ///
+    /// **Why Catmull-Rom and not quadratic-midpoint.** The original
+    /// ship used the quadratic-midpoint trick (route each pair via
+    /// its shared midpoint as a control vertex). That algorithm is
+    /// fast and reads silky on dense data — but on sparse data (a
+    /// handful of transactions over the visible range) each adjacent
+    /// pair produces its own arc that bends visibly at the data
+    /// vertex, so the line reads as a series of joined arcs rather
+    /// than as one flowing shape.
+    ///
+    /// Catmull-Rom passes through every data point exactly (no
+    /// smoothing-away of the actual transactions — Rule #2 §A.7
+    /// honesty) AND gives every interior point a tangent derived
+    /// from its neighbors `(p[i+1] − p[i−1]) / 6`, so adjacent
+    /// segments share C¹-continuous tangents. The result reads as
+    /// one continuous curve in the user's hand.
+    ///
+    /// **Endpoint clamp.** At the boundaries we don't have a
+    /// `p[i−1]` (or `p[i+2]`) to compute the tangent from. The clean
+    /// clamp is to substitute the endpoint itself — i.e.
+    /// `p[−1] := p[0]` and `p[n] := p[n−1]` — which yields a zero
+    /// tangent at each end. The curve enters and exits the canvas
+    /// horizontally instead of overshooting; for a balance history
+    /// that reads as "settled at the start, settled at the end."
     private func sparklinePath(points canvasPoints: [CGPoint]) -> Path {
         Path { path in
             guard let first = canvasPoints.first else { return }
             path.move(to: first)
-            for i in 1..<canvasPoints.count {
-                let mid = CGPoint(
-                    x: (canvasPoints[i - 1].x + canvasPoints[i].x) / 2,
-                    y: (canvasPoints[i - 1].y + canvasPoints[i].y) / 2
-                )
-                path.addQuadCurve(to: mid, control: canvasPoints[i - 1])
-                path.addQuadCurve(to: canvasPoints[i], control: mid)
-            }
+            appendCatmullRomSegments(to: &path, points: canvasPoints)
         }
     }
 
-    /// Gradient fill — same quadratic curve, then closed down to
-    /// the baseline at both ends so the area between the curve
-    /// and the bottom of the canvas can be filled with a vertical
-    /// fade.
+    /// Gradient fill — same Catmull-Rom curve as the stroke (so the
+    /// fill sits flush under it), then closed down to the baseline
+    /// at both ends with straight vertical drops so the area between
+    /// the curve and the bottom of the canvas can be filled with a
+    /// vertical fade. The closing drops stay straight on purpose —
+    /// smoothing them would round the bottom corners of the fill and
+    /// break the "this is the area under the curve, baseline is
+    /// flat" reading.
     private func gradientFill(points canvasPoints: [CGPoint], in size: CGSize) -> some View {
         Path { path in
             guard let first = canvasPoints.first, let last = canvasPoints.last else { return }
             path.move(to: first)
-            for i in 1..<canvasPoints.count {
-                let mid = CGPoint(
-                    x: (canvasPoints[i - 1].x + canvasPoints[i].x) / 2,
-                    y: (canvasPoints[i - 1].y + canvasPoints[i].y) / 2
-                )
-                path.addQuadCurve(to: mid, control: canvasPoints[i - 1])
-                path.addQuadCurve(to: canvasPoints[i], control: mid)
-            }
+            appendCatmullRomSegments(to: &path, points: canvasPoints)
             path.addLine(to: CGPoint(x: last.x, y: size.height))
             path.addLine(to: CGPoint(x: first.x, y: size.height))
             path.closeSubpath()
@@ -446,6 +501,53 @@ private struct SparklineChart: View {
                 endPoint: .bottom
             )
         )
+    }
+
+    /// Shared Catmull-Rom-to-cubic-Bézier emitter. The path must
+    /// already be `move(to:)` the first point; this appends one
+    /// `addCurve` segment per consecutive pair.
+    ///
+    /// The conversion from Catmull-Rom to cubic Bézier:
+    /// ```
+    /// For each segment from p[i] to p[i+1] (with p[i−1] and p[i+2]
+    /// as neighbors):
+    ///   tangentAtI  = (p[i+1] − p[i−1]) / 6
+    ///   tangentAtI1 = (p[i+2] − p[i  ]) / 6
+    ///   cp1 = p[i  ] + tangentAtI
+    ///   cp2 = p[i+1] − tangentAtI1
+    ///   path.addCurve(to: p[i+1], control1: cp1, control2: cp2)
+    /// ```
+    /// At the boundaries `p[−1]` and `p[n]` are clamped to `p[0]`
+    /// and `p[n−1]` respectively, producing a zero tangent at each
+    /// end.
+    private func appendCatmullRomSegments(to path: inout Path, points canvasPoints: [CGPoint]) {
+        let count = canvasPoints.count
+        guard count > 1 else { return }
+        for i in 0..<(count - 1) {
+            let previous = i == 0 ? canvasPoints[i] : canvasPoints[i - 1]
+            let current = canvasPoints[i]
+            let next = canvasPoints[i + 1]
+            let afterNext = i + 2 < count ? canvasPoints[i + 2] : next
+
+            let oneSixth: CGFloat = 1.0 / 6.0
+            let tangentAtCurrent = CGPoint(
+                x: (next.x - previous.x) * oneSixth,
+                y: (next.y - previous.y) * oneSixth
+            )
+            let tangentAtNext = CGPoint(
+                x: (afterNext.x - current.x) * oneSixth,
+                y: (afterNext.y - current.y) * oneSixth
+            )
+            let controlOne = CGPoint(
+                x: current.x + tangentAtCurrent.x,
+                y: current.y + tangentAtCurrent.y
+            )
+            let controlTwo = CGPoint(
+                x: next.x - tangentAtNext.x,
+                y: next.y - tangentAtNext.y
+            )
+            path.addCurve(to: next, control1: controlOne, control2: controlTwo)
+        }
     }
 }
 
