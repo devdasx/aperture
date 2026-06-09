@@ -127,11 +127,23 @@ struct BalanceHistoryChart: View {
                 emptyState
             } else {
                 deltaCaption(points: points)
+                // Negative horizontal padding so ONLY the sparkline
+                // bleeds out beyond the card's normal inset
+                // (`UniSpacing.l`) to land at 5pt from the card
+                // edge. Computed as `-(UniSpacing.l - 5)` so the
+                // visible curve has exactly 5pt of edge gap. Delta
+                // caption above and period pill below stay at the
+                // normal padding so they align with everything else
+                // inside the card. Per 2026-06-09 user direction:
+                // "the padding 5 pixels should be only for chart,
+                // for other layouts in inside the card should be
+                // same as before."
                 SparklineChart(
                     points: points.map { fiatAsDouble($0.fiat) },
                     scrubIndex: $scrubIndex
                 )
                 .frame(height: 140)
+                .padding(.horizontal, -(UniSpacing.l - 5))
                 .accessibilityElement(children: .ignore)
                 .accessibilityLabel(Text("Balance history chart"))
                 .accessibilityValue(chartAccessibilityValue(points: points))
@@ -168,32 +180,20 @@ struct BalanceHistoryChart: View {
                 Spacer(minLength: 0)
             }
         } else if let first = points.first, let last = points.last {
-            // Resting mode — signed delta across the range. Color
-            // hints the direction; magnitude is the magnitude.
+            // Resting mode — signed delta centered under the hero
+            // amount per 2026-06-09 user direction. Arrow glyph and
+            // range-suffix ("today" / "this week" / etc.) removed —
+            // the period pill below already names the active range,
+            // and the colored sign on the delta already conveys
+            // direction. One number, calm.
             let delta = last.fiat - first.fiat
             let isUp = delta > 0
             let isDown = delta < 0
-            HStack(spacing: UniSpacing.xs) {
-                if isUp {
-                    Image(systemName: "arrow.up.right")
-                        .font(UniTypography.footnote.weight(.semibold))
-                        .foregroundStyle(UniColors.Status.successForeground)
-                        .accessibilityHidden(true)
-                } else if isDown {
-                    Image(systemName: "arrow.down.right")
-                        .font(UniTypography.footnote.weight(.semibold))
-                        .foregroundStyle(UniColors.Status.errorForeground)
-                        .accessibilityHidden(true)
-                }
-                Text(deltaText(delta: delta))
-                    .font(UniTypography.footnote.weight(.semibold))
-                    .foregroundStyle(deltaColor(isUp: isUp, isDown: isDown))
-                    .monospacedDigit()
-                Text(rangeLabel)
-                    .font(UniTypography.footnote)
-                    .foregroundStyle(UniColors.Text.tertiary)
-                Spacer(minLength: 0)
-            }
+            Text(deltaText(delta: delta))
+                .font(UniTypography.footnote.weight(.semibold))
+                .foregroundStyle(deltaColor(isUp: isUp, isDown: isDown))
+                .monospacedDigit()
+                .frame(maxWidth: .infinity, alignment: .center)
         }
     }
 

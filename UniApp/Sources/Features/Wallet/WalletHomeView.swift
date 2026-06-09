@@ -423,15 +423,19 @@ struct WalletHomeView: View {
                     currencyCode: currencyCode
                 )
                 .listRowSeparator(.hidden)
-                // 5pt horizontal insets per 2026-06-09 user
-                // direction — the chart now reads as full-width
-                // inside the card, with only a hair of padding so
-                // the curve doesn't clip the rounded corners.
+                // 2026-06-09 follow-on: row insets back to the
+                // normal `UniSpacing.l` so the delta caption + pill
+                // align with everything else in the card. The
+                // sparkline curve itself uses negative horizontal
+                // padding inside the chart component to bleed out
+                // to 5pt from the card edge — only the curve gets
+                // the full-bleed treatment, not the surrounding
+                // chrome.
                 .listRowInsets(EdgeInsets(
                     top: 0,
-                    leading: 5,
+                    leading: UniSpacing.l,
                     bottom: UniSpacing.s,
-                    trailing: 5
+                    trailing: UniSpacing.l
                 ))
             }
         }
