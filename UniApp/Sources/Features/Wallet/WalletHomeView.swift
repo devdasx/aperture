@@ -410,12 +410,11 @@ struct WalletHomeView: View {
             Section {
                 walletHomeHeaderRow
                     .listRowSeparator(.hidden)
-                    // Top + bottom insets zeroed per 2026-06-09
-                    // user direction. The hero balance sits flush
-                    // at the top of the card and flush against the
-                    // delta caption below — no extra spacing.
+                    // 10pt above the balance hero, flush below
+                    // against the delta caption (zero bottom inset
+                    // — the chart row owns the gap to the pill).
                     .listRowInsets(EdgeInsets(
-                        top: 0,
+                        top: 10,
                         leading: UniSpacing.l,
                         bottom: 0,
                         trailing: UniSpacing.l
@@ -427,18 +426,16 @@ struct WalletHomeView: View {
                     currencyCode: currencyCode
                 )
                 .listRowSeparator(.hidden)
-                // 2026-06-09 follow-on: row insets back to the
-                // normal `UniSpacing.l` so the delta caption + pill
-                // align with everything else in the card. The
-                // sparkline curve itself uses negative horizontal
-                // padding inside the chart component to bleed out
-                // to 5pt from the card edge — only the curve gets
-                // the full-bleed treatment, not the surrounding
-                // chrome.
+                // Caption sits flush under the hero (top: 0); 10pt
+                // of breathing room at the bottom of the card
+                // beneath the period pill. The sparkline curve
+                // itself bleeds out horizontally to 5pt from the
+                // card edge via the chart's internal negative
+                // horizontal padding.
                 .listRowInsets(EdgeInsets(
                     top: 0,
                     leading: UniSpacing.l,
-                    bottom: UniSpacing.s,
+                    bottom: 10,
                     trailing: UniSpacing.l
                 ))
             }
