@@ -1,23 +1,33 @@
 import SwiftUI
 
-/// Settings screen — presented as a `.sheet(...)` from the onboarding app
-/// bar (gear icon).
+/// Settings screen — the root of the Settings tab in `MainTabView`
+/// (2026-06-09). Was a `.sheet(...)` presented from the wallet-home
+/// toolbar's gear icon through 2026-06-08; the four-tab shell
+/// promoted it to a top-level destination.
 ///
-/// **Architecture note.** Settings is a *navigation experience* — a root
-/// list of options that pushes per-option pickers, each with its own
-/// `List` and (for Language / Currency) a `.searchable` field. That
-/// requires a real `NavigationStack`, which is incompatible with the
-/// content-sized `UniSheet` shell used by the app's warning /
-/// disclosure / passphrase / open-source sheets. So Settings keeps the
-/// classic iOS-Settings rendering: `NavigationStack` + `List` + `.insetGrouped`
-/// sections + native `.searchable` pickers. The sheet's presentation
-/// detents are `[.medium, .large]` so the user can drag-up if they need
-/// more room (e.g. for the 50-row Language picker).
+/// **Architecture note.** Settings is a *navigation experience* — a
+/// root list of options that pushes per-option pickers, each with its
+/// own `List` and (for Language / Currency) a `.searchable` field.
+/// That requires a real `NavigationStack`. As a tab root the
+/// `NavigationStack`'s path is owned internally as `@State`; it no
+/// longer needs the parent-`@Binding` shape that the sheet-host
+/// variant carried (the binding existed only to thread Rule #12 §G's
+/// direction-flip rebuild, which is a sheet-presentation concern that
+/// doesn't apply to a tab root — tab roots rebuild via the standard
+/// SwiftUI environment propagation when `.uniAppEnvironment()`'s
+/// `\.locale` or `\.layoutDirection` flips).
 ///
-/// Layered honestly: the sheet itself carries the system Liquid Glass
-/// chrome; the `List` rows inside are opaque content (Rule #2 §B.3).
-/// All visible strings flow through `LocalizedStringKey` and the String
-/// Catalog (Rule #9).
+/// **Still presented from onboarding pre-wallet as a sheet.** The
+/// pre-wallet language/appearance Settings surface (reached from the
+/// onboarding chrome before any wallet exists) is a different view —
+/// `OnboardingSettingsView` — and remains a sheet for that surface
+/// because no tab bar is present pre-wallet. Only the post-wallet
+/// Settings surface (this view) migrated to the tab.
+///
+/// Layered honestly: this tab's chrome IS the system Liquid Glass
+/// nav bar + tab bar; the `List` rows inside are opaque content
+/// (Rule #2 §B.3). All visible strings flow through
+/// `LocalizedStringKey` and the String Catalog (Rule #9).
 enum SettingsDestination: Hashable, Codable {
     case wallets
     case walletDetail(UUID)
@@ -46,13 +56,15 @@ enum SettingsDestination: Hashable, Codable {
 }
 
 struct SettingsView: View {
-    @Environment(\.dismiss) private var dismiss
-
-    /// Hoisted navigation path. Lives on `OnboardingView` so the path
-    /// survives sheet-content rebuilds on RTL/LTR direction flips
-    /// (Rule #12 §G) and the rebuilt `NavigationStack` reconstructs the
-    /// same destination — the user stays on the picker they were inside.
-    @Binding var navigationPath: NavigationPath
+    /// Settings is a top-level tab root (`MainTabView` — 2026-06-09)
+    /// so its `NavigationStack` path is owned internally. The
+    /// prior `@Binding var navigationPath: NavigationPath`
+    /// existed only to thread Rule #12 §G's direction-flip rebuild
+    /// across the sheet-presentation boundary the wallet-home used
+    /// to host this view. A tab root doesn't have that boundary —
+    /// rebuilds propagate via SwiftUI's standard environment
+    /// channel, so the path stays here.
+    @State private var navigationPath: NavigationPath = NavigationPath()
 
     @AppStorage("themePreference") private var themeRaw: String = ThemePreference.defaultRaw
     @AppStorage("languagePreference") private var languageCode: String = LanguagePreference.systemCode
@@ -287,12 +299,13 @@ struct SettingsView: View {
                 case .testScreen:                TestScreenView()
                 }
             }
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("Done") { dismiss() }
-                        .fontWeight(.semibold)
-                }
-            }
+            // No `.toolbar` Done item — as a tab root in
+            // `MainTabView`, Settings has no parent presentation to
+            // dismiss back to. The tab bar IS the back-stop; the
+            // user leaves Settings by tapping another tab. The prior
+            // Done item existed for the sheet-host era (the wallet-
+            // home's `.sheet { SettingsView }`) and is retired with
+            // the host.
             .sheet(isPresented: $isShowingTerms) {
                 TermsPlaceholderSheet()
                     .uniAppEnvironment()
@@ -526,11 +539,11 @@ struct HideSmallBalancesPicker: View {
 // MARK: - Previews
 
 #Preview("Light") {
-    SettingsView(navigationPath: .constant(NavigationPath()))
+    SettingsView()
         .preferredColorScheme(.light)
 }
 
 #Preview("Dark") {
-    SettingsView(navigationPath: .constant(NavigationPath()))
+    SettingsView()
         .preferredColorScheme(.dark)
 }

@@ -4,18 +4,29 @@ import SwiftData
 // MARK: - RootGate
 
 /// App-launch routing gate. Reads the wallet count reactively via
-/// `@Query`; routes to `WalletHomeView` if the user has at least one
-/// wallet, otherwise to `OnboardingView`. When the create/import
-/// flows insert a `WalletRecord`, the gate flips automatically — no
+/// `@Query`; routes to `MainTabView` (the four-tab shell — Wallet /
+/// Swap / Browser / Settings) if the user has at least one wallet,
+/// otherwise to `OnboardingView`. When the create/import flows
+/// insert a `WalletRecord`, the gate flips automatically — no
 /// explicit navigation needed from those flows.
+///
+/// **2026-06-09 — `MainTabView` replaces `WalletHomeView` as the
+/// wallets-exist branch.** Through 2026-06-08 this branch was
+/// `WalletHomeView()` directly; Settings was reached via a `.sheet`
+/// from the wallet-home toolbar's gear. Per direct user direction
+/// the shell is now a native iOS 26 `TabView` so Wallet / Swap /
+/// Browser / Settings sit at the same depth. `WalletHomeView` is
+/// still the root of the Wallet tab; the Settings sheet is
+/// retired.
 ///
 /// **Splash → onboarding shared element (2026-06-07).** `AppRoot`
 /// (in `UniAppApp.swift`) wraps the gate so it can thread the
 /// `@Namespace logoNamespace` + `AppPhase` machine into onboarding —
 /// onboarding consumes both to attach `matchedGeometryEffect` to its
 /// welcome-slide logo and to drive the staggered chrome fade-in.
-/// The wallet-home branch ignores both: the shared-element transition
-/// only applies to first-launch onboarding, not to returning users.
+/// The wallets-exist branch ignores both: the shared-element
+/// transition only applies to first-launch onboarding, not to
+/// returning users.
 struct RootGate: View {
     let logoNamespace: Namespace.ID
     let phase: AppPhase
@@ -26,7 +37,7 @@ struct RootGate: View {
         if wallets.isEmpty {
             OnboardingView(logoNamespace: logoNamespace, phase: phase)
         } else {
-            WalletHomeView()
+            MainTabView()
         }
     }
 }
@@ -82,7 +93,6 @@ struct WalletHomeView: View {
         LanguagePreference.layoutDirection(for: sheetLanguageCode) == .rightToLeft ? "rtl" : "ltr"
     }
 
-    @State private var isShowingSettings: Bool = false
     @State private var isShowingSwitcher: Bool = false
     @State private var isShowingCreate: Bool = false
     @State private var isShowingImport: Bool = false
@@ -94,7 +104,10 @@ struct WalletHomeView: View {
     @State private var navigationPath: NavigationPath = NavigationPath()
     @State private var createPath: NavigationPath = NavigationPath()
     @State private var importPath: NavigationPath = NavigationPath()
-    @State private var settingsPath: NavigationPath = NavigationPath()
+    // Settings is now a top-level tab in `MainTabView` (2026-06-09);
+    // the wallet-home no longer presents it as a sheet. The previous
+    // `isShowingSettings` flag and `settingsPath` NavigationPath are
+    // retired in the same change.
     @State private var isRefreshing: Bool = false
 
     /// Active tab for the holdings region. Per the 2026-06-09 user
@@ -189,25 +202,12 @@ struct WalletHomeView: View {
                     Task { await runTestScan() }
                 }
         }
-        .sheet(isPresented: $isShowingSettings, onDismiss: { settingsPath = NavigationPath() }) {
-            // Match the OnboardingView Settings sheet pattern exactly:
-            // `.large` detent only (sheet opens fully so navigation
-            // into child pickers has room to render the new title +
-            // back chevron without competing with the parent's sheet
-            // grabber), `.id(sheetDirectionKey)` for the Rule #12 §G
-            // direction-only rebuild, `.uniAppEnvironment()` so
-            // theme/locale propagate into the sheet's scope (the
-            // `.sheet`/`.fullScreenCover` content gets its own
-            // environment scope per the iOS 26 SwiftUI contract),
-            // opaque background so children that don't carry their
-            // own `.scrollContentBackground(.hidden)` still read
-            // cleanly.
-            SettingsView(navigationPath: $settingsPath)
-                .id(sheetDirectionKey)
-                .uniAppEnvironment()
-                .presentationDetents([.large])
-                .presentationBackground(UniColors.Background.primary)
-        }
+        // Settings is now reached via the four-tab shell (`MainTabView`
+        // — 2026-06-09). The previous `.sheet { SettingsView }` block
+        // and its direction-keyed rebuild are retired with the toolbar
+        // gear. Receive remains a sheet because its surface is
+        // commit-shaped (pick chain → render QR → share), not a
+        // top-level section.
         .sheet(isPresented: $isShowingReceive, onDismiss: { receivePath = NavigationPath() }) {
             // Receive v2 — asset-first bottom sheet. `.large` detent
             // only (per M-005, avoids `.medium` clipping locale-
@@ -988,24 +988,13 @@ struct WalletHomeView: View {
 
     @ToolbarContentBuilder
     private var toolbarContent: some ToolbarContent {
-        // 2026-06-09 layout reversion: gear in `.topBarLeading`,
-        // wallet pill back in `.principal` (centered nav-bar title
-        // slot), test flask REMOVED entirely. The flask affordance
-        // moved to Settings → Developer → "Test against public
-        // addresses" — `isTestMode` is now `@AppStorage` so both
-        // surfaces read/write the same flag. Net effect on the
-        // toolbar: two items (gear left, pill center), nothing
-        // trailing.
-        ToolbarItem(placement: .topBarLeading) {
-            Button {
-                isShowingSettings = true
-            } label: {
-                Image(systemName: "gearshape")
-                    .font(.system(size: 17, weight: .regular))
-            }
-            .accessibilityLabel(Text("Settings"))
-        }
-
+        // 2026-06-09 — the four-tab shell (`MainTabView`) replaced
+        // the wallet-home's Settings sheet, so the leading-edge
+        // gear is gone. The toolbar now carries one item: the
+        // wallet-pill in `.principal`, which is the wallet-identity
+        // affordance (tap to switch wallets). The tab bar handles
+        // top-level navigation; the nav bar handles wallet
+        // identity. Different facets, both legitimate.
         ToolbarItem(placement: .principal) {
             UniButton(
                 verbatim: isTestMode
