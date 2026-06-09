@@ -1,61 +1,83 @@
 import SwiftUI
 
-/// Resolves a `(chain, tokenSymbol)` pair to a bundled coin mark and
-/// renders it at the caller's frame.
+/// Resolves a `(chain, tokenSymbol, contract)` triple to a coin
+/// mark and renders it at the caller's frame.
 ///
-/// **Resolution order (honest, fast, offline).**
-/// 1. **Native sends** — `tokenSymbol` matches the chain's own ticker
-///    → use `chain.logoAssetName`. ETH on Ethereum renders the ETH
-///    mark; SOL on Solana renders the SOL mark; etc.
-/// 2. **Bundled stablecoins** — USDC and USDT have bundled marks in
-///    `Assets.xcassets/Crypto/`. These are by far the most-seen
-///    tokens on the home screen; bundling them keeps the first frame
-///    instant.
-/// 3. **Everything else** — falls back to an *honest* initials chip
-///    on `Material.card` (Rule #7). A user who sees "DAI" on a
-///    neutral chip knows we don't ship a logo for it; a user who
-///    saw a fabricated yellow circle with a "D" inside would be lied to.
+/// **Resolution order (honest, fast, offline-first).**
+/// 1. **Native sends** — `tokenSymbol` matches the chain's own
+///    ticker → use `chain.logoAssetName` (bundled mark, instant).
+/// 2. **Bundled stablecoins** — USDC and USDT have bundled marks
+///    in `Assets.xcassets/Crypto/`. Most-seen tokens; bundling
+///    keeps the first frame instant.
+/// 3. **Trust Wallet** — for tokens the registry knows but
+///    Aperture doesn't bundle, fetch the mark from
+///    `trustwallet/assets` (MIT, Rule #7 §B priority 1) via
+///    `CoinMarkCache.shared`. Cached to disk on first download;
+///    second-launch + every subsequent render reads from cache
+///    with no network call. Shows the initials chip during
+///    fetch (graceful degradation).
+/// 4. **Initials chip** — final honest fallback when no bundled
+///    asset exists AND Trust Wallet's repo returns nothing
+///    reachable. The user sees a neutral chip — Rule #2 §A.7
+///    "don't lie about a missing asset."
 ///
-/// **Why not `AsyncImage` from Trust Wallet here.** The wallet home
-/// is the most-touched surface in the app. Hitting the network on
-/// first render of every row produces a visible flash and consumes
-/// data on every refresh. The Asset Detail screen — when it lands —
-/// is where the full-color token logo belongs. Until then, the
-/// 2-tier bundled fallback is the honest answer.
+/// **Why this 4-tier ordering** (M-019 corrects M-020-class drift).
+/// The user's 2026-06-09 direction:
+/// > *"why some tokens has no icon? we need to fix this by use
+/// > trust wallet icons, and also it should be cached and saved
+/// > on device once user download the icons and always icons
+/// > should be cached, fix this and add it as a mistake."*
+/// Prior to 2026-06-09 this view shipped only tiers 1+2+4 — most
+/// tokens fell through to the initials chip. Adding tier 3 via
+/// the `CoinMarkCache` actor brings the home Tokens list and the
+/// `AllSupportedAssetsView` to the same brand fidelity as the
+/// bundled assets, with persistent caching so the network is
+/// only ever hit ONCE per token across the device's lifetime.
 ///
-/// **Layout.** Sizes itself to the caller's `.frame(...)` modifier.
-/// Internally circle-clipped so brand-rectangular assets read as
-/// disks alongside SF Symbols.
-///
-/// **History.** Originally `private` to `ActivityRow.swift` (shipped
-/// 2026-06-08 with the activity-row redesign). Promoted to internal
-/// 2026-06-08 (same day) when the Coins / Tokens split needed the
-/// same resolution for `TokenHoldingRow` — see `WalletHomeView`'s
-/// "Coins (native) + Tokens (registry)" SHIPPED entry.
+/// **Layout.** Sizes itself to the caller's `.frame(...)`
+/// modifier. Internally circle-clipped so brand-rectangular
+/// assets render as disks alongside SF Symbols.
 struct CoinMark: View {
     let chain: SupportedChain
     let tokenSymbol: String
+    /// Optional contract address — when present, used to resolve
+    /// the Trust Wallet mark via `CoinMarkCache.trustWalletURL`.
+    /// Callers that know the contract (every `TokenSupportedRow` in
+    /// `AllSupportedAssetsView`, every `TokenHoldingRow`) pass it
+    /// through; callers that don't (most `ActivityRow` consumers,
+    /// where the tx record may not carry the contract) pass nil and
+    /// the view falls back to tier 4.
+    var contract: String? = nil
+
+    @State private var fetched: Data?
 
     var body: some View {
-        if let assetName = resolvedAssetName {
-            Image(assetName)
-                .resizable()
-                .scaledToFit()
-                .clipShape(Circle())
-        } else {
-            initialsChip
+        Group {
+            if let assetName = bundledAssetName {
+                Image(assetName)
+                    .resizable()
+                    .scaledToFit()
+                    .clipShape(Circle())
+            } else if let data = fetched, let image = uiImage(from: data) {
+                Image(uiImage: image)
+                    .resizable()
+                    .scaledToFit()
+                    .clipShape(Circle())
+            } else {
+                initialsChip
+            }
+        }
+        .task(id: trustWalletURLString) {
+            await loadFromCache()
         }
     }
 
-    /// The bundled asset name for this `(chain, symbol)` pair, or nil
-    /// if the symbol is a token we don't ship a mark for.
-    private var resolvedAssetName: String? {
-        // Native sends: the symbol matches the chain's native ticker.
-        // Compare uppercased to match the chain.ticker convention.
+    // MARK: - Tier 1 + 2: bundled assets
+
+    private var bundledAssetName: String? {
         if tokenSymbol.uppercased() == chain.ticker.uppercased() {
             return chain.logoAssetName
         }
-        // Token transfers — only stablecoins we explicitly ship.
         switch tokenSymbol.uppercased() {
         case "USDC": return "Crypto/usdc"
         case "USDT": return "Crypto/usdt"
@@ -63,9 +85,30 @@ struct CoinMark: View {
         }
     }
 
-    /// Up-to-3-letter initials chip. Renders the ticker on a neutral
-    /// `Material.card` disk — the same disk color as the surrounding
-    /// row chrome, so the chip reads as restrained, not loud.
+    // MARK: - Tier 3: Trust Wallet via CoinMarkCache
+
+    /// String form of the resolved Trust Wallet URL, used as the
+    /// `.task(id:)` rebuild key so the view re-fetches when the
+    /// (chain, contract) inputs change.
+    private var trustWalletURLString: String? {
+        CoinMarkCache.trustWalletURL(chain: chain, contract: contract)?.absoluteString
+    }
+
+    private func loadFromCache() async {
+        // Skip the network path entirely when a bundled asset
+        // already wins — no point fetching what we'd ignore.
+        if bundledAssetName != nil { return }
+        guard let url = CoinMarkCache.trustWalletURL(chain: chain, contract: contract) else { return }
+        let data = await CoinMarkCache.shared.data(for: url)
+        await MainActor.run { self.fetched = data }
+    }
+
+    private func uiImage(from data: Data) -> UIImage? {
+        UIImage(data: data)
+    }
+
+    // MARK: - Tier 4: initials chip
+
     private var initialsChip: some View {
         Circle()
             .fill(UniColors.Material.card)
@@ -82,8 +125,6 @@ struct CoinMark: View {
     private var initials: String {
         let trimmed = tokenSymbol.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmed.isEmpty { return "—" }
-        // Cap at 3 chars; longer tickers (e.g. wstETH) compress to the
-        // first three letters which still read as the asset's family.
         return String(trimmed.prefix(3)).uppercased()
     }
 }

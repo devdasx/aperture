@@ -627,7 +627,7 @@ struct WalletHomeView: View {
     @ViewBuilder
     private func supportedTokenRow(_ row: WalletTokenSupportedDisplayRow) -> some View {
         HStack(spacing: UniSpacing.s) {
-            CoinMark(chain: row.chain, tokenSymbol: row.symbol)
+            CoinMark(chain: row.chain, tokenSymbol: row.symbol, contract: row.contract)
                 .frame(width: 44, height: 44)
                 .accessibilityHidden(true)
 

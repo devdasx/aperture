@@ -29,6 +29,12 @@ struct WalletTokenSupportedDisplayRow: Identifiable {
     let chain: SupportedChain
     let symbol: String
     let name: String
+    /// On-chain identifier (EVM contract / SPL mint / XRPL
+    /// `currency.issuer` / TON master contract / etc.). Used by
+    /// `CoinMark` to resolve a Trust Wallet logo via
+    /// `CoinMarkCache.trustWalletURL(chain:contract:)`. Encoded as
+    /// `String` because the source format differs per chain.
+    let contract: String
     let amount: Decimal
     let fiatValue: Decimal?
     let fiatCurrencyCode: String
@@ -119,6 +125,7 @@ enum WalletSupportedRowBuilders {
                     chain: chain,
                     symbol: entry.symbol,
                     name: entry.name,
+                    contract: entry.contract,
                     amount: amount,
                     fiatValue: (balance?.fiatValueCached).flatMap { $0 > 0 ? $0 : nil },
                     fiatCurrencyCode: balance?.fiatCurrencyCode ?? currencyCode
@@ -132,7 +139,7 @@ enum WalletSupportedRowBuilders {
             let amount = decimalAmount(balance: balance)
             rows.append(WalletTokenSupportedDisplayRow(
                 id: "sol.\(mint)", chain: .solana,
-                symbol: entry.symbol, name: entry.name, amount: amount,
+                symbol: entry.symbol, name: entry.name, contract: mint, amount: amount,
                 fiatValue: positiveFiat(balance),
                 fiatCurrencyCode: balance?.fiatCurrencyCode ?? currencyCode
             ))
@@ -143,7 +150,7 @@ enum WalletSupportedRowBuilders {
             let balance = lookupTokenBalance(heldRows: heldRows, chain: .tron, contract: entry.contract)
             rows.append(WalletTokenSupportedDisplayRow(
                 id: "trc.\(entry.contract)", chain: .tron,
-                symbol: entry.symbol, name: entry.name, amount: decimalAmount(balance: balance),
+                symbol: entry.symbol, name: entry.name, contract: entry.contract, amount: decimalAmount(balance: balance),
                 fiatValue: positiveFiat(balance),
                 fiatCurrencyCode: balance?.fiatCurrencyCode ?? currencyCode
             ))
@@ -154,7 +161,7 @@ enum WalletSupportedRowBuilders {
             let balance = lookupTokenBalance(heldRows: heldRows, chain: .near, contract: entry.tokenAccount)
             rows.append(WalletTokenSupportedDisplayRow(
                 id: "nep.\(entry.tokenAccount)", chain: .near,
-                symbol: entry.symbol, name: entry.name, amount: decimalAmount(balance: balance),
+                symbol: entry.symbol, name: entry.name, contract: entry.tokenAccount, amount: decimalAmount(balance: balance),
                 fiatValue: positiveFiat(balance),
                 fiatCurrencyCode: balance?.fiatCurrencyCode ?? currencyCode
             ))
@@ -165,7 +172,7 @@ enum WalletSupportedRowBuilders {
             let balance = lookupTokenBalance(heldRows: heldRows, chain: .aptos, contract: entry.contract)
             rows.append(WalletTokenSupportedDisplayRow(
                 id: "apt.\(entry.contract)", chain: .aptos,
-                symbol: entry.symbol, name: entry.name, amount: decimalAmount(balance: balance),
+                symbol: entry.symbol, name: entry.name, contract: entry.contract, amount: decimalAmount(balance: balance),
                 fiatValue: positiveFiat(balance),
                 fiatCurrencyCode: balance?.fiatCurrencyCode ?? currencyCode
             ))
@@ -177,7 +184,7 @@ enum WalletSupportedRowBuilders {
             let balance = lookupTokenBalance(heldRows: heldRows, chain: .polkadot, contract: assetIdString)
             rows.append(WalletTokenSupportedDisplayRow(
                 id: "dot.\(assetIdString)", chain: .polkadot,
-                symbol: entry.symbol, name: entry.name, amount: decimalAmount(balance: balance),
+                symbol: entry.symbol, name: entry.name, contract: assetIdString, amount: decimalAmount(balance: balance),
                 fiatValue: positiveFiat(balance),
                 fiatCurrencyCode: balance?.fiatCurrencyCode ?? currencyCode
             ))
@@ -189,7 +196,7 @@ enum WalletSupportedRowBuilders {
             let balance = lookupTokenBalance(heldRows: heldRows, chain: .ripple, contract: contract)
             rows.append(WalletTokenSupportedDisplayRow(
                 id: "xrpl.\(contract)", chain: .ripple,
-                symbol: entry.symbol, name: entry.name, amount: decimalAmount(balance: balance),
+                symbol: entry.symbol, name: entry.name, contract: contract, amount: decimalAmount(balance: balance),
                 fiatValue: positiveFiat(balance),
                 fiatCurrencyCode: balance?.fiatCurrencyCode ?? currencyCode
             ))
@@ -200,7 +207,7 @@ enum WalletSupportedRowBuilders {
             let balance = lookupTokenBalance(heldRows: heldRows, chain: .ton, contract: entry.masterContract)
             rows.append(WalletTokenSupportedDisplayRow(
                 id: "ton.\(entry.masterContract)", chain: .ton,
-                symbol: entry.symbol, name: entry.name, amount: decimalAmount(balance: balance),
+                symbol: entry.symbol, name: entry.name, contract: entry.masterContract, amount: decimalAmount(balance: balance),
                 fiatValue: positiveFiat(balance),
                 fiatCurrencyCode: balance?.fiatCurrencyCode ?? currencyCode
             ))
@@ -211,7 +218,7 @@ enum WalletSupportedRowBuilders {
             let balance = lookupTokenBalance(heldRows: heldRows, chain: .kava, contract: entry.denom)
             rows.append(WalletTokenSupportedDisplayRow(
                 id: "kava.\(entry.denom)", chain: .kava,
-                symbol: entry.symbol, name: entry.name, amount: decimalAmount(balance: balance),
+                symbol: entry.symbol, name: entry.name, contract: entry.denom, amount: decimalAmount(balance: balance),
                 fiatValue: positiveFiat(balance),
                 fiatCurrencyCode: balance?.fiatCurrencyCode ?? currencyCode
             ))

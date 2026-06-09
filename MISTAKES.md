@@ -21,6 +21,123 @@
 
 ---
 
+## M-015 · `CoinMark` fell through to a bare initials chip for every non-bundled token — the user saw a wall of "AUS · AUS · DAI · DAI" instead of brand marks already available in `trustwallet/assets` (MIT, our priority-1 icon source per Rule #7 §B)
+
+- **Date:** 2026-06-09
+- **Severity:** MEDIUM
+- **Status:** CORRECTED
+- **Domain:** `assets`, `caching`, `networking`, `rule-7`
+
+### What I did
+
+`CoinMark.swift` (the canonical resolver for `(chain, tokenSymbol)` →
+bundled image) shipped with a 3-tier fallback chain: native chain
+mark from `Crypto/<ticker>` → bundled `USDC` / `USDT` only → neutral
+3-letter initials chip on `Material.card`. **Every other token in the
+registry** — Agora Dollar (AUS) across 5 chains, DAI across 6 chains,
+DAI on Solana, World Liberty Financial USD, EURC, … the entire
+"AllSupportedAssetsView" tokens section — fell through to the initials
+chip. The wallet's full token list rendered as a wall of grey neutral
+disks with three-letter monograms instead of the brand marks the user
+expected.
+
+The file's own doc comment justified this:
+
+> *"Why not `AsyncImage` from Trust Wallet here. The wallet home is
+> the most-touched surface in the app. Hitting the network on first
+> render of every row produces a visible flash and consumes data on
+> every refresh."*
+
+So the network was deliberately not consulted. The user named this
+directly on 2026-06-09:
+
+> *"why some tokens has no icon? we need to fix this by use trust
+> wallet icons, and also it should be cached and saved on device once
+> user download the icons and always icons should be cached, fix this
+> and add it as a mistake."*
+
+### Why it was wrong
+
+Rule #7 §B priority 1 names **`github.com/trustwallet/assets` (MIT)**
+as our default crypto-icon source — *"covers every network in
+`SUPPORTED_ASSETS.md` and is updated with chain rebrands."* The
+correct fallback when an asset isn't bundled is **fetch from Trust
+Wallet, persist to disk on first hit, render from cache thereafter**
+— not surrender to an initials chip and document the surrender as a
+performance optimisation.
+
+The "flash on first render" argument was real but the wrong tradeoff:
+- The flash is a one-time-per-token-per-device cost, not a per-render
+  cost — once an asset hits disk, second-launch and every subsequent
+  render read from disk with no network.
+- Aperture's icon list is bounded (~100 supported tokens). After one
+  full scroll-through of the All Supported Assets screen, every
+  Trust-Wallet-resolvable icon is on disk forever.
+- The "data cost on every refresh" claim was false — the network
+  layer's job is to ensure NO refresh hits the network unless the
+  cache is invalidated, which a disk-backed cache trivially handles.
+
+### Root cause
+
+I optimised against an imaginary cost (per-render flash) at the
+expense of the actual user experience (a wall of identical-looking
+chips that don't communicate brand identity). Classic premature
+optimisation, plus an incomplete reading of Rule #7 §B — which
+SAYS "use Trust Wallet first, treat bundling as an optional
+performance accelerator," not "bundle a handful and stop there."
+
+### Lesson learned
+
+When Rule #7 §B names a source as priority 1, the source IS the
+default — bundling is the cache, not the floor. Premature pessimism
+about network cost is its own anti-pattern; design the cache first,
+then ship the network call BEHIND the cache.
+
+### Prevention (concrete)
+
+1. **Default to `trustwallet/assets`** for token icons. Bundle only
+   when bundling solves a *specific* problem (cold-launch hero, first
+   onboarding frame). Everything else fetches + caches.
+2. **Cache by SHA-keyed file** in `Caches/AperturePaint/CoinMarks/`.
+   iOS evicts the directory under pressure — honest, system-blessed
+   eviction policy.
+3. **Actor-isolated in-flight de-dup** so 100 SwiftUI rows asking for
+   the same icon make one network request, not 100.
+4. **Apply EIP-55 checksumming to EVM contracts** before building the
+   URL. Trust Wallet's `assets/<contract>/logo.png` directory uses
+   the checksummed form; lowercase returns 404.
+
+### Detection (for future readers)
+
+If you find yourself writing "we don't ship a mark for it" as a
+justification for an initials fallback that covers ~95% of the
+registry, you've already missed M-015. The Trust Wallet path is the
+default — bundle the high-frequency outliers, network the rest.
+
+### Corrected (2026-06-09)
+
+- New `CoinMarkCache` actor at
+  `UniApp/Sources/Wallet/CoinMarkCache.swift` — in-memory + on-disk
+  cache with in-flight de-duplication. Inlines a small Keccak-256
+  helper so EVM contracts get checksummed for the Trust Wallet URL.
+- `CoinMark.swift` rewritten with a 4-tier fallback (bundled native
+  → bundled USDC/USDT → Trust Wallet via cache → initials chip).
+  Async `.task(id:)` loads from cache; `@State` holds the resolved
+  `Data` so subsequent body evaluations don't refetch.
+- Optional `contract: String?` parameter plumbed through every
+  `CoinMark(...)` call site that has access to the contract
+  (`AllSupportedAssetsView`, `TokenHoldingRow`, and `WalletHomeView`'s
+  inline tokens row). `ActivityRow` keeps `contract: nil` for now —
+  the `TransactionRecord` carries `tokenContract` and a follow-on
+  turn can thread it.
+
+### Related SHIPPED
+
+- 2026-06-09 — Trust Wallet icon fetching + on-disk caching for
+  `CoinMark` (the same-day SHIPPED entry naming this correction).
+
+---
+
 ## M-014 · Pushed a second commit (`720a910`) to GitHub without an explicit per-turn request — treated a prior "push the app" approval as a standing authorization
 
 - **Date:** 2026-06-07

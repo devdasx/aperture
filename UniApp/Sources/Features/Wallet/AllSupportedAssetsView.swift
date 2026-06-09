@@ -239,6 +239,7 @@ struct AllSupportedAssetsView: View {
                     chain: chain,
                     symbol: entry.symbol,
                     name: entry.name,
+                    contract: entry.contract,
                     amount: amount,
                     fiatValue: (balance?.fiatValueCached).flatMap { $0 > 0 ? $0 : nil },
                     fiatCurrencyCode: balance?.fiatCurrencyCode ?? currencyCode
@@ -246,9 +247,7 @@ struct AllSupportedAssetsView: View {
             }
         }
 
-        // Solana mints. `mints` is `[mintAddress: Entry]` — the key
-        // IS the contract; the `Entry` carries (symbol, name,
-        // decimals, standard) but no `mint` field.
+        // Solana mints.
         for (mint, entry) in SolanaTokenRegistry.mints {
             let balance = tokenBalance(chain: .solana, contract: mint)
             let amount = balance.map {
@@ -262,6 +261,7 @@ struct AllSupportedAssetsView: View {
                 chain: .solana,
                 symbol: entry.symbol,
                 name: entry.name,
+                contract: mint,
                 amount: amount,
                 fiatValue: (balance?.fiatValueCached).flatMap { $0 > 0 ? $0 : nil },
                 fiatCurrencyCode: balance?.fiatCurrencyCode ?? currencyCode
@@ -282,13 +282,14 @@ struct AllSupportedAssetsView: View {
                 chain: .tron,
                 symbol: entry.symbol,
                 name: entry.name,
+                contract: entry.contract,
                 amount: amount,
                 fiatValue: (balance?.fiatValueCached).flatMap { $0 > 0 ? $0 : nil },
                 fiatCurrencyCode: balance?.fiatCurrencyCode ?? currencyCode
             ))
         }
 
-        // NEAR (NEP-141). Entry's contract field is `tokenAccount`.
+        // NEAR (NEP-141).
         for entry in NearTokenRegistry.tokens {
             let balance = tokenBalance(chain: .near, contract: entry.tokenAccount)
             let amount = balance.map {
@@ -302,6 +303,7 @@ struct AllSupportedAssetsView: View {
                 chain: .near,
                 symbol: entry.symbol,
                 name: entry.name,
+                contract: entry.tokenAccount,
                 amount: amount,
                 fiatValue: (balance?.fiatValueCached).flatMap { $0 > 0 ? $0 : nil },
                 fiatCurrencyCode: balance?.fiatCurrencyCode ?? currencyCode
@@ -322,15 +324,14 @@ struct AllSupportedAssetsView: View {
                 chain: .aptos,
                 symbol: entry.symbol,
                 name: entry.name,
+                contract: entry.contract,
                 amount: amount,
                 fiatValue: (balance?.fiatValueCached).flatMap { $0 > 0 ? $0 : nil },
                 fiatCurrencyCode: balance?.fiatCurrencyCode ?? currencyCode
             ))
         }
 
-        // Polkadot (Asset Hub). Entry's identity is `assetId` (UInt32);
-        // store as the string form of the numeric id so the persisted
-        // `tokenContract` column matches what the scanner writes.
+        // Polkadot (Asset Hub).
         for entry in PolkadotAssetRegistry.tokens {
             let assetIdString = String(entry.assetId)
             let balance = tokenBalance(chain: .polkadot, contract: assetIdString)
@@ -345,15 +346,14 @@ struct AllSupportedAssetsView: View {
                 chain: .polkadot,
                 symbol: entry.symbol,
                 name: entry.name,
+                contract: assetIdString,
                 amount: amount,
                 fiatValue: (balance?.fiatValueCached).flatMap { $0 > 0 ? $0 : nil },
                 fiatCurrencyCode: balance?.fiatCurrencyCode ?? currencyCode
             ))
         }
 
-        // XRP Ledger (IOU). XRPL identifies an IOU by the (currency,
-        // issuer) pair — join with `.` to form a single contract
-        // string that matches what the scanner persists.
+        // XRP Ledger (IOU).
         for entry in XRPLTokenRegistry.tokens {
             let contract = "\(entry.currency).\(entry.issuer)"
             let balance = tokenBalance(chain: .ripple, contract: contract)
@@ -368,13 +368,14 @@ struct AllSupportedAssetsView: View {
                 chain: .ripple,
                 symbol: entry.symbol,
                 name: entry.name,
+                contract: contract,
                 amount: amount,
                 fiatValue: (balance?.fiatValueCached).flatMap { $0 > 0 ? $0 : nil },
                 fiatCurrencyCode: balance?.fiatCurrencyCode ?? currencyCode
             ))
         }
 
-        // TON Jettons. Entry's contract field is `masterContract`.
+        // TON Jettons.
         for entry in TONJettonRegistry.tokens {
             let balance = tokenBalance(chain: .ton, contract: entry.masterContract)
             let amount = balance.map {
@@ -388,13 +389,14 @@ struct AllSupportedAssetsView: View {
                 chain: .ton,
                 symbol: entry.symbol,
                 name: entry.name,
+                contract: entry.masterContract,
                 amount: amount,
                 fiatValue: (balance?.fiatValueCached).flatMap { $0 > 0 ? $0 : nil },
                 fiatCurrencyCode: balance?.fiatCurrencyCode ?? currencyCode
             ))
         }
 
-        // Kava (Cosmos IBC). Entry's contract field is `denom`.
+        // Kava (Cosmos IBC).
         for entry in KavaCosmosTokenRegistry.tokens {
             let balance = tokenBalance(chain: .kava, contract: entry.denom)
             let amount = balance.map {
@@ -408,6 +410,7 @@ struct AllSupportedAssetsView: View {
                 chain: .kava,
                 symbol: entry.symbol,
                 name: entry.name,
+                contract: entry.denom,
                 amount: amount,
                 fiatValue: (balance?.fiatValueCached).flatMap { $0 > 0 ? $0 : nil },
                 fiatCurrencyCode: balance?.fiatCurrencyCode ?? currencyCode
@@ -461,7 +464,7 @@ private struct TokenSupportedRow: View {
 
     var body: some View {
         HStack(spacing: UniSpacing.s) {
-            CoinMark(chain: row.chain, tokenSymbol: row.symbol)
+            CoinMark(chain: row.chain, tokenSymbol: row.symbol, contract: row.contract)
                 .frame(width: 44, height: 44)
                 .accessibilityHidden(true)
 
