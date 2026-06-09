@@ -67,7 +67,10 @@ struct WalletHomeHeader: View {
             // below tells the rest of the story.
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, UniSpacing.xl)
+        // Vertical padding removed 2026-06-09 — the balance hero
+        // sits flush at the top of the card and flush against the
+        // chart's delta caption below. The List's own row insets
+        // contribute the only remaining breathing room.
     }
 
     @ViewBuilder

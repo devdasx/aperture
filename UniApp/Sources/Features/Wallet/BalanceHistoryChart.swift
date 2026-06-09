@@ -112,7 +112,12 @@ struct BalanceHistoryChart: View {
     @State private var scrubIndex: Int?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: UniSpacing.s) {
+        // Spacing 0 (was UniSpacing.s) so the delta caption sits
+        // directly under the hero amount with no gap per the
+        // 2026-06-09 user direction. The internal layout still
+        // gives breathing room around the sparkline and pill via
+        // their own padding.
+        VStack(alignment: .leading, spacing: 0) {
             // Reconstruct on body — pure function, cheap enough to
             // run per body evaluation. SwiftData @Query already
             // throttles wallet-home re-renders to actual data
@@ -150,7 +155,10 @@ struct BalanceHistoryChart: View {
                 ChartPeriodPill(selection: selectedRange)
             }
         }
-        .padding(.vertical, UniSpacing.s)
+        // No outer vertical padding — the chart sits flush against
+        // the balance hero above (zero-gap per 2026-06-09 user
+        // direction). The List row's own insets contribute the
+        // breathing room below.
     }
 
     // MARK: - Delta caption
