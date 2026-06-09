@@ -1073,9 +1073,13 @@ struct WalletHomeView: View {
                     isShowingSwitcher = true
                 }
                 .accessibilityLabel(Text("Switch wallet, currently \(activeWallet?.name ?? "")"))
-                .contextMenu {
-                    walletPillContextMenu
-                }
+                // .contextMenu removed 2026-06-09 per user direction
+                // — the long-press wallet switcher lives ONLY on
+                // the bottom tab bar's Wallet button (via
+                // TabBarLongPressInstaller). Tap on this toolbar
+                // pill still opens the switcher sheet — that's the
+                // quick affordance; the tab-bar long-press is the
+                // Telegram/Instagram-style switcher.
             }
         }
     }
