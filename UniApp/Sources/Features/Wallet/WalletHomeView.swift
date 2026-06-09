@@ -410,11 +410,11 @@ struct WalletHomeView: View {
             Section {
                 walletHomeHeaderRow
                     .listRowSeparator(.hidden)
-                    // 10pt above the balance hero, flush below
+                    // 24pt above the balance hero, flush below
                     // against the delta caption (zero bottom inset
                     // — the chart row owns the gap to the pill).
                     .listRowInsets(EdgeInsets(
-                        top: 10,
+                        top: 24,
                         leading: UniSpacing.l,
                         bottom: 0,
                         trailing: UniSpacing.l
@@ -426,7 +426,7 @@ struct WalletHomeView: View {
                     currencyCode: currencyCode
                 )
                 .listRowSeparator(.hidden)
-                // Caption sits flush under the hero (top: 0); 10pt
+                // Caption sits flush under the hero (top: 0); 24pt
                 // of breathing room at the bottom of the card
                 // beneath the period pill. The sparkline curve
                 // itself bleeds out horizontally to 5pt from the
@@ -435,7 +435,7 @@ struct WalletHomeView: View {
                 .listRowInsets(EdgeInsets(
                     top: 0,
                     leading: UniSpacing.l,
-                    bottom: 10,
+                    bottom: 24,
                     trailing: UniSpacing.l
                 ))
             }
