@@ -123,7 +123,13 @@ struct WalletHomeView: View {
     // enabled because it reads addresses from the active wallet
     // record (via `@AppStorage("activeWalletId")`), not from the
     // in-memory test bucket.
-    @State private var isTestMode: Bool = false
+    //
+    // **Storage (2026-06-09):** switched from `@State` to
+    // `@AppStorage("isTestMode")` so the Settings → Developer →
+    // Test mode toggle can flip the same flag. The toolbar flask
+    // icon was removed in the same turn — the affordance now lives
+    // in Settings only.
+    @AppStorage("isTestMode") private var isTestMode: Bool = false
     @State private var testBalances: [SupportedChain: ChainBalance] = [:]
     @State private var testTokens: [SupportedChain: [TokenBalance]] = [:]
     /// Test-mode transaction history. Mirrors `testBalances` /
@@ -417,11 +423,15 @@ struct WalletHomeView: View {
                     currencyCode: currencyCode
                 )
                 .listRowSeparator(.hidden)
+                // 5pt horizontal insets per 2026-06-09 user
+                // direction — the chart now reads as full-width
+                // inside the card, with only a hair of padding so
+                // the curve doesn't clip the rounded corners.
                 .listRowInsets(EdgeInsets(
                     top: 0,
-                    leading: UniSpacing.l,
+                    leading: 5,
                     bottom: UniSpacing.s,
-                    trailing: UniSpacing.l
+                    trailing: 5
                 ))
             }
         }
@@ -494,10 +504,13 @@ struct WalletHomeView: View {
             holdingsTabPicker
                 .listRowBackground(Color.clear)
                 .listRowSeparator(.hidden)
+                // Tightened vertical padding per 2026-06-09 user
+                // direction so the picker sits closer to the action
+                // region above and the section below.
                 .listRowInsets(EdgeInsets(
-                    top: UniSpacing.s,
+                    top: UniSpacing.xxs,
                     leading: UniSpacing.l,
-                    bottom: UniSpacing.s,
+                    bottom: UniSpacing.xxs,
                     trailing: UniSpacing.l
                 ))
         }
@@ -970,16 +983,15 @@ struct WalletHomeView: View {
 
     @ToolbarContentBuilder
     private var toolbarContent: some ToolbarContent {
-        // Settings gear + wallet switcher pill share one leading
-        // `ToolbarItemGroup` per 2026-06-09 user direction (and
-        // 2026-06-09 follow-up correction). Two SEPARATE
-        // `ToolbarItem(placement: .topBarLeading)` declarations
-        // caused iOS to squeeze the wallet-name pill into a
-        // chevron-only fragment — the leading slot doesn't grow
-        // for a second item; it splits. `ToolbarItemGroup` keeps
-        // both as one logical unit and the pill renders at full
-        // width next to the gear.
-        ToolbarItemGroup(placement: .topBarLeading) {
+        // 2026-06-09 layout reversion: gear in `.topBarLeading`,
+        // wallet pill back in `.principal` (centered nav-bar title
+        // slot), test flask REMOVED entirely. The flask affordance
+        // moved to Settings → Developer → "Test against public
+        // addresses" — `isTestMode` is now `@AppStorage` so both
+        // surfaces read/write the same flag. Net effect on the
+        // toolbar: two items (gear left, pill center), nothing
+        // trailing.
+        ToolbarItem(placement: .topBarLeading) {
             Button {
                 isShowingSettings = true
             } label: {
@@ -987,7 +999,9 @@ struct WalletHomeView: View {
                     .font(.system(size: 17, weight: .regular))
             }
             .accessibilityLabel(Text("Settings"))
+        }
 
+        ToolbarItem(placement: .principal) {
             UniButton(
                 verbatim: isTestMode
                     ? String.apertureLocalized("Public test addresses")
@@ -998,27 +1012,6 @@ struct WalletHomeView: View {
                 isShowingSwitcher = true
             }
             .accessibilityLabel(Text("Switch wallet, currently \(activeWallet?.name ?? "")"))
-        }
-        // Test affordance — mirrors the MnemonicReviewView toolbar
-        // shipped 2026-06-06. Bare `flask.fill` SF Symbol per
-        // M-002 / M-003 (no `.circle` chrome, no `.buttonStyle(.glass)`
-        // — toolbar items inherit the nav bar's Liquid Glass).
-        // `.uniHaptic(.selection)` per Rule #10 §A — toggling test
-        // mode is a calm picker-class state change, not a commit.
-        ToolbarItem(placement: .topBarTrailing) {
-            Button {
-                toggleTestMode()
-            } label: {
-                Image(systemName: "flask.fill")
-                    .font(.system(size: 17, weight: .semibold))
-                    .foregroundStyle(
-                        isTestMode
-                            ? UniColors.Tint.accent
-                            : UniColors.Icon.secondary
-                    )
-            }
-            .accessibilityLabel(Text("Test against public addresses"))
-            .uniHaptic(.selection, trigger: isTestMode)
         }
     }
 
