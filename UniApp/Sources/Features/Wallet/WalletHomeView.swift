@@ -110,6 +110,36 @@ struct WalletHomeView: View {
     // retired in the same change.
     @State private var isRefreshing: Bool = false
 
+    // MARK: - Long-press wallet switcher (the Telegram / Instagram pattern)
+    //
+    // 2026-06-09 — the long-press context menu lives on the toolbar
+    // pill, NOT on the tab bar. SwiftUI's `.contextMenu` modifier
+    // does not propagate through `Tab`'s label closure into UIKit's
+    // `UITabBar` item buttons; verified live on Thuglife
+    // (`databaseSequenceNumber 8500` and `8524`). The wallet-home's
+    // `UniButton(variant: .walletPill)` IS the active-account
+    // affordance on this screen, and toolbar items are pure SwiftUI
+    // surfaces — `.contextMenu` works on them natively. Tap on the
+    // pill opens `WalletSwitcherSheet`; long-press opens the native
+    // iOS 26 Liquid Glass context menu. See `MainTabView.swift`'s
+    // type-level doc for the full audit trail.
+
+    /// Drives the `.sheet(item:)` that presents `WalletIconPickerSheet`
+    /// from the long-press menu's "Customise wallet" row. Identifiable
+    /// shim defined at the bottom of this file.
+    @State private var customiseTargetId: UUID?
+
+    /// Shared tab-selection writer — the long-press menu's "Manage
+    /// wallets" row flips this to `.settings` to land the user on the
+    /// Settings tab. `MainTabView` reads the same `@AppStorage` key
+    /// reactively.
+    @AppStorage("selectedTab") private var selectedTabRaw: String = MainTab.wallet.rawValue
+
+    /// Deep-link token consumed by `SettingsView` on appear. The
+    /// long-press menu's "Manage wallets" row stamps `"wallets"`;
+    /// Settings pushes onto its NavigationPath and clears the token.
+    @AppStorage("settingsDeepLink") private var settingsDeepLink: String = ""
+
     /// Active tab for the holdings region. Per the 2026-06-09 user
     /// direction, the home no longer shows Coins AND Tokens as
     /// stacked List sections — a native segmented switcher sits
@@ -258,6 +288,18 @@ struct WalletHomeView: View {
             )
             .uniAppEnvironment()
             .presentationBackground(UniColors.Background.primary)
+        }
+        // Wallet-identity customisation — presented from the
+        // long-press menu on the toolbar pill. Reuses the
+        // canonical `WalletIconPickerSheet` (the same sheet
+        // `WalletDetailView` presents); the wallet-home owns
+        // the presentation here so the menu lives on the same
+        // screen as the affordance that opened it.
+        .sheet(item: customiseTargetBinding) { target in
+            WalletIconPickerSheet(walletId: target.walletId)
+                .uniAppEnvironment()
+                .presentationDetents([.large])
+                .presentationBackground(UniColors.Background.primary)
         }
     }
 
@@ -1003,6 +1045,15 @@ struct WalletHomeView: View {
             // to the prior text-only `.toolbarPill` because test
             // mode displays public addresses, not a user wallet —
             // no identity to render.
+            //
+            // **Tap** opens the full `WalletSwitcherSheet` (the
+            // index of every wallet with create/import affordances
+            // at the bottom). **Long-press** opens the native iOS
+            // 26 Liquid Glass `contextMenu` (the Telegram /
+            // Instagram fast-switch pattern). Both gestures land
+            // on the same affordance because the pill IS the
+            // active-wallet identity on this screen — same affordance,
+            // two depths.
             if isTestMode {
                 UniButton(
                     verbatim: String.apertureLocalized("Public test addresses"),
@@ -1022,8 +1073,99 @@ struct WalletHomeView: View {
                     isShowingSwitcher = true
                 }
                 .accessibilityLabel(Text("Switch wallet, currently \(activeWallet?.name ?? "")"))
+                .contextMenu {
+                    walletPillContextMenu
+                }
             }
         }
+    }
+
+    // MARK: - Long-press context menu on the toolbar wallet pill
+    //
+    // The native iOS 26 idiom for "long-press the active-account
+    // affordance to fast-switch" — Mail's account chip, Telegram /
+    // Instagram's profile-tab avatar. iOS supplies the 0.5s long-press
+    // recognition, the preview lift, and the Liquid Glass menu
+    // material for free. Each row is a `Button` whose `Label.icon`
+    // slot is the wallet's `WalletAvatar` so the user reads each
+    // wallet's identity at switch time the same way they read it on
+    // the wallet home (Rule #2 §A.5 consistency — same identity,
+    // every surface).
+    //
+    // Rule #19 §C allows hand-composed Buttons inside system chrome
+    // surfaces (context menus, toolbars, list rows) — they're
+    // selection / routing affordances, not commit CTAs. The active
+    // wallet's row carries a system checkmark in the text-row slot
+    // (the iOS 26 menu pattern for "selected" — render the check
+    // inline; iOS does not surface a selected-trait API for menu
+    // items).
+    @ViewBuilder
+    private var walletPillContextMenu: some View {
+        // One row per persisted wallet. Tapping a non-active row
+        // flips `activeWalletIdRaw`; the wallet-home re-renders
+        // through the existing `@Query` machinery, the tab icon
+        // re-renders, every consumer updates simultaneously.
+        ForEach(allWallets) { wallet in
+            Button {
+                activeWalletIdRaw = wallet.id.uuidString
+            } label: {
+                Label {
+                    HStack {
+                        Text(verbatim: wallet.name)
+                        if wallet.id.uuidString == activeWalletIdRaw {
+                            Spacer()
+                            Image(systemName: "checkmark")
+                        }
+                    }
+                } icon: {
+                    WalletAvatar(
+                        symbol: wallet.iconSymbol.isEmpty ? WalletAvatarDefaults.symbol : wallet.iconSymbol,
+                        colorHex: wallet.iconColorHex.isEmpty ? WalletAvatarDefaults.colorHex : wallet.iconColorHex,
+                        size: .menuLeading
+                    )
+                }
+            }
+        }
+
+        Divider()
+
+        // Customise wallet — opens `WalletIconPickerSheet` against
+        // the active wallet via `.sheet(item:)` below. Only surfaces
+        // when an active wallet exists.
+        if let active = activeWallet {
+            Button {
+                customiseTargetId = active.id
+            } label: {
+                Label("Customise wallet", systemImage: "paintpalette")
+            }
+        }
+
+        // Add wallet — presents the existing create flow.
+        Button {
+            isShowingCreate = true
+        } label: {
+            Label("Add wallet", systemImage: "plus")
+        }
+
+        // Manage wallets — flips the tab to Settings and stamps
+        // the deep-link token. `SettingsView` consumes it on
+        // appear and pushes onto its NavigationPath.
+        Button {
+            settingsDeepLink = "wallets"
+            selectedTabRaw = MainTab.settings.rawValue
+        } label: {
+            Label("Manage wallets", systemImage: "list.bullet")
+        }
+    }
+
+    /// Identifiable shim so `.sheet(item:)` can present the icon
+    /// picker against an optional `UUID`. Defined at file scope at
+    /// the bottom of this file.
+    private var customiseTargetBinding: Binding<WalletPillCustomiseTarget?> {
+        Binding(
+            get: { customiseTargetId.map { WalletPillCustomiseTarget(walletId: $0) } },
+            set: { customiseTargetId = $0?.walletId }
+        )
     }
 
     /// Active wallet's avatar SF Symbol — defaults to
@@ -1335,4 +1477,16 @@ enum WalletHomeDestination: Hashable, Codable {
     /// `SupportedChain` + every curated registry token with the
     /// active wallet's current balance per row.
     case allSupported
+}
+
+// MARK: - Wallet-pill customise target (Identifiable shim)
+
+/// `.sheet(item:)` needs an Identifiable binding to present
+/// `WalletIconPickerSheet` from a `UUID?`. The shim is private to
+/// this file because no other surface presents the picker by way
+/// of a sheet item from the wallet-home — `WalletDetailView` uses
+/// `@State Bool` because it presents against its own wallet.
+private struct WalletPillCustomiseTarget: Identifiable {
+    let walletId: UUID
+    var id: UUID { walletId }
 }
