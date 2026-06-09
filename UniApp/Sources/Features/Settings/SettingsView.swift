@@ -60,6 +60,10 @@ struct SettingsView: View {
     @AppStorage(CurrencyPreference.storageKey) private var currencyCode: String = CurrencyPreference.defaultCode
     @AppStorage(HideBalancesPreference.hideBalanceOnHomeKey) private var hideBalanceOnHome: Bool = false
     @AppStorage(HideBalancesPreference.thresholdKey) private var hideSmallThreshold: Double = HideBalancesPreference.defaultThreshold
+    /// Test-mode toggle — same `@AppStorage` key the wallet-home
+    /// reads. Flipping here updates the wallet view in place
+    /// (2026-06-09 — replaced the toolbar flask).
+    @AppStorage("isTestMode") private var isTestMode: Bool = false
 
     @State private var isShowingTerms: Bool = false
     @State private var isShowingPrivacyPolicy: Bool = false
@@ -219,6 +223,23 @@ struct SettingsView: View {
                         SettingsRow(
                             systemImage: "flask",
                             title: "Test Screen",
+                            trailing: nil
+                        )
+                    }
+                    .listRowBackground(UniColors.Background.secondary)
+
+                    // Test against public addresses toggle. The flask
+                    // icon used to live in the wallet-home toolbar
+                    // (2026-06-06 ship); moved here on 2026-06-09 per
+                    // user direction so the toolbar reads cleaner —
+                    // gear on the left, wallet pill centred, nothing
+                    // trailing. `isTestMode` is `@AppStorage` so
+                    // toggling here flips the wallet-home's view in
+                    // place; no extra plumbing.
+                    Toggle(isOn: $isTestMode) {
+                        SettingsRow(
+                            systemImage: "atom",
+                            title: "Test against public addresses",
                             trailing: nil
                         )
                     }
