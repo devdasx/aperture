@@ -109,15 +109,12 @@ struct WalletHomeHeader: View {
 
     @ViewBuilder
     private var rollupLine: some View {
-        if isRefreshing {
-            Text("Refreshing…")
-                .font(UniTypography.footnote)
-                .foregroundStyle(UniColors.Text.tertiary)
-        } else if let lastSyncedAt {
-            Text("Last synced \(WalletFormatting.relativeTime(lastSyncedAt))")
-                .font(UniTypography.footnote)
-                .foregroundStyle(UniColors.Text.tertiary)
-        } else if hasAnyBalance {
+        // Refreshing + "Last synced X ago" rows removed on
+        // 2026-06-09 user direction — the balance card is now a
+        // calm hero, not a status dashboard. The data still
+        // refreshes silently on appear + pull-to-refresh; the
+        // user just doesn't see the metadata row.
+        if hasAnyBalance {
             // Inflection markup `^[...](inflect: true)` is resolved by
             // SwiftUI's `LocalizedStringKey` initializer at render
             // time via Foundation morphology. Passing the same markup
