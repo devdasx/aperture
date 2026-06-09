@@ -21,6 +21,82 @@
 
 ---
 
+## M-016 · Shipped `.contextMenu` on a SwiftUI `Tab` (then moved it inside the `label:` closure) without verifying SwiftUI's iOS 26 `TabView` bridges to UIKit's `UITabBar`, which silently drops the modifier — burned two Thuglife installs on the same dead approach
+
+- **Date:** 2026-06-09
+- **Severity:** MEDIUM (no broken code shipped; the affordance simply didn't fire, but I claimed shipped-with-working-long-press in the `databaseSequenceNumber 8500` SHIPPED entry, then doubled down at `8524` after the user reported it not working, instead of stopping to read the docs)
+- **Status:** CORRECTED — long-press affordance moved to the wallet-home toolbar pill where SwiftUI's `.contextMenu` does fire natively. See SHIPPED.md entry titled "Long-press wallet switcher moved from the (non-functional) Wallet `Tab` to the wallet-home toolbar pill".
+- **Domain:** `swiftui`, `uikit-bridging`, `apple-docs`, `verification-discipline`
+
+### What I did
+
+The 2026-06-09 wallet-identity SHIPPED entry (`databaseSequenceNumber 8500`) wrote:
+
+> *"Long-press on the Wallet tab opens the iOS-native `contextMenu(menuItems:)` switcher listing every persisted wallet with a check on the active one + three cross-cutting actions."*
+
+The implementation attached `.contextMenu { walletContextMenu }` to a SwiftUI `Tab(value: MainTab.wallet) { … } label: { … }`. The user installed, tested, reported: long-press does nothing. I assumed the modifier needed to be inside the `label:` closure (anchored to the actual long-pressable view, not to the `Tab` value), moved it, shipped `databaseSequenceNumber 8524`. User tested again: still nothing.
+
+What I should have done after the first failed install — what `M-007` (audit theater) names as the recurrence-prevention pattern — was to **stop, read Apple's docs on `UITabBarController` context-menu APIs, and verify whether iOS 26's `TabView` even exposes the surface I was trying to reach**. Instead I tried a syntactic permutation (move the modifier inside the closure) and shipped again. Two installs burned on the same dead approach.
+
+When I finally did read the docs (in the corrective turn — the user explicitly named the requirement: *"you've to read apple docs carefully"*), the answer was immediate: the only public context-menu API on UIKit's tab-bar surface is `tabBarController(_:sidebar:contextMenuConfigurationFor:)`, which fires only for the iPad sidebar style. On iPhone there is **no public API** to attach a long-press menu to a tab-bar item — Apple Mail's account switcher uses UIKit private APIs we cannot reach from SwiftUI. SwiftUI's `TabView` produces native `UITabBar` chrome via UIKit, and `UITabBar`'s item buttons silently drop `.contextMenu` modifiers attached anywhere in the SwiftUI tree above them.
+
+### Why it was wrong
+
+- **Symptom-first iteration instead of root-cause iteration.** When the user reported "long-press does nothing on Thuglife," the right move was to ask *"why doesn't the system render the menu?"* — which leads to reading Apple's docs on tab-bar context-menu surfaces — not *"maybe the modifier is in the wrong spot in the view tree."* The syntactic permutation could only have been right if the modifier WAS being received and just rendered against the wrong surface; it was actually being dropped at the SwiftUI-UIKit bridge, and the docs are explicit about which surfaces accept context menus.
+- **Recurrence of M-007's audit-theater shape.** The `databaseSequenceNumber 8500` SHIPPED entry's per-rule audit included Rule #2's "Hierarchy / Restraint" claims about the long-press being the canonical fast-switch — written before I verified it actually worked on-device. The audit was a declaration, not a verification. Same shape as M-007's "Rule #N ✓" without measurement.
+- **The user's correction included the meta-feedback.** *"you've to read apple docs carefully and %100 deep"* appeared in the original wallet-identity prompt. I read enough docs to land the `Tab(value:content:label:)` shape and the schema design; I did NOT read deep enough to verify the context-menu surface was real on iPhone. The user named the required depth and I cut short.
+- **Rule #22 (Thuglife install discipline) is the source of "did the change actually reach the user's hand."** I followed the install protocol; the install was real; the SHIPPED entry's `databaseSequenceNumber 8500` is an honest receipt that the EDITS landed. But "edits landed" is not the same as "feature works." A feature whose central affordance fires zero gestures is unshipped functionally, even if the build sequence number is honest about the code.
+
+### Root cause
+
+**Two layered:**
+
+1. **Surface cause:** SwiftUI documents `.contextMenu` as a universal view modifier ("can be applied to any view"), and iOS 26's `Tab` documentation shows arbitrary `label:` closures — the docs do not say "the label-closure's modifier stack is partially consumed at the UIKit bridge." I read the doc surface that LOOKS like it supports the use case, and stopped reading before reaching the doc surface that names the limitation. Classic *"the docs don't say I can't"* fallacy.
+2. **Real cause:** I treated "the build compiles + the modifier is well-formed SwiftUI" as sufficient evidence the runtime would honor it. For SwiftUI surfaces that bridge to UIKit chrome (TabView → UITabBar, navigationBar → UINavigationBar, alertController → UIAlertController) the modifier stack is filtered at the bridge boundary; modifiers SwiftUI considers universal can be silently dropped by UIKit's surface. The check that would have caught this is: *"is there a known Apple-shipped iOS app that uses this exact affordance on iPhone, and does Apple expose the same API surface they use?"* Mail's account switcher answers yes-to-question-1 and no-to-question-2 — UIKit-private, not available to us. That check IS the "read deep" step.
+
+### Lesson learned
+
+**When SwiftUI bridges to UIKit, read the UIKit-side docs to verify the SwiftUI modifier survives the bridge.** The bridge boundary is where features go to die silently. Specifically for `.contextMenu` on system chrome:
+
+| Surface                                | `.contextMenu` survives? |
+|----------------------------------------|--------------------------|
+| Toolbar items (`ToolbarItem` content)  | Yes — pure SwiftUI       |
+| List rows                              | Yes — pure SwiftUI       |
+| Nav bar title / leading / trailing     | Yes — pure SwiftUI       |
+| `TabView` `Tab` value                  | **No — bridged to UITabBar item button** |
+| `TabView` `Tab` `label:` closure       | **No — same bridge** |
+| `TabView` content's root view          | Yes (inside the tab's content scope) |
+| `Menu`'s `Button` rows                 | N/A (Menu IS the context-menu equivalent) |
+
+The `TabView` row of that table is the one I burned two installs not knowing. Future me: when you see `TabView` or `NavigationStack` and you want a long-press menu on the chrome, the menu attaches to **the chrome's content**, not to **the chrome's identifier**.
+
+**When the user reports a feature doesn't work, the second turn must investigate root cause, not permute syntax.** Two failed installs on the same approach is a signal to stop and read; one is a signal to try the obvious adjacent fix.
+
+### Prevention (concrete)
+
+1. **Type-level doc on `MainTabView`** now names the iOS limitation honestly (this turn's edit): *"SwiftUI's iOS 26 `TabView` is bridged to a UIKit `UITabBar` whose item buttons swallow `.contextMenu` modifiers — there is no public API to attach a long-press menu to an iPhone tab-bar item."* A future agent reading the file before adding a long-press affordance to the tab bar sees the warning before re-attempting the failed approach.
+2. **The "Rule #22 install evidence ≠ feature works" check** — adding to the mental audit before claiming a feature is shipped: "did I verify the central affordance fires on Thuglife?" not just "did the build install on Thuglife?" The `databaseSequenceNumber` is a receipt for code; functionality verification is a separate step — visual confirmation on the device that the gesture lands.
+3. **Read-deep checklist for SwiftUI-UIKit-bridging features.** When a SwiftUI surface bridges to UIKit chrome AND the user wants a SwiftUI modifier on it, verify in this order: (a) does an Apple-shipped iOS app use this affordance on iPhone? (b) does Apple expose the API surface that app uses, or is it private? (c) does the SwiftUI modifier appear in the bridged surface's documentation as supported? If any answer is no, the SwiftUI modifier likely doesn't survive the bridge — pick a different surface BEFORE shipping.
+4. **`MISTAKES.md` re-read before any future `TabView` / context-menu work.** This entry is the deterrent.
+
+### Detection (for future readers)
+
+If you are about to attach `.contextMenu`, `.onLongPressGesture`, `.simultaneousGesture`, or any other gesture-class modifier to a SwiftUI `Tab` (or to a view inside its `label:` closure on iPhone), STOP. The modifier will not fire on iPhone iOS 26 — the `Tab` is bridged to a `UITabBarItem` whose UIKit button hierarchy doesn't honor SwiftUI gesture modifiers. The same applies to nav-bar titles inside large-title display mode (iOS bridges them to `UINavigationBar`'s title view, with similar modifier filtering).
+
+The working surface for a long-press fast-switch is **the screen's principal toolbar item** (or any in-content affordance that represents the same identity). For account / wallet switchers specifically, the per-screen identity affordance (the avatar or pill in the principal toolbar slot) IS the canonical long-press surface — and SwiftUI's modifier stack is honored there.
+
+### Status / corrective action
+
+- `MainTabView.swift` — `.contextMenu` removed from the Wallet `Tab` label; type-level doc rewritten with the iOS-limitation audit; dead state plumbing stripped.
+- `WalletHomeView.swift` — `.contextMenu { walletPillContextMenu }` attached to the principal `UniButton(.walletPill)`; customise picker presentation hosted on the wallet-home; full menu (per-wallet rows + Customise / Add / Manage) wired through.
+- Verified live on Thuglife at `databaseSequenceNumber 8532` — long-press on the wallet pill opens the native iOS 26 Liquid Glass context menu with one row per wallet (active check), Customise / Add / Manage rows. Working on first install.
+
+### Related SHIPPED
+
+- 2026-06-09 — Long-press wallet switcher moved from the (non-functional) Wallet `Tab` to the wallet-home toolbar pill — the working iPhone surface for the Telegram / Instagram pattern (the same-day SHIPPED entry naming this correction).
+
+---
+
 ## M-015 · `CoinMark` fell through to a bare initials chip for every non-bundled token — the user saw a wall of "AUS · AUS · DAI · DAI" instead of brand marks already available in `trustwallet/assets` (MIT, our priority-1 icon source per Rule #7 §B)
 
 - **Date:** 2026-06-09
