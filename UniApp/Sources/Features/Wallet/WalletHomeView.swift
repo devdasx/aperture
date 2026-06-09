@@ -410,10 +410,14 @@ struct WalletHomeView: View {
             Section {
                 walletHomeHeaderRow
                     .listRowSeparator(.hidden)
+                    // Top + bottom insets zeroed per 2026-06-09
+                    // user direction. The hero balance sits flush
+                    // at the top of the card and flush against the
+                    // delta caption below — no extra spacing.
                     .listRowInsets(EdgeInsets(
-                        top: UniSpacing.l,
+                        top: 0,
                         leading: UniSpacing.l,
-                        bottom: UniSpacing.xs,
+                        bottom: 0,
                         trailing: UniSpacing.l
                     ))
 
