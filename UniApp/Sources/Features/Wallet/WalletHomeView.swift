@@ -970,6 +970,14 @@ struct WalletHomeView: View {
 
     @ToolbarContentBuilder
     private var toolbarContent: some ToolbarContent {
+        // Settings gear + wallet switcher pill share the leading
+        // toolbar slot per 2026-06-09 user direction — the pill
+        // used to sit in the `.principal` (center) slot, which read
+        // as a disconnected island in the middle of the nav bar.
+        // Pairing it with the gear in a single leading group makes
+        // the two affordances read as one chrome cluster — the same
+        // pattern iOS Mail uses for its mailbox switcher next to
+        // the back chevron.
         ToolbarItem(placement: .topBarLeading) {
             Button {
                 isShowingSettings = true
@@ -980,31 +988,10 @@ struct WalletHomeView: View {
             .accessibilityLabel(Text("Settings"))
         }
 
-        // Wallet switcher in the nav-bar title slot (`.principal`).
-        //
-        // Per Rule #19, the pill goes through `UniButton(.toolbarPill)`
-        // — the canonical Liquid Glass capsule for nav-bar slots. The
-        // variant carries:
-        //
-        // 1. **The 17pt font + 13pt chevron** — the rhythm the toolbar's
-        //    auto-glass icon envelope expects (this had to be
-        //    rediscovered through five takes; recorded in SHIPPED.md).
-        // 2. **`.controlSize(.large)`** — lifts the capsule into the
-        //    same vertical envelope as the auto-glass icons sitting
-        //    next to it (WWDC25 session 323, "Glassifying toolbars in
-        //    SwiftUI": *the controlSize modifier "can be applied to a
-        //    single control or across an entire set of controls" and
-        //    is the canonical mechanism for matching heights across
-        //    button styles in a toolbar*).
-        // 3. **`.contentShape(Capsule())`** on the label — fixes the
-        //    2026-06-08 hit-test bug where taps in the painted glass
-        //    capsule but outside the text's intrinsic bounds fell
-        //    through (only the text glyphs were tappable, even though
-        //    the glass extended further). SwiftUI Button hit-tests the
-        //    content's frame, not the layout-modifier frame; the
-        //    contentShape brings the tap region back in line with the
-        //    visible material.
-        ToolbarItem(placement: .principal) {
+        // The wallet-switcher pill — toolbarPill variant per Rule
+        // #19. Moved from `.principal` → `.topBarLeading` so it
+        // visually connects with the settings gear above.
+        ToolbarItem(placement: .topBarLeading) {
             UniButton(
                 verbatim: isTestMode
                     ? String.apertureLocalized("Public test addresses")
