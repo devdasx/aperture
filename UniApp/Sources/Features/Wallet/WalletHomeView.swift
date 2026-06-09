@@ -393,6 +393,33 @@ struct WalletHomeView: View {
                     ))
             }
 
+            // Balance-over-time chart — Apple Stocks-class native
+            // SwiftUI Charts surface. Sits between the hero number
+            // and the action region per 2026-06-09 user direction:
+            // *"we need to add a modern chart that shows how user
+            // balance changes, up and down, real and it should be
+            // depends on the transactions."* Test mode hides the
+            // row (the public-address scanner doesn't write a
+            // transaction history; reconstructing a curve from one
+            // snapshot would be dishonest). See
+            // `BalanceHistoryChart.swift` for the reconstruction
+            // math + the today's-prices caveat.
+            if !isTestMode {
+                BalanceHistoryChart(
+                    transactions: allTransactions,
+                    currentBalances: balances.map { $0.balance },
+                    currencyCode: currencyCode
+                )
+                .listRowBackground(Color.clear)
+                .listRowSeparator(.hidden)
+                .listRowInsets(EdgeInsets(
+                    top: 0,
+                    leading: UniSpacing.l,
+                    bottom: 0,
+                    trailing: UniSpacing.l
+                ))
+            }
+
             WalletActionRegion(
                 canSend: !isTestMode && activeWallet?.kind != .watchOnly,
                 onSend: { navigationPath.append(WalletHomeDestination.send) },
@@ -1015,6 +1042,16 @@ struct WalletHomeView: View {
             .sorted { $0.occurredAt > $1.occurredAt }
             .prefix(10)
             .map { $0 }
+    }
+
+    /// All transactions across the active wallet's addresses,
+    /// unsorted. Feeds the balance-history chart's reconstructor —
+    /// the prefix-10 slice the activity section uses isn't enough
+    /// for `BalanceHistoryRange.all`. The reconstructor handles the
+    /// sort + the per-range cutoff itself.
+    private var allTransactions: [TransactionRecord] {
+        guard let wallet = activeWallet else { return [] }
+        return wallet.addresses.flatMap { $0.transactions }
     }
 
     /// Resolves the chain a `TransactionRecord` belongs to via its
