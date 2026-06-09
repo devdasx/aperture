@@ -1,6 +1,36 @@
 # UniApp — Agent Rules
 
-## Rule #1 — Big changes get logged in `SHIPPED.md`. Small edits do not.
+## Rule #1 — RETRACTED 2026-06-09 per user direction. Do not write to `SHIPPED.md`.
+
+The original Rule #1 required every BIG edit to append a dated entry
+to `SHIPPED.md`. **The user retired this requirement on 2026-06-09**:
+
+> *"remove the rule that we should write everything to shipped, and
+> from now stop writing things to shipped.md"*
+
+Effective immediately:
+
+- **Do NOT append new entries to `SHIPPED.md`.** Existing entries
+  stay as historical record; nothing new gets written there.
+- **Do NOT mention `SHIPPED.md` in commit messages, agent prompts,
+  or end-of-turn summaries** as a place where the work is logged.
+- The audit trail for changes is now the git commit log only —
+  commits already follow conventional-commits format (`feat:`,
+  `fix:`, `chore:`, etc.) per Rule #21 / common-git-workflow.md and
+  carry enough detail in their bodies for any future agent to
+  reconstruct intent.
+- Subagents (jony-ive, translators, scanner, etc.) are also bound
+  by this retraction. If a subagent's brief or its agent definition
+  still mentions writing a SHIPPED entry, treat that as inert text
+  — do not produce one.
+
+The `MISTAKES.md` discipline (Rule #8) stays intact. That register
+serves a different purpose (recurrence prevention) and the user did
+not retract it.
+
+---
+
+## Rule #1 (original, RETRACTED) — Big changes get logged in `SHIPPED.md`. Small edits do not.
 
 `SHIPPED.md` is the project's history of **meaningful** changes — the
 file a future agent or human reads to understand "what has actually
