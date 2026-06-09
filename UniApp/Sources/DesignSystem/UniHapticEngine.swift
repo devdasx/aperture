@@ -215,6 +215,100 @@ final class UniHapticEngine {
         }
     }
 
+    // MARK: - Scrub tick (variable-intensity transient)
+
+    /// Fires a single Core Haptics transient whose intensity + sharpness
+    /// track the magnitude of the change the user is feeling under their
+    /// finger. Used by `SparklineChart`'s scrub gesture so the haptic
+    /// communicates the slope of the curve at the highlighted point —
+    /// a flat region whispers, a steep wall thumps.
+    ///
+    /// `intensity` is clamped to `[0.05, 1.0]`. Sharpness derives from
+    /// intensity at `intensity * 0.8` (also clamped) — sharper at higher
+    /// intensities so the steep regions feel distinct from the gentle
+    /// ones not just by amplitude but by character.
+    ///
+    /// Gated by both the `hapticFeedbackEnabled` preference and Reduce
+    /// Motion. Falls back to a `.selection` sensory beat when Core
+    /// Haptics isn't supported on the device — keeps the affordance
+    /// alive on legacy hardware without inventing a second engine.
+    ///
+    /// Rule #10 §F carve-out: scrub feedback is the canonical "genuinely
+    /// custom signature event" the §F exception was written for —
+    /// continuous, intensity-modulated, choreographed against the user's
+    /// motion. It lives here (the only file that touches Core Haptics)
+    /// rather than in `UniHaptic`'s enum because the per-tick intensity
+    /// is data, not vocabulary.
+    func playScrubTick(intensity: Float) {
+        guard isHapticsEnabled else { return }
+        guard !isReduceMotionEnabled else { return }
+        guard CHHapticEngine.capabilitiesForHardware().supportsHaptics else {
+            // Fallback for the rare device without Core Haptics. The
+            // selection beat is symmetrical and discrete — close enough
+            // to the "something moved under your finger" affordance.
+            UISelectionFeedbackGenerator().selectionChanged()
+            return
+        }
+        ensureEngineStarted()
+        guard let engine else { return }
+
+        let clampedIntensity = max(0.05, min(1.0, intensity))
+        let sharpness = max(0.1, min(1.0, clampedIntensity * 0.8))
+        let events = [
+            CHHapticEvent(
+                eventType: .hapticTransient,
+                parameters: [
+                    CHHapticEventParameter(parameterID: .hapticIntensity, value: clampedIntensity),
+                    CHHapticEventParameter(parameterID: .hapticSharpness, value: sharpness),
+                ],
+                relativeTime: 0
+            ),
+        ]
+        do {
+            let pattern = try CHHapticPattern(events: events, parameters: [])
+            let player = try engine.makePlayer(with: pattern)
+            try player.start(atTime: CHHapticTimeImmediate)
+        } catch {
+            // Pattern failed — fall back rather than vanish. The user's
+            // finger is on the screen; some beat is better than none.
+            UISelectionFeedbackGenerator().selectionChanged()
+        }
+    }
+
+    /// Fires a single soft transient when the user lifts off the scrub
+    /// gesture — the "you stopped" acknowledgement. Less intense than a
+    /// tap impact so it lands as resolution, not as commitment.
+    func playScrubRelease() {
+        guard isHapticsEnabled else { return }
+        guard !isReduceMotionEnabled else { return }
+        guard CHHapticEngine.capabilitiesForHardware().supportsHaptics else {
+            // Fallback — light impact at 0.4 intensity matches the soft
+            // resolution character without a second engine.
+            UIImpactFeedbackGenerator(style: .light).impactOccurred(intensity: 0.4)
+            return
+        }
+        ensureEngineStarted()
+        guard let engine else { return }
+
+        let events = [
+            CHHapticEvent(
+                eventType: .hapticTransient,
+                parameters: [
+                    CHHapticEventParameter(parameterID: .hapticIntensity, value: 0.4),
+                    CHHapticEventParameter(parameterID: .hapticSharpness, value: 0.2),
+                ],
+                relativeTime: 0
+            ),
+        ]
+        do {
+            let pattern = try CHHapticPattern(events: events, parameters: [])
+            let player = try engine.makePlayer(with: pattern)
+            try player.start(atTime: CHHapticTimeImmediate)
+        } catch {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred(intensity: 0.4)
+        }
+    }
+
     // MARK: - Frustration silencing (Rule #10 §J)
 
     /// Threshold of `.error` haptics within the window to trigger
