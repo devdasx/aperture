@@ -97,6 +97,14 @@ struct WalletHomeView: View {
     @State private var settingsPath: NavigationPath = NavigationPath()
     @State private var isRefreshing: Bool = false
 
+    /// Active tab for the holdings region. Per the 2026-06-09 user
+    /// direction, the home no longer shows Coins AND Tokens as
+    /// stacked List sections — a native segmented switcher sits
+    /// under the action region and the user picks which collection
+    /// to view. Defaults to `.coins` because that's the broader
+    /// vocabulary (every chain has one); Tokens is the deeper dive.
+    @State private var selectedHoldingsTab: HoldingsTab = .coins
+
     // MARK: - Test mode (mirrors MnemonicReviewView's affordance)
     //
     // Tapping the flask in the toolbar swaps the real wallet's
@@ -333,14 +341,15 @@ struct WalletHomeView: View {
         if isTestMode {
             holdingsListSection
         } else {
-            // Both sections always render — per the 2026-06-08
-            // direction, the home screen shows ALL supported coins
-            // and tokens (zero-balance ones included). The empty
-            // gates are gone; the supported-rows builders return
-            // non-empty lists by construction (26 chains, 100+
-            // tokens across the registries).
-            coinsSection
-            tokensSection
+            // Per 2026-06-09 direction the home no longer stacks
+            // Coins and Tokens — the user picks one via the
+            // segmented picker in chrome and only that section
+            // renders. Switching tabs is a `withAnimation`
+            // crossfade for the row content.
+            switch selectedHoldingsTab {
+            case .coins:  coinsSection
+            case .tokens: tokensSection
+            }
         }
     }
 
@@ -399,7 +408,35 @@ struct WalletHomeView: View {
                 bottom: 0,
                 trailing: UniSpacing.l
             ))
+
+            // Coins ↔ Tokens segmented switcher. Native iOS
+            // `.pickerStyle(.segmented)` — the same control iOS
+            // Settings uses for its "Display & Brightness" Light /
+            // Dark toggle. Swipe / tap to change the active tab;
+            // `holdingsBody` renders the matching section.
+            holdingsTabPicker
+                .listRowBackground(Color.clear)
+                .listRowSeparator(.hidden)
+                .listRowInsets(EdgeInsets(
+                    top: UniSpacing.s,
+                    leading: UniSpacing.l,
+                    bottom: UniSpacing.s,
+                    trailing: UniSpacing.l
+                ))
         }
+    }
+
+    /// Native segmented picker — Coins | Tokens. Disabled in test
+    /// mode (the test buckets share one Holdings section there, no
+    /// reason to switch).
+    private var holdingsTabPicker: some View {
+        Picker("Holdings tab", selection: $selectedHoldingsTab) {
+            Text("Coins").tag(HoldingsTab.coins)
+            Text("Tokens").tag(HoldingsTab.tokens)
+        }
+        .pickerStyle(.segmented)
+        .disabled(isTestMode)
+        .accessibilityLabel(Text("Switch between Coins and Tokens"))
     }
 
     // MARK: - Holdings section (native List)
@@ -452,9 +489,11 @@ struct WalletHomeView: View {
                 )
             }
             if hasMore { showAllRow }
-        } header: {
-            Text("Coins")
         }
+        // No section header — the segmented picker in chrome is
+        // the canonical "you're looking at Coins" affordance now
+        // (2026-06-09). Stacking a "Coins" header on top of an
+        // already-selected "Coins" tab would be noise.
     }
 
     // MARK: - Tokens section (registry tokens, 10-row cap + Show all)
@@ -480,9 +519,8 @@ struct WalletHomeView: View {
                 supportedTokenRow(row)
             }
             if hasMore { showAllRow }
-        } header: {
-            Text("Tokens")
         }
+        // Header omitted — see the coinsSection note above.
     }
 
     /// Inline renderer for a `WalletTokenSupportedDisplayRow`. Same
@@ -1184,6 +1222,16 @@ struct WalletHomeView: View {
         // adapters.
         _ = await txTask.value
     }
+}
+
+// MARK: - HoldingsTab
+
+/// Segmented-control selection for the wallet home's holdings region.
+/// User toggles between Coins (every supported native chain) and
+/// Tokens (every supported registry token). Default `.coins`.
+enum HoldingsTab: String, Hashable, CaseIterable {
+    case coins
+    case tokens
 }
 
 // MARK: - Destinations
