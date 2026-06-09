@@ -60,7 +60,11 @@ struct WalletHomeHeader: View {
 
             balanceLabel
 
-            rollupLine
+            // rollupLine ("1 chain · 1 token" / "26 chains
+            // supported" / "Refreshing…" / "Last synced X ago")
+            // removed 2026-06-09 per user direction. Balance card
+            // now hosts only the hero number — the chart sitting
+            // below tells the rest of the story.
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, UniSpacing.xl)
