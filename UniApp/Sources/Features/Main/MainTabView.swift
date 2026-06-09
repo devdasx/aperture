@@ -83,6 +83,16 @@ struct MainTabView: View {
     /// per-surface refresh logic.
     @Query(sort: \WalletRecord.sortOrder) private var allWallets: [WalletRecord]
 
+    /// Long-press on the Wallet tab's `UITabBarButton` flips this
+    /// flag (via the UIKit-bridge installer below); the `.sheet`
+    /// presents `WalletSwitcherSheet` over the whole tab shell.
+    /// `.contextMenu` on SwiftUI's iOS 26 `Tab` doesn't reach the
+    /// rendered UITabBar button — `M-016` audits the prior dead
+    /// approaches; `TabBarLongPressInstaller` is the working one.
+    @State private var isShowingWalletSwitcher: Bool = false
+    @State private var isShowingCreate: Bool = false
+    @State private var createPath: NavigationPath = NavigationPath()
+
     /// Computed binding that round-trips the persisted raw through
     /// the `MainTab` enum. Unknown rawValues (manual UserDefaults
     /// fiddling, future tab renames) fall back to `.wallet`.
@@ -123,6 +133,23 @@ struct MainTabView: View {
             // the verification trail.
             Tab(value: MainTab.wallet) {
                 WalletHomeView()
+                    // Zero-size UIKit installer. On first appear,
+                    // walks up to the window, finds the UITabBar,
+                    // and attaches a UILongPressGestureRecognizer
+                    // to the wallet tab's UITabBarButton. The
+                    // recognizer's `.began` closure flips
+                    // `isShowingWalletSwitcher`, which surfaces
+                    // the SwiftUI sheet. Idempotent — see the
+                    // installer's coordinator for the weak-ref
+                    // de-dup logic.
+                    .background(alignment: .bottom) {
+                        TabBarLongPressInstaller(tabIndex: 0) {
+                            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                            isShowingWalletSwitcher = true
+                        }
+                        .frame(width: 0, height: 0)
+                        .allowsHitTesting(false)
+                    }
             } label: {
                 walletTabLabel
             }
@@ -149,6 +176,45 @@ struct MainTabView: View {
         // Fire a selection haptic on tab change. Per Rule #10 §A,
         // tab selection IS the canonical `.selection` haptic.
         .uniHaptic(.selection, trigger: selectedTabRaw)
+        // Wallet switcher sheet — surfaced by the long-press
+        // recognizer installed via `TabBarLongPressInstaller`
+        // above. Reuses the existing `WalletSwitcherSheet`
+        // primitive that the wallet-home toolbar pill also
+        // presents (single canonical switcher UI, two entry
+        // points).
+        .sheet(isPresented: $isShowingWalletSwitcher) {
+            WalletSwitcherSheet(
+                onSelect: { isShowingWalletSwitcher = false },
+                onCreateNew: {
+                    isShowingWalletSwitcher = false
+                    isShowingCreate = true
+                },
+                onImport: {
+                    // No import flow plumbed here yet — defer to
+                    // Settings → Wallets where the import flow
+                    // already lives. Dismiss the switcher first
+                    // so the next session lands cleanly.
+                    isShowingWalletSwitcher = false
+                    selectedTabRaw = MainTab.settings.rawValue
+                }
+            )
+            .uniAppEnvironment()
+            .presentationDetents([.medium, .large])
+            .presentationDragIndicator(.visible)
+            .presentationBackground(UniColors.Background.primary)
+        }
+        .fullScreenCover(isPresented: $isShowingCreate, onDismiss: {
+            createPath = NavigationPath()
+        }) {
+            RecoveryPhraseFlow(
+                navigationPath: $createPath,
+                onDismiss: { isShowingCreate = false },
+                onUserSkippedBackup: {},
+                onUserCompletedBackup: {}
+            )
+            .uniAppEnvironment()
+            .presentationBackground(UniColors.Background.primary)
+        }
     }
 
     // MARK: - Wallet tab label (the avatar replaces the glyph)
