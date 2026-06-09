@@ -92,7 +92,6 @@ struct BalanceHistoryChart: View {
                 .accessibilityLabel(Text("Balance history chart"))
                 .accessibilityValue(chartAccessibilityValue(points: points))
                 ChartPeriodPill(selection: $selectedRange)
-                caveatLine
             }
         }
         .padding(.vertical, UniSpacing.s)
@@ -179,19 +178,14 @@ struct BalanceHistoryChart: View {
         }
     }
 
-    // MARK: - Caveat / empty state
+    // MARK: - Empty state
 
-    /// One calm line under the picker. Rule #2 §A.7. The chart's
-    /// values are derived from today's prices applied to historical
-    /// quantities — the user can read the shape as a record of
-    /// activity, not as a real-time dollar valuation of past states.
-    private var caveatLine: some View {
-        UniFootnote(
-            text: "Valued at today's prices.",
-            alignment: .leading,
-            color: UniColors.Text.tertiary
-        )
-    }
+    // Note: the "Valued at today's prices." caveat row was removed
+    // on the user's 2026-06-09 direction. The honesty principle
+    // (Rule #2 §A.7) still applies — the chart's reconstruction
+    // semantics live in `BalanceHistoryReconstructor`'s doc-comment
+    // for future readers, but the user prefers a clean visual
+    // surface without the inline disclosure.
 
     /// Calm empty state — no fake flat line, no chevron-down
     /// chrome. Same register as the empty Holdings + empty Activity
