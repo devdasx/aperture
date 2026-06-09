@@ -319,6 +319,7 @@ struct WalletHomeView: View {
     /// the app's pages.
     private var listSurface: some View {
         List {
+            balanceCardSection
             chromeSection
             holdingsBody
             activityListSection
@@ -353,34 +354,110 @@ struct WalletHomeView: View {
         }
     }
 
-    /// Top chrome rows — hero balance, banners, glass action triplet.
-    /// Cleared row backgrounds and hidden separators so the inset
-    /// card chrome doesn't fight the floating glass.
+    /// Unified balance + chart card — the hero fiat number and the
+    /// sparkline chart sit inside ONE rounded white card surface,
+    /// the iOS-canonical inset-grouped row chrome iOS Settings,
+    /// Health, and Apple Stocks use for their hero cards.
+    ///
+    /// **2026-06-09 — the user direction:** *"we'll make the balance
+    /// & chart inside a card and we'll make the chart work on
+    /// 1d, 1w, 1M, 1Y, ALL and make all of them works %100."* The
+    /// hero + chart were two separate `Color.clear`-backed rows that
+    /// floated over the page color; merging them into one Section
+    /// with default `Material.card` row backgrounds lets iOS draw
+    /// the unified white card around both, with native concentric
+    /// corners, native dark-mode tone, and native Smart Invert /
+    /// Increase Contrast — for free.
+    ///
+    /// **Why a separate Section instead of merging with the chrome
+    /// section.** The action region (Send / Receive / Swap) and the
+    /// holdings tab picker are Liquid Glass chrome that floats over
+    /// the page color (Rule #2 §B.3); they keep their cleared row
+    /// backgrounds. The hero + chart are content — they earn the
+    /// card. Splitting into two Sections lets iOS render the card
+    /// around the content rows without leaking into the floating
+    /// chrome rows.
+    ///
+    /// **Test mode.** Hidden in test mode (the scanner doesn't
+    /// produce transaction history; reconstructing a curve from one
+    /// snapshot would be dishonest). In test mode the hero alone
+    /// renders as a separate floating row (no card) so the user
+    /// reads it as a developer affordance, not as their wallet.
+    ///
+    /// **Header row separator.** The `.listRowSeparator(.hidden)` on
+    /// the hero row suppresses the divider between hero and chart —
+    /// they read as one calm surface, not as two adjacent list rows.
+    @ViewBuilder
+    private var balanceCardSection: some View {
+        if isTestMode {
+            // Test mode — no card, no chart. The hero alone floats.
+            Section {
+                walletHomeHeaderRow
+                    .disabled(true)
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
+                    .listRowInsets(EdgeInsets())
+            }
+        } else {
+            // Production — one inset-grouped Section, default row
+            // background. iOS draws the unified card.
+            Section {
+                walletHomeHeaderRow
+                    .listRowSeparator(.hidden)
+                    .listRowInsets(EdgeInsets(
+                        top: UniSpacing.l,
+                        leading: UniSpacing.l,
+                        bottom: UniSpacing.xs,
+                        trailing: UniSpacing.l
+                    ))
+
+                BalanceHistoryChart(
+                    transactions: allTransactions,
+                    currentBalances: balances.map { $0.balance },
+                    currencyCode: currencyCode
+                )
+                .listRowSeparator(.hidden)
+                .listRowInsets(EdgeInsets(
+                    top: 0,
+                    leading: UniSpacing.l,
+                    bottom: UniSpacing.s,
+                    trailing: UniSpacing.l
+                ))
+            }
+        }
+    }
+
+    /// Hero row factored out so both modes (production card, test
+    /// mode floating) use the exact same instance — same parameter
+    /// resolution, same disabled-when-test rule.
+    private var walletHomeHeaderRow: some View {
+        WalletHomeHeader(
+            walletName: isTestMode
+                ? String.apertureLocalized("Public test addresses")
+                : (activeWallet?.name ?? String.apertureLocalized("Wallet")),
+            totalFiat: isTestMode ? testTotalFiat : totalFiat,
+            currencyCode: currencyCode,
+            chainCount: isTestMode ? testChainsHeldCount : chainsHeldCount,
+            tokenCount: isTestMode ? testTokenRowCount : balances.count,
+            totalChainsSupported: isTestMode
+                ? TestAddresses.map.count
+                : WalletFormatting.chainCount(activeWallet?.addresses ?? []),
+            hasAnyBalance: isTestMode ? !testBalances.isEmpty : !balances.isEmpty,
+            isRefreshing: isRefreshing,
+            lastSyncedAt: mostRecentScanAt,
+            hideBalance: hideBalanceOnHome,
+            onSwitchWallet: { isShowingSwitcher = true }
+        )
+    }
+
+    /// Floating chrome rows — biometric banner, glass action triplet,
+    /// Coins/Tokens segmented switcher. Cleared row backgrounds and
+    /// hidden separators so they float over the page color rather
+    /// than sitting inside an inset card. The balance + chart live
+    /// in `balanceCardSection` above; this section is purely chrome.
     @ViewBuilder
     private var chromeSection: some View {
         Section {
-            WalletHomeHeader(
-                walletName: isTestMode
-                    ? String.apertureLocalized("Public test addresses")
-                    : (activeWallet?.name ?? String.apertureLocalized("Wallet")),
-                totalFiat: isTestMode ? testTotalFiat : totalFiat,
-                currencyCode: currencyCode,
-                chainCount: isTestMode ? testChainsHeldCount : chainsHeldCount,
-                tokenCount: isTestMode ? testTokenRowCount : balances.count,
-                totalChainsSupported: isTestMode
-                    ? TestAddresses.map.count
-                    : WalletFormatting.chainCount(activeWallet?.addresses ?? []),
-                hasAnyBalance: isTestMode ? !testBalances.isEmpty : !balances.isEmpty,
-                isRefreshing: isRefreshing,
-                lastSyncedAt: mostRecentScanAt,
-                hideBalance: hideBalanceOnHome,
-                onSwitchWallet: { isShowingSwitcher = true }
-            )
-            .disabled(isTestMode)
-            .listRowBackground(Color.clear)
-            .listRowSeparator(.hidden)
-            .listRowInsets(EdgeInsets())
-
             if requiresBiometricReenrollment {
                 BiometricReenrollmentBanner()
                     .listRowBackground(Color.clear)
@@ -391,33 +468,6 @@ struct WalletHomeView: View {
                         bottom: 0,
                         trailing: UniSpacing.l
                     ))
-            }
-
-            // Balance-over-time chart — Apple Stocks-class native
-            // SwiftUI Charts surface. Sits between the hero number
-            // and the action region per 2026-06-09 user direction:
-            // *"we need to add a modern chart that shows how user
-            // balance changes, up and down, real and it should be
-            // depends on the transactions."* Test mode hides the
-            // row (the public-address scanner doesn't write a
-            // transaction history; reconstructing a curve from one
-            // snapshot would be dishonest). See
-            // `BalanceHistoryChart.swift` for the reconstruction
-            // math + the today's-prices caveat.
-            if !isTestMode {
-                BalanceHistoryChart(
-                    transactions: allTransactions,
-                    currentBalances: balances.map { $0.balance },
-                    currencyCode: currencyCode
-                )
-                .listRowBackground(Color.clear)
-                .listRowSeparator(.hidden)
-                .listRowInsets(EdgeInsets(
-                    top: 0,
-                    leading: UniSpacing.l,
-                    bottom: 0,
-                    trailing: UniSpacing.l
-                ))
             }
 
             WalletActionRegion(

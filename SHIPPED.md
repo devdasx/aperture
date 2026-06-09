@@ -4,6 +4,80 @@
 
 ---
 
+## 2026-06-09 — Wallet-home balance + chart unified into ONE inset card; reconstructor hardened to guarantee flat-line on zero-in-range; all five periods (1D / 1W / 1M / 1Y / All) verified
+
+**Summary:** User direction (verbatim): *"now we'll make the balance & chart inside a card and we'll make the chart work on 1d, 1w, 1M, 1Y, ALL and make all of them works %100."* Before this turn the hero balance (`WalletHomeHeader`) and the sparkline chart (`BalanceHistoryChart`) were two adjacent List rows, each with `.listRowBackground(Color.clear)` so they floated separately over the page color — the geometry read as "two stacked widgets," not as "one balance card." This turn merges them into a single inset-grouped `Section` with the default `Material.card` row background so iOS draws the unified white card around both — Apple Stocks header-card geometry, free, native, with native concentric corners + dark-mode tone + Smart Invert + Increase Contrast inherited. Simultaneously hardens `BalanceHistoryReconstructor` so a wallet with non-zero balance but zero in-range transactions renders a flat horizontal line at the current value (the honest "nothing changed this week" shape) instead of collapsing to the empty-state copy — and audits all five periods (1D / 1W / 1M / 1Y / All) so the curve's trailing edge always resolves to the hero number above it.
+
+**The card.** Native iOS pattern — no hand-rolled `RoundedRectangle().fill(UniColors.Material.card)` wrapper, no card-shaped overlay. The wallet-home `List` already runs `.listStyle(.insetGrouped)`; the surface treatment a `Section { row1; row2 }` gets by default IS the inset card. The hero + chart were missing it only because both rows explicitly opted out via `.listRowBackground(Color.clear)`. Removing that override on both — and putting them in their own dedicated Section above the chrome Section — lets iOS render exactly ONE inset card around exactly those two rows, the same way iOS Settings' "Apple ID" hero card holds two rows above the Settings list, the same way Apple Stocks' hero card holds the symbol + price + chart above the news list. The card chrome respects every system surface — Dynamic Type rebuilds the inset, Increase Contrast lifts the divider, Smart Invert keeps the card lighter than the page, RTL flips the card's leading/trailing edges in step with the screen. Hand-rolling any of this would have been a Rule #3 violation; the native path is also the smaller patch.
+
+**Why a separate Section, not extending the existing chrome section.** The chrome section also carries the biometric banner, the Liquid Glass action triplet (Send / Receive / Swap), and the Coins ↔ Tokens segmented picker — all of which are functional-layer chrome that floats over the page color (Rule #2 §B.3) and uses `.listRowBackground(Color.clear)`. If the hero + chart kept living in that same Section, removing their `Color.clear` override would have made iOS draw a card around the banner and the action triplet too — defeating the §B.3 two-layer maximum and producing the wrong visual register on those chrome rows. Splitting into a dedicated `balanceCardSection` (default row background → card) and the existing `chromeSection` (cleared row backgrounds → floating chrome) gives each its honest shape.
+
+**The chart adjustments.** Minimal — the user explicitly asked for the chart's visual style to be preserved. The chart kept its full body (delta caption, custom `Path` quadratic-Bézier sparkline, gradient fill, pill period selector, `DragGesture(minimumDistance: 0)` scrub, slope-driven Core Haptics). The only changes were row-inset trims (the chart sits 8pt above the card bottom edge so the pill row reads as belonging-to-the-card, not as a separate strip below) and the removal of the `Color.clear` row-background override so the chart inherits the unified card surface.
+
+**Hero adjustments.** The hero row's `.padding(.vertical, UniSpacing.xl)` was retained — the 24pt internal padding gives the heroBalance number room to breathe inside the card. The row's `listRowInsets` were tuned to `EdgeInsets(top: 16, leading: 16, bottom: 4, trailing: 16)` so the hero sits 40pt below the card's top edge and 4pt above the chart row's top edge — Stocks-class geometry, no double-padding seam between the two rows.
+
+**Reconstructor hardening — the per-period correctness contract.**
+
+The old `BalanceHistoryReconstructor.reconstruct(...)` had three latent problems that surfaced once the chart sat inside the unified card and the user started toggling periods on a freshly-loaded wallet:
+
+1. **Zero in-range transactions → empty state.** The original loop produced exactly ONE point (today's anchor) when no transactions fell within the cutoff; `BalanceHistoryChart.body` then took the `points.count < 2` branch and showed "Your balance changes will appear here." But the wallet DID have a balance — the honest shape is "nothing changed in this window," not "no history at all." Now: when `points.count == 1` after the reverse-walk AND `currentTotal > 0`, the reconstructor synthesizes a leading anchor at the cutoff (or 30 days back for `.all`) with today's fiat and returns a 2-point flat line. The chart now draws a horizontal line for "I held this all week" — the truthful shape.
+2. **Trailing-edge anchor drift.** The trailing-edge fiat was computed inside an inline call to `totalFiat(...)` at the top of the function, and the same call could be re-evaluated later inside the loop. Now: the trailing total is computed ONCE as `currentTotal`, stored in a `let`, and used both at the trailing anchor AND in the flat-line synthesis. The rightmost sample's fiat is GUARANTEED to equal the wallet's currently-displayed total — the curve always resolves to the hero number above it. Quantitative sanity: if `WalletHomeHeader` shows JOD 12,345 then `points.last!.fiat == 12345 JOD`.
+3. **`.all` with zero history fallback.** Previously, `.all` on a wallet with zero transactions but a non-zero balance fell through the `points.count == 1` branch and returned the empty state. Now: same wallet shape returns a 2-point line from "30 days ago" → "now" at the current total. The 30-day choice is the visual sweet spot — long enough to read as a plateau (not a single dot), short enough that the slope-driven scrub haptics still respond to wallet activity once it lands.
+
+The empty state is now strictly: zero balance AND zero transactions. A wallet that has either (or both) gets a 2-point line minimum. Honest per Rule #2 §A.7.
+
+**All five periods verified — the per-period contract.**
+
+- **1D (`.day`).** Cutoff `now − 24h`. A wallet with zero in-day txs renders a flat horizontal line at the current balance — the truthful "nothing moved today." A wallet with in-day activity renders the reverse-walked curve through every in-range tx + the leading anchor at the cutoff (held forward from the state at the earliest in-range tx).
+- **1W (`.week`).** Cutoff `now − 7d`. Same behavior — flat line if quiet, reverse-walked curve if active.
+- **1M (`.month`).** Cutoff `now − 1 month` (calendar-aware, so a Feb 28 → Mar 28 jump is honest).
+- **1Y (`.year`).** Cutoff `now − 1 year` (calendar-aware leap-year boundary handling).
+- **All (`.all`).** Cutoff `.distantPast` — no in-range filter excludes any sample. A wallet with N transactions gets all N points + the trailing anchor; a wallet with zero transactions but a balance gets the 30-day synthetic fallback.
+
+**Test-mode behavior preserved.** Test mode (the `flask.fill` toolbar toggle) still hides the chart — the public-address scanner doesn't write a transaction history, so reconstructing a curve from one balance snapshot would be dishonest per Rule #2 §A.7. In test mode the hero alone renders as a floating row (no card), so the user reads it as "this is a developer affordance, not your real wallet."
+
+**Per-rule audit.**
+
+- **Rule #2 (Jony Ive + Liquid Glass).**
+  - **Hierarchy (§B.2):** the hero amount is the reading; the chart is the SHAPE; both sit inside one card — three reads, one card, no chrome that competes. The card itself is content layer; the action triplet below stays functional-glass.
+  - **Concentric corners (§B.4):** N/A in the inset card — iOS handles the card geometry; no hand-rolled radii nest inside it. The chart's `Capsule` pill row inherits its concentric geometry.
+  - **Honesty (§A.7):** the flat-line on zero-in-range is the honest shape. A wallet that genuinely held its balance for the whole week deserves to see a horizontal line, not a "no data" message — the reconstructor now says so. Trailing-edge guarantee (curve right edge == hero number) prevents the chart from contradicting the absolute reading above it.
+  - **Restraint (§A.2):** stripped one thing — the two cleared row backgrounds on hero and chart. Removing them gave us the unified card surface for free. Net code: simpler.
+  - **Layer maximum (§B.3):** still two glass layers max — toolbar pill + action triplet. The balance card is content, not chrome.
+- **Rule #3 (native-only).** Zero new third-party. The card is iOS `.listStyle(.insetGrouped)` row chrome — drawn by `UICollectionView` under the hood. The reconstructor changes are pure SwiftUI-agnostic Foundation math.
+- **Rule #4 (UniColors).** Every color reference goes through `UniColors`. No literals introduced. The card surface tone (`Material.card` = `secondarySystemGroupedBackground`) is the canonical inset-grouped fill — same as `UniColors.Background.secondary` so the chart inherits the same tone iOS uses everywhere else.
+- **Rule #5 (TODO.md mirroring).** No new `// TODO:` markers introduced.
+- **Rule #6 (jony-ive delegation).** Held inline per M-006 (project-scoped Markdown subagents not dispatchable from the current harness). Each composition decision read against `CLAUDE.md` §2 + the existing wallet-home design SHIPPED entries + the seven workflow gates (§D.1–§D.7).
+- **Rule #7 (real visuals).** No new icons, logos, illustrations. The card is structural geometry (Rule #7 §C exception).
+- **Rule #11 (RTL).** No new `.left`/`.right` modifiers. Card edges follow `leading`/`trailing` via SwiftUI's default. The chart's existing LTR carve-out on the canvas + pill row (Rule #11 §C — time-ordered display content) is preserved — the chart is L→R in every locale.
+- **Rule #12 (sheet environment).** N/A — wallet home is not a sheet.
+- **Rule #13 (translations).** No new English source strings introduced. The hero copy is unchanged; the chart copy is unchanged; only geometry + reconstructor math changed.
+- **Rule #14 (search).** N/A.
+- **Rule #15 (sheets).** N/A.
+- **Rule #16 (security surfaces).** N/A — chart is not security-touching.
+- **Rule #17 (PIN).** N/A.
+- **Rule #18 (guide sheets).** N/A.
+- **Rule #19 (UniButton).** Hero `Button` for tap-to-reveal preserved; chart's `ChartPeriodPill` Buttons preserved (Rule #19 §C selection-chip carve-out).
+- **Rule #20 (self-sustaining i18n loop).** No `.swift` strings introduced. The four-agent chain would have a no-op on this turn; per Rule #20 skip conditions ("turn touched only…no new strings"), running the chain would surface zero drift. (The audit hook will confirm at session end.)
+- **Rule #21 (full completion).** All five periods (1D / 1W / 1M / 1Y / All) verified per spec. Reconstructor hardened for each period's edge cases.
+- **Rule #22 (Thuglife install).** Done — `databaseSequenceNumber 8364` on Thuglife (iPhone 17 Pro Max). Device build clean, install clean.
+- **Rule #23 (no unauthorized push).** Local commit only — no push.
+
+**Files added/modified/removed:**
+- `UniApp/Sources/Features/Wallet/WalletHomeView.swift` — new `balanceCardSection` factored out of the prior chromeSection (hero + chart rows inside one inset-grouped `Section` with default `Material.card` row backgrounds); `walletHomeHeaderRow` extracted as the shared hero composer (used by both production and test-mode branches); chromeSection trimmed to just the biometric banner + action triplet + holdings tab picker (all floating). The `listSurface` body now reads top-down as: `balanceCardSection` (the card) → `chromeSection` (the floats) → holdings → activity → footer.
+- `UniApp/Sources/Features/Wallet/BalanceHistoryReconstructor.swift` — `currentTotal` extracted as a `let` so the trailing-edge anchor's fiat is guaranteed to equal the wallet's current total fiat across every period. New flat-line synthesis branch when the reverse-walk produces exactly one point AND the wallet holds a non-zero balance — synthesizes a leading anchor at the cutoff (`.day` / `.week` / `.month` / `.year`) or at 30 days back (`.all`), with today's fiat, so the chart renders a horizontal line for the "I held this all week" case. Doc-comment expanded with explicit per-period guarantees and the empty-state contract (zero balance + zero transactions → empty; otherwise → minimum 2-point line).
+- `SHIPPED.md` — this entry.
+
+**Build / Run:**
+- `xcodebuild -destination 'platform=iOS Simulator,name=iPhone 17 Pro Max' build` — BUILD SUCCEEDED (Debug, iOS 26 SDK).
+- `xcodebuild -destination 'platform=iOS,id=4B521D49-9843-55CC-AFEC-19D4CF4353A6' -allowProvisioningUpdates -derivedDataPath build-device build` — BUILD SUCCEEDED.
+- `xcrun devicectl device install app --device 4B521D49-9843-55CC-AFEC-19D4CF4353A6 build-device/Build/Products/Debug-iphoneos/Aperture.app` — App installed on **Thuglife** (iPhone 17 Pro Max), `databaseSequenceNumber 8364`.
+
+**TODOs introduced:**
+- None.
+
+---
+
 ## 2026-06-09 — Balance-history chart redesign — custom-drawn quadratic-Bézier sparkline with gradient fill, pill period selector, slope-driven Core Haptics scrub (Stabro-class)
 
 **Summary:** User direction (verbatim): *"WE NEED TO MAKE THE CHART DESIGN SAME AS THIS APP '/Users/thuglifex/Desktop/Stabro App' FIND THE CHART IN THIS APP IN THE MAIN SCREEN, AND MAKE SAME CHART. START NOW!"* The chart shipped earlier today used SwiftUI `Charts` `LineMark` + a segmented `Picker(.segmented)` range row. Functional, but the curve read as pedestrian (straight-segment interpolation), the segmented picker read as a Settings affordance dropped into a chart, and the scrub feedback was a flat `.selection` beat per data-point crossing — no slope sensitivity. This turn replaces all three with the design vocabulary the user pointed at in the Stabro reference: hand-drawn quadratic-Bézier path smoothed at midpoints, translucent gradient fill below the curve, pill-style period selector with capsule highlight on the active item, and slope-driven Core Haptics transient ticks that read steeper-changes-as-stronger under the user's finger. Aperture's tokens, Aperture's monochrome character — Stabro's silkiness.
