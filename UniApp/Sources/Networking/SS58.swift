@@ -13,15 +13,25 @@ import Foundation
 /// total bytes — Aperture handles Polkadot mainnet only.
 enum SS58 {
 
+    /// Polkadot mainnet network prefix (single byte, 0x00). Addresses
+    /// carrying any other prefix (Kusama = 2, generic Substrate = 42,
+    /// …) belong to a different network and must be rejected.
+    static let polkadotNetworkPrefix: UInt8 = 0
+
     /// Decode a Polkadot mainnet address (`1…` or `13…`) to its
     /// 32-byte AccountId32. Returns nil on:
     /// - non-Base58 character in the input,
     /// - wrong total length after decode,
+    /// - network prefix other than Polkadot mainnet (0),
     /// - checksum mismatch.
     static func decodeAccountId(_ address: String) -> [UInt8]? {
         guard let raw = Base58.decodeBytes(address) else { return nil }
         guard raw.count == 35 else { return nil }
         let prefix = raw[0]
+        // Prefix guard: a checksum-valid Kusama or generic Substrate
+        // address would otherwise decode "successfully" and be read
+        // against the wrong network.
+        guard prefix == Self.polkadotNetworkPrefix else { return nil }
         let accountId = Array(raw[1..<33])
         let checksum = Array(raw[33..<35])
 

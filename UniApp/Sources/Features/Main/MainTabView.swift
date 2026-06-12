@@ -1,5 +1,7 @@
 import SwiftUI
 import SwiftData
+import UIKit
+import TipKit
 
 /// The post-onboarding shell for Aperture. Hosts the four top-level
 /// tabs the user navigates between — **Wallet**, **Swap**, **Browser**,
@@ -83,15 +85,16 @@ struct MainTabView: View {
     /// per-surface refresh logic.
     @Query(sort: \WalletRecord.sortOrder) private var allWallets: [WalletRecord]
 
-    /// Long-press on the Wallet tab's `UITabBarButton` flips this
-    /// flag (via the UIKit-bridge installer below); the `.sheet`
-    /// presents `WalletSwitcherSheet` over the whole tab shell.
-    /// `.contextMenu` on SwiftUI's iOS 26 `Tab` doesn't reach the
-    /// rendered UITabBar button — `M-016` audits the prior dead
-    /// approaches; `TabBarLongPressInstaller` is the working one.
-    @State private var isShowingWalletSwitcher: Bool = false
+    /// Long-press on the Wallet tab now surfaces a NATIVE
+    /// `UIContextMenuInteraction` menu (per 2026-06-09 user direction:
+    /// *"it should be apple native"*). The menu items mutate these
+    /// `@State` flags; SwiftUI presents the corresponding sheets /
+    /// fullScreenCovers in reaction.
     @State private var isShowingCreate: Bool = false
+    @State private var isShowingPicker: Bool = false
+    @State private var isShowingImport: Bool = false
     @State private var createPath: NavigationPath = NavigationPath()
+    @State private var importPath: NavigationPath = NavigationPath()
 
     /// Computed binding that round-trips the persisted raw through
     /// the `MainTab` enum. Unknown rawValues (manual UserDefaults
@@ -134,24 +137,30 @@ struct MainTabView: View {
             Tab(value: MainTab.wallet) {
                 WalletHomeView()
                     // Zero-size UIKit installer. On first appear,
-                    // walks up to the window, finds the UITabBar,
-                    // and attaches a UILongPressGestureRecognizer
-                    // to the wallet tab's UITabBarButton. The
-                    // recognizer's `.began` closure flips
-                    // `isShowingWalletSwitcher`, which surfaces
-                    // the SwiftUI sheet. Idempotent — see the
-                    // installer's coordinator for the weak-ref
-                    // de-dup logic.
+                    // resolves the surrounding `UITabBarController`,
+                    // attaches a `UIContextMenuInteraction` to its
+                    // public `UITabBar`, and on long-press surfaces
+                    // the native iOS context menu built from
+                    // `buildWalletTabMenu()`. The menu's `UIAction`s
+                    // mutate `@State` flags on this view; SwiftUI
+                    // reacts via the modifiers below.
                     .background(alignment: .bottom) {
                         TabBarLongPressInstaller(tabIndex: 0) {
-                            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                            isShowingWalletSwitcher = true
+                            buildWalletTabMenu()
                         }
                         .frame(width: 0, height: 0)
                         .allowsHitTesting(false)
                     }
             } label: {
                 walletTabLabel
+                // 2026-06-09 — `popoverTip` REMOVED from the Tab
+                // label. iOS 26's new TabView renders its `label:`
+                // closure inside the UIKit tab-bar button image
+                // slot, which has no SwiftUI popover presentation
+                // context — the popover never anchored. The same
+                // `WalletTabSwitcherTip` is now rendered inline as
+                // a `TipView` from `WalletHomeView`'s content
+                // hierarchy, where a real SwiftUI parent exists.
             }
 
             // MARK: - Swap
@@ -162,9 +171,20 @@ struct MainTabView: View {
             }
 
             // MARK: - Browser
+            //
+            // 2026-06-10 — `BrowserPlaceholderView` retired; replaced
+            // by `BrowserHomeView` (Aperture's in-wallet dApp
+            // browser surface). The home view owns the URL field,
+            // favorites grid, recent list, connected sessions, and
+            // the router's four confirmation sheets. Pushing into
+            // `BrowserSessionView` carries the actively-browsed
+            // page; the wrapping `NavigationStack` here provides
+            // the push surface and the `.toolbar` ladder
+            // `BrowserHomeView` populates with the QR / settings
+            // icons.
             Tab("Browser", systemImage: "globe", value: MainTab.browser) {
                 NavigationStack {
-                    BrowserPlaceholderView()
+                    BrowserHomeView()
                 }
             }
 
@@ -176,32 +196,18 @@ struct MainTabView: View {
         // Fire a selection haptic on tab change. Per Rule #10 §A,
         // tab selection IS the canonical `.selection` haptic.
         .uniHaptic(.selection, trigger: selectedTabRaw)
-        // Wallet switcher sheet — surfaced by the long-press
-        // recognizer installed via `TabBarLongPressInstaller`
-        // above. Reuses the existing `WalletSwitcherSheet`
-        // primitive that the wallet-home toolbar pill also
-        // presents (single canonical switcher UI, two entry
-        // points).
-        .sheet(isPresented: $isShowingWalletSwitcher) {
-            WalletSwitcherSheet(
-                onSelect: { isShowingWalletSwitcher = false },
-                onCreateNew: {
-                    isShowingWalletSwitcher = false
-                    isShowingCreate = true
-                },
-                onImport: {
-                    // No import flow plumbed here yet — defer to
-                    // Settings → Wallets where the import flow
-                    // already lives. Dismiss the switcher first
-                    // so the next session lands cleanly.
-                    isShowingWalletSwitcher = false
-                    selectedTabRaw = MainTab.settings.rawValue
-                }
-            )
-            .uniAppEnvironment()
-            .presentationDetents([.medium, .large])
-            .presentationDragIndicator(.visible)
-            .presentationBackground(UniColors.Background.primary)
+        // Wallet icon picker — surfaced by the "Customise icon" item
+        // in the long-press context menu. Reuses
+        // `WalletIconPickerSheet`, the same primitive presented from
+        // the wallet-home toolbar pill's existing entry point.
+        .sheet(isPresented: $isShowingPicker) {
+            if let active = activeWallet {
+                WalletIconPickerSheet(walletId: active.id)
+                    .uniAppEnvironment()
+                    .presentationDetents([.large])
+                    .presentationDragIndicator(.visible)
+                    .presentationBackground(UniColors.Background.primary)
+            }
         }
         .fullScreenCover(isPresented: $isShowingCreate, onDismiss: {
             createPath = NavigationPath()
@@ -215,27 +221,214 @@ struct MainTabView: View {
             .uniAppEnvironment()
             .presentationBackground(UniColors.Background.primary)
         }
+        // Import flow — surfaced directly from the long-press
+        // context menu's "Import existing wallet" item. The prior
+        // implementation only switched to the Settings tab and
+        // forced the user to navigate through Settings → Wallets to
+        // find the entry point; the fullScreenCover takes them
+        // straight there.
+        .fullScreenCover(isPresented: $isShowingImport, onDismiss: {
+            importPath = NavigationPath()
+        }) {
+            ImportWalletFlow(
+                navigationPath: $importPath,
+                onDismiss: { isShowingImport = false },
+                onCompleted: { _ in isShowingImport = false }
+            )
+            .uniAppEnvironment()
+            .presentationBackground(UniColors.Background.primary)
+        }
     }
 
-    // MARK: - Wallet tab label (the avatar replaces the glyph)
+    // MARK: - Wallet tab label (avatar only — no "Wallet" text)
     //
     // iOS 26's `Tab(value:content:label:)` initializer accepts an
-    // arbitrary `label:` closure — it does NOT require
-    // `Label(_:systemImage:)`. We hand it a `Label` whose `icon`
-    // slot is our `WalletAvatar` view; iOS will use the icon as the
-    // tab glyph (auto-sized into the tab bar's glyph envelope) and
-    // the title as the tab text below.
+    // arbitrary `label:` closure. The Wallet tab is the only one
+    // that ships WITHOUT visible text — the per-wallet avatar IS
+    // the identity, and adding "Wallet" underneath would compete
+    // with the wallet name shown in the toolbar pill above. The
+    // other three tabs (Swap, Browser, Settings) keep their
+    // `Label(_:systemImage:)` text by design — they are generic
+    // sections, not personalized identities.
+    //
+    // `.accessibilityLabel("Wallet")` preserves VoiceOver — the
+    // screenreader announces "Wallet, Tab" even though the visible
+    // label is image-only.
+    /// Stable fallback spec for the no-wallet case (clean launch
+    /// before `ensureActiveWalletSet()` lands one). Hoisted to a
+    /// `static let` so every body pass hands `WalletAvatarTabImage`
+    /// the *same* `Hashable` value instead of constructing a fresh
+    /// `auto(name:)` spec inline — stable inputs let the tab image's
+    /// internal cache key actually hit.
+    private static let fallbackAvatarSpec = WalletAvatarSpec.auto(name: "Wallet")
+
     @ViewBuilder
     private var walletTabLabel: some View {
-        Label {
-            Text("Wallet")
-        } icon: {
-            WalletAvatar(
-                symbol: activeWallet?.iconSymbol ?? WalletAvatarDefaults.symbol,
-                colorHex: activeWallet?.iconColorHex ?? WalletAvatarDefaults.colorHex,
-                size: .tabIcon
+        // 2026-06-09 — gradient-disc avatar per the design handoff.
+        // `WalletRecord.avatarSpec` hydrates the persisted columns
+        // through `WalletAvatarSpec.hydrate(...)` with auto(name)
+        // fallback so the disc is never blank even pre-migration.
+        // When there's no wallet yet (clean launch before
+        // `ensureActiveWalletSet()` lands one), we render the
+        // hoisted `fallbackAvatarSpec` above.
+        //
+        // **2026-06-09 v2 (Thuglife `8588`) — `WalletAvatarTabImage`,
+        // not the raw `WalletAvatar`.** iOS UITabBar renders the icon
+        // slot's view as a template by default — alpha mask kept,
+        // colors replaced with the unselected-tab gray (or the
+        // selected-tab tint). The user observed this live: their
+        // green disc + W rendered correctly in the toolbar pill but
+        // appeared as a gray W in the bottom tab. The wrapper snapshots
+        // the SwiftUI avatar to a `UIImage` marked `.alwaysOriginal`,
+        // which opts the icon out of template rendering and preserves
+        // the gradient + sheen + edge + badge as drawn. See
+        // `WalletAvatarTabImage.swift` for the rationale.
+        let spec: WalletAvatarSpec = activeWallet?.avatarSpec
+            ?? Self.fallbackAvatarSpec
+        // 2026-06-09 v3 — bumped from 28pt → 36pt per user request.
+        // The disc carries the wallet's identity; at 28pt it read as
+        // a small dot next to the other tabs' SF Symbols. 36pt gives
+        // the gradient the room to do its job without breaking out
+        // of iOS's tab-icon envelope.
+        // Pass a source size larger than the system envelope so the
+        // wrapper's `ImageRenderer` produces a high-resolution bitmap
+        // even after iOS clamps it. `.imageScale(.large)` inside
+        // `WalletAvatarTabImage`'s body nudges the displayed envelope
+        // up by ~15% — the only public-API knob iOS 26 gives us.
+        WalletAvatarTabImage(spec: spec, size: 60, walletId: activeWallet?.id)
+            .accessibilityLabel(Text("Wallet"))
+    }
+
+    // MARK: - Context menu builder
+    //
+    // Builds the native iOS `UIMenu` presented by
+    // `UIContextMenuInteraction` when the user long-presses the
+    // Wallet tab. Per 2026-06-09 user direction the menu surfaces
+    // wallet identity, customisation, switching, and the create /
+    // import flows — replacing the prior `WalletSwitcherSheet` with
+    // an apple-native primitive.
+    //
+    // **Reactivity.** `buildWalletTabMenu()` runs every time the
+    // interaction fires (the `TabBarLongPressInstaller` calls the
+    // closure lazily, not at view body), so the menu reflects the
+    // live `@Query` snapshot. A wallet renamed in Settings shows up
+    // with its new name on the next long-press without any cache
+    // invalidation step.
+    //
+    // **Menu shape.**
+    //   ┌─────────────────────────────┐
+    //   │ Customise icon              │  ← active wallet only
+    //   │ Wallet settings             │
+    //   ├─────────────────────────────┤
+    //   │ Switch wallet → submenu     │  ← only when count > 1
+    //   │   • Wallet A ✓               │
+    //   │   • Wallet B                 │
+    //   ├─────────────────────────────┤
+    //   │ Create new wallet           │
+    //   │ Import existing wallet      │
+    //   └─────────────────────────────┘
+    private func buildWalletTabMenu() -> UIMenu {
+        var children: [UIMenuElement] = []
+
+        // 1. Primary group — Customise + Settings.
+        var primaryActions: [UIAction] = []
+        if activeWallet != nil {
+            primaryActions.append(
+                UIAction(
+                    title: String(localized: "Customise icon"),
+                    image: UIImage(systemName: "paintbrush")
+                ) { _ in
+                    isShowingPicker = true
+                }
+            )
+            primaryActions.append(
+                UIAction(
+                    title: String(localized: "Wallet settings"),
+                    image: UIImage(systemName: "gearshape")
+                ) { _ in
+                    selectedTabRaw = MainTab.settings.rawValue
+                }
             )
         }
+        if !primaryActions.isEmpty {
+            children.append(
+                UIMenu(title: "", options: .displayInline, children: primaryActions)
+            )
+        }
+
+        // 2. Switch wallet — only when the user has more than one
+        //    wallet. Each item is a UIAction; the active wallet
+        //    carries state `.on` (the iOS native checkmark).
+        if allWallets.count > 1 {
+            let switchActions: [UIAction] = allWallets.map { wallet in
+                let isActive = wallet.id == activeWallet?.id
+                return UIAction(
+                    title: wallet.name,
+                    image: renderWalletAvatarMenuImage(for: wallet),
+                    state: isActive ? .on : .off
+                ) { _ in
+                    activeWalletIdRaw = wallet.id.uuidString
+                }
+            }
+            let switchMenu = UIMenu(
+                title: String(localized: "Switch wallet"),
+                image: UIImage(systemName: "rectangle.stack"),
+                children: switchActions
+            )
+            children.append(
+                UIMenu(title: "", options: .displayInline, children: [switchMenu])
+            )
+        }
+
+        // 3. Add wallet group — Create + Import.
+        let addGroup = UIMenu(
+            title: "",
+            options: .displayInline,
+            children: [
+                UIAction(
+                    title: String(localized: "Create new wallet"),
+                    image: UIImage(systemName: "plus")
+                ) { _ in
+                    isShowingCreate = true
+                },
+                UIAction(
+                    title: String(localized: "Import existing wallet"),
+                    image: UIImage(systemName: "square.and.arrow.down")
+                ) { _ in
+                    isShowingImport = true
+                }
+            ]
+        )
+        children.append(addGroup)
+
+        return UIMenu(title: "", children: children)
+    }
+
+    /// Snapshot a wallet's `WalletAvatar` to a `UIImage` with
+    /// `.alwaysOriginal` rendering so the iOS context menu shows
+    /// the user's real chosen identity (gradient disc + glyph /
+    /// monogram / custom SVG) instead of a generic SF Symbol.
+    ///
+    /// **Why `.alwaysOriginal`.** `UIAction.image` is template-rendered
+    /// by `UIMenu` — the system takes the alpha channel and fills with
+    /// the menu's chrome tint (gray on light, light gray on dark).
+    /// Without `.alwaysOriginal`, the avatar's gradient gets stripped
+    /// and the user sees a flat silhouette. Same trick the bottom
+    /// `WalletAvatarTabImage` uses for the tab icon (see that file's
+    /// doc-comment for the deeper rationale).
+    ///
+    /// **Source size.** 96pt — large enough that the iOS menu's
+    /// downscale produces a crisp result at the system's ~22-26pt
+    /// menu-icon envelope.
+    @MainActor
+    private func renderWalletAvatarMenuImage(for wallet: WalletRecord) -> UIImage {
+        let renderer = ImageRenderer(
+            content: WalletAvatar(spec: wallet.avatarSpec, size: .row)
+                .frame(width: 96, height: 96)
+        )
+        renderer.scale = UITraitCollection.current.displayScale
+        let image = renderer.uiImage ?? UIImage()
+        return image.withRenderingMode(.alwaysOriginal)
     }
 }
 

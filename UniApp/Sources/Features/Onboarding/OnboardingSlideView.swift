@@ -55,14 +55,14 @@ struct OnboardingSlideView: View {
             )
 
             VStack(spacing: UniSpacing.m) {
-                UniLargeTitle(text: slide.title, alignment: .center)
+                UniLargeTitle(text: slide.titleKey, alignment: .center)
                     .modifier(OnboardingStaggeredFadeIn(
                         visible: !isWelcomeSlide || contentVisible,
                         delay: isWelcomeSlide ? 0.10 : 0
                     ))
 
                 UniBody(
-                    text: slide.body,
+                    text: slide.bodyKey,
                     alignment: .center,
                     color: UniColors.Text.secondary
                 )

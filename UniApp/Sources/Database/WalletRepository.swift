@@ -13,6 +13,40 @@ import SwiftData
 /// or from a future background-import path; both share this actor.
 @ModelActor
 actor WalletRepository {
+    /// `true` when the backing container is the in-memory fallback
+    /// (`ApertureDatabase.isInMemoryFallback`) rather than the durable
+    /// on-disk store. Read from the container's own configuration so
+    /// the actor doesn't need a main-actor hop to ask the database
+    /// singleton.
+    private var isEphemeralStore: Bool {
+        modelContainer.configurations.contains { $0.isStoredInMemoryOnly }
+    }
+
+    /// Custody mutations (create / import / delete) must never run
+    /// against the in-memory fallback container: the SwiftData rows
+    /// would vanish at app exit while the matching Keychain state
+    /// (seed, mnemonic, manifest entry) persisted — permanently
+    /// orphaning a funded wallet's seed behind no record, or wiping a
+    /// real seed the on-disk store still references. Throwing keeps
+    /// the failure honest at the call site instead of silently losing
+    /// a wallet at the next launch.
+    private func ensureDurableStore() throws {
+        guard !isEphemeralStore else {
+            throw WalletRepositoryError.ephemeralStore
+        }
+    }
+
+    /// Mirror the current wallet set into the Keychain manifest — but
+    /// ONLY when the backing store is the durable on-disk one. In an
+    /// in-memory fallback session the REAL manifest must never be
+    /// rewritten from ephemeral state: the on-disk store (left intact
+    /// by the fallback path) is the source of truth the next healthy
+    /// launch re-syncs from.
+    private func syncManifestIfDurable() {
+        guard !isEphemeralStore else { return }
+        WalletManifestStore.sync(from: modelContext)
+    }
+
     /// Total wallet count. Drives the "do we have any wallets yet?"
     /// decision at app launch (informs onboarding routing — T-001).
     func walletCount() throws -> Int {
@@ -54,6 +88,7 @@ actor WalletRepository {
         requiresBackup: Bool,
         addresses: [(chainRaw: String, address: String)] = []
     ) throws -> PersistentIdentifier {
+        try ensureDurableStore()
         let record = WalletRecord(
             id: id,
             name: name,
@@ -77,6 +112,7 @@ actor WalletRepository {
             modelContext.insert(addr)
         }
         try modelContext.save()
+        syncManifestIfDurable()
         return record.persistentModelID
     }
 
@@ -93,6 +129,7 @@ actor WalletRepository {
         colorTag: String,
         addresses: [(chainRaw: String, address: String)]
     ) throws -> PersistentIdentifier {
+        try ensureDurableStore()
         let record = WalletRecord(
             id: id,
             name: name,
@@ -113,6 +150,7 @@ actor WalletRepository {
             modelContext.insert(addr)
         }
         try modelContext.save()
+        syncManifestIfDurable()
         return record.persistentModelID
     }
 
@@ -125,6 +163,7 @@ actor WalletRepository {
         chainRaw: String,
         address: String
     ) throws -> PersistentIdentifier {
+        try ensureDurableStore()
         let record = WalletRecord(
             id: id,
             name: name,
@@ -140,6 +179,7 @@ actor WalletRepository {
         addr.wallet = record
         modelContext.insert(addr)
         try modelContext.save()
+        syncManifestIfDurable()
         return record.persistentModelID
     }
 
@@ -153,6 +193,7 @@ actor WalletRepository {
         chainRaw: String,
         addresses: [String]
     ) throws -> PersistentIdentifier {
+        try ensureDurableStore()
         let record = WalletRecord(
             id: id,
             name: name,
@@ -170,19 +211,61 @@ actor WalletRepository {
             modelContext.insert(addr)
         }
         try modelContext.save()
+        syncManifestIfDurable()
         return record.persistentModelID
     }
 
-    /// Update a wallet's identity avatar (SF Symbol + background
-    /// hex color). Called from `WalletIconPickerSheet` whenever the
-    /// user taps a swatch or a symbol in the customisation grid.
+    /// Update a wallet's identity avatar — gradient + symbol type +
+    /// glyph or monogram. Called from `WalletIconPickerSheet`
+    /// whenever the user taps Save on the new gradient-disc picker.
     /// Writes through SwiftData so every consumer (`MainTabView` tab
     /// icon, wallet-home toolbar pill, `WalletSwitcherSheet` rows,
     /// `WalletsListView` rows, `WalletDetailView` preview) reacts via
     /// `@Query` and re-renders without per-surface plumbing.
     ///
+    /// The badge is derived from the wallet's kind at hydrate time —
+    /// it's never written by this method, per the design handoff hard
+    /// rule #4 ("the type badge is derived from wallet type, NOT
+    /// user-selectable"). The caller passes a `WalletAvatarSpec`
+    /// without a badge; this method ignores any badge field.
+    ///
     /// Returns `true` if the wallet was found and updated; `false`
     /// if the id did not match (e.g. wallet was deleted concurrently).
+    @discardableResult
+    func updateAvatar(id: UUID, spec: WalletAvatarSpec) throws -> Bool {
+        var descriptor = FetchDescriptor<WalletRecord>(
+            predicate: #Predicate { $0.id == id }
+        )
+        descriptor.fetchLimit = 1
+        guard let record = try modelContext.fetch(descriptor).first else {
+            return false
+        }
+        record.avatarGradient = spec.gradient.rawValue
+        record.avatarSymbolType = spec.symbolType.rawValue
+        record.avatarGlyph = spec.glyph?.rawValue
+        record.avatarMonogram = spec.monogram
+        // v3 Upload-tab fields. Nil when the spec is `.glyph` or
+        // `.mono`; the writer overwrites the prior `.custom` values
+        // to nil on mode-switch so a wallet that was `.custom` and
+        // is now `.glyph` doesn't carry a stale SVG blob.
+        record.avatarCustomSvg = spec.customSvg
+        record.avatarCustomTint = spec.customTint?.rawValue
+        // Badge is derived from kind — re-derive on every write so
+        // a future kind change (e.g., upgrading a watch-only to a
+        // full custody) auto-updates the badge.
+        record.avatarBadge = WalletAvatarBadge.derive(from: record.kind)?.rawValue
+        record.updatedAt = Date()
+        try modelContext.save()
+        syncManifestIfDurable()
+        return true
+    }
+
+    /// LEGACY bridge. Pre-2026-06-09 callers that update the
+    /// flat-circle avatar by SF Symbol + hex still link here through
+    /// the source; the implementation now writes the legacy columns
+    /// AND emits a deterministic auto(name)-based avatar spec for
+    /// the new gradient system. Used by no live code path today;
+    /// retained until grep audit confirms zero callers.
     @discardableResult
     func updateAvatar(id: UUID, iconSymbol: String, iconColorHex: String) throws -> Bool {
         var descriptor = FetchDescriptor<WalletRecord>(
@@ -196,42 +279,89 @@ actor WalletRepository {
         record.iconColorHex = iconColorHex
         record.updatedAt = Date()
         try modelContext.save()
+        syncManifestIfDurable()
         return true
     }
 
     /// One-shot backfill for the 2026-06-09 avatar schema additive.
     /// Called from `ApertureDatabase.bootstrap()` after the
     /// singleton-record bootstrap. Idempotent — touches only rows
-    /// whose `iconSymbol` or `iconColorHex` is empty (Swift-level
-    /// default values are non-empty, so this is a no-op for both
-    /// fresh-installs and already-migrated installs).
+    /// whose avatar columns are empty.
     ///
-    /// **Why a backfill at all.** SwiftData's lightweight migration
-    /// path lands additive `var` fields with their Swift-level
-    /// `init`-time defaults — which works for the create path
-    /// (`WalletRecord.init(...)` uses `WalletAvatarDefaults`). But
-    /// the decode path for pre-2026-06-09 SQLite rows fills the new
-    /// columns with the schema's underlying-type default — empty
-    /// `String("")` — *not* the Swift-level default. Without this
-    /// backfill, an existing wallet's avatar renders as a blank
-    /// circle (empty SF Symbol name + invalid hex falling back to
-    /// the default Ink). The backfill resolves both fields the
-    /// first time the store opens after the upgrade.
+    /// **Two backfill paths.**
+    ///
+    /// 1. **Pre-migration rows** (existed before 2026-06-09) decode
+    ///    the additive avatar columns as empty strings. For each, we
+    ///    compute `WalletAvatarSpec.auto(name:)` against the wallet's
+    ///    name — deterministic, on-brand identity that lands the same
+    ///    color every time, so a future re-migration would idempotently
+    ///    produce the same spec.
+    ///
+    /// 2. **Legacy column gaps** (rows where `iconSymbol` /
+    ///    `iconColorHex` ended up empty — the original 2026-06-09
+    ///    backfill we authored as a defensive guard). Same shape:
+    ///    set the schema-level defaults so source-compatible decode
+    ///    paths still resolve.
+    ///
+    /// Per the design handoff: *"New wallets get a deterministic
+    /// avatar from their name."* That property holds across
+    /// installs, devices, and re-migrations because `auto(name)` is
+    /// pure (`name` in → spec out), with no side state.
+    ///
+    /// The fetch is predicated on the empty-column shape so only rows
+    /// that actually need backfill load — on a healthy store (every
+    /// launch after the one-time backfill) this fetches zero rows
+    /// instead of materializing every wallet.
     func backfillAvatarDefaults() throws {
-        let descriptor = FetchDescriptor<WalletRecord>()
+        let descriptor = FetchDescriptor<WalletRecord>(
+            predicate: #Predicate {
+                $0.iconSymbol == ""
+                    || $0.iconColorHex == ""
+                    || $0.avatarGradient == ""
+                    || $0.avatarSymbolType == ""
+            }
+        )
         let rows = try modelContext.fetch(descriptor)
         var didChange = false
         for row in rows {
+            // Legacy column backfill — keep the schema defensible for
+            // any read path that still touches `iconSymbol` /
+            // `iconColorHex`.
             if row.iconSymbol.isEmpty {
-                row.iconSymbol = WalletAvatarDefaults.symbol
+                row.iconSymbol = WalletAvatarDefaults.legacySymbol
                 didChange = true
             }
             if row.iconColorHex.isEmpty {
-                row.iconColorHex = WalletAvatarDefaults.colorHex
+                row.iconColorHex = WalletAvatarDefaults.legacyColorHex
+                didChange = true
+            }
+
+            // New avatar column backfill — when the gradient OR symbol
+            // type is empty, compute auto(name) and write the result.
+            // Per the design handoff: deterministic from `name`, so a
+            // second-run would produce the same spec (no thrash).
+            if row.avatarGradient.isEmpty || row.avatarSymbolType.isEmpty {
+                let auto = WalletAvatarDefaults.spec(forName: row.name, kind: row.kind)
+                row.avatarGradient = auto.gradient
+                row.avatarSymbolType = auto.symbolType
+                row.avatarGlyph = auto.glyph
+                row.avatarMonogram = auto.monogram
+                didChange = true
+            }
+            // Badge is always re-derived from kind on every backfill
+            // (idempotent — the same kind always produces the same
+            // raw value). If the row already has the same value, the
+            // SwiftData write coalesces.
+            let derivedBadge = WalletAvatarBadge.derive(from: row.kind)?.rawValue
+            if row.avatarBadge != derivedBadge {
+                row.avatarBadge = derivedBadge
                 didChange = true
             }
         }
-        if didChange { try modelContext.save() }
+        if didChange {
+            try modelContext.save()
+            syncManifestIfDurable()
+        }
     }
 
     /// Rename a wallet. Returns `true` if the wallet was found and
@@ -249,22 +379,47 @@ actor WalletRepository {
         record.name = newName
         record.updatedAt = Date()
         try modelContext.save()
+        syncManifestIfDurable()
         return true
     }
 
     /// Delete a wallet and cascade-delete its addresses, transactions,
-    /// and balances. The caller is responsible for also calling
-    /// `SeedVault.deleteSeed(for:)` so the Keychain item is removed —
-    /// this actor does not touch Keychain so it stays a pure database
-    /// surface.
-    func deleteWallet(id: UUID) throws {
+    /// and balances. Also wipes the wallet's Keychain material
+    /// (`SeedVault` seed + `MnemonicVault` mnemonic) — once the record
+    /// is gone the id is unrecoverable, so the vault wipe happens here
+    /// rather than being delegated to callers (where a missed call
+    /// orphans the seed in Keychain forever). Idempotent: both vaults
+    /// treat missing items as success, so wallets without seed
+    /// material (watch-only, already-wiped) delete cleanly. Vault
+    /// failures are logged at the source (`VaultError` paths) and do
+    /// not block the record deletion.
+    func deleteWallet(id: UUID) async throws {
+        try ensureDurableStore()
         var descriptor = FetchDescriptor<WalletRecord>(
             predicate: #Predicate { $0.id == id }
         )
         descriptor.fetchLimit = 1
         guard let record = try modelContext.fetch(descriptor).first else { return }
+        // Commit the durable record delete FIRST. If the save throws
+        // (disk full is the realistic trigger), the wallet stays fully
+        // intact — record, seed, and mnemonic — and the caller can
+        // surface the failure honestly. Wiping the vaults before the
+        // save risked the opposite: a failed save would leave a
+        // visible, healthy-looking wallet whose signing material was
+        // already destroyed forever.
         modelContext.delete(record)
         try modelContext.save()
+        syncManifestIfDurable()
+        // Both vaults are @MainActor (Keychain access policy) — hop
+        // explicitly. Wiping AFTER the save means the worst failure
+        // mode here is an orphaned Keychain item behind a deleted
+        // record (benign — leaks no funds, sweepable by diffing
+        // Keychain ids against `allWalletIds()`), never a live record
+        // without a seed.
+        await MainActor.run {
+            try? SeedVault.deleteSeed(for: id)
+            try? MnemonicVault.deleteMnemonic(for: id)
+        }
     }
 
     /// Mark the wallet as backed-up (clears `requiresBackup`). Called
@@ -279,6 +434,7 @@ actor WalletRepository {
         record.requiresBackup = false
         record.updatedAt = Date()
         try modelContext.save()
+        syncManifestIfDurable()
     }
 
     /// All wallet ids in the store, oldest first. Used by the
@@ -300,9 +456,26 @@ actor WalletRepository {
     /// Caller is responsible for the matching Keychain wipes via
     /// `allWalletIds()` first.
     func deleteAllWallets() throws {
+        try ensureDurableStore()
         let descriptor = FetchDescriptor<WalletRecord>()
         let rows = try modelContext.fetch(descriptor)
         for row in rows { modelContext.delete(row) }
         try modelContext.save()
+        // Also wipe the Keychain manifest — otherwise the next launch
+        // would happily "restore" the wallets the user just nuked.
+        // Safe to touch the REAL manifest here: `ensureDurableStore()`
+        // above guarantees this session is backed by the on-disk store.
+        WalletManifestStore.clear()
     }
+}
+
+/// Errors thrown by `WalletRepository` custody mutations.
+enum WalletRepositoryError: Error, Sendable, Equatable {
+    /// The backing store is the in-memory fallback
+    /// (`ApertureDatabase.isInMemoryFallback`) — records written this
+    /// session vanish at app exit while Keychain writes (seed,
+    /// mnemonic, manifest) would persist, permanently orphaning them.
+    /// Wallet create / import / delete are refused so the caller can
+    /// surface an honest failure instead of silently losing a wallet.
+    case ephemeralStore
 }

@@ -14,24 +14,32 @@ import SwiftUI
 ///   9. Privacy (non-custodial promise)
 ///  10. Threshold — where the two CTAs live.
 ///
-/// Per `CLAUDE.md` Rule #9, `title` and `body` are `LocalizedStringKey`s.
-/// The literals below act as the source-language (English) keys, and the
-/// String Catalog (`Localizable.xcstrings`) holds the translations. When
-/// the user changes language in Settings, `Text(LocalizedStringKey)` in
-/// `OnboardingSlideView` re-renders these in the new locale automatically
-/// via SwiftUI's `.environment(\.locale, …)` chain.
-// `LocalizedStringKey` conforms to `Equatable` but **not** `Hashable` nor
-// `Sendable` in the iOS 26 SDK. We drop `Hashable` (it was unused —
-// `ForEach` keys by `id`) and adopt `@unchecked Sendable` so the
-// `static let all` array remains concurrency-safe. The struct is
-// all-`let` with value-typed fields, and `LocalizedStringKey` internally
-// stores a `String` key plus optional format-argument array — safe in
-// practice for `let`-only static configuration data.
-struct OnboardingSlide: Identifiable, @unchecked Sendable {
+/// Per `CLAUDE.md` Rule #9, `title` and `body` are
+/// `LocalizedStringResource`s. The literals below act as the
+/// source-language (English) keys — `LocalizedStringResource`'s literal
+/// initializer is extraction-compatible, so the String Catalog
+/// (`Localizable.xcstrings`) keys are unchanged and existing
+/// translations still match. `LocalizedStringResource` conforms to
+/// `Sendable` natively (unlike `LocalizedStringKey`), so the
+/// `static let all` array is concurrency-safe without `@unchecked`.
+/// `OnboardingSlideView` renders through the `titleKey` / `bodyKey`
+/// bridges below, which preserve the environment-locale-aware lookup —
+/// when the user changes language in Settings, the slides re-render in
+/// the new locale via SwiftUI's `.environment(\.locale, …)` chain.
+struct OnboardingSlide: Identifiable, Sendable {
     let id: Int
     let illustration: OnboardingIllustration
-    let title: LocalizedStringKey
-    let body: LocalizedStringKey
+    let title: LocalizedStringResource
+    let body: LocalizedStringResource
+
+    /// Bridges the stored resource back to a `LocalizedStringKey` for
+    /// the design-system text components (`UniLargeTitle` et al.). The
+    /// key string is identical to the catalog key, so `Text` resolves it
+    /// through the SwiftUI environment locale exactly as before —
+    /// in-app language switching keeps working live.
+    var titleKey: LocalizedStringKey { LocalizedStringKey(title.key) }
+    /// See `titleKey`.
+    var bodyKey: LocalizedStringKey { LocalizedStringKey(body.key) }
 
     static let all: [OnboardingSlide] = [
         OnboardingSlide(

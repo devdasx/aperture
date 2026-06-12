@@ -18,6 +18,11 @@ enum XRPLTokenRegistry {
         let issuer: String       // r-prefixed XRPL address
         let symbol: String
         let name: String
+        /// Always 0 for XRPL IOUs: `account_lines` returns balances
+        /// as already-decimal strings ("12.5"), so the amount is
+        /// NEVER divided by 10^decimals. A non-zero value here would
+        /// tempt a caller into dividing an already-human-readable
+        /// amount.
         let decimals: Int
     }
 
@@ -27,7 +32,9 @@ enum XRPLTokenRegistry {
             issuer:   "rMxCKbEDwqr76QuheSUMdEGf4B9xJ8m5De",
             symbol:   "RLUSD",
             name:     "Ripple USD",
-            decimals: 6
+            // 0, not 6 — XRPL IOU amounts arrive as decimal strings
+            // and are not divided. See the `decimals` doc above.
+            decimals: 0
         ),
     ]
 }

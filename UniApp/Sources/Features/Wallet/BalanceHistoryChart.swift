@@ -81,7 +81,33 @@ import SwiftUI
 struct BalanceHistoryChart: View {
     let transactions: [TransactionRecord]
     let currentBalances: [TokenBalanceRecord]
+    /// **2026-06-12 — per-symbol price fallback.** For tokens the
+    /// wallet held in the past but no longer holds, currentBalances
+    /// has zero rows for that token → fiatPerUnit map can't price
+    /// it. This dict (keyed by uppercased symbol) is the fallback
+    /// the reconstructor uses to value past holdings of fully
+    /// cashed-out tokens. Default empty so old call sites still
+    /// compile; new call sites read PriceCacheRepository.
+    let priceCache: [String: Decimal]
+    /// **2026-06-12 — per-day historical close prices.** Keyed by
+    /// uppercased symbol → `[yyyymmdd: close]`. The reconstructor
+    /// values each curve point at its day's close, so a token
+    /// whose price has fallen 99% since the user held it renders
+    /// past peaks at their honest then-value ($4000) rather than
+    /// today's collapsed valuation ($50). Populated by the chart's
+    /// `.task` from `HistoricalPriceRepository`.
+    let priceHistory: [String: [Int: Decimal]]
     let currencyCode: String
+    /// 2026-06-09 — published scrubbed fiat. When the user drags
+    /// across the sparkline, this binding is set to the touched
+    /// point's fiat value so the parent's hero amount can render
+    /// the scrubbed value (animated via `.contentTransition(.numericText())`).
+    /// Set back to `nil` when the user lifts off — the hero returns
+    /// to the wallet's actual total. Per user direction the chart
+    /// no longer renders a separate "JOD X · in N sec" readout;
+    /// the hero is the single source of truth and the chart drives
+    /// it during scrub.
+    var scrubbedFiat: Binding<Decimal?> = .constant(nil)
 
     /// Persisted range selection. Default `.all` so a first-launch
     /// user sees the full shape of their wallet's history; on
@@ -111,6 +137,29 @@ struct BalanceHistoryChart: View {
 
     @State private var scrubIndex: Int?
 
+    // MARK: - Memoized reconstruction (computed off-body)
+    //
+    // The full history reconstruction used to run inside `body` —
+    // on EVERY body evaluation, including every scrub tick (the
+    // `scrubIndex` `@State` invalidates the body per drag move).
+    // It now runs once into `@State` via `.task(id:)` keyed on the
+    // actual dependencies (transactions identity/count, current
+    // balances, range, currency); the body only reads the cached
+    // arrays. The min/max band the sparkline normalizes against is
+    // computed alongside the points (instead of `points.min()` /
+    // `points.max()` per drag tick inside the canvas math).
+
+    /// Reconstructed (or zero-baseline-synthesized) balance points.
+    /// Empty only before the first `.task(id:)` pass; the body
+    /// falls back to the zero baseline for that single frame.
+    @State private var chartPoints: [BalancePoint] = []
+    /// `chartPoints` projected to `Double` for the canvas math.
+    @State private var sparkValues: [Double] = []
+    /// Cached `sparkValues.min()` / `.max()` so the scrub layer's
+    /// per-tick math never rescans the series.
+    @State private var sparkMin: Double = 0
+    @State private var sparkMax: Double = 0
+
     var body: some View {
         // Spacing 0 (was UniSpacing.s) so the delta caption sits
         // directly under the hero amount with no gap per the
@@ -118,51 +167,169 @@ struct BalanceHistoryChart: View {
         // gives breathing room around the sparkline and pill via
         // their own padding.
         VStack(alignment: .leading, spacing: 0) {
-            // Reconstruct on body — pure function, cheap enough to
-            // run per body evaluation. SwiftData @Query already
-            // throttles wallet-home re-renders to actual data
-            // changes; we don't memoize further.
-            let points = BalanceHistoryReconstructor.reconstruct(
-                transactions: transactions,
-                currentBalances: currentBalances,
-                range: currentRange
-            )
+            // 2026-06-09 — empty-state copy removed per user
+            // direction (*"remove balance history + subtitle, show
+            // the chart even with 0 balance and 0 history"*). When
+            // the reconstructor returns < 2 points (fresh wallet,
+            // no transactions yet) `rebuildPoints()` synthesizes a
+            // flat baseline at fiat = 0 across the current range so
+            // the sparkline STILL renders — a calm horizontal line
+            // at the zero axis. The chart surface is consistent at
+            // every wallet age; the user reads "no history yet"
+            // from the flat shape, not from a missing affordance.
+            let points = chartPoints.isEmpty
+                ? Self.zeroBaseline(for: currentRange)
+                : chartPoints
 
-            if points.count < 2 {
-                emptyState
-            } else {
-                deltaCaption(points: points)
-                // Negative horizontal padding so ONLY the sparkline
-                // bleeds out beyond the card's normal inset
-                // (`UniSpacing.l`) to land at 5pt from the card
-                // edge. Computed as `-(UniSpacing.l - 5)` so the
-                // visible curve has exactly 5pt of edge gap. Delta
-                // caption above and period pill below stay at the
-                // normal padding so they align with everything else
-                // inside the card. Per 2026-06-09 user direction:
-                // "the padding 5 pixels should be only for chart,
-                // for other layouts in inside the card should be
-                // same as before."
-                SparklineChart(
-                    points: points.map { fiatAsDouble($0.fiat) },
-                    scrubIndex: $scrubIndex
-                )
-                .frame(height: 140)
-                .padding(.horizontal, -(UniSpacing.l - 5))
-                .accessibilityElement(children: .ignore)
-                .accessibilityLabel(Text("Balance history chart"))
-                .accessibilityValue(chartAccessibilityValue(points: points))
-                ChartPeriodPill(selection: selectedRange)
-                    // 24pt gap above the period pill row — the
-                    // sparkline above sits closer to the curve so
-                    // the pill reads as the next discrete control,
-                    // not as part of the chart canvas.
-                    .padding(.top, 24)
-            }
+            // 2026-06-09 — deltaCaption removed entirely per user
+            // direction. The hero amount alone carries the displayed
+            // number; the chart provides shape, not a second
+            // numeric readout. The scrub-driven hero animation
+            // wiring stays — we attach the `.onChange(of:
+            // scrubIndex)` to an invisible 0-height anchor so the
+            // chart still publishes scrubbed fiat upward.
+            Color.clear
+                .frame(height: 0)
+                .onChange(of: scrubIndex) { _, newIndex in
+                    let scrubbed: Decimal? = {
+                        guard let idx = newIndex, idx >= 0, idx < points.count else {
+                            return nil
+                        }
+                        return points[idx].fiat
+                    }()
+                    withAnimation(.snappy(duration: 0.18)) {
+                        scrubbedFiat.wrappedValue = scrubbed
+                    }
+                }
+            // Negative horizontal padding so ONLY the sparkline
+            // bleeds out beyond the card's normal inset
+            // (`UniSpacing.l`) to land at 5pt from the card
+            // edge. Computed as `-(UniSpacing.l - 5)` so the
+            // visible curve has exactly 5pt of edge gap. Delta
+            // caption above and period pill below stay at the
+            // normal padding so they align with everything else
+            // inside the card. Per 2026-06-09 user direction:
+            // "the padding 5 pixels should be only for chart,
+            // for other layouts in inside the card should be
+            // same as before."
+            // Pre-task fallback: the zero baseline projects to two
+            // zero values (min = max = 0), exactly what
+            // `rebuildPoints()` would produce for the same input.
+            let values = chartPoints.isEmpty
+                ? points.map { fiatAsDouble($0.fiat) }
+                : sparkValues
+            SparklineChart(
+                points: values,
+                minValue: chartPoints.isEmpty ? 0 : sparkMin,
+                maxValue: chartPoints.isEmpty ? 0 : sparkMax,
+                scrubIndex: $scrubIndex
+            )
+            .frame(height: 140)
+            .padding(.horizontal, -(UniSpacing.l - 5))
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(Text("Balance history chart"))
+            .accessibilityValue(chartAccessibilityValue(points: points))
+            ChartPeriodPill(selection: selectedRange)
+                // 24pt gap above the period pill row — the
+                // sparkline above sits closer to the curve so
+                // the pill reads as the next discrete control,
+                // not as part of the chart canvas.
+                .padding(.top, 24)
         }
         // No outer vertical padding — caption sits flush against
         // the balance hero above. The List row's bottom inset
         // contributes the gap to the card's bottom edge.
+        .task(id: rebuildKey) { rebuildPoints() }
+    }
+
+    /// Dependency key for the memoized reconstruction. Captures the
+    /// transaction set (count + newest timestamp), the current
+    /// balances' total cached fiat (a refresh can re-price rows
+    /// without changing counts), the selected range, and the display
+    /// currency. O(N) scalar scans per body pass — orders of
+    /// magnitude cheaper than the reconstruction they gate.
+    private var rebuildKey: Int {
+        var hasher = Hasher()
+        hasher.combine(transactions.count)
+        var latest = Date.distantPast
+        for tx in transactions where tx.occurredAt > latest {
+            latest = tx.occurredAt
+        }
+        hasher.combine(latest)
+        var fiatTotal = Decimal.zero
+        for balance in currentBalances {
+            fiatTotal += balance.fiatValueCached
+        }
+        hasher.combine(fiatTotal)
+        hasher.combine(currentBalances.count)
+        hasher.combine(selectedRangeRaw)
+        hasher.combine(currencyCode)
+        // 2026-06-12 — the per-symbol price cache feeds the
+        // cashed-out fallback. Re-hashing on every refresh would
+        // be expensive; we hash the count + sum of prices so
+        // a meaningful change invalidates the memo without paying
+        // O(N) on every body pass.
+        hasher.combine(priceCache.count)
+        var priceSum = Decimal.zero
+        for v in priceCache.values { priceSum += v }
+        hasher.combine(priceSum)
+        // 2026-06-12 — historical-price snapshot fingerprint.
+        // Same shape as priceCache: count + sum of all prices.
+        // Sum-over-all is a cheap O(N) scan and changes whenever
+        // a new day's close arrives.
+        hasher.combine(priceHistory.count)
+        var histSum = Decimal.zero
+        var histDayCount = 0
+        for series in priceHistory.values {
+            histDayCount += series.count
+            for v in series.values { histSum += v }
+        }
+        hasher.combine(histDayCount)
+        hasher.combine(histSum)
+        return hasher.finalize()
+    }
+
+    /// Run the reconstructor once and cache every projection the
+    /// body needs: the points, the `Double` series for the canvas,
+    /// and the min/max band the sparkline normalizes against.
+    private func rebuildPoints() {
+        let reconstructed = BalanceHistoryReconstructor.reconstruct(
+            transactions: transactions,
+            currentBalances: currentBalances,
+            priceCache: priceCache,
+            priceHistory: priceHistory,
+            range: currentRange
+        )
+        let resolved = reconstructed.count >= 2
+            ? reconstructed
+            : Self.zeroBaseline(for: currentRange)
+        chartPoints = resolved
+        sparkValues = resolved.map { fiatAsDouble($0.fiat) }
+        sparkMin = sparkValues.min() ?? 0
+        sparkMax = sparkValues.max() ?? 0
+    }
+
+    /// Synthesize a 2-point flat baseline at fiat = 0 spanning the
+    /// current range — used when the reconstructor returns < 2 real
+    /// points (fresh wallet, no transactions yet). The sparkline
+    /// renders a calm horizontal line at the zero axis instead of
+    /// the prior "Balance history / Your balance changes will
+    /// appear here" empty card per 2026-06-09 user direction.
+    private static func zeroBaseline(for range: BalanceHistoryRange) -> [BalancePoint] {
+        let now = Date()
+        let span: TimeInterval
+        switch range {
+        case .day:   span = 86_400          // 1 day
+        case .week:  span = 86_400 * 7      // 1 week
+        case .month: span = 86_400 * 30     // ~1 month
+        case .year:  span = 86_400 * 365    // ~1 year
+        case .all:   span = 86_400 * 30     // ~1 month as a calm default for "all" without any data
+        }
+        let earlier = now.addingTimeInterval(-span)
+        return [
+            BalancePoint(timestamp: earlier, fiat: 0),
+            BalancePoint(timestamp: now, fiat: 0)
+        ]
     }
 
     // MARK: - Delta caption
@@ -174,23 +341,15 @@ struct BalanceHistoryChart: View {
     /// only (the line itself stays monochrome). Rule #16 §B.
     @ViewBuilder
     private func deltaCaption(points: [BalancePoint]) -> some View {
-        if let index = scrubIndex,
-           index >= 0,
-           index < points.count
-        {
-            // Scrubbing mode — historical readout at the
-            // selected timestamp.
-            let nearest = points[index]
-            HStack(spacing: UniSpacing.s) {
-                Text(WalletFormatting.fiat(nearest.fiat, currencyCode: currencyCode))
-                    .font(UniTypography.headline)
-                    .foregroundStyle(UniColors.Text.primary)
-                    .monospacedDigit()
-                Text(WalletFormatting.relativeTime(nearest.timestamp))
-                    .font(UniTypography.footnote)
-                    .foregroundStyle(UniColors.Text.tertiary)
-                Spacer(minLength: 0)
-            }
+        if scrubIndex != nil {
+            // 2026-06-09 — scrubbing readout removed per user
+            // direction. While the user drags, the chart publishes
+            // the touched fiat into `scrubbedFiat`; the parent's
+            // hero amount animates to it via
+            // `.contentTransition(.numericText())`. The caption row
+            // stays empty during scrub — one source of truth for the
+            // displayed number, the hero itself.
+            EmptyView()
         } else if let first = points.first, let last = points.last {
             // Resting mode — signed delta centered under the hero
             // amount per 2026-06-09 user direction. Arrow glyph and
@@ -243,18 +402,12 @@ struct BalanceHistoryChart: View {
     // for future readers, but the user prefers a clean visual
     // surface without the inline disclosure.
 
-    /// Calm empty state — no fake flat line, no chevron-down
-    /// chrome. Same register as the empty Holdings + empty Activity
-    /// surfaces on this screen.
-    private var emptyState: some View {
-        VStack(alignment: .leading, spacing: UniSpacing.xxs) {
-            UniHeadline(text: "Balance history")
-            UniFootnote(
-                text: "Your balance changes will appear here as transactions confirm on-chain.",
-                alignment: .leading
-            )
-        }
-    }
+    // 2026-06-09 — `emptyState` removed per user direction. The
+    // chart now renders a flat baseline at fiat = 0 when the
+    // reconstructor returns < 2 points (see `zeroBaseline(for:)`
+    // above) so the surface is consistent at every wallet age. The
+    // old "Balance history" headline + "Your balance changes will
+    // appear here" subtitle copy are gone.
 
     // MARK: - Helpers
 
@@ -309,6 +462,12 @@ private struct SparklineChart: View {
     /// to-newest). At least two points required for a meaningful
     /// curve; fewer renders a flat line.
     let points: [Double]
+
+    /// Precomputed `points.min()` / `points.max()`, supplied by the
+    /// parent alongside the memoized series so the per-drag-tick
+    /// normalization + haptic math never rescans the array.
+    let minValue: Double
+    let maxValue: Double
 
     /// Index of the currently-scrubbed sample, or `nil` at rest.
     /// Bound to the parent so it can swap the delta caption while
@@ -417,10 +576,10 @@ private struct SparklineChart: View {
         let curr = points[safeIndex]
         // Slope is computed in the y-domain's own units; we
         // normalize to its overall range so the intensity is
-        // comparable across days vs. years vs. flat wallets.
-        let minVal = points.min() ?? 0
-        let maxVal = points.max() ?? 1
-        let range = max(maxVal - minVal, 0.0001)
+        // comparable across days vs. years vs. flat wallets. The
+        // band comes precomputed from the parent — no per-tick
+        // `min()` / `max()` rescans.
+        let range = max(maxValue - minValue, 0.0001)
         let normalizedSlope = abs(curr - prev) / range
         return Float(min(0.8, 0.15 + normalizedSlope * 2.2))
     }
@@ -433,9 +592,8 @@ private struct SparklineChart: View {
     /// caller renders nothing in that case.
     private func normalizedPoints(in size: CGSize) -> [CGPoint] {
         guard points.count > 1 else { return [] }
-        let minVal = points.min() ?? 0
-        let maxVal = points.max() ?? 1
-        let range = maxVal - minVal
+        let minVal = minValue
+        let range = maxValue - minValue
         // 10% top + 10% bottom padding — the Stabro `padding: 0.1`
         // constant ported verbatim. Wallet balance histories sit in
         // a band; the padding makes the curve breathe.

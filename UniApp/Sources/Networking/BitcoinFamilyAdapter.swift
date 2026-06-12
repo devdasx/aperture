@@ -1,23 +1,56 @@
 import Foundation
 
-/// Domain-layer adapter for Bitcoin-family chains via Esplora-style
-/// REST endpoints. Covers `.bitcoin / .bitcoinCash / .litecoin /
-/// .dogecoin`. Dogecoin uses dogechain.info's shape; the other 3
-/// share Esplora's `/address/{addr}` JSON shape.
+/// Domain-layer adapter for Bitcoin-family chains via public REST
+/// endpoints. Covers `.bitcoin / .bitcoinCash / .litecoin /
+/// .dogecoin`. Bitcoin and Litecoin lead with Esplora's
+/// `/address/{addr}` shape; Dogecoin leads with BlockCypher (with a
+/// dogechain-shaped second pass for the registered fallback); BCH
+/// uses Haskoin. Each provider's path shape gets its own pass — see
+/// `fetchAccountSummary`.
 struct BitcoinFamilyAdapter: Sendable {
     let chain: SupportedChain
     let client: RPCClient
 
     /// Native balance in chain units (BTC, BCH, LTC, DOGE) — already
     /// divided by 10^8.
+    ///
+    /// **Per-provider path shapes (2026-06-12).** `callREST` appends
+    /// ONE path to every registered endpoint, but DOGE and LTC each
+    /// register two providers with *different* URL shapes (BlockCypher
+    /// `addrs/{addr}/balance` vs dogechain `address/balance/{addr}` vs
+    /// Esplora `address/{addr}`). A single-shape call left the
+    /// fallback provider permanently 404ing — once the primary
+    /// rate-limited, the chain silently failed despite a registered
+    /// fallback. Each provider shape now gets its own pass, chained
+    /// primary-shape → fallback-shape. Cancellation propagates
+    /// instead of cascading.
     func fetchAccountSummary(address: String) async throws(RPCError) -> AccountSummary {
         switch chain {
         case .dogecoin:
-            return try await fetchDogecoin(address: address)
+            // BlockCypher (primary) shape first; dogechain's own
+            // shape second so the registered fallback is reachable.
+            do {
+                return try await fetchBlockCypher(address: address)
+            } catch {
+                if case .cancelled = error { throw error }
+                return try await fetchDogechain(address: address)
+            }
         case .bitcoinCash:
             return try await fetchHaskoinBCH(address: address)
-        case .bitcoin, .litecoin:
+        case .bitcoin:
+            // Both registered endpoints (mempool.space, blockstream)
+            // are Esplora — one shape covers both.
             return try await fetchEsplora(address: address)
+        case .litecoin:
+            // litecoinspace (Esplora) primary; the registered
+            // BlockCypher fallback speaks `addrs/{addr}/balance`,
+            // not Esplora's `address/{addr}`.
+            do {
+                return try await fetchEsplora(address: address)
+            } catch {
+                if case .cancelled = error { throw error }
+                return try await fetchBlockCypher(address: address)
+            }
         default:
             throw .noEndpoint(chain)
         }
@@ -64,31 +97,57 @@ struct BitcoinFamilyAdapter: Sendable {
         return AccountSummary(nativeBalance: nativeBalance, isUsed: isUsed)
     }
 
-    private func fetchDogecoin(address: String) async throws(RPCError) -> AccountSummary {
-        // BlockCypher path/shape (primary endpoint per registry):
-        // GET /v1/doge/main/addrs/{addr}/balance → JSON with
-        // `balance` as a JSON number in koinu (10^8 per DOGE).
-        // The dogechain.info path is `/address/balance/{addr}`
-        // returning a JSON string in DOGE; that endpoint is
-        // currently Cloudflare-gated against non-browser UAs, so
-        // we lead with BlockCypher.
+    /// BlockCypher shape — DOGE's registered primary AND LTC's
+    /// registered fallback: GET {base}/addrs/{addr}/balance → JSON
+    /// with `balance` as a number in the chain's smallest unit
+    /// (koinu / litoshi, 10^8 per coin).
+    private func fetchBlockCypher(address: String) async throws(RPCError) -> AccountSummary {
         let data = try await client.callREST(chain: chain, path: "addrs/\(address)/balance")
         guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            throw .decodingFailed("Dogecoin response not JSON")
+            throw .decodingFailed("BlockCypher response not JSON")
         }
-        // BlockCypher returns a JSON number; dogechain returns a string.
-        // Accept either so a future fallback still works.
-        let koinu: Decimal
+        let units: Decimal
         if let n = json["balance"] as? NSNumber {
-            koinu = NSDecimalNumber(value: n.int64Value).decimalValue
-        } else if let s = json["balance"] as? String,
-                  let dec = Decimal(string: s) {
-            // dogechain.info shape — already in DOGE (not koinu).
-            return AccountSummary(nativeBalance: dec, isUsed: dec > 0)
+            units = NSDecimalNumber(value: n.int64Value).decimalValue
+        } else if let i = json["balance"] as? Int {
+            units = Decimal(i)
         } else {
-            throw .decodingFailed("Dogecoin balance field missing or wrong type")
+            throw .decodingFailed("BlockCypher balance field missing or wrong type")
         }
-        let doge = koinu / 100_000_000
+        let coins = units / Self.satoshisPerCoin
+        // BlockCypher's same payload carries `n_tx` (total tx count).
+        // Prefer it for `isUsed` — an address that received and then
+        // spent everything has balance 0 but n_tx > 0; deriving
+        // `isUsed` from balance alone would terminate gap-limit
+        // scanning too early on emptied addresses.
+        if let nTx = (json["n_tx"] as? NSNumber)?.intValue {
+            return AccountSummary(nativeBalance: coins, isUsed: nTx > 0)
+        }
+        return AccountSummary(nativeBalance: coins, isUsed: coins > 0)
+    }
+
+    /// dogechain.info shape — DOGE's registered fallback:
+    /// GET {base}/address/balance/{addr} → `balance` as a string
+    /// already denominated in DOGE (not koinu). The host is
+    /// currently Cloudflare-gated against non-browser UAs (see
+    /// `RPCRegistry`), so this pass usually fails today — it exists
+    /// so the registered fallback is shape-correct the moment the
+    /// gate drops, instead of 404ing on a BlockCypher-shaped path.
+    private func fetchDogechain(address: String) async throws(RPCError) -> AccountSummary {
+        let data = try await client.callREST(chain: chain, path: "address/balance/\(address)")
+        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw .decodingFailed("dogechain response not JSON")
+        }
+        let doge: Decimal
+        if let s = json["balance"] as? String, let dec = Decimal(string: s) {
+            doge = dec
+        } else if let n = json["balance"] as? NSNumber {
+            doge = n.decimalValue
+        } else {
+            throw .decodingFailed("dogechain balance field missing or wrong type")
+        }
+        // No tx count on this payload, so balance > 0 is the best
+        // available `isUsed` signal here.
         return AccountSummary(nativeBalance: doge, isUsed: doge > 0)
     }
 

@@ -1399,10 +1399,81 @@ addition followed the protocol: name the meaning, wire the
 Before any new interactive surface is committed:
 
 1. Does this surface use `UniButton`? If yes, haptic is automatic — skip.
-2. If no, did you apply `.uniHaptic(_:trigger:)` to the state change?
-3. Did you pick a semantic case (not just `.selection` reflexively)?
-4. Did you check the user preference path works (toggle off → silent)?
-5. Did you log the new haptic-bearing surface in `SHIPPED.md` per Rule #1?
+2. Is it a Toggle? Use `UniToggle`, not bare `Toggle` — the wrapper fires `.toggle` per the handoff. Bare `Toggle(isOn:)` is forbidden outside the DesignSystem layer (Part H).
+3. If neither, did you apply `.uniHaptic(_:trigger:)` to the state change?
+4. Did you pick a semantic case from the canonical vocabulary (Part G) — not just `.selection` reflexively?
+5. Did you check the user preference path works (toggle off → silent)?
+
+### Part G — The canonical vocabulary (2026-06-10 — design handoff)
+
+The `/Users/thuglifex/Downloads/design_handoff_haptics/` package
+defines **12 patterns in 4 groups** as Aperture's tactile language.
+Every haptic the app fires must map to one of these. Adding a new
+pattern requires updating this rule + adding a `UniHaptic` case.
+
+**Feedback (3)** — touch acknowledgement:
+- `tap`         → `.contextualImpact(.tap)`        → key presses, primary button presses
+- `select`      → `.selection`                     → picker, segmented control, amount stepper
+- `toggle`      → `.toggle`                        → on/off switches; rigid weight, fired by `UniToggle`
+
+**Impact (3)** — physical collisions / weight:
+- `impactLight`  → `.contextualImpact(.whisper)`   → sheet detent snap
+- `impactMedium` → `.contextualImpact(.commit)`    → card commits, logo settles
+- `impactHeavy`  → `.contextualImpact(.weighted)`  → big deliberate confirmations
+
+**Outcome (3)** — result of an action:
+- `success` → `.success`     → confirmed transaction, swap, refresh
+- `warning` → `.warning`     → "read this before you continue" double-pulse
+- `error`   → `.error`       → failed / rejected action; frustration-silenced after 3-in-10s (§J)
+
+**Signature (3)** — Aperture's bespoke AHAP patterns; brand-only moments:
+- `irisSettle` → `.signature(.irisSettle)` → splash → home, pull-to-refresh complete
+- `sendWhoosh` → `.signature(.sendWhoosh)` → swipe-to-send release
+- `countUp`    → `.countUp`                → per-digit ticker as balance hero animates
+
+Plus the existing Aperture-specific signatures kept from the prior
+catalog (`walletSealed`, `phraseRevealed`, `phraseRegenerated`,
+`pinSealed`, `transactionSigned`, `transactionConfirmed`) — these
+are wallet-creation / security moments the handoff doesn't cover.
+
+### Part H — Forbidden (extended 2026-06-10)
+
+The original Part D bans remain in force. Additions:
+
+- **`Toggle(isOn:)` in feature code.** Use `UniToggle` — it fires
+  the canonical `.toggle` haptic for free. Bare `Toggle` is allowed
+  ONLY inside `UniToggle.swift` and inside DesignSystem-layer
+  components that wrap it. Grep target for the audit:
+  ```bash
+  grep -rnE 'Toggle\(isOn:|Toggle\("' UniApp/Sources/Features/
+  ```
+  Expected: zero hits in feature code (every interactive Toggle is
+  a `UniToggle`).
+- **Custom haptic calls bypassing the vocabulary.** Every haptic
+  fires through `UniHaptic` and lands on one of the 12 handoff
+  patterns. Inventing a per-screen impact weight without naming a
+  case is forbidden.
+
+### Part I — Pull-to-refresh and splash → home
+
+Two specific surfaces own `irisSettle`:
+
+- **Splash → home transition** (UniAppApp.swift's `onSplashComplete`):
+  `UniHapticEngine.shared.play(.signature(.irisSettle))` fires as
+  `isShowingSplash` flips to false. Replaces the prior raw
+  `UIImpactFeedbackGenerator(.medium).prepare()` warm-up — the
+  prepared generator never actually fired the haptic; the
+  signature plays correctly.
+- **Pull-to-refresh complete** (WalletHomeView.swift's `runRefresh`):
+  Same call at the END of refreshWallet — soft tick → medium tap
+  marks the moment data has landed.
+
+### Part J — Frustration silencing (existing — kept)
+
+`UniHapticEngine` records every `.error` haptic timestamp. After
+3 errors within 10 seconds, the next 2 errors fire silently. The
+user has already received the signal; further buzzing reads as
+mockery. State resets after 10s of no errors.
 
 ---
 

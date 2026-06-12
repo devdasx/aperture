@@ -11,7 +11,10 @@ import SwiftUI
 /// `UniHaptic.signature(...)` / `.contextualImpact(.consequential)` /
 /// `.uniHapticSignature(...)`. The engine handles:
 ///
-/// - Lazy `CHHapticEngine` startup and restart on `stoppedHandler`.
+/// - Lazy `CHHapticEngine` startup and **lazy re-creation** after the
+///   haptic server stops or resets the engine (phone call, Siri, app
+///   background) — `ensureEngine()` rebuilds a fresh instance on the
+///   next play path.
 /// - AHAP file loading from `Resources/Haptics/` on first use of each
 ///   signature.
 /// - `UIAccessibility.isReduceMotionEnabled` gating for signature
@@ -20,19 +23,54 @@ import SwiftUI
 ///   honor that for Core Haptics patterns).
 /// - Frustration silencing (per Rule #10 §J — after 3 consecutive
 ///   `.error` haptics within 10s, the next 2 errors are silenced).
-/// - Single-shot `UIImpactFeedbackGenerator` instances for ad-hoc
-///   fires from the directional modifier.
+/// - Pre-warmed, long-lived `UIImpactFeedbackGenerator` /
+///   `UINotificationFeedbackGenerator` / `UISelectionFeedbackGenerator`
+///   instances for ad-hoc fires from the directional modifier — one
+///   generator per style, re-`prepare()`d after each fire so the
+///   Taptic Engine stays warm (creating a generator per fire adds
+///   latency and drops beats under load).
 @MainActor
 final class UniHapticEngine {
     static let shared = UniHapticEngine()
 
     /// Lazy Core Haptics engine. `nil` if the device doesn't support
-    /// haptics (iPhone 7 and earlier — vanishingly rare on iOS 26).
+    /// haptics (iPhone 7 and earlier — vanishingly rare on iOS 26),
+    /// or after the engine stopped/reset and the next play hasn't
+    /// rebuilt it yet (see `ensureEngine()`).
     private var engine: CHHapticEngine?
 
     /// Loaded patterns keyed by signature. Each is loaded once on
-    /// first play, then cached for the app's lifetime.
+    /// first play, then cached for the app's lifetime. Patterns are
+    /// engine-independent, so this cache survives engine rebuilds.
     private var patterns: [UniHaptic.Signature: CHHapticPattern] = [:]
+
+    /// Cached scrub-tick player. Built lazily on first tick, replayed
+    /// for every subsequent tick (up to ~30/s) with per-tick dynamic
+    /// parameters instead of allocating a pattern + player per fire.
+    /// **Tied to the engine identity that created it** — invalidated
+    /// whenever the engine is rebuilt (`ensureEngine()` /
+    /// `discardEngine(ifCurrent:)`), because players from a dead
+    /// engine throw on `start`.
+    private var scrubTickPlayer: CHHapticAdvancedPatternPlayer?
+
+    /// Cached scrub-release player. Same lifecycle as
+    /// `scrubTickPlayer`; fixed parameters, so a basic player suffices.
+    private var scrubReleasePlayer: CHHapticPatternPlayer?
+
+    // MARK: - Pre-warmed UIKit feedback generators
+    //
+    // One long-lived generator per style. Each fire is followed by
+    // `prepare()` so the next fire lands with minimal latency — the
+    // standard UIKit pre-warm pattern. These are the ONLY
+    // UIImpactFeedbackGenerator / UINotificationFeedbackGenerator /
+    // UISelectionFeedbackGenerator instances in the app (Rule #10 §D).
+
+    private let lightImpact = UIImpactFeedbackGenerator(style: .light)
+    private let mediumImpact = UIImpactFeedbackGenerator(style: .medium)
+    private let heavyImpact = UIImpactFeedbackGenerator(style: .heavy)
+    private let rigidImpact = UIImpactFeedbackGenerator(style: .rigid)
+    private let notificationGenerator = UINotificationFeedbackGenerator()
+    private let selectionGenerator = UISelectionFeedbackGenerator()
 
     /// Rolling deque of recent `.error` timestamps. Used to compute
     /// the frustration window (Rule #10 §J).
@@ -41,6 +79,13 @@ final class UniHapticEngine {
     /// How many of the next errors to silence after the frustration
     /// threshold is exceeded. Decremented on each silenced error.
     private var pendingErrorSilences: Int = 0
+
+    /// Timestamp of the most recent `.error` haptic (fired or
+    /// silenced). Used to expire `pendingErrorSilences` per Rule #10
+    /// §J's "state resets after 10s of no errors" — without it,
+    /// silence credits earned by three rapid failures would still
+    /// mute an unrelated error hours later.
+    private var lastErrorAt: Date?
 
     private init() {}
 
@@ -71,26 +116,29 @@ final class UniHapticEngine {
 
     /// Ad-hoc one-shot fire for haptics that need an immediate event
     /// (used by the directional modifier where `.sensoryFeedback`
-    /// can't bind a trigger). Uses `UIImpactFeedbackGenerator(view:)`
-    /// where appropriate, `UINotificationFeedbackGenerator` for the
-    /// notification triad.
+    /// can't bind a trigger). Uses the stored, pre-warmed generators —
+    /// each fire re-`prepare()`s its generator so the Taptic Engine
+    /// stays warm for the next beat.
     func fire(_ haptic: UniHaptic) {
         guard isHapticsEnabled else { return }
         switch haptic {
         case .selection:
-            UISelectionFeedbackGenerator().selectionChanged()
+            selectionGenerator.selectionChanged()
+            selectionGenerator.prepare()
         case .selectionDeselect:
-            let gen = UIImpactFeedbackGenerator(style: .light)
-            gen.impactOccurred(intensity: 0.6)
+            lightImpact.impactOccurred(intensity: 0.6)
+            lightImpact.prepare()
         case .contextualImpact(let sig):
             fireImpact(sig)
         case .success:
-            UINotificationFeedbackGenerator().notificationOccurred(.success)
+            notificationGenerator.notificationOccurred(.success)
+            notificationGenerator.prepare()
         case .successQuiet:
-            let gen = UIImpactFeedbackGenerator(style: .light)
-            gen.impactOccurred(intensity: 0.7)
+            lightImpact.impactOccurred(intensity: 0.7)
+            lightImpact.prepare()
         case .warning:
-            UINotificationFeedbackGenerator().notificationOccurred(.warning)
+            notificationGenerator.notificationOccurred(.warning)
+            notificationGenerator.prepare()
         case .error:
             playError()
         case .increase, .decrease, .alignment, .levelChange, .start, .stop:
@@ -99,6 +147,15 @@ final class UniHapticEngine {
             // Directional-fire of these via UIKit isn't supported;
             // call sites use `.uniHaptic(_:trigger:)` instead.
             break
+        case .toggle:
+            // 2026-06-10 handoff toggle pattern — rigid impact.
+            rigidImpact.impactOccurred(intensity: 0.9)
+            rigidImpact.prepare()
+        case .countUp:
+            // 2026-06-10 handoff countUp pattern — whisper-soft tick
+            // per rolling digit. Light impact at low intensity.
+            lightImpact.impactOccurred(intensity: 0.22)
+            lightImpact.prepare()
         case .progressTick(let phase):
             fireImpact(phase.impactSignificance)
         case .signature(let sig):
@@ -125,9 +182,7 @@ final class UniHapticEngine {
         // atomic SensoryFeedback beats; the user has told iOS they
         // want fewer such beats.
         guard !isReduceMotionEnabled else { return }
-        guard CHHapticEngine.capabilitiesForHardware().supportsHaptics else { return }
-        ensureEngineStarted()
-        guard let engine else { return }
+        guard let engine = ensureEngine() else { return }
 
         let pattern: CHHapticPattern
         if let cached = patterns[signature] {
@@ -161,55 +216,98 @@ final class UniHapticEngine {
         }
     }
 
-    private func ensureEngineStarted() {
-        if engine == nil {
-            do {
-                let e = try CHHapticEngine()
-                e.stoppedHandler = { [weak self] _ in
-                    // Engine stops on app background, interruption,
-                    // etc. Clear so next play() restarts it lazily.
-                    Task { @MainActor in
-                        self?.engine = nil
-                    }
+    /// Returns a started `CHHapticEngine`, building a fresh one on
+    /// demand when none exists — either because this is the first play,
+    /// or because the previous instance died (phone call, Siri, audio
+    /// session reset, app background) and its handlers cleared the
+    /// reference. **Lazy re-creation is the recovery strategy**: the
+    /// pre-2026-06-10 implementation had `resetHandler` call
+    /// `self?.engine?.start()`, but `stoppedHandler` had already nil'd
+    /// `engine`, so the restart was a no-op on a nil reference and
+    /// haptics stayed dead for the rest of the session. Every play
+    /// path now calls this instead.
+    ///
+    /// Returns `nil` when the hardware doesn't support haptics or the
+    /// engine can't be created/started.
+    private func ensureEngine() -> CHHapticEngine? {
+        if let engine { return engine }
+        guard CHHapticEngine.capabilitiesForHardware().supportsHaptics else { return nil }
+        do {
+            let e = try CHHapticEngine()
+            // The handlers hop to the MainActor via a @Sendable Task;
+            // `CHHapticEngine` is not Sendable, so the identity check
+            // crosses the boundary as a Sendable `ObjectIdentifier`.
+            let engineID = ObjectIdentifier(e)
+            e.stoppedHandler = { [weak self] _ in
+                // Engine stops on app background, interruption, etc.
+                // Drop the dead instance (and the cached players built
+                // on it) so the next play() lazily rebuilds.
+                Task { @MainActor in
+                    self?.discardEngine(matching: engineID)
                 }
-                e.resetHandler = { [weak self] in
-                    Task { @MainActor in
-                        try? self?.engine?.start()
-                    }
-                }
-                try e.start()
-                engine = e
-            } catch {
-                engine = nil
             }
+            e.resetHandler = { [weak self] in
+                // The haptic server reclaimed this engine's resources.
+                // The instance and any players created from it are
+                // dead — discard both; the next play() rebuilds fresh
+                // through this same configuration path.
+                Task { @MainActor in
+                    self?.discardEngine(matching: engineID)
+                }
+            }
+            try e.start()
+            engine = e
+            // Cached players (if any) belonged to a previous engine —
+            // invalidate so they're lazily rebuilt against this one.
+            scrubTickPlayer = nil
+            scrubReleasePlayer = nil
+            return e
+        } catch {
+            engine = nil
+            return nil
         }
+    }
+
+    /// Drops the current engine and the players cached against it —
+    /// but only if `id` identifies the live instance. A stale handler
+    /// firing from an already-replaced engine must not tear down its
+    /// successor.
+    private func discardEngine(matching id: ObjectIdentifier) {
+        guard let engine, ObjectIdentifier(engine) == id else { return }
+        self.engine = nil
+        scrubTickPlayer = nil
+        scrubReleasePlayer = nil
     }
 
     // MARK: - Consequential (double-beat) impact
 
     private func playConsequential() {
-        let heavy = UIImpactFeedbackGenerator(style: .heavy)
-        heavy.impactOccurred(intensity: 1.0)
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.080) {
-            let medium = UIImpactFeedbackGenerator(style: .medium)
-            medium.impactOccurred(intensity: 1.0)
+        heavyImpact.impactOccurred(intensity: 1.0)
+        heavyImpact.prepare()
+        // Second beat 80ms later — structured MainActor sleep instead
+        // of DispatchQueue.asyncAfter, using the stored pre-warmed
+        // generator so the follow-through never misses its window.
+        Task {
+            try? await Task.sleep(for: .milliseconds(80))
+            self.mediumImpact.impactOccurred(intensity: 1.0)
+            self.mediumImpact.prepare()
         }
     }
 
     private func fireImpact(_ significance: ImpactSignificance) {
         switch significance {
         case .whisper:
-            let gen = UIImpactFeedbackGenerator(style: .light)
-            gen.impactOccurred(intensity: 0.55)
+            lightImpact.impactOccurred(intensity: 0.55)
+            lightImpact.prepare()
         case .tap:
-            let gen = UIImpactFeedbackGenerator(style: .light)
-            gen.impactOccurred(intensity: 0.85)
+            lightImpact.impactOccurred(intensity: 0.85)
+            lightImpact.prepare()
         case .commit:
-            let gen = UIImpactFeedbackGenerator(style: .medium)
-            gen.impactOccurred(intensity: 1.0)
+            mediumImpact.impactOccurred(intensity: 1.0)
+            mediumImpact.prepare()
         case .weighted:
-            let gen = UIImpactFeedbackGenerator(style: .heavy)
-            gen.impactOccurred(intensity: 1.0)
+            heavyImpact.impactOccurred(intensity: 1.0)
+            heavyImpact.prepare()
         case .consequential:
             playConsequential()
         }
@@ -246,32 +344,51 @@ final class UniHapticEngine {
             // Fallback for the rare device without Core Haptics. The
             // selection beat is symmetrical and discrete — close enough
             // to the "something moved under your finger" affordance.
-            UISelectionFeedbackGenerator().selectionChanged()
+            selectionGenerator.selectionChanged()
+            selectionGenerator.prepare()
             return
         }
-        ensureEngineStarted()
-        guard let engine else { return }
+        guard let player = ensureScrubTickPlayer() else {
+            // Engine or player couldn't be built — fall back rather
+            // than vanish. The user's finger is on the screen; some
+            // beat is better than none.
+            selectionGenerator.selectionChanged()
+            selectionGenerator.prepare()
+            return
+        }
 
         let clampedIntensity = max(0.05, min(1.0, intensity))
         let sharpness = max(0.1, min(1.0, clampedIntensity * 0.8))
-        let events = [
-            CHHapticEvent(
-                eventType: .hapticTransient,
-                parameters: [
-                    CHHapticEventParameter(parameterID: .hapticIntensity, value: clampedIntensity),
-                    CHHapticEventParameter(parameterID: .hapticSharpness, value: sharpness),
-                ],
-                relativeTime: 0
-            ),
-        ]
         do {
-            let pattern = try CHHapticPattern(events: events, parameters: [])
-            let player = try engine.makePlayer(with: pattern)
+            // The cached player's base transient is authored at
+            // intensity 1.0 / sharpness 0.0. Intensity control is
+            // multiplicative and sharpness control is additive, so the
+            // played values land exactly at `clampedIntensity` /
+            // `sharpness` — one player, replayed per tick, no per-fire
+            // pattern + player allocation at up to 30 ticks/s.
+            try player.sendParameters(
+                [
+                    CHHapticDynamicParameter(
+                        parameterID: .hapticIntensityControl,
+                        value: clampedIntensity,
+                        relativeTime: 0
+                    ),
+                    CHHapticDynamicParameter(
+                        parameterID: .hapticSharpnessControl,
+                        value: sharpness,
+                        relativeTime: 0
+                    ),
+                ],
+                atTime: CHHapticTimeImmediate
+            )
             try player.start(atTime: CHHapticTimeImmediate)
         } catch {
-            // Pattern failed — fall back rather than vanish. The user's
-            // finger is on the screen; some beat is better than none.
-            UISelectionFeedbackGenerator().selectionChanged()
+            // The player may be stale (engine died between ticks) —
+            // drop the cache so the next tick rebuilds, and fall back
+            // so this beat isn't lost.
+            scrubTickPlayer = nil
+            selectionGenerator.selectionChanged()
+            selectionGenerator.prepare()
         }
     }
 
@@ -284,12 +401,59 @@ final class UniHapticEngine {
         guard CHHapticEngine.capabilitiesForHardware().supportsHaptics else {
             // Fallback — light impact at 0.4 intensity matches the soft
             // resolution character without a second engine.
-            UIImpactFeedbackGenerator(style: .light).impactOccurred(intensity: 0.4)
+            lightImpact.impactOccurred(intensity: 0.4)
+            lightImpact.prepare()
             return
         }
-        ensureEngineStarted()
-        guard let engine else { return }
+        guard let player = ensureScrubReleasePlayer() else {
+            lightImpact.impactOccurred(intensity: 0.4)
+            lightImpact.prepare()
+            return
+        }
+        do {
+            try player.start(atTime: CHHapticTimeImmediate)
+        } catch {
+            scrubReleasePlayer = nil
+            lightImpact.impactOccurred(intensity: 0.4)
+            lightImpact.prepare()
+        }
+    }
 
+    /// Lazily builds (and caches) the scrub-tick player against the
+    /// current engine. The base pattern is a single transient at
+    /// intensity 1.0 / sharpness 0.0; per-tick values are applied via
+    /// dynamic parameters in `playScrubTick(intensity:)`. Advanced
+    /// player because it's the canonical Apple surface for
+    /// parameter-modulated replay. Returns `nil` when the engine can't
+    /// be built or the player creation fails.
+    private func ensureScrubTickPlayer() -> CHHapticAdvancedPatternPlayer? {
+        if let scrubTickPlayer { return scrubTickPlayer }
+        guard let engine = ensureEngine() else { return nil }
+        let events = [
+            CHHapticEvent(
+                eventType: .hapticTransient,
+                parameters: [
+                    CHHapticEventParameter(parameterID: .hapticIntensity, value: 1.0),
+                    CHHapticEventParameter(parameterID: .hapticSharpness, value: 0.0),
+                ],
+                relativeTime: 0
+            ),
+        ]
+        do {
+            let pattern = try CHHapticPattern(events: events, parameters: [])
+            let player = try engine.makeAdvancedPlayer(with: pattern)
+            scrubTickPlayer = player
+            return player
+        } catch {
+            return nil
+        }
+    }
+
+    /// Lazily builds (and caches) the fixed-parameter scrub-release
+    /// player against the current engine.
+    private func ensureScrubReleasePlayer() -> CHHapticPatternPlayer? {
+        if let scrubReleasePlayer { return scrubReleasePlayer }
+        guard let engine = ensureEngine() else { return nil }
         let events = [
             CHHapticEvent(
                 eventType: .hapticTransient,
@@ -303,9 +467,10 @@ final class UniHapticEngine {
         do {
             let pattern = try CHHapticPattern(events: events, parameters: [])
             let player = try engine.makePlayer(with: pattern)
-            try player.start(atTime: CHHapticTimeImmediate)
+            scrubReleasePlayer = player
+            return player
         } catch {
-            UIImpactFeedbackGenerator(style: .light).impactOccurred(intensity: 0.4)
+            return nil
         }
     }
 
@@ -326,6 +491,15 @@ final class UniHapticEngine {
         // Drop timestamps older than the window.
         recentErrors.removeAll { now.timeIntervalSince($0) > Self.frustrationWindow }
 
+        // Rule #10 §J: "state resets after 10s of no errors." Silence
+        // credits expire with the window — they must never carry over
+        // to an unrelated error long after the frustration burst.
+        if let lastErrorAt,
+           now.timeIntervalSince(lastErrorAt) > Self.frustrationWindow {
+            pendingErrorSilences = 0
+        }
+        lastErrorAt = now
+
         if pendingErrorSilences > 0 {
             pendingErrorSilences -= 1
             return // Silenced — the user's already heard enough.
@@ -340,6 +514,7 @@ final class UniHapticEngine {
             recentErrors.removeAll()
         }
 
-        UINotificationFeedbackGenerator().notificationOccurred(.error)
+        notificationGenerator.notificationOccurred(.error)
+        notificationGenerator.prepare()
     }
 }

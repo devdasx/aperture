@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 import OSLog
 
@@ -122,9 +123,19 @@ struct TronTransactionAdapter: Sendable {
                   let tokenInfo = tx["token_info"] as? [String: Any] else {
                 continue
             }
-            let symbol = (tokenInfo["symbol"] as? String) ?? "TRC20"
-            let decimals = (tokenInfo["decimals"] as? Int) ?? 0
+            // `token_info.symbol` is self-declared by the token
+            // contract — scam airdrops on Tron routinely name
+            // themselves "USDT". The display symbol (and decimals)
+            // come from the curated registry keyed by CONTRACT
+            // ADDRESS; unknown contracts get the neutral "TRC20"
+            // label, mirroring the Solana adapter's unknown-mint
+            // handling.
             let contract = tokenInfo["address"] as? String
+            let registryEntry = contract.flatMap { c in
+                TronTokenRegistry.tokens.first { $0.contract == c }
+            }
+            let symbol = registryEntry?.symbol ?? "TRC20"
+            let decimals = registryEntry?.decimals ?? ((tokenInfo["decimals"] as? Int) ?? 0)
             let raw = Decimal(string: valueStr) ?? 0
             let amount = raw / Self.scale(decimals: decimals)
 
@@ -164,12 +175,39 @@ struct TronTransactionAdapter: Sendable {
     }
 
     /// Tron raw addresses are hex with a `41` prefix; the user-facing
-    /// form is base58check. For activity-feed counterparty display we
-    /// keep the raw hex stripped of the `41` prefix as a short
-    /// identifier. The address column on Tronscan accepts both.
+    /// form is Base58Check over the full 21-byte payload:
+    /// `base58( payload ‖ first4( sha256( sha256( payload ) ) ) )`.
+    /// The conversion must be real — direction classification above
+    /// compares `from`/`to` against the caller's Base58Check address,
+    /// so returning raw hex would drop every native TRX transaction.
+    /// Verified against the TRON reference vectors
+    /// (`41E552F6…32CD0` → `TWsm8HtU2A5eEzoT8ev8yaoFjHsXLLrckb`).
+    /// Inputs that don't look like a 21-byte `41`-prefixed hex string
+    /// (e.g. already Base58Check) are returned unchanged.
     private static func hexAddressToTron(_ hex: String) -> String {
-        guard hex.hasPrefix("41") else { return hex }
-        return String(hex.dropFirst(2))
+        guard hex.count == 42,
+              hex.lowercased().hasPrefix("41"),
+              let payload = hexBytes(hex) else {
+            return hex
+        }
+        let firstRound = SHA256.hash(data: Data(payload))
+        let secondRound = SHA256.hash(data: Data(firstRound))
+        let checksum = Array(secondRound.prefix(4))
+        return Base58.encode(Data(payload + checksum))
+    }
+
+    private static func hexBytes(_ hex: String) -> [UInt8]? {
+        guard hex.count % 2 == 0 else { return nil }
+        var result: [UInt8] = []
+        result.reserveCapacity(hex.count / 2)
+        var i = hex.startIndex
+        while i < hex.endIndex {
+            let next = hex.index(i, offsetBy: 2)
+            guard let byte = UInt8(hex[i..<next], radix: 16) else { return nil }
+            result.append(byte)
+            i = next
+        }
+        return result
     }
 
     private static let sunPerTrx: Decimal = {
@@ -179,8 +217,13 @@ struct TronTransactionAdapter: Sendable {
     }()
 
     private static func scale(decimals: Int) -> Decimal {
+        // For unknown contracts `decimals` is the indexer's copy of
+        // attacker-controlled contract metadata — clamp so a negative
+        // value can't trap the range and an absurd one can't spin
+        // the loop. 77 ≈ Decimal's significand capacity.
+        let clamped = max(0, min(decimals, 77))
         var result = Decimal(1)
-        for _ in 0..<decimals { result *= 10 }
+        for _ in 0..<clamped { result *= 10 }
         return result
     }
 }

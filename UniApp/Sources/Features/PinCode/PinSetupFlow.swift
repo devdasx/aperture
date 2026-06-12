@@ -83,6 +83,22 @@ struct PinSetupFlow: View {
 
     @State private var biometricService = BiometricService()
 
+    /// In-flight PIN commit (the PBKDF2 derivation runs off the main
+    /// thread via the async `PinCodeStorage.setPin`). Stored so
+    /// `.onDisappear` can cancel it and the post-commit navigation
+    /// never fires after the flow has gone away.
+    @State private var commitTask: Task<Void, Never>? = nil
+
+    /// In-flight biometric-enable authentication from the prompt step.
+    /// Stored so `.onDisappear` can cancel it — an untracked task would
+    /// flip `biometricEnabled` and call `onFinish()` after the user has
+    /// already navigated away.
+    @State private var biometricEnableTask: Task<Void, Never>? = nil
+
+    /// Pending `isReversing` reset scheduled by `revertToSet()`. Stored
+    /// so `.onDisappear` can cancel it.
+    @State private var reverseResetTask: Task<Void, Never>? = nil
+
     // MARK: - Body
 
     var body: some View {
@@ -139,7 +155,8 @@ struct PinSetupFlow: View {
                     BiometricPromptStep(
                         biometryType: biometricService.biometryType,
                         onEnable: {
-                            Task { @MainActor in
+                            biometricEnableTask?.cancel()
+                            biometricEnableTask = Task {
                                 await enableBiometric()
                             }
                         },
@@ -173,6 +190,11 @@ struct PinSetupFlow: View {
             .uniAppEnvironment()
             .intrinsicHeightSheet()
             .presentationBackground(UniColors.Background.primary)
+        }
+        .onDisappear {
+            commitTask?.cancel()
+            biometricEnableTask?.cancel()
+            reverseResetTask?.cancel()
         }
     }
 
@@ -220,8 +242,12 @@ struct PinSetupFlow: View {
         }
         // Reset the direction flag after the animation completes so the
         // next forward advance uses the forward transition again. The
-        // delay matches the spring's settle time.
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) {
+        // delay matches the spring's settle time. Tracked task (not
+        // `DispatchQueue.asyncAfter`) so `.onDisappear` can cancel it.
+        reverseResetTask?.cancel()
+        reverseResetTask = Task {
+            try? await Task.sleep(for: .seconds(0.45))
+            guard !Task.isCancelled else { return }
             isReversing = false
         }
     }
@@ -282,31 +308,43 @@ struct PinSetupFlow: View {
 
     // MARK: - PIN commit
 
-    /// Confirmation succeeded. Persist the PIN, flip the flag, and either
-    /// route to the biometric prompt or finish directly (no biometry
-    /// available on this device).
+    /// Confirmation succeeded. Persist the PIN (PBKDF2 runs off the main
+    /// thread via the async `PinCodeStorage.setPin`), flip the flag, and
+    /// either route to the biometric prompt or finish directly (no
+    /// biometry available on this device).
     private func commitPin() {
-        let success = PinCodeStorage.setPin(pendingSetPin)
+        let pin = pendingSetPin
         pendingSetPin = "" // never linger
-        guard success else {
-            // Keychain write failed — extremely rare (only when the device
-            // can't unlock its own keychain). Honest fallback: don't claim
-            // the PIN is set; route the user to finish without PIN.
-            pinEnabled = false
-            onFinish()
-            return
-        }
-        pinEnabled = true
-
-        if biometricService.isAvailable {
-            withAnimation(stepAnimation) {
-                step = .biometricPrompt
+        commitTask?.cancel()
+        commitTask = Task {
+            let success = await PinCodeStorage.setPin(pin)
+            guard !Task.isCancelled else {
+                // The flow went away mid-commit (user backed out of the
+                // parent stack). The enabled flags were never flipped, so
+                // don't leave a half-committed PIN in Keychain.
+                PinCodeStorage.clear()
+                return
             }
-        } else {
-            // Device has no biometry — skip the prompt entirely per the
-            // user's 2026-06-04 direction. Don't show a "Face ID not
-            // available" message; just advance to WalletReadyView.
-            finishSuccessfully()
+            guard success else {
+                // Keychain write failed — extremely rare (only when the device
+                // can't unlock its own keychain). Honest fallback: don't claim
+                // the PIN is set; route the user to finish without PIN.
+                pinEnabled = false
+                onFinish()
+                return
+            }
+            pinEnabled = true
+
+            if biometricService.isAvailable {
+                withAnimation(stepAnimation) {
+                    step = .biometricPrompt
+                }
+            } else {
+                // Device has no biometry — skip the prompt entirely per the
+                // user's 2026-06-04 direction. Don't show a "Face ID not
+                // available" message; just advance to WalletReadyView.
+                finishSuccessfully()
+            }
         }
     }
 
@@ -318,6 +356,10 @@ struct PinSetupFlow: View {
         let result = await biometricService.authenticate(
             reason: "Unlock Aperture with Face ID."
         )
+        // The flow may have disappeared while the system prompt was up
+        // (`.onDisappear` cancels `biometricEnableTask`) — don't flip
+        // flags or call `onFinish()` into a parent that moved on.
+        guard !Task.isCancelled else { return }
         if case .success = result {
             biometricEnabled = true
         } else {

@@ -98,8 +98,13 @@ enum ApertureMotion {
 
         if tt < t0 {
             // Phase 1 — closed, fading in, pre-rotated.
+            // Fade divisor matches phase 2 (0.4) so opacity is one
+            // continuous 0 → 1 ramp across the 0.15 s boundary. The
+            // canonical HTML uses 0.3 here and 0.4 in phase 2, which
+            // steps opacity backwards 0.5 → 0.375 in a single frame —
+            // a spec-level bug, corrected in this port.
             rc = ApertureIrisView.shutValue
-            opacity = Double(clamp01(tt / 0.3))
+            opacity = Double(clamp01(tt / 0.4))
             scale = 0.9
             rot = -0.55
         } else if tt < t0 + dur {

@@ -19,9 +19,17 @@ struct AdvancedSettingsView: View {
     @Query private var metadataRows: [AppMetadataRecord]
 
     @Environment(\.modelContext) private var modelContext
+    @AppStorage("languagePreference") private var languageCode: String = LanguagePreference.systemCode
     @State private var isShowingResetSheet: Bool = false
     @State private var isClearingCache: Bool = false
     @State private var lastClearMessage: String?
+    @State private var isShowingResetError: Bool = false
+
+    /// Rule #12 §G direction-only key for sheet content rebuild.
+    /// `"ltr"` or `"rtl"`. Identical pattern to `OnboardingView`.
+    private var sheetDirectionKey: String {
+        LanguagePreference.layoutDirection(for: languageCode) == .rightToLeft ? "rtl" : "ltr"
+    }
 
     var body: some View {
         List {
@@ -110,9 +118,18 @@ struct AdvancedSettingsView: View {
             ResetApertureSheet(
                 onConfirm: { Task { await resetAll() } }
             )
+            .id(sheetDirectionKey)
             .uniAppEnvironment()
             .presentationDetents([.large])
             .presentationBackground(UniColors.Background.primary)
+        }
+        .alert(
+            Text("Couldn't reset Aperture"),
+            isPresented: $isShowingResetError
+        ) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("The local database couldn't be deleted. Nothing was removed — your wallets, seeds, and preferences are untouched. Try again.")
         }
     }
 
@@ -126,6 +143,7 @@ struct AdvancedSettingsView: View {
         .listRowBackground(UniColors.Background.secondary)
     }
 
+    @MainActor
     private func clearPriceCache() async {
         isClearingCache = true
         let repo = PriceCacheRepository(modelContainer: modelContext.container)
@@ -138,17 +156,50 @@ struct AdvancedSettingsView: View {
         isClearingCache = false
     }
 
+    @MainActor
     private func resetAll() async {
         let log = Logger(subsystem: "com.thuglife.aperture", category: "reset")
         let repo = WalletRepository(modelContainer: modelContext.container)
         // Collect all wallet ids up front so we can wipe Keychain
         // items even after the SwiftData rows are gone.
         let ids: [UUID] = wallets.map { $0.id }
+        // Database first: if this throws, nothing has been destroyed
+        // yet — the user keeps a fully working app and can retry.
+        // Wiping Keychain before the database would, on a database
+        // failure, leave wallet records pointing at seeds that no
+        // longer exist.
+        do {
+            try await repo.deleteAllWallets()
+        } catch {
+            isShowingResetSheet = false
+            isShowingResetError = true
+            return
+        }
+        // Wipe the user-data stores `deleteAllWallets()` deliberately
+        // leaves behind (its scope is WalletRecord + cascades only):
+        // dApp browser history + bookmarks (privacy-sensitive), the
+        // user-added custom-token registry, the price cache, and the
+        // previous owner's biometric enrollment snapshot. Without
+        // this, the next person who creates a wallet on the device
+        // inherits the prior owner's browsing history, bookmarks,
+        // and token list. `AppMetadataRecord` (schema version) is app
+        // metadata, not user data — it stays. The wallets are already
+        // gone at this point, so a failure here is logged and the
+        // reset continues rather than stranding a half-reset device.
+        do {
+            try modelContext.delete(model: BrowserHistoryRecord.self)
+            try modelContext.delete(model: BrowserBookmarkRecord.self)
+            try modelContext.delete(model: CustomTokenRecord.self)
+            try modelContext.delete(model: CachedPriceRecord.self)
+            try modelContext.delete(model: BiometricEnrollmentRecord.self)
+            try modelContext.save()
+        } catch {
+            log.error("Reset Aperture: auxiliary user-data wipe failed: \(String(describing: error), privacy: .public)")
+        }
         for id in ids {
             try? SeedVault.deleteSeed(for: id)
             try? MnemonicVault.deleteMnemonic(for: id)
         }
-        try? await repo.deleteAllWallets()
         // Wipe PIN + biometric state.
         PinCodeStorage.clear()
         // Wipe every @AppStorage key. UserDefaults' removePersistentDomain

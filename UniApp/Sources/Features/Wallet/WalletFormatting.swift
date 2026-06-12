@@ -84,13 +84,22 @@ enum WalletFormatting {
 
     // MARK: - Roll-up
 
-    /// Sum the fiat-value snapshots across an array of balance rows.
-    /// Returns the total in the most-recently-recorded currency
-    /// (typically all rows are recorded under the same currency, which
-    /// is the user's preference at the time of the most recent scan).
-    static func totalFiat(_ balances: [TokenBalanceRecord]) -> Decimal {
+    /// Sum the fiat-value snapshots across an array of balance rows,
+    /// counting ONLY rows recorded under `currencyCode` (the user's
+    /// current preference). Rows cached under a different currency —
+    /// e.g. stale rows scanned before the user switched from USD to
+    /// EUR — contribute nothing rather than corrupting the total with
+    /// mixed-unit arithmetic. They re-enter the sum after the next
+    /// refresh re-prices them in the current currency.
+    static func totalFiat(
+        _ balances: [TokenBalanceRecord],
+        currencyCode: String
+    ) -> Decimal {
         balances.reduce(Decimal.zero) { running, row in
-            running + row.fiatValueCached
+            guard row.fiatCurrencyCode.caseInsensitiveCompare(currencyCode) == .orderedSame else {
+                return running
+            }
+            return running + row.fiatValueCached
         }
     }
 

@@ -21,6 +21,47 @@
 
 ---
 
+## M-017 · "Fixed" the Solana Token-2022 program ID to the 44-char `…EbZ` form during the 2026-06-12 fetching audit, replacing the canonical 43-char `…Eb` form — broke every Token-2022 mint scan (PYUSD/AUSD/DUSD/USDG) the very fix was supposed to enable
+
+- **Date:** 2026-06-12
+- **Severity:** HIGH (silently broke Token-2022 scan; mainnet RPC returned `WrongSize` for the bogus 44-char value, so `getTokenAccountsByOwner` rejected the request and every Token-2022 holding rendered as zero/absent — the exact failure mode I claimed to be fixing)
+- **Status:** CORRECTED — same session. Reverted both `SolanaChainAdapter.splToken2022ProgramId` and `RealRPCBalanceScanner.solanaTokenProgramIds` to the 43-char form, mainnet-verified against `api.mainnet-beta.solana.com` (slot 425814213 owned by `BPFLoaderUpgradeab1e...`). Added `SolanaTokenRegistryTests` per-mint coverage that asserts the program ID decodes to exactly 32 bytes — a regression of this mistake would now fail in CI before reaching Thuglife.
+- **Domain:** `solana`, `program-ids`, `base58`, `verification-discipline`, `audit-theater`
+
+### What I did
+
+During the 2026-06-12 fetching-stack audit, looking at how to scan Token-2022 mints (PYUSD, AUSD, DUSD, USDG), I read `SolanaChainAdapter.splToken2022ProgramId = "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"` (43 chars) and convinced myself this was a **typo missing the trailing `Z`** — based on a half-recalled source-code reference to `declare_id!("TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEbZ")` (44 chars).
+
+I "fixed" both `SolanaChainAdapter.swift` (line 45) and `RealRPCBalanceScanner.swift` (line 714) to the 44-char `…EbZ` form, and wrote a SHIPPED-class commentary that explicitly framed the 43-char form as the bug.
+
+### Why it was wrong
+
+A Solana public key — including every program ID — is exactly 32 bytes. The base58 string is the encoding; the byte count is invariant. The 44-char `…EbZ` value base58-decodes to **33 bytes** (the BigInt exceeds 2^256), making it an invalid Solana address. Mainnet's RPC returns `{"code":-32602,"message":"Invalid param: WrongSize"}` for any RPC call that takes it as a program ID. The 43-char `…Eb` form is the **deployed** Token-2022 program, owned by `BPFLoaderUpgradeab1e...`, observed live at slot 425814213.
+
+By "fixing" the program ID, I silently broke every Token-2022 mint scan — the exact failure mode I claimed to be enabling.
+
+### Root cause
+
+I trusted a source-code reference (or my recall of one) without verifying against the live network. The 44-char form *does* appear in a lot of code search hits — likely from older docs or from non-canonical SDK forks — but a 30-second mainnet RPC call would have proven it invalid. Instead, I read a comment, modified the constant, and shipped a fabricated "2026-06-12 fix" comment that compounded the mistake by claiming authority.
+
+This is **M-007 (audit theater) recurring** in the Solana domain: claiming a fix without verifying it lands. It is also adjacent to **M-001 (sourced from the wrong assets repo)**: the priority order in Rule #7 §B for sourcing assets — official source first, popular fork second — applies equally to **constants pulled from documentation**. On-chain verification is the equivalent of the official source for a program ID.
+
+### Lesson learned
+
+A "constant" copied from a comment is not a verified value. Solana program IDs (and ChainID magic numbers, contract addresses, EIP-55 checksums, etc.) get **on-chain verification** before they ship — via the live RPC, in the same session.
+
+### Prevention (concrete)
+
+1. **Solana program IDs and account addresses are verified against `api.mainnet-beta.solana.com` (`getAccountInfo`) before being added or changed.** The check is two seconds with `curl`; the fabricated savings of skipping it are tiny.
+2. **Test coverage now enforces this.** `SolanaTokenRegistryTests.validMintEntry` asserts the program ID decodes to exactly 32 bytes for every Token-2022 entry. A regression to the 44-char form would fail the parameterized test immediately — well before reaching Thuglife.
+3. **Don't trust comment-string canonical references.** A comment saying "the canonical form is X" is the agent's previous-self speaking, not the network. Cross-check with the network when the constant is load-bearing for fetching.
+
+### Detection (for future readers)
+
+If you encounter a Solana address constant or a program ID and feel certain it has a "typo" — a missing character, an off-by-one, "the canonical form is N+1 chars" — **stop and base58-decode it both ways**. Solana pubkeys are always 32 bytes; a base58 string that decodes to anything else is invalid by definition. The longest valid base58 encoding of a 32-byte value is 44 chars **when the most-significant byte is ≥ 128**; addresses with lower MSBs encode to 43 chars. Either length can be correct depending on the actual byte value.
+
+---
+
 ## M-016 · Shipped `.contextMenu` on a SwiftUI `Tab` (then moved it inside the `label:` closure) without verifying SwiftUI's iOS 26 `TabView` bridges to UIKit's `UITabBar`, which silently drops the modifier — burned two Thuglife installs on the same dead approach
 
 - **Date:** 2026-06-09
@@ -860,9 +901,9 @@ If a future task involves "add a button to a `.toolbar { ToolbarItem(…) }` blo
 
 ## M-003 · Options-menu icon shipped as `ellipsis.circle` (3 dots inside a circle) instead of bare `ellipsis` (3 dots, no chrome)
 
-- **Date:** 2026-06-04 (first occurrence) · 2026-06-06 (re-occurrence)
-- **Severity:** LOW (first) → MEDIUM (recurrence — same mistake twice)
-- **Status:** RECURRENCE — corrected first on 2026-06-04 against `RecoveryPhraseView`, then independently shipped AGAIN on the `MnemonicEntryView` toolbar (recovery-phrase IMPORT screen, different file). User flagged the re-occurrence 2026-06-06; corrected in the SHIPPED entry titled "Bare `ellipsis` on MnemonicEntryView toolbar (M-003 recurrence)".
+- **Date:** 2026-06-04 (first occurrence) · 2026-06-06 (re-occurrence) · **2026-06-09 (third occurrence)**
+- **Severity:** LOW (first) → MEDIUM (recurrence) → **HIGH (third occurrence — explicit prevention discipline failed)**
+- **Status:** **THIRD RECURRENCE 2026-06-09** — corrected first on 2026-06-04 against `RecoveryPhraseView`, again on 2026-06-06 against `MnemonicEntryView`, and AGAIN on 2026-06-09 against `WalletHomeView`'s newly-added overflow menu. The user flagged it explicitly and pointed at this very entry. The recurrence-prevention grep documented in this entry (added 2026-06-06) was NOT run before shipping the new toolbar. That is the actual failure — the discipline was logged but not executed.
 - **Domain:** `ios-26-toolbar-conventions`, `iconography`, `agent-recurrence`
 
 ### What I did

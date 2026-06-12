@@ -42,6 +42,7 @@ enum SettingsDestination: Hashable, Codable {
     case language
     case appearance
     case currency
+    case preferences
     case help
     case about
 
@@ -69,6 +70,7 @@ struct SettingsView: View {
     @AppStorage("themePreference") private var themeRaw: String = ThemePreference.defaultRaw
     @AppStorage("languagePreference") private var languageCode: String = LanguagePreference.systemCode
     @AppStorage(HapticPreference.storageKey) private var hapticEnabled: Bool = HapticPreference.defaultValue
+    @AppStorage(PrivacyMaskPreference.storageKey) private var privacyMaskEnabled: Bool = PrivacyMaskPreference.defaultValue
     @AppStorage(CurrencyPreference.storageKey) private var currencyCode: String = CurrencyPreference.defaultCode
     @AppStorage(HideBalancesPreference.hideBalanceOnHomeKey) private var hideBalanceOnHome: Bool = false
     @AppStorage(HideBalancesPreference.thresholdKey) private var hideSmallThreshold: Double = HideBalancesPreference.defaultThreshold
@@ -160,17 +162,18 @@ struct SettingsView: View {
                     }
                     .listRowBackground(UniColors.Background.secondary)
 
-                    HapticToggleRow(isOn: $hapticEnabled)
-                        .listRowBackground(UniColors.Background.secondary)
-
-                    HideBalanceToggleRow(isOn: $hideBalanceOnHome)
-                        .listRowBackground(UniColors.Background.secondary)
-
-                    NavigationLink(value: SettingsDestination.hideSmallBalances) {
+                    // 2026-06-09 — Haptic, Privacy mask, Hide balance
+                    // toggles + Hide small balances picker moved into
+                    // a dedicated `PreferencesView` sub-screen per
+                    // user direction. The main Settings list keeps
+                    // Language / Appearance / Currency (display +
+                    // region settings) inline; the rest live one
+                    // tap away.
+                    NavigationLink(value: SettingsDestination.preferences) {
                         SettingsRow(
-                            systemImage: "eye.slash.circle",
-                            title: "Hide small balances",
-                            trailing: LocalizedStringKey(HideBalancesPreference.option(for: hideSmallThreshold).label(currencyCode: currencyCode))
+                            systemImage: "slider.horizontal.3",
+                            title: "Preferences",
+                            trailing: nil
                         )
                     }
                     .listRowBackground(UniColors.Background.secondary)
@@ -236,6 +239,11 @@ struct SettingsView: View {
                 // surface. Lives in a dedicated "Developer" section
                 // (header on the section) so its provenance is honest:
                 // this is a dev / design affordance, not a user feature.
+                // DEBUG-only: the playground screen and the public-
+                // address test scan must not ship to production users
+                // — the toggle runs live RPC scans against well-known
+                // addresses from the user's IP.
+                #if DEBUG
                 Section {
                     NavigationLink(value: SettingsDestination.testScreen) {
                         SettingsRow(
@@ -254,7 +262,7 @@ struct SettingsView: View {
                     // trailing. `isTestMode` is `@AppStorage` so
                     // toggling here flips the wallet-home's view in
                     // place; no extra plumbing.
-                    Toggle(isOn: $isTestMode) {
+                    UniToggle(isOn: $isTestMode) {
                         SettingsRow(
                             systemImage: "atom",
                             title: "Test against public addresses",
@@ -265,6 +273,7 @@ struct SettingsView: View {
                 } header: {
                     Text("Developer")
                 }
+                #endif
 
                 // Section 7 — Advanced (terminal nuclear hatch)
                 Section {
@@ -297,12 +306,20 @@ struct SettingsView: View {
                 case .language:                  LanguagePickerView()
                 case .appearance:                AppearancePickerView()
                 case .currency:                  CurrencyPickerView()
+                case .preferences:               PreferencesView()
                 case .help:                      HelpAndSupportView()
                 case .about:                     AboutView(
                                                     onTapTerms: { isShowingTerms = true },
                                                     onTapPrivacy: { isShowingPrivacyPolicy = true }
                                                  )
-                case .testScreen:                TestScreenView()
+                case .testScreen:
+                    #if DEBUG
+                    TestScreenView()
+                    #else
+                    // Unreachable in release — the Developer section
+                    // that pushes this destination is DEBUG-only.
+                    EmptyView()
+                    #endif
                 }
             }
             // No `.toolbar` Done item — as a tab root in
@@ -334,14 +351,19 @@ struct SettingsView: View {
     /// wallets" entry). Token is cleared after consumption so the
     /// push fires exactly once per stamp; re-stamping pushes again.
     private func consumeDeepLink() {
-        guard !settingsDeepLink.isEmpty else { return }
-        switch settingsDeepLink {
+        let token = settingsDeepLink
+        guard !token.isEmpty else { return }
+        // Clear the stamp BEFORE navigating: `onAppear` and
+        // `onChange` can both observe the same stamp in one frame,
+        // and clearing first means the second call reads an empty
+        // token and returns — the push fires exactly once per stamp.
+        settingsDeepLink = ""
+        switch token {
         case "wallets":
             navigationPath.append(SettingsDestination.wallets)
         default:
             break
         }
-        settingsDeepLink = ""
     }
 }
 
@@ -468,13 +490,59 @@ enum AboutInfo {
     }
 }
 
+// MARK: - PreferencesView
+//
+// 2026-06-09 — user direction: *"create preferences section in the
+// settings screen, and move haptic, privacy, hide balance, hide
+// small balance to this screen."* Dedicated sub-screen reached via
+// `SettingsDestination.preferences` from the main Settings list.
+// Same row primitives the main Settings list uses, hosted under a
+// `List` with `.insetGrouped` style + `UniColors.Background.primary`
+// — visually consistent with the rest of Settings.
+struct PreferencesView: View {
+    @AppStorage(HapticPreference.storageKey) private var hapticEnabled: Bool = HapticPreference.defaultValue
+    @AppStorage(PrivacyMaskPreference.storageKey) private var privacyMaskEnabled: Bool = PrivacyMaskPreference.defaultValue
+    @AppStorage(HideBalancesPreference.hideBalanceOnHomeKey) private var hideBalanceOnHome: Bool = false
+    @AppStorage(HideBalancesPreference.thresholdKey) private var hideSmallThreshold: Double = HideBalancesPreference.defaultThreshold
+    @AppStorage(CurrencyPreference.storageKey) private var currencyCode: String = CurrencyPreference.defaultCode
+
+    var body: some View {
+        List {
+            Section {
+                HapticToggleRow(isOn: $hapticEnabled)
+                    .listRowBackground(UniColors.Background.secondary)
+
+                PrivacyMaskToggleRow(isOn: $privacyMaskEnabled)
+                    .listRowBackground(UniColors.Background.secondary)
+
+                HideBalanceToggleRow(isOn: $hideBalanceOnHome)
+                    .listRowBackground(UniColors.Background.secondary)
+
+                NavigationLink(value: SettingsDestination.hideSmallBalances) {
+                    SettingsRow(
+                        systemImage: "eye.slash.circle",
+                        title: "Hide small balances",
+                        trailing: LocalizedStringKey(HideBalancesPreference.option(for: hideSmallThreshold).label(currencyCode: currencyCode))
+                    )
+                }
+                .listRowBackground(UniColors.Background.secondary)
+            }
+        }
+        .listStyle(.insetGrouped)
+        .scrollContentBackground(.hidden)
+        .background(UniColors.Background.primary)
+        .navigationTitle(Text("Preferences"))
+        .navigationBarTitleDisplayMode(.large)
+    }
+}
+
 // MARK: - Haptic toggle row
 
 private struct HapticToggleRow: View {
     @Binding var isOn: Bool
 
     var body: some View {
-        Toggle(isOn: $isOn) {
+        UniToggle(isOn: $isOn) {
             HStack(spacing: UniSpacing.s) {
                 Image(systemName: "hand.tap")
                     .font(.system(size: 18, weight: .regular))
@@ -489,7 +557,38 @@ private struct HapticToggleRow: View {
         }
         .tint(UniColors.Button.primaryTint)
         .padding(.vertical, UniSpacing.xxs)
-        .uniHaptic(.selection, trigger: isOn)
+        // Haptic fires inside UniToggle (`.toggle` per handoff)
+    }
+}
+
+// MARK: - Privacy mask toggle
+//
+// 2026-06-09 — user direction: *"we should be able to disable
+// privacy screen from the app settings."* Default ON because
+// privacy is the safer default for a self-custody wallet
+// (balances/addresses shouldn't surface in the iOS task-switcher
+// snapshot). The toggle is gated by `PinCodePreference.isPinEnabled()`
+// at the consumer (`AppRoot`) — without a PIN, the mask is theatre
+// because the wallet is reachable anyway.
+private struct PrivacyMaskToggleRow: View {
+    @Binding var isOn: Bool
+
+    var body: some View {
+        UniToggle(isOn: $isOn) {
+            HStack(spacing: UniSpacing.s) {
+                Image(systemName: "eye.slash")
+                    .font(.system(size: 18, weight: .regular))
+                    .foregroundStyle(UniColors.Icon.secondary)
+                    .frame(width: 28, alignment: .center)
+                    .accessibilityHidden(true)
+                Text("Privacy mask")
+                    .font(UniTypography.body)
+                    .foregroundStyle(UniColors.Text.primary)
+            }
+        }
+        .tint(UniColors.Button.primaryTint)
+        .padding(.vertical, UniSpacing.xxs)
+        // Haptic fires inside UniToggle (`.toggle` per handoff)
     }
 }
 
@@ -499,7 +598,7 @@ private struct HideBalanceToggleRow: View {
     @Binding var isOn: Bool
 
     var body: some View {
-        Toggle(isOn: $isOn) {
+        UniToggle(isOn: $isOn) {
             HStack(spacing: UniSpacing.s) {
                 Image(systemName: "eye.slash")
                     .font(.system(size: 18, weight: .regular))
@@ -513,7 +612,7 @@ private struct HideBalanceToggleRow: View {
         }
         .tint(UniColors.Button.primaryTint)
         .padding(.vertical, UniSpacing.xxs)
-        .uniHaptic(.selection, trigger: isOn)
+        // Haptic fires inside UniToggle (`.toggle` per handoff)
     }
 }
 

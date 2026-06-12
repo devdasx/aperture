@@ -4,10 +4,19 @@ import SwiftData
 // MARK: - Schema v1
 
 /// Versioned schema aggregator for Aperture's local SwiftData store. Lists
-/// every `@Model` type the app persists. Schema versioning lets us evolve
-/// the data model without losing user data — when a model changes, bump
-/// `versionIdentifier` and register a migration stage in
-/// `ApertureDatabase.migrationPlan`.
+/// every `@Model` type the app persists.
+///
+/// **Not wired into the container (audited 2026-06-11).**
+/// `ApertureDatabase` builds its `ModelContainer` from a plain
+/// `Schema([...])` with no `SchemaMigrationPlan`, so only SwiftData's
+/// automatic lightweight migration runs today — every schema change MUST
+/// stay additive (new optional columns, or columns with defaults).
+/// Wiring this type in safely requires freezing a copy of the model
+/// types as they shipped: a migration stage needs a real V1 → V2 pair,
+/// and pointing a single-version plan at the *current* model shape would
+/// make the next additive change read as an unknown store version and
+/// fail opens on already-shipped stores. Until that refactor lands,
+/// treat this declaration as documentation of the model set.
 ///
 /// Per `CLAUDE.md` Rule #2 §C, SwiftData is the canonical local-persistence
 /// surface for domain state. Sensitive secrets (mnemonic seed, PIN hash)
@@ -24,7 +33,11 @@ enum ApertureSchemaV1: VersionedSchema {
             TokenBalanceRecord.self,
             CachedPriceRecord.self,
             BiometricEnrollmentRecord.self,
-            AppMetadataRecord.self
+            AppMetadataRecord.self,
+            CustomTokenRecord.self,
+            BrowserHistoryRecord.self,
+            BrowserBookmarkRecord.self,
+            HistoricalPriceRecord.self
         ]
     }
 }
@@ -70,31 +83,109 @@ final class WalletRecord {
     /// pre-dating the avatar work. New code reads `iconColorHex`.
     var colorTag: String
 
-    /// SF Symbol name used as the wallet's identity glyph — rendered
-    /// inside the circular `WalletAvatar` that surfaces in the
-    /// MainTabView Wallet tab icon, the wallet-home toolbar pill, the
-    /// `WalletSwitcherSheet`, `WalletsListView`, `WalletDetailView`,
-    /// and the Wallet-tab long-press `contextMenu`. Default value
-    /// `"wallet.pass.fill"` (the iOS-native wallet glyph). Editable
-    /// from Settings → Wallets → <wallet> via the curated 18-symbol
-    /// picker; new symbols are added to the picker, not chosen freely
-    /// from the 5000+ SF Symbols library (Rule #2 §A.6 restraint).
-    ///
-    /// 2026-06-09 schema additive change (Rule #1 BIG — migration
-    /// + new identity surface). Old rows decode this field via the
-    /// Swift-level default in `init(...)` and are also seeded by
-    /// `ApertureDatabase.bootstrap()` to defend against future
-    /// schema-decode quirks.
+    /// LEGACY (pre-2026-06-09). SF Symbol name used as the wallet's
+    /// identity glyph in the original flat-circle avatar. The
+    /// 2026-06-09 wallet-avatar redesign replaces this with a
+    /// gradient-disc + glyph-or-monogram system; the canonical
+    /// avatar storage is now the `avatarGradient` / `avatarSymbolType`
+    /// / `avatarGlyph` / `avatarMonogram` / `avatarBadge` columns
+    /// below. This field stays in the schema for source compatibility
+    /// (SwiftData lightweight migration tolerates additive changes
+    /// to a `@Model`; removing a column would be a destructive
+    /// migration we don't need to take). Old rows decode their
+    /// legacy value; new code reads the avatar* columns.
     var iconSymbol: String
 
-    /// Hex color (`"#RRGGBB"`) for the circular avatar background.
-    /// Selected by the user from the curated `UniColors.WalletAvatar`
-    /// palette (12 colors). The hex is the canonical storage because
-    /// it survives palette changes — adding / removing tokens in the
-    /// palette doesn't strand an existing wallet's chosen identity.
-    /// Default `"#0B0D11"` (Ink) — matches Aperture's monochrome
-    /// brand register (Rule #2 §A.5 + Rule #16 §B).
+    /// LEGACY (pre-2026-06-09). Hex color for the original flat-circle
+    /// avatar background. Superseded by `avatarGradient` below; see
+    /// the doc comment on `iconSymbol` for the migration rationale.
     var iconColorHex: String
+
+    // MARK: - 2026-06-09 wallet-avatar redesign (gradient disc system)
+    //
+    // The seven columns below describe the wallet-avatar identity per
+    // the design handoff at
+    // `/Users/thuglifex/Downloads/design_handoff_wallet_avatars/`
+    // (v3 expanded the original five columns with the two
+    // `avatarCustomSvg` / `avatarCustomTint` columns for the Upload
+    // tab). They hydrate into a `WalletAvatarSpec` via
+    // `WalletAvatarSpec.hydrate(...)` and render through the
+    // `WalletAvatar(spec:size:walletId:)` primitive.
+    //
+    // SwiftData lightweight migration handles additive columns
+    // automatically. Pre-2026-06-09 rows decode these columns as the
+    // schema's underlying-type default — empty `String("")` and `nil`
+    // for optionals — and `WalletAvatarSpec.hydrate(...)` detects that
+    // shape and falls back to `WalletAvatarSpec.auto(name:)` so the
+    // wallet's disc is never blank. `ApertureDatabase.bootstrap()`
+    // additionally calls `WalletRepository.backfillAvatarDefaults()`
+    // on every open so the persisted columns themselves get backfilled
+    // — read once, written once, then the live wallet edits flow.
+    //
+    // **Pre-v3 glyph rawValue retirement (2026-06-09 v3).** The v3
+    // wallet-avatar glyph set replaces the prior 20 geometric marks
+    // with 30 Lucide icons. Some prior rawValues — `dot`, `ring`,
+    // `rings`, `dots`, `bars`, `hex`, `diamond`, `triangle`, `square`,
+    // `bolt`, `heart`, `leaf`, `moon`, `key` — are no longer in
+    // `WalletAvatarGlyph`. Rows whose `avatarGlyph` holds a retired
+    // rawValue decode through `WalletAvatarGlyph(rawValue:)` as nil,
+    // and `WalletAvatarSpec.hydrate(...)` falls through to a `.mono`
+    // avatar on the wallet's initial. The wallet's chosen *gradient*
+    // is preserved across this fallback. No crash, no blank disc.
+    // See `WalletAvatarGlyph.swift` for the full retired-name list
+    // and `WalletAvatarSpec.swift` for the hydrate path.
+
+    /// Background gradient key — one of `WalletAvatarGradient`'s
+    /// rawValues (`"graphite"`, `"slate"`, `"indigo"`, …). Default
+    /// `"graphite"` — Aperture's monochrome brand register. New
+    /// wallets created via `WalletRepository.createWallet(...)` are
+    /// written with the `auto(name)` deterministic gradient, NOT the
+    /// schema default — the schema default is the backstop for
+    /// pre-migration rows whose hydrate path lands here.
+    var avatarGradient: String
+
+    /// Symbol type — `"glyph"` (iris or Lucide icon), `"mono"` (1-2
+    /// letter monogram), or `"custom"` (user-uploaded sanitized SVG
+    /// per the v3 Upload tab). Default `"mono"` so a pre-migration row
+    /// with empty columns hydrates to a monogram from the wallet name;
+    /// the new-wallet path overrides this from `auto(name)` (also
+    /// `.mono` — the first character uppercased).
+    var avatarSymbolType: String
+
+    /// Glyph name when `avatarSymbolType == "glyph"`. One of
+    /// `WalletAvatarGlyph.allCases` (`"iris"`, `"wallet"`, …,
+    /// `"infinity"`). `nil` when the symbol type is mono or custom.
+    var avatarGlyph: String?
+
+    /// Monogram text when `avatarSymbolType == "mono"`. 1-2 characters,
+    /// uppercased by the writer. `nil` when the symbol type is glyph
+    /// or custom.
+    var avatarMonogram: String?
+
+    /// User-uploaded sanitized SVG text when `avatarSymbolType ==
+    /// "custom"`. The output of `SVGSanitizer.sanitize(_:)` — guaranteed
+    /// passive (no scripts, no event handlers, no remote refs) and
+    /// ≤ 50 KB. The on-disc rendering goes through
+    /// `WalletCustomSvgRenderer`'s WKWebView snapshot cache. `nil`
+    /// when the symbol type is glyph or mono.
+    var avatarCustomSvg: String?
+
+    /// Tint choice for `.custom` SVGs — `"white"` (default;
+    /// `brightness(0) invert(1)` filter applied so the SVG reads as a
+    /// clean white silhouette on the gradient) or `"original"` (keep
+    /// the SVG's source colors). `nil` when the symbol type is glyph
+    /// or mono; the hydrate path also accepts `nil` for `.custom`
+    /// and falls back to `.white`.
+    var avatarCustomTint: String?
+
+    /// Type badge raw value when present — `"watch"` / `"hardware"` /
+    /// `"shared"`. Per the design handoff hard rule #4, this is
+    /// DERIVED from `WalletRecord.kind` at hydrate time, not
+    /// user-selectable. The column exists for future flexibility (a
+    /// hand-tuned override surface a future agent might add), but
+    /// today every hydrate call ignores the stored value and reads
+    /// `WalletAvatarBadge.derive(from: kind)` instead.
+    var avatarBadge: String?
 
     /// Display order in the wallet list. Lower = earlier. Default:
     /// monotonically increasing on insert; user reorders via drag.
@@ -129,8 +220,15 @@ final class WalletRecord {
         colorTag: String,
         sortOrder: Int,
         requiresBackup: Bool,
-        iconSymbol: String = WalletAvatarDefaults.symbol,
-        iconColorHex: String = WalletAvatarDefaults.colorHex
+        iconSymbol: String = WalletAvatarDefaults.legacySymbol,
+        iconColorHex: String = WalletAvatarDefaults.legacyColorHex,
+        avatarGradient: String? = nil,
+        avatarSymbolType: String? = nil,
+        avatarGlyph: String? = nil,
+        avatarMonogram: String? = nil,
+        avatarCustomSvg: String? = nil,
+        avatarCustomTint: String? = nil,
+        avatarBadge: String? = nil
     ) {
         self.id = id
         self.name = name
@@ -146,12 +244,62 @@ final class WalletRecord {
         let now = Date()
         self.createdAt = now
         self.updatedAt = now
+
+        // 2026-06-09 avatar fields. If the caller didn't supply a
+        // gradient / symbolType / monogram / glyph, we run the
+        // deterministic `auto(name)` so the disc is never blank.
+        // Per the design handoff's hard rule #3: *"New wallets
+        // default via deterministic auto(name) (never blank)."*
+        // The badge is derived from `kind` regardless of what the
+        // caller passed in.
+        let auto = WalletAvatarDefaults.spec(forName: name, kind: kind)
+        self.avatarGradient = avatarGradient ?? auto.gradient
+        self.avatarSymbolType = avatarSymbolType ?? auto.symbolType
+        self.avatarGlyph = avatarGlyph ?? auto.glyph
+        self.avatarMonogram = avatarMonogram ?? auto.monogram
+        // v3 Upload-tab fields. New wallets land with nil for both —
+        // `auto(name)` produces a `.glyph` (iris) default, not a
+        // `.custom`. Manifest restore passes through whatever was
+        // persisted at the prior mutation.
+        self.avatarCustomSvg = avatarCustomSvg
+        self.avatarCustomTint = avatarCustomTint
+        self.avatarBadge = WalletAvatarBadge.derive(from: kind)?.rawValue
     }
 
-    /// Decoded kind. Falls back to `.created` if storage somehow holds an
-    /// unknown raw — defensive only, the writer paths enumerate the cases.
+    /// Decoded kind. Falls back to `.watchOnly` — the LEAST capable
+    /// kind — if storage somehow holds an unknown raw. A corrupted
+    /// record must never be granted send/sign capability it can't
+    /// prove it has; watch-only suppresses both. Defensive only, the
+    /// writer paths enumerate the cases — DEBUG builds assert so the
+    /// corruption is caught in development.
     var kind: WalletKind {
-        WalletKind(rawValue: kindRaw) ?? .created
+        guard let decoded = WalletKind(rawValue: kindRaw) else {
+            assertionFailure("WalletRecord.kindRaw holds unknown value \"\(kindRaw)\" — falling back to .watchOnly (least capable).")
+            return .watchOnly
+        }
+        return decoded
+    }
+
+    /// The fully-hydrated `WalletAvatarSpec` for this wallet, resolved
+    /// from the persisted columns + the wallet's name + kind. Every
+    /// wallet-identity surface in the app reads this — `MainTabView`
+    /// (tab icon), `WalletHomeView` (toolbar pill + long-press menu),
+    /// `WalletSwitcherSheet` (rows), `WalletsListView` (rows),
+    /// `WalletDetailView` (preview), `WalletIconPickerSheet` (live
+    /// preview + grids). The hydrator handles the empty-column / auto
+    /// (name) backstop so the disc is never blank.
+    var avatarSpec: WalletAvatarSpec {
+        WalletAvatarSpec.hydrate(
+            gradient: avatarGradient,
+            symbolType: avatarSymbolType,
+            glyph: avatarGlyph,
+            monogram: avatarMonogram,
+            customSvg: avatarCustomSvg,
+            customTint: avatarCustomTint,
+            badge: avatarBadge,
+            walletName: name,
+            walletKind: kind
+        )
     }
 }
 
@@ -174,16 +322,59 @@ enum WalletKind: String, Codable, CaseIterable, Sendable {
 /// Swift-style rules (`~/.claude/rules/swift/coding-style.md`):
 /// *"Use `static let` for constants over global constants."*
 enum WalletAvatarDefaults {
-    /// SF Symbol used when a wallet hasn't picked an identity glyph yet.
-    /// The iOS-native wallet mark — reads as "the thing where my value
-    /// lives" without borrowing Apple's own Wallet app's brand.
-    static let symbol: String = "wallet.pass.fill"
 
-    /// Default background hex — Ink (`#0B0D11`) — matches Aperture's
-    /// monochrome brand register (Rule #2 §A.5 + Rule #16 §B). A
-    /// fresh wallet's identity reads as the brand, not as a chosen
-    /// color.
-    static let colorHex: String = "#0B0D11"
+    // MARK: - Legacy (pre-2026-06-09 flat-circle avatar)
+
+    /// LEGACY. SF Symbol default for the pre-2026-06-09 flat-circle
+    /// avatar. Retained so the schema's `iconSymbol` column has a
+    /// non-empty default for source-compatible decode paths; the
+    /// new avatar system reads the avatar* columns and ignores this.
+    static let legacySymbol: String = "wallet.pass.fill"
+
+    /// LEGACY. Background hex default for the pre-2026-06-09 avatar.
+    /// Same story as `legacySymbol`.
+    static let legacyColorHex: String = "#0B0D11"
+
+    /// LEGACY alias — `symbol` and `colorHex` are referenced by older
+    /// callers (the WalletRepository backfill path, a handful of view
+    /// initializers) and stay here as one-line forwards until those
+    /// call sites migrate to the spec-based primitive.
+    static var symbol: String { legacySymbol }
+    static var colorHex: String { legacyColorHex }
+
+    // MARK: - 2026-06-09 gradient-disc avatar defaults
+
+    /// Returns the deterministic auto(name) spec for a wallet with the
+    /// given name and kind, in primitive-column form. This is the
+    /// canonical default for a newly-created wallet — per the design
+    /// handoff's hard rule #3: *"New wallets default via deterministic
+    /// auto(name) (never blank)."*
+    ///
+    /// The badge is derived from `kind` in the same call so the writer
+    /// path has a single source of truth for the avatar bundle.
+    static func spec(
+        forName name: String,
+        kind: WalletKind
+    ) -> (gradient: String, symbolType: String, glyph: String?, monogram: String?, badge: String?) {
+        // 2026-06-09 — switched from deterministic `auto(name:)` to
+        // `randomDefault()`. Per user direction: *"default icon for
+        // any new created wallet for all users, same icon, but always
+        // different color (Random color)"*. The `name` parameter is
+        // kept on the API for source-compatibility (every caller
+        // already passes it) and as the seed source for the legacy
+        // pre-migration backfill path — which now also picks a random
+        // gradient at one-time write, then stays sticky in the
+        // `WalletRecord` columns.
+        let spec = WalletAvatarSpec.randomDefault()
+        _ = name // see doc comment — kept for API stability
+        return (
+            gradient: spec.gradient.rawValue,
+            symbolType: spec.symbolType.rawValue,
+            glyph: spec.glyph?.rawValue,
+            monogram: spec.monogram,
+            badge: WalletAvatarBadge.derive(from: kind)?.rawValue
+        )
+    }
 }
 
 // MARK: - WalletAddressRecord
@@ -304,6 +495,18 @@ final class TransactionRecord {
     /// Back-pointer to the address.
     var address: WalletAddressRecord?
 
+    /// Stored copy of the owning address's UUID. Duplicates
+    /// `address?.id` as a primitive column because `#Predicate`
+    /// traversal of the optional `address` relationship can degrade
+    /// to an in-memory full scan; repository predicates filter on
+    /// this column directly. Optional so the column is an additive
+    /// lightweight migration — pre-existing rows decode `nil` and are
+    /// backfilled once per repository instance by
+    /// `TransactionRepository.ensureLegacyAddressIdBackfill()`.
+    /// Written alongside `address` at every insert in
+    /// `TransactionRepository.upsertTransaction`.
+    var addressId: UUID?
+
     init(
         id: UUID = UUID(),
         txHash: String,
@@ -377,6 +580,18 @@ final class TokenBalanceRecord {
 
     /// Back-pointer to the address.
     var address: WalletAddressRecord?
+
+    /// Stored copy of the owning address's UUID. Duplicates
+    /// `address?.id` as a primitive column for the same reason as
+    /// `TransactionRecord.addressId`: `#Predicate` traversal of the
+    /// optional `address` relationship can degrade to an in-memory
+    /// full scan, and `upsertBalance` runs dozens of times per
+    /// refresh. Optional so the column is an additive lightweight
+    /// migration — pre-existing rows decode `nil` and are backfilled
+    /// by `TransactionRepository.ensureLegacyAddressIdBackfill()`.
+    /// Written alongside `address` at every insert in
+    /// `TransactionRepository.upsertBalance`.
+    var addressId: UUID?
 
     init(
         id: UUID = UUID(),
@@ -517,3 +732,176 @@ final class AppMetadataRecord {
         self.requiresBiometricReenrollment = requiresBiometricReenrollment
     }
 }
+
+// MARK: - CustomTokenRecord
+
+/// One row per user-added token. Parallel to the static
+/// `EVMTokenRegistry` / `SolanaTokenRegistry` entries but sourced
+/// from the user pasting a contract / mint into "Add custom token."
+///
+/// **Why a separate model.** Static registries are the curated set —
+/// audited from `SUPPORTED_ASSETS.md`, ship with every binary. Custom
+/// tokens are user-typed contracts we read at runtime: their
+/// `(name, symbol, decimals)` came from a live `eth_call` or Solana
+/// mint-info / Metaplex fetch, their icon came from a Trust Wallet
+/// probe at add-time. Persisting them as a distinct model keeps the
+/// audit boundary clean (`CLAUDE.md` Rule #16 — Aperture reads what
+/// the contract says about itself; the user, not Aperture, is the
+/// vetter) and lets the scanner loop them in alongside the static
+/// registry per chain.
+///
+/// **Dedup contract.** `(chainRaw, contract)` uniquely identifies a
+/// custom token. The repository uses `dedupKey` for case-insensitive
+/// comparison on the EVM side; Solana mints are case-sensitive (base58)
+/// so the key keeps them verbatim.
+///
+/// **No seed material.** Same posture as `WalletRecord` — only public
+/// on-chain metadata lives here. The contract is public; the icon URL
+/// is public.
+@Model
+final class CustomTokenRecord {
+    /// Stable identifier — UUID for the SwiftData unique key.
+    @Attribute(.unique) var id: UUID
+
+    /// `SupportedChain.rawValue`. Decoded back via
+    /// `SupportedChain(rawValue:)` in callers.
+    var chainRaw: String
+
+    /// On-chain contract address (EVM EIP-55 form when the chain is
+    /// EVM, base58 mint when Solana). Normalized at insert by the
+    /// repository so subsequent dedup compares stably.
+    var contract: String
+
+    /// Ticker the user sees in the Tokens list (e.g. `"PEPE"`).
+    var symbol: String
+
+    /// Longer display name (e.g. `"Pepe"`). Same source as `symbol`
+    /// — fetched on-chain when the contract exposes name(), else the
+    /// user typed it manually in the Add sheet.
+    var name: String
+
+    /// On-chain `decimals()` for EVM, or the SPL mint's `decimals`
+    /// byte for Solana. Cached so the scanner doesn't refetch on every
+    /// balance read.
+    var decimals: Int
+
+    /// Trust Wallet logo URL if the HEAD probe succeeded at
+    /// add-time; nil for "use the letter-glyph fallback." Stored as
+    /// a string so the schema doesn't depend on the `URL` Codable
+    /// surface (SwiftData prefers primitive types for forward
+    /// compatibility).
+    var iconURL: String?
+
+    /// When the user added it. Drives the "Added · Jan 12" footnote
+    /// in the Custom Tokens list.
+    var addedAt: Date
+
+    /// `true` if `name + symbol` came from a live chain fetch
+    /// (`eth_call name()/symbol()` for EVM, Metaplex metadata for
+    /// Solana). `false` if the user typed them manually because the
+    /// contract didn't implement the standard surface. Surfaces a
+    /// one-line "User-provided metadata" footnote on the row so
+    /// the user has honest provenance per Rule #16.
+    var metadataFromChain: Bool
+
+    init(
+        id: UUID = UUID(),
+        chainRaw: String,
+        contract: String,
+        symbol: String,
+        name: String,
+        decimals: Int,
+        iconURL: String? = nil,
+        addedAt: Date = Date(),
+        metadataFromChain: Bool = true
+    ) {
+        self.id = id
+        self.chainRaw = chainRaw
+        self.contract = contract
+        self.symbol = symbol
+        self.name = name
+        self.decimals = decimals
+        self.iconURL = iconURL
+        self.addedAt = addedAt
+        self.metadataFromChain = metadataFromChain
+    }
+
+    /// Composite key for deduplication: `"{chainRaw}|{contract.lowercased()}"`.
+    /// EVM contracts are case-insensitive on chain; Solana base58 is
+    /// case-sensitive but lowercasing never makes two distinct mints
+    /// collide (base58's character set is strictly distinct upper /
+    /// lower). The lowercased form is the conservative dedup key for
+    /// both families.
+    var dedupKey: String { "\(chainRaw)|\(contract.lowercased())" }
+
+    /// `true` iff `chainRaw` decodes to a known `SupportedChain`.
+    /// There is no safe default chain for a custom token — a row that
+    /// fails this check must not be scanned or displayed as if it
+    /// lived on Ethereum. Check this before trusting `chain`.
+    var hasKnownChain: Bool {
+        SupportedChain(rawValue: chainRaw) != nil
+    }
+
+    /// Decoded chain. Falls back to `.ethereum` if storage somehow
+    /// holds an unknown raw — defensive only. Callers that can act on
+    /// a corrupted row (scanners, dedup) gate on `hasKnownChain`
+    /// first; the fallback exists solely so display surfaces outside
+    /// the repository keep a non-optional read.
+    var chain: SupportedChain {
+        SupportedChain(rawValue: chainRaw) ?? .ethereum
+    }
+}
+
+// MARK: - HistoricalPriceRecord
+
+/// Per-day historical spot price for one `(symbol, fiat)` pair.
+/// Feeds the `BalanceHistoryReconstructor` so the chart can value
+/// past holdings at their **then-prices** rather than today's
+/// — i.e. a wallet that held 1000 tokens at $4 each in the past
+/// renders that peak as $4000, not as 1000 × today's-$0.05 = $50.
+///
+/// **Schema.** Composite key `"SYMBOL-FIAT-yyyymmdd"` so upserts
+/// are a unique-key fetch. `dayKey` is the same integer
+/// (yyyy × 10000 + mm × 100 + dd) the reconstructor computes from
+/// each curve-point timestamp; this stores it explicitly so the
+/// repository's range query is an integer comparison rather than a
+/// date-string parse.
+///
+/// **Source.** Coinbase Exchange API `/products/{base}-{quote}/candles`
+/// at daily granularity — `close` field. The same fallbacks the live
+/// pricing layer uses (WrappedAssetAliases → ETH, KnownStablecoins
+/// → USDT, EURPeggedStablecoins → EUR) apply at fetch time so
+/// WETH gets ETH's history, AUSD gets USDT's, EURC gets EUR's.
+///
+/// **No TTL.** Historical prices are immutable by nature — May 1st's
+/// close is the same forever. We only refetch when a new day rolls
+/// over or when an old gap is discovered.
+@Model
+final class HistoricalPriceRecord {
+    /// `"SYMBOL-FIAT-yyyymmdd"` composite key, e.g. `"USDT-USD-20260430"`.
+    @Attribute(.unique) var key: String
+
+    /// Uppercased token ticker.
+    var symbol: String
+    /// Uppercased fiat code (`USD`, `EUR`, etc.).
+    var fiat: String
+    /// `yyyy * 10000 + mm * 100 + dd` integer. Sortable + range-queryable.
+    var dayKey: Int
+    /// Closing spot price for the day in `fiat` per 1 token.
+    var price: Decimal
+    /// When this row was inserted (for cache-hit telemetry only — the
+    /// price itself is immutable).
+    var fetchedAt: Date
+
+    init(symbol: String, fiat: String, dayKey: Int, price: Decimal, fetchedAt: Date = Date()) {
+        let upperSymbol = symbol.uppercased()
+        let upperFiat = fiat.uppercased()
+        self.symbol = upperSymbol
+        self.fiat = upperFiat
+        self.dayKey = dayKey
+        self.price = price
+        self.fetchedAt = fetchedAt
+        self.key = "\(upperSymbol)-\(upperFiat)-\(dayKey)"
+    }
+}
+

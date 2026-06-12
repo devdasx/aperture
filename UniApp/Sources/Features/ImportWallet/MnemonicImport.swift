@@ -36,6 +36,11 @@ struct MnemonicEntryView: View {
     /// on successful full-phrase validation.
     @FocusState private var isEditorFocused: Bool
 
+    /// Pending auto-dismiss of the keyboard after a valid phrase.
+    /// Stored so a subsequent edit cancels the stale dismissal
+    /// instead of letting it fire after the phrase changed again.
+    @State private var focusDismissTask: Task<Void, Never>? = nil
+
     /// The word currently being advised (red word the user tapped),
     /// or nil. Drives the `.sheet(item:)` presentation.
     @State private var advisedWord: AdvisedWord? = nil
@@ -95,15 +100,10 @@ struct MnemonicEntryView: View {
 
     /// Suggestion chips for the current word's prefix. Up to 6,
     /// alphabetical, only when the user is mid-typing a non-empty
-    /// prefix.
+    /// prefix. Binary-searched against the pre-sorted wordlist —
+    /// O(log n) per keystroke instead of a full 2048-word scan.
     private var suggestions: [String] {
-        let prefix = currentWord
-        guard !prefix.isEmpty else { return [] }
-        return BIP39Wordlist.english
-            .lazy
-            .filter { $0.hasPrefix(prefix) }
-            .prefix(6)
-            .map { $0 }
+        SortedBIP39Words.matches(prefix: currentWord, limit: 6)
     }
 
     private var canContinue: Bool {
@@ -233,8 +233,14 @@ struct MnemonicEntryView: View {
             }
 
             // Auto-dismiss keyboard when the phrase is complete + valid.
+            // Cancellable: a follow-on edit invalidates any pending
+            // dismissal so a stale timer can't yank focus away while
+            // the user is still typing.
+            focusDismissTask?.cancel()
             if canContinue, isEditorFocused {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                focusDismissTask = Task { @MainActor in
+                    try? await Task.sleep(for: .seconds(0.25))
+                    guard !Task.isCancelled else { return }
                     isEditorFocused = false
                 }
             }
@@ -449,6 +455,11 @@ struct MnemonicEntryView: View {
                     HStack(spacing: UniSpacing.xs) {
                         ForEach(suggestions, id: \.self) { word in
                             Button {
+                                // Imperative fire — a `trigger:`-bound
+                                // modifier on the chip would also fire
+                                // every time re-filtering changed the
+                                // chip's word, not just on tap.
+                                UniHapticEngine.shared.fire(.contextualImpact(.tap))
                                 commitSuggestion(word)
                             } label: {
                                 Text(verbatim: word)
@@ -462,7 +473,6 @@ struct MnemonicEntryView: View {
                                     )
                             }
                             .buttonStyle(.plain)
-                            .uniHaptic(.contextualImpact(.tap), trigger: word)
                         }
                     }
                     .padding(.horizontal, UniSpacing.xs)
@@ -525,8 +535,14 @@ struct MnemonicEntryView: View {
             .components(separatedBy: .whitespacesAndNewlines)
             .filter { !$0.isEmpty }
             .joined(separator: " ")
+        // Only consume (and clear) the clipboard when the paste
+        // actually yielded word content — clearing on a no-op paste
+        // would destroy unrelated user data for nothing.
+        guard !cleaned.isEmpty else { return }
         editorText = cleaned + " "
-        UIPasteboard.general.string = ""
+        // `items = []` removes the pasteboard entry entirely;
+        // assigning `""` would leave an empty string item behind.
+        UIPasteboard.general.items = []
     }
 }
 
@@ -535,6 +551,43 @@ private struct AdvisedWord: Identifiable, Hashable {
     let index: Int
     let word: String
     var id: String { "\(index)|\(word)" }
+}
+
+/// Pre-sorted BIP-39 wordlist with binary-search prefix lookup.
+/// Computed once per process; every keystroke after that is a
+/// lower-bound search plus at most `limit` sequential reads.
+private enum SortedBIP39Words {
+    static let sortedWords: [String] = BIP39Wordlist.english.sorted()
+
+    /// Index of the first word that is `>= prefix` (lower bound).
+    private static func lowerBound(of prefix: String) -> Int {
+        var low = 0
+        var high = sortedWords.count
+        while low < high {
+            let mid = (low + high) / 2
+            if sortedWords[mid] < prefix {
+                low = mid + 1
+            } else {
+                high = mid
+            }
+        }
+        return low
+    }
+
+    /// Up to `limit` words starting with `prefix`, in alphabetical
+    /// order. Empty for an empty prefix.
+    static func matches(prefix: String, limit: Int) -> [String] {
+        guard !prefix.isEmpty else { return [] }
+        var result: [String] = []
+        var index = lowerBound(of: prefix)
+        while index < sortedWords.count,
+              result.count < limit,
+              sortedWords[index].hasPrefix(prefix) {
+            result.append(sortedWords[index])
+            index += 1
+        }
+        return result
+    }
 }
 
 
@@ -556,11 +609,14 @@ struct MnemonicReviewView: View {
     @State private var isDeriving = true
     @State private var scanState: ScanState = .idle
     @State private var rescanTrigger: Int = 0
+#if DEBUG
     /// `true` while the Test toolbar action has swapped in
     /// `TestAddresses.map`. Disables the Import CTA — the user
     /// can't commit a wallet they don't have the seed for — and
     /// shows an inline banner naming the state honestly.
+    /// Debug builds only; release builds ship no test affordance.
     @State private var isTestMode: Bool = false
+#endif
 
     /// Real on-chain balance scanner backed by `RPCClient` + per-family
     /// adapters. Each chain scans independently and streams its row to
@@ -606,12 +662,13 @@ struct MnemonicReviewView: View {
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 HStack(spacing: UniSpacing.xs) {
+#if DEBUG
                     // Test action: swap in curated public addresses
                     // with known on-chain balances and re-run the
                     // scan. Auditable end-to-end verification —
                     // every chain hits its real RPC; rows that come
                     // back with balances prove the pipeline works
-                    // for that chain end-to-end.
+                    // for that chain end-to-end. Debug builds only.
                     Button {
                         useTestAddresses()
                     } label: {
@@ -620,6 +677,7 @@ struct MnemonicReviewView: View {
                     }
                     .accessibilityLabel(Text("Test against public addresses"))
                     .disabled(isDeriving)
+#endif
 
                     Button {
                         rescanTrigger &+= 1
@@ -639,6 +697,7 @@ struct MnemonicReviewView: View {
             // "Back" button at the bottom is noise (Rule #2 §A.2 —
             // remove the least-essential element).
             GlassEffectContainer(spacing: UniSpacing.s) {
+#if DEBUG
                 if isTestMode {
                     VStack(spacing: UniSpacing.s) {
                         UniFootnote(
@@ -651,10 +710,11 @@ struct MnemonicReviewView: View {
                         }
                     }
                 } else {
-                    UniButton(title: "Import wallet", variant: .primary) {
-                        onCommit()
-                    }
+                    importCTA
                 }
+#else
+                importCTA
+#endif
             }
             .padding(.horizontal, UniSpacing.l)
             .padding(.bottom, UniSpacing.l)
@@ -665,6 +725,19 @@ struct MnemonicReviewView: View {
         }
         .onChange(of: rescanTrigger) { _, _ in
             Task { await runScan() }
+        }
+    }
+
+    /// The commit CTA. Disabled until derivation has actually produced
+    /// addresses — committing with an empty map would persist a wallet
+    /// with no per-chain address rows.
+    private var importCTA: some View {
+        UniButton(
+            title: "Import wallet",
+            variant: .primary,
+            isEnabled: !derivedAddresses.isEmpty
+        ) {
+            onCommit()
         }
     }
 
@@ -768,6 +841,7 @@ struct MnemonicReviewView: View {
         }
     }
 
+#if DEBUG
     /// Swap in curated public addresses with known on-chain
     /// balances and re-run the same scan pipeline an imported
     /// wallet would. Purely a developer / verifier affordance —
@@ -790,4 +864,5 @@ struct MnemonicReviewView: View {
         isTestMode = false
         Task { await runScan() }
     }
+#endif
 }

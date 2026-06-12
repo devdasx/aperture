@@ -19,6 +19,7 @@ struct WalletDetailView: View {
 
     @Query private var matches: [WalletRecord]
     @AppStorage("activeWalletId") private var activeWalletIdRaw: String = ""
+    @AppStorage("biometricEnabled") private var biometricEnabled: Bool = false
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
 
@@ -28,6 +29,9 @@ struct WalletDetailView: View {
     @State private var isShowingBackupFlow: Bool = false
     @State private var isShowingIconPicker: Bool = false
     @State private var biometricChallenge: BiometricChallenge?
+    /// Already-localized message for the shared error alert. Non-nil
+    /// presents the alert; dismissing it clears the value.
+    @State private var errorAlertMessage: String?
 
     init(walletId: UUID) {
         self.walletId = walletId
@@ -50,6 +54,17 @@ struct WalletDetailView: View {
         .navigationBarTitleDisplayMode(.inline)
         .onAppear {
             if editedName.isEmpty, let wallet { editedName = wallet.name }
+        }
+        .alert(
+            Text("Something went wrong"),
+            isPresented: Binding(
+                get: { errorAlertMessage != nil },
+                set: { if !$0 { errorAlertMessage = nil } }
+            )
+        ) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(LocalizedStringKey(errorAlertMessage ?? ""))
         }
     }
 
@@ -117,12 +132,14 @@ struct WalletDetailView: View {
             // the picker writes through `WalletRepository`.
             Section {
                 VStack(spacing: UniSpacing.s) {
-                    WalletAvatar(
-                        symbol: wallet.iconSymbol.isEmpty ? WalletAvatarDefaults.symbol : wallet.iconSymbol,
-                        colorHex: wallet.iconColorHex.isEmpty ? WalletAvatarDefaults.colorHex : wallet.iconColorHex,
-                        size: .preview
-                    )
-                    .padding(.top, UniSpacing.xs)
+                    // 2026-06-09 — gradient-disc avatar per the
+                    // design handoff. `wallet.avatarSpec` hydrates
+                    // the persisted columns with auto(name) fallback;
+                    // the picker writes through the same hydrate
+                    // path so this hero preview updates live the
+                    // moment the user taps Save.
+                    WalletAvatar(spec: wallet.avatarSpec, size: .preview, walletId: wallet.id)
+                        .padding(.top, UniSpacing.xs)
 
                     UniButton(
                         title: "Customise…",
@@ -161,6 +178,22 @@ struct WalletDetailView: View {
                 viewPhraseRow(wallet)
             } footer: {
                 Text(phraseFooter(wallet))
+                    .font(UniTypography.footnote)
+                    .foregroundStyle(UniColors.Text.tertiary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            // Custom tokens — Aperture reads what the contract says
+            // about itself, the user adds tokens by pasting contract
+            // addresses. Row is always visible (no count gate); the
+            // empty state inside `CustomTokensListView` does its own
+            // calm "no custom tokens yet" treatment.
+            Section {
+                customTokensRow
+            } header: {
+                Text("Tokens").font(UniTypography.footnote).foregroundStyle(UniColors.Text.tertiary)
+            } footer: {
+                Text("Add ERC-20 / SPL tokens by pasting their contract or mint address. Aperture reads name, symbol, and decimals from chain.")
                     .font(UniTypography.footnote)
                     .foregroundStyle(UniColors.Text.tertiary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -266,6 +299,31 @@ struct WalletDetailView: View {
         .listRowBackground(UniColors.Background.secondary)
     }
 
+    /// Custom Tokens row — pushes `CustomTokensListView`. Reactive to
+    /// the live count of user-added tokens via `@Query` inside that
+    /// view; this row just opens it.
+    private var customTokensRow: some View {
+        NavigationLink {
+            CustomTokensListView()
+        } label: {
+            HStack(spacing: UniSpacing.s) {
+                Image(systemName: "tag")
+                    .font(.system(size: 17, weight: .regular))
+                    .foregroundStyle(UniColors.Icon.accent)
+                    .frame(width: 28)
+                Text("Custom tokens")
+                    .font(UniTypography.body)
+                    .foregroundStyle(UniColors.Text.primary)
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(UniColors.Icon.tertiary)
+            }
+            .padding(.vertical, UniSpacing.xxs)
+        }
+        .listRowBackground(UniColors.Background.secondary)
+    }
+
     // `backupStatusRow` removed 2026-06-07. Its meaning is now carried
     // by `BackupStateCard` at the top of the screen.
     private func viewPhraseRow(_ wallet: WalletRecord) -> some View {
@@ -275,7 +333,7 @@ struct WalletDetailView: View {
             // Gate the reveal behind a biometric prompt when biometric
             // is enabled — keeps the phrase from being trivially
             // viewable by anyone with the unlocked phone (Rule #16).
-            if UserDefaults.standard.bool(forKey: "biometricEnabled") {
+            if biometricEnabled {
                 biometricChallenge = BiometricChallenge(
                     reason: LocalizedStringResource("Confirm to view your recovery phrase."),
                     onSuccess: {
@@ -374,18 +432,36 @@ struct WalletDetailView: View {
         guard !trimmed.isEmpty, trimmed != wallet.name else { return }
         let id = wallet.id
         let newName = trimmed
+        let persistedName = wallet.name
         Task { @MainActor in
             let repo = WalletRepository(modelContainer: modelContext.container)
-            try? await repo.renameWallet(id: id, to: newName)
+            do {
+                try await repo.renameWallet(id: id, to: newName)
+            } catch {
+                // Revert the field to the persisted name so the UI
+                // never shows a rename that didn't land.
+                editedName = persistedName
+                errorAlertMessage = String.apertureLocalized("Couldn't rename this wallet. Try again.")
+            }
         }
     }
 
+    @MainActor
     private func deleteWallet(_ wallet: WalletRecord) async {
         let id = wallet.id
-        let repo = WalletRepository(modelContainer: modelContext.container)
-        try? await repo.deleteWallet(id: id)
+        // Keychain first: if a vault delete fails the database record
+        // survives, so the wallet stays reachable and the user can
+        // retry. Deleting the database row first would orphan the
+        // Keychain secrets with no UI left to reach them.
         try? SeedVault.deleteSeed(for: id)
         try? MnemonicVault.deleteMnemonic(for: id)
+        let repo = WalletRepository(modelContainer: modelContext.container)
+        do {
+            try await repo.deleteWallet(id: id)
+        } catch {
+            errorAlertMessage = String.apertureLocalized("Couldn't delete this wallet from the local database. Try again.")
+            return
+        }
         // If this was the active wallet, clear the pointer; the
         // wallet-home will pick a new active on next appear.
         if activeWalletIdRaw == id.uuidString { activeWalletIdRaw = "" }
@@ -409,6 +485,13 @@ private struct BiometricChallengeSheet: View {
     let onSuccess: () -> Void
     let onFailure: () -> Void
 
+    /// Guards against two `LAContext` evaluations racing — the
+    /// `.task` auto-prompt and the manual Confirm button share one
+    /// serialized path; the button is suppressed while a prompt is up.
+    @State private var isAuthenticating: Bool = false
+    /// Ensures the completion (success or failure) fires at most once.
+    @State private var hasCompleted: Bool = false
+
     var body: some View {
         UniSheet(title: "Authenticate") {
             VStack(spacing: UniSpacing.m) {
@@ -420,18 +503,25 @@ private struct BiometricChallengeSheet: View {
                 UniBody(text: "Confirm with Face ID to continue.", alignment: .center, color: UniColors.Text.secondary)
             }
         } actions: {
-            UniButton(title: "Confirm", variant: .primary) {
-                Task {
-                    let outcome = await BiometricService().authenticate(reason: reason)
-                    if case .success = outcome { onSuccess() } else { onFailure() }
-                }
+            UniButton(title: "Confirm", variant: .primary, isEnabled: !isAuthenticating) {
+                Task { await authenticate() }
             }
         }
         .task {
             // Auto-present the system prompt on appear for one-tap UX.
-            let outcome = await BiometricService().authenticate(reason: reason)
-            if case .success = outcome { onSuccess() } else { onFailure() }
+            await authenticate()
         }
+    }
+
+    @MainActor
+    private func authenticate() async {
+        guard !isAuthenticating, !hasCompleted else { return }
+        isAuthenticating = true
+        defer { isAuthenticating = false }
+        let outcome = await BiometricService().authenticate(reason: reason)
+        guard !hasCompleted else { return }
+        hasCompleted = true
+        if case .success = outcome { onSuccess() } else { onFailure() }
     }
 }
 

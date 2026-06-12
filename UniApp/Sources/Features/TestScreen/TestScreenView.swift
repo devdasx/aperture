@@ -1,5 +1,10 @@
 import SwiftUI
 
+// The design playground is a developer affordance — compiled into
+// Debug builds only. Release builds carry neither the type nor its
+// mock data.
+#if DEBUG
+
 // MARK: - TestScreenView
 
 /// **Design playground.** A faithful copy of the wallet-home surface
@@ -84,21 +89,21 @@ struct TestScreenView: View {
         PlaygroundBalance(
             chain: .bitcoin,
             tokenSymbol: "BTC",
-            nativeAmount: Decimal(string: "0.32500000")!,
+            nativeAmount: 0.325,
             decimals: 8,
             fiatValue: Decimal(24318)
         ),
         PlaygroundBalance(
             chain: .ethereum,
             tokenSymbol: "ETH",
-            nativeAmount: Decimal(string: "2.41")!,
+            nativeAmount: 2.41,
             decimals: 6,
             fiatValue: Decimal(8742)
         ),
         PlaygroundBalance(
             chain: .solana,
             tokenSymbol: "SOL",
-            nativeAmount: Decimal(string: "6.18")!,
+            nativeAmount: 6.18,
             decimals: 4,
             fiatValue: Decimal(1205)
         )
@@ -111,7 +116,7 @@ struct TestScreenView: View {
         PlaygroundTransaction(
             chain: .bitcoin,
             direction: .incoming,
-            amount: Decimal(string: "0.05")!,
+            amount: 0.05,
             tokenSymbol: "BTC",
             counterparty: "bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh",
             occurredAt: Date().addingTimeInterval(-2 * 60 * 60),
@@ -120,7 +125,7 @@ struct TestScreenView: View {
         PlaygroundTransaction(
             chain: .ethereum,
             direction: .outgoing,
-            amount: Decimal(string: "0.18")!,
+            amount: 0.18,
             tokenSymbol: "ETH",
             counterparty: "0x742d35Cc6634C0532925a3b844Bc454e4438f44e",
             occurredAt: Date().addingTimeInterval(-26 * 60 * 60),
@@ -129,7 +134,7 @@ struct TestScreenView: View {
         PlaygroundTransaction(
             chain: .solana,
             direction: .outgoing,
-            amount: Decimal(string: "1.2")!,
+            amount: 1.2,
             tokenSymbol: "SOL",
             counterparty: "Acg7p5tQfZuTQDvCgEjCQJ6gXhE2yqYJzVMa9YgN8gQk",
             occurredAt: Date().addingTimeInterval(-4 * 24 * 60 * 60),
@@ -195,9 +200,9 @@ struct TestScreenView: View {
                 .listRowSeparator(.hidden)
                 .listRowInsets(EdgeInsets(
                     top: 0,
-                    leading: UniSpacing.l,
+                    leading: UniSpacing.m,
                     bottom: 0,
-                    trailing: UniSpacing.l
+                    trailing: UniSpacing.m
                 ))
 
             WalletHomeHeader(
@@ -237,9 +242,9 @@ struct TestScreenView: View {
             .listRowSeparator(.hidden)
             .listRowInsets(EdgeInsets(
                 top: 0,
-                leading: UniSpacing.l,
+                leading: UniSpacing.m,
                 bottom: 0,
-                trailing: UniSpacing.l
+                trailing: UniSpacing.m
             ))
         }
     }
@@ -360,3 +365,19 @@ struct TestScreenView: View {
     }
     .preferredColorScheme(.dark)
 }
+
+#else
+
+// MARK: - Release stub
+
+/// Release builds compile the playground out. The inert stub keeps
+/// any remaining call site (the Settings → Developer route) building
+/// until that row is itself debug-gated by its owning surface; it
+/// renders nothing and ships no mock data.
+struct TestScreenView: View {
+    var body: some View {
+        EmptyView()
+    }
+}
+
+#endif

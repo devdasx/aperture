@@ -1,5 +1,6 @@
 import SwiftUI
 import SwiftData
+import OSLog
 
 /// Terminal placeholder for the create-wallet flow, pushed onto the
 /// cover's `NavigationStack` after `BackupVerifyView` succeeds.
@@ -48,6 +49,16 @@ struct WalletReadyView: View {
         case failed(String)
     }
     @State private var persistState: PersistState = .idle
+
+    /// The in-flight persist task. Stored so Retry can cancel any
+    /// previous launch before spawning a new one — two concurrent
+    /// persists of the same wallet would race on Keychain + SwiftData.
+    @State private var persistTask: Task<Void, Never>? = nil
+
+    private static let log = Logger(
+        subsystem: "com.thuglife.aperture",
+        category: "wallet-ready"
+    )
 
     var body: some View {
         VStack(spacing: UniSpacing.l) {
@@ -149,25 +160,32 @@ struct WalletReadyView: View {
 
     /// One-shot persistence kick. Idempotent — won't re-run if already
     /// persisting or persisted. Pass `force: true` from the Retry
-    /// button to override the persisted-state guard.
+    /// button to override the persisted-state guard. Re-entry safe:
+    /// an in-flight persist always blocks a second launch (even a
+    /// forced one), and the stored task is cancelled before a new
+    /// one is spawned so retries can never run concurrently.
     private func persistIfNeeded(force: Bool = false) {
-        if !force {
-            switch persistState {
-            case .persisting, .persisted: return
-            default: break
-            }
-        }
+        guard persistState != .persisting else { return }
+        if !force, persistState == .persisted { return }
+        persistTask?.cancel()
         persistState = .persisting
         let repository = WalletRepository(modelContainer: modelContext.container)
         let requiresBackupFlag = requiresBackup
-        Task { @MainActor in
+        persistTask = Task { @MainActor in
             do {
                 _ = try await state.persist(
                     into: repository,
                     requiresBackup: requiresBackupFlag
                 )
                 persistState = .persisted
+                // The seed + encrypted mnemonic are in Keychain —
+                // wipe the plaintext secrets before the user moves
+                // on to the PIN flow.
+                state.zeroSensitiveState()
             } catch {
+                Self.log.error(
+                    "Create-wallet persist failed: \(String(describing: error), privacy: .public)"
+                )
                 persistState = .failed("Couldn't save your wallet. Tap Retry.")
             }
         }

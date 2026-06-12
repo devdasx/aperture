@@ -107,6 +107,21 @@ private struct UniIntrinsicHeightSheetModifier: ViewModifier {
     /// after detent clamping and safe-area insets. Measured by the
     /// `GeometryReader` background below.
     @State private var renderedHeight: CGFloat = 0
+    /// Whether the sheet is currently in the `.large` fallback state.
+    /// Sticky with hysteresis (see `detentHysteresis`) so the detent
+    /// doesn't oscillate when `intrinsicHeight ≈ renderedHeight` —
+    /// without it, a content-sized detent whose rendered height lands
+    /// a fraction of a point under the intrinsic flips to `.large`,
+    /// which changes the rendered height, which flips back, forever.
+    @State private var usesLargeFallback = false
+
+    /// Hysteresis band, in points. The detent only switches to
+    /// `.large` when the intrinsic height exceeds the rendered space
+    /// by MORE than this, and only switches back to content-sized
+    /// when the intrinsic height is below the rendered space by MORE
+    /// than this. Inside the band the current state holds — an
+    /// overflow of ≤ 8pt is absorbed by `UniSheet`'s inner ScrollView.
+    private static let detentHysteresis: CGFloat = 8
 
     func body(content: Content) -> some View {
         // Two-layer measurement pattern, redesigned 2026-06-07 to
@@ -147,11 +162,13 @@ private struct UniIntrinsicHeightSheetModifier: ViewModifier {
                 // re-animate on every frame.
                 if abs(newHeight - intrinsicHeight) > 0.5 && newHeight > 0 {
                     intrinsicHeight = newHeight
+                    updateDetentDecision()
                 }
             }
             .onPreferenceChange(UniSheetRenderedHeightKey.self) { newHeight in
                 if abs(newHeight - renderedHeight) > 0.5 && newHeight > 0 {
                     renderedHeight = newHeight
+                    updateDetentDecision()
                 }
             }
             .presentationDetents(currentDetents)
@@ -178,20 +195,41 @@ private struct UniIntrinsicHeightSheetModifier: ViewModifier {
     ///    so the system gives us the full available space and the
     ///    inner `ScrollView` handles the overflow.
     ///
-    /// **Convergence.** The transient between detent changes
-    /// settles in one or two extra frames: switching to `.large`
-    /// gives more rendered height; if that's now enough to fit
-    /// the intrinsic, we switch back to `.height(intrinsic)` on
-    /// the next preference update. This stabilizes at the largest
-    /// detent that allows the content to fit, OR at `.large` if
-    /// even that isn't enough.
+    /// **Convergence & hysteresis.** The fit decision is sticky:
+    /// `updateDetentDecision()` only flips `usesLargeFallback` when
+    /// the intrinsic height crosses the rendered space by more than
+    /// `detentHysteresis` in either direction. Switching to `.large`
+    /// gives more rendered height; if the intrinsic now fits with
+    /// margin, the next preference update switches back to
+    /// `.height(intrinsic)`. This stabilizes at the largest detent
+    /// that allows the content to fit, OR at `.large` if even that
+    /// isn't enough — and never ping-pongs when the two measurements
+    /// land within a few points of each other.
     private var currentDetents: Set<PresentationDetent> {
         guard intrinsicHeight > 0 else { return [.medium] }
         guard renderedHeight > 0 else { return [.height(intrinsicHeight)] }
-        if intrinsicHeight <= renderedHeight {
-            return [.height(intrinsicHeight)]
+        return usesLargeFallback ? [.large] : [.height(intrinsicHeight)]
+    }
+
+    /// Re-evaluates the sticky `.large`-fallback flag against the
+    /// latest measurements, applying the hysteresis band so the
+    /// detent doesn't oscillate when `intrinsicHeight ≈ renderedHeight`.
+    private func updateDetentDecision() {
+        guard intrinsicHeight > 0, renderedHeight > 0 else { return }
+        if usesLargeFallback {
+            // Only leave `.large` when the content fits the rendered
+            // space with clear margin.
+            if intrinsicHeight < renderedHeight - Self.detentHysteresis {
+                usesLargeFallback = false
+            }
+        } else {
+            // Only enter `.large` when the content overflows the
+            // rendered space by more than the band — small overflows
+            // are absorbed by the inner ScrollView.
+            if intrinsicHeight > renderedHeight + Self.detentHysteresis {
+                usesLargeFallback = true
+            }
         }
-        return [.large]
     }
 }
 

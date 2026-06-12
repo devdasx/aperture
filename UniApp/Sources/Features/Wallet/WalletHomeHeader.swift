@@ -71,6 +71,13 @@ struct WalletHomeHeader: View {
         // sits flush at the top of the card and flush against the
         // chart's delta caption below. The List's own row insets
         // contribute the only remaining breathing room.
+        .onChange(of: hideBalance) { _, newValue in
+            // When the user turns "Hide balance" OFF, drop the
+            // transient tap-to-reveal flag so the next time hiding
+            // is enabled the balance starts masked instead of
+            // inheriting a stale reveal.
+            if !newValue { isRevealingHiddenBalance = false }
+        }
     }
 
     @ViewBuilder
@@ -91,6 +98,16 @@ struct WalletHomeHeader: View {
                 .lineLimit(1)
                 .minimumScaleFactor(0.5)
                 .contentTransition(.numericText())
+                // **2026-06-10 handoff `countUp` haptic.** Whisper-
+                // soft tick whenever the displayed hero string
+                // changes (rolling balance update, currency swap,
+                // hide/reveal flip, scrub-driven preview). Fires
+                // through `UniHaptic.countUp` (light impact at
+                // 0.22 intensity) — SwiftUI's `.numericText()`
+                // transition guarantees this only fires on actual
+                // value changes, not on every body render, so no
+                // additional throttling is needed.
+                .uniHaptic(.countUp, trigger: display)
         }
         .buttonStyle(.plain)
         .accessibilityLabel(

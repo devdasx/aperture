@@ -95,17 +95,33 @@ final class CreateWalletState {
         pendingWalletId = UUID()
     }
 
-    /// Derives the 64-byte BIP-39 seed from the current mnemonic +
-    /// passphrase, per spec §6 (PBKDF2-HMAC-SHA512, 2048 iterations). The
-    /// seed is the real root of the HD key tree.
+    /// Derives the 64-byte BIP-39 seed from the supplied mnemonic +
+    /// passphrase, per spec §6 (PBKDF2-HMAC-SHA512, 2048 iterations).
+    /// The seed is the real root of the HD key tree. The function is
+    /// here so the passphrase entered in `PassphraseSheet` is honestly
+    /// consumed via PBKDF2, not silently dropped on the floor.
     ///
-    /// Called by `BackupVerifyView` after the user proves they wrote
-    /// the phrase down, and by `persist(into:requiresBackup:)` for the
-    /// "skip backup" path. The function is here so the passphrase
-    /// entered in `PassphraseSheet` is honestly consumed via PBKDF2,
-    /// not silently dropped on the floor.
-    func deriveSeed() -> Data {
-        BIP39.deriveSeed(words: words, passphrase: passphrase)
+    /// Runs **off the main actor**: the class is `@MainActor`, and the
+    /// 2048 sequential HMAC-SHA512 iterations would otherwise stall
+    /// the UI thread mid-`persist` — exactly while `WalletReadyView`
+    /// is animating in. Mirrors `ImportWalletState.deriveSeedOffMain`.
+    nonisolated private static func deriveSeedOffMain(
+        words: [String],
+        passphrase: String
+    ) async -> Data {
+        await Task.detached(priority: .userInitiated) {
+            BIP39.deriveSeed(words: words, passphrase: passphrase)
+        }.value
+    }
+
+    /// Wipe the in-memory secrets once persistence has succeeded. The
+    /// seed and the encrypted mnemonic now live in Keychain; the
+    /// plaintext words and passphrase have no reason to outlive the
+    /// flow. Called by `WalletReadyView` after a successful
+    /// `persist(into:requiresBackup:)`, before the PIN flow.
+    func zeroSensitiveState() {
+        words = []
+        passphrase = ""
     }
 
     /// Persist this wallet end-to-end: encrypt + store the 64-byte
@@ -138,7 +154,11 @@ final class CreateWalletState {
         defaultName: String? = nil
     ) async throws -> UUID {
         let walletId = pendingWalletId
-        let seed = deriveSeed()
+        // Capture the inputs as values on-main, derive off-main.
+        let seed = await Self.deriveSeedOffMain(
+            words: words,
+            passphrase: passphrase
+        )
 
         // Compute a locale-aware, auto-numbered default name when
         // the caller didn't supply an explicit name. `String(localized:)`
@@ -154,6 +174,12 @@ final class CreateWalletState {
             let prefix = String.apertureLocalized("Wallet")
             resolvedName = "\(prefix) \(existingCount + 1)"
         }
+
+        // Canonical lowercase form of the phrase — BIP-39 words are
+        // lowercase by definition, and derivation below consumes the
+        // lowercased words. The stored mnemonic must match what was
+        // derived from, byte for byte.
+        let lowercasedWords = words.map { $0.lowercased() }
 
         // Keychain first — if this fails, the database is untouched.
         try SeedVault.storeSeed(seed, for: walletId)
@@ -174,12 +200,11 @@ final class CreateWalletState {
         // entry per `WalletDetailView.deleteWallet` and
         // `AdvancedSettingsView.resetAperture`.
         do {
-            try MnemonicVault.storeMnemonic(words, for: walletId)
+            try MnemonicVault.storeMnemonic(lowercasedWords, for: walletId)
         } catch {
             try? SeedVault.deleteSeed(for: walletId)
             throw error
         }
-        _ = requiresBackup  // parameter retained for the database row
 
         // Derive a per-chain address for every supported chain via
         // Trust Wallet Core (same library + paths Trust Wallet uses),
@@ -192,7 +217,6 @@ final class CreateWalletState {
         // new wallet has its 24-chain address set on disk before
         // `persist(...)` returns.
         let service = WalletCoreKeyImportService()
-        let lowercasedWords = words.map { $0.lowercased() }
         let derivedAddresses = await service.deriveAddresses(
             mnemonic: lowercasedWords,
             passphrase: passphrase

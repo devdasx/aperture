@@ -18,6 +18,11 @@ struct ReceiveQRCard: View {
     var tokenSymbol: String? = nil
     let address: String
 
+    /// Rendering context's screen scale — forwarded to the QR
+    /// generator so the produced `UIImage` carries the correct
+    /// point-size for this window (not `UIScreen.main`'s).
+    @Environment(\.displayScale) private var displayScale
+
     private var captionText: String {
         if let tokenSymbol {
             return "\(tokenSymbol) on \(chain.displayName)"
@@ -64,7 +69,7 @@ struct ReceiveQRCard: View {
 
     @ViewBuilder
     private var qrImage: some View {
-        if let image = QRCodeGenerator.shared.image(for: address) {
+        if let image = QRCodeGenerator.shared.image(for: address, displayScale: displayScale) {
             Image(uiImage: image)
                 .resizable()
                 .interpolation(.none) // crisp modules — no smoothing

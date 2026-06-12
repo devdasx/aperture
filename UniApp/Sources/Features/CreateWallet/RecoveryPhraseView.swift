@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 #if canImport(UIKit)
 import UIKit
 #endif
@@ -342,7 +343,7 @@ struct RecoveryPhraseView: View {
         // clear the pasteboard automatically at the given date — the only
         // honest way to put a recovery phrase on the clipboard.
         UIPasteboard.general.setItems(
-            [[UIPasteboard.typeAutomatic: phrase]],
+            [[UTType.plainText.identifier: phrase]],
             options: [.expirationDate: Date().addingTimeInterval(60)]
         )
 #endif

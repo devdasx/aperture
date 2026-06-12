@@ -224,7 +224,7 @@ private struct OnboardingHapticToggleRow: View {
     @Binding var isOn: Bool
 
     var body: some View {
-        Toggle(isOn: $isOn) {
+        UniToggle(isOn: $isOn) {
             HStack(spacing: UniSpacing.s) {
                 Image(systemName: "hand.tap")
                     .font(.system(size: 18, weight: .regular))

@@ -75,8 +75,19 @@ enum UniColors {
         static let quaternary = Color(uiColor: .quaternaryLabel)
         /// Placeholder text inside input fields.
         static let placeholder = Color(uiColor: .placeholderText)
-        /// Text drawn on top of a tinted/accent surface (e.g., primary CTA label).
+        /// Always-white text drawn over guaranteed-dark media (camera
+        /// feed, photo scrims). **Not safe on the accent**: the app's
+        /// accent is monochrome (Cloud `#F5F5F7` in dark mode), so
+        /// white-on-accent is invisible there — for text on an
+        /// accent-tinted surface use `Button.primaryLabel`, which
+        /// adapts. Existing consumers (`BrowserQRScanSheet`, white
+        /// over the camera feed) are correct with white and should
+        /// migrate to the honestly-named `onMedia` below.
         static let onTint = Color.white
+        /// Always-white text over media (camera feed, imagery) that is
+        /// dark in both appearances. The properly-named home for the
+        /// `onTint` consumers above.
+        static let onMedia = Color.white
         /// Text inverted against the system background (rare — splash, marketing surfaces).
         static let inverted = Color(uiColor: .systemBackground)
         /// Link / actionable inline text.
@@ -97,7 +108,11 @@ enum UniColors {
         static let tertiary = Color(uiColor: .tertiaryLabel)
         static let quaternary = Color(uiColor: .quaternaryLabel)
         static let accent = Color.accentColor
-        static let onTint = Color.white
+        /// Icon drawn on an accent-tinted surface. Adapts like
+        /// `Button.primaryLabel` (white on Ink in light, black on
+        /// Cloud in dark) — the monochrome accent makes literal
+        /// white invisible in dark mode.
+        static let onTint = Color(uiColor: .systemBackground)
 
         // Status icon variants
         static let success = Color(uiColor: .systemGreen)
@@ -155,7 +170,15 @@ enum UniColors {
 
     enum Button {
         /// Primary CTA (`UniButton.primary` → `.glassProminent`).
-        static let primaryLabel = Color.white
+        ///
+        /// Adapts against the **monochrome accent** (Ink `#0B0D11`
+        /// light / Cloud `#F5F5F7` dark — see the `Brand` doc below):
+        /// `systemBackground` resolves to white in light (on Ink) and
+        /// black in dark (on Cloud), so the label always opposes the
+        /// accent fill. Literal `Color.white` here was invisible in
+        /// dark mode (~1:1 contrast on Cloud) — e.g. the selected
+        /// word chips in `BackupVerifyView`.
+        static let primaryLabel = Color(uiColor: .systemBackground)
         static let primaryTint = Color.accentColor
 
         /// Secondary CTA (`UniButton.secondary` → `.glass`).
@@ -390,10 +413,14 @@ enum UniColors {
     /// foreground for lighter user-picked colors because the
     /// palette doesn't ship any.
     enum WalletAvatar {
-        /// The 12 curated identity colors. Order is the visual order
-        /// they appear in the picker grid (Ink first as the default
-        /// anchor, then a chromatic walk through warm → cool → warm
-        /// so adjacent swatches don't read as duplicates).
+        /// LEGACY (pre-2026-06-09). The original 12-flat-color palette
+        /// used when the avatar was a flat circle + SF Symbol. The new
+        /// avatar system uses vertical gradients (see `gradientStops(for:)`
+        /// below) — but this legacy table stays for source compatibility
+        /// with any caller that still reads
+        /// `UniColors.WalletAvatar.curated` (no live consumers as of the
+        /// 2026-06-09 rewrite; the symbol exists only so a future agent
+        /// reading old code can find the migration path here).
         static let curated: [String] = [
             "#0B0D11", // Ink (default)
             "#3A3F4A", // Slate
@@ -408,6 +435,46 @@ enum UniColors {
             "#7A2E80", // Plum
             "#9C2A6C"  // Magenta
         ]
+
+        // MARK: - 2026-06-09 gradient palette (the design handoff)
+        //
+        // The 12 curated vertical gradients from
+        // `/Users/thuglifex/Downloads/design_handoff_wallet_avatars/
+        // tokens.json`. Each gradient resolves to a top→bottom Color
+        // pair, suitable for handing directly to SwiftUI's
+        // `LinearGradient(colors: ..., startPoint: .top, endPoint: .bottom)`.
+        //
+        // This is the only place in the codebase that constructs
+        // `Color` from the gradient hex strings — Rule #4 §B exception.
+        // Feature code calls `gradientStops(for:)` and never sees the
+        // hex values directly.
+
+        /// The top + bottom Color pair for a gradient key, suitable for
+        /// `LinearGradient(colors: stops, startPoint: .top, endPoint: .bottom)`.
+        ///
+        /// Malformed hex falls back to `Brand.mark` (Ink light / Cloud
+        /// dark) — the neutral brand role — rather than literal black:
+        /// the avatar stays visibly on-system in both appearances, and
+        /// the flat monochrome disc is itself the signal that a
+        /// gradient definition is bad.
+        static func gradientStops(for gradient: WalletAvatarGradient) -> [Color] {
+            [
+                Color(hex: gradient.topHex) ?? Brand.mark,
+                Color(hex: gradient.bottomHex) ?? Brand.mark
+            ]
+        }
+
+        /// Inner-disc fill color for a wallet-avatar badge. The three
+        /// badges (watch / hardware / shared) have fixed hex values per
+        /// the design handoff. Same Rule #4 §B exception — hex →
+        /// `Color` only inside `UniColors.swift`.
+        static func badgeColor(for badge: WalletAvatarBadge) -> Color {
+            switch badge {
+            case .watch:    return Color(hex: "#2F6BD6") ?? Color.blue
+            case .hardware: return Color(hex: "#3A3D45") ?? Color.gray
+            case .shared:   return Color(hex: "#179A5B") ?? Color.green
+            }
+        }
     }
 
     // MARK: - Illustration (onboarding native scenes)
@@ -433,5 +500,38 @@ enum UniColors {
         static let accentFill = Color.accentColor
         /// A muted accent used when accent would dominate.
         static let accentMuted = Color.accentColor.opacity(0.30)
+    }
+}
+
+// MARK: - Rule #4 §B hex initializer (file-scoped to UniColors.swift)
+//
+// Per Rule #4 §B, `UniColors.swift` is the ONLY place that may
+// construct a `Color` from a hex string. This `fileprivate` initializer
+// is the single such surface — the WalletAvatar gradient + badge
+// resolvers above use it; feature code cannot reach it. Every other
+// color in the app continues to flow through a named role.
+fileprivate extension Color {
+    /// Decode a `#RRGGBB` or `#RRGGBBAA` hex string to a SwiftUI `Color`.
+    /// Returns `nil` on invalid input (callers fall back to a sensible
+    /// default — see `gradientStops(for:)`).
+    init?(hex: String) {
+        var trimmed = hex.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.hasPrefix("#") { trimmed.removeFirst() }
+        guard trimmed.count == 6 || trimmed.count == 8 else { return nil }
+        var rgb: UInt64 = 0
+        guard Scanner(string: trimmed).scanHexInt64(&rgb) else { return nil }
+        let r, g, b, a: Double
+        if trimmed.count == 6 {
+            r = Double((rgb >> 16) & 0xFF) / 255.0
+            g = Double((rgb >> 8)  & 0xFF) / 255.0
+            b = Double(rgb         & 0xFF) / 255.0
+            a = 1.0
+        } else {
+            r = Double((rgb >> 24) & 0xFF) / 255.0
+            g = Double((rgb >> 16) & 0xFF) / 255.0
+            b = Double((rgb >> 8)  & 0xFF) / 255.0
+            a = Double(rgb         & 0xFF) / 255.0
+        }
+        self = Color(.sRGB, red: r, green: g, blue: b, opacity: a)
     }
 }

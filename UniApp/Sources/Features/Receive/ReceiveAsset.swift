@@ -39,14 +39,27 @@ extension ReceiveAsset {
     /// imported a single Bitcoin watch-only address, USDC won't appear
     /// — there's nowhere to receive it. The list reflects the wallet,
     /// not the abstract registry.
-    static func tokens(availableChains: Set<SupportedChain>) -> [ReceiveAsset] {
+    ///
+    /// `customTokens` is the user-added set (Custom Tokens feature).
+    /// Each snapshot adds a token row whose `chains` includes the
+    /// custom token's chain — folded into the same `bucket` so a
+    /// custom symbol that matches a registry symbol (e.g. user adds
+    /// USDC on a chain we already know about) merges into the
+    /// existing row rather than duplicating.
+    static func tokens(
+        availableChains: Set<SupportedChain>,
+        customTokens: [CustomTokenSnapshot] = []
+    ) -> [ReceiveAsset] {
         // [symbol: (name, [chain])] — collected then sorted.
         var bucket: [String: (name: String, chains: [SupportedChain])] = [:]
 
         @inline(__always)
         func add(_ symbol: String, _ name: String, _ chain: SupportedChain) {
             if let existing = bucket[symbol] {
-                bucket[symbol] = (existing.name, existing.chains + [chain])
+                // Avoid duplicating the same (symbol, chain) pair.
+                if !existing.chains.contains(chain) {
+                    bucket[symbol] = (existing.name, existing.chains + [chain])
+                }
             } else {
                 bucket[symbol] = (name, [chain])
             }
@@ -113,6 +126,13 @@ extension ReceiveAsset {
             for entry in KavaCosmosTokenRegistry.tokens {
                 add(entry.symbol, entry.name, .kava)
             }
+        }
+
+        // User-added custom tokens — fold into the same bucket so a
+        // custom token whose symbol matches a registry token merges
+        // into the existing row rather than duplicating.
+        for snap in customTokens where availableChains.contains(snap.chain) {
+            add(snap.symbol, snap.name, snap.chain)
         }
 
         // Sort: by descending network count, then alphabetically by

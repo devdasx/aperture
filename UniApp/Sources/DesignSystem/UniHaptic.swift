@@ -109,6 +109,23 @@ enum UniHaptic: Hashable, Sendable {
     /// End of scroll, end of long flow, sheet bottom reached.
     case stop
 
+    // MARK: - Family E.5: handoff additions (2026-06-10)
+
+    /// **`toggle`** per the design handoff. Switch / on-off state
+    /// flip. Distinct from `.selection`: a toggle is a stronger,
+    /// more committed click — the user is changing a setting, not
+    /// just navigating. Maps to `.impact(flexibility: .solid)`.
+    case toggle
+
+    /// **`countUp`** per the design handoff. A whisper-soft tick
+    /// fired per rolling digit when the balance hero animates from
+    /// one value to another. Call sites should throttle (the hero
+    /// animation naturally rate-limits to ~30 ticks/sec at most;
+    /// SwiftUI's `.contentTransition(.numericText())` fires
+    /// `onChange` only on actual digit changes). Maps to
+    /// `.impact(weight: .soft, intensity: 0.2)`.
+    case countUp
+
     // MARK: - Family F: signature (Core Haptics AHAP)
 
     /// Aperture's six signature patterns. Fired via `UniHapticEngine`
@@ -129,6 +146,14 @@ enum UniHaptic: Hashable, Sendable {
         case pinSealed
         case transactionSigned    // T-018 placeholder
         case transactionConfirmed // T-018 placeholder
+
+        // **2026-06-10 — design handoff signatures.**
+        /// Soft tick → medium tap. The aperture brand moment:
+        /// splash → home handoff and pull-to-refresh completion.
+        case irisSettle
+        /// Rising continuous ramp resolving to a transient pop.
+        /// Fires when funds leave on swipe-to-send release.
+        case sendWhoosh
 
         /// Name of the AHAP file (without extension) under
         /// `Resources/Haptics/`.
@@ -225,6 +250,8 @@ extension UniHaptic {
         case .progressTick(let phase):    return phase.impactSignificance.feedback
         case .start:                      return .start
         case .stop:                       return .stop
+        case .toggle:                     return .impact(flexibility: .solid, intensity: 0.9)
+        case .countUp:                    return .impact(weight: .light, intensity: 0.22)
         case .signature:                  return nil // handled by UniHapticEngine
         }
     }
@@ -291,6 +318,20 @@ extension View {
 
 /// Single-shot haptic modifier. Hosts the `@AppStorage` read so the
 /// preference check fires fresh on every view update.
+///
+/// **No structural branching on the preference.** Both modifiers below
+/// are applied unconditionally and the preference gates the *effect*
+/// (return `nil` feedback / early-return in `onChange`). An earlier
+/// shape branched `if isEnabled { … } else { content }`, which changed
+/// the wrapped subtree's structural identity the moment the Settings
+/// haptics toggle flipped — SwiftUI tore down and rebuilt every
+/// `.uniHaptic`-wrapped subtree app-wide, discarding `@State`,
+/// `@FocusState`, and scroll positions.
+///
+/// **`.error` routes through `UniHapticEngine`** (not the direct
+/// `SensoryFeedback` mapping) so Rule #10 §J frustration silencing
+/// counts and mutes repeated error buzzes — mirroring
+/// `UniHapticDirectionalModifier` below.
 private struct UniHapticModifier<T: Equatable>: ViewModifier {
     let haptic: UniHaptic
     let trigger: T
@@ -298,28 +339,36 @@ private struct UniHapticModifier<T: Equatable>: ViewModifier {
     @AppStorage(HapticPreference.storageKey)
     private var isEnabled: Bool = HapticPreference.defaultValue
 
-    @ViewBuilder
     func body(content: Content) -> some View {
-        if isEnabled {
-            if let feedback = haptic.feedback {
-                content.sensoryFeedback(feedback, trigger: trigger)
-            } else if haptic.requiresEngine {
-                content.onChange(of: trigger) { _, _ in
-                    Task { @MainActor in
-                        UniHapticEngine.shared.play(haptic)
-                    }
-                }
-            } else {
-                content
+        content
+            .sensoryFeedback(trigger: trigger) { _, _ in
+                guard isEnabled else { return nil }
+                // `.error` fires through the engine in `onChange`
+                // below (frustration silencing, Rule #10 §J).
+                guard haptic != .error else { return nil }
+                return haptic.feedback
             }
-        } else {
-            content
-        }
+            .onChange(of: trigger) { _, _ in
+                guard isEnabled else { return }
+                guard haptic.requiresEngine || haptic == .error else { return }
+                Task { @MainActor in
+                    UniHapticEngine.shared.play(haptic)
+                }
+            }
     }
 }
 
 /// Direction-aware modifier — resolves which haptic to fire by
 /// comparing old and new values of the trigger.
+///
+/// Cases with a direct `SensoryFeedback` mapping fire through the
+/// native `.sensoryFeedback(trigger:_:)` directional overload — the
+/// platform path is frame-synced with the render loop, unlike a
+/// `Task`-hopped UIKit generator fire. The `UniHapticEngine` path is
+/// reserved for cases that genuinely need it: signatures and the
+/// double-beat `.consequential` (no `SensoryFeedback` mapping), plus
+/// `.error`, which stays on the engine so Rule #10 §J frustration
+/// silencing keeps counting and muting repeated error buzzes.
 private struct UniHapticDirectionalModifier<T: Equatable>: ViewModifier {
     let trigger: T
     let resolve: (T, T) -> UniHaptic?
@@ -328,21 +377,22 @@ private struct UniHapticDirectionalModifier<T: Equatable>: ViewModifier {
     private var isEnabled: Bool = HapticPreference.defaultValue
 
     func body(content: Content) -> some View {
-        content.onChange(of: trigger) { old, new in
-            guard isEnabled else { return }
-            guard let haptic = resolve(old, new) else { return }
-            if let feedback = haptic.feedback {
-                // Direct sensoryFeedback fire via a temporary view-bound
-                // trigger isn't possible here; route through engine for
-                // a consistent fire pathway.
-                Task { @MainActor in
-                    UniHapticEngine.shared.fire(haptic)
-                }
-            } else if haptic.requiresEngine {
+        content
+            .sensoryFeedback(trigger: trigger) { old, new in
+                guard isEnabled else { return nil }
+                guard let haptic = resolve(old, new) else { return nil }
+                // `.error` routes through the engine (frustration
+                // silencing); engine-only cases have no mapping anyway.
+                guard haptic != .error else { return nil }
+                return haptic.feedback
+            }
+            .onChange(of: trigger) { old, new in
+                guard isEnabled else { return }
+                guard let haptic = resolve(old, new) else { return }
+                guard haptic.requiresEngine || haptic == .error else { return }
                 Task { @MainActor in
                     UniHapticEngine.shared.play(haptic)
                 }
             }
-        }
     }
 }

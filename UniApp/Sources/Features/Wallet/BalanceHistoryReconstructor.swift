@@ -144,9 +144,44 @@ enum BalanceHistoryReconstructor {
     ///    a synthetic 30-day-ago leading anchor at the current
     ///    fiat so the line still reads as a flat plateau rather
     ///    than collapsing to a single point.
+    /// `priceCache` is a per-symbol last-known fiat price keyed
+    /// by **uppercased symbol** (e.g. `"USDT": 1.0`,
+    /// `"ETH": 3782.41`). Used as the per-unit fallback for tokens
+    /// that appear in `transactions` but NOT in `currentBalances`
+    /// — i.e. fully cashed-out positions. Without this fallback,
+    /// every past holding of a now-zero token contributed zero
+    /// fiat to the curve, so a user who received 747 USDT then
+    /// sent it all saw a flat-zero chart on USDT despite the
+    /// activity (2026-06-12 bug — see SHIPPED-equivalent in commit
+    /// log). Callers read from `PriceCacheRepository.prices(...)`
+    /// and pass the resulting `[symbol: price]` dict.
+    ///
+    /// Caller responsibility: keys MUST be uppercased. The
+    /// reconstructor does NOT case-fold the lookup so the
+    /// happy-path is a single hash hit.
+    /// `priceHistory` is a `[symbol-uppercased: [yyyymmdd: spot-price]]`
+    /// map of **historical closes**. When supplied, each curve
+    /// point at timestamp T values its held quantities using the
+    /// close price for `DayKey.from(T)` — i.e. the actual
+    /// then-price — rather than today's spot. This is the fix for
+    /// the 2026-06-12 "I had $4000 in the past but the chart shows
+    /// $50" report: a token whose price has fallen 99% since
+    /// receive renders the past peak at its real then-value
+    /// instead of today's collapsed valuation.
+    ///
+    /// Lookups fall through:
+    ///   `priceHistory[symbol]?[dayKey(timestamp)]`
+    ///   → `priceCache[symbol]` (today's spot)
+    ///   → `fiatPerUnit[key]` (balance-derived per-unit).
+    ///
+    /// The trailing-edge anchor (`now`) intentionally bypasses
+    /// `priceHistory` and uses balance-derived totals so the chart
+    /// resolves exactly to the wallet's displayed hero number.
     static func reconstruct(
         transactions: [TransactionRecord],
         currentBalances: [TokenBalanceRecord],
+        priceCache: [String: Decimal] = [:],
+        priceHistory: [String: [Int: Decimal]] = [:],
         range: BalanceHistoryRange,
         now: Date = Date()
     ) -> [BalancePoint] {
@@ -166,7 +201,7 @@ enum BalanceHistoryReconstructor {
         // out of the fiat sum — they have no `fiatPerUnit[key]`
         // entry, so they contribute zero. The honest behavior:
         // we can't value a quantity we have no current price for.
-        var fiatPerUnit: [TokenKey: Decimal] = [:]
+        var fiatTotals: [TokenKey: Decimal] = [:]
         var currentQuantity: [TokenKey: Decimal] = [:]
         for balance in currentBalances {
             let key = TokenKey(
@@ -183,11 +218,47 @@ enum BalanceHistoryReconstructor {
             // (e.g. multi-address Bitcoin or Solana SPL across two
             // ATAs); the chart needs the wallet-wide quantity.
             currentQuantity[key, default: 0] += quantity
-            // Per-unit price stays consistent across addresses —
-            // last writer wins, which is fine because the cached
-            // fiat value scales linearly with quantity.
+            // Accumulate fiat per key as well (2026-06-10). The
+            // previous code derived fiat-per-unit from whichever
+            // address row happened to be written last, which skewed
+            // the rate whenever rows were cached at different scan
+            // moments. Aggregating total fiat and total quantity,
+            // then dividing once below, yields the wallet-wide
+            // average per-unit value across every address row.
             if balance.fiatValueCached > 0 {
-                fiatPerUnit[key] = balance.fiatValueCached / quantity
+                fiatTotals[key, default: 0] += balance.fiatValueCached
+            }
+        }
+
+        // One division per token: wallet-wide fiat ÷ wallet-wide
+        // quantity. Read-only after this point.
+        var fiatPerUnit: [TokenKey: Decimal] = [:]
+        fiatPerUnit.reserveCapacity(fiatTotals.count)
+        for (key, fiatTotal) in fiatTotals {
+            guard let quantity = currentQuantity[key], quantity > 0 else { continue }
+            fiatPerUnit[key] = fiatTotal / quantity
+        }
+
+        // **2026-06-12 — cashed-out fallback.** For any token that
+        // appears in `transactions` but NOT in `currentBalances`
+        // (the wallet held it at some point, then sent or sold
+        // every unit), fill in `fiatPerUnit` from `priceCache`
+        // looked up by symbol. Without this, the reverse-walk
+        // builds up the historical quantity in `running` correctly,
+        // but `totalFiat()` valued it at zero — flat chart, even
+        // when the user received 747 USDT then sent 747 USDT.
+        //
+        // We touch every transaction's `(symbol, contract)` key
+        // once, skip keys we already priced from the held balance,
+        // and look up by uppercased symbol so the price-cache
+        // call sites' canonical-uppercase storage matches.
+        if !priceCache.isEmpty {
+            for tx in transactions {
+                let key = TokenKey(symbol: tx.tokenSymbol, contract: tx.tokenContract)
+                if fiatPerUnit[key] != nil { continue }
+                if let cached = priceCache[tx.tokenSymbol.uppercased()] {
+                    fiatPerUnit[key] = cached
+                }
             }
         }
 
@@ -209,12 +280,57 @@ enum BalanceHistoryReconstructor {
         ]
 
         for tx in sorted {
+            // Stop at the cutoff BEFORE reversing this transaction's
+            // delta. The list is newest-first, so the first
+            // out-of-range transaction ends the walk — and `running`
+            // must remain the holdings as of the cutoff for the
+            // leading-edge anchor below.
+            if tx.occurredAt < cutoff { break }
+
             let key = TokenKey(symbol: tx.tokenSymbol, contract: tx.tokenContract)
             guard let amount = Decimal(string: tx.amountRaw) else { continue }
-            // The amount in the transaction record is already in
-            // the token's native units (e.g. ETH, not wei). It is
-            // stored as a decimal string by the scanner so the
-            // chart math doesn't need to know per-token decimals.
+
+            // **2026-06-12 — step shape per tx.**
+            //
+            // A transaction is an instantaneous change in holdings,
+            // so the curve should STEP at `tx.occurredAt`. We
+            // capture both anchors of that step:
+            //
+            //   1. Point at `tx.occurredAt` itself — the **AFTER-tx
+            //      state** (current `running`, since the loop
+            //      reverses afterwards). For a receive this is "what
+            //      you held just after the receive landed"; for a
+            //      send this is "what you held just after the send
+            //      cleared." Crucially, this captures peak holdings
+            //      for a still-held received asset — the prior
+            //      single-BEFORE-state behavior rendered the receive
+            //      moment at zero, missing the $4000 peak the user
+            //      pointed at on 2026-06-12.
+            //
+            //   2. Point at `tx.occurredAt - 1ms` — the **BEFORE-tx
+            //      state** (running after the reverse), valued at
+            //      the same day's price. This is the value the wallet
+            //      held in the interval between this tx and the
+            //      previous (newer) tx. Together with anchor #1 they
+            //      form a vertical step at tx time.
+            //
+            // Both points use the historical price at `tx.occurredAt`
+            // for valuation — they're a hairline apart in time, so
+            // they share the day-key.
+            let afterFiat = totalFiatAt(
+                quantities: running,
+                timestamp: tx.occurredAt,
+                priceHistory: priceHistory,
+                priceCache: priceCache,
+                fiatPerUnit: fiatPerUnit
+            )
+            points.append(BalancePoint(timestamp: tx.occurredAt, fiat: afterFiat))
+
+            // Apply the reverse. The amount in the transaction
+            // record is already in the token's native units (e.g.
+            // ETH, not wei). It is stored as a decimal string by
+            // the scanner so the chart math doesn't need to know
+            // per-token decimals.
             switch TransactionDirection(rawValue: tx.directionRaw) ?? .outgoing {
             case .incoming:
                 // Before this tx, the wallet had `amount` less.
@@ -232,17 +348,20 @@ enum BalanceHistoryReconstructor {
             // negative artifacts; the curve never goes below zero.
             if running[key, default: 0] < 0 { running[key] = 0 }
 
-            // Stop sampling beyond the cutoff — but still process
-            // the tx so the carry-back math is correct for any
-            // older sample we DO need. (Currently we only emit
-            // samples between cutoff and now, so the loop can break
-            // once we cross the cutoff.)
-            if tx.occurredAt < cutoff { break }
-
+            // BEFORE-tx anchor — value the now-reversed running at
+            // the same day. The 1ms backstep keeps the timestamp
+            // unique so SwiftCharts plots a vertical step.
+            let beforeFiat = totalFiatAt(
+                quantities: running,
+                timestamp: tx.occurredAt,
+                priceHistory: priceHistory,
+                priceCache: priceCache,
+                fiatPerUnit: fiatPerUnit
+            )
             points.append(
                 BalancePoint(
-                    timestamp: tx.occurredAt,
-                    fiat: totalFiat(quantities: running, prices: fiatPerUnit)
+                    timestamp: tx.occurredAt.addingTimeInterval(-0.001),
+                    fiat: beforeFiat
                 )
             )
         }
@@ -279,10 +398,21 @@ enum BalanceHistoryReconstructor {
         }()
         // Use the final running quantities (state at the leading
         // edge) for the anchor's fiat — keeps the line truthful
-        // about what was held at that point in time.
-        if let leadingFiat = points.last?.fiat,
-           points.last?.timestamp != leadingAnchor,
-           leadingAnchor < (points.last?.timestamp ?? now)
+        // about what was held at that point in time. (2026-06-10:
+        // computed from `running` — which the loop above guarantees
+        // is the holdings as of the cutoff, since the walk stops
+        // before reversing the first out-of-range transaction —
+        // rather than from `points.last?.fiat`.)
+        let leadingFiat = totalFiatAt(
+            quantities: running,
+            timestamp: leadingAnchor,
+            priceHistory: priceHistory,
+            priceCache: priceCache,
+            fiatPerUnit: fiatPerUnit
+        )
+        if let lastPoint = points.last,
+           lastPoint.timestamp != leadingAnchor,
+           leadingAnchor < lastPoint.timestamp
         {
             points.append(BalancePoint(timestamp: leadingAnchor, fiat: leadingFiat))
         }
@@ -307,6 +437,44 @@ enum BalanceHistoryReconstructor {
         for (key, quantity) in quantities {
             guard quantity > 0, let price = prices[key] else { continue }
             sum += quantity * price
+        }
+        return sum
+    }
+
+    /// Timestamp-aware variant. For each token-quantity, looks up:
+    ///   1. **Historical close** for the date — `priceHistory[symbol][dayKey]`.
+    ///      This is the honest then-price; a 2024 receive of 1000
+    ///      tokens at $4 renders as $4000 here even if today's
+    ///      price is $0.05.
+    ///   2. **Today's spot** — `priceCache[symbol]`. Fallback when
+    ///      the historical fetch hadn't completed when the chart
+    ///      rendered, or when Coinbase doesn't quote a pair we
+    ///      need historical data for.
+    ///   3. **Balance-derived per-unit** — `fiatPerUnit[key]`. The
+    ///      last fallback, derived from the held-balance row's
+    ///      `fiatValueCached / quantity` ratio.
+    ///
+    /// Each missing rung silently degrades to the next; a token
+    /// with no price source at all contributes zero (the same
+    /// honest-about-the-gap behavior as `totalFiat`).
+    private static func totalFiatAt(
+        quantities: [TokenKey: Decimal],
+        timestamp: Date,
+        priceHistory: [String: [Int: Decimal]],
+        priceCache: [String: Decimal],
+        fiatPerUnit: [TokenKey: Decimal]
+    ) -> Decimal {
+        let dayKey = DayKey.from(date: timestamp)
+        var sum = Decimal.zero
+        for (key, quantity) in quantities {
+            guard quantity > 0 else { continue }
+            let upper = key.symbol.uppercased()
+            let price = priceHistory[upper]?[dayKey]
+                ?? priceCache[upper]
+                ?? fiatPerUnit[key]
+            if let price {
+                sum += quantity * price
+            }
         }
         return sum
     }

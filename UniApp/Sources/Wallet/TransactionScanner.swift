@@ -34,8 +34,11 @@ struct TransactionEvent: Hashable, Sendable {
     /// wallet's own addresses).
     let direction: TransactionDirection
     /// Amount as a `Decimal` already divided by the token's decimals
-    /// (so 0.001 BTC, not 100_000 sats). Use `String(describing:)`
-    /// when writing to SwiftData's `amountRaw`.
+    /// (so 0.001 BTC, not 100_000 sats). Serialize with
+    /// `NSDecimalNumber(decimal:).stringValue` when writing to
+    /// SwiftData's `amountRaw` — `String(describing:)` can emit
+    /// scientific notation that `Decimal(string:)` mis-parses on
+    /// read-back.
     let amount: Decimal
     /// `BTC` / `ETH` / `USDC` / `XRP` etc. For native sends this is
     /// the chain's native ticker; for token transfers it's the

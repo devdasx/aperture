@@ -49,16 +49,36 @@ struct CoinMark: View {
     /// the view falls back to tier 4.
     var contract: String? = nil
 
-    @State private var fetched: Data?
+    /// Optional override URL for the token mark. Set when the row
+    /// is a **custom token** (`CustomTokenRecord.iconURL`) whose
+    /// add-time Trust Wallet probe found a real asset. When non-nil,
+    /// takes priority over the contract-derived Trust Wallet URL —
+    /// the custom-token row may have come from a chain Trust Wallet
+    /// doesn't host an asset for, in which case the URL string is
+    /// nil and the view falls back to the same network path as
+    /// registry tokens.
+    var customIconURL: String? = nil
+
+    // **2026-06-09 perf.** Store the pre-decoded `UIImage` instead
+    // of raw `Data`. `UIImage(data:)` is lazy — the actual pixel
+    // decode happens during render, on the main thread, during
+    // scroll. With ~400 token rows that can be 400 main-thread
+    // decodes per scroll session. Decoding off-main + caching the
+    // already-decoded UIImage gives `Image(uiImage:)` a free render.
+    @State private var prepared: UIImage?
 
     var body: some View {
+        // Resolve the Trust Wallet / custom URL ONCE per body pass —
+        // it doubles as the `.task(id:)` rebuild key AND the fetch
+        // target, so the derivation never runs twice for one render.
+        let url = resolvedURL
         Group {
             if let assetName = bundledAssetName {
                 Image(assetName)
                     .resizable()
                     .scaledToFit()
                     .clipShape(Circle())
-            } else if let data = fetched, let image = uiImage(from: data) {
+            } else if let image = prepared {
                 Image(uiImage: image)
                     .resizable()
                     .scaledToFit()
@@ -67,8 +87,8 @@ struct CoinMark: View {
                 initialsChip
             }
         }
-        .task(id: trustWalletURLString) {
-            await loadFromCache()
+        .task(id: url) {
+            await loadFromCache(url: url)
         }
     }
 
@@ -87,24 +107,38 @@ struct CoinMark: View {
 
     // MARK: - Tier 3: Trust Wallet via CoinMarkCache
 
-    /// String form of the resolved Trust Wallet URL, used as the
-    /// `.task(id:)` rebuild key so the view re-fetches when the
-    /// (chain, contract) inputs change.
-    private var trustWalletURLString: String? {
-        CoinMarkCache.trustWalletURL(chain: chain, contract: contract)?.absoluteString
+    /// Resolved mark URL — computed once in `body` and reused as both
+    /// the `.task(id:)` rebuild key and the fetch target.
+    /// Priority: `customIconURL` (custom-token rows) → Trust Wallet
+    /// derived from `(chain, contract)` (registry tokens). When both
+    /// are nil the view skips the network path and shows the
+    /// initials chip.
+    private var resolvedURL: URL? {
+        if let custom = customIconURL, !custom.isEmpty {
+            return URL(string: custom)
+        }
+        return CoinMarkCache.trustWalletURL(chain: chain, contract: contract)
     }
 
-    private func loadFromCache() async {
+    private func loadFromCache(url: URL?) async {
         // Skip the network path entirely when a bundled asset
         // already wins — no point fetching what we'd ignore.
         if bundledAssetName != nil { return }
-        guard let url = CoinMarkCache.trustWalletURL(chain: chain, contract: contract) else { return }
-        let data = await CoinMarkCache.shared.data(for: url)
-        await MainActor.run { self.fetched = data }
-    }
-
-    private func uiImage(from data: Data) -> UIImage? {
-        UIImage(data: data)
+        guard let url else { return }
+        guard let data = await CoinMarkCache.shared.data(for: url) else { return }
+        // **2026-06-09 perf.** Decode + pre-prepare the image off
+        // the main thread. `preparingForDisplay()` returns a
+        // bitmap with the pixel format the GPU expects — without
+        // it, SwiftUI defers the decode to the first render frame,
+        // which is exactly the wrong moment (scroll). Detached task
+        // so the decode doesn't run on the actor that owns the
+        // cache. Cooperative cancellation when the view goes away.
+        let image: UIImage? = await Task.detached(priority: .userInitiated) {
+            guard let raw = UIImage(data: data) else { return nil }
+            return raw.preparingForDisplay() ?? raw
+        }.value
+        guard let image else { return }
+        await MainActor.run { self.prepared = image }
     }
 
     // MARK: - Tier 4: initials chip

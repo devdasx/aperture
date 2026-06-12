@@ -10,12 +10,59 @@ import SwiftData
 @ModelActor
 actor TransactionRepository {
 
+    // MARK: - Legacy addressId backfill
+
+    /// One-time (per actor instance) backfill of the stored `addressId`
+    /// primitive on rows written before the column existed — they
+    /// decode it as `nil` and are reachable only through the optional
+    /// `address` relationship. Running the backfill once up front lets
+    /// every upsert predicate stay on the primitive column:
+    /// `#Predicate` traversal of the optional relationship can degrade
+    /// to an in-memory full scan, and paying a fallback fetch on EVERY
+    /// brand-new insert (the common case during a history scan) was
+    /// wasted work on stores with no legacy rows.
+    private var didBackfillLegacyAddressIds = false
+
+    private func ensureLegacyAddressIdBackfill() throws {
+        guard !didBackfillLegacyAddressIds else { return }
+        didBackfillLegacyAddressIds = true
+
+        let txDescriptor = FetchDescriptor<TransactionRecord>(
+            predicate: #Predicate { $0.addressId == nil }
+        )
+        for row in try modelContext.fetch(txDescriptor) {
+            row.addressId = row.address?.id
+        }
+
+        let balDescriptor = FetchDescriptor<TokenBalanceRecord>(
+            predicate: #Predicate { $0.addressId == nil }
+        )
+        for row in try modelContext.fetch(balDescriptor) {
+            row.addressId = row.address?.id
+        }
+
+        if modelContext.hasChanges {
+            try modelContext.save()
+        }
+    }
+
     // MARK: - Transactions
 
-    /// Upsert a transaction by `(txHash, addressId)`. If a row with the
-    /// same hash on the same address exists, its status / block / fee
-    /// are updated in place; otherwise a new row is inserted. Idempotent
-    /// — safe to call from a scanner that polls.
+    /// Upsert a transaction leg by `(txHash, addressId, tokenContract,
+    /// tokenSymbol, direction)`. One on-chain transaction routinely
+    /// produces SEVERAL ledger legs for the same address under the same
+    /// hash — a swap is an outgoing leg in one asset AND an incoming leg
+    /// in another (`EVMTransactionAdapter` returns the native txlist
+    /// entry plus every tokentx entry for the same hash) — so the asset
+    /// and direction are part of the row identity. Matching on
+    /// `(txHash, addressId)` alone would collapse the legs into
+    /// whichever arrived first and freeze its amount forever. If a row
+    /// with the same leg identity exists, its status / block / fee are
+    /// updated in place; otherwise a new row is inserted. Idempotent —
+    /// safe to call from a scanner that polls. (Several same-direction
+    /// transfers of the same token inside one tx still collapse to one
+    /// row — distinguishing those needs a per-leg log index the
+    /// adapters don't surface yet.)
     func upsertTransaction(
         addressId: UUID,
         txHash: String,
@@ -29,18 +76,33 @@ actor TransactionRepository {
         counterparty: String,
         feeRaw: String?
     ) throws {
+        try ensureLegacyAddressIdBackfill()
+
         var addrDescriptor = FetchDescriptor<WalletAddressRecord>(
             predicate: #Predicate { $0.id == addressId }
         )
         addrDescriptor.fetchLimit = 1
         guard let address = try modelContext.fetch(addrDescriptor).first else { return }
 
+        // Predicate on the stored `addressId` primitive — the legacy
+        // backfill above guarantees every reachable row has it set, so
+        // no relationship-traversal fallback is needed. The full leg
+        // identity (hash + address + asset + direction) keeps distinct
+        // legs of one transaction as distinct rows.
+        let directionValue = direction.rawValue
         var txDescriptor = FetchDescriptor<TransactionRecord>(
-            predicate: #Predicate { $0.txHash == txHash && $0.address?.id == addressId }
+            predicate: #Predicate {
+                $0.txHash == txHash
+                    && $0.addressId == addressId
+                    && $0.tokenContract == tokenContract
+                    && $0.tokenSymbol == tokenSymbol
+                    && $0.directionRaw == directionValue
+            }
         )
         txDescriptor.fetchLimit = 1
+        let existing = try modelContext.fetch(txDescriptor).first
 
-        if let existing = try modelContext.fetch(txDescriptor).first {
+        if let existing {
             existing.statusRaw = status.rawValue
             existing.blockNumber = blockNumber
             existing.feeRaw = feeRaw
@@ -60,6 +122,7 @@ actor TransactionRepository {
                 feeRaw: feeRaw
             )
             record.address = address
+            record.addressId = addressId
             modelContext.insert(record)
         }
         try modelContext.save()
@@ -67,10 +130,13 @@ actor TransactionRepository {
 
     /// Delete all transactions for a given address. Used when a watch-only
     /// wallet is re-derived or when a user explicitly clears history from
-    /// a future Settings → Wallet row.
+    /// a future Settings → Wallet row. The predicate matches both the
+    /// stored `addressId` primitive (fast path) and the relationship
+    /// traversal so pre-column legacy rows (nil `addressId`) are still
+    /// cleared.
     func clearTransactions(for addressId: UUID) throws {
         let descriptor = FetchDescriptor<TransactionRecord>(
-            predicate: #Predicate { $0.address?.id == addressId }
+            predicate: #Predicate { $0.addressId == addressId || $0.address?.id == addressId }
         )
         let rows = try modelContext.fetch(descriptor)
         for row in rows { modelContext.delete(row) }
@@ -91,14 +157,21 @@ actor TransactionRepository {
         fiatValueCached: Decimal,
         fiatCurrencyCode: String
     ) throws {
+        try ensureLegacyAddressIdBackfill()
+
         var addrDescriptor = FetchDescriptor<WalletAddressRecord>(
             predicate: #Predicate { $0.id == addressId }
         )
         addrDescriptor.fetchLimit = 1
         guard let address = try modelContext.fetch(addrDescriptor).first else { return }
 
+        // Predicate on the stored `addressId` primitive — traversing
+        // the optional `address` relationship in `#Predicate` can
+        // degrade to an in-memory full scan, and this runs dozens of
+        // times per refresh. Legacy rows (pre-column) were backfilled
+        // above.
         var balDescriptor = FetchDescriptor<TokenBalanceRecord>(
-            predicate: #Predicate { $0.address?.id == addressId
+            predicate: #Predicate { $0.addressId == addressId
                 && $0.tokenSymbol == tokenSymbol
                 && $0.tokenContract == tokenContract }
         )
@@ -122,6 +195,7 @@ actor TransactionRepository {
                 updatedAt: now
             )
             record.address = address
+            record.addressId = addressId
             modelContext.insert(record)
         }
 

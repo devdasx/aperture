@@ -66,13 +66,18 @@ enum WalletSupportedRowBuilders {
         heldRows: [(chain: SupportedChain, balance: TokenBalanceRecord)],
         currencyCode: String
     ) -> [WalletCoinSupportedRow] {
-        SupportedChain.allCases.map { chain in
-            let nativeBalance = heldRows.first { entry in
-                entry.chain == chain
-                    && entry.balance.tokenContract == nil
-                    && entry.balance.tokenSymbol == chain.ticker
-            }?.balance
-            if let record = nativeBalance {
+        // **2026-06-09 perf.** Index native balances by chain ONCE.
+        // Previously each chain ran `heldRows.first { ... }` — 26
+        // chains × 50 heldRows = 1300 comparisons per body render.
+        // Now: one O(N) pass to build, then 26 O(1) lookups.
+        var nativeIndex: [SupportedChain: TokenBalanceRecord] = [:]
+        nativeIndex.reserveCapacity(SupportedChain.allCases.count)
+        for entry in heldRows where entry.balance.tokenContract == nil
+            && entry.balance.tokenSymbol == entry.chain.ticker {
+            nativeIndex[entry.chain] = entry.balance
+        }
+        return SupportedChain.allCases.map { chain in
+            if let record = nativeIndex[chain] {
                 let amount = WalletFormatting.decimalAmount(
                     rawBalance: record.rawBalance,
                     decimals: record.decimals
@@ -103,17 +108,20 @@ enum WalletSupportedRowBuilders {
         heldRows: [(chain: SupportedChain, balance: TokenBalanceRecord)],
         currencyCode: String
     ) -> [WalletTokenSupportedDisplayRow] {
+        // **2026-06-09 perf.** Build the (chain, contract) → balance
+        // index ONCE up front, then every per-registry lookup below
+        // is O(1) instead of O(N). For a wallet with ~50 held rows
+        // and 9 registries totaling ~400 tokens, this trims ~20k
+        // linear-scan comparisons per body render down to ~400 dict
+        // lookups.
+        let index = HeldRowIndex(heldRows)
         var rows: [WalletTokenSupportedDisplayRow] = []
+        rows.reserveCapacity(400)
 
-        // EVM tokens — one entry per (chain, contract). Contract
-        // comparison is case-insensitive per EIP-55 mixed-case rules.
+        // EVM tokens.
         for chain in SupportedChain.allCases where chain.family == .evm {
             for entry in EVMTokenRegistry.tokens(for: chain) {
-                let balance = lookupTokenBalance(
-                    heldRows: heldRows,
-                    chain: chain,
-                    contract: entry.contract
-                )
+                let balance = index.lookup(chain: chain, contract: entry.contract)
                 let amount = balance.map {
                     WalletFormatting.decimalAmount(
                         rawBalance: $0.rawBalance,
@@ -135,11 +143,10 @@ enum WalletSupportedRowBuilders {
 
         // Solana SPL mints.
         for (mint, entry) in SolanaTokenRegistry.mints {
-            let balance = lookupTokenBalance(heldRows: heldRows, chain: .solana, contract: mint)
-            let amount = decimalAmount(balance: balance)
+            let balance = index.lookup(chain: .solana, contract: mint)
             rows.append(WalletTokenSupportedDisplayRow(
                 id: "sol.\(mint)", chain: .solana,
-                symbol: entry.symbol, name: entry.name, contract: mint, amount: amount,
+                symbol: entry.symbol, name: entry.name, contract: mint, amount: decimalAmount(balance: balance),
                 fiatValue: positiveFiat(balance),
                 fiatCurrencyCode: balance?.fiatCurrencyCode ?? currencyCode
             ))
@@ -147,7 +154,7 @@ enum WalletSupportedRowBuilders {
 
         // TRON (TRC-20).
         for entry in TronTokenRegistry.tokens {
-            let balance = lookupTokenBalance(heldRows: heldRows, chain: .tron, contract: entry.contract)
+            let balance = index.lookup(chain: .tron, contract: entry.contract)
             rows.append(WalletTokenSupportedDisplayRow(
                 id: "trc.\(entry.contract)", chain: .tron,
                 symbol: entry.symbol, name: entry.name, contract: entry.contract, amount: decimalAmount(balance: balance),
@@ -158,7 +165,7 @@ enum WalletSupportedRowBuilders {
 
         // NEAR (NEP-141).
         for entry in NearTokenRegistry.tokens {
-            let balance = lookupTokenBalance(heldRows: heldRows, chain: .near, contract: entry.tokenAccount)
+            let balance = index.lookup(chain: .near, contract: entry.tokenAccount)
             rows.append(WalletTokenSupportedDisplayRow(
                 id: "nep.\(entry.tokenAccount)", chain: .near,
                 symbol: entry.symbol, name: entry.name, contract: entry.tokenAccount, amount: decimalAmount(balance: balance),
@@ -169,7 +176,7 @@ enum WalletSupportedRowBuilders {
 
         // Aptos (fungible asset).
         for entry in AptosTokenRegistry.tokens {
-            let balance = lookupTokenBalance(heldRows: heldRows, chain: .aptos, contract: entry.contract)
+            let balance = index.lookup(chain: .aptos, contract: entry.contract)
             rows.append(WalletTokenSupportedDisplayRow(
                 id: "apt.\(entry.contract)", chain: .aptos,
                 symbol: entry.symbol, name: entry.name, contract: entry.contract, amount: decimalAmount(balance: balance),
@@ -181,7 +188,7 @@ enum WalletSupportedRowBuilders {
         // Polkadot Asset Hub.
         for entry in PolkadotAssetRegistry.tokens {
             let assetIdString = String(entry.assetId)
-            let balance = lookupTokenBalance(heldRows: heldRows, chain: .polkadot, contract: assetIdString)
+            let balance = index.lookup(chain: .polkadot, contract: assetIdString)
             rows.append(WalletTokenSupportedDisplayRow(
                 id: "dot.\(assetIdString)", chain: .polkadot,
                 symbol: entry.symbol, name: entry.name, contract: assetIdString, amount: decimalAmount(balance: balance),
@@ -193,7 +200,7 @@ enum WalletSupportedRowBuilders {
         // XRPL IOUs — joined (currency, issuer) is the contract id.
         for entry in XRPLTokenRegistry.tokens {
             let contract = "\(entry.currency).\(entry.issuer)"
-            let balance = lookupTokenBalance(heldRows: heldRows, chain: .ripple, contract: contract)
+            let balance = index.lookup(chain: .ripple, contract: contract)
             rows.append(WalletTokenSupportedDisplayRow(
                 id: "xrpl.\(contract)", chain: .ripple,
                 symbol: entry.symbol, name: entry.name, contract: contract, amount: decimalAmount(balance: balance),
@@ -204,7 +211,7 @@ enum WalletSupportedRowBuilders {
 
         // TON Jettons.
         for entry in TONJettonRegistry.tokens {
-            let balance = lookupTokenBalance(heldRows: heldRows, chain: .ton, contract: entry.masterContract)
+            let balance = index.lookup(chain: .ton, contract: entry.masterContract)
             rows.append(WalletTokenSupportedDisplayRow(
                 id: "ton.\(entry.masterContract)", chain: .ton,
                 symbol: entry.symbol, name: entry.name, contract: entry.masterContract, amount: decimalAmount(balance: balance),
@@ -215,7 +222,7 @@ enum WalletSupportedRowBuilders {
 
         // Kava (Cosmos IBC).
         for entry in KavaCosmosTokenRegistry.tokens {
-            let balance = lookupTokenBalance(heldRows: heldRows, chain: .kava, contract: entry.denom)
+            let balance = index.lookup(chain: .kava, contract: entry.denom)
             rows.append(WalletTokenSupportedDisplayRow(
                 id: "kava.\(entry.denom)", chain: .kava,
                 symbol: entry.symbol, name: entry.name, contract: entry.denom, amount: decimalAmount(balance: balance),
@@ -237,18 +244,35 @@ enum WalletSupportedRowBuilders {
         (balance?.fiatValueCached).flatMap { $0 > 0 ? $0 : nil }
     }
 
-    private static func lookupTokenBalance(
-        heldRows: [(chain: SupportedChain, balance: TokenBalanceRecord)],
-        chain: SupportedChain,
-        contract: String
-    ) -> TokenBalanceRecord? {
-        heldRows.first(where: { entry in
-            guard entry.chain == chain,
-                  let storedContract = entry.balance.tokenContract else { return false }
-            if chain.family == .evm {
-                return storedContract.lowercased() == contract.lowercased()
+    /// **2026-06-09 perf fix.** O(1) index keyed by `(chain, contract)`
+    /// for token-balance lookup. Previously `tokenRows(...)` ran a
+    /// linear `heldRows.first { ... }` scan for EVERY one of ~400
+    /// registry tokens × ~50 held rows = ~20k operations per body
+    /// re-render. The main screen body re-renders on every
+    /// `@AppStorage` write (the filter sheet writes ~12 keys) and on
+    /// every `@Query` snapshot; the linear scan was the dominant
+    /// per-frame cost. Index build is O(N) once; lookup is O(1).
+    fileprivate struct HeldRowIndex {
+        // Key: "{chain.rawValue}|{contract.lowercased()}" (lowercased
+        // matches EIP-55 mixed-case for EVM; harmless for
+        // case-sensitive families since their contracts arrive
+        // verbatim from on-chain so case is already canonical).
+        // Value: the held balance record.
+        private let storage: [String: TokenBalanceRecord]
+
+        init(_ heldRows: [(chain: SupportedChain, balance: TokenBalanceRecord)]) {
+            var dict: [String: TokenBalanceRecord] = [:]
+            dict.reserveCapacity(heldRows.count)
+            for entry in heldRows {
+                guard let contract = entry.balance.tokenContract else { continue }
+                let key = "\(entry.chain.rawValue)|\(contract.lowercased())"
+                dict[key] = entry.balance
             }
-            return storedContract == contract
-        })?.balance
+            self.storage = dict
+        }
+
+        func lookup(chain: SupportedChain, contract: String) -> TokenBalanceRecord? {
+            storage["\(chain.rawValue)|\(contract.lowercased())"]
+        }
     }
 }

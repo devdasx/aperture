@@ -165,14 +165,121 @@ struct WalletCoreKeyImportService: KeyImportService {
               let coin = CoinType(rawValue: coinId) else {
             throw KeyImportError.unsupported
         }
-        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        let bodyHex = trimmed.hasPrefix("0x") ? String(trimmed.dropFirst(2)) : trimmed
-        guard let keyData = Data(hexString: bodyHex),
+        // Decode strictly by positively-identified format (hex, WIF,
+        // Solana base58). Throws on anything ambiguous — an address
+        // must never be derived from bytes whose encoding we merely
+        // guessed at.
+        let keyData = try Self.decodePrivateKeyBytes(raw, on: chain)
+        // Validate the decoded scalar/seed against the coin's actual
+        // curve before constructing the key. `PrivateKey(data:)` alone
+        // accepts any 32-byte buffer; `isValid(data:curve:)` rejects
+        // out-of-range secp256k1 scalars and malformed ed25519 seeds.
+        guard PrivateKey.isValid(data: keyData, curve: coin.curve),
               let privateKey = PrivateKey(data: keyData) else {
             throw KeyImportError.invalidFormat
         }
         let publicKey = privateKey.getPublicKey(coinType: coin)
-        return AnyAddress(publicKey: publicKey, coin: coin).description
+        let address = AnyAddress(publicKey: publicKey, coin: coin).description
+        guard !address.isEmpty else {
+            throw KeyImportError.derivationFailed
+        }
+        return address
+    }
+
+    // MARK: - Private-key byte decoding (format- and chain-aware)
+
+    /// WIF version byte per Bitcoin-family chain (mainnet). Base58check
+    /// WIF payloads begin with this byte; a mismatch means the key was
+    /// exported for a different network and must be rejected, not
+    /// silently re-interpreted.
+    private static let wifVersionByte: [SupportedChain: UInt8] = [
+        .bitcoin:     0x80,
+        .bitcoinCash: 0x80,
+        .litecoin:    0xB0,
+        .dogecoin:    0x9E,
+    ]
+
+    /// Decode the user's raw private-key string into the exact key
+    /// bytes for `chain`, branching on the **positively identified**
+    /// format and the chain's curve:
+    ///
+    /// - 64-char hex (with or without `0x`) → 32 raw key bytes
+    ///   (secp256k1 scalar or ed25519 seed, per the chain).
+    /// - Bitcoin-family WIF → base58check decode, verify the chain's
+    ///   version byte, drop it plus the optional `0x01` compression
+    ///   flag → 32 raw secp256k1 bytes.
+    /// - Solana base58 secret → base58 decode; a 64-byte secret yields
+    ///   its first 32 bytes (the ed25519 seed), a 32-byte secret is
+    ///   the seed itself.
+    /// - XRP family seeds (`s…`) use the XRPL base58 alphabet, which
+    ///   WalletCore's `Base58` (Bitcoin alphabet) cannot decode —
+    ///   throws `.invalidFormat` honestly rather than deriving garbage.
+    ///
+    /// Throws `KeyImportError.invalidFormat` for anything that cannot
+    /// be positively identified for the chain. Never returns bytes of
+    /// an unidentified encoding.
+    static func decodePrivateKeyBytes(
+        _ raw: String,
+        on chain: SupportedChain
+    ) throws -> Data {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let format = StubKeyImportService().detectFormat(trimmed, on: chain) else {
+            throw KeyImportError.invalidFormat
+        }
+
+        switch format {
+        case .evmHex, .cosmosHex, .ed25519Hex:
+            let bodyHex = trimmed.hasPrefix("0x") ? String(trimmed.dropFirst(2)) : trimmed
+            guard let keyData = Data(hexString: bodyHex), keyData.count == 32 else {
+                throw KeyImportError.invalidFormat
+            }
+            return keyData
+
+        case .bitcoinWIF:
+            guard let expectedVersion = wifVersionByte[chain] else {
+                throw KeyImportError.invalidFormat
+            }
+            // `WalletCore.Base58.decode` is base58check — it verifies
+            // the 4-byte double-SHA256 checksum and returns the payload
+            // without it. (Qualified: the project's own `Base58` enum in
+            // Brand/ is a plain decoder with no checksum verification.)
+            guard let payload = WalletCore.Base58.decode(string: trimmed) else {
+                throw KeyImportError.invalidFormat
+            }
+            // Payload: version byte + 32 key bytes [+ 0x01 compression flag].
+            let isUncompressed = payload.count == 33
+            let isCompressed = payload.count == 34 && payload.last == 0x01
+            guard payload.first == expectedVersion, isUncompressed || isCompressed else {
+                throw KeyImportError.invalidFormat
+            }
+            return Data(payload.dropFirst().prefix(32))
+
+        case .solanaBase58:
+            // `solanaBase58` is a shape heuristic shared by the whole
+            // ed25519 family; only Solana actually uses raw base58
+            // secrets. Stellar (StrKey) and Sui (bech32/base64) keys
+            // must not be decoded as if they were Solana's.
+            guard chain == .solana,
+                  let decoded = WalletCore.Base58.decodeNoCheck(string: trimmed) else {
+                throw KeyImportError.invalidFormat
+            }
+            if decoded.count == 64 {
+                // 64-byte secret = 32-byte ed25519 seed + 32-byte public key.
+                return Data(decoded.prefix(32))
+            }
+            if decoded.count == 32 {
+                return decoded
+            }
+            throw KeyImportError.invalidFormat
+
+        case .xrpSeed:
+            // XRPL `s…` seeds use Ripple's own base58 alphabet;
+            // WalletCore exposes no decoder for it. Refuse honestly.
+            throw KeyImportError.invalidFormat
+
+        case .extendedPublicKey, .unknown:
+            throw KeyImportError.invalidFormat
+        }
     }
 
     func validateAddress(_ raw: String, on chain: SupportedChain) -> Bool {

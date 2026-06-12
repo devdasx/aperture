@@ -53,16 +53,17 @@ struct TransactionDetailView: View {
         }
     }
 
+    @ViewBuilder
     private func statusBadge(_ tx: TransactionRecord) -> some View {
-        let status = TransactionStatus(rawValue: tx.statusRaw) ?? .confirmed
-        let kind: UniBadge.Kind
-        let label: LocalizedStringKey
-        switch status {
-        case .pending:   kind = .warning; label = "Pending"
-        case .confirmed: kind = .success; label = "Confirmed"
-        case .failed:    kind = .error;   label = "Failed"
+        // Honesty: an unrecognized `statusRaw` must never render as a
+        // green "Confirmed" — assert nothing we can't verify. Show the
+        // stored raw value on a neutral badge instead.
+        switch TransactionStatus(rawValue: tx.statusRaw) {
+        case .pending:   UniBadge(text: "Pending", kind: .warning)
+        case .confirmed: UniBadge(text: "Confirmed", kind: .success)
+        case .failed:    UniBadge(text: "Failed", kind: .error)
+        case nil:        UniBadge(text: "\(tx.statusRaw)", kind: .neutral)
         }
-        return UniBadge(text: label, kind: kind)
     }
 
     private func detailGrid(_ tx: TransactionRecord) -> some View {

@@ -1,4 +1,5 @@
 import Foundation
+import OSLog
 
 /// Long-tail chain adapters consolidated into one file. Each is a
 /// small Sendable struct with `fetchAccountSummary(address)` →
@@ -6,6 +7,14 @@ import Foundation
 /// `client.callJSONResultData(...)` to get `Data`, then decodes via
 /// `JSONSerialization.jsonObject` — the Data shuttle is the
 /// Swift-6-strict-concurrency boundary across the actor.
+///
+/// **Error contract.** These adapters intentionally return a zero
+/// summary on failure (the scanner treats "couldn't read" as "no
+/// balance to show" for long-tail chains). Every swallowed failure
+/// is logged at `.error` (chain name public, address private) so
+/// dead endpoints are diagnosable from the device log instead of
+/// silently rendering 0.
+private let longTailLog = Logger(subsystem: "com.thuglife.aperture", category: "longtail-balance")
 
 struct ChainAccountSummary: Sendable {
     let nativeBalance: Decimal
@@ -19,10 +28,16 @@ struct XRPChainAdapter: Sendable {
 
     func fetchAccountSummary(address: String) async throws(RPCError) -> ChainAccountSummary {
         do {
+            // rippled's HTTP API is JSON-RPC-shaped but does NOT echo
+            // the request `id` (verified against s1.ripple.com and
+            // xrplcluster.com — the response carries no `id` field at
+            // all), so the client's default id-echo validation would
+            // reject every response and render XRP as 0.
             let data = try await client.callJSONResultData(
                 chain: .ripple,
                 method: "account_info",
-                params: [["account": address, "ledger_index": "validated"]]
+                params: [["account": address, "ledger_index": "validated"]],
+                validatesIDEcho: false
             )
             let dict = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] ?? [:]
             if let info = dict["account_data"] as? [String: Any],
@@ -33,6 +48,7 @@ struct XRPChainAdapter: Sendable {
             }
             return ChainAccountSummary(nativeBalance: 0, isUsed: false)
         } catch {
+            longTailLog.error("XRP balance fetch failed for \(address, privacy: .private): \(String(describing: error), privacy: .public)")
             return ChainAccountSummary(nativeBalance: 0, isUsed: false)
         }
     }
@@ -54,6 +70,7 @@ struct StellarChainAdapter: Sendable {
             let balance = Decimal(string: nativeStr) ?? 0
             return ChainAccountSummary(nativeBalance: balance, isUsed: balance > 0)
         } catch {
+            longTailLog.error("Stellar balance fetch failed for \(address, privacy: .private): \(String(describing: error), privacy: .public)")
             return ChainAccountSummary(nativeBalance: 0, isUsed: false)
         }
     }
@@ -72,13 +89,21 @@ struct NEARChainAdapter: Sendable {
         // `[String: Sendable] → [String: Any]` bridging quirk in
         // Swift 6 that doesn't surface in tooling. To stay reliable
         // we POST directly via URLSession and parse the JSON
-        // response shape ourselves. No rate-limit / circuit-breaker
-        // — NEAR's `query` is read-only and the official endpoint
-        // doesn't throttle here.
-        let urlString = "https://rpc.mainnet.near.org"
-        guard let url = URL(string: urlString) else {
-            return ChainAccountSummary(nativeBalance: 0, isUsed: false)
-        }
+        // response shape ourselves.
+        //
+        // **2026-06-12.** The direct path now iterates the chain's
+        // REGISTERED endpoints (RPCRegistry — rpc.mainnet.near.org
+        // primary, near.lava.build fallback) with an explicit 10 s
+        // per-request timeout matching RPCClient's session posture,
+        // instead of one hardcoded host on URLSession.shared's 60 s
+        // default: an outage of the primary no longer renders NEAR
+        // as 0 while a healthy fallback exists, and a hung node can
+        // no longer stall the refresh for a minute. Rate limiting /
+        // circuit breaking still don't apply on this path — that
+        // capability lives inside the RPCClient actor, which this
+        // adapter bypasses until the named-params bridging quirk is
+        // re-validated.
+        //
         // Hand-build the body so the `params` field is a JSON object
         // (not an array). Use raw string concatenation rather than
         // `[String: Any]` round-tripping through JSONSerialization to
@@ -87,27 +112,41 @@ struct NEARChainAdapter: Sendable {
         let bodyString = """
         {"jsonrpc":"2.0","id":1,"method":"query","params":{"request_type":"view_account","finality":"final","account_id":"\(escapedAddress)"}}
         """
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = bodyString.data(using: .utf8)
-        do {
-            let (data, response) = try await URLSession.shared.data(for: request)
+        let bodyData = bodyString.data(using: .utf8)
+        for endpoint in RPCRegistry.endpoints(for: .near) where endpoint.kind == .jsonRPC {
+            var request = URLRequest(url: endpoint.url)
+            request.timeoutInterval = 10
+            request.httpMethod = "POST"
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.httpBody = bodyData
+            let data: Data
+            let response: URLResponse
+            do {
+                (data, response) = try await URLSession.shared.data(for: request)
+            } catch let urlError as URLError where urlError.code == .cancelled {
+                throw RPCError.cancelled
+            } catch {
+                longTailLog.error("NEAR balance fetch failed on \(endpoint.id, privacy: .public) for \(address, privacy: .private): \(String(describing: error), privacy: .public)")
+                continue
+            }
             guard let http = response as? HTTPURLResponse,
                   (200..<300).contains(http.statusCode) else {
-                return ChainAccountSummary(nativeBalance: 0, isUsed: false)
+                longTailLog.error("NEAR balance fetch returned non-2xx on \(endpoint.id, privacy: .public) for \(address, privacy: .private)")
+                continue
             }
             guard let root = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
                   let result = root["result"] as? [String: Any],
                   let amountStr = result["amount"] as? String,
                   let yocto = Decimal(string: amountStr) else {
+                // 2xx without a parseable amount is how NEAR reports
+                // an account that doesn't exist yet — an unused
+                // address, not an endpoint fault. Don't rotate.
                 return ChainAccountSummary(nativeBalance: 0, isUsed: false)
             }
             let near = yocto / Self.yoctoPerNear
             return ChainAccountSummary(nativeBalance: near, isUsed: near > 0)
-        } catch {
-            return ChainAccountSummary(nativeBalance: 0, isUsed: false)
         }
+        return ChainAccountSummary(nativeBalance: 0, isUsed: false)
     }
 
     private static let yoctoPerNear: Decimal = {
@@ -136,6 +175,7 @@ struct TONChainAdapter: Sendable {
             let ton = nano / 1_000_000_000
             return ChainAccountSummary(nativeBalance: ton, isUsed: ton > 0)
         } catch {
+            longTailLog.error("TON balance fetch failed for \(address, privacy: .private): \(String(describing: error), privacy: .public)")
             return ChainAccountSummary(nativeBalance: 0, isUsed: false)
         }
     }
@@ -174,6 +214,7 @@ struct TRONChainAdapter: Sendable {
             let trx = sun / 1_000_000
             return ChainAccountSummary(nativeBalance: trx, isUsed: trx > 0)
         } catch {
+            longTailLog.error("TRON balance fetch failed for \(address, privacy: .private): \(String(describing: error), privacy: .public)")
             return ChainAccountSummary(nativeBalance: 0, isUsed: false)
         }
     }
@@ -202,12 +243,14 @@ struct TRONChainAdapter: Sendable {
 /// First 16 bytes of `data` (offset 16) are the **free** balance.
 /// Plancks: divide by 10^10 to get DOT.
 ///
-/// **Why direct URLSession.** Same reason as NEAR adapter — the
-/// shared abstraction's `[String: Sendable]` plumbing had a
-/// bridging quirk; for one-off RPC paths the direct URLSession
-/// approach is more reliable than chasing the abstraction.
-/// Per-endpoint rate limit isn't needed for a single read per
-/// scan pass.
+/// **Routing (2026-06-12).** `state_getStorage` takes a positional
+/// params array, so it goes through `RPCClient.callJSONString` like
+/// every other JSON-RPC chain — inheriting the 10 s timeout, the
+/// registered fallback rotation (rpc.polkadot.io → OnFinality), the
+/// rate limiter, and the circuit breaker. (The NEAR adapter's
+/// named-object bridging quirk never applied here — the earlier
+/// direct-URLSession copy of that pattern hardcoded a single host
+/// with a 60 s default timeout and no fallback.)
 struct PolkadotChainAdapter: Sendable {
     let client: RPCClient
 
@@ -225,36 +268,27 @@ struct PolkadotChainAdapter: Sendable {
         key.append(contentsOf: accountId)
         let keyHex = "0x" + key.map { String(format: "%02x", $0) }.joined()
 
-        // 3. POST state_getStorage directly via URLSession.
-        guard let url = URL(string: "https://rpc.polkadot.io") else {
-            return ChainAccountSummary(nativeBalance: 0, isUsed: false)
-        }
-        let bodyString = """
-        {"jsonrpc":"2.0","id":1,"method":"state_getStorage","params":["\(keyHex)"]}
-        """
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = bodyString.data(using: .utf8)
-
-        let data: Data
+        // 3. state_getStorage through the shared client — positional
+        //    params, so the standard JSON-RPC path applies. The result
+        //    is a hex string ("0x…") for an existing account; a `null`
+        //    result (account has no System::Account storage — never
+        //    used) surfaces as a thrown `.invalidResponse` from
+        //    `callJSONString` and maps to the zero summary below.
+        let resultStr: String
         do {
-            let (responseData, response) = try await URLSession.shared.data(for: request)
-            guard let http = response as? HTTPURLResponse,
-                  (200..<300).contains(http.statusCode) else {
-                return ChainAccountSummary(nativeBalance: 0, isUsed: false)
-            }
-            data = responseData
+            resultStr = try await client.callJSONString(
+                chain: .polkadot,
+                method: "state_getStorage",
+                params: [keyHex]
+            )
         } catch {
+            if case .cancelled = error { throw error }
+            longTailLog.error("Polkadot balance fetch failed for \(address, privacy: .private): \(String(describing: error), privacy: .public)")
             return ChainAccountSummary(nativeBalance: 0, isUsed: false)
         }
 
-        // 4. Parse JSON, expect result to be a hex string "0x…" or null.
-        guard let root = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else {
-            return ChainAccountSummary(nativeBalance: 0, isUsed: false)
-        }
-        guard let resultStr = root["result"] as? String,
-              resultStr.hasPrefix("0x") else {
+        // 4. Expect a hex string "0x…".
+        guard resultStr.hasPrefix("0x") else {
             return ChainAccountSummary(nativeBalance: 0, isUsed: false)
         }
         let hex = String(resultStr.dropFirst(2))
@@ -336,6 +370,7 @@ struct AptosChainAdapter: Sendable {
             let apt = octas / 100_000_000
             return ChainAccountSummary(nativeBalance: apt, isUsed: apt > 0)
         } catch {
+            longTailLog.error("Aptos balance fetch failed for \(address, privacy: .private): \(String(describing: error), privacy: .public)")
             return ChainAccountSummary(nativeBalance: 0, isUsed: false)
         }
     }
@@ -359,6 +394,7 @@ struct SuiChainAdapter: Sendable {
             let sui = mist / 1_000_000_000
             return ChainAccountSummary(nativeBalance: sui, isUsed: sui > 0)
         } catch {
+            longTailLog.error("Sui balance fetch failed for \(address, privacy: .private): \(String(describing: error), privacy: .public)")
             return ChainAccountSummary(nativeBalance: 0, isUsed: false)
         }
     }
@@ -385,6 +421,7 @@ struct CosmosKavaAdapter: Sendable {
             let kava = ukava / 1_000_000
             return ChainAccountSummary(nativeBalance: kava, isUsed: kava > 0)
         } catch {
+            longTailLog.error("Kava balance fetch failed for \(address, privacy: .private): \(String(describing: error), privacy: .public)")
             return ChainAccountSummary(nativeBalance: 0, isUsed: false)
         }
     }
