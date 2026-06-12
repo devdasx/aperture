@@ -83,7 +83,14 @@ struct SecuritySettingsView: View {
     private var shouldShowGate: Binding<Bool> {
         Binding(
             get: { !isUnlocked && PinCodeStorage.hasPin },
-            set: { newValue in if !newValue { isUnlocked = true } }
+            set: { _ in
+                // Intentionally inert. The cover's visibility is
+                // derived state — only `PinCodeView`'s `onComplete`
+                // may flip `isUnlocked`. Treating any dismissal of
+                // the cover (including Cancel) as success would be
+                // an authentication bypass; cancelling pops back to
+                // the Settings root via `onCancel` instead.
+            }
         )
     }
 
@@ -288,7 +295,7 @@ struct SecuritySettingsView: View {
     }
 
     private var biometricRow: some View {
-        Toggle(isOn: Binding(
+        UniToggle(isOn: Binding(
             get: { biometricEnabled },
             set: { newValue in
                 if newValue {
@@ -322,6 +329,7 @@ struct SecuritySettingsView: View {
         }
     }
 
+    @MainActor
     private func tryEnableBiometric() async {
         let outcome = await BiometricService().authenticate(
             reason: LocalizedStringResource("Enable Face ID for Aperture.")

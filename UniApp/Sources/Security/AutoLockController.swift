@@ -116,10 +116,9 @@ private struct AutoLockControllerKey: EnvironmentKey {
     /// is `@MainActor`. The default value is only ever read in
     /// previews / contexts where the app root didn't inject a
     /// controller — production always overrides via `.environment(\.autoLockController, …)`
-    /// in `UniAppApp.body`. The default's `init()` only reads
-    /// `UserDefaults` (thread-safe), so the unsafe annotation is
-    /// honest about the isolation skip.
-    nonisolated(unsafe) static let defaultValue: AutoLockController = {
+    /// in `UniAppApp.body`. `AutoLockController` is `Sendable`, so a
+    /// plain `static let` is concurrency-safe without any annotation.
+    static let defaultValue: AutoLockController = {
         MainActor.assumeIsolated { AutoLockController() }
     }()
 }

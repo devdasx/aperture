@@ -19,6 +19,13 @@ enum Base58 {
         "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
     )
 
+    /// Character → digit-value lookup for the alphabet. Built once
+    /// (`static let` is lazily, atomically initialized) instead of
+    /// being rebuilt on every decode call.
+    private static let alphabetIndex: [Character: Int] = Dictionary(
+        uniqueKeysWithValues: alphabet.enumerated().map { ($0.element, $0.offset) }
+    )
+
     /// Decode a Bitcoin-alphabet Base58 string back to `[UInt8]`
     /// bytes. Returns nil on any character outside the alphabet.
     /// Preserves leading zero bytes (each leading `1` in the input
@@ -27,11 +34,6 @@ enum Base58 {
     static func decodeBytes(_ string: String) -> [UInt8]? {
         guard !string.isEmpty else { return [] }
 
-        var indexOf: [Character: Int] = [:]
-        for (i, c) in alphabet.enumerated() {
-            indexOf[c] = i
-        }
-
         var leadingOnes = 0
         for c in string {
             if c == "1" { leadingOnes += 1 } else { break }
@@ -39,7 +41,7 @@ enum Base58 {
 
         var bytes: [UInt8] = [0]
         for c in string {
-            guard let value = indexOf[c] else { return nil }
+            guard let value = alphabetIndex[c] else { return nil }
             var carry = value
             for i in 0..<bytes.count {
                 carry += Int(bytes[i]) * 58
@@ -50,6 +52,14 @@ enum Base58 {
                 bytes.append(UInt8(carry & 0xff))
                 carry >>= 8
             }
+        }
+        // The accumulator was seeded with a single zero limb; for an
+        // all-'1' input (numeric value zero) that seed survives and
+        // would emit one zero byte too many — the mirror of the
+        // `extraLeadingOnes` strip in `encode`. Drop high-order zero
+        // limbs; leading zero bytes are restored from `leadingOnes`.
+        while let last = bytes.last, last == 0 {
+            bytes.removeLast()
         }
         var result: [UInt8] = Array(repeating: 0, count: leadingOnes)
         result.append(contentsOf: bytes.reversed())
@@ -60,41 +70,11 @@ enum Base58 {
     /// Returns nil on any character outside the alphabet. Preserves
     /// leading zero bytes (each leading `1` in the input maps to a
     /// zero byte). Used by SS58 (Polkadot address) decoding.
+    ///
+    /// `Data`-typed convenience over ``decodeBytes(_:)`` — one
+    /// algorithm, two return shapes.
     static func decode(_ string: String) -> Data? {
-        guard !string.isEmpty else { return Data() }
-
-        // Build alphabet index lookup. Computed once at first call
-        // — not worth caching at module scope since decode is rare.
-        var indexOf: [Character: Int] = [:]
-        for (i, c) in alphabet.enumerated() {
-            indexOf[c] = i
-        }
-
-        // Count leading `1`s — those map to leading zero bytes.
-        var leadingOnes = 0
-        for c in string {
-            if c == "1" { leadingOnes += 1 } else { break }
-        }
-
-        // Convert from base-58 to base-256 via repeated multiply-add.
-        var bytes: [UInt8] = [0]
-        for c in string {
-            guard let value = indexOf[c] else { return nil }
-            var carry = value
-            for i in 0..<bytes.count {
-                carry += Int(bytes[i]) * 58
-                bytes[i] = UInt8(carry & 0xff)
-                carry >>= 8
-            }
-            while carry > 0 {
-                bytes.append(UInt8(carry & 0xff))
-                carry >>= 8
-            }
-        }
-        // Reverse to big-endian and prepend leading zeros.
-        var result = Data(repeating: 0, count: leadingOnes)
-        result.append(contentsOf: bytes.reversed())
-        return result
+        decodeBytes(string).map { Data($0) }
     }
 
     /// Encode raw bytes to a Bitcoin-alphabet Base58 string.
@@ -161,5 +141,16 @@ private let _base58SmokeCheck: Void = {
     )
     // Two leading zeros → two leading '1's.
     assert(Base58.encode(Data([0x00, 0x00, 0x01])) == "112")
+    // Decode round-trips, including the zero-value (all-'1') inputs the
+    // seeded accumulator used to pad with a spurious extra zero byte.
+    assert(Base58.decodeBytes("1") == [0x00])
+    assert(Base58.decodeBytes("11") == [0x00, 0x00])
+    assert(Base58.decodeBytes("112") == [0x00, 0x00, 0x01])
+    assert(Base58.decodeBytes("2NEpo7TZRRrLZSi2U") == [UInt8](helloWorld))
+    // Solana System Program address — 32 zero bytes exactly.
+    assert(
+        Base58.decodeBytes("11111111111111111111111111111111")
+            == [UInt8](repeating: 0, count: 32)
+    )
 }()
 #endif

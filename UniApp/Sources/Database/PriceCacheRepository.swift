@@ -62,9 +62,12 @@ actor PriceCacheRepository {
     /// hit instead of N per-symbol fetches.
     func prices(symbols: [String], fiat: String) throws -> [String: (price: Decimal, fetchedAt: Date)] {
         let keys = symbols.map { "\($0)-\(fiat)" }
-        let descriptor = FetchDescriptor<CachedPriceRecord>(
+        var descriptor = FetchDescriptor<CachedPriceRecord>(
             predicate: #Predicate { keys.contains($0.key) }
         )
+        // Keys are unique, so at most one row per requested key — cap
+        // the fetch so a degraded in-memory predicate scan stops early.
+        descriptor.fetchLimit = keys.count
         let records = try modelContext.fetch(descriptor)
         var out: [String: (Decimal, Date)] = [:]
         for r in records {

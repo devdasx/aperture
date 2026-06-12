@@ -1,5 +1,4 @@
 import SwiftUI
-import Lottie
 
 /// Aperture's launch splash — the brand's first breath.
 ///
@@ -9,10 +8,11 @@ import Lottie
 /// prior `design_handoff_splash_screen/` redesign; it is now the
 /// new **circle logo** — a dark vertical gradient disc containing
 /// the white iris — shared with the onboarding welcome slide via
-/// SwiftUI's `matchedGeometryEffect`. The logo's bloom on splash
-/// entrance comes from the brand-kit-authored Lottie
-/// (`splash-logo.json`), and on splash → onboarding the same logo
-/// view flies to its onboarding position over 0.82s
+/// SwiftUI's `matchedGeometryEffect`. The logo blooms in on splash
+/// entrance via a native scale + opacity keyframe driven by the
+/// same `TimelineView` elapsed-time state as the rest of the
+/// chrome, and on splash → onboarding the same logo view flies to
+/// its onboarding position over 0.82s
 /// (`cubic-bezier(0.52, 0, 0.12, 1)`), with a single medium-impact
 /// haptic firing at landing.
 ///
@@ -26,23 +26,20 @@ import Lottie
 /// **What changed:**
 /// - The mark itself: from `Brand/Mark.imageset` (bare iris) to
 ///   `Brand/LogoCircle.imageset` (dark-circle + iris).
-/// - The mark bloom: from a hand-coded multi-keyframe scale/rotate
-///   driven by `TimelineView` + a Newton-Raphson cubic-bezier
-///   solver to `LottieView(animation: .named("splash-logo"))` —
-///   the brand owner's canonical motion for this logo.
+/// - The mark bloom: a single restrained scale + opacity bloom
+///   computed in `SplashChromeState` from the elapsed time — the
+///   same cubic-bezier family the glow uses, one shot, no loops.
 /// - The logo view carries `.matchedGeometryEffect` so the
 ///   onboarding welcome slide can claim it on transition.
 ///
-/// **Why drop the hand-coded mark animation.** The prior splash
-/// composition (`design_handoff_splash_screen/`) bloomed the bare
-/// iris via a multi-keyframe transform that I hand-rolled to
-/// match the CSS reference byte-for-byte. The new handoff supplies
-/// the canonical motion as a Lottie file authored by the brand
-/// owner — using the authored asset is the right move (Rule #7 —
-/// real designed motion, not a derived approximation), AND it
-/// keeps the splash → onboarding shared-element transition
-/// pixel-aligned because both screens render the same `Image`
-/// after the Lottie completes its bloom.
+/// **Why the bloom is hand-driven again (2026-06-10).** The take-6
+/// composition played the bloom from a Lottie JSON via the
+/// third-party Lottie SPM package — a Rule #3 (native-only)
+/// violation in the UI layer. The bloom is now computed natively
+/// from the existing `TimelineView` clock; its final frame is the
+/// still `Image("LogoCircle")` itself, so the splash → onboarding
+/// shared-element transition stays pixel-aligned (both screens
+/// render the same `Image`).
 struct SplashView: View {
     /// Logo namespace shared with the onboarding welcome slide via
     /// `AppRoot`. Both views attach `matchedGeometryEffect` to
@@ -69,17 +66,37 @@ struct SplashView: View {
 
     @State private var startDate: Date = .init()
     @State private var hasFiredComplete: Bool = false
+    /// Single-shot completion timer. Stored so `.onDisappear` can
+    /// cancel it — the prior `DispatchQueue.main.asyncAfter` shape
+    /// could double-fire across view re-mounts because the queued
+    /// closure outlived the view instance that scheduled it.
+    @State private var completionTask: Task<Void, Never>?
+    /// Flips true once every chrome keyframe has reached its final
+    /// value. Drives the `TimelineView`'s `paused:` so the 60fps
+    /// clock stops instead of ticking forever on a settled screen.
+    @State private var isChromeSettled: Bool = false
 
     /// Total wall time the splash holds before calling
     /// `onSplashComplete`. Matches the prior splash spec's
     /// "~2.35s entrance + brief hold" — a small buffer so the
-    /// Lottie bloom completes and the user reads the brand
+    /// logo bloom completes and the user reads the brand
     /// mark before the transition starts.
     private static let splashDuration: TimeInterval = 2.6
 
+    /// The instant the last chrome keyframe lands. The loader is the
+    /// final mover (delay 0.35s + duration 2.00s); past this point
+    /// every `SplashChromeState` value is constant, so the timeline
+    /// can pause.
+    private static let chromeSettleDuration: TimeInterval = 2.35
+    /// Reduce-motion collapses every keyframe to a single 0.30s ramp.
+    private static let reducedMotionSettleDuration: TimeInterval = 0.30
+
     var body: some View {
-        TimelineView(.animation(minimumInterval: 1.0 / 60.0, paused: false)) { context in
+        TimelineView(.animation(minimumInterval: 1.0 / 60.0, paused: isChromeSettled)) { context in
             let elapsed = context.date.timeIntervalSince(startDate)
+            let settleDuration = reduceMotion
+                ? Self.reducedMotionSettleDuration
+                : Self.chromeSettleDuration
             let chrome = SplashChromeState(elapsed: elapsed, reduceMotion: reduceMotion)
             ZStack {
                 background
@@ -90,15 +107,20 @@ struct SplashView: View {
                     glow(chrome: chrome)
                         .position(x: centerX, y: centerY - 26)
 
-                    // The logo container — Lottie bloom on splash
-                    // entrance, then carried into onboarding via
-                    // matchedGeometryEffect. Per the handoff: 80pt
-                    // diameter at splash, center Y ~45% of screen.
-                    // matchedGeometryEffect handles the size +
-                    // position interpolation to the onboarding
-                    // frame automatically — no manual frame math.
+                    // The logo container — native scale + opacity
+                    // bloom on splash entrance, then carried into
+                    // onboarding via matchedGeometryEffect. Per the
+                    // handoff: 80pt diameter at splash, center Y
+                    // ~45% of screen. matchedGeometryEffect handles
+                    // the size + position interpolation to the
+                    // onboarding frame automatically — no manual
+                    // frame math. `.scaleEffect` doesn't alter the
+                    // layout frame, so the matched-geometry handoff
+                    // still tracks the settled 80pt frame.
                     logo
                         .frame(width: 80, height: 80)
+                        .scaleEffect(chrome.logoScale)
+                        .opacity(chrome.logoOpacity)
                         .matchedGeometryEffect(
                             id: "logo",
                             in: logoNamespace,
@@ -122,19 +144,35 @@ struct SplashView: View {
                 }
             }
             .ignoresSafeArea()
+            // Pause the 60fps timeline once every chrome keyframe
+            // has landed. The expression flips false → true exactly
+            // once per run-through; past that point every frame
+            // would recompute identical values, so the clock stops.
+            .onChange(of: elapsed >= settleDuration) { _, settled in
+                if settled { isChromeSettled = true }
+            }
         }
         .accessibilityLabel(Text("Aperture"))
         .onAppear {
             startDate = Date()
-            // Use a single-shot timer to fire `onSplashComplete`.
-            // The guard prevents a second fire if the view is
-            // re-instantiated (e.g. by a parent state change
-            // mid-flight).
-            DispatchQueue.main.asyncAfter(deadline: .now() + Self.splashDuration) {
-                guard !hasFiredComplete else { return }
+            isChromeSettled = false
+            // Single-shot completion timer as a cancellable Task.
+            // Created once (guarded on nil) so re-mounts can't queue
+            // a second timer; cancelled in `.onDisappear` so a torn-
+            // down splash never fires into a stale closure. The
+            // `hasFiredComplete` guard stays as the last line of
+            // defense against any double fire.
+            guard completionTask == nil else { return }
+            completionTask = Task {
+                try? await Task.sleep(for: .seconds(Self.splashDuration))
+                guard !Task.isCancelled, !hasFiredComplete else { return }
                 hasFiredComplete = true
                 onSplashComplete()
             }
+        }
+        .onDisappear {
+            completionTask?.cancel()
+            completionTask = nil
         }
         // Splash chrome (background, glow, wordmark, tagline,
         // loader) fades out when the shared-element transition
@@ -190,29 +228,16 @@ struct SplashView: View {
     // MARK: - Logo
 
     /// The new circle logo — dark gradient disc + white iris.
-    /// On splash entrance, the bloom comes from the Lottie
-    /// (`splash-logo.json`). After the Lottie completes its
-    /// one-shot, the still `Image` underneath takes over the
-    /// visual role so the matchedGeometryEffect handoff to
-    /// onboarding is a single contiguous Image transition.
-    ///
-    /// **Why the ZStack of LottieView + Image.** Lottie's playback
-    /// finishes at its final frame, which matches the static
-    /// `logo-circle.svg` pixel-for-pixel. The Image sits behind
-    /// the Lottie at the same size; when the Lottie completes
-    /// (loopMode: .playOnce), its final frame holds and the
-    /// underlying Image is visually identical. The transition
-    /// to onboarding via matchedGeometryEffect then animates
-    /// the `Image` instance into its onboarding frame
-    /// seamlessly.
+    /// On splash entrance, the bloom is a native one-shot scale +
+    /// opacity keyframe (`SplashChromeState.logoScale` /
+    /// `.logoOpacity`) applied at the call site in `body`. Because
+    /// the bloom's final frame IS this still `Image`, the
+    /// matchedGeometryEffect handoff to onboarding is a single
+    /// contiguous Image transition — no asset swap, no seam.
     private var logo: some View {
-        ZStack {
-            Image("LogoCircle")
-                .resizable()
-                .scaledToFit()
-            LottieView(animation: .named("splash-logo"))
-                .playing(loopMode: .playOnce)
-        }
+        Image("LogoCircle")
+            .resizable()
+            .scaledToFit()
     }
 
     // MARK: - Wordmark
@@ -259,16 +284,21 @@ struct SplashView: View {
 
 // MARK: - Splash chrome state
 
-/// Per-frame state for the splash *chrome* elements only — glow,
-/// wordmark, tagline, loader. The logo bloom is owned by Lottie
-/// (no need to compute it here), and the logo's transition to
-/// onboarding is owned by `matchedGeometryEffect` (driven by the
-/// `AppRoot.phase` change).
+/// Per-frame state for the splash elements — logo bloom, glow,
+/// wordmark, tagline, loader. The logo's *transition to onboarding*
+/// is owned by `matchedGeometryEffect` (driven by the
+/// `AppRoot.phase` change); only its entrance bloom is computed
+/// here.
 ///
-/// The animation curves match the original splash spec from
+/// The chrome animation curves match the original splash spec from
 /// `design_handoff_splash_screen/` — those elements weren't
-/// touched by the new handoff so their motion is preserved.
+/// touched by the new handoff so their motion is preserved. The
+/// logo bloom is the first beat: it completes just before the
+/// wordmark's 0.92s wipe-up begins, using the same cubic-bezier
+/// family as the glow. One bloom, no loops (Rule #2 restraint).
 private struct SplashChromeState {
+    let logoOpacity: Double
+    let logoScale: Double
     let glowOpacity: Double
     let glowScale: Double
     let wordmarkOffsetFraction: Double
@@ -279,6 +309,8 @@ private struct SplashChromeState {
     init(elapsed: TimeInterval, reduceMotion: Bool) {
         if reduceMotion {
             let p = max(0, min(1, elapsed / 0.30))
+            self.logoOpacity = p
+            self.logoScale = 1
             self.glowOpacity = 0.6 * p
             self.glowScale = 1
             self.wordmarkOffsetFraction = 0
@@ -287,6 +319,17 @@ private struct SplashChromeState {
             self.loaderProgress = p
             return
         }
+
+        // Logo bloom — delay 0s, duration 0.90s, (.2, .7, .2, 1).
+        // Scale 0.60 → 1.00 across the full bloom; opacity 0 → 1
+        // over the first 60% so the disc is fully present while it
+        // settles into its final size. Done before the wordmark's
+        // 0.92s entrance — the logo leads, everything else follows.
+        let logoT = clampUnit(elapsed / 0.90)
+        let logoE = SplashEase.cubicBezier(logoT, 0.2, 0.7, 0.2, 1.0)
+        self.logoScale = 0.60 + 0.40 * logoE
+        let logoFadeT = clampUnit(logoT / 0.60)
+        self.logoOpacity = SplashEase.cubicBezier(logoFadeT, 0.2, 0.7, 0.2, 1.0)
 
         // Glow — delay 0.10s, duration 1.50s, (.2, .7, .2, 1)
         let glowT = clampUnit((elapsed - 0.10) / 1.50)

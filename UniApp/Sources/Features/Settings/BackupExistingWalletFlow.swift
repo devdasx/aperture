@@ -69,6 +69,9 @@ struct BackupExistingWalletFlow: View {
     /// resolves; empty + `loadError` populated on failure.
     @State private var state: CreateWalletState?
     @State private var loadError: LocalizedStringKey?
+    /// Presents the persistence-failure alert when
+    /// `markBackupComplete` can't be written. The mnemonic is kept.
+    @State private var isShowingCompleteError: Bool = false
 
     var body: some View {
         NavigationStack {
@@ -102,6 +105,14 @@ struct BackupExistingWalletFlow: View {
             }
         }
         .onAppear(perform: load)
+        .alert(
+            Text("Couldn't record the backup"),
+            isPresented: $isShowingCompleteError
+        ) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("Aperture couldn't save the backup confirmation to the local database. Your encrypted phrase is still stored on this iPhone — nothing was deleted. Try again.")
+        }
     }
 
     // MARK: - States while the mnemonic is resolved
@@ -181,7 +192,17 @@ struct BackupExistingWalletFlow: View {
     @MainActor
     private func complete() async {
         let repo = WalletRepository(modelContainer: modelContext.container)
-        try? await repo.markBackupComplete(id: walletId)
+        do {
+            try await repo.markBackupComplete(id: walletId)
+        } catch {
+            // The database still says "unverified" — deleting the
+            // mnemonic now would leave this wallet permanently
+            // unbackupable (the card would keep demanding a backup
+            // the vault can no longer serve). Keep the mnemonic,
+            // surface the failure, and let the user retry.
+            isShowingCompleteError = true
+            return
+        }
         // The encrypted local copy was the safety net for an
         // unbacked wallet. Now that the user has proven they have the
         // phrase, Aperture honors the disclosure-sheet promise that

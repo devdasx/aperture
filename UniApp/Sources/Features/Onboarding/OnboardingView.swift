@@ -50,18 +50,34 @@ struct OnboardingView: View {
 
     // MARK: - Create-wallet flow state (T-002 steps 1 & 3)
 
+    /// The two wallet entry flows hosted by the single
+    /// `.fullScreenCover(item:)` below. Modeling them as one optional
+    /// enum (instead of two independent Bools) makes their mutual
+    /// exclusion structural — the type system cannot represent "both
+    /// flows presented at once."
+    enum WalletFlow: String, Identifiable {
+        case createRecovery
+        case importWallet
+        var id: String { rawValue }
+    }
+
     /// Toggles the risk-disclosure sheet (`CreateWalletDisclosureSheet`).
     @State private var isShowingCreateDisclosure: Bool = false
-    /// Toggles the full-screen cover hosting the `RecoveryPhraseFlow`.
-    @State private var isShowingRecoveryFlow: Bool = false
+    /// The currently presented wallet flow, or `nil` when none is up.
+    /// Drives the shared `.fullScreenCover(item:)`.
+    @State private var activeFlow: WalletFlow?
+    /// Set when the user accepts the create-wallet disclosure; consumed
+    /// by `.onChange(of: isShowingCreateDisclosure)` once the sheet's
+    /// presented flag flips false, so the recovery cover is presented
+    /// only after the sheet has actually started dismissing — never
+    /// while the two presentation animations could fight on screen.
+    @State private var pendingFlowAfterDisclosure: WalletFlow?
     /// Hoisted navigation path for the recovery-phrase flow. Hoisted for
     /// the same reason as `settingsPath`: any `.id`-driven rebuild on the
     /// cover's content (LTR/RTL flip) must preserve the path so the user
     /// stays where they were. Reset on cover dismiss.
     @State private var recoveryPath: NavigationPath = .init()
 
-    /// Toggles the full-screen cover hosting the `ImportWalletFlow`.
-    @State private var isShowingImportFlow: Bool = false
     /// Hoisted navigation path for the import-wallet flow (Rule #12 §G).
     @State private var importPath: NavigationPath = .init()
 
@@ -177,10 +193,11 @@ struct OnboardingView: View {
                 .presentationBackground(UniColors.Background.primary)
         }
         // Step 1 of the "Create new wallet" flow (T-002): risk disclosure
-        // sheet. Acceptance dismisses this sheet, waits for its system
-        // dismiss animation to settle, then opens the recovery-phrase
-        // full-screen cover so the two presentations don't fight on
-        // screen at once.
+        // sheet. Acceptance stashes the follow-on flow in
+        // `pendingFlowAfterDisclosure` and dismisses this sheet; the
+        // `.onChange` below presents the recovery cover once the
+        // presented flag has flipped false, so the two presentations
+        // don't fight on screen at once.
         .sheet(isPresented: $isShowingCreateDisclosure) {
             CreateWalletDisclosureSheet(
                 onAccept: handleDisclosureAccept,
@@ -191,18 +208,57 @@ struct OnboardingView: View {
             .intrinsicHeightSheet()
             .presentationBackground(UniColors.Background.primary)
         }
-        // Step 3 of the "Create new wallet" flow (T-002): recovery-phrase
-        // display, with its own NavigationStack and an internal skip-
-        // warning sheet. Cover dismissal also resets the hoisted path.
-        .fullScreenCover(isPresented: $isShowingRecoveryFlow, onDismiss: {
+        // Dismiss-then-present handoff for the disclosure → recovery
+        // sequence. Fires only when the sheet's flag flips false AND a
+        // pending flow was stashed by `handleDisclosureAccept` — a
+        // cancel or swipe-dismiss leaves `pendingFlowAfterDisclosure`
+        // nil and presents nothing.
+        .onChange(of: isShowingCreateDisclosure) { _, isPresented in
+            guard !isPresented, let pending = pendingFlowAfterDisclosure else { return }
+            pendingFlowAfterDisclosure = nil
+            activeFlow = pending
+        }
+        // The single full-screen cover hosting BOTH wallet entry flows
+        // (create → recovery phrase, T-002; import, T-003). Driven by
+        // the `activeFlow` enum so the flows are mutually exclusive by
+        // construction. Cover dismissal resets both hoisted paths —
+        // each path belongs to exactly one flow, so resetting the
+        // inactive one is a no-op.
+        .fullScreenCover(item: $activeFlow, onDismiss: {
             recoveryPath = NavigationPath()
-        }) {
-            RecoveryPhraseFlow(
-                navigationPath: $recoveryPath,
-                onDismiss: { isShowingRecoveryFlow = false },
-                onUserSkippedBackup: { hasUnbackedupWallet = true },
-                onUserCompletedBackup: { hasUnbackedupWallet = false }
-            )
+            importPath = NavigationPath()
+        }) { flow in
+            Group {
+                switch flow {
+                case .createRecovery:
+                    // Step 3 of the "Create new wallet" flow (T-002):
+                    // recovery-phrase display, with its own
+                    // NavigationStack and an internal skip-warning sheet.
+                    RecoveryPhraseFlow(
+                        navigationPath: $recoveryPath,
+                        onDismiss: { activeFlow = nil },
+                        onUserSkippedBackup: { hasUnbackedupWallet = true },
+                        onUserCompletedBackup: { hasUnbackedupWallet = false }
+                    )
+                case .importWallet:
+                    // Import Wallet flow (T-003). Mirrors the
+                    // create-wallet pattern: hoisted NavigationPath,
+                    // .id key on layout direction, .uniAppEnvironment
+                    // for theme/locale.
+                    ImportWalletFlow(
+                        navigationPath: $importPath,
+                        onDismiss: { activeFlow = nil },
+                        onCompleted: { _ in
+                            // Wallet imported — clear the no-wallet flag
+                            // and dismiss. Future T-018 wallet-home
+                            // surfaces will observe the persisted state
+                            // and route here.
+                            hasUnbackedupWallet = false
+                            activeFlow = nil
+                        }
+                    )
+                }
+            }
             .id(sheetDirectionKey)
             .uniAppEnvironment()
             // Tell iOS to paint the grouped-page color UNDER the
@@ -216,30 +272,6 @@ struct OnboardingView: View {
             // treatment as `.sheet(...)` callers that use
             // `.presentationBackground(...)` to opt out of the
             // host-default white.
-            .presentationBackground(UniColors.Background.primary)
-        }
-        // Sibling cover for the Import Wallet flow (T-003). Mirrors the
-        // create-wallet pattern: hoisted NavigationPath, .id key on
-        // layout direction, .uniAppEnvironment for theme/locale, cover
-        // dismissed via `onDismiss`.
-        .fullScreenCover(isPresented: $isShowingImportFlow, onDismiss: {
-            importPath = NavigationPath()
-        }) {
-            ImportWalletFlow(
-                navigationPath: $importPath,
-                onDismiss: { isShowingImportFlow = false },
-                onCompleted: { _ in
-                    // Wallet imported — clear the no-wallet flag and
-                    // dismiss. Future T-018 wallet-home surfaces will
-                    // observe the persisted state and route here.
-                    hasUnbackedupWallet = false
-                    isShowingImportFlow = false
-                }
-            )
-            .id(sheetDirectionKey)
-            .uniAppEnvironment()
-            // Same host-level backing as the recovery cover above —
-            // see that block for the why.
             .presentationBackground(UniColors.Background.primary)
         }
         // Rule #16 §C — the open-source verification anchor. Presented
@@ -262,17 +294,15 @@ struct OnboardingView: View {
     /// Disclosure → recovery phrase handoff. SwiftUI dislikes presenting a
     /// `fullScreenCover` while a `.sheet` is still animating out — the two
     /// presentation animations stack and the recovery flow can appear in
-    /// front of the sheet's residual chrome. We dismiss the sheet first,
-    /// then schedule the cover for the next runloop tick after the system
-    /// dismiss animation completes (~0.35 s on iOS 26 for a `.large`
-    /// detent). The delay is the smallest reliable fallback for
-    /// `.sheet(onDismiss:)` not firing until much later in some edge
-    /// cases.
+    /// front of the sheet's residual chrome. So this only stashes the
+    /// follow-on flow and dismisses the sheet; the `.onChange(of:
+    /// isShowingCreateDisclosure)` in `body` presents the cover once the
+    /// flag flips false. State-driven, no wall-clock delay — the prior
+    /// 0.35s `asyncAfter` raced the dismiss animation and could leave the
+    /// flow stuck when the timing assumption didn't hold.
     private func handleDisclosureAccept() {
+        pendingFlowAfterDisclosure = .createRecovery
         isShowingCreateDisclosure = false
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
-            isShowingRecoveryFlow = true
-        }
     }
 
     // MARK: - Slide pager (custom dots, native swipe)
@@ -355,7 +385,7 @@ struct OnboardingView: View {
                 ))
 
                 UniButton(title: "I already have a wallet", variant: .secondary) {
-                    isShowingImportFlow = true
+                    activeFlow = .importWallet
                 }
                 .modifier(OnboardingStaggeredFadeIn(
                     visible: contentVisible,

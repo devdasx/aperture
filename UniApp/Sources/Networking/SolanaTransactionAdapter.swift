@@ -19,16 +19,23 @@ import OSLog
 /// "received" / "sent" rows in a wallet activity feed, and surfacing
 /// them as noise would be worse than honest omission.
 ///
-/// **Rate limits.** The public mainnet-beta endpoint allows ~100 RPS
-/// per IP. For 25 signatures (the default `limit`) we issue 26 calls
-/// (1 list + 25 detail). The endpoint's `RateLimiter` paces these to
-/// stay under the cap; if the cap trips on a specific block, the
-/// adapter swallows the per-signature failure and returns what
-/// landed.
+/// **Rate limits.** For 25 signatures (the default `limit`) we issue
+/// 26 calls (1 list + 25 detail). The detail calls run through a
+/// bounded fan-out window (`maxConcurrentDetailFetches`) so the
+/// endpoint's `RateLimiter` is fed at its sustained rate instead of
+/// being stampeded past its bounded wait; if a specific call still
+/// fails, the adapter swallows the per-signature failure and returns
+/// what landed.
 struct SolanaTransactionAdapter: Sendable {
     let client: RPCClient
 
     private static let log = Logger(subsystem: "com.thuglife.aperture", category: "sol-tx-adapter")
+
+    /// Upper bound on simultaneous `getTransaction` detail fetches.
+    /// Must stay at or below the primary endpoint's burst capacity
+    /// (5) so the token bucket's bounded wait is never exhausted by
+    /// our own fan-out.
+    private static let maxConcurrentDetailFetches = 4
 
     func fetch(address: String, limit: Int) async throws -> [TransactionEvent] {
         let sigOptions: [String: Sendable] = ["limit": min(limit, 25)]
@@ -48,20 +55,44 @@ struct SolanaTransactionAdapter: Sendable {
             return (signature, slot, blockTime, err)
         }
 
-        var events: [TransactionEvent] = []
-        events.reserveCapacity(signatures.count)
-        for sigInfo in signatures {
-            if let event = await fetchOne(
-                address: address,
-                signature: sigInfo.signature,
-                slot: sigInfo.slot,
-                blockTime: sigInfo.blockTime,
-                hadError: sigInfo.err
-            ) {
-                events.append(event)
+        // Fan the per-signature `getTransaction` calls out with a
+        // BOUNDED window. The primary endpoint's token bucket
+        // (10 rps, burst 5) gives up after a ~1 s bounded wait — 25
+        // simultaneous waiters deterministically exhaust that bound,
+        // throw spurious `.rateLimited` before a single request is
+        // sent, and trip the endpoint's circuit breaker. A small
+        // window keeps the limiter fed at its sustained rate.
+        // Results are written back by index so the feed preserves
+        // the signature list's (newest-first) order.
+        var resultsByIndex = [TransactionEvent?](repeating: nil, count: signatures.count)
+        await withTaskGroup(of: (Int, TransactionEvent?).self) { group in
+            var inFlight = 0
+            for (index, sigInfo) in signatures.enumerated() {
+                // A torn-down refresh stops enqueueing; the group
+                // cancels already-running children automatically.
+                if Task.isCancelled { break }
+                if inFlight >= Self.maxConcurrentDetailFetches,
+                   let (finishedIndex, finishedEvent) = await group.next() {
+                    resultsByIndex[finishedIndex] = finishedEvent
+                    inFlight -= 1
+                }
+                group.addTask {
+                    let event = await self.fetchOne(
+                        address: address,
+                        signature: sigInfo.signature,
+                        slot: sigInfo.slot,
+                        blockTime: sigInfo.blockTime,
+                        hadError: sigInfo.err
+                    )
+                    return (index, event)
+                }
+                inFlight += 1
+            }
+            for await (index, event) in group {
+                resultsByIndex[index] = event
             }
         }
-        return events
+        return resultsByIndex.compactMap { $0 }
     }
 
     /// Resolve one signature to a `TransactionEvent` by inspecting
@@ -142,31 +173,81 @@ struct SolanaTransactionAdapter: Sendable {
                 let source = (info["source"] as? String) ?? ""
                 let dest = (info["destination"] as? String) ?? ""
                 // For transferChecked the amount lives under
-                // `tokenAmount.amount` (raw integer string); for
-                // legacy transfer it's `amount` (raw integer string).
+                // `tokenAmount.amount` (raw integer string) WITH
+                // authoritative decimals; legacy transfer carries
+                // `amount` and NO decimals at all — `decimals == 0`
+                // there means "unknown", not zero, so track
+                // knowability separately.
                 let rawAmount: String
                 let decimals: Int
+                let decimalsKnown: Bool
                 if let tokenAmount = info["tokenAmount"] as? [String: Any] {
                     rawAmount = (tokenAmount["amount"] as? String) ?? "0"
                     decimals = (tokenAmount["decimals"] as? Int) ?? 0
+                    decimalsKnown = tokenAmount["decimals"] is Int
                 } else {
                     rawAmount = (info["amount"] as? String) ?? "0"
                     decimals = 0
+                    decimalsKnown = false
                 }
                 let mint = (info["mint"] as? String)
                 let raw = Decimal(string: rawAmount) ?? 0
-                let amount = raw / Self.scale(decimals: decimals)
-                // For SPL, source / dest are token accounts not the
-                // user's wallet address. The wallet's relation is
-                // determined via the authority field (the signer).
-                let authority = (info["authority"] as? String) ?? source
-                let (direction, counterparty) = Self.classify(address: address, from: authority, to: dest)
-                if direction == nil { continue }
+                // For SPL, source / dest are TOKEN ACCOUNTS, not the
+                // user's wallet address. The authoritative owner
+                // mapping lives in `meta.preTokenBalances` /
+                // `meta.postTokenBalances` (each entry carries
+                // `owner`); classify direction against the wallet
+                // owner from those. This is what makes RECEIVED
+                // `transferChecked` rows land — the wallet is never
+                // the authority on an incoming transfer. Fall back
+                // to the authority-based heuristic only when the
+                // balances metadata is absent.
+                let direction: TransactionDirection
+                let counterparty: String
+                let resolvedDecimals: Int
+                if let meta,
+                   let classified = Self.classifyViaTokenBalances(
+                       meta: meta,
+                       wallet: address,
+                       mint: mint
+                   ) {
+                    direction = classified.direction
+                    counterparty = classified.counterparty
+                    if decimalsKnown {
+                        resolvedDecimals = decimals
+                    } else if let known = classified.decimals ?? Self.registryDecimals(mint) {
+                        resolvedDecimals = known
+                    } else {
+                        // Decimals unresolvable — rendering the raw
+                        // base-unit integer as a human amount would
+                        // overstate by 10^decimals (1 USDC → shown
+                        // as 1,000,000). Honest omission instead.
+                        continue
+                    }
+                } else {
+                    let authority = (info["authority"] as? String) ?? source
+                    let (fallbackDirection, fallbackCounterparty) = Self.classify(
+                        address: address, from: authority, to: dest
+                    )
+                    guard let fallbackDirection else { continue }
+                    direction = fallbackDirection
+                    counterparty = fallbackCounterparty
+                    if decimalsKnown {
+                        resolvedDecimals = decimals
+                    } else if let known = Self.registryDecimals(mint) {
+                        resolvedDecimals = known
+                    } else {
+                        // Same honesty rule as above — never render
+                        // raw base units.
+                        continue
+                    }
+                }
+                let amount = raw / Self.scale(decimals: resolvedDecimals)
                 return TransactionEvent(
                     chain: .solana,
                     address: address,
                     txHash: signature,
-                    direction: direction!,
+                    direction: direction,
                     amount: amount,
                     tokenSymbol: Self.knownMintSymbol(mint) ?? "SPL",
                     tokenContract: mint,
@@ -179,6 +260,95 @@ struct SolanaTransactionAdapter: Sendable {
             }
         }
         return nil
+    }
+
+    /// Classify an SPL transfer's direction for `wallet` from the
+    /// transaction's pre/post token balances. Each balance entry
+    /// carries the token account's `owner`, so the wallet's net
+    /// per-mint delta is computable regardless of whether the wallet
+    /// signed (outgoing) or merely received (`transferChecked` into
+    /// one of its associated token accounts).
+    ///
+    /// Returns `nil` when the balances metadata doesn't cover the
+    /// wallet for this mint, or when the instruction names no mint
+    /// and the wallet's balance changes span multiple mints (an
+    /// ambiguous swap leg) — the caller then falls back to the
+    /// authority heuristic.
+    private static func classifyViaTokenBalances(
+        meta: [String: Any],
+        wallet: String,
+        mint: String?
+    ) -> (direction: TransactionDirection, counterparty: String, decimals: Int?)? {
+        let pre = meta["preTokenBalances"] as? [[String: Any]] ?? []
+        let post = meta["postTokenBalances"] as? [[String: Any]] ?? []
+        guard !pre.isEmpty || !post.isEmpty else { return nil }
+
+        // Net raw-amount delta per mint per owner. Raw amounts of
+        // DIFFERENT mints carry different scales — netting them into
+        // one number (the legacy `transfer` case, whose instruction
+        // names no mint) can invert the direction of a swap leg.
+        // Classification only ever happens within a single mint.
+        var deltaByMintAndOwner: [String: [String: Decimal]] = [:]
+        var walletDecimalsByMint: [String: Int] = [:]
+        func accumulate(_ entries: [[String: Any]], sign: Decimal) {
+            for entry in entries {
+                guard let owner = entry["owner"] as? String,
+                      let entryMint = entry["mint"] as? String else { continue }
+                if let mint, entryMint != mint { continue }
+                let uiTokenAmount = entry["uiTokenAmount"] as? [String: Any] ?? [:]
+                let rawString = (uiTokenAmount["amount"] as? String) ?? "0"
+                let rawValue = Decimal(string: rawString) ?? 0
+                deltaByMintAndOwner[entryMint, default: [:]][owner, default: 0] += sign * rawValue
+                if owner == wallet, walletDecimalsByMint[entryMint] == nil,
+                   let entryDecimals = uiTokenAmount["decimals"] as? Int {
+                    walletDecimalsByMint[entryMint] = entryDecimals
+                }
+            }
+        }
+        accumulate(pre, sign: -1)
+        accumulate(post, sign: 1)
+
+        // Resolve which mint this leg is about: the instruction's
+        // mint when present, otherwise the single mint under which
+        // the wallet appears. When the wallet appears under MULTIPLE
+        // mints and the instruction names none (legacy-transfer swap
+        // legs), the leg is ambiguous — bail out rather than invent
+        // a direction from mixed scales.
+        let walletMints = deltaByMintAndOwner.compactMap { mintKey, owners in
+            owners[wallet] != nil ? mintKey : nil
+        }
+        let resolvedMint: String
+        if let mint {
+            guard walletMints.contains(mint) else { return nil }
+            resolvedMint = mint
+        } else if walletMints.count == 1, let onlyMint = walletMints.first {
+            resolvedMint = onlyMint
+        } else {
+            return nil
+        }
+
+        let owners = deltaByMintAndOwner[resolvedMint] ?? [:]
+        let walletDelta = owners[wallet] ?? 0
+        let direction: TransactionDirection
+        if walletDelta > 0 {
+            direction = .incoming
+        } else if walletDelta < 0 {
+            direction = .outgoing
+        } else {
+            // Wallet appears in the balances but its net change is
+            // zero — a transfer between the wallet's own token
+            // accounts.
+            direction = .internal
+        }
+        // Counterparty: the owner whose delta — within the SAME
+        // mint — moved opposite to the wallet's.
+        let counterparty = owners.first { owner, delta in
+            owner != wallet && (
+                (direction == .incoming && delta < 0) ||
+                (direction == .outgoing && delta > 0)
+            )
+        }?.key ?? ""
+        return (direction, direction == .internal ? "" : counterparty, walletDecimalsByMint[resolvedMint])
     }
 
     private static func classify(
@@ -212,6 +382,14 @@ struct SolanaTransactionAdapter: Sendable {
         }
     }
 
+    /// Decimals for a curated mint. `nil` when the mint is unknown
+    /// (or nil) — callers must then skip the row rather than render
+    /// raw base units as a human amount.
+    private static func registryDecimals(_ mint: String?) -> Int? {
+        guard let mint else { return nil }
+        return SolanaTokenRegistry.mints[mint]?.decimals
+    }
+
     private static let lamportsPerSol: Decimal = {
         var result = Decimal(1)
         for _ in 0..<9 { result *= 10 }
@@ -219,8 +397,12 @@ struct SolanaTransactionAdapter: Sendable {
     }()
 
     private static func scale(decimals: Int) -> Decimal {
+        // `decimals` arrives from RPC JSON — clamp so a malicious
+        // node can't trap the range (negative) or spin the loop
+        // (absurdly large). 77 ≈ Decimal's significand capacity.
+        let clamped = max(0, min(decimals, 77))
         var result = Decimal(1)
-        for _ in 0..<decimals { result *= 10 }
+        for _ in 0..<clamped { result *= 10 }
         return result
     }
 }

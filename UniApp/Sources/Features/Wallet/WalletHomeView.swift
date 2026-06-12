@@ -1,5 +1,6 @@
 import SwiftUI
 import SwiftData
+import TipKit
 
 // MARK: - RootGate
 
@@ -70,11 +71,87 @@ struct RootGate: View {
 ///   (`BiometricReenrollmentBanner`).
 struct WalletHomeView: View {
     @Query(sort: \WalletRecord.sortOrder) private var allWallets: [WalletRecord]
+
+    /// TipKit instance shared via type identity — every
+    /// `WalletTabSwitcherTip()` reads the same persisted state, so a
+    /// dismissal here is the same dismissal `MainTabView` would see.
+    private let walletSwitcherTip = WalletTabSwitcherTip()
     @Query private var metadataRows: [AppMetadataRecord]
+    /// On-disk price cache, read by the `BalanceHistoryChart` so the
+    /// reconstruction can value past holdings of fully cashed-out
+    /// tokens (e.g., a user who received 747 USDT then sent every
+    /// unit — currentBalances has no USDT row, so without this
+    /// cached price the chart would value the historical USDT
+    /// position at zero). The chart filters by the active fiat in
+    /// its `priceCacheBySymbol` helper.
+    @Query private var cachedPrices: [CachedPriceRecord]
+    /// On-disk historical-price cache. Each row is one day's close
+    /// for one `(symbol, fiat)` pair. The chart uses this to value
+    /// past holdings at their **then-price** instead of today's
+    /// spot, so a token that crashed 99% renders past peaks at
+    /// honest historical fiat ($4000 then) not today's collapsed
+    /// valuation ($50). Populated by `CoinbaseHistoricalPriceService`
+    /// via the `.task` ensure-loop below.
+    @Query private var historicalPrices: [HistoricalPriceRecord]
     @AppStorage("activeWalletId") private var activeWalletIdRaw: String = ""
     @AppStorage(CurrencyPreference.storageKey) private var currencyCode: String = CurrencyPreference.defaultCode
     @AppStorage(HideBalancesPreference.hideBalanceOnHomeKey) private var hideBalanceOnHome: Bool = false
+
+    /// 2026-06-09 — toolbar overflow menu reaches `lockNow()` when
+    /// the user taps "Lock wallet". The controller's `lockNow()`
+    /// is a no-op when PIN isn't configured (Rule #17 §C) — the
+    /// menu item is still surfaced; tapping it just doesn't lock
+    /// anything, matching iOS Notes' "Lock Note" behavior when
+    /// no Notes password is set.
+    @Environment(\.autoLockController) private var lockController
     @AppStorage(HideBalancesPreference.thresholdKey) private var hideSmallThreshold: Double = HideBalancesPreference.defaultThreshold
+
+    // MARK: - Filter & Sort preferences (Rule #14-class declarative reads)
+    //
+    // The wallet home reads every Filter & Sort preference reactively
+    // via `@AppStorage`. The filter sheet (`WalletHomeFilterSheet`)
+    // writes through the same keys; SwiftUI's environment propagation
+    // pushes new values into this view's body within the next
+    // evaluation. No imperative "apply" call needed — every value is
+    // a published source.
+    //
+    // **Why declare them here at all** when `WalletHomeFilterApply.Inputs.current()`
+    // could read them on the fly? Because `@AppStorage` participates in
+    // SwiftUI's invalidation graph; reading the keys outside the
+    // graph (via a one-shot `UserDefaults.standard.string(forKey:)`)
+    // does NOT cause the view to recompute when the keys change. The
+    // sheet's writes would land in `UserDefaults` but the home would
+    // keep rendering the stale layout until the next unrelated body
+    // evaluation. Declaring them as `@AppStorage` here closes the loop.
+    @AppStorage(WalletHomeFilterPreferences.viewModeKey)
+    private var filterViewModeRaw: String = WalletHomeFilterPreferences.defaultViewMode.rawValue
+    @AppStorage(WalletHomeFilterPreferences.sortKeyKey)
+    private var filterSortKeyRaw: String = WalletHomeFilterPreferences.defaultSortKey.rawValue
+    @AppStorage(WalletHomeFilterPreferences.sortDirectionKey)
+    private var filterSortDirectionRaw: String = WalletHomeFilterPreferences.defaultSortDirection.rawValue
+    @AppStorage(WalletHomeFilterPreferences.onlyWithBalanceKey)
+    private var filterOnlyWithBalance: Bool = WalletHomeFilterPreferences.defaultOnlyWithBalance
+    @AppStorage(WalletHomeFilterPreferences.hiddenAssetsKey)
+    private var filterHiddenAssetsJSON: String = WalletHomeFilterPreferences.defaultHiddenJSON
+    @AppStorage(WalletHomeFilterPreferences.hiddenChainsKey)
+    private var filterHiddenChainsJSON: String = WalletHomeFilterPreferences.defaultHiddenJSON
+    // v2 filter preferences (2026-06-09)
+    @AppStorage(WalletHomeFilterPreferences.assetTypeKey)
+    private var filterAssetTypeRaw: String = WalletHomeFilterPreferences.defaultAssetType.rawValue
+    @AppStorage(WalletHomeFilterPreferences.groupByKey)
+    private var filterGroupByRaw: String = WalletHomeFilterPreferences.defaultGroupBy.rawValue
+    @AppStorage(WalletHomeFilterPreferences.minFiatThresholdKey)
+    private var filterMinFiatThreshold: Double = WalletHomeFilterPreferences.defaultMinFiatThreshold
+    @AppStorage(WalletHomeFilterPreferences.selectedNetworksKey)
+    private var filterSelectedNetworksJSON: String = WalletHomeFilterPreferences.defaultHiddenJSON
+    @AppStorage(WalletHomeFilterPreferences.pinnedAssetsKey)
+    private var filterPinnedAssetsJSON: String = WalletHomeFilterPreferences.defaultHiddenJSON
+    /// Transient search query — per the v2 prompt, NOT a persisted
+    /// preference. The user types per session; clearing the search
+    /// field resets to no-filter. Threaded into `filterInputs` and
+    /// into the filter sheet's preview message via the sheet's
+    /// `searchPreview` parameter.
+    @State private var filterSearchText: String = ""
     /// Language code drives the Rule #12 §G direction-only rebuild key.
     /// The key flips only on LTR↔RTL transitions; everyday theme +
     /// same-direction language changes propagate via SwiftUI's
@@ -100,6 +177,12 @@ struct WalletHomeView: View {
     /// a push. Owned here on the parent so its path can be reset on
     /// dismiss per Rule #12 §G.
     @State private var isShowingReceive: Bool = false
+    /// **Filter & Sort sheet (2026-06-09).** Drives the
+    /// `.sheet(isPresented: $isShowingFilter)` block below. The sheet
+    /// reads + writes preferences through `@AppStorage` against
+    /// `WalletHomeFilterPreferences`'s keys; changes propagate to
+    /// this view's body the moment the sheet writes them.
+    @State private var isShowingFilter: Bool = false
     @State private var receivePath: NavigationPath = NavigationPath()
     @State private var navigationPath: NavigationPath = NavigationPath()
     @State private var createPath: NavigationPath = NavigationPath()
@@ -148,6 +231,14 @@ struct WalletHomeView: View {
     /// vocabulary (every chain has one); Tokens is the deeper dive.
     @State private var selectedHoldingsTab: HoldingsTab = .coins
 
+    /// 2026-06-09 — scrubbed fiat from `BalanceHistoryChart`. Bound
+    /// to the chart so the chart can publish the touched point's
+    /// fiat upward during a drag; the hero amount renders this
+    /// value (animated via `.contentTransition(.numericText())`)
+    /// instead of the real total. `nil` when the user isn't
+    /// scrubbing → the hero shows the actual `totalFiat`.
+    @State private var scrubbedFiat: Decimal?
+
     // MARK: - Test mode (mirrors MnemonicReviewView's affordance)
     //
     // Tapping the flask in the toolbar swaps the real wallet's
@@ -184,35 +275,159 @@ struct WalletHomeView: View {
     @State private var testTransactions: [TransactionEvent] = []
     @State private var testScanTrigger: Int = 0
 
-    /// Shared streaming scanner — the same instance shape the
-    /// Mnemonic Review screen uses. Holding it as a `let` on the
-    /// view keeps the per-test rescan stream backed by one client.
-    private let testScanner = RealRPCBalanceScanner()
+    /// In-flight test-scan task. Stored so a re-trigger cancels the
+    /// previous stream before starting a new one, and so the scan
+    /// stops when the view disappears — the prior untracked
+    /// `Task {}` launches could race two scans into the same
+    /// in-memory buckets.
+    @State private var testScanTask: Task<Void, Never>?
 
-    /// Unified transaction-history scanner. One instance powers both
-    /// test mode (in-memory `testTransactions`) and the real
-    /// wallet's `runRefresh()` path (writes through
-    /// `TransactionRepository`). See `RealRPCTransactionScanner` for
-    /// the per-family dispatch table.
-    private let txScanner = RealRPCTransactionScanner()
+    /// Newest-first, capped-at-10 projection of `testTransactions`.
+    /// Maintained at the mutation sites (the scan loop and the
+    /// enter/exit transitions) so the body never re-sorts the buffer
+    /// per render.
+    @State private var sortedTestActivityRows: [TransactionEvent] = []
+
+    /// Reference-typed container for the streaming scanners. The
+    /// view struct is re-initialized on every parent invalidation;
+    /// holding the scanners behind `@State` keeps one stable
+    /// instance per view identity instead of reconstructing the
+    /// clients on every struct churn.
+    ///
+    /// - `balance` — shared streaming balance scanner, the same
+    ///   instance shape the Mnemonic Review screen uses.
+    /// - `transactions` — unified transaction-history scanner. One
+    ///   instance powers both test mode (in-memory
+    ///   `testTransactions`) and the real wallet's `runRefresh()`
+    ///   path (writes through `TransactionRepository`). See
+    ///   `RealRPCTransactionScanner` for the per-family dispatch
+    ///   table.
+    private final class ScannerBox {
+        let balance = RealRPCBalanceScanner()
+        let transactions = RealRPCTransactionScanner()
+    }
+
+    @State private var scanners = ScannerBox()
+
+    // MARK: - Memoized derived state (computed off-body)
+    //
+    // The row builders + JSON-decoded filter inputs used to be
+    // computed properties evaluated on EVERY body pass (4+ JSON
+    // decodes and three full registry enumerations + sorts per
+    // frame). They are now `@State` snapshots rebuilt only when an
+    // actual dependency changes: the filter preferences (via
+    // `.onChange` of `filterPreferenceFingerprint`), the active
+    // wallet / currency, the SwiftData row-count proxies, and
+    // refresh completion. Behavior is unchanged — only the
+    // computation timing moved out of the render path.
+
+    @State private var filterInputs: WalletHomeFilterApply.Inputs = .current()
+    @State private var coinDisplayRows: [WalletCoinSupportedRow] = []
+    @State private var tokenDisplayRows: [WalletTokenSupportedDisplayRow] = []
+    @State private var filteredCoinRows: [WalletCoinSupportedRow] = []
+    @State private var filteredTokenRows: [WalletTokenSupportedDisplayRow] = []
+    @State private var combinedFilteredRows: [CombinedHoldingRow] = []
+    @State private var recentTransactions: [TransactionRecord] = []
+    @State private var allTransactions: [TransactionRecord] = []
+
+    /// Follow-up action staged by the wallet-switcher sheet's
+    /// create/import rows. Consumed in the sheet's `onDismiss` so
+    /// the full-screen cover presents only after the sheet has
+    /// fully dismissed (deterministic dismiss-then-present, no
+    /// main-queue timing hop).
+    private enum SwitcherFollowUp {
+        case create
+        case importWallet
+    }
+
+    @State private var pendingSwitcherFollowUp: SwitcherFollowUp?
 
     var body: some View {
         NavigationStack(path: $navigationPath) {
             listSurface
                 .navigationTitle("")
                 .navigationBarTitleDisplayMode(.inline)
-                .toolbar { toolbarContent }
-                .navigationDestination(for: WalletHomeDestination.self) { destination in
-                    switch destination {
-                    case .send:                    SendPlaceholderView()
-                    case .swap:                    SwapPlaceholderView()
-                    case .transaction(let id):     TransactionDetailView(transactionId: id)
-                    case .allSupported:            AllSupportedAssetsView()
+                // 2026-06-09 — toolbar overflow menu (the 3-dots
+                // ellipsis in `.topBarTrailing`). Native SwiftUI
+                // `Menu` renders as iOS's standard action sheet
+                // with `Toggle` for "Hide balance" (a stateful
+                // switch the user can see at a glance) and a
+                // `Button` for "Lock wallet" that fires
+                // `AutoLockController.lockNow()`. Per Rule #19 §C
+                // the toolbar item is a plain `Button` with an SF
+                // Symbol label — not a `UniButton` — because
+                // toolbar items are navigation affordances, not
+                // commit CTAs (the rule's documented exception).
+                .toolbar {
+                    // 2026-06-09 — Filter & Sort affordance. Bare
+                    // `line.3.horizontal.decrease` (iOS-native filter
+                    // glyph; the same symbol Mail / Files / Photos
+                    // use). NOT `.circle` — `M-003` recurrence
+                    // discipline forbids `.circle` SF Symbols in any
+                    // toolbar surface. Tapping presents
+                    // `WalletHomeFilterSheet`; the sheet writes
+                    // through `@AppStorage`, this view re-renders.
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button {
+                            isShowingFilter = true
+                        } label: {
+                            Image(systemName: "line.3.horizontal.decrease")
+                                .accessibilityLabel(Text("Filter and sort"))
+                        }
+                    }
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Menu {
+                            UniToggle(isOn: $hideBalanceOnHome) {
+                                Label("Hide balance", systemImage: "eye.slash")
+                            }
+                            Button {
+                                lockController.lockNow()
+                            } label: {
+                                Label("Lock wallet", systemImage: "lock")
+                            }
+                        } label: {
+                            Image(systemName: "ellipsis")
+                                .accessibilityLabel(Text("More options"))
+                        }
                     }
                 }
+                .navigationDestination(for: WalletHomeDestination.self) { destination in
+                    switch destination {
+                    case .send:                                 SendPlaceholderView()
+                    case .swap:                                 SwapPlaceholderView()
+                    case .transaction(let id):                  TransactionDetailView(transactionId: id)
+                    case .allSupported:                         AllSupportedAssetsView()
+                    case .assetDetail(let identity):            AssetDetailView(identity: identity)
+                    case .assetNetworkDetail(let identity, let chainRaw):
+                        if let chain = SupportedChain(rawValue: chainRaw) {
+                            AssetNetworkDetailView(identity: identity, chain: chain)
+                        } else {
+                            // Defensive — invalid raw value would
+                            // mean a stale NavigationPath restoration.
+                            // Fall back to the asset detail.
+                            AssetDetailView(identity: identity)
+                        }
+                    case .assetActivity(let identity):          AssetActivityView(identity: identity)
+                    }
+                }
+                // Canonical Aperture refresh (2026-06-09). Replaces
+                // the iOS native pull-to-refresh spinner with the
+                // iris-spin → green-check Lottie indicator. The
+                // gesture, scroll-bounce, and cancellation contract
+                // Native iOS pull-to-refresh — system spinner +
+                // gesture + release-haptic + cancellation. The
+                // 2026-06-09 Lottie indicator was reverted per
+                // user direction.
                 .refreshable { await runRefresh() }
                 .task {
                     ensureActiveWalletSet()
+                    // Seed the memoized projections before the first
+                    // refresh lands so the home renders the persisted
+                    // state immediately (the `@State` defaults are
+                    // empty arrays).
+                    rebuildFilterInputs()
+                    rebuildDisplayRows()
+                    rebuildTransactionRows()
                     // Auto-refresh on appear so the wallet shows live
                     // balances + transaction history without forcing
                     // the user to pull-to-refresh on every open. Runs
@@ -227,9 +442,45 @@ struct WalletHomeView: View {
                     guard !isTestMode else { return }
                     await runRefresh()
                 }
+                .task(id: historicalEnsureKey) {
+                    // Historical-price ensure-loop. Per the
+                    // 2026-06-12 fix: the chart values past holdings
+                    // at then-prices instead of today's spot. Each
+                    // unique symbol across (held balances + tx
+                    // history) needs ~300 daily closes from Coinbase
+                    // Exchange. Only fetches symbols we don't
+                    // already have history for — idempotent.
+                    await ensureHistoricalPricesLoaded()
+                }
                 .safeAreaInset(edge: .bottom) { testModeBanner }
                 .onChange(of: testScanTrigger) { _, _ in
-                    Task { await runTestScan() }
+                    // Tracked test-scan task — cancel the in-flight
+                    // stream before starting a new one so rapid
+                    // re-triggers never race two scans into the same
+                    // in-memory buckets.
+                    testScanTask?.cancel()
+                    testScanTask = Task { await runTestScan() }
+                }
+                .onDisappear {
+                    testScanTask?.cancel()
+                    testScanTask = nil
+                }
+                .onChange(of: filterPreferenceFingerprint) { _, _ in
+                    rebuildFilterInputs()
+                    rebuildFilteredRows()
+                }
+                .onChange(of: activeWalletIdRaw) { _, _ in
+                    rebuildDisplayRows()
+                    rebuildTransactionRows()
+                }
+                .onChange(of: currencyCode) { _, _ in
+                    rebuildDisplayRows()
+                }
+                .onChange(of: balanceRowsRevision) { _, _ in
+                    rebuildDisplayRows()
+                }
+                .onChange(of: transactionRowsRevision) { _, _ in
+                    rebuildTransactionRows()
                 }
         }
         // Settings is now reached via the four-tab shell (`MainTabView`
@@ -251,19 +502,49 @@ struct WalletHomeView: View {
                 .presentationDragIndicator(.visible)
                 .presentationBackground(UniColors.Background.primary)
         }
-        .sheet(isPresented: $isShowingSwitcher) {
+        // Filter & Sort sheet (2026-06-09). `.large` detent only per
+        // M-008's nav-shaped-sheet rule. Rule #12 §G direction key +
+        // `.uniAppEnvironment()` so theme + locale propagate into the
+        // sheet's own scope and an LTR↔RTL flip mid-presentation
+        // rebuilds the host instead of stranding it on the prior
+        // direction.
+        .sheet(isPresented: $isShowingFilter) {
+            // Pass the wallet-home's active search query so the
+            // filter sheet's live preview can read "Found N for
+            // query" instead of "Showing N of M" while the user
+            // is searching.
+            WalletHomeFilterSheet(searchPreview: filterSearchText)
+                .id(sheetDirectionKey)
+                .uniAppEnvironment()
+                .presentationDetents([.large])
+                .presentationDragIndicator(.visible)
+                .presentationBackground(UniColors.Background.primary)
+        }
+        .sheet(isPresented: $isShowingSwitcher, onDismiss: {
+            // Dismiss-then-present: the create/import cover presents
+            // from `onDismiss` so it never races a sheet that is
+            // still animating out. The prior `DispatchQueue.main.async`
+            // hop was a timing guess; this is the deterministic
+            // hand-off point.
+            switch pendingSwitcherFollowUp {
+            case .create:       isShowingCreate = true
+            case .importWallet: isShowingImport = true
+            case nil:           break
+            }
+            pendingSwitcherFollowUp = nil
+        }) {
             WalletSwitcherSheet(
                 onSelect: {
                     // Selection writes activeWalletIdRaw in the sheet
                     // itself; here we just acknowledge with a haptic.
                 },
                 onCreateNew: {
+                    pendingSwitcherFollowUp = .create
                     isShowingSwitcher = false
-                    DispatchQueue.main.async { isShowingCreate = true }
                 },
                 onImport: {
+                    pendingSwitcherFollowUp = .importWallet
                     isShowingSwitcher = false
-                    DispatchQueue.main.async { isShowingImport = true }
                 }
             )
             .uniAppEnvironment()
@@ -358,7 +639,9 @@ struct WalletHomeView: View {
     /// **Pull-to-refresh + auto-refresh** continue to attach to this
     /// surface (`List` consumes `.refreshable` and `.task` the same
     /// way `ScrollView` did). The bottom test-mode banner continues
-    /// to ride `.safeAreaInset(edge: .bottom)` on the body.
+    /// to ride `.safeAreaInset(edge: .bottom)` on the body. The
+    /// 2026-06-09 Lottie indicator was reverted per user direction;
+    /// the system pull-to-refresh spinner is back.
     ///
     /// **List background.** `.scrollContentBackground(.hidden)` strips
     /// the system's default grouped-list page tone and lets the
@@ -376,28 +659,48 @@ struct WalletHomeView: View {
         .listStyle(.insetGrouped)
         .scrollContentBackground(.hidden)
         .background(UniColors.Background.primary.ignoresSafeArea())
+        // **Rule #14 search** — `.searchable(text:prompt:)` with NO
+        // `placement:` argument. iOS 26 owns the placement: a
+        // 2026-06-09 — search bar REMOVED from the main wallet
+        // home per user direction. The `.searchable` modifier on
+        // `listSurface` is gone; `filterSearchText` stays as
+        // `@State` (always empty) so the filter pipeline's
+        // step-1 search predicate naturally no-ops, and the
+        // `searchPreview` parameter on the filter sheet still
+        // accepts the empty string and renders the standard
+        // "Showing N of M" preview rather than the search-aware
+        // "Found N for query" shape. Hidden Assets sub-screen
+        // keeps ITS own `.searchable` — that surface has a long
+        // roster and the search is genuinely useful there.
     }
 
-    /// Holdings region — branches by mode and by what's held.
-    /// Test mode keeps the prior single-section grouped-by-chain
-    /// shape (the playground reads as it always did). Production
-    /// branches three ways: empty (single `UniEmptyState` section),
-    /// only-coins (one Coins section), only-tokens (one Tokens
-    /// section), or both (Coins then Tokens). Each held section
-    /// caps at 10 rows + optional "Show all" row.
+    /// Holdings region — branches by test mode, then by filter
+    /// view mode, then by the segmented tab (in split mode only).
+    ///
+    /// **Test mode** keeps the prior single-section grouped-by-chain
+    /// shape — the developer playground reads as it always did and
+    /// the user's filter preferences don't apply.
+    ///
+    /// **Production** branches on `filterViewModeRaw`:
+    /// - `.split` — the original shape: a segmented Coins/Tokens
+    ///   switcher in chrome, only the selected section renders below.
+    /// - `.combined` — one unified section with every coin AND every
+    ///   token mixed, sorted by the user's chosen key + direction.
+    ///   The segmented switcher disappears (see `chromeSection`
+    ///   below).
     @ViewBuilder
     private var holdingsBody: some View {
         if isTestMode {
             holdingsListSection
         } else {
-            // Per 2026-06-09 direction the home no longer stacks
-            // Coins and Tokens — the user picks one via the
-            // segmented picker in chrome and only that section
-            // renders. Switching tabs is a `withAnimation`
-            // crossfade for the row content.
-            switch selectedHoldingsTab {
-            case .coins:  coinsSection
-            case .tokens: tokensSection
+            switch filterViewMode {
+            case .split:
+                switch selectedHoldingsTab {
+                case .coins:  coinsSection
+                case .tokens: tokensSection
+                }
+            case .combined:
+                combinedSection
             }
         }
     }
@@ -457,15 +760,18 @@ struct WalletHomeView: View {
                     // — the chart row owns the gap to the pill).
                     .listRowInsets(EdgeInsets(
                         top: 24,
-                        leading: UniSpacing.l,
+                        leading: UniSpacing.m,
                         bottom: 0,
-                        trailing: UniSpacing.l
+                        trailing: UniSpacing.m
                     ))
 
                 BalanceHistoryChart(
                     transactions: allTransactions,
                     currentBalances: balances.map { $0.balance },
-                    currencyCode: currencyCode
+                    priceCache: priceCacheBySymbol,
+                    priceHistory: priceHistoryBySymbol,
+                    currencyCode: currencyCode,
+                    scrubbedFiat: $scrubbedFiat
                 )
                 .listRowSeparator(.hidden)
                 // Caption sits flush under the hero (top: 0); 24pt
@@ -476,9 +782,9 @@ struct WalletHomeView: View {
                 // horizontal padding.
                 .listRowInsets(EdgeInsets(
                     top: 0,
-                    leading: UniSpacing.l,
+                    leading: UniSpacing.m,
                     bottom: 24,
-                    trailing: UniSpacing.l
+                    trailing: UniSpacing.m
                 ))
             }
         }
@@ -492,7 +798,16 @@ struct WalletHomeView: View {
             walletName: isTestMode
                 ? String.apertureLocalized("Public test addresses")
                 : (activeWallet?.name ?? String.apertureLocalized("Wallet")),
-            totalFiat: isTestMode ? testTotalFiat : totalFiat,
+            // 2026-06-09 — when scrubbing the chart, the hero
+            // renders the scrubbed point's fiat instead of the
+            // wallet's actual total. The chart's own scrubbing
+            // readout was removed; the hero is the single
+            // source of truth for the displayed number.
+            // `.contentTransition(.numericText())` inside
+            // `WalletHomeHeader.balanceLabel` animates the digits.
+            totalFiat: isTestMode
+                ? testTotalFiat
+                : (scrubbedFiat ?? totalFiat),
             currencyCode: currencyCode,
             chainCount: isTestMode ? testChainsHeldCount : chainsHeldCount,
             tokenCount: isTestMode ? testTokenRowCount : balances.count,
@@ -515,15 +830,40 @@ struct WalletHomeView: View {
     @ViewBuilder
     private var chromeSection: some View {
         Section {
+            // First-time-feature hint anchored to the wallet home
+            // (not the tab label — iOS 26's TabView label closure
+            // sits inside UIKit's tab-bar button chrome which has
+            // no SwiftUI popover anchor). `TipView` renders the
+            // same TipKit data as a native card inline, with the
+            // X dismiss button, the image, the title, the message
+            // — same chrome Apple ships in Mail's tip cards.
+            // Eligibility predicates on `WalletTabSwitcherTip`'s
+            // `walletCount >= 2` rule + `MaxDisplayCount(1)` so the
+            // card appears exactly once per user, then never
+            // again. `task(id: allWallets.count)` keeps the
+            // `@Parameter` in sync as wallets get created.
+            TipView(walletSwitcherTip)
+                .listRowBackground(Color.clear)
+                .listRowSeparator(.hidden)
+                .listRowInsets(EdgeInsets(
+                    top: 0,
+                    leading: UniSpacing.m,
+                    bottom: UniSpacing.m,
+                    trailing: UniSpacing.m
+                ))
+                .task(id: allWallets.count) {
+                    WalletTabSwitcherTip.walletCount = allWallets.count
+                }
+
             if requiresBiometricReenrollment {
                 BiometricReenrollmentBanner()
                     .listRowBackground(Color.clear)
                     .listRowSeparator(.hidden)
                     .listRowInsets(EdgeInsets(
                         top: 0,
-                        leading: UniSpacing.l,
+                        leading: UniSpacing.m,
                         bottom: 0,
-                        trailing: UniSpacing.l
+                        trailing: UniSpacing.m
                     ))
             }
 
@@ -538,9 +878,9 @@ struct WalletHomeView: View {
             .listRowSeparator(.hidden)
             .listRowInsets(EdgeInsets(
                 top: 0,
-                leading: UniSpacing.l,
+                leading: UniSpacing.m,
                 bottom: 0,
-                trailing: UniSpacing.l
+                trailing: UniSpacing.m
             ))
 
             // Coins ↔ Tokens segmented switcher. Native iOS
@@ -548,18 +888,27 @@ struct WalletHomeView: View {
             // Settings uses for its "Display & Brightness" Light /
             // Dark toggle. Swipe / tap to change the active tab;
             // `holdingsBody` renders the matching section.
-            holdingsTabPicker
-                .listRowBackground(Color.clear)
-                .listRowSeparator(.hidden)
-                // Tightened vertical padding per 2026-06-09 user
-                // direction so the picker sits closer to the action
-                // region above and the section below.
-                .listRowInsets(EdgeInsets(
-                    top: UniSpacing.xxs,
-                    leading: UniSpacing.l,
-                    bottom: UniSpacing.xxs,
-                    trailing: UniSpacing.l
-                ))
+            //
+            // 2026-06-09 — only renders in `.split` view mode. In
+            // `.combined` mode the picker would be a no-op (one
+            // mixed list, no tab to switch) and would read as
+            // visual noise; the filter sheet's "Style → Combined"
+            // choice IS the affordance, and the picker disappears
+            // to honor it.
+            if !isTestMode && filterViewMode == .split {
+                holdingsTabPicker
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
+                    // Tightened vertical padding per 2026-06-09 user
+                    // direction so the picker sits closer to the action
+                    // region above and the section below.
+                    .listRowInsets(EdgeInsets(
+                        top: UniSpacing.xxs,
+                        leading: UniSpacing.m,
+                        bottom: UniSpacing.xxs,
+                        trailing: UniSpacing.m
+                    ))
+            }
         }
     }
 
@@ -606,24 +955,48 @@ struct WalletHomeView: View {
     /// for its "MOBILE DATA" / "GENERAL" labels.
     @ViewBuilder
     private var coinsSection: some View {
-        // Use `coinDisplayRows` (every supported chain, held-first
-        // sort) — not `coinHoldings` (held only). Per the user's
-        // 2026-06-08 direction the home screen now shows all
-        // supported coins; zero-balance rows render honestly.
-        let rows = coinDisplayRows
-        let displayed = Array(rows.prefix(holdingsDisplayCap))
-        let hasMore = rows.count > holdingsDisplayCap
+        // The user's Filter & Sort preferences are applied off-body
+        // via the pure `WalletHomeFilterApply.apply(coins:with:)`
+        // helper inside `rebuildFilteredRows()`; this section just
+        // renders the memoized result. The base `coinDisplayRows`
+        // is the home-screen sort (held-first canonical); the
+        // filter re-sorts per the user's chosen key + direction and
+        // drops hidden chains / hidden assets / zero balances per
+        // the toggles. Pinned rows ride at the head of the array.
+        let allRows = filteredCoinRows
+        // Re-partition so the view can render Pinned + non-pinned
+        // as two separate `Section`s (the apply helper concatenates
+        // them, but the rendering needs them apart so the "Pinned"
+        // header lives above the pinned rows).
+        let pinnedSet = filterInputs.pinnedAssets
+        let (pinned, nonPinned) = WalletHomeFilterApply.partitionPinned(coins: allRows, pinned: pinnedSet)
+        let nonPinnedDisplayed = Array(nonPinned.prefix(holdingsDisplayCap))
+        let hasMore = nonPinned.count > holdingsDisplayCap
+
+        // Pinned section — header only renders when at least one
+        // coin is pinned. Pinned rows never count against the
+        // 10-row cap; they're the user's stated priority.
+        if !pinned.isEmpty {
+            Section {
+                // **2026-06-09 perf.** Stable identity via
+                // `chain.rawValue` instead of `.enumerated().offset`.
+                // The offset shifts every time the array re-sorts (every
+                // body render under the current state-storm), which
+                // destroyed + recreated every row → re-ran `.task(id:)`
+                // on every `CoinMark` → re-fetched + re-decoded every
+                // token icon every body render. Stable id = SwiftUI
+                // reuses the row + the icon view + the cached image.
+                ForEach(pinned, id: \.chain.rawValue) { row in
+                    coinNavigationRow(row)
+                }
+            } header: {
+                Text("Pinned")
+            }
+        }
 
         Section {
-            ForEach(Array(displayed.enumerated()), id: \.offset) { _, row in
-                AssetRow(
-                    chain: row.chain,
-                    tokenSymbol: row.chain.ticker,
-                    nativeAmount: row.amount,
-                    nativeDecimals: min(row.chain.nativeDecimals, 8),
-                    fiatValue: row.fiatValue,
-                    fiatCurrencyCode: row.fiatCurrencyCode
-                )
+            ForEach(nonPinnedDisplayed, id: \.chain.rawValue) { row in
+                coinNavigationRow(row)
             }
             if hasMore { showAllRow }
         }
@@ -643,21 +1016,209 @@ struct WalletHomeView: View {
     /// flat layout, not nested under a chain.
     @ViewBuilder
     private var tokensSection: some View {
-        // Use `tokenDisplayRows` (every supported token across every
-        // registry, held-first sort). The display row carries
-        // (symbol, name, amount, fiat) — zero-balance rows render
-        // honestly per Rule #16.
-        let rows = tokenDisplayRows
-        let displayed = Array(rows.prefix(holdingsDisplayCap))
-        let hasMore = rows.count > holdingsDisplayCap
+        // Memoized filter + sort — same rationale as `coinsSection`.
+        // Pinned tokens get their own Section above the rest with
+        // the "Pinned" header.
+        let allRows = filteredTokenRows
+        let pinnedSet = filterInputs.pinnedAssets
+        let (pinned, nonPinned) = WalletHomeFilterApply.partitionPinned(tokens: allRows, pinned: pinnedSet)
+        let nonPinnedDisplayed = Array(nonPinned.prefix(holdingsDisplayCap))
+        let hasMore = nonPinned.count > holdingsDisplayCap
+
+        if !pinned.isEmpty {
+            Section {
+                ForEach(pinned, id: \.id) { row in
+                    tokenNavigationRow(row)
+                }
+            } header: {
+                Text("Pinned")
+            }
+        }
 
         Section {
-            ForEach(displayed, id: \.id) { row in
-                supportedTokenRow(row)
+            ForEach(nonPinnedDisplayed, id: \.id) { row in
+                tokenNavigationRow(row)
             }
             if hasMore { showAllRow }
         }
         // Header omitted — see the coinsSection note above.
+    }
+
+    // MARK: - Navigation row wrappers (asset-detail routing)
+
+    /// Wrap a coin row in a `NavigationLink(value:)` so tap routes
+    /// to `AssetDetailView` via the wallet-home's NavigationStack.
+    /// Same DNA as the activity-row Button wrapper — keeps the row
+    /// composition pure and the navigation responsibility on the
+    /// parent surface.
+    ///
+    /// Per Rule #19 §C, NavigationLink content is a navigation
+    /// affordance (not a CTA), so plain composition is allowed.
+    @ViewBuilder
+    private func coinNavigationRow(_ row: WalletCoinSupportedRow) -> some View {
+        NavigationLink(value: WalletHomeDestination.assetDetail(.nativeCoin(row.chain))) {
+            AssetRow(
+                chain: row.chain,
+                tokenSymbol: row.chain.ticker,
+                nativeAmount: row.amount,
+                nativeDecimals: min(row.chain.nativeDecimals, 8),
+                fiatValue: row.fiatValue,
+                fiatCurrencyCode: row.fiatCurrencyCode
+            )
+        }
+        .accessibilityLabel(Text("\(row.chain.displayName) details"))
+    }
+
+    /// Wrap a token row in a `NavigationLink(value:)`. The
+    /// destination is the symbol-scoped asset detail — tapping
+    /// "USDC on Polygon" lands on the cross-network USDC view (not
+    /// the USDC-on-Polygon-only sub-view; the user reaches that
+    /// from inside the asset detail's Networks section).
+    @ViewBuilder
+    private func tokenNavigationRow(_ row: WalletTokenSupportedDisplayRow) -> some View {
+        NavigationLink(value: WalletHomeDestination.assetDetail(.token(symbol: row.symbol))) {
+            supportedTokenRow(row)
+        }
+        .accessibilityLabel(Text("\(row.symbol) details"))
+    }
+
+    // MARK: - Combined section (Filter view mode = .combined)
+
+    /// **Combined holdings section** — every coin + every token in
+    /// one unified, filter-sorted list. Renders only when the
+    /// Filter & Sort sheet's "Style" is `.combined`. The Coins /
+    /// Tokens segmented switcher disappears (see `chromeSection`)
+    /// because the picker would be a no-op in this mode.
+    ///
+    /// **Why one ForEach and not two stacked Sections.** The whole
+    /// point of `.combined` is "one portfolio, sorted by my chosen
+    /// key" — stacking sections re-introduces the split that
+    /// `.combined` exists to dissolve. The rows are emitted in
+    /// pre-sorted order: every coin and every token together,
+    /// sorted by `(filterSortKey, filterSortDirection)`.
+    ///
+    /// **Row anatomy.** Coin rows use `AssetRow` (44pt mark + chain
+    /// name + native amount + fiat). Token rows use
+    /// `supportedTokenRow(_:)` (44pt token mark + symbol + chain
+    /// name + amount + fiat). Same anatomy as their respective
+    /// sections in `.split` mode — visual consistency across modes
+    /// means the user reads the same rows regardless of which mode
+    /// they picked (Rule #2 §A.5).
+    ///
+    /// **Sort behavior across kinds.** The pure helper sorts each
+    /// list independently then we merge. To keep the sort honest in
+    /// `.combined` we apply the same comparator across an interleaved
+    /// sequence by mapping both row kinds onto a common comparable
+    /// surface (chain + amount + fiatValue + name + symbol).
+    @ViewBuilder
+    private var combinedSection: some View {
+        let merged = combinedFilteredRows  // already sorted; pinned at the head
+        let pinnedSet = filterInputs.pinnedAssets
+        let (pinned, nonPinned) = partitionPinnedCombined(merged, pinnedSet: pinnedSet)
+
+        // Pinned rows always at the head, regardless of group-by.
+        if !pinned.isEmpty {
+            Section {
+                ForEach(pinned, id: \.id) { item in
+                    combinedRow(item)
+                }
+            } header: {
+                Text("Pinned")
+            }
+        }
+
+        // Group-by: chain → one Section per chain (sorted alpha by
+        // chain display name); none → flat Section with the
+        // 10-row cap + Show all.
+        switch filterGroupBy {
+        case .none:
+            let displayed = Array(nonPinned.prefix(holdingsDisplayCap))
+            let hasMore = nonPinned.count > holdingsDisplayCap
+            Section {
+                ForEach(displayed, id: \.id) { item in
+                    combinedRow(item)
+                }
+                if hasMore { showAllRow }
+            }
+        case .chain:
+            // Group nonPinned by chain. Sections rendered in
+            // alphabetical order of `chain.displayName`. Within
+            // each section, rows retain their pre-sorted order
+            // (the merged sort that `combinedFilteredRows` produced).
+            let groups = groupByChain(nonPinned)
+            ForEach(groups, id: \.chain) { group in
+                Section {
+                    ForEach(group.items, id: \.id) { item in
+                        combinedRow(item)
+                    }
+                } header: {
+                    Text(verbatim: group.chain.displayName)
+                }
+            }
+        }
+    }
+
+    /// Common row builder used by both `combinedSection`'s flat and
+    /// grouped shapes plus the pinned head section. Switches between
+    /// `AssetRow` for coins and `supportedTokenRow` for tokens. Each
+    /// branch wraps in a `NavigationLink(value:)` so tap routes to the
+    /// asset detail (Rule #19 §C — navigation affordance, not a CTA).
+    @ViewBuilder
+    private func combinedRow(_ item: CombinedHoldingRow) -> some View {
+        switch item {
+        case .coin(let row):
+            coinNavigationRow(row)
+        case .token(let row):
+            tokenNavigationRow(row)
+        }
+    }
+
+    /// Split a `combinedFilteredRows` array into pinned + non-pinned
+    /// keeping the source order in each bucket. Mirrors the
+    /// per-kind `partitionPinned` helpers in the pure applier.
+    private func partitionPinnedCombined(
+        _ rows: [CombinedHoldingRow],
+        pinnedSet: Set<String>
+    ) -> (pinned: [CombinedHoldingRow], nonPinned: [CombinedHoldingRow]) {
+        guard !pinnedSet.isEmpty else { return ([], rows) }
+        var pinned: [CombinedHoldingRow] = []
+        var nonPinned: [CombinedHoldingRow] = []
+        for item in rows {
+            if pinnedSet.contains(item.assetID) {
+                pinned.append(item)
+            } else {
+                nonPinned.append(item)
+            }
+        }
+        return (pinned, nonPinned)
+    }
+
+    /// One chain bucket for the grouped combined section.
+    private struct ChainGroup {
+        let chain: SupportedChain
+        let items: [CombinedHoldingRow]
+    }
+
+    /// Group an interleaved `[CombinedHoldingRow]` by chain.
+    /// Sections render in alphabetical order of chain display name
+    /// so the grouped view reads as an A→Z index of chains the
+    /// user holds. Within each group, items keep their pre-sort
+    /// order from `combinedFilteredRows`.
+    private func groupByChain(_ rows: [CombinedHoldingRow]) -> [ChainGroup] {
+        var buckets: [SupportedChain: [CombinedHoldingRow]] = [:]
+        for item in rows {
+            let chain: SupportedChain
+            switch item {
+            case .coin(let r):  chain = r.chain
+            case .token(let r): chain = r.chain
+            }
+            buckets[chain, default: []].append(item)
+        }
+        return buckets
+            .sorted { a, b in
+                a.key.displayName.localizedStandardCompare(b.key.displayName) == .orderedAscending
+            }
+            .map { ChainGroup(chain: $0.key, items: $0.value) }
     }
 
     /// Inline renderer for a `WalletTokenSupportedDisplayRow`. Same
@@ -782,7 +1343,11 @@ struct WalletHomeView: View {
             .padding(.vertical, UniSpacing.l)
             .listRowSeparator(.hidden)
         } else {
-            ForEach(Array(sortedTestChains.enumerated()), id: \.offset) { _, chain in
+            // Stable identity via `chain.rawValue` — the previous
+            // `.enumerated().offset` id shifted on every streaming
+            // re-sort, destroying + recreating every row (and its
+            // icon fetch tasks) per render.
+            ForEach(sortedTestChains, id: \.rawValue) { chain in
                 ReviewChainRow(
                     chain: chain,
                     address: TestAddresses.map[chain] ?? "",
@@ -871,16 +1436,129 @@ struct WalletHomeView: View {
         return result
     }
 
-    /// Coins rows — every `SupportedChain.allCases`, held coins first
-    /// (fiat desc), then unheld in canonical chain order. The home
-    /// screen takes the first 10; the "Show all" destination shows
-    /// the rest.
-    var coinDisplayRows: [WalletCoinSupportedRow] {
-        let rows = WalletSupportedRowBuilders.coinRows(
-            heldRows: allHeldRows,
+    /// `[symbol-uppercased: price]` map filtered to the active fiat,
+    /// used by `BalanceHistoryChart` so the reconstructor can value
+    /// past holdings of fully cashed-out tokens (the 2026-06-12
+    /// USDT-flat-chart bug). Reads from the `cachedPrices` `@Query`
+    /// which observes `CachedPriceRecord` rows — the same rows
+    /// `CoinbasePriceService` writes through. The cache stays warm
+    /// across launches per `PriceCacheRepository`'s no-TTL policy.
+    private var priceCacheBySymbol: [String: Decimal] {
+        var out: [String: Decimal] = [:]
+        for row in cachedPrices where row.fiat == currencyCode {
+            out[row.symbol.uppercased()] = row.price
+        }
+        return out
+    }
+
+    /// `[symbol-uppercased: [yyyymmdd: price]]` snapshot fed to
+    /// `BalanceHistoryChart`'s reconstructor. Filtered to the
+    /// active fiat. Bucketing happens here — the `@Query` returns
+    /// every row regardless of (symbol, fiat), and we partition by
+    /// uppercased symbol. Empty until the ensure-loop's first
+    /// fetch lands, after which it grows incrementally as new
+    /// (symbol, fiat) pairs need historical coverage.
+    private var priceHistoryBySymbol: [String: [Int: Decimal]] {
+        var out: [String: [Int: Decimal]] = [:]
+        for row in historicalPrices where row.fiat == currencyCode {
+            out[row.symbol.uppercased(), default: [:]][row.dayKey] = row.price
+        }
+        return out
+    }
+
+    // MARK: - Filter & Sort derived state (rebuilt off-body)
+
+    /// Change fingerprint over every persisted filter preference plus
+    /// the transient search text. One `.onChange` over the joined
+    /// string replaces eleven separate observers; any backing value
+    /// change flips the fingerprint and triggers one rebuild of the
+    /// memoized `filterInputs` + filtered row projections.
+    private var filterPreferenceFingerprint: String {
+        [
+            filterViewModeRaw,
+            filterSortKeyRaw,
+            filterSortDirectionRaw,
+            String(filterOnlyWithBalance),
+            filterHiddenAssetsJSON,
+            filterHiddenChainsJSON,
+            filterAssetTypeRaw,
+            filterGroupByRaw,
+            String(filterMinFiatThreshold),
+            filterSelectedNetworksJSON,
+            filterPinnedAssetsJSON,
+            filterSearchText
+        ].joined(separator: "\u{1F}")
+    }
+
+    /// Cheap SwiftData change proxies — row counts across the active
+    /// wallet's addresses. Counting is O(addresses) per body pass;
+    /// the expensive registry enumeration + flatMap + sort only runs
+    /// when a count actually changes. Value-only updates (a refresh
+    /// re-pricing existing rows) are caught by the explicit rebuild
+    /// at the end of `runRefresh()`.
+    private var balanceRowsRevision: Int {
+        guard let wallet = activeWallet else { return 0 }
+        return wallet.addresses.reduce(0) { $0 + $1.balances.count }
+    }
+
+    private var transactionRowsRevision: Int {
+        guard let wallet = activeWallet else { return 0 }
+        return wallet.addresses.reduce(0) { $0 + $1.transactions.count }
+    }
+
+    /// Decode the `@AppStorage`-bound preference values into the
+    /// memoized `filterInputs` snapshot. Same construction the old
+    /// per-body computed property performed — now run only when the
+    /// preference fingerprint changes (plus once from `.task`).
+    private func rebuildFilterInputs() {
+        filterInputs = WalletHomeFilterApply.Inputs(
+            viewMode: WalletHomeFilterPreferences.ViewMode(rawValue: filterViewModeRaw)
+                ?? WalletHomeFilterPreferences.defaultViewMode,
+            sortKey: WalletHomeFilterPreferences.SortKey(rawValue: filterSortKeyRaw)
+                ?? WalletHomeFilterPreferences.defaultSortKey,
+            direction: WalletHomeFilterPreferences.SortDirection(rawValue: filterSortDirectionRaw)
+                ?? WalletHomeFilterPreferences.defaultSortDirection,
+            onlyWithBalance: filterOnlyWithBalance,
+            hiddenAssets: WalletHomeFilterPreferences.decode(filterHiddenAssetsJSON),
+            hiddenChains: WalletHomeFilterPreferences.decode(filterHiddenChainsJSON),
+            assetType: WalletHomeFilterPreferences.AssetType(rawValue: filterAssetTypeRaw)
+                ?? WalletHomeFilterPreferences.defaultAssetType,
+            groupBy: WalletHomeFilterPreferences.GroupBy(rawValue: filterGroupByRaw)
+                ?? WalletHomeFilterPreferences.defaultGroupBy,
+            minFiatThreshold: Decimal(filterMinFiatThreshold),
+            selectedNetworks: WalletHomeFilterPreferences.decode(filterSelectedNetworksJSON),
+            pinnedAssets: WalletHomeFilterPreferences.decode(filterPinnedAssetsJSON),
+            searchText: filterSearchText
+        )
+    }
+
+    /// Typed group-by reader for the combined section's branch.
+    private var filterGroupBy: WalletHomeFilterPreferences.GroupBy {
+        filterInputs.groupBy
+    }
+
+    /// Typed view-mode reader for the chrome section's conditional
+    /// `holdingsTabPicker` and `holdingsBody`'s branch.
+    private var filterViewMode: WalletHomeFilterPreferences.ViewMode {
+        filterInputs.viewMode
+    }
+
+    /// Rebuild the unfiltered display rows, then re-derive the
+    /// filtered projections.
+    ///
+    /// Coins rows — every `SupportedChain.allCases`, held coins
+    /// first (fiat desc), then unheld in canonical chain order. The
+    /// home screen takes the first 10; the "Show all" destination
+    /// shows the rest. Tokens rows — every supported token across
+    /// all registries, held first (fiat desc), then unheld
+    /// alphabetically by `(symbol, chain)`.
+    private func rebuildDisplayRows() {
+        let held = allHeldRows
+        let coinRows = WalletSupportedRowBuilders.coinRows(
+            heldRows: held,
             currencyCode: currencyCode
         )
-        return rows.sorted { a, b in
+        coinDisplayRows = coinRows.sorted { a, b in
             if a.isHeld != b.isHeld { return a.isHeld }
             if a.isHeld {
                 let aFiat = a.fiatValue ?? .zero
@@ -889,17 +1567,11 @@ struct WalletHomeView: View {
             }
             return a.chain.displayName.localizedStandardCompare(b.chain.displayName) == .orderedAscending
         }
-    }
-
-    /// Tokens rows — every supported token across all registries,
-    /// held first (fiat desc), then unheld alphabetically by
-    /// `(symbol, chain)`.
-    var tokenDisplayRows: [WalletTokenSupportedDisplayRow] {
-        let rows = WalletSupportedRowBuilders.tokenRows(
-            heldRows: allHeldRows,
+        let tokenRows = WalletSupportedRowBuilders.tokenRows(
+            heldRows: held,
             currencyCode: currencyCode
         )
-        return rows.sorted { a, b in
+        tokenDisplayRows = tokenRows.sorted { a, b in
             if a.isHeld != b.isHeld { return a.isHeld }
             if a.isHeld {
                 let aFiat = a.fiatValue ?? .zero
@@ -911,6 +1583,55 @@ struct WalletHomeView: View {
                 return symbolOrder == .orderedAscending
             }
             return a.chain.displayName.localizedStandardCompare(b.chain.displayName) == .orderedAscending
+        }
+        rebuildFilteredRows()
+    }
+
+    /// Re-derive the filtered + sorted projections from the cached
+    /// display rows and the memoized filter inputs.
+    ///
+    /// **Combined-mode merged row list.** The pure helper produces
+    /// two separately-filtered + separately-sorted lists; combined
+    /// mode wants one stable interleave that honors the same sort
+    /// key + direction. We map each into a small enum
+    /// `CombinedHoldingRow`, concat, then re-sort the union by the
+    /// shared comparator so the user reads one honestly-ordered list.
+    private func rebuildFilteredRows() {
+        filteredCoinRows = WalletHomeFilterApply.apply(coins: coinDisplayRows, with: filterInputs)
+        filteredTokenRows = WalletHomeFilterApply.apply(tokens: tokenDisplayRows, with: filterInputs)
+
+        let merged: [CombinedHoldingRow] =
+            filteredCoinRows.map { .coin($0) } + filteredTokenRows.map { .token($0) }
+
+        let sortKey = filterInputs.sortKey
+        let direction = filterInputs.direction
+        let ascending = direction == .ascending
+
+        combinedFilteredRows = merged.sorted { a, b in
+            switch sortKey {
+            case .name:
+                let order = a.sortName.localizedStandardCompare(b.sortName)
+                return ascending ? order == .orderedAscending : order == .orderedDescending
+            case .symbol:
+                let order = a.sortSymbol.localizedStandardCompare(b.sortSymbol)
+                return ascending ? order == .orderedAscending : order == .orderedDescending
+            case .balance:
+                return ascending ? a.sortAmount < b.sortAmount : a.sortAmount > b.sortAmount
+            case .value:
+                let aFiat = a.sortFiat
+                let bFiat = b.sortFiat
+                if aFiat == bFiat {
+                    return a.sortName.localizedStandardCompare(b.sortName) == .orderedAscending
+                }
+                return ascending ? aFiat < bFiat : aFiat > bFiat
+            case .chain:
+                let ai = a.canonicalChainIndex
+                let bi = b.canonicalChainIndex
+                if ai == bi {
+                    return a.sortSymbol.localizedStandardCompare(b.sortSymbol) == .orderedAscending
+                }
+                return ascending ? ai < bi : ai > bi
+            }
         }
     }
 
@@ -970,21 +1691,16 @@ struct WalletHomeView: View {
         }
     }
 
-    /// Test-mode activity feed. Renders the in-memory
-    /// `testTransactions` buffer (populated by the unified
-    /// `RealRPCTransactionScanner`) using the same `ActivityRow`
-    /// component the real wallet uses — so visual consistency
-    /// between test mode and the production path is automatic. Rows
-    /// are sorted newest-first and capped at 10 (same cap as
-    /// `recentTransactions`).
+    /// Test-mode activity feed. Renders the memoized
+    /// `sortedTestActivityRows` projection (newest-first, capped at
+    /// 10 — same cap as `recentTransactions`), maintained at the
+    /// mutation sites in `runTestScan()` rather than re-sorted per
+    /// body pass. Uses the same `ActivityRow` component the real
+    /// wallet uses — so visual consistency between test mode and
+    /// the production path is automatic.
     @ViewBuilder
     private var testActivityRows: some View {
-        let sorted = Array(
-            testTransactions
-                .sorted { $0.occurredAt > $1.occurredAt }
-                .prefix(10)
-        )
-        ForEach(Array(sorted.enumerated()), id: \.offset) { _, event in
+        ForEach(sortedTestActivityRows, id: \.txHash) { event in
             ActivityRow(
                 chain: event.chain,
                 direction: event.direction,
@@ -1064,11 +1780,19 @@ struct WalletHomeView: View {
                 }
                 .accessibilityLabel(Text("Test mode active"))
             } else {
+                // 2026-06-09 — pass the active wallet's gradient-disc
+                // spec to the pill so the leading slot renders the
+                // new avatar. Falls back to an auto(name)-derived
+                // spec from the default "Wallet" name when no active
+                // wallet exists yet (cold launch before
+                // `ensureActiveWalletSet()` lands one).
+                let pillSpec: WalletAvatarSpec = activeWallet?.avatarSpec
+                    ?? WalletAvatarSpec.auto(name: "Wallet")
                 UniButton(
                     verbatim: activeWallet?.name ?? String.apertureLocalized("Wallet"),
                     variant: .walletPill,
-                    walletSymbol: avatarSymbol,
-                    walletColorHex: avatarColorHex
+                    walletSpec: pillSpec,
+                    walletId: activeWallet?.id
                 ) {
                     isShowingSwitcher = true
                 }
@@ -1122,11 +1846,10 @@ struct WalletHomeView: View {
                         }
                     }
                 } icon: {
-                    WalletAvatar(
-                        symbol: wallet.iconSymbol.isEmpty ? WalletAvatarDefaults.symbol : wallet.iconSymbol,
-                        colorHex: wallet.iconColorHex.isEmpty ? WalletAvatarDefaults.colorHex : wallet.iconColorHex,
-                        size: .menuLeading
-                    )
+                    // 2026-06-09 — gradient-disc avatar per the
+                    // design handoff. Same identity surface as
+                    // every other wallet-identity slot.
+                    WalletAvatar(spec: wallet.avatarSpec, size: .menuLeading, walletId: wallet.id)
                 }
             }
         }
@@ -1172,22 +1895,13 @@ struct WalletHomeView: View {
         )
     }
 
-    /// Active wallet's avatar SF Symbol — defaults to
-    /// `WalletAvatarDefaults.symbol` when the wallet hasn't picked
-    /// one yet (fresh schema additive, see `ApertureSchema.swift`).
-    private var avatarSymbol: String {
-        let raw = activeWallet?.iconSymbol ?? ""
-        return raw.isEmpty ? WalletAvatarDefaults.symbol : raw
-    }
-
-    /// Active wallet's avatar background hex — defaults to
-    /// `WalletAvatarDefaults.colorHex` when not set.
-    private var avatarColorHex: String {
-        let raw = activeWallet?.iconColorHex ?? ""
-        return raw.isEmpty ? WalletAvatarDefaults.colorHex : raw
-    }
-
     // MARK: - Derived state
+    //
+    // The pre-2026-06-09 `avatarSymbol` / `avatarColorHex` helpers
+    // were retired in the gradient-disc avatar rewrite — the toolbar
+    // pill now reads `activeWallet.avatarSpec` directly (hydrated by
+    // `WalletAvatarSpec.hydrate(...)` with auto(name) fallback so the
+    // disc is never blank).
 
     private var activeWallet: WalletRecord? {
         if let uuid = UUID(uuidString: activeWalletIdRaw),
@@ -1231,25 +1945,30 @@ struct WalletHomeView: View {
         Set(balances.map { $0.chain }).count
     }
 
-    /// Most recent ten transactions across all the wallet's addresses,
-    /// newest first.
-    private var recentTransactions: [TransactionRecord] {
-        guard let wallet = activeWallet else { return [] }
+    /// Rebuild the memoized transaction projections:
+    ///
+    /// - `recentTransactions` — most recent ten transactions across
+    ///   all the wallet's addresses, newest first.
+    /// - `allTransactions` — every transaction, unsorted. Feeds the
+    ///   balance-history chart's reconstructor — the prefix-10 slice
+    ///   the activity section uses isn't enough for
+    ///   `BalanceHistoryRange.all`. The reconstructor handles the
+    ///   sort + the per-range cutoff itself.
+    ///
+    /// Called from `.task`, the wallet-switch / count-proxy
+    /// observers, and refresh completion — never from the body, so
+    /// the flatMap + sort no longer runs per render.
+    private func rebuildTransactionRows() {
+        guard let wallet = activeWallet else {
+            recentTransactions = []
+            allTransactions = []
+            return
+        }
         let all = wallet.addresses.flatMap { $0.transactions }
-        return all
-            .sorted { $0.occurredAt > $1.occurredAt }
-            .prefix(10)
-            .map { $0 }
-    }
-
-    /// All transactions across the active wallet's addresses,
-    /// unsorted. Feeds the balance-history chart's reconstructor —
-    /// the prefix-10 slice the activity section uses isn't enough
-    /// for `BalanceHistoryRange.all`. The reconstructor handles the
-    /// sort + the per-range cutoff itself.
-    private var allTransactions: [TransactionRecord] {
-        guard let wallet = activeWallet else { return [] }
-        return wallet.addresses.flatMap { $0.transactions }
+        allTransactions = all
+        recentTransactions = Array(
+            all.sorted { $0.occurredAt > $1.occurredAt }.prefix(10)
+        )
     }
 
     /// Resolves the chain a `TransactionRecord` belongs to via its
@@ -1293,6 +2012,78 @@ struct WalletHomeView: View {
         }
     }
 
+    // MARK: - Historical-price ensure-loop (2026-06-12)
+
+    /// `(walletId, currencyCode, txCount, balanceCount)` fingerprint —
+    /// re-runs the ensure-loop when any of these change so a new tx
+    /// involving an asset we don't have history for triggers a
+    /// fetch. Counts are cheap; symbol-set scans are not, so we
+    /// gate on count first.
+    private var historicalEnsureKey: String {
+        [
+            activeWallet?.id.uuidString ?? "",
+            currencyCode,
+            String(allTransactions.count),
+            String(allHeldRows.count)
+        ].joined(separator: "|")
+    }
+
+    /// Fetch historical close prices for every unique symbol the
+    /// wallet has touched (current holdings + tx history), skipping
+    /// any (symbol, fiat) pair we already have rows for in
+    /// `HistoricalPriceRepository`. Best-effort; failures degrade
+    /// silently to today's spot via the reconstructor's fallback
+    /// chain.
+    private func ensureHistoricalPricesLoaded() async {
+        // Collect unique symbols from held balances + tx history.
+        var symbols = Set<String>()
+        for entry in allHeldRows {
+            symbols.insert(entry.balance.tokenSymbol.uppercased())
+        }
+        for tx in allTransactions {
+            symbols.insert(tx.tokenSymbol.uppercased())
+        }
+        guard !symbols.isEmpty else { return }
+
+        // Symbols we already have history for in the target fiat —
+        // skip those.
+        let existing = Set(historicalPrices
+            .filter { $0.fiat == currencyCode }
+            .map { $0.symbol.uppercased() })
+        let missing = symbols.subtracting(existing)
+        guard !missing.isEmpty else { return }
+
+        let service = CoinbaseHistoricalPriceService()
+        let repo = HistoricalPriceRepository(modelContainer: modelContext.container)
+        let fiat = currencyCode
+
+        // Bounded concurrency — 4 simultaneous fetches keeps the
+        // Coinbase Exchange API happy and the device's RPC budget
+        // free for the wallet refresh.
+        await withTaskGroup(of: Void.self) { group in
+            var inFlight = 0
+            for symbol in missing {
+                if inFlight >= 4 {
+                    await group.next()
+                    inFlight -= 1
+                }
+                inFlight += 1
+                group.addTask {
+                    let candles = await service.fetchDailyCloses(symbol: symbol, fiat: fiat)
+                    guard !candles.isEmpty else { return }
+                    let entries = candles.map {
+                        (symbol: symbol, fiat: fiat, dayKey: $0.dayKey, price: $0.close)
+                    }
+                    do {
+                        try await repo.upsertMany(entries)
+                    } catch {
+                        // Best-effort — surface to log, no user UI.
+                    }
+                }
+            }
+        }
+    }
+
     // MARK: - Refresh
 
     private func runRefresh() async {
@@ -1300,7 +2091,21 @@ struct WalletHomeView: View {
         await MainActor.run { isRefreshing = true }
         let coordinator = WalletRefreshCoordinator(container: modelContext.container)
         await coordinator.refreshWallet(walletId: walletId, fiatCode: currencyCode)
-        await MainActor.run { isRefreshing = false }
+        await MainActor.run {
+            isRefreshing = false
+            // A refresh can re-price existing rows without changing
+            // row counts, which the count-based change proxies can't
+            // see — rebuild the memoized projections explicitly now
+            // that the coordinator has finished writing.
+            rebuildDisplayRows()
+            rebuildTransactionRows()
+            // **2026-06-10 handoff signature.** Pull-to-refresh
+            // complete fires the iris-settle pattern (soft tick →
+            // medium tap). Per Rule #10 §I, signatures are gated
+            // through `UniHapticEngine` so the AppStorage toggle
+            // and Reduce Motion are both honored.
+            UniHapticEngine.shared.play(.signature(.irisSettle))
+        }
     }
 
     // MARK: - Test mode bottom banner + actions
@@ -1383,6 +2188,7 @@ struct WalletHomeView: View {
         testBalances = [:]
         testTokens = [:]
         testTransactions = []
+        sortedTestActivityRows = []
         isTestMode = true
         testScanTrigger &+= 1
     }
@@ -1392,6 +2198,7 @@ struct WalletHomeView: View {
         testBalances = [:]
         testTokens = [:]
         testTransactions = []
+        sortedTestActivityRows = []
     }
 
     /// Consume the streaming scan against `TestAddresses.map`.
@@ -1404,9 +2211,10 @@ struct WalletHomeView: View {
     /// unified `RealRPCTransactionScanner` against the same address
     /// map and appends events to `testTransactions` as each chain's
     /// adapter resolves. The two streams are independent — balances
-    /// land via `testScanner`, transactions via `txScanner`. Both
-    /// observe `isTestMode` so a mid-flight toggle clears the
-    /// buckets and stops both feeds cleanly.
+    /// land via `scanners.balance`, transactions via
+    /// `scanners.transactions`. Both observe `isTestMode` (and the
+    /// tracked task's cancellation) so a mid-flight toggle or a
+    /// re-trigger clears the buckets and stops both feeds cleanly.
     private func runTestScan() async {
         let snapshot = isTestMode
         guard snapshot else { return }
@@ -1416,29 +2224,37 @@ struct WalletHomeView: View {
         // Transactions: run in parallel with the balance stream so
         // the user sees rows landing chain-by-chain in the activity
         // feed AT THE SAME TIME as the holdings rows fill in.
-        let txTask = Task { [txScanner] in
+        let txTask = Task { [txScanner = scanners.transactions] in
             let txStream = txScanner.streamScan(
                 addresses: TestAddresses.map,
                 limit: 10
             )
             for await event in txStream {
-                guard isTestMode else { return }
+                guard isTestMode, !Task.isCancelled else { return }
                 // De-dup per (chain, hash) so repeated rescans don't
                 // double-count.
                 testTransactions.removeAll {
                     $0.chain == event.chain && $0.txHash == event.txHash
                 }
                 testTransactions.append(event)
+                // Maintain the memoized newest-first projection at
+                // the mutation site so the body never sorts.
+                sortedTestActivityRows = Array(
+                    testTransactions
+                        .sorted { $0.occurredAt > $1.occurredAt }
+                        .prefix(10)
+                )
             }
         }
 
-        let stream = testScanner.streamScan(
+        let stream = scanners.balance.streamScan(
             addresses: TestAddresses.map,
             currency: currency
         )
         for await row in stream {
-            // Bail if the user exited test mode mid-stream.
-            guard isTestMode else {
+            // Bail if the user exited test mode mid-stream, or the
+            // tracked task was cancelled by a re-trigger / disappear.
+            guard isTestMode, !Task.isCancelled else {
                 txTask.cancel()
                 return
             }
@@ -1451,6 +2267,13 @@ struct WalletHomeView: View {
                 existing.append(tokenBalance)
                 testTokens[tokenBalance.chain] = existing
             }
+        }
+        // The stream can also terminate because the tracked task was
+        // cancelled mid-await — propagate the cancellation to the
+        // transaction feed instead of awaiting it.
+        if Task.isCancelled {
+            txTask.cancel()
+            return
         }
         // Let the transaction stream finish on its own — balance
         // stream completion shouldn't cut off the slower chain
@@ -1469,6 +2292,96 @@ enum HoldingsTab: String, Hashable, CaseIterable {
     case tokens
 }
 
+// MARK: - CombinedHoldingRow
+
+/// One row in the wallet-home's combined holdings list. Either a
+/// coin row or a token row; the variant carries the underlying
+/// display row + exposes the shared comparable surface (name,
+/// symbol, amount, fiat, chain) the merged sort uses.
+///
+/// **Why an enum, not a protocol.** A protocol would force every
+/// downstream surface (the SwiftUI `switch` in `combinedSection`
+/// most of all) to type-erase to `any WalletAssetRow` — which is
+/// expensive on the hot path and breaks SwiftUI's `ForEach`
+/// identity inference. An enum with two cases is the small,
+/// exhaustive vocabulary the combined-mode renderer needs.
+enum CombinedHoldingRow: Identifiable {
+    case coin(WalletCoinSupportedRow)
+    case token(WalletTokenSupportedDisplayRow)
+
+    var id: String {
+        switch self {
+        case .coin(let row):
+            return "coin.\(row.chain.rawValue)"
+        case .token(let row):
+            return "token.\(row.id)"
+        }
+    }
+
+    /// The asset's canonical identifier in the pinned / hidden
+    /// preference sets (`chainRaw|contract|symbol`). Used by the
+    /// combined-mode partitioner to lift pinned rows out of the
+    /// flat sorted body and into the head "Pinned" Section.
+    var assetID: String {
+        switch self {
+        case .coin(let row):  return WalletHomeFilterPreferences.assetID(coin: row)
+        case .token(let row): return WalletHomeFilterPreferences.assetID(token: row)
+        }
+    }
+
+    /// Display name used by the `name` sort key. Coins use the
+    /// chain display name (Bitcoin / Ethereum / …); tokens use the
+    /// token's full name (Tether USD / USD Coin / …).
+    var sortName: String {
+        switch self {
+        case .coin(let row):  return row.chain.displayName
+        case .token(let row): return row.name
+        }
+    }
+
+    /// Ticker / symbol used by the `symbol` sort key. Coins use
+    /// `chain.ticker` (BTC / ETH / SOL / …); tokens use the
+    /// registry's `symbol` (USDC / USDT / DAI / …).
+    var sortSymbol: String {
+        switch self {
+        case .coin(let row):  return row.chain.ticker
+        case .token(let row): return row.symbol
+        }
+    }
+
+    /// Native amount used by the `balance` sort key. Already a
+    /// `Decimal` from the row builder; sort comparison is direct.
+    var sortAmount: Decimal {
+        switch self {
+        case .coin(let row):  return row.amount
+        case .token(let row): return row.amount
+        }
+    }
+
+    /// Fiat value used by the `value` sort key. `nil` fiat collapses
+    /// to `.zero` for the comparator so unpriced rows cluster at
+    /// the bottom of descending sorts (and the top of ascending) —
+    /// honest about "we don't have a price for this," not buried.
+    var sortFiat: Decimal {
+        switch self {
+        case .coin(let row):  return row.fiatValue ?? .zero
+        case .token(let row): return row.fiatValue ?? .zero
+        }
+    }
+
+    /// `SupportedChain.allCases` index. Memoized to avoid the
+    /// per-comparison linear scan during sort (Rule #19's "fast
+    /// scroll" tax).
+    var canonicalChainIndex: Int {
+        let chain: SupportedChain
+        switch self {
+        case .coin(let row):  chain = row.chain
+        case .token(let row): chain = row.chain
+        }
+        return WalletHomeFilterApply.canonicalIndex(chain)
+    }
+}
+
 // MARK: - Destinations
 
 enum WalletHomeDestination: Hashable, Codable {
@@ -1481,6 +2394,26 @@ enum WalletHomeDestination: Hashable, Codable {
     /// `SupportedChain` + every curated registry token with the
     /// active wallet's current balance per row.
     case allSupported
+    /// **Asset detail destination** — pushed when the user taps any
+    /// `AssetRow` (coin) or token row on the wallet home, OR any
+    /// row on `AllSupportedAssetsView`. Lands on `AssetDetailView`
+    /// which renders the per-asset roll-up: identity hero, total
+    /// fiat, asset-scoped chart, per-network breakdown, and the
+    /// asset-scoped transaction history. The `AssetIdentity`
+    /// discriminates between native coins (carry the chain) and
+    /// tokens (cross-network aggregated by symbol).
+    case assetDetail(AssetIdentity)
+    /// **Per-(asset, network) deep dive** — pushed when the user
+    /// taps a row in `AssetDetailView`'s Networks section. The
+    /// `String` is `SupportedChain.rawValue` so the destination
+    /// stays Codable (raw enums round-trip cleanly through
+    /// NavigationPath's restoration codec).
+    case assetNetworkDetail(AssetIdentity, String)
+    /// **Asset-scoped "View all" transactions** — pushed when the
+    /// user taps "View all" under `AssetDetailView`'s capped
+    /// activity section. Lands on `AssetActivityView` showing every
+    /// transaction for the asset (no row cap).
+    case assetActivity(AssetIdentity)
 }
 
 // MARK: - Wallet-pill customise target (Identifiable shim)

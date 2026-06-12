@@ -38,6 +38,15 @@ enum PinCodeStorage {
     private static let hashAccount: String = "pin.hash"
     /// Account for the random per-install salt (16 bytes).
     private static let saltAccount: String = "pin.salt"
+    /// Account for the failed-attempt record (4-byte count + 8-byte
+    /// last-failure timestamp). Lives alongside the hash/salt items with
+    /// the same accessibility class, so the brute-force counter survives
+    /// app kill and reinstall just like the PIN material it protects.
+    private static let failureAccount: String = "pin.failures"
+    /// Attempts 1–4 carry no delay; the escalating lockout starts at 5.
+    private static let lockoutThreshold: Int = 5
+    /// Escalation cap: 960 s = 16 minutes per attempt.
+    private static let maxLockoutDelay: TimeInterval = 960
     /// OWASP 2023 PBKDF2-SHA256 minimum recommendation.
     private static let iterations: Int = 100_000
     /// PBKDF2 derived-key length — SHA-256 native output size.
@@ -53,11 +62,131 @@ enum PinCodeStorage {
         return read(account: hashAccount) != nil && read(account: saltAccount) != nil
     }
 
-    /// Set a new PIN. Generates a fresh 16-byte salt, derives the
-    /// PBKDF2-SHA256 hash, and writes both to Keychain. Overwrites any
-    /// existing PIN. Returns `true` on successful Keychain write.
+    /// Set a new PIN, off the calling thread. The 100k-iteration PBKDF2
+    /// derivation takes tens of milliseconds on modern hardware — too
+    /// long for the main thread mid-interaction. The synchronous core
+    /// runs on a detached task; the caller awaits the result.
+    ///
+    /// Generates a fresh 16-byte salt, derives the PBKDF2-SHA256 hash,
+    /// writes both to Keychain, and resets the failed-attempt record
+    /// (a fresh PIN starts with a clean slate). Overwrites any existing
+    /// PIN. Returns `true` on successful Keychain write.
+    static func setPin(_ pin: String) async -> Bool {
+        await Task.detached(priority: .userInitiated) { _setPinSync(pin) }.value
+    }
+
+    /// Synchronous `setPin` wrapper. Prefer the async variant — this
+    /// exists for legacy synchronous call sites (Settings → Change
+    /// passcode commits from a sync closure) and runs the full PBKDF2
+    /// derivation on the calling thread.
     @discardableResult
     static func setPin(_ pin: String) -> Bool {
+        _setPinSync(pin)
+    }
+
+    /// Verify a candidate PIN against the stored hash, off the calling
+    /// thread (the PBKDF2 derivation is deliberately slow). Returns
+    /// `true` on match, `false` otherwise (including the "no PIN set"
+    /// case). Constant-time comparison — never short-circuits on
+    /// first-byte mismatch (timing-attack resistant).
+    static func verify(_ pin: String) async -> Bool {
+        await Task.detached(priority: .userInitiated) { _verifySync(pin) }.value
+    }
+
+    /// Remove the stored PIN (salt, hash, and failed-attempt record).
+    /// Used by Settings → Security → Disable PIN and by wallet-reset
+    /// flows.
+    static func clear() {
+        delete(account: hashAccount)
+        delete(account: saltAccount)
+        delete(account: failureAccount)
+    }
+
+    // MARK: - Failed-attempt rate limiting
+
+    /// Record a failed verify attempt. Persists the incremented count and
+    /// the current timestamp to Keychain (same accessibility class as the
+    /// PIN material, so the counter survives app kill and reinstall).
+    /// Returns the new failure count.
+    @discardableResult
+    static func recordFailure() -> Int {
+        let newCount = (readFailureRecord()?.count ?? 0) + 1
+        writeFailureRecord(count: newCount, lastFailure: Date())
+        return newCount
+    }
+
+    /// Reset the failed-attempt record. Called on every successful
+    /// verification (and implicitly by `clear()` / `setPin`).
+    static func clearFailures() {
+        delete(account: failureAccount)
+    }
+
+    /// Seconds remaining before another verify attempt is allowed.
+    /// `0` means no lockout is active.
+    ///
+    /// Escalation schedule: attempts 1–4 carry no delay; from attempt 5
+    /// the delay is `min(2^(attempts - 5), 960)` seconds — 1 s, 2 s,
+    /// 4 s, … capped at 16 minutes. There is no permanent wipe: the
+    /// recovery path for a forgotten PIN is the recovery phrase, not
+    /// data destruction.
+    static func lockoutRemaining() -> TimeInterval {
+        guard let record = readFailureRecord(),
+              record.count >= lockoutThreshold else {
+            return 0
+        }
+        let exponent = Double(record.count - lockoutThreshold)
+        let delay = min(pow(2.0, exponent), maxLockoutDelay)
+        let elapsed = Date().timeIntervalSince(record.lastFailure)
+        guard elapsed >= 0 else {
+            // Wall clock rolled backwards — honest worst case: the full
+            // delay applies again rather than trusting a bogus elapsed.
+            return delay
+        }
+        return max(0, delay - elapsed)
+    }
+
+    /// Decode the 12-byte failure record: 4-byte big-endian count +
+    /// 8-byte big-endian `Double.bitPattern` of the last-failure
+    /// `timeIntervalSince1970`. Malformed data reads as "no record".
+    private static func readFailureRecord() -> (count: Int, lastFailure: Date)? {
+        guard let data = read(account: failureAccount), data.count == 12 else {
+            return nil
+        }
+        let bytes = [UInt8](data)
+        var count: UInt32 = 0
+        for index in 0..<4 {
+            count = (count << 8) | UInt32(bytes[index])
+        }
+        var stampBits: UInt64 = 0
+        for index in 4..<12 {
+            stampBits = (stampBits << 8) | UInt64(bytes[index])
+        }
+        let stamp = Double(bitPattern: stampBits)
+        guard stamp.isFinite else { return nil }
+        return (Int(count), Date(timeIntervalSince1970: stamp))
+    }
+
+    /// Encode and persist the failure record (format documented on
+    /// `readFailureRecord`).
+    private static func writeFailureRecord(count: Int, lastFailure: Date) {
+        let countBits = UInt32(clamping: count)
+        let stampBits = lastFailure.timeIntervalSince1970.bitPattern
+        var data = Data(capacity: 12)
+        for shift in stride(from: 24, through: 0, by: -8) {
+            data.append(UInt8((countBits >> UInt32(shift)) & 0xff))
+        }
+        for shift in stride(from: 56, through: 0, by: -8) {
+            data.append(UInt8((stampBits >> UInt64(shift)) & 0xff))
+        }
+        write(data, account: failureAccount)
+    }
+
+    // MARK: - Synchronous cores
+
+    /// Synchronous `setPin` core. Runs the full PBKDF2 derivation on the
+    /// calling thread — only ever invoked from the async variant's
+    /// detached task or the legacy sync wrapper.
+    private static func _setPinSync(_ pin: String) -> Bool {
         let salt = secureRandomBytes(count: saltLength)
         let hash = pbkdf2HmacSha256(
             password: Data(pin.utf8),
@@ -67,14 +196,16 @@ enum PinCodeStorage {
         )
         let saltOK = write(salt, account: saltAccount)
         let hashOK = write(hash, account: hashAccount)
+        if saltOK && hashOK {
+            clearFailures()
+        }
         return saltOK && hashOK
     }
 
-    /// Verify a candidate PIN against the stored hash. Returns `true` on
-    /// match, `false` otherwise (including the "no PIN set" case).
-    /// Constant-time comparison — never short-circuits on first-byte
-    /// mismatch (timing-attack resistant).
-    static func verify(_ pin: String) -> Bool {
+    /// Synchronous `verify` core. Runs the full PBKDF2 derivation on the
+    /// calling thread — only ever invoked from the async variant's
+    /// detached task.
+    private static func _verifySync(_ pin: String) -> Bool {
         guard let storedHash = read(account: hashAccount),
               let storedSalt = read(account: saltAccount) else {
             return false
@@ -86,13 +217,6 @@ enum PinCodeStorage {
             keyLength: keyLength
         )
         return constantTimeEquals(candidateHash, storedHash)
-    }
-
-    /// Remove the stored PIN (both salt and hash). Used by Settings →
-    /// Security → Disable PIN and by wallet-reset flows.
-    static func clear() {
-        delete(account: hashAccount)
-        delete(account: saltAccount)
     }
 
     // MARK: - Constant-time compare
@@ -182,12 +306,19 @@ enum PinCodeStorage {
     // MARK: - Keychain primitives
 
     /// Write `data` to Keychain under `(service, account)`. Overwrites any
-    /// existing value. Returns `true` on success.
+    /// existing value. Returns `true` on success. The `service` parameter
+    /// defaults to the production PIN service; the DEBUG smoke check
+    /// passes a distinct test service so it never touches real PIN
+    /// material.
     @discardableResult
-    private static func write(_ data: Data, account: String) -> Bool {
+    private static func write(
+        _ data: Data,
+        account: String,
+        service: String = PinCodeStorage.service
+    ) -> Bool {
         // Delete any existing item first so the add doesn't fail with
         // `errSecDuplicateItem`.
-        delete(account: account)
+        delete(account: account, service: service)
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
@@ -201,7 +332,10 @@ enum PinCodeStorage {
 
     /// Read the `Data` stored under `(service, account)`, or `nil` if
     /// the item is missing or unreadable.
-    private static func read(account: String) -> Data? {
+    private static func read(
+        account: String,
+        service: String = PinCodeStorage.service
+    ) -> Data? {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
@@ -219,7 +353,10 @@ enum PinCodeStorage {
 
     /// Delete the item stored under `(service, account)`. Silently
     /// no-ops if the item doesn't exist.
-    private static func delete(account: String) {
+    private static func delete(
+        account: String,
+        service: String = PinCodeStorage.service
+    ) {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
@@ -230,37 +367,76 @@ enum PinCodeStorage {
 }
 
 #if DEBUG
-/// Debug-mode smoke check: verify the PBKDF2-SHA256 storage round-trips
-/// correctly. Runs once on first access; an assertion failure here means
-/// the PIN storage has drifted from the expected behavior.
-///
-/// Test vectors (the user-requested ones from the orchestrator brief):
-/// - `setPin("123456")` then `verify("123456")` → `true`
-/// - `verify("000000")` after the above → `false`
-/// - `clear()` then `hasPin` → `false`
-///
-/// Note: this mutates real Keychain state, so we save and restore any
-/// pre-existing PIN around the check. In a clean install the save/restore
-/// is a no-op; in a re-launch with a real PIN already set, the existing
-/// PIN material is preserved.
-private let _pinCodeStorageSmokeCheck: Void = {
-    // Snapshot any existing PIN material so the smoke check is non-destructive.
-    let hadPriorPin = PinCodeStorage.hasPin
-    if hadPriorPin {
-        // We can't read the plaintext (we don't store it) so we cannot
-        // restore the exact prior PIN. Skip the destructive smoke check
-        // entirely in that case — the storage is clearly working since
-        // hasPin returned true.
-        return
-    }
+extension PinCodeStorage {
+    /// Keychain service used exclusively by the DEBUG smoke check —
+    /// distinct from the production PIN service so the check never
+    /// reads, writes, or deletes real PIN material.
+    fileprivate static let smokeCheckService: String = "com.thuglife.aperture.pin.smoketest"
 
-    PinCodeStorage.clear() // ensure clean slate
-    assert(PinCodeStorage.hasPin == false, "PinCodeStorage.clear() left state behind")
-    PinCodeStorage.setPin("123456")
-    assert(PinCodeStorage.hasPin == true, "setPin did not persist")
-    assert(PinCodeStorage.verify("123456") == true, "verify of correct PIN returned false")
-    assert(PinCodeStorage.verify("000000") == false, "verify of wrong PIN returned true")
-    PinCodeStorage.clear()
-    assert(PinCodeStorage.hasPin == false, "clear() did not remove PIN")
-}()
+    /// Debug-mode smoke check: verify the PBKDF2-SHA256 storage
+    /// round-trips correctly. An assertion failure here means the PIN
+    /// storage has drifted from the expected behavior.
+    ///
+    /// Two hardening properties (2026-06-10):
+    /// 1. **Distinct service.** All Keychain traffic goes to
+    ///    `smokeCheckService`, never the production PIN service, so a
+    ///    user's real PIN can never be racing against (or clobbered by)
+    ///    the smoke check.
+    /// 2. **Off the main thread.** The check runs two full
+    ///    100k-iteration PBKDF2 derivations — far too slow for app
+    ///    startup on the main thread. It runs on a detached
+    ///    utility-priority task.
+    fileprivate static func debugSmokeCheck() {
+        Task.detached(priority: .utility) {
+            let service = smokeCheckService
+            // Clean slate in the test service.
+            delete(account: hashAccount, service: service)
+            delete(account: saltAccount, service: service)
+
+            let salt = secureRandomBytes(count: saltLength)
+            let hash = pbkdf2HmacSha256(
+                password: Data("123456".utf8),
+                salt: salt,
+                iterations: iterations,
+                keyLength: keyLength
+            )
+            assert(write(salt, account: saltAccount, service: service),
+                   "smoke check: salt write failed")
+            assert(write(hash, account: hashAccount, service: service),
+                   "smoke check: hash write failed")
+
+            guard let storedSalt = read(account: saltAccount, service: service),
+                  let storedHash = read(account: hashAccount, service: service) else {
+                assertionFailure("smoke check: read-back of salt/hash failed")
+                return
+            }
+            let correct = pbkdf2HmacSha256(
+                password: Data("123456".utf8),
+                salt: storedSalt,
+                iterations: iterations,
+                keyLength: keyLength
+            )
+            let wrong = pbkdf2HmacSha256(
+                password: Data("000000".utf8),
+                salt: storedSalt,
+                iterations: iterations,
+                keyLength: keyLength
+            )
+            assert(constantTimeEquals(correct, storedHash),
+                   "smoke check: verify of correct PIN returned false")
+            assert(!constantTimeEquals(wrong, storedHash),
+                   "smoke check: verify of wrong PIN returned true")
+
+            delete(account: hashAccount, service: service)
+            delete(account: saltAccount, service: service)
+            assert(read(account: hashAccount, service: service) == nil,
+                   "smoke check: cleanup did not remove test items")
+        }
+    }
+}
+
+/// Lazy-global trigger for the smoke check. Initialization only spawns
+/// the detached task — the PBKDF2 work itself never touches the thread
+/// that first references this global.
+private let _pinCodeStorageSmokeCheck: Void = PinCodeStorage.debugSmokeCheck()
 #endif

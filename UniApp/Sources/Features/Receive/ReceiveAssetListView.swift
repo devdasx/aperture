@@ -25,8 +25,21 @@ struct ReceiveAssetListView: View {
     let onSelectNative: (SupportedChain) -> Void
     let onSelectToken: (ReceiveAsset) -> Void
 
-    private var tokenRows: [ReceiveAsset] {
-        ReceiveAsset.tokens(availableChains: Set(availableChains))
+    /// Live query of user-added tokens — folded into the visible
+    /// rows so a user-added USDC appears alongside the curated
+    /// registry. Updates immediately when the user adds or removes
+    /// a custom token via the Add sheet / Custom Tokens list.
+    @Query(sort: [SortDescriptor(\CustomTokenRecord.symbol, order: .forward)])
+    private var customTokenRecords: [CustomTokenRecord]
+
+    /// Memoized token rows. `ReceiveAsset.tokens(...)` walks every
+    /// registry — running it per body pass made each re-render pay
+    /// the full enumeration. Rebuilt via `.task(id:)` only when the
+    /// available chains or the custom-token set actually change.
+    @State private var tokenRows: [ReceiveAsset] = []
+
+    private var tokenRowsKey: String {
+        "\(availableChains.map(\.rawValue).joined(separator: ","))|\(customTokenRecords.count)"
     }
 
     var body: some View {
@@ -43,6 +56,12 @@ struct ReceiveAssetListView: View {
         .listStyle(.insetGrouped)
         .scrollContentBackground(.hidden)
         .background(UniColors.Background.primary)
+        .task(id: tokenRowsKey) {
+            tokenRows = ReceiveAsset.tokens(
+                availableChains: Set(availableChains),
+                customTokens: customTokenRecords.map { CustomTokenSnapshot(from: $0) }
+            )
+        }
     }
 
     // MARK: - Sections

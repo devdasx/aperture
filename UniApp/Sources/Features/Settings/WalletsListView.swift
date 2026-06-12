@@ -12,6 +12,7 @@ import SwiftData
 struct WalletsListView: View {
     @Query(sort: \WalletRecord.sortOrder) private var wallets: [WalletRecord]
     @AppStorage("activeWalletId") private var activeWalletIdRaw: String = ""
+    @AppStorage("languagePreference") private var languageCode: String = LanguagePreference.systemCode
     @Environment(\.modelContext) private var modelContext
 
     @State private var searchText: String = ""
@@ -19,6 +20,13 @@ struct WalletsListView: View {
     @State private var isShowingImport: Bool = false
     @State private var createPath: NavigationPath = .init()
     @State private var importPath: NavigationPath = .init()
+    @State private var isShowingReorderError: Bool = false
+
+    /// Rule #12 §G direction-only key for sheet content rebuild.
+    /// `"ltr"` or `"rtl"`. Identical pattern to `OnboardingView`.
+    private var sheetDirectionKey: String {
+        LanguagePreference.layoutDirection(for: languageCode) == .rightToLeft ? "rtl" : "ltr"
+    }
 
     private var filteredWallets: [WalletRecord] {
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -80,6 +88,7 @@ struct WalletsListView: View {
                 onUserSkippedBackup: {},
                 onUserCompletedBackup: {}
             )
+            .id(sheetDirectionKey)
             .uniAppEnvironment()
             .presentationBackground(UniColors.Background.primary)
         }
@@ -89,8 +98,17 @@ struct WalletsListView: View {
                 onDismiss: { isShowingImport = false },
                 onCompleted: { _ in isShowingImport = false }
             )
+            .id(sheetDirectionKey)
             .uniAppEnvironment()
             .presentationBackground(UniColors.Background.primary)
+        }
+        .alert(
+            Text("Couldn't save the new order"),
+            isPresented: $isShowingReorderError
+        ) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("The wallet order couldn't be written to the local database. Try again.")
         }
     }
 
@@ -98,15 +116,13 @@ struct WalletsListView: View {
 
     private func walletRow(_ wallet: WalletRecord) -> some View {
         HStack(spacing: UniSpacing.s) {
-            // 2026-06-09 — the wallet's customisable WalletAvatar
-            // replaces the prior kind-glyph swatch. Same identity
-            // surface as the tab icon, the toolbar pill, and the
-            // wallet switcher.
-            WalletAvatar(
-                symbol: wallet.iconSymbol.isEmpty ? WalletAvatarDefaults.symbol : wallet.iconSymbol,
-                colorHex: wallet.iconColorHex.isEmpty ? WalletAvatarDefaults.colorHex : wallet.iconColorHex,
-                size: .row
-            )
+            // 2026-06-09 — gradient-disc avatar per the design
+            // handoff. Reads `wallet.avatarSpec`, which hydrates the
+            // persisted columns through `WalletAvatarSpec.hydrate(...)`
+            // (with `auto(name)` fallback) and includes the type
+            // badge derived from `wallet.kind`. Same surface as the
+            // tab icon, the toolbar pill, and the wallet switcher.
+            WalletAvatar(spec: wallet.avatarSpec, size: .row, walletId: wallet.id)
 
             VStack(alignment: .leading, spacing: UniSpacing.xxs) {
                 HStack(spacing: UniSpacing.xs) {
@@ -173,7 +189,11 @@ struct WalletsListView: View {
             wallet.sortOrder = index
             wallet.updatedAt = Date()
         }
-        try? modelContext.save()
+        do {
+            try modelContext.save()
+        } catch {
+            isShowingReorderError = true
+        }
     }
 }
 

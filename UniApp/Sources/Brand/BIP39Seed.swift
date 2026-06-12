@@ -39,8 +39,16 @@ extension BIP39 {
     ///     that case — concatenating an empty string is the same thing).
     /// - Returns: 64 raw bytes of HD-root material.
     static func deriveSeed(words: [String], passphrase: String = "") -> Data {
+        // BIP-39 §Seed requires both the mnemonic sentence and the salt
+        // ("mnemonic" + passphrase) to be UTF-8 **NFKD** normalized before
+        // PBKDF2. English words are ASCII (no-op), but the passphrase is
+        // free-form user text — iOS keyboards emit precomposed NFC, which
+        // would derive a seed incompatible with every spec-compliant
+        // wallet (Trezor, Ledger, Electrum) for accented/non-Latin input.
         let mnemonic = words.joined(separator: " ")
-        let salt = "mnemonic" + passphrase
+            .decomposedStringWithCompatibilityMapping
+        let salt = ("mnemonic" + passphrase)
+            .decomposedStringWithCompatibilityMapping
         return pbkdf2HmacSha512(
             password: Data(mnemonic.utf8),
             salt: Data(salt.utf8),
@@ -140,6 +148,15 @@ private let _bip39SeedSmokeCheck: Void = {
     assert(
         seedNoPassphrase.count == 64,
         "BIP-39 seed must be exactly 64 bytes — got \(seedNoPassphrase.count)"
+    )
+
+    // NFKD normalization (BIP-39 §Seed): precomposed (NFC) and decomposed
+    // (NFD) forms of the same passphrase must derive the identical seed.
+    let seedNFC = BIP39.deriveSeed(words: words, passphrase: "caf\u{00E9}")
+    let seedNFD = BIP39.deriveSeed(words: words, passphrase: "cafe\u{0301}")
+    assert(
+        seedNFC == seedNFD,
+        "BIP-39 seed derivation must NFKD-normalize the passphrase"
     )
 }()
 #endif

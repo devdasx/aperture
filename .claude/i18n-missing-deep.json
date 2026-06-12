@@ -1,0 +1,104 @@
+{
+  "URL: \\(displayHost)": [
+    [
+      "UniApp/Sources/Features/Browser/BrowserSessionView.swift",
+      271
+    ]
+  ],
+  "\\(amount) \\(identity.symbol)": [
+    [
+      "UniApp/Sources/Features/Wallet/AssetDetailView.swift",
+      332
+    ]
+  ],
+  "\\(chain.displayName) \u2014 \\(chain.ticker)": [
+    [
+      "UniApp/Sources/Features/Receive/ReceiveAssetListView.swift",
+      80
+    ]
+  ],
+  "\\(hiddenAssetCount)": [
+    [
+      "UniApp/Sources/Features/Wallet/WalletHomeFilterSheet.swift",
+      459
+    ]
+  ],
+  "\\(hiddenChainCount)": [
+    [
+      "UniApp/Sources/Features/Wallet/WalletHomeFilterSheet.swift",
+      482
+    ]
+  ],
+  "\\(localizedName) \u2014 \\(currency.code)": [
+    [
+      "UniApp/Sources/Features/Settings/CurrencyPickerView.swift",
+      91
+    ]
+  ],
+  "\\(pinnedAssetCount)": [
+    [
+      "UniApp/Sources/Features/Wallet/WalletHomeFilterSheet.swift",
+      505
+    ]
+  ],
+  "\\(position), \\(word)": [
+    [
+      "UniApp/Sources/Features/CreateWallet/RecoveryPhraseView.swift",
+      474
+    ]
+  ],
+  "\\(row.symbol), \\(row.name), on \\(row.chain.displayName)": [
+    [
+      "UniApp/Sources/Features/Wallet/AllSupportedAssetsView.swift",
+      500
+    ]
+  ],
+  "\\(rows.count)": [
+    [
+      "UniApp/Sources/Features/Wallet/AssetDetailView.swift",
+      430
+    ]
+  ],
+  "\\(symbol), \\(name)": [
+    [
+      "UniApp/Sources/Features/Receive/ReceiveAssetListView.swift",
+      229
+    ]
+  ],
+  "\\(tx.statusRaw)": [
+    [
+      "UniApp/Sources/Features/Wallet/TransactionDetailView.swift",
+      65
+    ]
+  ],
+  "\\(value)": [
+    [
+      "UniApp/Sources/Features/Settings/AdvancedSettingsView.swift",
+      140
+    ]
+  ],
+  "\\(wallet.addresses.count)": [
+    [
+      "UniApp/Sources/Features/Settings/WalletDetailView.swift",
+      296
+    ]
+  ],
+  "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about": [
+    [
+      "UniApp/Sources/Features/ImportWallet/ImportGuideSheets.swift",
+      55
+    ]
+  ],
+  "bc1qexample\u2026example\u2026example": [
+    [
+      "UniApp/Sources/Features/ImportWallet/ImportGuideSheets.swift",
+      228
+    ]
+  ],
+  "on \\(token.chain.displayName)": [
+    [
+      "UniApp/Sources/Features/ImportWallet/ReviewTokenRow.swift",
+      40
+    ]
+  ]
+}

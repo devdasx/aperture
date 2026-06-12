@@ -66,10 +66,16 @@ struct BackupVerifyView: View {
         }
         .navigationTitle(Text("Verify your recovery phrase"))
         .navigationBarTitleDisplayMode(.inline)
-        .onAppear {
-            if challenges.isEmpty {
-                challenges = Self.makeChallenges(for: state.words)
-            }
+        // Challenges are keyed to the phrase itself — if the phrase
+        // regenerates while this view is alive (screenshot-warning
+        // "Generate new phrase", word-count change), stale challenges
+        // built from the old words would be unanswerable. The `id:`
+        // re-runs the task and rebuilds everything from the current
+        // words; it also covers the initial appearance.
+        .task(id: state.words.joined(separator: " ")) {
+            challenges = Self.makeChallenges(for: state.words)
+            selections = [:]
+            outcomes = [:]
         }
         .uniHaptic(.success, trigger: haptic == .success ? 1 : 0)
         .uniHaptic(.error, trigger: haptic == .error ? 1 : 0)
@@ -217,15 +223,9 @@ struct BackupVerifyView: View {
         outcomes = newOutcomes
         haptic = pass ? .success : .error
         if pass {
-            // Honest consumption of the passphrase: derive the real
-            // 64-byte BIP-39 seed from mnemonic + passphrase now, while
-            // the user is still standing in the create-wallet flow. The
-            // seed itself stays in memory on `CreateWalletState` until
-            // T-012 wires Keychain encryption — no log, no `UserDefaults`,
-            // no network. The derivation is also a useful sanity check
-            // that the PBKDF2 path is exercised on every successful
-            // backup verification.
-            _ = state.deriveSeed()
+            // Seed derivation happens inside `persist(...)` on the
+            // wallet-ready screen — deriving here would only discard
+            // the result (and silently swallow nothing useful).
             onVerified()
         }
     }

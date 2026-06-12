@@ -63,6 +63,28 @@ actor CoinbasePriceService: PriceService {
             return cached.price
         }
 
+        // **2026-06-12 — wrapped-asset alias resolution.** A wrapped
+        // or liquid-staked variant (WETH / WBTC / stETH) prices at
+        // its underlying's spot since Coinbase doesn't quote the
+        // wrappers directly. Same shape as the `KnownStablecoins`
+        // USDT fallback but applied BEFORE the direct fetch so we
+        // don't burn a guaranteed-miss round trip first. The cache
+        // entry and returned `TokenPrice.symbol` carry the
+        // **requested** symbol so callers see WETH rendered as WETH,
+        // even though the price came from ETH spot.
+        let resolvedSymbol = WrappedAssetAliases.resolveSymbol(key.symbol)
+        if resolvedSymbol != key.symbol,
+           let underlying = await fetchSpot(symbol: resolvedSymbol, fiat: key.fiat) {
+            let proxied = TokenPrice(
+                symbol: key.symbol,
+                fiat: key.fiat,
+                amount: underlying.amount,
+                timestamp: underlying.timestamp
+            )
+            cache[key] = CachedEntry(price: proxied, fetchedAt: Date())
+            return proxied
+        }
+
         // First try the direct spot. Coinbase covers the majors
         // (BTC, ETH, SOL, …) and the well-known stablecoins (USDC,
         // USDT, DAI, GUSD, PYUSD, USD1, USDS, USDf).
@@ -85,6 +107,23 @@ actor CoinbasePriceService: PriceService {
                 fiat: key.fiat,
                 amount: usdt.amount,
                 timestamp: usdt.timestamp
+            )
+            cache[key] = CachedEntry(price: proxied, fetchedAt: Date())
+            return proxied
+        }
+
+        // **2026-06-12 — EUR-pegged fallback.** Mirrors the USDT
+        // fallback above but for euro-pegged stables (EURC today).
+        // Coinbase quotes `EUR-USD`, `EUR-GBP`, etc., so we ask for
+        // `EUR-{fiat}` spot — the honest approximation of 1 EURC
+        // worth of the user's fiat.
+        if EURPeggedStablecoins.needsEURFallback(symbol: key.symbol),
+           let eur = await fetchSpot(symbol: EURPeggedStablecoins.fallbackSymbol, fiat: key.fiat) {
+            let proxied = TokenPrice(
+                symbol: key.symbol,
+                fiat: key.fiat,
+                amount: eur.amount,
+                timestamp: eur.timestamp
             )
             cache[key] = CachedEntry(price: proxied, fetchedAt: Date())
             return proxied

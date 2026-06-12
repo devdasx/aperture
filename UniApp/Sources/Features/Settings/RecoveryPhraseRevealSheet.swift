@@ -61,6 +61,10 @@ struct RecoveryPhraseRevealSheet: View {
             }
         }
         .onAppear { load() }
+        // Drop the plaintext words from view state the moment the
+        // sheet goes away — no reason to keep the phrase resident in
+        // memory longer than the reveal itself.
+        .onDisappear { words = [] }
     }
 
     private var hero: some View {
@@ -92,6 +96,13 @@ struct RecoveryPhraseRevealSheet: View {
                 wordCell(index: idx + 1, word: word)
             }
         }
+        // Rule #11 Part C — display-only English content. BIP-39
+        // words have a strict ordinal reading order the user
+        // transcribes; in an RTL locale the grid would silently flip
+        // (word 1 top-right, word 2 top-left) and the phrase would be
+        // written down in the wrong order. Force LTR on the grid
+        // subtree only — the chrome around it stays ambient.
+        .environment(\.layoutDirection, .leftToRight)
     }
 
     private func wordCell(index: Int, word: String) -> some View {

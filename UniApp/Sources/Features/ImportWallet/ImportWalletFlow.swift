@@ -1,4 +1,5 @@
 import SwiftUI
+import OSLog
 
 /// Push destinations within the Import Wallet flow. Mirrors the
 /// `RecoveryPhraseFlow` pattern — value-typed enum with associated
@@ -40,7 +41,17 @@ struct ImportWalletFlow: View {
 
     @State private var state = ImportWalletState()
 
+    /// Set when `persist` throws — drives the retryable error alert.
+    /// Navigation stays in place so the user can simply tap the
+    /// commit button again.
+    @State private var isShowingPersistError = false
+
     @Environment(\.modelContext) private var modelContext
+
+    private static let log = Logger(
+        subsystem: "com.thuglife.aperture",
+        category: "import-wallet-flow"
+    )
 
     var body: some View {
         NavigationStack(path: $navigationPath) {
@@ -112,29 +123,38 @@ struct ImportWalletFlow: View {
             }
         }
         .background(UniColors.Background.primary.ignoresSafeArea())
+        .alert(
+            Text("Couldn't save your wallet"),
+            isPresented: $isShowingPersistError
+        ) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("Aperture couldn't write your wallet to this iPhone. Nothing was imported. Try again.")
+        }
     }
 
     /// Persist the imported wallet via `WalletRepository`, then fire
-    /// `onCompleted` so the parent can dismiss. Errors are logged but
-    /// not user-surfaced in v1 — the import review screens already
-    /// validated everything reachable to validate; a Keychain write
-    /// failure mid-commit is rare enough that a follow-up T-XXX
-    /// (visible inline error footnote in the review screen) is the
-    /// proportional response.
+    /// `onCompleted` so the parent can dismiss. On failure the flow
+    /// does NOT complete — completing without a persisted seed would
+    /// hand the parent a zombie wallet with no key material in the
+    /// Keychain. Instead the error is logged, an alert names the
+    /// failure, and navigation stays in place so the user can retry
+    /// the commit from the same review screen.
     private func persistThen(_ result: ImportResult) {
         let repository = WalletRepository(modelContainer: modelContext.container)
         Task { @MainActor in
             do {
                 _ = try await state.persist(result: result, into: repository)
+                // Seed / key bytes are now encrypted in Keychain —
+                // the plaintext inputs have no reason to outlive the
+                // flow.
+                state.zeroSensitiveInput()
                 onCompleted(result)
             } catch {
-                // Log via OSLog category in a future iteration; for now
-                // we still call onCompleted so the user isn't stranded —
-                // the import is moot if it didn't persist, but the
-                // cover dismissal is honest enough on the failure path
-                // (and we don't have an inline-error UI on the review
-                // screens yet). T-XXX tracks the proper error surface.
-                onCompleted(result)
+                Self.log.error(
+                    "Wallet import persist failed: \(String(describing: error), privacy: .public)"
+                )
+                isShowingPersistError = true
             }
         }
     }

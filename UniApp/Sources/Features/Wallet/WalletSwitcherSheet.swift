@@ -85,17 +85,14 @@ struct WalletSwitcherSheet: View {
             dismiss()
         } label: {
             HStack(spacing: UniSpacing.s) {
-                // 2026-06-09 — the wallet's customisable
-                // `WalletAvatar` replaces the prior kind-glyph
-                // swatch. Each wallet's identity reads here
-                // exactly as it reads in the tab bar and the
-                // toolbar pill — same color, same SF Symbol,
-                // same size.
-                WalletAvatar(
-                    symbol: wallet.iconSymbol.isEmpty ? WalletAvatarDefaults.symbol : wallet.iconSymbol,
-                    colorHex: wallet.iconColorHex.isEmpty ? WalletAvatarDefaults.colorHex : wallet.iconColorHex,
-                    size: .row
-                )
+                // 2026-06-09 — gradient-disc avatar per the design
+                // handoff. `wallet.avatarSpec` hydrates the persisted
+                // columns through `WalletAvatarSpec.hydrate(...)`
+                // with `auto(name)` fallback so the disc is never
+                // blank, and includes the type badge derived from
+                // `wallet.kind` (watch-only → eye, single-key → chip,
+                // shared → people, otherwise none).
+                WalletAvatar(spec: wallet.avatarSpec, size: .row, walletId: wallet.id)
 
                 VStack(alignment: .leading, spacing: UniSpacing.xxs) {
                     Text(wallet.name)

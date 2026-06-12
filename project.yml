@@ -26,26 +26,26 @@ settings:
 # Lives in the domain layer only; the UI never imports it directly
 # (Rule #3 §A.3 — no third-party SDK in the UI layer).
 #
-# Lottie iOS (2026-06-07) — Airbnb's open-source SwiftUI/UIKit
-# library for playing Lottie animation files (`.json`). User
-# explicitly authorized 2026-06-07 ("we've lottie splash screen why
-# you don't add it!") for the new Aperture brand kit which ships a
-# dedicated Lottie subkit: splash, refresh, loading, sending,
-# success, empty, onboarding, error — 8 animations × 3 colorways
-# (black / white / tile), 512×512, 60fps. The static SVG mark + the
-# `ApertureMotion.splash(at:)` ease curves preserved the splash
-# bloom character without Lottie, but the brand-kit-authored Lottie
-# JSONs ARE the canonical motion the brand owner designed, so this
-# follows the brand kit verbatim. Used at the call site only by
-# SwiftUI `LottieView` (Lottie's SwiftUI-native shim — no UIKit
-# hosting from feature code).
 packages:
   WalletCore:
     url: https://github.com/trustwallet/wallet-core
     from: "4.2.0"
-  Lottie:
-    url: https://github.com/airbnb/lottie-spm
-    from: "4.5.0"
+  # 2026-06-10 — Reown (formerly WalletConnect) Swift SDK.
+  # Rule #3 §B allowed exception: "Network-specific RPC SDKs"
+  # — Reown WalletKit implements the WalletConnect v2 Sign
+  # protocol for wallet apps. Aperture acts as the WALLET in
+  # the WalletConnect topology (dApps connect TO us); the
+  # protocol's pairing/session/encryption layers are 60k+ LOC
+  # of vetted code that re-implementing in-house would (a)
+  # take months, (b) introduce supply-chain risk against the
+  # canonical implementation, (c) break interop the moment the
+  # Reown team ships a protocol version bump. The user supplied
+  # the project ID (9c08a06e7615d64e7e86ea0197777a96) for
+  # explicit pre-approval per Rule #3 §B's "explicit approval
+  # logged" clause.
+  ReownSwift:
+    url: https://github.com/reown-com/reown-swift
+    from: "1.6.0"
 
 targets:
   UniApp:
@@ -60,8 +60,11 @@ targets:
         product: WalletCore
       - package: WalletCore
         product: WalletCoreSwiftProtobuf
-      - package: Lottie
-        product: Lottie
+      # WalletConnect v2 — wallet side (formerly Web3Wallet).
+      # Exposes `ReownWalletKit.shared` for session pairing,
+      # request handling, and approval responses.
+      - package: ReownSwift
+        product: ReownWalletKit
     settings:
       base:
         PRODUCT_NAME: Aperture
@@ -80,6 +83,11 @@ targets:
         # Without this Info.plist key the app crashes on the first biometric prompt
         # ("NSFaceIDUsageDescription must be set").
         INFOPLIST_KEY_NSFaceIDUsageDescription: "Aperture uses Face ID to unlock the app and confirm transactions, so you don't have to type your PIN every time."
+        # 2026-06-10 — required when calling AVCaptureSession from the
+        # in-app browser's `BrowserQRScanSheet` to scan WalletConnect
+        # URIs. Without this Info.plist key the camera permission
+        # prompt fails silently and the scanner never streams a frame.
+        INFOPLIST_KEY_NSCameraUsageDescription: "Aperture uses the camera to scan WalletConnect QR codes from dApps so you can pair them with this wallet."
         TARGETED_DEVICE_FAMILY: "1"
         IPHONEOS_DEPLOYMENT_TARGET: "26.0"
         SUPPORTS_MACCATALYST: NO
@@ -90,3 +98,57 @@ targets:
         LOCALIZATION_PREFERS_STRING_CATALOGS: YES
         SWIFT_EMIT_LOC_STRINGS: YES
         KNOWN_REGIONS: "en af ar bg bn ca cs da de el es et fa fi fil fr he hi hr hu id is it ja ko lt lv ml mr ms nb nl pa pl pt-BR ro ru sk sl sr sv sw ta te th tr uk ur vi zh-Hans zh-Hant"
+
+  # Swift Testing target — pure unit tests, no network. The first test
+  # target in Aperture per `TODO.md` T-043; lands 2026-06-12 with the
+  # EVM + Solana token coverage requested as part of the fetching-stack
+  # audit (per-token validation of contract checksum / decimals /
+  # symbol / program-id routing). Tests link against the app target so
+  # they can call into `EVMTokenRegistry`, `SolanaTokenRegistry`,
+  # `Keccak256`, `Base58`, etc.
+  ApertureTests:
+    type: bundle.unit-test
+    platform: iOS
+    deploymentTarget: "26.0"
+    sources:
+      - path: UniApp/Tests
+    dependencies:
+      - target: UniApp
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.thuglife.aperture.tests
+        IPHONEOS_DEPLOYMENT_TARGET: "26.0"
+        TARGETED_DEVICE_FAMILY: "1"
+        SUPPORTS_MACCATALYST: NO
+        SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD: NO
+        DEVELOPMENT_TEAM: 6C4X774L9H
+        CODE_SIGN_STYLE: Automatic
+        # Tests don't need user scripts; faster builds.
+        ENABLE_USER_SCRIPT_SANDBOXING: NO
+        # The host app's PRODUCT_NAME is Aperture (set in the
+        # UniApp target above), so the test-host bundle path
+        # follows that — not the project / target name "UniApp".
+        # Without these two settings xcodebuild stalls with
+        # "Could not find test host for ApertureTests:
+        # TEST_HOST evaluates to .../UniApp.app/UniApp" before
+        # any test runs.
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/Aperture.app/Aperture"
+        BUNDLE_LOADER: "$(TEST_HOST)"
+        # Auto-generate the test bundle's Info.plist (same pattern
+        # the host app target uses — see `GENERATE_INFOPLIST_FILE:
+        # YES` on UniApp above). Without this xcodebuild refuses
+        # to code-sign the test bundle.
+        GENERATE_INFOPLIST_FILE: YES
+
+schemes:
+  UniApp:
+    build:
+      targets:
+        UniApp: all
+        ApertureTests: [test]
+    test:
+      targets:
+        - ApertureTests
+      gatherCoverageData: true
+      coverageTargets:
+        - UniApp

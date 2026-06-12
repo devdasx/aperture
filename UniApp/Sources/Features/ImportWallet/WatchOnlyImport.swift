@@ -204,6 +204,11 @@ struct WatchOnlyReviewView: View {
     @State private var addresses: [String] = []
     @State private var isDeriving = true
 
+    /// Set when derivation / validation produced nothing usable —
+    /// drives the inline error row so the user never lands on a
+    /// silent empty screen with a hidden commit button.
+    @State private var resolutionFailed = false
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: UniSpacing.l) {
@@ -211,6 +216,8 @@ struct WatchOnlyReviewView: View {
                     ProgressView()
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, UniSpacing.l)
+                } else if resolutionFailed || addresses.isEmpty {
+                    errorState
                 } else {
                     summary
                     addressList
@@ -236,6 +243,25 @@ struct WatchOnlyReviewView: View {
         }
         .task {
             await resolveAddresses()
+        }
+    }
+
+    /// Inline error surface — shown when validation / derivation
+    /// rejected every entry. The commit button stays hidden (the
+    /// `safeAreaInset` guards on `!addresses.isEmpty`), so nothing
+    /// invalid can be committed; this row explains why.
+    private var errorState: some View {
+        VStack(alignment: .leading, spacing: UniSpacing.m) {
+            Image(systemName: "exclamationmark.triangle")
+                .font(.system(size: 32, weight: .regular))
+                .foregroundStyle(UniColors.Status.warningForeground)
+            UniHeadline(text: "Nothing to watch yet", alignment: .leading)
+                .fixedSize(horizontal: false, vertical: true)
+            UniBody(
+                text: "None of the entries validated for \(chain.displayName). Tap back and check each address or key.",
+                color: UniColors.Text.secondary
+            )
+            .fixedSize(horizontal: false, vertical: true)
         }
     }
 
@@ -295,11 +321,17 @@ struct WatchOnlyReviewView: View {
                 await MainActor.run {
                     self.addresses = derived
                     self.state.watchOnlyAddresses = derived
+                    self.resolutionFailed = derived.isEmpty
                     self.isDeriving = false
                 }
             } catch {
                 await MainActor.run {
+                    // Clear the shared state too — a stale address
+                    // set from a prior attempt must never survive a
+                    // failed derivation into the commit path.
                     self.addresses = []
+                    self.state.watchOnlyAddresses = []
+                    self.resolutionFailed = true
                     self.isDeriving = false
                 }
             }
@@ -311,6 +343,7 @@ struct WatchOnlyReviewView: View {
             await MainActor.run {
                 self.addresses = lines
                 self.state.watchOnlyAddresses = lines
+                self.resolutionFailed = lines.isEmpty
                 self.isDeriving = false
             }
         }

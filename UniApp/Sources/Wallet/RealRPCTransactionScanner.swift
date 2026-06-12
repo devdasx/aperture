@@ -34,7 +34,7 @@ struct RealRPCTransactionScanner: TransactionScanner {
 
     let client: RPCClient
 
-    init(client: RPCClient = RPCClient()) {
+    init(client: RPCClient = RPCClient.shared) {
         self.client = client
     }
 
@@ -44,10 +44,25 @@ struct RealRPCTransactionScanner: TransactionScanner {
         addresses: [SupportedChain: String],
         limit: Int
     ) async -> [TransactionEvent] {
+        await scan(addresses: addresses, limit: limit, customContractsByChain: [:])
+    }
+
+    func scan(
+        addresses: [SupportedChain: String],
+        limit: Int,
+        customContractsByChain: [SupportedChain: [String]]
+    ) async -> [TransactionEvent] {
         await withTaskGroup(of: [TransactionEvent].self) { group in
             for (chain, address) in addresses {
+                let custom = customContractsByChain[chain] ?? []
                 group.addTask { [client] in
-                    await Self.fetch(chain: chain, address: address, limit: limit, client: client)
+                    await Self.fetch(
+                        chain: chain,
+                        address: address,
+                        limit: limit,
+                        client: client,
+                        customContracts: custom
+                    )
                 }
             }
             var events: [TransactionEvent] = []
@@ -65,16 +80,26 @@ struct RealRPCTransactionScanner: TransactionScanner {
         addresses: [SupportedChain: String],
         limit: Int
     ) -> AsyncStream<TransactionEvent> {
+        streamScan(addresses: addresses, limit: limit, customContractsByChain: [:])
+    }
+
+    func streamScan(
+        addresses: [SupportedChain: String],
+        limit: Int,
+        customContractsByChain: [SupportedChain: [String]]
+    ) -> AsyncStream<TransactionEvent> {
         AsyncStream(TransactionEvent.self) { continuation in
             let task = Task {
                 await withTaskGroup(of: Void.self) { group in
                     for (chain, address) in addresses {
+                        let custom = customContractsByChain[chain] ?? []
                         group.addTask { [client] in
                             let events = await Self.fetch(
                                 chain: chain,
                                 address: address,
                                 limit: limit,
-                                client: client
+                                client: client,
+                                customContracts: custom
                             )
                             for event in events {
                                 continuation.yield(event)
@@ -100,7 +125,8 @@ struct RealRPCTransactionScanner: TransactionScanner {
         chain: SupportedChain,
         address: String,
         limit: Int,
-        client: RPCClient
+        client: RPCClient,
+        customContracts: [String] = []
     ) async -> [TransactionEvent] {
         // Short-circuit stub addresses — no point hitting an RPC for
         // a placeholder. Stub prefix is shared with the balance
@@ -117,7 +143,11 @@ struct RealRPCTransactionScanner: TransactionScanner {
             case .ethereum, .arbitrum, .base, .optimism, .scroll, .zkSync,
                  .polygon, .bnbChain, .opBNB, .avalanche, .celo, .kavaEvm:
                 let adapter = EVMTransactionAdapter(chain: chain, client: client)
-                return try await adapter.fetch(address: address, limit: limit)
+                return try await adapter.fetch(
+                    address: address,
+                    limit: limit,
+                    customContracts: customContracts
+                )
 
             case .solana:
                 let adapter = SolanaTransactionAdapter(client: client)
@@ -149,7 +179,7 @@ struct RealRPCTransactionScanner: TransactionScanner {
                 return try await LongTailTransactionAdapters.fetchKava(address: address, limit: limit, client: client)
             }
         } catch {
-            log.warning("Transaction fetch failed for \(chain.rawValue, privacy: .public) at \(address, privacy: .public): \(String(describing: error), privacy: .public)")
+            log.warning("Transaction fetch failed for \(chain.rawValue, privacy: .public) at \(address, privacy: .private): \(String(describing: error), privacy: .public)")
             return []
         }
     }

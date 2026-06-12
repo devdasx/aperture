@@ -270,9 +270,14 @@ struct StubKeyImportService: KeyImportService {
         return nil
     }
 
+    /// The Bitcoin base58 alphabet — excludes 0, O, I, and l, which
+    /// the previous predicate (`isLetter || isNumber`) wrongly accepted.
+    private static let base58Alphabet: Set<Character> = Set(
+        "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
+    )
+
     private func isBase58(_ c: Character) -> Bool {
-        // base58 alphabet (Bitcoin): no 0, O, I, l.
-        c.isLetter || c.isNumber && !"0".contains(c)
+        Self.base58Alphabet.contains(c)
     }
 
     private func isHex(_ c: Character) -> Bool {

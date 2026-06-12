@@ -185,3 +185,60 @@ Currently empty. All ten onboarding slide visuals resolve to SF Symbols
 slide needs a glyph that SF Symbols does not cover, source from Lucide
 (ISC), Phosphor (MIT), Heroicons (MIT), Tabler (MIT), or Iconoir (MIT)
 and add the asset + provenance line here.
+
+## WalletAvatar glyphs (not bundled — drawn natively from designer paths)
+
+The 31 wallet-avatar glyphs (iris + 30 Lucide marks) ship as native
+SwiftUI `Path` commands inside
+`UniApp/Sources/Features/Wallet/Avatar/WalletAvatarGlyph.swift`, ported
+verbatim from the 2026-06-09 v3 design handoff:
+
+- `/Users/thuglifex/Downloads/design_handoff_wallet_avatars/aperture-wallet-avatars.js`
+  — the `LUCIDE` table (30 Lucide icons in 24×24 viewBox with
+  `currentColor` stroke, each centered into the 100-disc via
+  `translate(28, 28) scale(1.833)`).
+- `/Users/thuglifex/Downloads/design_handoff_wallet_avatars/aperture-icon.js`
+  — the `iris(C, R, N, twist, color)` pinwheel function (Aperture brand mark).
+
+Lucide glyphs — ported from lucide.dev — ISC — see /LUCIDE_ICONS_LICENSE.md
+
+The iris brand mark is Aperture's own work and is not part of Lucide.
+
+The 12 gradient palette + 3 badge inner colors come from
+`tokens.json` in the same handoff folder.
+
+## Custom uploaded wallet-avatar SVGs (not bundled — user-supplied at runtime)
+
+The 2026-06-09 v3 wallet-avatar picker adds an **Upload** tab so users
+can stamp their own logo / mark on the wallet identity disc. Uploaded
+SVG text is sanitized through
+`UniApp/Sources/Security/SVGSanitizer.swift` (50 KB ceiling, 9 strips
+documented in the file) and persisted on the `WalletRecord` as
+`avatarCustomSvg` + `avatarCustomTint`. The sanitized SVG is rendered
+through an offscreen `WKWebView` snapshot (see
+`UniApp/Sources/Features/Wallet/Avatar/WalletCustomSvgRenderer.swift`)
+and cached as PNG under `Library/Caches/ApertureCustomAvatars/`. User
+content — provenance is per-wallet, recorded in the user's own
+Aperture install only.
+
+## Lottie animations (UniApp/Resources/Lottie/)
+
+Lottie JSONs ship under `UniApp/Resources/Lottie/` and are loaded at
+the call site via `LottieView(animation: .named("<name>"))` (the
+Airbnb `lottie-ios` SwiftUI shim, an SPM dependency authorized per
+`project.yml`). Per Rule #7 each `.json` is a real designed asset
+authored by the brand owner or by Aperture's in-house design pipeline;
+provenance is recorded here so every shipped motion has an auditable
+source.
+
+### Pull-to-refresh indicator (REVERTED 2026-06-09)
+
+The 2026-06-09 *Aperture Refresh* Lottie indicator
+(`design_handoff_refresh_lottie/refresh-check-black.json` +
+`refresh-check-white.json`) was shipped briefly and then reverted
+per user direction the same day. The wallet home is back on iOS's
+native `UIRefreshControl` spinner. The handoff files and the
+`ApertureRefreshControl` / `ApertureRefreshable` Swift components
+were deleted. Historical record kept here so a future agent reading
+the README understands why no `refresh-check-*.json` exists in the
+`Resources/Lottie/` directory.

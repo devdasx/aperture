@@ -41,12 +41,28 @@ struct ReceiveView: View {
     /// the user's position when the path is value-encoded.
     @Binding var navigationPath: NavigationPath
 
+    /// Whether the "Add custom token" sheet is presented. The Receive
+    /// screen's toolbar opens this — the active wallet's currently
+    /// available chains preselect the most likely target (the first
+    /// EVM chain we find, else Solana).
+    @State private var isShowingAddCustomToken: Bool = false
+
+    /// The chain the user tapped that has no derived address on the
+    /// active wallet. Non-nil drives the honest "no address" alert —
+    /// a silent return would read as a dead tap.
+    @State private var missingAddressChain: SupportedChain?
+    @State private var isShowingMissingAddressAlert: Bool = false
+
     var body: some View {
         NavigationStack(path: $navigationPath) {
             ReceiveAssetListView(
                 availableChains: availableChains,
                 onSelectNative: { chain in
-                    guard let address = address(for: chain) else { return }
+                    guard let address = address(for: chain) else {
+                        missingAddressChain = chain
+                        isShowingMissingAddressAlert = true
+                        return
+                    }
                     navigationPath.append(
                         ReceiveDestination.qr(chain: chain, tokenSymbol: nil, address: address)
                     )
@@ -57,13 +73,41 @@ struct ReceiveView: View {
             )
             .navigationTitle("Receive")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Menu {
+                        Button {
+                            isShowingAddCustomToken = true
+                        } label: {
+                            Label("Add custom token", systemImage: "plus")
+                        }
+                    } label: {
+                        Image(systemName: "ellipsis")
+                            .font(.system(size: 17, weight: .regular))
+                            .accessibilityLabel(Text("More"))
+                    }
+                }
+            }
+            .sheet(isPresented: $isShowingAddCustomToken) {
+                AddCustomTokenSheet(
+                    initialChain: firstSupportedCustomTokenChain,
+                    onSaved: {}
+                )
+                .uniAppEnvironment()
+                .presentationDetents([.large])
+                .presentationBackground(UniColors.Background.primary)
+            }
             .navigationDestination(for: ReceiveDestination.self) { destination in
                 switch destination {
                 case let .networkPicker(asset):
                     ReceiveNetworkPickerView(
                         token: asset,
                         onSelectNetwork: { chain in
-                            guard let address = address(for: chain) else { return }
+                            guard let address = address(for: chain) else {
+                                missingAddressChain = chain
+                                isShowingMissingAddressAlert = true
+                                return
+                            }
                             let symbol: String? = {
                                 if case let .token(symbol, _, _) = asset { return symbol }
                                 return nil
@@ -88,6 +132,18 @@ struct ReceiveView: View {
             // came from the prior wallet.
             navigationPath = NavigationPath()
         }
+        .task(id: activeWalletHealKey) {
+            healActiveWalletIdIfNeeded()
+        }
+        .alert(
+            Text("No address for this network"),
+            isPresented: $isShowingMissingAddressAlert,
+            presenting: missingAddressChain
+        ) { _ in
+            Button("OK", role: .cancel) {}
+        } message: { chain in
+            Text("This wallet has no \(chain.displayName) address yet, so there's nothing to receive to on this network. Aperture may still be deriving your accounts — try again in a moment.")
+        }
     }
 
     // MARK: - Derived
@@ -97,7 +153,32 @@ struct ReceiveView: View {
            let match = allWallets.first(where: { $0.id == uuid }) {
             return match
         }
+        // Display fallback only — `healActiveWalletIdIfNeeded()`
+        // rewrites the stored id outside body evaluation, so this
+        // branch is transient: the stale-id state cannot persist.
         return allWallets.first
+    }
+
+    /// Re-runs the self-heal whenever the stored id or the wallet
+    /// set changes (e.g. the active wallet was deleted mid-session).
+    private var activeWalletHealKey: String {
+        "\(activeWalletIdRaw)|\(allWallets.count)"
+    }
+
+    /// **Stale-id self-heal.** When the stored active-wallet id
+    /// doesn't resolve to any existing wallet (deleted wallet,
+    /// corrupted default, empty first-run value) and wallets exist,
+    /// write the first wallet's id back to the preference. The
+    /// `allWallets.first` display fallback then matches the stored
+    /// state by definition — a silent wrong-wallet display becomes
+    /// impossible. Runs from `.task(id:)`, never during body.
+    private func healActiveWalletIdIfNeeded() {
+        guard let first = allWallets.first else { return }
+        let resolves = UUID(uuidString: activeWalletIdRaw)
+            .map { id in allWallets.contains(where: { $0.id == id }) } ?? false
+        if !resolves {
+            activeWalletIdRaw = first.id.uuidString
+        }
     }
 
     /// All chains the active wallet has a derived (non-empty) address
@@ -117,6 +198,19 @@ struct ReceiveView: View {
         return wallet.addresses.first(where: {
             $0.chainRaw == chain.rawValue && !$0.address.isEmpty
         })?.address
+    }
+
+    /// First supported chain for the Add Custom Token sheet's
+    /// initial selection. Picks the first EVM chain the user has an
+    /// address on (Ethereum is most likely), else Solana, else
+    /// `.ethereum` as a backstop — the sheet's picker lets the user
+    /// override regardless.
+    private var firstSupportedCustomTokenChain: SupportedChain {
+        for chain in availableChains where chain.family == .evm {
+            return chain
+        }
+        if availableChains.contains(.solana) { return .solana }
+        return .ethereum
     }
 }
 

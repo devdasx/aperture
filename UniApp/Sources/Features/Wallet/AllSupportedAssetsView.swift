@@ -72,14 +72,17 @@ struct AllSupportedAssetsView: View {
         if !rows.isEmpty {
             Section {
                 ForEach(rows, id: \.chain) { row in
-                    AssetRow(
-                        chain: row.chain,
-                        tokenSymbol: row.chain.ticker,
-                        nativeAmount: row.amount,
-                        nativeDecimals: min(row.chain.nativeDecimals, 8),
-                        fiatValue: row.fiatValue,
-                        fiatCurrencyCode: row.fiatCurrencyCode
-                    )
+                    NavigationLink(value: WalletHomeDestination.assetDetail(.nativeCoin(row.chain))) {
+                        AssetRow(
+                            chain: row.chain,
+                            tokenSymbol: row.chain.ticker,
+                            nativeAmount: row.amount,
+                            nativeDecimals: min(row.chain.nativeDecimals, 8),
+                            fiatValue: row.fiatValue,
+                            fiatCurrencyCode: row.fiatCurrencyCode
+                        )
+                    }
+                    .accessibilityLabel(Text("\(row.chain.displayName) details"))
                 }
             } header: {
                 Text("Coins")
@@ -98,7 +101,10 @@ struct AllSupportedAssetsView: View {
         if !rows.isEmpty {
             Section {
                 ForEach(rows, id: \.id) { row in
-                    TokenSupportedRow(row: row)
+                    NavigationLink(value: WalletHomeDestination.assetDetail(.token(symbol: row.symbol))) {
+                        TokenSupportedRow(row: row)
+                    }
+                    .accessibilityLabel(Text("\(row.symbol) details"))
                 }
             } header: {
                 Text("Tokens")

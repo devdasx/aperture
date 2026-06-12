@@ -55,18 +55,215 @@ struct EVMTransactionAdapter: Sendable {
     /// "free public RPC doesn't time out."
     private static let scanBlockRange: Int64 = 100_000
 
-    func fetch(address: String, limit: Int) async throws -> [TransactionEvent] {
-        // Native + ERC-20 in parallel — neither blocks the other.
+    func fetch(
+        address: String,
+        limit: Int,
+        customContracts: [String] = []
+    ) async throws -> [TransactionEvent] {
+        // **2026-06-09 rebuilt for coverage + speed.**
+        //
+        // **Coverage**: every EVM chain has a Routescan
+        // Etherscan-compatible API
+        // (`https://api.routescan.io/v2/network/mainnet/evm/{chainId}/etherscan/api`).
+        // Routescan covers ALL 12 EVM chains Aperture supports
+        // including the 3 that don't have public Blockscout
+        // instances (BSC, opBNB, Avalanche). For the 9 chains with
+        // Blockscout, both paths give the same data — we prefer
+        // Routescan because it consistently supports `tokentx`
+        // (whereas some Blockscout deployments don't), giving us a
+        // single canonical indexer path across all chains.
+        //
+        // **Speed**: indexer's `tokentx` returns N indexed ERC-20
+        // transfers in ONE HTTP request. Previously the ERC-20 path
+        // ran 2 `eth_getLogs` calls (one per topic direction) over
+        // a 100k-block range — typical wall-clock 5–30s per chain,
+        // and slower chains time out entirely. The indexer path
+        // resolves in <1s per chain.
+        //
+        // **Honesty fallbacks**:
+        // - If the indexer call fails entirely → fall back to the
+        //   prior Blockscout `txlist` + `eth_getLogs` paths.
+        // - If individual records are malformed → skip the
+        //   record, keep the rest. Never throw away the whole
+        //   batch on one bad row.
+        //
+        // **Parallelism**: native (`txlist`) and token (`tokentx`)
+        // run as `async let` — two concurrent HTTP requests, one
+        // chain's worth of history arrives in roughly one round
+        // trip's wall-clock.
+        //
+        // **Token allowlist (2026-06-09).** The indexer's `tokentx`
+        // returns EVERY ERC-20 transfer involving the address —
+        // including unsolicited "airdrop" spam from phishing
+        // contracts (e.g. `gas711.com`-style impersonation
+        // contracts). The user explicitly asked: "fetch only token
+        // we've add or tokens user add. that's all." So we build
+        // the allowed-contracts set as registry ∪ user's custom
+        // tokens. Anything outside that set is dropped — its
+        // counterparty isn't from a contract the user has chosen
+        // to track. Native ETH/BNB transfers are unaffected; this
+        // filter only gates the token path.
+        let allowedContracts = Self.buildAllowedContracts(
+            chain: chain,
+            customContracts: customContracts
+        )
         async let nativeEventsRaw = fetchNativeTransactions(address: address, limit: limit)
-        async let tokenEventsRaw = fetchTokenTransfers(address: address, limit: limit)
-        let nativeEvents = (try? await nativeEventsRaw) ?? []
-        let tokenEvents = (try? await tokenEventsRaw) ?? []
+        async let tokenEventsRaw = fetchTokenTransfers(
+            address: address,
+            limit: limit,
+            allowedContracts: allowedContracts
+        )
+        // Partial-result tolerance: one failing direction shouldn't
+        // blank the other. But if BOTH fetches failed, throw so the
+        // caller renders an error state instead of an empty history
+        // that lies about "no activity."
+        var nativeEvents: [TransactionEvent] = []
+        var nativeFailure: Error?
+        do {
+            nativeEvents = try await nativeEventsRaw
+        } catch {
+            nativeFailure = error
+            Self.log.error("Native history fetch failed on \(chain.rawValue, privacy: .public) for \(address, privacy: .private): \(String(describing: error), privacy: .public)")
+        }
+        var tokenEvents: [TransactionEvent] = []
+        var tokenFailure: Error?
+        do {
+            tokenEvents = try await tokenEventsRaw
+        } catch {
+            tokenFailure = error
+            Self.log.error("Token history fetch failed on \(chain.rawValue, privacy: .public) for \(address, privacy: .private): \(String(describing: error), privacy: .public)")
+        }
+        if let nativeFailure, tokenFailure != nil {
+            throw nativeFailure
+        }
         // Combine + sort + cap.
         let combined = nativeEvents + tokenEvents
         return combined
             .sorted { $0.occurredAt > $1.occurredAt }
             .prefix(limit)
             .map { $0 }
+    }
+
+    // MARK: - Routescan Etherscan-compatible indexer
+
+    /// Routescan's universal Etherscan-compatible API base URL for
+    /// each supported EVM chain. Returns nil for non-EVM chains (the
+    /// switch statement is exhaustive at runtime — `default` covers
+    /// the type-system requirement). 12 chains × 1 URL pattern:
+    ///
+    /// `https://api.routescan.io/v2/network/mainnet/evm/{chainId}/etherscan/api`
+    private static func routescanAPIBase(for chain: SupportedChain) -> URL? {
+        let chainID: Int
+        switch chain {
+        case .ethereum: chainID = 1
+        case .optimism: chainID = 10
+        case .bnbChain: chainID = 56
+        case .opBNB:    chainID = 204
+        case .polygon:  chainID = 137
+        case .base:     chainID = 8453
+        case .arbitrum: chainID = 42161
+        case .avalanche: chainID = 43114
+        case .scroll:   chainID = 534352
+        case .zkSync:   chainID = 324
+        case .celo:     chainID = 42220
+        case .kavaEvm:  chainID = 2222
+        default: return nil
+        }
+        return URL(string: "https://api.routescan.io/v2/network/mainnet/evm/\(chainID)/etherscan/api")
+    }
+
+    /// Build the lowercase set of contract addresses the user
+    /// considers their own. Spam airdrops from contracts outside
+    /// this set are dropped at parse time.
+    private static func buildAllowedContracts(
+        chain: SupportedChain,
+        customContracts: [String]
+    ) -> Set<String> {
+        var allowed: Set<String> = []
+        for token in EVMTokenRegistry.tokens(for: chain) {
+            allowed.insert(token.contract.lowercased())
+        }
+        for contract in customContracts {
+            allowed.insert(contract.lowercased())
+        }
+        return allowed
+    }
+
+    /// Run an Etherscan-compatible GET, return the JSON array under
+    /// `"result"`.
+    ///
+    /// **Failure ≠ no data (2026-06-11).** Returns `nil` only when
+    /// the chain has no Routescan coverage (the caller may use a
+    /// legacy fallback). Transport / HTTP failures — including the
+    /// free tier's HTTP 429 and the Etherscan-style
+    /// `result: "Max rate limit reached"` string body — now THROW a
+    /// typed `RPCError`, so callers can distinguish "the indexer
+    /// says there are no rows" from "the indexer is unreachable or
+    /// throttling us" instead of silently cascading into the
+    /// 100k-block `eth_getLogs` fallback at the worst moment.
+    private func runEtherscanQuery(
+        action: String,
+        address: String,
+        limit: Int
+    ) async throws(RPCError) -> [[String: Any]]? {
+        guard let base = Self.routescanAPIBase(for: chain) else { return nil }
+        var components = URLComponents(url: base, resolvingAgainstBaseURL: false)
+        components?.queryItems = [
+            URLQueryItem(name: "module", value: "account"),
+            URLQueryItem(name: "action", value: action),
+            URLQueryItem(name: "address", value: address),
+            URLQueryItem(name: "sort", value: "desc"),
+            URLQueryItem(name: "page", value: "1"),
+            URLQueryItem(name: "offset", value: String(limit))
+        ]
+        guard let url = components?.url else { return nil }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.timeoutInterval = 15
+        let data: Data
+        let response: URLResponse
+        do {
+            (data, response) = try await URLSession.shared.data(for: request)
+        } catch let urlError as URLError {
+            if urlError.code == .cancelled { throw RPCError.cancelled }
+            throw RPCError.network(urlError.localizedDescription)
+        } catch {
+            throw RPCError.network(error.localizedDescription)
+        }
+        if let http = response as? HTTPURLResponse {
+            if http.statusCode == 429 {
+                let retryAfter: Date
+                if let header = http.value(forHTTPHeaderField: "Retry-After"),
+                   let seconds = TimeInterval(header) {
+                    retryAfter = Date().addingTimeInterval(seconds)
+                } else {
+                    retryAfter = Date().addingTimeInterval(60)
+                }
+                throw RPCError.rateLimited(retryAfter: retryAfter)
+            }
+            if !(200..<300).contains(http.statusCode) {
+                throw RPCError.invalidResponse("HTTP \(http.statusCode) from indexer")
+            }
+        }
+        guard let root = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else {
+            throw RPCError.decodingFailed("Indexer body did not parse as a JSON object")
+        }
+        if let txs = root["result"] as? [[String: Any]] {
+            // Includes the honest "no rows" shape: status "0",
+            // message "No transactions found", result [].
+            return txs
+        }
+        // Etherscan-compatible APIs signal throttling with HTTP 200
+        // and `result: "Max rate limit reached"` — a STRING. A
+        // string result is always a failure, never "no data."
+        if let message = root["result"] as? String {
+            if message.lowercased().contains("rate limit") {
+                throw RPCError.rateLimited(retryAfter: Date().addingTimeInterval(60))
+            }
+            throw RPCError.invalidResponse("Indexer error: \(message)")
+        }
+        throw RPCError.decodingFailed("Indexer response missing `result` array")
     }
 
     // MARK: - Native ETH transactions (Blockscout indexer)
@@ -82,6 +279,42 @@ struct EVMTransactionAdapter: Sendable {
     /// honestly — the ERC-20 path still works for those, just not
     /// native sends. Documented per chain in `blockscoutHost(for:)`.
     private func fetchNativeTransactions(address: String, limit: Int) async throws -> [TransactionEvent] {
+        // **Indexer-first path (2026-06-09).** Routescan covers all
+        // 12 EVM chains with the same Etherscan-compatible interface,
+        // including the 3 chains (BSC, opBNB, Avalanche) that don't
+        // have a public Blockscout instance. If the indexer returns
+        // rows, parse them and return. Otherwise (empty result while
+        // the chain has Blockscout, etc.) fall back to the prior
+        // Blockscout-only path so we don't regress the 9 chains that
+        // were working.
+        //
+        // **2026-06-11 — indexer failure handling.** For NATIVE
+        // history the fallback is a single cheap GET against a
+        // DIFFERENT host (Blockscout), so falling back while
+        // Routescan throttles us is safe — unlike the token path's
+        // `eth_getLogs` storm. Cancellation still propagates as
+        // cancellation.
+        // **2026-06-12 — distinguish "no rows" from "indexer failed".**
+        // The previous `if let rows, !rows.isEmpty` fell through to the
+        // Blockscout fallback whenever the indexer returned an honest
+        // empty result (fresh address, watch-only, etc.) — wasting a
+        // second network round-trip on a question we already had the
+        // answer to. Now: a SUCCESSFUL empty result returns `[]`
+        // directly; only a thrown indexer error falls back.
+        let indexerRows: [[String: Any]]?
+        do {
+            indexerRows = try await runEtherscanQuery(action: "txlist", address: address, limit: limit)
+        } catch {
+            if case RPCError.cancelled = error { throw error }
+            Self.log.error("Indexer txlist failed on \(chain.rawValue, privacy: .public): \(String(describing: error), privacy: .public)")
+            indexerRows = nil
+        }
+        if let rows = indexerRows {
+            // Honest empty IS the answer — don't fall back.
+            return parseNativeRows(rows, address: address, limit: limit)
+        }
+        // Fallback: legacy Blockscout `txlist`. Same shape, same
+        // parser — so a single helper handles both paths.
         guard let host = Self.blockscoutHost(for: chain) else { return [] }
         let urlString = "\(host)/api?module=account&action=txlist&address=\(address)&sort=desc&page=1&offset=\(limit)"
         guard let url = URL(string: urlString) else { return [] }
@@ -96,10 +329,25 @@ struct EVMTransactionAdapter: Sendable {
               let txs = root["result"] as? [[String: Any]] else {
             return []
         }
+        return parseNativeRows(txs, address: address, limit: limit)
+    }
+
+    /// Parse Etherscan-compatible `txlist` rows into
+    /// `TransactionEvent`s. Shared between the indexer-first path
+    /// (Routescan) and the Blockscout fallback — both APIs emit
+    /// identical row shapes (Etherscan v1 standard), so this parser
+    /// works for either. Honest failure: rows missing required
+    /// fields are skipped, not nil'd-out, so a bad batch doesn't
+    /// drop the whole history.
+    private func parseNativeRows(
+        _ rows: [[String: Any]],
+        address: String,
+        limit: Int
+    ) -> [TransactionEvent] {
         var events: [TransactionEvent] = []
-        events.reserveCapacity(txs.count)
+        events.reserveCapacity(rows.count)
         let lower = address.lowercased()
-        for tx in txs.prefix(limit) {
+        for tx in rows.prefix(limit) {
             guard let hash = tx["hash"] as? String,
                   let from = tx["from"] as? String,
                   let to = tx["to"] as? String,
@@ -189,9 +437,190 @@ struct EVMTransactionAdapter: Sendable {
         }
     }
 
-    // MARK: - ERC-20 transfers (eth_getLogs)
+    // MARK: - ERC-20 transfers (indexer-first, eth_getLogs fallback)
 
-    private func fetchTokenTransfers(address: String, limit: Int) async throws -> [TransactionEvent] {
+    /// **Primary path (2026-06-09).** Routescan's `tokentx`
+    /// Etherscan-compatible endpoint returns indexed ERC-20 transfers
+    /// for the address in a single HTTP round trip. Works on all 12
+    /// EVM chains (Routescan covers chainIds 1, 10, 56, 137, 204,
+    /// 324, 2222, 8453, 42161, 42220, 43114, 534352). Each row
+    /// already carries `tokenSymbol`, `tokenDecimal`, `contractAddress`,
+    /// `timeStamp`, and the `from`/`to` pair — no follow-up
+    /// `eth_getBlockByNumber` needed for timestamps and no
+    /// `EVMTokenRegistry` lookup required for symbol/decimals on
+    /// arbitrary contracts (long-tail tokens just work).
+    ///
+    /// **Fallback path.** If the indexer is unreachable or returns
+    /// empty, fall through to `fetchTokenTransfersViaLogs` — the
+    /// prior `eth_getLogs` implementation, retained verbatim so we
+    /// don't regress chains where the indexer happens to be down.
+    private func fetchTokenTransfers(
+        address: String,
+        limit: Int,
+        allowedContracts: Set<String>
+    ) async throws -> [TransactionEvent] {
+        // **2026-06-11 — indexer failure ≠ "no data".** An HTTP 429
+        // from Routescan's free tier (or any transport failure) used
+        // to be indistinguishable from "no token transfers" here and
+        // silently cascaded into `fetchTokenTransfersViaLogs` — a
+        // 100k-block `eth_getLogs` sweep plus per-block timestamp
+        // round-trips, the heaviest possible queries fired precisely
+        // while we're already being throttled. Indexer FAILURE now
+        // propagates to the caller (`fetch` tolerates one failed
+        // direction); only an honest empty / no-coverage result
+        // falls through to the logs path.
+        //
+        // **2026-06-12 — empty IS the answer.** An indexer that
+        // returns `result: []` for an address with no token transfers
+        // is the honest answer; falling back to the 100k-block
+        // `eth_getLogs` sweep just to confirm the empty result wastes
+        // RPC quota on a question we already have the answer to. Only
+        // the `nil` case (no coverage at all — chain not in
+        // Routescan's table) falls back.
+        if let rows = try await runEtherscanQuery(action: "tokentx", address: address, limit: limit) {
+            return parseTokenTxRows(
+                rows,
+                address: address,
+                limit: limit,
+                allowedContracts: allowedContracts
+            )
+        }
+        return try await fetchTokenTransfersViaLogs(
+            address: address,
+            limit: limit,
+            allowedContracts: allowedContracts
+        )
+    }
+
+    /// Parse Etherscan-compatible `tokentx` rows. Each row carries
+    /// `tokenSymbol`, `tokenDecimal`, `contractAddress`, `timeStamp`,
+    /// `from`, `to`, `value` — so we get full event reconstruction
+    /// without a separate registry lookup or block-timestamp call.
+    /// Unknown / long-tail tokens use whatever symbol the issuer
+    /// declared on-chain (honest: that's what the explorer shows
+    /// too).
+    private func parseTokenTxRows(
+        _ rows: [[String: Any]],
+        address: String,
+        limit: Int,
+        allowedContracts: Set<String>
+    ) -> [TransactionEvent] {
+        var events: [TransactionEvent] = []
+        events.reserveCapacity(rows.count)
+        let lower = address.lowercased()
+        for tx in rows {
+            guard let hash = tx["hash"] as? String,
+                  let from = tx["from"] as? String,
+                  let to = tx["to"] as? String,
+                  let valueStr = tx["value"] as? String,
+                  let timestampStr = tx["timeStamp"] as? String,
+                  let timestamp = Int64(timestampStr),
+                  let contractAddr = tx["contractAddress"] as? String else {
+                continue
+            }
+            // **Allowlist gate (2026-06-09).** Drop the row if it
+            // came from a contract the user doesn't track. Done
+            // BEFORE the prefix(limit) so spam doesn't crowd out
+            // legitimate rows. Empty allowlist → admit nothing
+            // (defensive; never happens once registry has entries).
+            if !allowedContracts.contains(contractAddr.lowercased()) {
+                continue
+            }
+            if events.count >= limit { break }
+            let valueRaw = Decimal(string: valueStr) ?? 0
+            if valueRaw == 0 { continue }
+
+            // Decimals: prefer the indexer's declared value (always
+            // present for ERC-20). If somehow missing or unparseable,
+            // fall back to the registry, then 18.
+            let decimals: Int
+            if let d = tx["tokenDecimal"] as? String, let parsed = Int(d) {
+                decimals = parsed
+            } else if let d = tx["tokenDecimal"] as? Int {
+                decimals = d
+            } else if let registryTok = EVMTokenRegistry.tokens(for: chain)
+                .first(where: { $0.contract.lowercased() == contractAddr.lowercased() }) {
+                decimals = registryTok.decimals
+            } else {
+                decimals = 18
+            }
+            // **2026-06-11 — validate indexer-supplied decimals.**
+            // `tokenDecimal` is untrusted indexer data: a negative
+            // value trapped `scale(decimals:)`'s range loop (fatal
+            // crash mid-refresh) and a huge value spun it for
+            // minutes. `Decimal` carries ~38 significant digits and
+            // no real token exceeds that; rows outside the sane
+            // range are rejected, never scaled.
+            guard (0...38).contains(decimals) else { continue }
+            let amount = valueRaw / Self.scale(decimals: decimals)
+
+            // Symbol: prefer the indexer's declared value. Fall back
+            // to registry, then to a short contract hash (honest;
+            // the user can verify the contract via a block explorer).
+            let symbol: String
+            if let s = (tx["tokenSymbol"] as? String)?
+                .trimmingCharacters(in: .whitespacesAndNewlines),
+               !s.isEmpty {
+                symbol = s
+            } else if let registryTok = EVMTokenRegistry.tokens(for: chain)
+                .first(where: { $0.contract.lowercased() == contractAddr.lowercased() }) {
+                symbol = registryTok.symbol
+            } else {
+                symbol = Self.shortContract(contractAddr)
+            }
+
+            let direction: TransactionDirection
+            let counterparty: String
+            if from.lowercased() == lower && to.lowercased() == lower {
+                direction = .internal
+                counterparty = ""
+            } else if to.lowercased() == lower {
+                direction = .incoming
+                counterparty = from
+            } else if from.lowercased() == lower {
+                direction = .outgoing
+                counterparty = to
+            } else {
+                // Neither side is the wallet — an indexer row that
+                // doesn't involve this address. Mirrors the
+                // parseNativeRows guard; never default to outgoing.
+                continue
+            }
+
+            let blockNumber: Int64? = {
+                if let s = tx["blockNumber"] as? String { return Int64(s) }
+                if let i = tx["blockNumber"] as? Int { return Int64(i) }
+                return nil
+            }()
+
+            events.append(TransactionEvent(
+                chain: chain,
+                address: address,
+                txHash: hash,
+                direction: direction,
+                amount: amount,
+                tokenSymbol: symbol,
+                tokenContract: contractAddr,
+                blockNumber: blockNumber,
+                occurredAt: Date(timeIntervalSince1970: TimeInterval(timestamp)),
+                status: .confirmed,
+                counterparty: counterparty,
+                fee: nil
+            ))
+        }
+        return events
+    }
+
+    /// **Fallback path.** Original `eth_getLogs` implementation,
+    /// retained so chains where the indexer is briefly unreachable
+    /// still surface recent activity. Slower (5–30s per chain) and
+    /// bounded by `scanBlockRange`, but works against any standard
+    /// JSON-RPC endpoint without an indexer.
+    private func fetchTokenTransfersViaLogs(
+        address: String,
+        limit: Int,
+        allowedContracts: Set<String>
+    ) async throws -> [TransactionEvent] {
         let latestBlock = try await fetchLatestBlock()
         let fromBlock = max(0, latestBlock - Self.scanBlockRange)
         let fromHex = "0x" + String(fromBlock, radix: 16)
@@ -203,10 +632,49 @@ struct EVMTransactionAdapter: Sendable {
         // topics not data.
         let padded = Self.padTopic(address)
 
-        async let incomingLogs = fetchLogs(from: fromHex, to: toHex, fromTopic: nil, toTopic: padded)
-        async let outgoingLogs = fetchLogs(from: fromHex, to: toHex, fromTopic: padded, toTopic: nil)
+        // **2026-06-09 — contract-scoped fallback.** Pre-known
+        // contract addresses (registry ∪ user's custom tokens) get
+        // passed into the JSON-RPC `address` filter so the node
+        // only scans logs from THESE contracts, not every contract
+        // on the chain. The same allowlist also gates the parser
+        // below — defense in depth in case the node ignores the
+        // `address` filter for some reason.
+        let contracts: [String]? = allowedContracts.isEmpty
+            ? nil
+            : Array(allowedContracts)
 
-        let allLogs = try await incomingLogs + outgoingLogs
+        async let incomingLogs = fetchLogs(
+            from: fromHex, to: toHex,
+            fromTopic: nil, toTopic: padded,
+            contractAddresses: contracts
+        )
+        async let outgoingLogs = fetchLogs(
+            from: fromHex, to: toHex,
+            fromTopic: padded, toTopic: nil,
+            contractAddresses: contracts
+        )
+
+        // Catch each direction independently — one failing log fetch
+        // must not cancel the other. Throw only when BOTH failed,
+        // so the caller can distinguish "no logs" from "fetch broke."
+        let incoming: [[String: Any]]?
+        do {
+            incoming = try await incomingLogs
+        } catch {
+            Self.log.error("Incoming eth_getLogs failed on \(chain.rawValue, privacy: .public) for \(address, privacy: .private): \(String(describing: error), privacy: .public)")
+            incoming = nil
+        }
+        let outgoing: [[String: Any]]?
+        do {
+            outgoing = try await outgoingLogs
+        } catch {
+            Self.log.error("Outgoing eth_getLogs failed on \(chain.rawValue, privacy: .public) for \(address, privacy: .private): \(String(describing: error), privacy: .public)")
+            outgoing = nil
+        }
+        if incoming == nil && outgoing == nil {
+            throw RPCError.allEndpointsFailed(chain)
+        }
+        let allLogs = (incoming ?? []) + (outgoing ?? [])
         let sorted = allLogs.sorted { (a, b) in
             let aBlock = a["blockNumber"] as? String ?? "0x0"
             let bBlock = b["blockNumber"] as? String ?? "0x0"
@@ -231,6 +699,13 @@ struct EVMTransactionAdapter: Sendable {
                   let contractAddr = log["address"] as? String else {
                 continue
             }
+            // Allowlist re-check — some providers ignore the
+            // JSON-RPC `address` filter and return wildcard logs.
+            // Don't ship those rows.
+            if !allowedContracts.isEmpty,
+               !allowedContracts.contains(contractAddr.lowercased()) {
+                continue
+            }
             let blockNum = Int64(blockHex.replacingOccurrences(of: "0x", with: ""), radix: 16) ?? 0
             let fromAddr = Self.unpadTopic(topics[1])
             let toAddr = Self.unpadTopic(topics[2])
@@ -244,9 +719,14 @@ struct EVMTransactionAdapter: Sendable {
             } else if toAddr.lowercased() == lower {
                 direction = .incoming
                 counterparty = fromAddr
-            } else {
+            } else if fromAddr.lowercased() == lower {
                 direction = .outgoing
                 counterparty = toAddr
+            } else {
+                // Neither topic matches the wallet — a provider that
+                // ignored the topic filter. Skip; never default to
+                // outgoing.
+                continue
             }
 
             // Resolve timestamp — cached per block to keep traffic
@@ -303,11 +783,22 @@ struct EVMTransactionAdapter: Sendable {
 
     /// `eth_getLogs` with topic filter on the Transfer event + one of
     /// from/to. `nil` for the other topic = "any address."
+    ///
+    /// **2026-06-09 — contract scoping.** When `contractAddresses`
+    /// is non-empty, the JSON-RPC `address` field is set so the node
+    /// only walks logs from those contracts. A typical node has to
+    /// scan billions of log entries across every contract in the
+    /// block range; restricting to ~30 registry contracts cuts that
+    /// to a few million → 10–50× faster per call. Per the JSON-RPC
+    /// spec `address` accepts either a single string or an array
+    /// (we use the array form so a single call covers every known
+    /// contract for the chain).
     private func fetchLogs(
         from fromBlock: String,
         to toBlock: String,
         fromTopic: String?,
-        toTopic: String?
+        toTopic: String?,
+        contractAddresses: [String]? = nil
     ) async throws -> [[String: Any]] {
         // JSON-RPC topics array accepts strings and JSON null
         // (wildcard). `[String?]` serializes `nil` as JSON null via
@@ -315,11 +806,21 @@ struct EVMTransactionAdapter: Sendable {
         // so it satisfies `RPCClient.callJSONResultData`'s
         // `[Sendable]` parameter contract.
         let topics: [String?] = [Self.transferTopic, fromTopic, toTopic]
-        let filter: [String: Sendable] = [
+        var filter: [String: Sendable] = [
             "fromBlock": fromBlock,
             "toBlock": toBlock,
             "topics": topics,
         ]
+        // **Scope to known contracts when available.** Without
+        // this, the node walks every ERC-20 Transfer event in the
+        // block range — slow. With it, the node restricts the scan
+        // to the supplied contracts. Empty array = wildcard
+        // (`address: []` would actually break some providers, so
+        // we omit the field instead). Lowercased for consistency
+        // across providers — some nodes are case-sensitive.
+        if let contracts = contractAddresses, !contracts.isEmpty {
+            filter["address"] = contracts.map { $0.lowercased() }
+        }
         let data = try await client.callJSONResultData(
             chain: chain,
             method: "eth_getLogs",
@@ -370,8 +871,13 @@ struct EVMTransactionAdapter: Sendable {
     }
 
     private static func scale(decimals: Int) -> Decimal {
+        // Defensive clamp (2026-06-11): a negative count traps the
+        // range loop ("Range requires lowerBound <= upperBound"), a
+        // huge one hangs it. Callers validate their inputs; this is
+        // the backstop so no future caller can crash or stall it.
+        let clamped = min(max(decimals, 0), 38)
         var result = Decimal(1)
-        for _ in 0..<decimals { result *= 10 }
+        for _ in 0..<clamped { result *= 10 }
         return result
     }
 

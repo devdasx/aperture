@@ -18,31 +18,46 @@ import SwiftUI
 ///    gap so the user never sees their home screen flash before
 ///    the PIN screen arrives.
 ///
-/// Same monochrome register as the splash, deliberately so — the
-/// user reads the mask as "Aperture is loading" and the lock that
-/// follows as the next beat in a single coherent sequence, not as
-/// an interruption. No motion, no text, no loader; the simpler
-/// the surface, the less it competes with the PIN prompt the user
-/// is about to read.
+/// **2026-06-09 — wordmark + mark composition.** The user direction
+/// was explicit: *"it should use wordmark app logo in privacy
+/// screen, not only app icon."* The mask now shows the disc mark
+/// stacked over the "Aperture" wordmark — the same composition the
+/// splash screen uses at launch, so the user reads the mask as
+/// "Aperture is loading" and the PIN that follows as the next beat
+/// in a single coherent sequence.
 ///
-/// Mounted in `AppRoot`'s ZStack (highest `zIndex` of the chrome
-/// stack so it covers any presentation: sheets, full-screen
-/// covers, the lock view itself). Gated on `scenePhase != .active
-/// && PinCodePreference.isPinEnabled()` — PIN-disabled users
-/// don't need a privacy mask because their wallet was already
-/// reachable without authentication; adding a mask only for them
-/// would be theatre.
+/// Same monochrome register as the splash, deliberately so. No
+/// motion, no tagline, no loader; the simpler the surface, the less
+/// it competes with the PIN prompt the user is about to read.
+///
+/// Mounted in `AppRoot`'s ZStack at the topmost `zIndex`. Gated on
+/// `scenePhase != .active && PinCodePreference.isPinEnabled() &&
+/// PrivacyMaskPreference.isEnabled()` — PIN-disabled users don't
+/// need a privacy mask because their wallet was already reachable
+/// without authentication; users who explicitly toggled off
+/// `PrivacyMaskPreference` opted out of the brand mask entirely.
 struct PrivacyMaskView: View {
     var body: some View {
         ZStack {
             UniColors.Background.primary
                 .ignoresSafeArea()
 
-            Image("LogoCircle")
-                .resizable()
-                .scaledToFit()
-                .frame(width: 96, height: 96)
-                .accessibilityHidden(true)
+            VStack(spacing: 18) {
+                Image("LogoCircle")
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 80, height: 80)
+
+                // "Aperture" wordmark — same SF Pro Display 36pt
+                // semibold + −1.26 kerning Stack the splash uses,
+                // scaled down 0.86× so the wordmark + mark
+                // composition reads at one comfortable glance.
+                Text("Aperture")
+                    .font(.system(size: 36, weight: .semibold, design: .default))
+                    .kerning(-1.26)
+                    .foregroundStyle(UniColors.Splash.mark)
+            }
+            .accessibilityHidden(true)
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(Text("Aperture"))

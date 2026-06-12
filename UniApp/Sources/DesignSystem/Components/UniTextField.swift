@@ -53,16 +53,33 @@ enum TextDirection {
     /// First strong directional character heuristic. Returns `nil` for
     /// empty or fully direction-neutral content (digits + punctuation
     /// + whitespace only) so callers can fall back to ambient.
+    ///
+    /// Strong-RTL is the closed set (the app ships exactly four RTL
+    /// locales: ar, fa, ur, he — all covered by the ranges below);
+    /// every *other* letter is treated as strong-LTR via ICU's
+    /// `Alphabetic` scalar property. An earlier version enumerated
+    /// LTR scripts by hand and silently missed Thai, Bengali, Tamil,
+    /// Telugu, Malayalam, Gurmukhi, … — all shipped locales — so
+    /// `.automatic` fields fell back to ambient for them. Inverting
+    /// the check makes the detector robust for all 50 languages.
     static func detect(in text: String) -> LayoutDirection? {
         for scalar in text.unicodeScalars {
-            let v = scalar.value
-            if isStrongRTL(v) { return .rightToLeft }
-            if isStrongLTR(v) { return .leftToRight }
+            if isStrongRTL(scalar.value) { return .rightToLeft }
+            // Any other letter is strong-LTR for our purposes — every
+            // non-RTL script the app ships classifies its letters as
+            // BiDi class L. Digits, punctuation, whitespace, and
+            // symbols are weak/neutral: keep scanning.
+            if scalar.properties.isAlphabetic { return .leftToRight }
         }
         return nil
     }
 
     private static func isStrongRTL(_ v: UInt32) -> Bool {
+        // Arabic-Indic digits (U+0660–0669) and extended Arabic-Indic
+        // digits (U+06F0–06F9) are BiDi class AN (weak), not strong-RTL
+        // — carve them out of the blanket Arabic-block range below.
+        if (0x0660...0x0669).contains(v) { return false }
+        if (0x06F0...0x06F9).contains(v) { return false }
         // Hebrew, Arabic, Syriac, Thaana, NKo, Samaritan, Mandaic, etc.
         if (0x0590...0x08FF).contains(v) { return true }
         // Hebrew presentation forms.
@@ -70,19 +87,6 @@ enum TextDirection {
         // Arabic presentation forms A + B.
         if (0xFB50...0xFDFF).contains(v) { return true }
         if (0xFE70...0xFEFF).contains(v) { return true }
-        return false
-    }
-
-    private static func isStrongLTR(_ v: UInt32) -> Bool {
-        if (0x0041...0x005A).contains(v) { return true }  // A-Z
-        if (0x0061...0x007A).contains(v) { return true }  // a-z
-        if (0x00C0...0x024F).contains(v) { return true }  // Latin Extended
-        if (0x0370...0x03FF).contains(v) { return true }  // Greek
-        if (0x0400...0x04FF).contains(v) { return true }  // Cyrillic
-        if (0x0900...0x097F).contains(v) { return true }  // Devanagari
-        if (0x4E00...0x9FFF).contains(v) { return true }  // CJK Unified
-        if (0x3040...0x30FF).contains(v) { return true }  // Hiragana + Katakana
-        if (0xAC00...0xD7AF).contains(v) { return true }  // Hangul Syllables
         return false
     }
 }
@@ -142,6 +146,15 @@ struct UniTextField: View {
     @FocusState private var isFieldFocused: Bool
     @Environment(\.layoutDirection) private var ambientDirection
 
+    /// Memoized result of the `.automatic` policy's first-strong-
+    /// character scan. Recomputed only when the text changes (and once
+    /// on appear) instead of on every body evaluation — the scan walks
+    /// the buffer's unicode scalars, which is wasteful to repeat per
+    /// render. `nil` means "no strong directional character found";
+    /// the resolver then falls back to the ambient direction. Unused
+    /// for `.forceLTR` / `.ambient`, which resolve without scanning.
+    @State private var detectedDirection: LayoutDirection?
+
     var body: some View {
         ZStack(alignment: .trailing) {
             inputControl
@@ -160,7 +173,6 @@ struct UniTextField: View {
                     RoundedRectangle(cornerRadius: UniRadius.m, style: .continuous)
                         .fill(UniColors.Background.secondary)
                 )
-                .modifier(DirectionOverride(direction: resolvedDirection))
                 .multilineTextAlignment(.leading)
                 // Single-line: Return key reads as "Done" and fires
                 // `.onSubmit { ... }` natively. `.submitLabel(.done)` is
@@ -175,13 +187,30 @@ struct UniTextField: View {
                 // appended to the prior buffer* (= the user pressed
                 // Enter) and dismiss; anything else (paste, deletion,
                 // mid-buffer mutation) passes through unchanged.
+                //
+                // The comparison is the explicit string diff
+                // `newValue == oldValue + "\n"` — NOT a grapheme-count
+                // check. Counting graphemes breaks on compound
+                // clusters: appending `"\n"` after a trailing `"\r"`
+                // merges into one `"\r\n"` cluster and the count
+                // doesn't change, so a count-based check misses (or
+                // mis-fires on) such edits.
                 .onChange(of: text) { oldValue, newValue in
-                    guard axis == .vertical else { return }
-                    if newValue.count == oldValue.count + 1,
-                       newValue.last == "\n",
-                       newValue.dropLast() == oldValue {
-                        text = String(newValue.dropLast())
+                    if axis == .vertical, newValue == oldValue + "\n" {
+                        text = oldValue
                         isFieldFocused = false
+                        return
+                    }
+                    // Fix #8 memoization — re-run the direction scan
+                    // only when the text actually changed (not on
+                    // every body evaluation).
+                    if directionPolicy == .automatic {
+                        detectedDirection = TextDirection.detect(in: newValue)
+                    }
+                }
+                .onAppear {
+                    if directionPolicy == .automatic {
+                        detectedDirection = TextDirection.detect(in: text)
                     }
                 }
 
@@ -189,6 +218,16 @@ struct UniTextField: View {
                 revealButton
             }
         }
+        // One coordinate system for the whole field: the direction
+        // override wraps the ZStack so its `.trailing` alignment, the
+        // reveal-eye clearance `.padding(.trailing, …)`, and the input
+        // control all resolve against the SAME resolved direction.
+        // When the override wrapped only `inputControl`, the eye
+        // anchored to the AMBIENT trailing edge while the 40pt gap
+        // followed the resolved direction — in an RTL locale with
+        // `.forceLTR` (private-key import) the eye overlapped the
+        // start of the secure text and the gap sat unused.
+        .modifier(DirectionOverride(direction: resolvedDirection))
     }
 
     // MARK: - Input control variant
@@ -222,12 +261,20 @@ struct UniTextField: View {
 
     // MARK: - Direction resolution
 
+    /// Resolves without scanning: `.ambient` and `.forceLTR` are
+    /// constant-time, and `.automatic` reads the memoized
+    /// `detectedDirection` (updated in `.onChange(of: text)` /
+    /// `.onAppear`) rather than re-walking the buffer's scalars on
+    /// every body evaluation.
     private var resolvedDirection: LayoutDirection? {
-        TextDirection.resolve(
-            policy: directionPolicy,
-            text: text,
-            ambient: ambientDirection
-        )
+        switch directionPolicy {
+        case .ambient:
+            return nil
+        case .forceLTR:
+            return .leftToRight
+        case .automatic:
+            return detectedDirection ?? ambientDirection
+        }
     }
 }
 

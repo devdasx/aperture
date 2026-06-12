@@ -1,0 +1,567 @@
+{
+  " and ": [
+    {
+      "file": "PinCode/PinCodeView.swift",
+      "line": 351,
+      "context": "default:  return \"\"   // \"1\" and \"0\""
+    }
+  ],
+  "0 \\(request.chain.ticker)": [
+    {
+      "file": "Browser/DAppSendTransactionSheet.swift",
+      "line": 252,
+      "context": "return \"0 \\(request.chain.ticker)\""
+    }
+  ],
+  "Apple Symbols License": [
+    {
+      "file": "Settings/AcknowledgmentsView.swift",
+      "line": 20,
+      "context": "license: \"Apple Symbols License\""
+    }
+  ],
+  "AppleWebKit/605.1.15 (KHTML, like Gecko) ": [
+    {
+      "file": "Browser/BrowserWebView.swift",
+      "line": 272,
+      "context": "\"AppleWebKit/605.1.15 (KHTML, like Gecko) \" +"
+    }
+  ],
+  "BSD-2 (Bitcoin)": [
+    {
+      "file": "Settings/AcknowledgmentsView.swift",
+      "line": 40,
+      "context": "license: \"BSD-2 (Bitcoin)\""
+    }
+  ],
+  "Confirm \u2014 Dark": [
+    {
+      "file": "PinCode/PinCodeView.swift",
+      "line": 680,
+      "context": "#Preview(\"Confirm \u2014 Dark\") {"
+    }
+  ],
+  "Couldn't save your wallet. Tap Retry.": [
+    {
+      "file": "CreateWallet/WalletReadyView.swift",
+      "line": 189,
+      "context": "persistState = .failed(\"Couldn't save your wallet. Tap Retry.\")"
+    }
+  ],
+  "Couldn\\u{2019}t read that file.": [
+    {
+      "file": "Wallet/WalletIconPicker.swift",
+      "line": 472,
+      "context": "return \"Couldn\\u{2019}t read that file.\""
+    }
+  ],
+  "Create-wallet persist failed: \\(String(describing: error), privacy: .public)": [
+    {
+      "file": "CreateWallet/WalletReadyView.swift",
+      "line": 187,
+      "context": "\"Create-wallet persist failed: \\(String(describing: error), privacy: .public)\""
+    }
+  ],
+  "Fallback \\(index)": [
+    {
+      "file": "Settings/NetworkProvidersView.swift",
+      "line": 62,
+      "context": "Text(index == 0 ? \"Primary\" : \"Fallback \\(index)\")"
+    }
+  ],
+  "File too large \\u{2014} max 50 KB.": [
+    {
+      "file": "Wallet/WalletIconPicker.swift",
+      "line": 476,
+      "context": "return \"File too large \\u{2014} max 50 KB.\""
+    }
+  ],
+  "Held on all \\(total) networks": [
+    {
+      "file": "Wallet/AssetDetailView.swift",
+      "line": 286,
+      "context": "return \"Held on all \\(total) networks\""
+    }
+  ],
+  "Image had no PNG representation": [
+    {
+      "file": "Wallet/Avatar/WalletCustomSvgRenderer.swift",
+      "line": 272,
+      "context": "userInfo: [NSLocalizedDescriptionKey: \"Image had no PNG representation\"]"
+    }
+  ],
+  "Magic Eden": [
+    {
+      "file": "Browser/BrowserFavorite.swift",
+      "line": 145,
+      "context": "name: \"Magic Eden\","
+    }
+  ],
+  "Mozilla/5.0 (iPhone; CPU iPhone OS 26_0 like Mac OS X) ": [
+    {
+      "file": "Browser/BrowserWebView.swift",
+      "line": 271,
+      "context": "\"Mozilla/5.0 (iPhone; CPU iPhone OS 26_0 like Mac OS X) \" +"
+    }
+  ],
+  "No activity on \\(chain.displayName).": [
+    {
+      "file": "Wallet/AssetNetworkDetailView.swift",
+      "line": 197,
+      "context": "? \"No activity on \\(chain.displayName).\""
+    }
+  ],
+  "On \\(chain.displayName)": [
+    {
+      "file": "Wallet/AssetDetailView.swift",
+      "line": 278,
+      "context": "return \"On \\(chain.displayName)\""
+    }
+  ],
+  "On \\(total) networks": [
+    {
+      "file": "Wallet/AssetDetailView.swift",
+      "line": 288,
+      "context": "return \"On \\(total) networks\""
+    }
+  ],
+  "On \\(total) networks \u00b7 held on \\(held)": [
+    {
+      "file": "Wallet/AssetDetailView.swift",
+      "line": 283,
+      "context": "return \"On \\(total) networks \u00b7 held on \\(held)\""
+    }
+  ],
+  "Playground wallet": [
+    {
+      "file": "TestScreen/TestScreenView.swift",
+      "line": 209,
+      "context": "walletName: String.apertureLocalized(\"Playground wallet\"),"
+    }
+  ],
+  "QR code for \\(chain.displayName) address": [
+    {
+      "file": "Receive/ReceiveQRCard.swift",
+      "line": 67,
+      "context": "return \"QR code for \\(chain.displayName) address\""
+    }
+  ],
+  "QR code for \\(tokenSymbol) address on \\(chain.displayName)": [
+    {
+      "file": "Receive/ReceiveQRCard.swift",
+      "line": 65,
+      "context": "return \"QR code for \\(tokenSymbol) address on \\(chain.displayName)\""
+    }
+  ],
+  "Set \u2014 Light": [
+    {
+      "file": "PinCode/PinCodeView.swift",
+      "line": 675,
+      "context": "#Preview(\"Set \u2014 Light\") {"
+    }
+  ],
+  "Smart Chain": [
+    {
+      "file": "ImportWallet/WalletCoreKeyImportService.swift",
+      "line": 61,
+      "context": ".bnbChain:     20000714,   // \"Smart Chain\""
+    }
+  ],
+  "Switch wallet, currently \\(activeWallet?.name ?? ": [
+    {
+      "file": "Wallet/WalletHomeView.swift",
+      "line": 1741,
+      "context": ".accessibilityLabel(Text(\"Switch wallet, currently \\(activeWallet?.name ?? \"\")\"))"
+    }
+  ],
+  "This doesn't parse as a \\(chain.displayName) key. Check the format.": [
+    {
+      "file": "ImportWallet/PrivateKeyImport.swift",
+      "line": 203,
+      "context": "return (\"This doesn't parse as a \\(chain.displayName) key. Check the format.\", UniColors.Status.warningForeground)"
+    }
+  ],
+  "This isn\\u{2019}t a valid SVG.": [
+    {
+      "file": "Wallet/WalletIconPicker.swift",
+      "line": 474,
+      "context": "return \"This isn\\u{2019}t a valid SVG.\""
+    }
+  ],
+  "Transactions involving \\(identity.symbol) on \\(chain.displayName) appear here as they confirm on-chain.": [
+    {
+      "file": "Wallet/AssetNetworkDetailView.swift",
+      "line": 200,
+      "context": "? \"Transactions involving \\(identity.symbol) on \\(chain.displayName) appear here as they confirm on-chain.\""
+    }
+  ],
+  "URL: \\(displayHost)": [
+    {
+      "file": "Browser/BrowserSessionView.swift",
+      "line": 271,
+      "context": ".accessibilityLabel(Text(verbatim: \"URL: \\(displayHost)\"))"
+    }
+  ],
+  "Under \\(value)": [
+    {
+      "file": "Wallet/WalletHomeFilterSheet.swift",
+      "line": 638,
+      "context": "return String.apertureLocalized(\"Under \\(value)\")"
+    }
+  ],
+  "Verify \u2014 Light": [
+    {
+      "file": "PinCode/PinCodeView.swift",
+      "line": 689,
+      "context": "#Preview(\"Verify \u2014 Light\") {"
+    }
+  ],
+  "Version/26.0 Mobile/15E148 Safari/604.1 Aperture/1.0": [
+    {
+      "file": "Browser/BrowserWebView.swift",
+      "line": 273,
+      "context": "\"Version/26.0 Mobile/15E148 Safari/604.1 Aperture/1.0\""
+    }
+  ],
+  "Wallet import persist failed: \\(String(describing: error), privacy: .public)": [
+    {
+      "file": "ImportWallet/ImportWalletFlow.swift",
+      "line": 155,
+      "context": "\"Wallet import persist failed: \\(String(describing: error), privacy: .public)\""
+    }
+  ],
+  "Word \\(index + 1)": [
+    {
+      "file": "CreateWallet/BackupVerifyView.swift",
+      "line": 241,
+      "context": "String.apertureLocalized(\"Word \\(index + 1)\")"
+    }
+  ],
+  "[STUB \\(prefix.rawValue) #\\(i)] ": [
+    {
+      "file": "ImportWallet/KeyImportService.swift",
+      "line": 164,
+      "context": "\"[STUB \\(prefix.rawValue) #\\(i)] \" + mockAddress(for: chain, salt: \"\\(raw)-\\(i)\")"
+    }
+  ],
+  "\\($0.chain.rawValue)|\\($0.contract?.lowercased() ?? ": [
+    {
+      "file": "Wallet/AssetDetailResolver.swift",
+      "line": 327,
+      "context": "var emittedKeys = Set(rows.map { \"\\($0.chain.rawValue)|\\($0.contract?.lowercased() ?? \"\")\" })"
+    }
+  ],
+  "\\(amount) \\(identity.symbol)": [
+    {
+      "file": "Wallet/AssetDetailView.swift",
+      "line": 332,
+      "context": "return Text(verbatim: \"\\(amount) \\(identity.symbol)\")"
+    }
+  ],
+  "\\(amountText) \\(assetSymbol)": [
+    {
+      "file": "Wallet/AssetDetailView.swift",
+      "line": 711,
+      "context": "return \"\\(amountText) \\(assetSymbol)\""
+    }
+  ],
+  "\\(amountText) \\(identity.symbol)": [
+    {
+      "file": "Wallet/AssetNetworkDetailView.swift",
+      "line": 163,
+      "context": "return \"\\(amountText) \\(identity.symbol)\""
+    }
+  ],
+  "\\(availableChains.map(\\.rawValue).joined(separator: ": [
+    {
+      "file": "Receive/ReceiveAssetListView.swift",
+      "line": 42,
+      "context": "\"\\(availableChains.map(\\.rawValue).joined(separator: \",\"))|\\(customTokenRecords.count)\""
+    }
+  ],
+  "\\(chain.displayName) \u00b7 \\(chain.ticker)": [
+    {
+      "file": "Receive/ReceiveQRCard.swift",
+      "line": 30,
+      "context": "return \"\\(chain.displayName) \u00b7 \\(chain.ticker)\""
+    }
+  ],
+  "\\(chain.displayName) \u2014 \\(chain.ticker)": [
+    {
+      "file": "Receive/ReceiveAssetListView.swift",
+      "line": 80,
+      "context": ".accessibilityLabel(Text(verbatim: \"\\(chain.displayName) \u2014 \\(chain.ticker)\"))"
+    }
+  ],
+  "\\(chain.displayName) \u2014 receive address": [
+    {
+      "file": "Receive/ReceiveQRDetailView.swift",
+      "line": 121,
+      "context": "return \"\\(chain.displayName) \u2014 receive address\""
+    }
+  ],
+  "\\(chain.rawValue)|\\(contract ?? ": [
+    {
+      "file": "Wallet/AssetDetailResolver.swift",
+      "line": 19,
+      "context": "var id: String { \"\\(chain.rawValue)|\\(contract ?? \"\")\" }"
+    }
+  ],
+  "\\(chain.ticker) activity": [
+    {
+      "file": "Wallet/AssetActivityView.swift",
+      "line": 125,
+      "context": "return \"\\(chain.ticker) activity\""
+    }
+  ],
+  "\\(count) digits": [
+    {
+      "file": "CreateWallet/RollYourOwn/RollYourOwnSheet.swift",
+      "line": 172,
+      "context": "case .numbers: return String.apertureLocalized(\"\\(count) digits\")"
+    }
+  ],
+  "\\(count) flips": [
+    {
+      "file": "CreateWallet/RollYourOwn/RollYourOwnSheet.swift",
+      "line": 171,
+      "context": "case .coin:    return String.apertureLocalized(\"\\(count) flips\")"
+    }
+  ],
+  "\\(count) rolls": [
+    {
+      "file": "CreateWallet/RollYourOwn/RollYourOwnSheet.swift",
+      "line": 170,
+      "context": "case .dice:    return String.apertureLocalized(\"\\(count) rolls\")"
+    }
+  ],
+  "\\(formatted) \\(token.symbol)": [
+    {
+      "file": "ImportWallet/ReviewTokenRow.swift",
+      "line": 120,
+      "context": "return \"\\(formatted) \\(token.symbol)\""
+    }
+  ],
+  "\\(head) ending in \\(tail)": [
+    {
+      "file": "Receive/ReceiveAddressRow.swift",
+      "line": 151,
+      "context": "return \"\\(head) ending in \\(tail)\""
+    }
+  ],
+  "\\(history.count) dApps in your recent list.": [
+    {
+      "file": "Browser/BrowserSettingsView.swift",
+      "line": 76,
+      "context": ": \"\\(history.count) dApps in your recent list.\","
+    }
+  ],
+  "\\(identity.symbol) activity": [
+    {
+      "file": "Wallet/AssetActivityView.swift",
+      "line": 127,
+      "context": "return \"\\(identity.symbol) activity\""
+    }
+  ],
+  "\\(identity.symbol) on \\(chain.displayName)": [
+    {
+      "file": "Wallet/AssetNetworkDetailView.swift",
+      "line": 87,
+      "context": "\"\\(identity.symbol) on \\(chain.displayName)\""
+    }
+  ],
+  "\\(localizedName) \u2014 \\(currency.code)": [
+    {
+      "file": "Settings/CurrencyPickerView.swift",
+      "line": 91,
+      "context": ".accessibilityLabel(Text(verbatim: \"\\(localizedName) \u2014 \\(currency.code)\"))"
+    }
+  ],
+  "\\(nativeName) \u2014 \\(localizedName)": [
+    {
+      "file": "Settings/LanguagePickerView.swift",
+      "line": 134,
+      "context": ".accessibilityLabel(Text(verbatim: isSystemRow ? \"System\" : \"\\(nativeName) \u2014 \\(localizedName)\"))"
+    }
+  ],
+  "\\(position), \\(word)": [
+    {
+      "file": "CreateWallet/RecoveryPhraseView.swift",
+      "line": 474,
+      "context": ".accessibilityLabel(Text(verbatim: \"\\(position), \\(word)\"))"
+    }
+  ],
+  "\\(prefix) \\(existingCount + 1)": [
+    {
+      "file": "ImportWallet/ImportWalletState.swift",
+      "line": 97,
+      "context": "resolvedName = \"\\(prefix) \\(existingCount + 1)\""
+    },
+    {
+      "file": "CreateWallet/CreateWalletState.swift",
+      "line": 175,
+      "context": "resolvedName = \"\\(prefix) \\(existingCount + 1)\""
+    }
+  ],
+  "\\(raw) \\(request.chain.ticker)": [
+    {
+      "file": "Browser/DAppSendTransactionSheet.swift",
+      "line": 254,
+      "context": "return \"\\(raw) \\(request.chain.ticker)\""
+    }
+  ],
+  "\\(row.symbol), \\(row.name), on \\(row.chain.displayName)": [
+    {
+      "file": "Wallet/AllSupportedAssetsView.swift",
+      "line": 500,
+      "context": ".accessibilityLabel(Text(verbatim: \"\\(row.symbol), \\(row.name), on \\(row.chain.displayName)\"))"
+    }
+  ],
+  "\\(session.dAppName), \\(session.chain.displayName), \\(session.transport == .walletConnect ? ": [
+    {
+      "file": "Browser/BrowserConnectedRow.swift",
+      "line": 53,
+      "context": ".accessibilityLabel(Text(verbatim: \"\\(session.dAppName), \\(session.chain.displayName), \\(session.transport == .walletCon"
+    }
+  ],
+  "\\(short) (\\(build))": [
+    {
+      "file": "Settings/SettingsView.swift",
+      "line": 489,
+      "context": "return \"\\(short) (\\(build))\""
+    }
+  ],
+  "\\(sign)\\(WalletFormatting.native(amount, decimals: 6)) \\(tokenSymbol)": [
+    {
+      "file": "Wallet/ActivityRow.swift",
+      "line": 162,
+      "context": "return \"\\(sign)\\(WalletFormatting.native(amount, decimals: 6)) \\(tokenSymbol)\""
+    }
+  ],
+  "\\(sign)\\(formatted) \\(tx.tokenSymbol)": [
+    {
+      "file": "Wallet/TransactionDetailView.swift",
+      "line": 139,
+      "context": "return \"\\(sign)\\(formatted) \\(tx.tokenSymbol)\""
+    }
+  ],
+  "\\(symbol), \\(name)": [
+    {
+      "file": "Receive/ReceiveAssetListView.swift",
+      "line": 229,
+      "context": ".accessibilityLabel(Text(verbatim: \"\\(symbol), \\(name)\"))"
+    }
+  ],
+  "\\(tokenSymbol) on \\(chain.displayName)": [
+    {
+      "file": "Receive/ReceiveQRCard.swift",
+      "line": 28,
+      "context": "return \"\\(tokenSymbol) on \\(chain.displayName)\""
+    }
+  ],
+  "\\(tokenSymbol) on \\(chain.displayName) \u2014 receive address": [
+    {
+      "file": "Receive/ReceiveQRDetailView.swift",
+      "line": 119,
+      "context": "return \"\\(tokenSymbol) on \\(chain.displayName) \u2014 receive address\""
+    }
+  ],
+  "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about": [
+    {
+      "file": "ImportWallet/ImportGuideSheets.swift",
+      "line": 55,
+      "context": "Text(verbatim: \"abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about\")"
+    }
+  ],
+  "abandon abandon abandon \u2026 about": [
+    {
+      "file": "ImportWallet/MnemonicImport.swift",
+      "line": 134,
+      "context": "example: \"abandon abandon abandon \u2026 about\","
+    }
+  ],
+  "all networks": [
+    {
+      "file": "Wallet/WalletHomeNetworksView.swift",
+      "line": 131,
+      "context": "if selectedSet.isEmpty { return true }  // sentinel \u2014 \"all networks\""
+    }
+  ],
+  "attach: installed UIContextMenuInteraction on UITabBar": [
+    {
+      "file": "Main/TabBarLongPressInstaller.swift",
+      "line": 217,
+      "context": "installerLog.info(\"attach: installed UIContextMenuInteraction on UITabBar\")"
+    }
+  ],
+  "ctx-menu: presenting menu for tab \\(self.tabIndex)": [
+    {
+      "file": "Main/TabBarLongPressInstaller.swift",
+      "line": 269,
+      "context": "installerLog.info(\"ctx-menu: presenting menu for tab \\(self.tabIndex)\")"
+    }
+  ],
+  "ctx-menu: skipped (pressed segment \\(pressedIndex), target segment \\(targetIndex))": [
+    {
+      "file": "Main/TabBarLongPressInstaller.swift",
+      "line": 266,
+      "context": "installerLog.debug(\"ctx-menu: skipped (pressed segment \\(pressedIndex), target segment \\(targetIndex))\")"
+    }
+  ],
+  "didMove(toParent:) parent=\\(parent.map { String(describing: type(of: $0)) } ?? ": [
+    {
+      "file": "Main/TabBarLongPressInstaller.swift",
+      "line": 136,
+      "context": "\"didMove(toParent:) parent=\\(parent.map { String(describing: type(of: $0)) } ?? \"nil\")\""
+    }
+  ],
+  "filter: brightness(0) invert(1);": [
+    {
+      "file": "Wallet/Avatar/WalletCustomSvgRenderer.swift",
+      "line": 236,
+      "context": "? \"filter: brightness(0) invert(1);\""
+    }
+  ],
+  "installIfNeeded[\\(reason)]: no UITabBarController": [
+    {
+      "file": "Main/TabBarLongPressInstaller.swift",
+      "line": 155,
+      "context": "installerLog.debug(\"installIfNeeded[\\(reason)]: no UITabBarController\")"
+    }
+  ],
+  "makeUIViewController for tabIndex=\\(tabIndex)": [
+    {
+      "file": "Main/TabBarLongPressInstaller.swift",
+      "line": 62,
+      "context": "installerLog.info(\"makeUIViewController for tabIndex=\\(tabIndex)\")"
+    }
+  ],
+  "on \\(token.chain.displayName)": [
+    {
+      "file": "ImportWallet/ReviewTokenRow.swift",
+      "line": 40,
+      "context": "Text(verbatim: \"on \\(token.chain.displayName)\")"
+    }
+  ],
+  "passThrough decode failed": [
+    {
+      "file": "Browser/DAppRequestRouter.swift",
+      "line": 281,
+      "context": "return .failure(.failed(\"passThrough decode failed\"))"
+    }
+  ],
+  "viewDidAppear: tabIndex=\\(self.tabIndex)": [
+    {
+      "file": "Main/TabBarLongPressInstaller.swift",
+      "line": 110,
+      "context": "installerLog.info(\"viewDidAppear: tabIndex=\\(self.tabIndex)\")"
+    }
+  ],
+  "window.__apertureDispatch && window.__apertureDispatch(\\(envelope));": [
+    {
+      "file": "Browser/BrowserWebView.swift",
+      "line": 251,
+      "context": "let js = \"window.__apertureDispatch && window.__apertureDispatch(\\(envelope));\""
+    }
+  ]
+}

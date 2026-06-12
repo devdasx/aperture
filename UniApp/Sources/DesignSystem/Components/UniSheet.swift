@@ -237,7 +237,9 @@ struct UniSheet<BodyContent: View, Actions: View>: View {
             Text(title)
                 // Matches `.navigationTitle("…").displayMode(.large)`
                 // visual weight without the NavigationStack chrome.
-                .font(.system(size: 28, weight: .bold))
+                // Token (not a fixed point size) so the title scales
+                // with Dynamic Type and bold-text accessibility.
+                .font(UniTypography.largeTitle)
                 .foregroundStyle(UniColors.Text.primary)
                 .multilineTextAlignment(.leading)
                 // Critical: lets the title wrap onto multiple lines

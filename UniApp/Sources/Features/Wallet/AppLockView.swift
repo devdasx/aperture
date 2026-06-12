@@ -30,7 +30,15 @@ struct AppLockView: View {
         PinCodeView(
             mode: .verify,
             onComplete: { _ in
-                lockController.unlock()
+                // 2026-06-09 v3 — wrap the unlock in a smooth iOS 26
+                // spring so the lock's exit transition (scale 1.08
+                // + opacity, set in `AppRoot`) and the home's
+                // scale-from-0.97 reveal animate together. Without
+                // `withAnimation` the state change is instantaneous
+                // and SwiftUI uses no curve.
+                withAnimation(.smooth(duration: 0.55)) {
+                    lockController.unlock()
+                }
                 // Capture a fresh biometric snapshot after every
                 // successful unlock so drift detection stays accurate
                 // (Rule #17 mechanism + the BiometricEnrollmentTracker
@@ -59,7 +67,6 @@ struct AppLockView: View {
         // direct mount in another stack) gets correct behavior for
         // free.
         .background(UniColors.Background.primary.ignoresSafeArea())
-        .interactiveDismissDisabled(true)
         .sheet(isPresented: $isShowingForgotSheet) {
             ForgotPinSheet()
                 .uniAppEnvironment()

@@ -100,7 +100,7 @@ private struct RollYourOwnModeSelectionView: View {
             Section {
                 heroAndBodyHeader
                     .listRowBackground(Color.clear)
-                    .listRowInsets(EdgeInsets(top: UniSpacing.l, leading: UniSpacing.l, bottom: UniSpacing.l, trailing: UniSpacing.l))
+                    .listRowInsets(EdgeInsets(top: UniSpacing.l, leading: UniSpacing.m, bottom: UniSpacing.l, trailing: UniSpacing.m))
                     .listRowSeparator(.hidden)
             }
 
@@ -444,7 +444,8 @@ private struct RollYourOwnKeypadView: View {
         if buffer.count >= required {
             completeTrigger &+= 1
         }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(0.4))
             coinLandTrigger &+= 1
         }
     }

@@ -123,7 +123,7 @@ struct CreateWalletDisclosureSheet: View {
     /// label aligns under "Write it down." and the switch's right
     /// pill ends at the same X as the card's right edge.
     private var acknowledgementRow: some View {
-        Toggle(isOn: $didAcknowledge) {
+        UniToggle(isOn: $didAcknowledge) {
             Text("I understand if I lose my recovery phrase, I lose my crypto.")
                 .font(UniTypography.subheadline)
                 .foregroundStyle(UniColors.Text.primary)

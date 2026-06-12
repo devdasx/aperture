@@ -1,0 +1,578 @@
+[
+ {
+  "file": "/Users/thuglifex/Documents/UniApp/UniApp/Sources/Brand/Base58.swift",
+  "line": 56,
+  "title": "Base58.decodeBytes returns an extra zero byte for all-'1' inputs (zero-value strings)",
+  "severity": "medium",
+  "category": "data-correctness",
+  "description": "The decode accumulator is seeded `var bytes: [UInt8] = [0]` (line 42) and, after the divmod loop, the high-order zero digit is never stripped before the leading-zero bytes are prepended (lines 56-58: `var result = Array(repeating: 0, count: leadingOnes); result.append(contentsOf: bytes.reversed())`). For any input consisting entirely of '1' characters (numeric value zero), `bytes` stays `[0]`, so the result contains `leadingOnes + 1` zero bytes instead of `leadingOnes`. Concretely: `Base58.decodeBytes(\"1\")` returns `[0, 0]` instead of `[0]`, and the Solana System Program address `\"11111111111111111111111111111111\"` (a real, well-known 32-zero-byte address) decodes to 33 bytes instead of 32. Reachable today via `ContractValidator.validateSolanaMint` (UniApp/Sources/Networking/ContractValidator.swift:87-90), which would report `.wrongLength` for a structurally valid 32-byte base58 string, and inherited silently by every future caller (SS58, Tron paths use the same function). The encoder has the symmetric strip for this exact case (lines 107-113, `extraLeadingOnes`); the decoder is missing it, so `decodeBytes(encode(Data([0]))) != [0]` \u2014 the round-trip asserted as the codec's contract is broken for the zero value. Note the DEBUG smoke check (lines 122-136) only exercises `encode`, so this is never caught.",
+  "suggestedFix": "After the per-character divmod loop and before assembling `result`, strip high-order zero digits from the accumulator: `while let last = bytes.last, last == 0 { bytes.removeLast() }` (allowing `bytes` to become empty for the zero value). Then `result = Array(repeating: 0, count: leadingOnes) + bytes.reversed()`. Add `assert(Base58.decodeBytes(\"1\") == [0])` and a System-Program round-trip case to the DEBUG smoke check."
+ },
+ {
+  "file": "/Users/thuglifex/Documents/UniApp/UniApp/Sources/Brand/ApertureMotion.swift",
+  "line": 111,
+  "title": "Splash fade-in opacity steps backwards at the 0.15s phase boundary (mismatched fade divisors)",
+  "severity": "low",
+  "category": "ui-state",
+  "description": "In `ApertureMotion.splash(at:)`, phase 1 (tt < 0.15) computes `opacity = clamp01(tt / 0.3)` (line 102) while phase 2 (0.15 <= tt < 1.40) computes `opacity = clamp01(tt / 0.4)` (line 111). At the boundary tt = 0.15 the opacity is 0.5 on the phase-1 side but 0.375 on the phase-2 side, so the splash iris visibly dims by 12.5% in a single frame ~150 ms into every app launch before resuming its fade to 1.0 at tt = 0.4. The curve is discontinuous; the doc comment (\"0.00-0.15 \u2014 closed, fading in ... 0.15-1.40 ... opacity reaches 1\") implies one continuous fade. This is a deterministic one-frame flicker on the brand's most-watched animation (driven per-frame by SplashView), not a hypothetical.",
+  "suggestedFix": "Use the same fade window in both phases \u2014 e.g. change line 102 to `opacity = Double(clamp01(tt / 0.4))` (or line 111 to `/ 0.3`), making the opacity curve continuous across the tt = 0.15 boundary. Verify against the canonical animated-logo.html spec to pick which divisor is authoritative."
+ },
+ {
+  "file": "/Users/thuglifex/Documents/UniApp/UniApp/Sources/Brand/BIP39Seed.swift",
+  "line": 42,
+  "title": "deriveSeed skips the BIP-39-mandated NFKD normalization of mnemonic and passphrase, deriving non-interoperable seeds for non-ASCII passphrases",
+  "severity": "high",
+  "category": "data-correctness",
+  "description": "BIP-39 spec ('From mnemonic to seed') requires both the mnemonic sentence and the salt ('mnemonic' + passphrase) to be encoded in UTF-8 **NFKD** before PBKDF2. `deriveSeed` (BIP39Seed.swift:41-49) feeds `Data(mnemonic.utf8)` and `Data(salt.utf8)` raw, with no `decomposedStringWithCompatibilityMapping`. English mnemonic words are ASCII so the mnemonic side is unaffected, but the passphrase is free-form user text: iOS keyboards emit precomposed NFC for accented Latin (e.g. 'caf\u00e9' = U+00E9, where NFKD is 'e' + U+0301), and the app explicitly supports non-Latin passphrases (PassphraseSheet.swift:115 sets text direction `.automatic` 'because a passphrase may be' RTL script; Arabic presentation forms, full-width digits, and ligatures all differ under NFKD). Concrete failure: a user creates a wallet with passphrase 'caf\u00e9' \u2014 Aperture derives addresses from the NFC-byte seed via this function (called from ImportWalletState.swift:243 and the create-wallet flow per SeedVault.swift:57). When the user later restores the same 12/24 words + 'caf\u00e9' into any spec-compliant wallet (Trezor, Electrum, Sparrow, Ledger Live \u2014 all NFKD-normalize), PBKDF2 runs over different salt bytes, produces a different 64-byte seed, and derives completely different addresses on every chain \u2014 the user's funds appear gone and are unrecoverable without knowing the normalization quirk. The reverse direction (importing a phrase+passphrase that originated in a spec-compliant wallet) silently yields an empty wallet. The DEBUG smoke test (line 124) only exercises ASCII ('TREZOR'), so this never trips an assert.",
+  "suggestedFix": "In deriveSeed, normalize both inputs to NFKD before encoding: `let mnemonic = words.joined(separator: \" \").decomposedStringWithCompatibilityMapping` and `let salt = (\"mnemonic\" + passphrase).decomposedStringWithCompatibilityMapping`, then take `.utf8` of those. Add a DEBUG smoke vector with a non-ASCII passphrase (e.g. the Japanese/UTF-8 vectors from python-mnemonic's vectors.json) to lock the behavior. Also audit the parallel WalletCore HDWallet(mnemonic:passphrase:) path (WalletCoreKeyImportService.swift:119) so both derivation paths normalize identically."
+ },
+ {
+  "file": "/Users/thuglifex/Documents/UniApp/UniApp/Sources/Brand/Base58.swift",
+  "line": 42,
+  "title": "Base58.decodeBytes returns a spurious extra zero byte for inputs consisting entirely of '1' characters",
+  "severity": "low",
+  "category": "data-correctness",
+  "description": "decodeBytes seeds the big-int accumulator with `var bytes: [UInt8] = [0]` (line 42) and then prepends `leadingOnes` zero bytes (line 56). When the input is all '1' characters the base conversion never overwrites or grows past the seed limb, so the seeded 0x00 survives and the result has one zero byte too many. Verified empirically: `decodeBytes(\"1\")` \u2192 2 bytes (should be 1), `decodeBytes(\"11111111111111111111111111111111\")` (the Solana System Program address, 32 ones) \u2192 33 bytes (should be 32 zero bytes). The sibling `encode` explicitly strips its analogous seed artifact (lines 107-113), so encode/decode are asymmetric: `decode(encode(Data([0])))` does not round-trip. Concrete user impact: ContractValidator.swift:87 validates user-supplied Solana token contract addresses with 'Base58 decode \u2192 exactly 32 bytes' \u2014 the System Program address `1111...1` (which several explorers and token APIs surface as the native-SOL placeholder mint) decodes to 33 bytes and is falsely rejected as an invalid address. Same false-rejection applies at SS58.swift:28 and RealRPCBalanceScanner.swift:746 for any all-ones input. The failure is fail-closed (rejection, never a wrong accepted address), hence low severity.",
+  "suggestedFix": "After the conversion loop, drop the seed limb when the numeric value is zero: `if bytes.count == 1 && bytes[0] == 0 { bytes = [] }` before assembling the result (or equivalently, run the base conversion only over `string.dropFirst(leadingOnes)` starting from an empty limb array). Add a DEBUG smoke assertion that `decodeBytes(\"1\") == [0]` and that decode(encode(x)) round-trips for inputs with leading zero bytes."
+ },
+ {
+  "file": "/Users/thuglifex/Documents/UniApp/UniApp/Sources/Brand/BIP39Seed.swift",
+  "line": 41,
+  "title": "deriveSeed skips BIP-39-mandated NFKD normalization \u2014 non-ASCII passphrase produces a seed incompatible with every spec-compliant wallet",
+  "severity": "high",
+  "category": "data-correctness",
+  "description": "BIP-39 \u00a7Seed requires both the mnemonic sentence and the passphrase to be encoded as UTF-8 **NFKD** before PBKDF2. `deriveSeed(words:passphrase:)` (BIP39Seed.swift:41-49) does `let salt = \"mnemonic\" + passphrase` and feeds `Data(salt.utf8)` / `Data(mnemonic.utf8)` to PBKDF2 with no normalization (grep confirms `decomposedStringWithCompatibilityMapping` appears nowhere in the codebase). The iOS keyboard emits precomposed NFC text, so a passphrase like \"caf\u00e9\" is hashed as U+00E9 instead of the NFKD form U+0065 U+0301, yielding a different 64-byte seed than Trezor/Ledger/Electrum/BlueWallet (all of which normalize per spec). Concrete failure: (a) user creates a wallet in Aperture with passphrase \"caf\u00e9\", funds it, later restores phrase+passphrase into any hardware/software wallet \u2192 different addresses, balance appears zero, user believes funds are lost; (b) user imports a Trezor-created wallet with an accented passphrase into Aperture (KeyImportService.swift:205, ImportWalletState.swift:243 both route through this function) \u2192 Aperture derives wrong addresses and shows empty balances. English mnemonic words are ASCII so the words half is benign today, but the passphrase half is live user input and is reachable from both the create flow (CreateWalletState.deriveSeed) and the import flow (PassphraseSheet).",
+  "suggestedFix": "In BIP39.deriveSeed, normalize both inputs before encoding: `let mnemonic = words.joined(separator: \" \").decomposedStringWithCompatibilityMapping` and `let salt = (\"mnemonic\" + passphrase).decomposedStringWithCompatibilityMapping`, then pass their UTF-8 bytes to pbkdf2HmacSha512. Add a debug vector with a non-ASCII passphrase (e.g. the Japanese trezor vectors) to lock the behavior in."
+ },
+ {
+  "file": "/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/CreateWallet/CreateWalletState.swift",
+  "line": 151,
+  "title": "PBKDF2-HMAC-SHA512 (2048 iterations, pure Swift) runs synchronously on @MainActor in the create-wallet persist path",
+  "severity": "low",
+  "category": "performance",
+  "description": "`CreateWalletState` is `@MainActor` (CreateWalletState.swift:27-29); `persist(into:requiresBackup:)` calls `deriveSeed()` synchronously at line 151, which executes BIP39.deriveSeed's pure-Swift PBKDF2 loop (BIP39Seed.swift:83-107: 2048 sequential HMAC-SHA512 calls, each allocating a fresh `Data` plus a 64-iteration Data-subscript XOR loop) on the main thread. Benchmarked at 7.8 ms per call with `-O` on an M-series Mac; the app is installed on the device as a Debug build (per the project's Rule #22 install command), where this Data-subscript-heavy loop is typically several times slower \u2014 tens of milliseconds of main-thread stall, i.e. multiple dropped frames exactly while WalletReadyView (WalletReadyView.swift:176 `await state.persist(...)`) is animating in. The codebase already recognizes this hazard: the import path offloads the identical call via `nonisolated static deriveSeedOffMain` (ImportWalletState.swift:238-243); the create path simply never got the same treatment.",
+  "suggestedFix": "Mirror the import path: make the derivation in persist() run off the main actor, e.g. `let seed = await Self.deriveSeedOffMain(words: words, passphrase: passphrase)` using a `nonisolated static` helper (capture `words`/`passphrase` as values before hopping), or mark BIP39.deriveSeed `@concurrent` and await it. Keep the synchronous `deriveSeed()` only if any caller genuinely needs it on-main."
+ },
+ {
+  "file": "/Users/thuglifex/Documents/UniApp/UniApp/Sources/Database/TransactionRepository.swift",
+  "line": 42,
+  "title": "Transaction upsert dedup key (txHash, addressId) silently discards all but one leg of multi-asset transactions (swaps)",
+  "severity": "high",
+  "category": "data-correctness",
+  "description": "upsertTransaction treats (txHash, addressId) as the transaction identity: the predicate at line 42 fetches by txHash + addressId only, and when a row exists the update branch (lines 60-65) deliberately refuses to touch direction/amount/tokenSymbol ('immutable once a tx is on-chain'). But one on-chain transaction routinely produces MULTIPLE ledger legs for the same address with the same hash. Concrete, confirmed scenario: EVMTransactionAdapter.fetch (EVMTransactionAdapter.swift:140, 'let combined = nativeEvents + tokenEvents') returns both the native txlist entry and the ERC-20 tokentx entries for the same hash \u2014 a Uniswap ETH\u2192USDC swap yields an outgoing-ETH event AND an incoming-USDC event with identical txHash; a token\u2192token swap yields two tokentx legs (out WETH, in USDC) with identical txHash. WalletRefreshCoordinator.scanTransactionHistory (WalletRefreshCoordinator.swift:456-470) loops these events into upsertTransaction one by one for the same addressId. The first leg inserts a row; every subsequent leg matches the existing row and only updates status/blockNumber/fee \u2014 its amount, token symbol, and direction are thrown away. The user's activity feed permanently shows only one leg of every swap (which leg wins depends on the nativeEvents-first array order), and rescans can never repair it because the surviving row's amount/direction are frozen. For a wallet app this is wrong transaction history shown to the user.",
+  "suggestedFix": "Widen the upsert identity to include the asset leg: predicate on txHash + addressId + tokenContract + tokenSymbol + direction (and consider a log-index/leg-index column for same-token multi-transfer txs). Apply the same widening to the legacy relationship-traversal fallback at line 53. Update the doc comment ('Upsert a transaction by (txHash, addressId)') to match."
+ },
+ {
+  "file": "/Users/thuglifex/Documents/UniApp/UniApp/Sources/Database/ApertureDatabase.swift",
+  "line": 153,
+  "title": "Store-deletion trigger range 134110...134190 includes NSSQLiteError (134180) and NSMigrationCancelledError (134120) \u2014 transient SQLite failures wipe the on-disk store",
+  "severity": "high",
+  "category": "data-correctness",
+  "description": "migrationIncompatibilityCodes is built with codes.formUnion(134110...134190), intended to capture the 'NSMigrationError family'. That range is not all migration codes: NSSQLiteError = 134180 is Core Data's general 'SQLite error' code, raised for disk-full, disk I/O errors, WAL-replay failures and file-locking problems during open \u2014 conditions the file's own comments (lines 22-27, 103-111) explicitly classify as transient and say 'must NOT match: the store is healthy and wiping it would destroy user data'. NSMigrationCancelledError = 134120 (a cancelled migration, retryable) is also swept in. Because isMigrationIncompatibilityError (lines 161-173) walks the NSUnderlyingErrorKey chain to depth 8, a SwiftData open failure that wraps an underlying NSCocoaErrorDomain/134180 error (the typical shape for an SQLite-level open failure, e.g. device storage full at launch) matches the set, and the catch at line 68 calls resetStore \u2014 permanently deleting aperture.sqlite plus its -wal/-shm sidecars. WalletRecords are rebuilt from the Keychain manifest, but ALL transaction history, token balances, cached prices, browser history/bookmarks, and \u2014 critically \u2014 CustomTokenRecords (which have no Keychain mirror) are destroyed forever over a transient I/O condition.",
+  "suggestedFix": "Replace the range sweep with an explicit enumeration of genuine never-openable codes: NSPersistentStoreIncompatibleSchemaError (134020), NSPersistentStoreIncompatibleVersionHashError (134100), NSMigrationError (134110), NSMigrationConstraintViolationError (134111), NSMigrationMissingSourceModelError (134130), NSMigrationMissingMappingModelError (134140), NSMigrationManagerSourceStoreError (134150), NSMigrationManagerDestinationStoreError (134160), NSEntityMigrationPolicyError (134170), NSInferredMappingModelError (134190). Exclude 134180 (NSSQLiteError) and 134120 (NSMigrationCancelledError) so they fall into the existing retry-then-in-memory branch that leaves the store intact."
+ },
+ {
+  "file": "/Users/thuglifex/Documents/UniApp/UniApp/Sources/Database/CustomTokenRepository.swift",
+  "line": 153,
+  "title": "CustomTokenSnapshot erases the hasKnownChain gate \u2014 rows with an unrecognized chainRaw are scanned and displayed as Ethereum tokens",
+  "severity": "low",
+  "category": "logic",
+  "description": "CustomTokenRecord documents an explicit contract (ApertureSchema.swift:814-820): 'a row that fails this [hasKnownChain] check must not be scanned or displayed as if it lived on Ethereum. Check this before trusting chain', because the chain accessor (ApertureSchema.swift:828) falls back to .ethereum for an unknown chainRaw. CustomTokenSnapshot.init (line 153, 'self.chain = record.chain') bakes that .ethereum fallback into the Sendable snapshot, and fetchAll (lines 80-92) maps every row into snapshots without ever gating on hasKnownChain \u2014 the snapshot type carries no chainRaw or validity flag, so downstream consumers cannot perform the documented check even if they tried. Concrete consumers: WalletRefreshCoordinator.performRefresh (WalletRefreshCoordinator.swift:104-108) groups fetchAll(chain: nil) results by $0.chain to seed the balance scanner and the EVM history allowlist. If a SupportedChain rawValue is ever renamed or retired (this project has already done exactly that for WalletAvatarGlyph rawValues in the v3 retirement, ApertureSchema.swift:117-126), every existing custom-token row on that chain would silently be treated as an Ethereum contract \u2014 eth_call balance queries issued against Ethereum RPC for, e.g., a Solana mint string, and the token displayed under Ethereum in the UI.",
+  "suggestedFix": "Filter rows where hasKnownChain == false out of fetchAll/fetchByContract results (and log them), or make CustomTokenSnapshot.init failable / carry chainRaw so consumers can apply the documented gate. The repository is the right enforcement point since the snapshot type erases the signal."
+ },
+ {
+  "file": "/Users/thuglifex/Documents/UniApp/UniApp/Sources/Database/TransactionRepository.swift",
+  "line": 122,
+  "title": "upsertBalance predicate traverses the optional address relationship \u2014 the documented degrade-to-full-scan shape \u2014 and runs dozens of times per refresh",
+  "severity": "medium",
+  "category": "performance",
+  "description": "The balance dedup predicate is `$0.address?.id == addressId && ...` (lines 122-124). The codebase itself documents this exact predicate shape as the reason TransactionRecord grew a stored `addressId` primitive column: ApertureSchema.swift lines 488-497 say '#Predicate traversal of the optional address relationship can degrade to an in-memory full scan; repository predicates filter on this column directly.' TokenBalanceRecord never received the same fix, so every upsertBalance call risks materializing the entire TokenBalanceRecord table in memory to evaluate the predicate. WalletRefreshCoordinator.performRefresh (lines 144-172) enqueues one upsertBalance per yielded native/token row into a withTaskGroup \u2014 dozens to 100+ calls per refresh across 24 chains \u00d7 registry + custom tokens \u2014 so per refresh this is O(rows \u00d7 table-size) fetch work on the @ModelActor, serialized, growing quadratically as the user accumulates token rows across multiple wallets. Symptom: increasingly slow pull-to-refresh and a busy database actor as the balances table grows.",
+  "suggestedFix": "Add a stored `addressId: UUID?` column to TokenBalanceRecord (additive lightweight migration, exactly like TransactionRecord.addressId), write it at insert in upsertBalance, and predicate on the primitive (`$0.addressId == addressId && $0.tokenSymbol == ... && $0.tokenContract == ...`) with a one-time legacy fallback for nil rows."
+ },
+ {
+  "file": "/Users/thuglifex/Documents/UniApp/UniApp/Sources/Database/TransactionRepository.swift",
+  "line": 52,
+  "title": "Legacy-fallback fetch executes on every brand-new transaction insert, not just for legacy rows",
+  "severity": "low",
+  "category": "performance",
+  "description": "Lines 47-58: when the fast-path lookup by stored `addressId` finds nothing (`existing == nil`), the code unconditionally runs a second fetch with the relationship-traversal predicate `$0.txHash == txHash && $0.address?.id == addressId`. The fast path misses for every transaction the store has never seen \u2014 i.e. the common case during a history scan (WalletRefreshCoordinator.scanTransactionHistory inserts up to 25 events \u00d7 up to 24 chains per refresh, and the first refresh after install inserts all of them). So every new insert pays a second fetch using the predicate shape the project documents as potentially degrading to an in-memory scan of the whole transactions table (ApertureSchema.swift:488-497). Cost grows linearly with table size per insert and multiplies across the per-refresh insert burst \u2014 wasted work on a store where no legacy (pre-addressId-column) rows exist.",
+  "suggestedFix": "Run the legacy backfill once: either backfill all nil-addressId rows in a single startup pass (fetch where addressId == nil, set from relationship, save) and delete the per-insert fallback, or gate the fallback behind a one-time flag in AppMetadataRecord that records 'legacy rows backfilled'."
+ },
+ {
+  "file": "/Users/thuglifex/Documents/UniApp/UniApp/Sources/Database/WalletRepository.swift",
+  "line": 367,
+  "title": "deleteWallet wipes Keychain seed + mnemonic before the record delete is saved \u2014 a save failure leaves a visible wallet whose signing material is already destroyed",
+  "severity": "low",
+  "category": "data-correctness",
+  "description": "Lines 367-373: deleteWallet first runs `await MainActor.run { try? SeedVault.deleteSeed(for: id); try? MnemonicVault.deleteMnemonic(for: id) }`, then `modelContext.delete(record)` and `try modelContext.save()`. The vault wipes are irreversible the moment they execute. If `modelContext.save()` then throws (disk full is the realistic trigger; the method is declared `throws` and WalletDetailView.swift:460 propagates it), the WalletRecord remains in the store and the wallet stays fully visible in the UI \u2014 the user reasonably concludes the delete failed and their wallet is intact. In reality the seed and mnemonic are gone: signing is permanently impossible and the recovery-phrase backup screen can never display the phrase again. For a `requiresBackup == true` wallet the user never wrote down, the funds become unrecoverable while the UI shows a healthy wallet. The `try?` also swallows vault-deletion errors, so a partial wipe (seed deleted, mnemonic delete failed or vice versa) is equally silent.",
+  "suggestedFix": "Reorder: delete the record and `try modelContext.save()` FIRST; only after the save succeeds, wipe SeedVault/MnemonicVault (the brief window where a wipe failure orphans a Keychain item is the safer failure mode \u2014 it leaks no funds and can be swept by a periodic orphan-cleanup that diffs Keychain ids against allWalletIds()). Alternatively, capture the seed/mnemonic data before wiping and restore them to Keychain if the save throws."
+ },
+ {
+  "file": "/Users/thuglifex/Documents/UniApp/UniApp/Sources/Database/ApertureDatabase.swift",
+  "line": 119,
+  "title": "In-memory fallback sessions perform permanent Keychain mutations against an ephemeral store \u2014 a wallet created in fallback mode is permanently orphaned, and isInMemoryFallback is surfaced nowhere",
+  "severity": "high",
+  "category": "data-correctness",
+  "description": "When the on-disk container fails twice with a non-migration error (classic case: file-protection error on a prewarmed/background launch before first unlock, after which the same process is foregrounded by the user), init falls back to an in-memory container (lines 100, 119-120) and the app runs fully functional. bootstrap() then restores wallets from the Keychain manifest into the in-memory store, and every WalletRepository mutation keeps writing REAL Keychain state from the EPHEMERAL store: (1) User creates a wallet \u2192 seed written to SeedVault (real), record written in-memory (vanishes at exit), WalletManifestStore.sync writes the new entry (real). Next healthy launch: the on-disk store opens with its old N wallets, WalletManifestStore.restoreIfNeeded sees fetchCount > 0 and skips restore entirely (WalletManifestStore.swift:204-207), so the new wallet's record never reaches disk; the next mutation re-syncs the manifest from the disk context, permanently deleting the new wallet's manifest entry. The wallet \u2014 which the user may have funded \u2014 disappears from the UI forever; its seed sits orphaned in Keychain. Funds are unrecoverable unless the user wrote down the phrase. (2) Conversely, deleteWallet / deleteAllWallets in a fallback session wipe real seeds and the real manifest while the on-disk store will resurrect the (now seedless) records next launch. Grep confirms `isInMemoryFallback` is referenced by zero files outside ApertureDatabase.swift \u2014 despite the doc comment claiming it 'Surfaces in About' \u2014 so the user gets no indication the session is volatile and no mutation is blocked.",
+  "suggestedFix": "In fallback mode, make the session read-only for custody mutations: have WalletRepository (or the call sites) check ApertureDatabase.shared.isInMemoryFallback and refuse wallet create/import/delete with a user-facing error; at minimum suppress WalletManifestStore.sync/clear and SeedVault/MnemonicVault writes-and-wipes when the backing store is in-memory. Also actually surface isInMemoryFallback in the UI as documented."
+ },
+ {
+  "file": "/Users/thuglifex/Documents/UniApp/UniApp/Sources/Database/ApertureDatabase.swift",
+  "line": 308,
+  "title": "SQLite store is included in iCloud/device backups while seeds are ThisDeviceOnly \u2014 restoring a backup to a new iPhone yields wallets presented as fully capable that can never sign",
+  "severity": "medium",
+  "category": "security",
+  "description": "defaultStoreURL() (lines 302-327) deliberately places aperture.sqlite in Application Support (backed up by default; nothing sets isExcludedFromBackup), with the doc comment justifying it as matching the Keychain posture: 'the seed material in Keychain is also iCloud-backupable iff the user enables Keychain iCloud.' That claim is false in this codebase: SeedVault writes with kSecAttrAccessibleWhenPasscodeSetThisDeviceOnly (SeedVault.swift:140) and WalletManifestStore with AfterFirstUnlockThisDeviceOnly \u2014 ThisDeviceOnly items never migrate to a new device via any backup. Concrete scenario every user hits on phone upgrade: restore iCloud/Finder backup to new iPhone \u2192 the SwiftData store (WalletRecords, addresses, balances, full tx history, dApp browser history) transfers, the seeds do not. The app launches showing all wallets as healthy `.created` wallets with send/sign affordances enabled and receive addresses available; the user can deposit funds, but SeedVault.loadSeed throws .noSuchWallet for every wallet and no surface detects or warns about the missing seed. Secondary issue: the user's complete financial metadata and browsing history are exported into backups by design while the security posture document claims device-local self-custody.",
+  "suggestedFix": "Either exclude the store directory from backup (URLResourceValues.isExcludedFromBackup = true on the Aperture directory) so a restored device starts clean and the Keychain manifest path correctly reports nothing, or add a launch-time integrity pass that checks SeedVault.hasSeed(for:) per non-watch-only wallet and visibly downgrades seedless wallets (badge + disabled send/sign + re-import prompt). Fix the incorrect doc comment either way."
+ },
+ {
+  "file": "/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/AdvancedSettingsView.swift",
+  "line": 160,
+  "title": "'Reset Aperture' leaves dApp browser history, bookmarks, custom tokens, and price cache in the database after the supposedly nuclear wipe",
+  "severity": "medium",
+  "category": "security",
+  "description": "resetAll() (lines 160-194) deletes wallets via WalletRepository.deleteAllWallets() (which by its own doc only removes WalletRecord + cascades and clears the wallet manifest \u2014 WalletRepository.swift:409-417), wipes the PIN, and removes the UserDefaults domain. It never touches BrowserHistoryRecord, BrowserBookmarkRecord, CustomTokenRecord, or CachedPriceRecord. After a 'RESET APERTURE' confirmation \u2014 the flow the user reaches precisely to hand the device over or start fresh \u2014 the SQLite store still contains every dApp the user ever visited (host, URL, title, visit counts, timestamps; BrowserModels.swift documents this data as privacy-sensitive), their bookmarks, and their user-added token contracts. The next person who creates a wallet on the device inherits the previous owner's browsing history in the Browser tab's Recent section and their custom token list. Found while auditing Database/: deleteAllWallets' narrow scope is correct for its name, but no caller cleans the remaining models.",
+  "suggestedFix": "Extend the reset path to delete all rows of BrowserHistoryRecord, BrowserBookmarkRecord, CustomTokenRecord, and CachedPriceRecord (e.g. a ApertureDatabase.eraseAllUserData() that iterates every model except the app-metadata singletons), or use container.erase()/deleteAllData equivalents, before routing back to onboarding."
+ },
+ {
+  "file": "/Users/thuglifex/Documents/UniApp/UniApp/Sources/Database/ApertureSchema.swift",
+  "line": 17,
+  "title": "ApertureSchemaV1/VersionedSchema is never wired into the ModelContainer \u2014 every non-additive schema change triggers the store-wipe recovery, silently destroying user-curated custom tokens",
+  "severity": "low",
+  "category": "data-correctness",
+  "description": "ApertureSchemaV1 (line 17) is declared but referenced nowhere (grep confirms zero usages); ApertureDatabase.init builds a plain Schema([...]) with no migrationPlan, and the promised 'ApertureDatabase.migrationPlan' (doc, line 10) does not exist. Consequently SwiftData can only ever do lightweight migration, and any non-additive model change lands in the error-134110 recovery path (ApertureDatabase.swift:68-102) which deletes the store. That path's comment claims 'Only cached / derived data is lost \u2014 never the seed', but CustomTokenRecord rows are neither cached nor derived \u2014 they are user-typed contract registrations that gate which token balances the scanner even looks at, and they are NOT in the Keychain manifest. The failure already occurred once (2026-06-09 per the in-code comment), so the concrete scenario is: next app update with a non-additive model change \u2192 user's custom tokens silently vanish \u2192 those token balances disappear from the portfolio with no explanation until the user re-adds each contract by hand. Transaction history and browser bookmarks are likewise destroyed.",
+  "suggestedFix": "Wire the versioned schema: construct the container with Schema(versionedSchema: ApertureSchemaV1.self) and a SchemaMigrationPlan, adding a V2 stage whenever a model changes so data migrates instead of being wiped. Until then, add CustomTokenRecord entries to the Keychain manifest (or a parallel small Keychain blob) so the reset recovery can restore them like wallets."
+ },
+ {
+  "file": "/Users/thuglifex/Documents/UniApp/UniApp/Sources/Networking/Keccak256.swift",
+  "line": 116,
+  "title": "Keccak-256 implementation produces wrong digests \u2014 rho-pi step pairs the pi permutation with the wrong rotation table",
+  "severity": "critical",
+  "category": "data-correctness",
+  "description": "The rho+pi loop (lines 112-118) does `state[j] = rotateLeft(t, r[i + 1])` where `r` (lines 93-95) is the x-major rotation-OFFSET table [0,36,3,41,18,...]. tiny-keccak's loop requires the rotation-constant sequence rotc = [1,3,6,10,15,21,28,36,45,55,2,14,27,41,56,8,25,43,62,18,39,61,20,44] paired index-for-index with the pi/piln table. Verified empirically by compiling the file and hashing known vectors: keccak256(\"\") returns b07556c48e33830acedc3fb30a6ee243143ee3b1c726f9ec5eb37658f5a11c2f instead of the correct c5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470; keccak256(\"abc\") is also wrong. Concrete user impact via every consumer: (1) /Users/thuglifex/Documents/UniApp/UniApp/Sources/Wallet/EVMDAppSigner.swift:45 hashes the EIP-191 prefix+message with this broken Keccak for `personal_sign`/`eth_sign` \u2014 every personal_sign signature Aperture returns to a dApp ecrecovers to a garbage address, so Sign-In-With-Ethereum and every dApp login/permit flow rejects the wallet's signatures (the EIP-712 path is unaffected only because it uses WalletCore's EthereumAbi.encodeTyped). (2) Keccak256.eip55Checksum (line 63) emits invalid EIP-55 mixed case \u2014 verified: 0x5aaeb6053f3e94c9b9a09f33669435e7ef1beaed checksums to 0x5aaeb6053F3E94c9B9A09F33669435E7ef1bEaEd instead of 0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed \u2014 so ContractValidator.validateEVM (ContractValidator.swift:65) persists/normalizes custom-token contracts to a checksum-INVALID form that strict EIP-55 validators (MetaMask add-token, many explorers) reject when the user copies it out. (3) EVMChainAdapter.fetchTrustWalletInfoJSON (EVMChainAdapter.swift:280-288) builds the case-sensitive raw.githubusercontent.com URL from the wrong checksum, so the Trust Wallet info.json metadata fallback 404s for essentially every token (Trust Wallet stores EIP-55 directory names) \u2014 the fallback is dead code in practice; same for CoinMarkCache token-icon URLs (CoinMarkCache.swift:233), so EVM token icons fail to load.",
+  "suggestedFix": "Replace the rotation lookup with the correct tiny-keccak constant table: `let rotc: [Int] = [1,3,6,10,15,21,28,36,45,55,2,14,27,41,56,8,25,43,62,18,39,61,20,44]` and use `rotateLeft(t, rotc[i])` in the rho-pi loop (drop the `r[i + 1]` indexing). Alternatively delegate to WalletCore's `Hash.keccak256` (already linked in the app via EVMDAppSigner). Add unit tests pinning keccak256(\"\") == c5d24601..., keccak256(\"abc\") == 4e03657a..., and the two EIP-55 reference addresses from the EIP, plus a multi-block (>136-byte) input."
+ },
+ {
+  "file": "/Users/thuglifex/Documents/UniApp/UniApp/Sources/Networking/EVMChainAdapter.swift",
+  "line": 584,
+  "title": "decodeMulticall3Result ignores the per-item returnData length \u2014 empty returnData yields phantom 1-base-unit token balances",
+  "severity": "high",
+  "category": "data-correctness",
+  "description": "The decoder reads the balance at a fixed `itemStart + 192` (line 584) without ever validating the bytes-length word at `itemStart + 128`. When `balanceOf` is CALLed against an address with no code (registry or custom token contract not deployed / self-destructed on that chain \u2014 the exact case the single-token path at lines 139-148 explicitly handles by returning 0), the EVM returns success with EMPTY returndata, so Multicall3's aggregate3 emits a 3-word item (bool=1, offset=0x40, length=0) occupying only 192 hex chars. Reading at itemStart+192 then grabs the NEXT item's first word \u2014 its success flag 0x...0001 \u2014 and decodes it as a balance of 1 base unit. Downstream, RealRPCBalanceScanner.swift:316-338 computes amount = 1/10^decimals which passes the `guard amount > 0` filter, so the wallet displays a phantom dust holding the user does not own (e.g. \"0.01 GUSD\" since GUSD has 2 decimals) and marks the token row as present. Only when the empty item is the LAST one does the `itemStart + 256 <= hex.count` guard (line 569) rescue it to nil. The boundary guard against `hex.count` (whole response) instead of the item's own extent is the same root flaw.",
+  "suggestedFix": "Read the bytes-length word at `itemStart + 128`; if it is 0 (or < 32), append nil (or 0) instead of reading at itemStart+192. Optionally also verify the offset word at itemStart+64 equals 0x40 before trusting the fixed layout. Add a decoder unit test with a crafted aggregate3 response containing a success+empty-returndata item in the middle of the batch."
+ },
+ {
+  "file": "/Users/thuglifex/Documents/UniApp/UniApp/Sources/Networking/EVMChainAdapter.swift",
+  "line": 86,
+  "title": "Catch-all fallback in fetchTokenBalancesBatched amplifies traffic ~25x during outages/rate-limits and masks total RPC failure as zero balances",
+  "severity": "medium",
+  "category": "data-correctness",
+  "description": "The `catch` at lines 86-93 treats ANY error from the multicall `eth_call` \u2014 .rateLimited, .allEndpointsFailed, .network, even .cancelled \u2014 as \"Multicall3 not deployed\" and falls back to `fetchTokenBalancesSequentialFallback` (lines 107-118), which issues one eth_call PER token. Two concrete failures: (1) Request amplification at the worst moment \u2014 when the chain's endpoints are 429-ing or down, the adapter responds by sending ~25x more requests (each of which itself rotates through up to 9 endpoints in RPCClient), deepening the rate-limit hole; a cancelled scan likewise fires N pointless network dispatches because cancellation also lands in this catch. (2) Error masking \u2014 each fallback fetch is wrapped in `(try? ...) ?? 0` (line 114), so when every endpoint is unreachable the method returns [0,0,0,...] instead of throwing. The caller (RealRPCBalanceScanner.streamRegistryTokens) cannot distinguish \"RPC down\" from \"wallet holds no tokens\": token rows silently vanish from the wallet on an outage instead of surfacing a refresh-failed state, contradicting the single-token path's documented intent of treating only success-with-empty-data as zero.",
+  "suggestedFix": "Narrow the fallback trigger: only fall back to sequential fetch when the multicall response indicates Multicall3 is absent (empty \"0x\" returndata \u2014 already handled at line 95) or the RPC error is an execution revert (.rpcError with revert semantics). Rethrow .cancelled, .rateLimited, .network and .allEndpointsFailed. In the sequential fallback, propagate the error if every per-token call failed instead of returning all zeros."
+ },
+ {
+  "file": "/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletRefreshCoordinator.swift",
+  "line": 362,
+  "title": "Fresh RPCClient (own URLSession, RateLimiter, circuit breakers) created per address scan / per dApp request \u2014 rate limiting and circuit breaking are effectively inoperative",
+  "severity": "medium",
+  "category": "performance",
+  "description": "RPCClient's reliability layer (per-endpoint token buckets in RateLimiter.swift, per-endpoint CircuitBreaker map at RPCClient.swift:29) is all instance state, but every hot call site constructs a throwaway instance: scanViaRealRPC creates `RPCClient()` per address (WalletRefreshCoordinator.swift:362) \u2014 a multi-chain wallet refresh runs this once per derived address in parallel; scanAllTransactionHistory creates another per refresh (line 306); DAppRequestRouter.passThroughEVMRPC creates one per JS-bridge RPC call (DAppRequestRouter.swift:270 \u2014 a dApp page can fire dozens per second); AddCustomTokenSheet.swift:377 and WalletHomeView.swift:290 likewise. Consequences a user hits: (1) every instance's token bucket starts at full burst, so N concurrent address scans against the same public endpoint get N x burst + N x sustained rate \u2014 the documented per-provider quota (RPCEndpoint.swift:37-39, \"Honest about provider quotas\") is exceeded by design, producing the 429 storms and endpoint bans the limiter exists to prevent; (2) circuit-breaker state (5 consecutive failures => skip 60s) never accumulates across calls, so a dead primary endpoint is re-tried (and timed out on, 10s each) by every single scan instead of being skipped \u2014 slow refreshes on flaky endpoints; (3) each instance allocates a new URLSession with its own connection pool, defeating the keep-alive/connection-reuse rationale stated in RPCClient.swift:48-50 and churning sockets/TLS handshakes per request.",
+  "suggestedFix": "Make RPCClient a process-wide shared instance (e.g. `static let shared = RPCClient()`) or inject one client from the app root into WalletRefreshCoordinator, RealRPCBalanceScanner, RealRPCTransactionScanner, DAppRequestRouter and AddCustomTokenSheet. The actor is already concurrency-safe; sharing it is what makes the RateLimiter and CircuitBreaker actually enforce their contracts."
+ },
+ {
+  "file": "/Users/thuglifex/Documents/UniApp/UniApp/Sources/Networking/RateLimiter.swift",
+  "line": 84,
+  "title": "TokenBucket.consume swallows task cancellation \u2014 cancelled calls busy-spin, get mis-typed as .rateLimited, and keep walking all fallback endpoints",
+  "severity": "medium",
+  "category": "concurrency",
+  "description": "Line 84 uses `try? await Task.sleep(for:)`, discarding CancellationError. On an already-cancelled task, Task.sleep throws immediately, so the `for _ in 0..<10` loop (line 68) spins through all 10 iterations without ever waiting, then throws `RPCError.rateLimited` (line 93) \u2014 cancellation is converted into a rate-limit error. Downstream in RPCClient.callJSON (lines 257-274), `.rateLimited` is NOT `.cancelled`, so the rotation loop records a breaker failure and continues to the NEXT endpoint instead of aborting: a single cancelled call walks all 9 Ethereum endpoints, spinning the limiter loop and incrementing each endpoint's CircuitBreaker on the way. If a token happens to be available when the cancelled task reaches consume(), the token is consumed and the URLSession request is actually dispatched (burning provider quota) before URLError.cancelled aborts it. Concrete scenario: user pulls to refresh then navigates away \u2014 instead of the scan tearing down promptly, dozens of cancelled per-token/per-address calls each iterate the full endpoint list doing wasted work.",
+  "suggestedFix": "Use `try await Task.sleep(...)` and catch CancellationError explicitly, rethrowing it as `RPCError.cancelled` (or check `Task.isCancelled` at the top of consume() and throw .cancelled). That lets RPCClient's existing `if case .cancelled = error { throw error }` short-circuit the endpoint rotation as designed."
+ },
+ {
+  "file": "/Users/thuglifex/Documents/UniApp/UniApp/Sources/Networking/RPCClient.swift",
+  "line": 270,
+  "title": "Circuit breaker records a failure for caller cancellation \u2014 cancelled refreshes count toward opening the breaker against healthy endpoints",
+  "severity": "low",
+  "category": "logic",
+  "description": "In all four dispatch loops (callJSON lines 266-274, callJSONNamedParams lines 163-171, callRESTPost lines 305-313, callREST lines 386-394), the catch block calls `recordFailure(for: endpoint.id)` BEFORE checking `if case .cancelled = error { throw error }`. A URLSession request aborted by task cancellation (URLError.code == .cancelled, mapped to RPCError.cancelled at e.g. line 427) therefore increments the endpoint's consecutiveFailures exactly like a real outage. CircuitBreaker.failureThreshold is 5 (line 552), so five user-initiated cancellations (navigating away mid-refresh, re-triggering pull-to-refresh) against a perfectly healthy endpoint open its breaker for 60s, after which subsequent requests on that client skip the primary endpoint or report .allEndpointsFailed (\"Couldn't reach the chain\") with nothing actually wrong. Today the blast radius is limited because clients are throwaway (separate finding), but within a shared-client TaskGroup such as scanAllTransactionHistory (WalletRefreshCoordinator.swift:306-319) one cancellation wave pollutes the breakers used by all sibling tasks, and the bug becomes fully material once the client is shared as it should be.",
+  "suggestedFix": "Reorder the catch: check `if case .cancelled = error { throw error }` FIRST and only call recordFailure for non-cancellation errors, in all four dispatch loops."
+ },
+ {
+  "file": "/Users/thuglifex/Documents/UniApp/UniApp/Sources/Networking/RateLimiter.swift",
+  "line": 97,
+  "title": "Token-bucket refill and circuit-breaker timing use wall-clock Date \u2014 a backwards clock adjustment stalls all RPC traffic with spurious rate-limited errors",
+  "severity": "low",
+  "category": "logic",
+  "description": "TokenBucket.refill (lines 96-106) computes elapsed time from `Date()` and `guard elapsed > 0 else { return }`. If the device's wall clock moves backwards (NTP correction after a drifting clock, user toggling Set Automatically, carrier time resync), `now < lastRefill` makes elapsed negative, so refill returns without adding tokens AND without updating lastRefill. Until the wall clock catches back up past the stored lastRefill, no tokens ever refill: once the burst is spent, every `consume()` exhausts its bounded wait and throws `.rateLimited` (line 93), so every chain read fails with \"Rate-limited \u2014 try again in a moment\" for the entire duration of the clock regression even though no provider throttled anything. CircuitBreaker.isOpen / recordFailure (RPCClient.swift:555-569) share the same Date dependency (a forward jump instantly opens-and-expires windows incorrectly), but the refill stall is the user-visible one.",
+  "suggestedFix": "Base refill arithmetic on a monotonic clock \u2014 ContinuousClock.Instant or DispatchTime.now().uptimeNanoseconds \u2014 instead of Date. At minimum, clamp negative elapsed by resetting lastRefill = now when elapsed < 0 so a clock regression self-heals immediately."
+ },
+ {
+  "file": "/Users/thuglifex/Documents/UniApp/UniApp/Sources/Networking/EVMTransactionAdapter.swift",
+  "line": 217,
+  "title": "Indexer 429/failure is indistinguishable from 'no data' and cascades into the 100k-block eth_getLogs fallback with per-log timestamp round-trips",
+  "severity": "low",
+  "category": "performance",
+  "description": "runEtherscanQuery (lines 195-228) returns nil for ANY non-2xx status, including HTTP 429 from Routescan's free tier, with no Retry-After handling and no rate limiting (it bypasses RPCClient and uses URLSession.shared directly). WalletRefreshCoordinator.scanAllTransactionHistory fans out one task per wallet address with no concurrency bound, and each task fires both txlist and tokentx at the same api.routescan.io host \u2014 a multi-address, multi-EVM-chain wallet trivially exceeds the free tier, so most queries return 429 => nil. fetchTokenTransfers (line 401) then falls through to fetchTokenTransfersViaLogs, which per chain runs eth_blockNumber + two eth_getLogs over a 100,000-block range (lines 538-569, the path the 2026-06-09 comment itself describes as '5-30s per chain, slower chains time out entirely') plus one sequential eth_getBlockByNumber per distinct block in the loop at lines 649-656. Net effect a user sees: the moment the indexer rate-limits, history refresh wall-clock balloons from <1s to tens of seconds per chain and the RPC fleet gets hammered with the heaviest possible queries \u2014 precisely when the app is already being throttled.",
+  "suggestedFix": "Treat 429 distinctly in runEtherscanQuery (honor Retry-After / short backoff-and-retry once instead of falling through to logs), bound the address fan-out (e.g. limited-width TaskGroup) so a wallet refresh stays under Routescan's documented free-tier rate, and consider parallelizing or batching the per-block timestamp lookups in the logs fallback."
+ },
+ {
+  "file": "/Users/thuglifex/Documents/UniApp/UniApp/Sources/Networking/RPCClient.swift",
+  "line": 272,
+  "title": "Deterministic JSON-RPC method errors (eth_call revert, getLogs over-limit) trigger full endpoint rotation and poison circuit breakers",
+  "severity": "medium",
+  "category": "logic",
+  "description": "dispatchJSON throws .rpcError for any JSON-RPC error envelope (line 449-453), and the rotation loop in callJSON (lines 266-274) treats it exactly like an endpoint outage: it records a circuit-breaker failure for the endpoint and replays the identical request on the next endpoint. But many rpcErrors are deterministic properties of the REQUEST, not the endpoint: `eth_call` to a reverting contract returns \"execution reverted\" from every node, and `eth_getLogs` over the 100k-block fallback range returns \"query returned more than X results\" from every node. Concrete scenario: the user pastes a reverting (non-ERC-20) contract into Add Custom Token \u2192 EVMChainAdapter.fetchTokenMetadata fires 3 eth_calls (name/symbol/decimals), each rotating through all 9 Ethereum endpoints = 27 wasted requests, and every endpoint records 3 consecutive failures; the user retries the paste once (the sheet shows an error, retry is the natural gesture) \u2192 every endpoint crosses the 5-failure threshold simultaneously \u2192 ALL Ethereum circuit breakers open for 60 s \u2192 the wallet home shows \"Couldn't reach the chain\" for Ethereum and every balance refresh fails while the network and providers are perfectly healthy.",
+  "suggestedFix": "Classify errors in the rotation loop: on .rpcError, do not call recordFailure and do not rotate (throw immediately), except for provider-specific rate-limit/internal codes (e.g. -32005, -32603) where rotation is reasonable. At minimum, exempt .rpcError from the circuit-breaker failure count so application-level errors can never open a breaker."
+ },
+ {
+  "file": "/Users/thuglifex/Documents/UniApp/UniApp/Sources/Networking/EVMTransactionAdapter.swift",
+  "line": 459,
+  "title": "Unvalidated indexer-supplied tokenDecimal crashes the app (negative) or hangs the scan (huge) via scale(decimals:)",
+  "severity": "medium",
+  "category": "crash",
+  "description": "parseTokenTxRows trusts the Routescan/Blockscout JSON field `tokenDecimal` with only an `Int(d)` parse (lines 459-462) and feeds it straight into `Self.scale(decimals: decimals)` (line 469). `scale` (line 789) executes `for _ in 0..<decimals { result *= 10 }`. If a malicious or corrupted indexer response carries `\"tokenDecimal\": \"-1\"` (or any negative number), `0..<(-1)` traps at runtime \u2014 \"Fatal error: Range requires lowerBound <= upperBound\" \u2014 killing the entire app during a routine history refresh. A huge value like \"1000000000\" instead spins the loop for ~10^9 Decimal multiplications, hanging the scan task for minutes and producing a NaN amount. This directly violates the invariant that a malicious data source should at worst show wrong data, never crash. The registry/allowlist gate (line 448) does not protect against this because the decimals value comes from the indexer's row, not from the registry.",
+  "suggestedFix": "Clamp the parsed decimals to a sane range before use, mirroring EVMChainAdapter.decodeUInt8: `guard (0...77).contains(parsed) else { fall back to registry decimals or 18 }`. Also consider hardening `scale(decimals:)` itself with `let d = max(0, min(decimals, 77))` so no future caller can trap it."
+ },
+ {
+  "file": "/Users/thuglifex/Documents/UniApp/UniApp/Sources/Networking/EVMChainAdapter.swift",
+  "line": 114,
+  "title": "fetchTokenBalancesBatched can never throw \u2014 total RPC failure is silently converted to all-zero balances",
+  "severity": "low",
+  "category": "data-correctness",
+  "description": "When the Multicall3 eth_call fails for ANY reason (line 86-93, including the network being completely down or all endpoints circuit-open), the code falls into fetchTokenBalancesSequentialFallback, whose body swallows every per-token error with `(try? await fetchTokenBalance(...)) ?? 0` (line 114). The function is declared `throws(RPCError)` and its doc comment says a nil entry means \"that token's individual balanceOf reverted\", but in practice an offline device or a dead RPC fleet returns [0, 0, ...] \u2014 indistinguishable from genuinely-zero balances and from reverted calls. Combined with the consumer's `guard amount > 0 else { continue }` gate (RealRPCBalanceScanner.swift:319), a refresh during a transient outage silently drops every real token holding from the portfolio with no error state surfaced, instead of failing the chain's scan so the UI can show \"Refresh failed \u2014 tap to retry\" per the RPCError contract.",
+  "suggestedFix": "In fetchTokenBalancesSequentialFallback, distinguish failure from zero: append `nil` (not 0) when fetchTokenBalance throws, and if EVERY contract failed, rethrow the last RPCError so the chain-level scan can render an honest error state instead of an empty token list."
+ },
+ {
+  "file": "/Users/thuglifex/Documents/UniApp/UniApp/Sources/Networking/StellarTransactionAdapter.swift",
+  "line": 91,
+  "title": "Every Stellar transaction gets timestamped 'now' \u2014 ISO8601 formatter requires fractional seconds that Horizon never sends",
+  "severity": "high",
+  "category": "data-correctness",
+  "description": "The hoisted formatter sets formatOptions = [.withInternetDateTime, .withFractionalSeconds]. With .withFractionalSeconds set, ISO8601DateFormatter REQUIRES fractional seconds and returns nil otherwise (verified: `f.date(from: \"2026-05-31T16:51:55Z\")` \u2192 nil). Horizon's `created_at` has NO fractional seconds \u2014 verified live against horizon.stellar.org/accounts/{addr}/payments which returned `\"created_at\": \"2026-05-31T16:51:55Z\"`. The comment at line 85-88 claiming Horizon 'always carries fractional seconds' is factually wrong. Result: at line 44 `Self.iso8601.date(from: createdAt) ?? Date()` falls back to Date() for EVERY record, so every Stellar transaction in the activity feed shows the current wall-clock time, the feed re-dates itself on each refresh, and sort order vs other chains is scrambled.",
+  "suggestedFix": "Remove .withFractionalSeconds (use [.withInternetDateTime] only), or try both formatters (with and without fractional seconds) and take the first non-nil result."
+ },
+ {
+  "file": "/Users/thuglifex/Documents/UniApp/UniApp/Sources/Networking/XRPLTransactionAdapter.swift",
+  "line": 65,
+  "title": "XRPL partial-payment exploit: incoming amount read from tx.Amount instead of meta.delivered_amount",
+  "severity": "high",
+  "category": "security",
+  "description": "Incoming Payment amounts are decoded from `tx[\"Amount\"]` (lines 65-76). On XRPL, a Payment with the tfPartialPayment flag can deliver far less than its Amount field \u2014 Amount is only the upper bound; the actual delivered value is `meta.delivered_amount`. This is the canonical, explicitly documented XRPL exploit (xrpl.org partial-payments warning: integrations that read Amount have been robbed this way). Concrete scenario: attacker sends a Payment with Amount = \"10000000000\" (10,000 XRP) + tfPartialPayment that actually delivers 1 drop; Aperture's activity feed shows \"+10,000 XRP\" confirmed. A user (or anyone trusting the feed for received-payment verification) is deceived about funds received. The adapter already parses `metaDict` at line 53 for TransactionResult but ignores delivered_amount.",
+  "suggestedFix": "For incoming payments, read `metaDict[\"delivered_amount\"]` (string drops or issued-currency dict; also handle legacy `DeliveredAmount`) and use it as the amount; only fall back to tx.Amount for pre-2014 ledgers where delivered_amount is absent, or skip/flag partial payments when the tfPartialPayment flag (0x00020000 in tx.Flags) is set."
+ },
+ {
+  "file": "/Users/thuglifex/Documents/UniApp/UniApp/Sources/Networking/SolanaChainAdapter.swift",
+  "line": 36,
+  "title": "Token-2022 balances (PYUSD, AUSD, DUSD, USDG) never discovered \u2014 fetchTokenAccounts queries only the legacy SPL Token program",
+  "severity": "high",
+  "category": "data-correctness",
+  "description": "fetchTokenAccounts hardcodes `programId: \"TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA\"` (legacy SPL Token program). `getTokenAccountsByOwner` filtered by programId returns only accounts owned by that program, so token accounts owned by the Token-2022 program (TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb) are never returned. SolanaTokenRegistry deliberately ships 4 mints with `.splToken2022` standard (AUSD, DUSD, PYUSD, USDG \u2014 SolanaTokenRegistry.swift:33-36) and its header comment claims 'the streaming scanner uses the right SPL Token program id for each' \u2014 but both balance-scan call sites (RealRPCBalanceScanner.swift:342 and :625) go through this single legacy-program query. Concrete scenario: user holds PayPal USD (PYUSD) on Solana \u2192 Aperture shows no balance for it at all; same for any custom-added Token-2022 mint even though fetchMintInfo correctly detects the .splToken2022 standard.",
+  "suggestedFix": "Issue a second getTokenAccountsByOwner call with programId TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb and merge the results (or use the `mint`-less owner query per program and concatenate) before returning from fetchTokenAccounts."
+ },
+ {
+  "file": "/Users/thuglifex/Documents/UniApp/UniApp/Sources/Networking/LongTailTransactionAdapters.swift",
+  "line": 248,
+  "title": "NEAR transaction history can never load \u2014 callREST on a chain with zero REST endpoints registered",
+  "severity": "high",
+  "category": "logic",
+  "description": "fetchNear calls `client.callREST(chain: .near, path: \"/v1/account/{addr}/txns\", \u2026)` expecting nearblocks.io. But RPCRegistry.nearEndpoints() (RPCRegistry.swift:271-276) registers only two JSON-RPC endpoints (rpc.mainnet.near.org, near.lava.build) via `jr(...)` \u2014 kind == .jsonRPC. RPCClient.callREST iterates `for endpoint in endpoints where endpoint.kind == .rest` (RPCClient.swift:375), which matches nothing, so the loop body never runs and it always throws `.allEndpointsFailed(.near)`. RealRPCTransactionScanner catches and returns [] (RealRPCTransactionScanner.swift:181-184). Concrete result: every NEAR wallet permanently shows 'No activity', even with on-chain history; no nearblocks endpoint exists anywhere in the registry. Even if one of the registered hosts were REST, the nearblocks path would be posted to a NEAR RPC node and 404.",
+  "suggestedFix": "Register a REST endpoint for .near pointing at https://api.nearblocks.io (kind .rest) in RPCRegistry, or have fetchNear POST directly to nearblocks via URLSession like NEARChainAdapter does for balances."
+ },
+ {
+  "file": "/Users/thuglifex/Documents/UniApp/UniApp/Sources/Networking/LongTailTransactionAdapters.swift",
+  "line": 416,
+  "title": "Polkadot transaction history can never load \u2014 callRESTPost on a chain with zero REST endpoints registered",
+  "severity": "high",
+  "category": "logic",
+  "description": "fetchPolkadot calls `client.callRESTPost(chain: .polkadot, path: \"/api/v2/scan/transfers\", \u2026)` expecting Subscan. RPCRegistry.polkadotEndpoints() (RPCRegistry.swift:289-294) registers only two JSON-RPC endpoints (rpc.polkadot.io, polkadot.api.onfinality.io/public) via `jr(...)`. RPCClient.callRESTPost iterates `where endpoint.kind == .rest` (RPCClient.swift:294) \u2014 zero matches \u2014 so it always throws `.allEndpointsFailed(.polkadot)` without making a single network call. The scanner swallows the error and returns []. Concrete result: Polkadot activity is permanently empty for every user. No Subscan host (polkadot.api.subscan.io) is registered anywhere; even with a REST endpoint registered, the Subscan path would hit a non-Subscan node.",
+  "suggestedFix": "Register https://polkadot.api.subscan.io as a .rest endpoint for .polkadot (or a dedicated registry slot for indexer endpoints), or POST directly via URLSession as PolkadotChainAdapter already does for balances."
+ },
+ {
+  "file": "/Users/thuglifex/Documents/UniApp/UniApp/Sources/Networking/BitcoinFamilyTransactionAdapter.swift",
+  "line": 34,
+  "title": "Dogecoin and Bitcoin Cash transaction history can never load \u2014 Esplora path sent to non-Esplora providers",
+  "severity": "high",
+  "category": "logic",
+  "description": "fetch() unconditionally uses the Esplora path `/address/{addr}/txs` for all four chains, and RealRPCTransactionScanner routes .dogecoin and .bitcoinCash here (RealRPCTransactionScanner.swift:139-141). But the registered REST endpoints for those chains are not Esplora: dogecoin \u2192 BlockCypher (https://api.blockcypher.com/v1/doge/main) + dogechain (Cloudflare-gated per the registry's own comment, RPCRegistry.swift:238-247); bitcoinCash \u2192 Haskoin (https://api.haskoin.com, which requires the /bch prefix \u2014 its own balance code at BitcoinFamilyAdapter.swift:31 uses \"bch/address/{addr}/balance\") + a Blockbook explorer. Verified live: GET https://api.blockcypher.com/v1/doge/main/address/{addr}/txs \u2192 404, GET https://api.haskoin.com/address/{addr}/txs \u2192 404. All endpoints fail or return non-JSON, so DOGE and BCH activity feeds are permanently empty (errors swallowed by scanner / by the guard at line 36). The header comment claiming all four chains 'expose Esplora-shaped REST endpoints' is wrong for these two registries.",
+  "suggestedFix": "Branch per chain like BitcoinFamilyAdapter.fetchAccountSummary does: BlockCypher full-address endpoint (`addrs/{addr}` with txrefs) for dogecoin, Haskoin `bch/address/{addr}/transactions` (or Blockbook /api/v2/address/{addr}?details=txs) for bitcoinCash, keeping the Esplora path only for bitcoin/litecoin."
+ },
+ {
+  "file": "/Users/thuglifex/Documents/UniApp/UniApp/Sources/Networking/SolanaTransactionAdapter.swift",
+  "line": 247,
+  "title": "classifyViaTokenBalances sums raw deltas across different mints when the instruction has no mint, inverting direction and decimals in swaps",
+  "severity": "medium",
+  "category": "data-correctness",
+  "description": "For legacy `spl-token::transfer` instructions, jsonParsed info carries no `mint`, so `mint` is nil at line 166 and the per-entry filter `if let mint, let entryMint = \u2026 entryMint != mint { continue }` (line 247) is skipped entirely. accumulate() then nets RAW amounts of ALL mints in the transaction into one deltaByOwner value, mixing tokens with different scales. Concrete scenario: a DEX swap built on legacy transfer ixs where the wallet sends 1 WBTC (raw 100,000,000 at 8 dec) and receives 60,000 USDC (raw 60,000,000,000 at 6 dec) \u2192 walletDelta = +59.9e9 \u2192 classified .incoming even though the instruction being rendered is the outgoing WBTC leg; counterparty is picked from the wrong side. Additionally `resolvedDecimals` (line 257, used at line 189 when instruction decimals == 0) takes the wallet's FIRST balance entry's decimals, which may belong to the other mint \u2014 scaling the displayed amount by the wrong power of ten (e.g. raw WBTC amount divided by 10^6 instead of 10^8 \u2192 100\u00d7 wrong number).",
+  "suggestedFix": "When the instruction mint is nil, resolve the mint first (e.g. via the source/destination token-account pubkeys matched against pre/postTokenBalances `accountIndex`/account keys) and always filter the delta accumulation to that single mint; only fall back to the authority heuristic when the mint cannot be resolved."
+ },
+ {
+  "file": "/Users/thuglifex/Documents/UniApp/UniApp/Sources/Networking/StellarTransactionAdapter.swift",
+  "line": 39,
+  "title": "Outgoing Stellar path payments show the destination amount/asset instead of what the user actually sent",
+  "severity": "medium",
+  "category": "data-correctness",
+  "description": "For `path_payment_strict_send` / `path_payment_strict_receive` operations, Horizon's `amount`, `asset_type`, `asset_code`, `asset_issuer` fields all describe the DESTINATION side of the payment; the sender's side is in `source_amount` / `source_asset_*`. The adapter accepts these op types (line 35) but always reads `amount` (line 39) and `asset_*` (lines 47-49). Concrete scenario: the user sends 100 XLM via a path payment that converts to 25 USDC for the recipient \u2192 the activity row shows \"\u2212 25 USDC\" instead of \"\u2212 100 XLM\" \u2014 wrong amount AND wrong asset for an outgoing row.",
+  "suggestedFix": "When direction is .outgoing and op type is a path payment, use `source_amount` and `source_asset_type`/`source_asset_code`/`source_asset_issuer` for the amount/symbol/contract; keep destination fields for incoming rows."
+ },
+ {
+  "file": "/Users/thuglifex/Documents/UniApp/UniApp/Sources/Networking/LongTailTransactionAdapters.swift",
+  "line": 32,
+  "title": "Incoming Aptos transfers never appear \u2014 /accounts/{addr}/transactions only returns transactions sent by the account",
+  "severity": "medium",
+  "category": "data-correctness",
+  "description": "fetchAptos pages `GET /v1/accounts/{address}/transactions`, but the Aptos fullnode endpoint returns only transactions SUBMITTED BY that account (it is keyed on the account's own sequence numbers); there is no fullnode endpoint for 'transactions touching an account' \u2014 that is indexer territory. Consequently `sender` always equals the queried address, the `.incoming` branch at lines 106-108 is unreachable dead code, and a user who receives APT or USDC on Aptos never sees the deposit in their activity feed \u2014 the feed silently shows only their own outgoing sends, contradicting the doc comment at lines 23-26.",
+  "suggestedFix": "Either query the Aptos Indexer GraphQL API (public, keyless at api.mainnet.aptoslabs.com/v1/graphql) for account_transactions covering both directions, or additionally scan deposit events (0x1::coin::DepositEvent / fungible_asset Deposit) via the events endpoint, and surface the sent-only limitation honestly otherwise."
+ },
+ {
+  "file": "/Users/thuglifex/Documents/UniApp/UniApp/Sources/Networking/BitcoinFamilyTransactionAdapter.swift",
+  "line": 98,
+  "title": "Self-send (.internal) classification requires netSats == 0, which a real self-send never satisfies because of the fee",
+  "severity": "low",
+  "category": "logic",
+  "description": "The `.internal` branch requires `userSpent > 0 && userReceived > 0 && netSats == 0 && allOutputsBelongToUser`. In a genuine self-send/UTXO consolidation the user funds all inputs and receives all outputs minus the mining fee, so netSats = \u2212fee < 0 and the condition can never hold; the tx falls into the `.outgoing` branch (line 111-113) with `counterparty = firstOtherOutput ?? \"\"` \u2014 empty, since every addressed output belongs to the user. Concrete scenario: user consolidates UTXOs on BTC \u2192 the feed shows an outgoing row whose amount is just the fee (abs(netSats)) with a blank counterparty, instead of an internal transfer \u2014 a wrong number and a confusing empty 'to' field. The header comment (lines 13-15) promises self-sends land as .internal, which they never do.",
+  "suggestedFix": "Classify as .internal when `userSpent > 0 && allOutputsBelongToUser` (regardless of netSats), displaying the moved amount or the fee explicitly; keep the third-party netSats checks for the remaining branches."
+ },
+ {
+  "file": "/Users/thuglifex/Documents/UniApp/UniApp/Sources/Networking/XRPLTransactionAdapter.swift",
+  "line": 74,
+  "title": "Non-standard XRPL currency codes rendered as raw 40-char hex symbol \u2014 RLUSD shows as '524C5553\u2026' despite registry mapping",
+  "severity": "low",
+  "category": "data-correctness",
+  "description": "For issued-currency payments the adapter sets `symbol = currencyCode` verbatim (line 74). XRPL non-standard currencies (anything longer than 3 chars, like RLUSD) are encoded as 40-character uppercase hex strings \u2014 e.g. RLUSD is \"524C555344000000000000000000000000000000\" (exactly the value XRPLTokenRegistry.swift:31 carries). Concrete scenario: a user receives Ripple USD \u2192 the activity row's token symbol is the full 40-char hex string instead of \"RLUSD\", even though XRPLTokenRegistry contains the (currency, issuer) \u2192 symbol mapping and is never consulted here.",
+  "suggestedFix": "Look up (currencyCode, issuer) in XRPLTokenRegistry first; otherwise, if the code is 40 hex chars, decode it as ASCII and trim trailing NULs before using it as the symbol."
+ },
+ {
+  "file": "/Users/thuglifex/Documents/UniApp/UniApp/Sources/Networking/BitcoinFamilyAdapter.swift",
+  "line": 75,
+  "title": "Dogecoin balance fallback is unreachable \u2014 BlockCypher-specific path 404s on the dogechain fallback the code claims to support",
+  "severity": "low",
+  "category": "logic",
+  "description": "fetchDogecoin requests path `addrs/{addr}/balance`, which is BlockCypher's URL shape. When RPCClient rotates to the registered fallback (dogechain.info/api/v1 \u2014 RPCRegistry.swift:246), the same path is appended and 404s (dogechain's shape is `/address/balance/{addr}`), so the string-shaped branch at lines 84-89 ('Accept either so a future fallback still works') is dead code \u2014 the fallback can never return a parseable response. This matters in practice because BlockCypher's keyless free tier is limited to roughly 100-200 requests/day and 3 req/sec; once it rate-limits, DOGE balance has no working fallback and silently fails. The same pattern affects fetchEsplora for .litecoin: the blockcypher fallback base (api.blockcypher.com/v1/ltc/main) + `address/{addr}` is also a 404 with a non-Esplora JSON shape, making LTC's registered fallback equally dead.",
+  "suggestedFix": "Make the request path provider-aware (e.g. carry a per-endpoint path template or branch on endpoint.provider), or register only shape-compatible fallbacks per chain."
+ },
+ {
+  "file": "/Users/thuglifex/Documents/UniApp/UniApp/Sources/Networking/LongTailTransactionAdapters.swift",
+  "line": 141,
+  "title": "Sui self-send transactions produce duplicate feed rows \u2014 same digest returned by both FromAddress and ToAddress queries, no dedup",
+  "severity": "low",
+  "category": "data-correctness",
+  "description": "fetchSui issues two suix_queryTransactionBlocks calls (FromAddress and ToAddress filters) and concatenates results (lines 141-149) with no dedup by digest. A transaction where the wallet is both sender and recipient (self-transfer, or any tx returning change/objects to the sender that matches the ToAddress filter) appears in BOTH result sets; each pass emits one event from the wallet's SUI balanceChange, producing two identical rows (same digest, same direction, same amount) in the activity feed.",
+  "suggestedFix": "Deduplicate the combined array by transaction digest (e.g. keep first occurrence in a Set<String> keyed on digest) before sorting and prefixing."
+ },
+ {
+  "file": "/Users/thuglifex/Documents/UniApp/UniApp/Sources/Wallet/RealRPCBalanceScanner.swift",
+  "line": 974,
+  "title": "RPC failure is fabricated as a zero balance row, which overwrites the user's persisted real balance with 0",
+  "severity": "high",
+  "category": "data-correctness",
+  "description": "fetchNative's catch branch (lines 966-980) converts ANY RPCError (airplane mode, endpoint outage, 429 rate-limit, all-endpoints-failed) into a normal-looking ScanRow with nativeBalance: 0, isUsed: false. Neither ScanRow nor ChainBalance carries an error flag, so consumers cannot distinguish 'scan failed' from 'real on-chain zero' \u2014 the comment's claim that 'the UI surfaces a per-row error footer separately' is impossible with this data model. Concrete failure traced end-to-end: streamScan yields the fabricated row as .native(...) (line 159; the `guard let summary else { return }` nil-path at line 151 is dead code because fetchNative never returns nil), WalletRefreshCoordinator.upsertNativeBalance (WalletRefreshCoordinator.swift:196) passes it to TransactionRepository.upsertBalance, which unconditionally overwrites the existing record (TransactionRepository.swift:131 `existing.rawBalance = rawBalance`). So a user who pulls to refresh in a dead spot, or while one chain's public RPCs are down/rate-limited, has their stored real balance wiped to 0.00 (native and fiat) and sees their portfolio drop until a later successful scan. For a crypto wallet this is a panic-inducing wrong number. The bulk scan() path (used by the import review screen) has the same issue at line 79-97: a failed chain renders '0 BTC \u2248 $0.00' identically to a genuinely empty address.",
+  "suggestedFix": "Make fetchNative return nil from the catch branch (streamScan already guards `guard let summary else { return }`, and WalletRefreshCoordinator already handles non-yielding chains via the nativeYieldedChains set + markScanComplete path, which preserves the previous balance and just refreshes the 'Last synced' stamp). For the bulk scan() path, either drop failed rows or add an explicit `scanFailed: Bool`/error field to ScanRow/ChainBalance so the review UI can render an honest per-row error instead of a fake zero."
+ },
+ {
+  "file": "/Users/thuglifex/Documents/UniApp/UniApp/Sources/Wallet/RealRPCBalanceScanner.swift",
+  "line": 289,
+  "title": "streamScan fires ~100+ simultaneous, heavily duplicated Coinbase price requests per refresh \u2014 the 'priceService internally rate-limits + dedupes' claim is false",
+  "severity": "medium",
+  "category": "performance",
+  "description": "streamScan spawns one `priceService.price(symbol:fiat:)` call per registry token per chain, all concurrently: ~21 Ethereum tokens (EVMTokenRegistry) + ~8-12 tokens on each of the other 11 EVM chains + per-chain native prices (line 142) + Solana/Tron/NEAR/Aptos/XRPL/Kava token prices + custom tokens \u2014 roughly 100-150 concurrent HTTPS requests to api.coinbase.com on a cold cache. The comment at lines 280-283 asserts 'the priceService internally rate-limits + dedupes so this is cheap', but CoinbasePriceService (Pricing/CoinbasePriceService.swift:60-98) has NO in-flight request deduplication \u2014 only a post-completion 60s TTL cache \u2014 and its maxParallelism=8 bound applies only inside the batch `prices()` method, which streamScan never calls. Due to actor reentrancy, every concurrent caller for the same symbol checks the cold cache before the first response lands and fires its own fetchSpot: USDC is requested ~14 times simultaneously, USDT ~14x, WETH/WBTC/DAI ~8-10x each. Because the price cache TTL is 60s, this full burst repeats on EVERY refresh more than a minute apart (WalletRefreshCoordinator runs this on every pull-to-refresh and the import review screen runs it too). CoinbasePriceService's own doc comment says Coinbase 'throttles aggressive concurrency; 8 is conservative' \u2014 throttled/429 responses make fetchSpot return nil, which is then negative-cached for 60s, so tokens the user actually holds render 'Price unavailable'. Wasted bandwidth/battery plus intermittent wrong UI state.",
+  "suggestedFix": "Bound and dedupe the price fan-out: either add an in-flight Task dictionary to CoinbasePriceService.price() (same pattern CoinMarkCache uses) so concurrent same-symbol callers share one request, or have streamScan collect the unique symbol set per scan and call the bounded `prices(symbols:fiat:)` batch API once, distributing results to the per-token tasks."
+ },
+ {
+  "file": "/Users/thuglifex/Documents/UniApp/UniApp/Sources/Wallet/EVMDAppSigner.swift",
+  "line": 108,
+  "title": "Full key-derivation pipeline (Keychain + AES-GCM + BIP-39 PBKDF2 + secp256k1) runs synchronously on @MainActor inside a button tap handler",
+  "severity": "low",
+  "category": "performance",
+  "description": "EVMDAppSigner is @MainActor and signDigest (lines 88-120) is fully synchronous: it creates a fresh ModelContext and fetches ALL WalletRecords with no fetchLimit (lines 130-132), performs two synchronous Keychain round-trips plus an AES-GCM decrypt via MnemonicVault.loadMnemonic (Security/MnemonicVault.swift:84-110), then constructs HDWallet(mnemonic:passphrase:) at line 108 \u2014 which runs the BIP-39 seed derivation (PBKDF2-HMAC-SHA512, 2048 iterations) eagerly \u2014 followed by HD key derivation (getKeyForCoin) and a secp256k1 ECDSA sign. Call sites (DAppSignMessageSheet.swift:124, DAppSignTypedDataSheet.swift:187) invoke this directly inside a UniButton action and call dismiss() in the same handler, so the entire crypto+Keychain+SwiftData pipeline blocks the main thread exactly while the sheet dismiss animation is starting. Keychain reads alone are commonly 1-10ms each; combined the handler can block 15-50ms \u2014 visible dropped frames on the dismiss/morph animation every time the user signs a dApp request, worse on older devices.",
+  "suggestedFix": "Make signPersonalMessage/signTypedData async and hop the heavy section (Keychain load, HDWallet construction, signing) off the main actor via @concurrent or a nonisolated helper executed in a Task; call sites already wrap the result handling in do/catch and can await before router.approveSign. Keep the WalletRecord lookup on @MainActor but add fetchLimit/predicate instead of fetching all wallets."
+ },
+ {
+  "file": "/Users/thuglifex/Documents/UniApp/UniApp/Sources/Wallet/CoinMarkCache.swift",
+  "line": 102,
+  "title": "No negative caching \u2014 token logos that 404 are re-downloaded on every row appearance, hammering raw.githubusercontent.com during scrolls",
+  "severity": "low",
+  "category": "performance",
+  "description": "data(for:) caches only successful downloads (line 102-105: `if let data = result { promote(...) }`; nothing is recorded for a nil result, and `inflight[key]` is cleared at line 100). Trust Wallet's repo does not host logos for several of the long-tail registry tokens Aperture ships (USD1, USDai, DUSD, USDG, AUSD on newer chains, etc.) nor for many user-added custom tokens, so those URLs permanently 404. The consumer, CoinMark (Features/Wallet/CoinMark.swift:90), uses `.task(id: url)` which re-runs every time a lazily-recycled list row reappears \u2014 so every scroll up/down of the token list re-fires a full network request (10s timeout, cachePolicy .reloadIgnoringLocalCacheData at line 185 even disables URLCache) for every missing logo. Repeated bursts of 404 requests to raw.githubusercontent.com waste bandwidth/battery and can trip GitHub's per-IP throttling, which then delays legitimate first-time logo fetches.",
+  "suggestedFix": "Record failed lookups in an actor-isolated negative cache (e.g. `var missing: [String: Date]`) with a TTL of an hour or so; data(for:) returns nil immediately for keys in the negative set, retrying only after the TTL expires."
+ },
+ {
+  "file": "/Users/thuglifex/Documents/UniApp/UniApp/Sources/Wallet/RealRPCBalanceScanner.swift",
+  "line": 712,
+  "title": "Tron/NEAR/XRPL token fetchers bypass RPCClient \u2014 no rate limiter, no fallback rotation, no circuit breaker, and 60s default timeouts instead of 10s",
+  "severity": "low",
+  "category": "performance",
+  "description": "fetchTronTokenBalance (line 712), fetchNearTokenBalance (line 775), and fetchXRPLTokenLines (line 840) call `URLSession.shared.data(for:)` directly against hardcoded endpoints (api.trongrid.io, rpc.mainnet.near.org, s1.ripple.com:51234) instead of going through the RPCClient actor every other fetch in this file uses. This contradicts the file's own concurrency claim at lines 44-47 ('Bounded by each endpoint's RateLimiter'). Consequences a user hits: (1) URLSession.shared's default 60s request timeout applies instead of the 10s/20s configured in RPCClient (RPCClient.swift:52-53), so a hung NEAR or XRPL endpoint stalls that chain's token rows \u2014 and therefore the stream's overall completion and the refresh coordinator's post-stream cleanup \u2014 for up to a minute; (2) no fallback rotation or circuit breaker means a down TronGrid yields zero TRC-20 rows (USDT-TRC20 balances silently missing) even though the app's RPCRegistry/fallback infrastructure exists for exactly this case; (3) the Tron path fires 6 concurrent unthrottled requests per refresh against TronGrid's aggressively rate-limited free tier.",
+  "suggestedFix": "Route these three fetchers through RPCClient (callRESTPost for TronGrid, callJSONResultData(paramsObject:) for NEAR's query method, callJSON for XRPL's account_lines) with their endpoints registered in RPCRegistry, inheriting the 10s timeout, rate limiting, fallback rotation, and circuit breaker. At minimum, set an explicit timeoutInterval (10s) on the URLRequests."
+ },
+ {
+  "file": "/Users/thuglifex/Documents/UniApp/UniApp/Sources/DesignSystem/Components/UniTextField.swift",
+  "line": 155,
+  "title": "Reveal-eye button and its reserved gap resolve against opposite layout directions, overlapping secure-field text in RTL/forced-LTR combinations",
+  "severity": "medium",
+  "category": "ui-state",
+  "description": "The reveal button is positioned by `ZStack(alignment: .trailing)` (line 155), which resolves using the AMBIENT layout direction, while the 40pt clearance `.padding(.trailing, (showsRevealToggle && isSecure) ? 40 : 0)` (line 166) is applied to `inputControl` BEFORE `.modifier(DirectionOverride(direction: resolvedDirection))` (line 172), so the environment override wraps the padding and the gap resolves using the RESOLVED direction. Whenever the resolved direction differs from ambient, the button and its clearance land on opposite edges. Concrete, shipping scenario 1: PrivateKeyImport.swift:160-169 uses `directionPolicy: .forceLTR, isSecure: true, showsRevealToggle: true`. In any of the app's 4 RTL locales (ar, fa, ur, he), ambient is RTL so the ZStack's `.trailing` is the visual LEFT edge \u2014 exactly where the forced-LTR key text begins \u2014 and the eye button (\u224841pt wide with its `.contentShape(Rectangle())` hit area, drawn ABOVE the field as the second ZStack child) overlaps and obscures the first characters of the private key and steals taps there, while the 40pt gap sits unused on the right. Scenario 2: PassphraseSheet.swift:118-126 uses `.automatic`; an English-ambient user typing an Arabic passphrase flips the field RTL (text starts at visual right), but the eye stays at the ambient visual right, overlapping the start of the passphrase. The doc comment at lines 100-102 explicitly promises the opposite (\"trailing flips with the resolved layout direction so the eye always lands on the visual end of the field\").",
+  "suggestedFix": "Apply the same direction override to the ZStack (move `.modifier(DirectionOverride(direction: resolvedDirection))` from `inputControl` to the outer ZStack) so the alignment, the trailing padding, and the field all resolve in one coordinate system; alternatively position the reveal button with an `.overlay(alignment:)` placed inside the DirectionOverride subtree."
+ },
+ {
+  "file": "/Users/thuglifex/Documents/UniApp/UniApp/Sources/DesignSystem/UniHaptic.swift",
+  "line": 245,
+  "title": "Frustration silencing (Rule #10 \u00a7J) never engages \u2014 `.error` haptics bypass UniHapticEngine entirely on the standard modifier path",
+  "severity": "low",
+  "category": "logic",
+  "description": "`UniHaptic.error` maps directly to `SensoryFeedback.error` (line 245) and `requiresEngine` returns false for it (lines 261-267), so `UniHapticModifier` (line 331) fires it via `content.sensoryFeedback(feedback, trigger:)` without ever touching `UniHapticEngine.playError()`, which is where the frustration counting/silencing lives (UniHapticEngine.swift:482-503). Both real `.error` call sites in the app use this path: PinCodeView.swift:146 (`.uniHaptic(.error, trigger: errorTrigger)` \u2014 the canonical wrong-PIN frustration case the feature was designed for) and BackupVerifyView.swift:81. The only path that routes `.error` through the engine is `UniHapticDirectionalModifier` (lines 376-383), which has zero call sites in the codebase (verified by grep). Net effect: the documented behavior on the case itself (lines 75-78: \"Subject to UniHapticEngine's frustration silencing (3 errors in 10s \u2192 next 2 silenced)\") and CLAUDE.md Rule #10 \u00a7J never happen \u2014 a user mashing wrong PINs feels every error buzz, and the engine's `recentErrors`/`pendingErrorSilences` state is dead code. Additionally, once any call site does route through the engine, `pendingErrorSilences` (UniHapticEngine.swift:487-489) never expires by time \u2014 it is only decremented on subsequent errors \u2014 so a silence earned by 3 rapid failures would still mute an unrelated error haptic hours later, contradicting the rule's \"state resets after 10s of no errors\".",
+  "suggestedFix": "In `UniHapticModifier`, special-case `.error` to route through `UniHapticEngine.shared.play(.error)` via `onChange` (the same way `requiresEngine` cases are handled) instead of the direct `sensoryFeedback` mapping \u2014 mirroring what `UniHapticDirectionalModifier` already does. While there, add a window check in `playError()` so `pendingErrorSilences` is cleared when the last error is older than `frustrationWindow`."
+ },
+ {
+  "file": "/Users/thuglifex/Documents/UniApp/UniApp/Sources/DesignSystem/UniHaptic.swift",
+  "line": 330,
+  "title": "UniHapticModifier branches structurally on the haptics preference \u2014 toggling 'Haptic feedback' in Settings discards @State/focus/scroll state in every wrapped subtree app-wide",
+  "severity": "low",
+  "category": "ui-state",
+  "description": "`UniHapticModifier.body` (lines 328-345) wraps `content` in a `@ViewBuilder` `if isEnabled { ... } else { content }`. `isEnabled` is an `@AppStorage(\"hapticFeedbackEnabled\")` read, so the moment the user flips the haptics toggle in Settings, every currently-mounted view modified by `.uniHaptic(_:trigger:)` switches `_ConditionalContent` branches. Branch switching changes the structural identity of the wrapped subtree, so SwiftUI tears down and rebuilds it, discarding all `@State`, `@FocusState`, scroll positions, and in-flight animations BELOW the modifier. This affects 49 feature call sites (verified by grep) plus every `UniButton` (via `HapticBinding`, UniButton.swift:393-405) and every `UniToggle`. Concrete scenario: with the Settings sheet open over wallet home, flipping the haptic toggle rebuilds the wallet-home header subtree wrapped by `.uniHaptic(.countUp, trigger: display)` (WalletHomeHeader.swift:110) and entire wrapped Lists like the hide-small-balances picker (SettingsView.swift:657 wraps the whole `List`), resetting their transient UI state mid-session. The preference gate does not need a structural branch \u2014 `sensoryFeedback` has closure forms that can no-op.",
+  "suggestedFix": "Remove the structural branch: always apply the modifier and gate at fire time, e.g. `content.sensoryFeedback(trigger: trigger) { _, _ in isEnabled ? haptic.feedback : nil }` for the feedback path, and `guard isEnabled else { return }` inside the `onChange` for the engine path (as `UniHapticDirectionalModifier` already does at lines 366-384)."
+ },
+ {
+  "file": "/Users/thuglifex/Documents/UniApp/UniApp/Sources/DesignSystem/Components/UniTextField.swift",
+  "line": 76,
+  "title": "TextDirection.isStrongLTR omits most strong-LTR scripts among the app's 50 supported languages (Thai, Bengali, Tamil, Telugu, Malayalam, Gurmukhi, etc.), so `.automatic` direction detection silently falls back to ambient for them",
+  "severity": "low",
+  "category": "logic",
+  "description": "`isStrongLTR` (lines 76-87) recognizes only Latin, Latin-Extended, Greek, Cyrillic, Devanagari, CJK, Kana, and Hangul. The app explicitly ships th, bn, ta, te, ml, pa locales (CLAUDE.md Rule #9 language table), yet Thai (U+0E00\u20130E7F), Bengali (U+0980\u201309FF), Tamil (U+0B80\u20130BFF), Telugu (U+0C00\u20130C7F), Malayalam (U+0D00\u20130D7F), and Gurmukhi (U+0A00\u20130A7F) \u2014 all strong-LTR per the Unicode BiDi spec this function claims to implement (\"first strong directional character\", line 53-55) \u2014 return nil from `detect(in:)`, which the doc comment incorrectly says happens only for \"digits + punctuation + whitespace only\" content. Concrete scenario: an Arabic-locale (RTL-ambient) user types a Thai or Bengali passphrase into PassphraseSheet's `.automatic` field \u2014 the field stays right-aligned RTL instead of flipping LTR the way it does for Latin/Greek/Cyrillic/CJK input, so the same component behaves inconsistently across supported scripts. Secondary inaccuracy: `isStrongRTL`'s blanket 0x0590\u20130x08FF range (line 67) classifies Arabic-Indic digits U+0660\u20130669 as strong-RTL when BiDi classes them as weak (AN).",
+  "suggestedFix": "Replace the hand-rolled ranges with the system's BiDi classification \u2014 e.g. derive direction via `NSParagraphStyle.defaultWritingDirection(forLanguage:)` on the string or scan scalars using `unicodeScalars` properties from the system ICU data (`Character.unicodeScalars` + `NLLanguageRecognizer`/`NSString` APIs); at minimum add the missing Indic ranges (U+0980\u20130D7F covers Bengali through Malayalam), Thai/Lao (U+0E00\u20130EFF), Khmer (U+1780\u201317FF), Georgian (U+10A0\u201310FF), and Armenian (U+0530\u2013058F), and exclude U+0600\u20130669 digit/format characters from the strong-RTL set."
+ },
+ {
+  "file": "/Users/thuglifex/Documents/UniApp/UniApp/Sources/Networking/LongTailTransactionAdapters.swift",
+  "line": 536,
+  "title": "Kava outgoing rows render the fee-deduction transfer (amount = fee, counterparty = fee collector) instead of the actual send",
+  "severity": "medium",
+  "category": "data-correctness",
+  "description": "queryKavaTxs walks raw[\"events\"] and appends an event from the FIRST `transfer` event whose attributes classify against the address, then breaks (lines 536-594). In Cosmos SDK tx_responses, the ante-handler's fee deduction emits coin_spent/coin_received/transfer events BEFORE the message's own events, and that fee transfer's sender is the user's address (recipient = the fee-collector module account). For the outgoing query (message.sender='addr'), the first transfer event therefore classifies as .outgoing with amount = the fee (e.g. 0.02 KAVA) and counterparty = the fee-collector address \u2014 and the `break` at line 593 prevents the real transfer from ever being read. Concrete failure: a user who sends 100 KAVA sees an activity row of '\u2212 0.02 KAVA to kava17xpf\u2026' instead of '\u2212 100 KAVA to <recipient>'. (Incoming rows survive because the fee transfer fails classification and the loop continues to the real transfer.)",
+  "suggestedFix": "Skip transfer events whose recipient is the fee-collector module address, or prefer the LAST matching transfer event, or parse the actual MsgSend from tx.body.messages instead of scraping the first transfer event."
+ },
+ {
+  "file": "/Users/thuglifex/Documents/UniApp/UniApp/Sources/Networking/LongTailTransactionAdapters.swift",
+  "line": 373,
+  "title": "TON multi-message transactions emit several TransactionEvents sharing one txHash \u2014 repository upsert collapses them and ForEach gets duplicate ids",
+  "severity": "medium",
+  "category": "data-correctness",
+  "description": "fetchTon appends one event for the in_msg (line 357) AND one event per out_msg with value > 0 (lines 373-394), all carrying the same `hash` from transaction_id. TON wallet contracts routinely send up to 4 messages from one external (batch sends), and bounce/forward txs have both an inbound and outbound leg. Downstream, TransactionRepository.upsert is keyed by (txHash, addressId) (TransactionRepository.swift:15,42), so the N events overwrite each other and only the last-processed leg survives in SwiftData \u2014 a 3-recipient batch send shows as a single row with one arbitrary recipient/amount. In test mode, WalletHomeView.swift:1645 uses ForEach(..., id: \\.txHash), so the duplicate ids break SwiftUI diffing (duplicated/garbled rows).",
+  "suggestedFix": "Disambiguate the hash per leg (e.g. txHash = \"\\(hash):out:\\(index)\" / \":in\") or aggregate the out_msgs into a single event with the summed amount, and key list identity on a compound id rather than raw txHash."
+ },
+ {
+  "file": "/Users/thuglifex/Documents/UniApp/UniApp/Sources/Networking/SolanaTransactionAdapter.swift",
+  "line": 57,
+  "title": "25-way getTransaction fan-out exceeds the token bucket's bounded wait \u2014 spurious rateLimited failures trip the primary endpoint's circuit breaker and silently drop history rows",
+  "severity": "medium",
+  "category": "concurrency",
+  "description": "fetch() launches all 25 getTransaction calls concurrently in one TaskGroup (lines 57-69), relying on the per-endpoint RateLimiter to pace them. But sol-mainnet-beta is registered at 10 rps / burst 5 (RPCRegistry.swift:254, RPCEndpoint moderate10), and TokenBucket.consume gives up after 10 loop iterations of ~0.1 s sleeps (~1 s total) and throws RPCError.rateLimited (RateLimiter.swift consume()). With 26 near-simultaneous waiters, the bucket drains instantly and the tail (~10 calls whose token would arrive after ~1 s) deterministically exhausts the bound BEFORE any request is sent. RPCClient counts each such throw as an endpoint failure (recordFailure, RPCClient.swift:270), so a single 25-tx history fetch pushes consecutiveFailures past the threshold of 5 and opens the primary Solana endpoint's circuit breaker for 60 s \u2014 also affecting subsequent balance scans. The spilled calls rotate to the publicnode fallback (burst 20); if it too is saturated (multiple Solana accounts, back-to-back refreshes), fetchOne's try? at line 92 swallows the error and the row vanishes \u2014 the user sees a nondeterministically incomplete Solana history with no error.",
+  "suggestedFix": "Bound in-flight concurrency in the TaskGroup (e.g. add at most 4-5 tasks, addTask on each completion), and/or make the rate-limit acquisition wait proportionally to queue depth instead of failing after ~1 s; separately, pre-network rateLimited throws should not count toward the circuit breaker."
+ },
+ {
+  "file": "/Users/thuglifex/Documents/UniApp/UniApp/Sources/Networking/LongTailAdapters.swift",
+  "line": 106,
+  "title": "NEAR and Polkadot balance reads bypass RPCClient: hardcoded single endpoint, no fallback, 60 s default timeout, no rate limiting",
+  "severity": "low",
+  "category": "performance",
+  "description": "NEARChainAdapter (line 106) and PolkadotChainAdapter (line 256) POST via URLSession.shared to hardcoded URLs (https://rpc.mainnet.near.org, https://rpc.polkadot.io), bypassing the RPCClient actor entirely. Consequences a user can hit: (1) URLSession.shared's default timeoutIntervalForRequest is 60 s vs the RPCClient session's 10 s \u2014 a hung primary RPC stalls the NEAR/DOT slice of a wallet refresh for up to a minute; (2) the registered fallbacks (near.lava.build, onfinality \u2014 RPCRegistry.swift:271-294) are never consulted, so any outage of the single hardcoded host silently renders the NEAR/DOT balance as 0 (the catch blocks at lines 119-122 and 263-266 return a zero summary) even while a healthy fallback exists; (3) no rate limiter or circuit breaker applies to these requests.",
+  "suggestedFix": "Add named-object JSON-RPC params support to RPCClient (callJSONResultData(paramsObject:) already exists \u2014 RPCClient.swift:119) and route these two adapters through it so they inherit the 10 s timeout, fallback rotation, and breaker; at minimum configure an explicit short timeout on the URLRequest and iterate the registry's endpoints."
+ },
+ {
+  "file": "/Users/thuglifex/Documents/UniApp/UniApp/Sources/Wallet/RealRPCBalanceScanner.swift",
+  "line": 342,
+  "title": "Token-2022 SPL balances (PYUSD, AUSD, DUSD, USDG) are never scanned \u2014 registry promises per-standard program selection but the scanner only queries the legacy SPL Token program",
+  "severity": "high",
+  "category": "data-correctness",
+  "description": "streamRegistryTokens' Solana branch (RealRPCBalanceScanner.swift:340-354) calls SolanaChainAdapter.fetchTokenAccounts(address:), which issues getTokenAccountsByOwner hard-filtered to the legacy SPL Token program id 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA' (SolanaChainAdapter.swift:36) and nothing else. Token-2022 token accounts are owned by the Token-2022 program ('TokenzQd\u2026'), so they are never returned by this RPC call. SolanaTokenRegistry (SolanaTokenRegistry.swift:5-7) explicitly documents the contract: 'Token standard is either splToken (legacy) or splToken2022 \u2014 the streaming scanner uses the right SPL Token program id for each', and 4 of the 10 curated mints are tagged .splToken2022: AUSD, DUSD, PYUSD (PayPal USD), USDG. The scanner ignores the standard field entirely \u2014 the filter at line 352 (SolanaTokenRegistry.mints[$0.mint] != nil) can never match a Token-2022 mint because the account list never contains one. Concrete failure: a user holding PYUSD on Solana sees no PYUSD row on wallet home and an understated total portfolio value, with no error \u2014 the balance silently reads as absent. The same defect hits the custom-token pass at line 625: a user who adds a Token-2022 mint via AddCustomTokenSheet (which explicitly supports splToken2022 via SolanaMintInfo.standard, whose doc comment says 'so the scanner can pick the right token program for balance reads') will never see its balance either.",
+  "suggestedFix": "Issue two getTokenAccountsByOwner calls \u2014 one with programId TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA and one with TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb3UYUg \u2014 and merge the results (e.g. add a programId parameter to SolanaChainAdapter.fetchTokenAccounts or a fetchAllTokenAccounts that unions both). Both the registry pass (line 342) and the custom-token pass (line 625) must use the merged result. Alternatively pass each registry entry's Standard through and query only the programs actually needed."
+ },
+ {
+  "file": "/Users/thuglifex/Documents/UniApp/UniApp/Sources/DesignSystem/UniColors.swift",
+  "line": 158,
+  "title": "Button.primaryLabel / Text.onTint are literal white but the brand accent resolves near-white in dark mode, producing invisible text",
+  "severity": "medium",
+  "category": "ui-state",
+  "description": "UniColors.Button.primaryLabel (line 158) and UniColors.Text.onTint (line 79) are hardcoded Color.white, documented as 'text drawn on top of a tinted/accent surface'. But UniColors.Button.primaryTint = Color.accentColor, and AccentColor.colorset resolves to Cloud #F5F5F7 in dark mode (verified in UniApp/Resources/Assets.xcassets/AccentColor.colorset/Contents.json; the file's own Brand doc comment at lines 322-326 states this). White on #F5F5F7 is ~1.02:1 contrast \u2014 invisible. Concrete failure: BackupVerifyView.swift:170 paints the selected recovery-phrase word chip with foreground UniColors.Button.primaryLabel on fill UniColors.Button.primaryTint. In dark mode, the moment a user taps a word during recovery-phrase backup verification, its text disappears (white on near-white), so the user cannot read back which word they selected on a security-critical verification surface. UniButton itself is unaffected (glassProminent resolves its own label), which is why the token pair survived until a manual consumer used it as documented.",
+  "suggestedFix": "Make the on-accent label roles adapt with the accent: define primaryLabel/onTint as an asset-catalog colorset (white in light, Ink #0B0D11 in dark) or Color(uiColor: .systemBackground)-based role so it always contrasts the monochrome accent; audit BrowserQRScanSheet's onTint use (white over camera feed) and give it a dedicated always-white role like Text.onMedia instead."
+ },
+ {
+  "file": "/Users/thuglifex/Documents/UniApp/UniApp/Sources/DesignSystem/UniHaptic.swift",
+  "line": 331,
+  "title": "uniHaptic(.error, trigger:) bypasses UniHapticEngine frustration silencing \u2014 Rule #10 \u00a7J never engages for wrong-PIN errors",
+  "severity": "low",
+  "category": "logic",
+  "description": "UniHapticModifier.body (lines 329-345) routes any haptic with a non-nil SensoryFeedback mapping straight to .sensoryFeedback(feedback, trigger:). UniHaptic.error maps to .error (line 245), so the single-shot modifier path never reaches UniHapticEngine.playError() and its 3-errors-in-10s silencing (the directional modifier at lines 359-385 explicitly special-cases .error through the engine for exactly this reason, per its own comment). Grep confirms the only .error haptic call sites in the app are the single-shot form: PinCodeView.swift:146 (.uniHaptic(.error, trigger: errorTrigger) \u2014 wrong PIN entry, the canonical Rule #10 \u00a7J use case) and BackupVerifyView.swift:81; nothing anywhere calls UniHapticEngine play/fire with .error. Net effect: the documented frustration-silencing behavior is dead code \u2014 a user repeatedly mistyping their PIN gets an error buzz on every single attempt, and the engine's error window/counter state is never fed.",
+  "suggestedFix": "In UniHapticModifier, special-case .error the same way the directional modifier does: route it through UniHapticEngine.shared.play(.error) via onChange instead of the direct sensoryFeedback mapping (or check the engine's silencing state before firing)."
+ },
+ {
+  "file": "/Users/thuglifex/Documents/UniApp/UniApp/Sources/DesignSystem/UniHapticEngine.swift",
+  "line": 487,
+  "title": "pendingErrorSilences never expires with the 10-second frustration window \u2014 errors hours later are silently swallowed",
+  "severity": "low",
+  "category": "logic",
+  "description": "playError() (lines 482-503) prunes recentErrors timestamps older than the 10s window (line 485), but pendingErrorSilences (decremented at lines 487-490) has no time bound. Rule #10 \u00a7J states 'State resets after 10s of no errors', yet once the threshold trips and only 1-2 of the silenced errors are consumed, the remaining silence credits persist indefinitely. Concrete scenario (once finding #3 is fixed and errors actually route through the engine): user mistypes their PIN 3 times at 09:00 (third buzz trips the threshold, pendingErrorSilences = 2), then four times taps only 2 more wrong digits over the day \u2014 a wrong-PIN attempt hours later produces no error haptic at all, contradicting the documented reset. Currently latent because no call site reaches playError() (see the UniHaptic.swift:331 finding), but it becomes live the moment that routing bug is fixed.",
+  "suggestedFix": "Record the time the silencing was armed and clear pendingErrorSilences whenever now - lastErrorTime > frustrationWindow at the top of playError(), so silence credits expire together with the window."
+ },
+ {
+  "file": "/Users/thuglifex/Documents/UniApp/UniApp/Sources/Networking/LongTailAdapters.swift",
+  "line": 31,
+  "title": "Native XRP balance always renders 0 \u2014 rippled's HTTP API is not JSON-RPC 2.0, RPCClient's id-echo validation rejects every response",
+  "severity": "high",
+  "category": "data-correctness",
+  "description": "XRPChainAdapter.fetchAccountSummary routes account_info through RPCClient.callJSONResultData, whose dispatchJSON validates that the response echoes the request id (RPCClient.swift:454-456, responseID returns false when 'id' is absent). rippled's HTTP API does not return an 'id' field \u2014 live-verified against both registered endpoints: POST to https://s1.ripple.com:51234 and https://xrplcluster.com with {\"jsonrpc\":\"2.0\",\"id\":7,...} returns top-level keys ['result','status','type','forwarded','warnings'] \u2014 no 'id'. Every call therefore throws .invalidResponse, all 3 ripple endpoints get marked failed, and the catch block at line 44-47 swallows the error and returns ChainAccountSummary(nativeBalance: 0, isUsed: false). Concrete scenario: any user holding XRP sees a 0 XRP balance, every scan, on every endpoint \u2014 a wallet showing zero for real funds. (The RLUSD IOU path in RealRPCBalanceScanner.fetchXRPLTokenLines works only because it bypasses RPCClient with a direct URLSession call.)",
+  "suggestedFix": "Either bypass RPCClient's JSON-RPC envelope for XRPL (direct POST like fetchXRPLTokenLines, validating result.status == \"success\"), or teach RPCClient to skip id validation for endpoints flagged as rippled-style (rippled ignores jsonrpc/id and returns {result:{...}, status, type})."
+ },
+ {
+  "file": "/Users/thuglifex/Documents/UniApp/UniApp/Sources/Networking/XRPLTransactionAdapter.swift",
+  "line": 26,
+  "title": "XRP transaction history is always empty \u2014 account_tx fails RPCClient's JSON-RPC id-echo check on every rippled endpoint",
+  "severity": "medium",
+  "category": "logic",
+  "description": "Same root cause as the XRP balance bug: fetch() calls client.callJSONResultData(chain: .ripple, method: \"account_tx\", ...), but rippled responses carry no 'id' field (live-verified on s1.ripple.com and xrplcluster.com), so RPCClient.responseID (RPCClient.swift:454-456) rejects every response with .invalidResponse. All three registered XRPL endpoints fail identically, RealRPCTransactionScanner.fetch catches the throw (RealRPCTransactionScanner.swift:181-184) and returns []. Concrete scenario: a user with years of XRP payment history opens the activity feed and sees 'No activity yet' permanently. The entire body of this adapter (lines 31-127) is currently unreachable dead logic.",
+  "suggestedFix": "Route XRPL calls around the JSON-RPC 2.0 envelope validation (direct rippled-format POST, validate result.status == \"success\") or add a per-endpoint flag in RPCEndpoint that relaxes the id-echo requirement for rippled-protocol endpoints."
+ },
+ {
+  "file": "/Users/thuglifex/Documents/UniApp/UniApp/Sources/Networking/TronTransactionAdapter.swift",
+  "line": 126,
+  "title": "TRC-20 feed displays attacker-chosen token symbols verbatim \u2014 scam airdrop named 'USDT' renders as real USDT",
+  "severity": "medium",
+  "category": "security",
+  "description": "fetchTRC20 trusts token_info.symbol from TronGrid's /transactions/trc20 endpoint (line 126) with no validation against TronTokenRegistry and no contract-address check. TronGrid returns transfers of EVERY TRC-20 contract that touched the address, including spam/scam tokens whose contracts self-declare symbol 'USDT' and decimals 6 \u2014 a pervasive, well-documented attack on Tron specifically (fake-USDT airdrops). Concrete scenario: attacker airdrops 10,000 units of a fake token with symbol 'USDT' to the victim; the activity feed renders '+10,000 USDT incoming', indistinguishable from a real Tether transfer (tokenContract is stored but the row's primary label is the symbol). A user selling goods against the feed, or believing a 'refund' arrived, is defrauded. Contrast: the Solana adapter deliberately labels unknown mints 'SPL' (SolanaTransactionAdapter.swift:311-318) to avoid exactly this.",
+  "suggestedFix": "Resolve the symbol from TronTokenRegistry by contract address (token_info.address); for unknown contracts render a neutral label ('TRC-20' plus truncated contract) instead of the self-declared symbol, mirroring the Solana adapter's knownMintSymbol approach."
+ },
+ {
+  "file": "/Users/thuglifex/Documents/UniApp/UniApp/Sources/Networking/StellarTransactionAdapter.swift",
+  "line": 48,
+  "title": "Stellar feed displays attacker-chosen asset codes \u2014 anyone can issue 'USDC' and the feed labels it as USDC",
+  "severity": "medium",
+  "category": "security",
+  "description": "Line 48 sets the displayed symbol to op.asset_code verbatim for any non-native payment. On Stellar, anyone can issue an asset with any code; only the (code, issuer) pair identifies an asset. An attacker issues an asset with code 'USDC' from their own account and path-pays dust to the victim (no trustline needed for claimable/path mechanics in some flows, and any historical payment op to the account surfaces here); the feed renders '+1,000 USDC incoming' with the real issuer relegated to tokenContract. Same fraud class as the Tron finding: the user believes real Circle USDC arrived. The legitimate-issuer check is one comparison away \u2014 the registry pattern already used for balances elsewhere.",
+  "suggestedFix": "Maintain a known (asset_code, asset_issuer) allowlist (e.g., Circle's USDC issuer GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN); for unknown issuers display a neutral label such as the code plus truncated issuer or 'Unknown asset', never the bare code."
+ },
+ {
+  "file": "/Users/thuglifex/Documents/UniApp/UniApp/Sources/Networking/LongTailTransactionAdapters.swift",
+  "line": 537,
+  "title": "Kava outgoing rows show the FEE as the amount and the fee-collector as counterparty \u2014 first matching 'transfer' event is the ante-handler fee deduction",
+  "severity": "medium",
+  "category": "data-correctness",
+  "description": "queryKavaTxs walks raw['events'] and appends a TransactionEvent for the FIRST 'transfer' event whose sender or recipient equals the address, then breaks (lines 536-594). In Cosmos SDK, tx_response.events includes ante-handler events emitted before message execution: fee deduction calls SendCoinsFromAccountToModule, which emits a 'transfer' event from the signer to the fee_collector module account. For any outgoing Kava transaction with a non-zero fee, that fee transfer is the first 'transfer' event matching sender == address, so the row renders amount = the fee (e.g. '\u22120.005 KAVA') with counterparty = the fee-collector module address, while the actual send amount and the real recipient never display. Incoming rows are unaffected (the sender's fee event involves neither side equal to the viewing address, so the loop continues to the real transfer).",
+  "suggestedFix": "Skip transfer events whose recipient is the fee_collector module account (kava17xpfvakm2amg962yls6f84z3kell8c5lvkzrsl), or prefer the message-level event (filter by msg_index attribute presence in SDK 0.46+), or pick the transfer event with the largest amount involving the address instead of the first."
+ },
+ {
+  "file": "/Users/thuglifex/Documents/UniApp/UniApp/Sources/Networking/SolanaTransactionAdapter.swift",
+  "line": 164,
+  "title": "Legacy spl-token transfer fallback displays raw base units when token-balance metadata is missing (1,000,000x overstatement for USDC)",
+  "severity": "low",
+  "category": "data-correctness",
+  "description": "For legacy 'transfer' instructions (no tokenAmount object) decimals is set to 0 at line 164. When meta.preTokenBalances/postTokenBalances are absent or don't cover the wallet, the fallback branch (lines 190-199) sets resolvedDecimals = decimals = 0, so the amount at line 200 is the raw integer amount undivided: a 1-USDC transfer (raw 1000000) renders as '1,000,000 USDC'. Concrete scenario: a malicious or pruned RPC node (the adapter rotates across public endpoints) returns a getTransaction response without token-balance meta for an incoming USDT/USDC transfer \u2014 the feed shows a six-orders-of-magnitude inflated incoming amount, the same fraud-enabling display class as the partial-payment issue. The transferChecked path is safe (decimals carried in the instruction).",
+  "suggestedFix": "When decimals cannot be resolved (legacy transfer + no balance meta), skip the event or resolve decimals via SolanaTokenRegistry.mints[mint]?.decimals / getMint, rather than rendering raw base units."
+ },
+ {
+  "file": "/Users/thuglifex/Documents/UniApp/UniApp/Sources/Networking/SolanaChainAdapter.swift",
+  "line": 104,
+  "title": "fetchMintInfo decodes any >=82-byte account as an SPL mint \u2014 no owner-program or is_initialized validation; garbage decimals (up to 255) flow into Add Custom Token",
+  "severity": "low",
+  "category": "data-correctness",
+  "description": "fetchMintInfo (lines 97-130) reads getAccountInfo for a user-supplied address and accepts any account whose data is >= 82 bytes, decoding byte 44 as decimals. It reads the owner field only to pick splToken vs splToken2022 via hasPrefix(\"TokenzQ\") \u2014 any non-token-program account (a Metaplex metadata account, a BPF program data account, a stake account) silently classifies as .splToken instead of being rejected, and is_initialized (byte 45) is never checked. Concrete scenario: a user pastes a Solana account address that isn't a mint into Add Custom Token (AddCustomTokenSheet.swift:405); the sheet confidently shows a decoded 'decimals' value that is actually an arbitrary data byte (possible values up to 255, where 10^255 overflows Decimal into NaN when used as a scale factor), and the token is added with garbage decimals so any later balance/amount math is wrong. Validating the owner is one string comparison against the two token program ids.",
+  "suggestedFix": "Throw .decodingFailed unless value['owner'] equals TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA or TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb exactly (not hasPrefix), and require bytes[45] == 1 (is_initialized)."
+ }
+]

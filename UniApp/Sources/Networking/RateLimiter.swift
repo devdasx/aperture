@@ -26,10 +26,15 @@ actor RateLimiter {
 
     /// Wait for permission to send the next request to `endpoint`.
     /// Returns immediately if the bucket has tokens; otherwise
-    /// sleeps for the refill duration.
-    func acquire(for endpoint: RPCEndpoint) async {
+    /// sleeps for the refill duration. Throws
+    /// `RPCError.rateLimited` if no token could be obtained within
+    /// the bucket's bounded wait — callers fail loudly instead of
+    /// proceeding without a token. Throws `RPCError.cancelled`
+    /// when the calling task is cancelled — never mis-typed as a
+    /// rate limit (2026-06-11).
+    func acquire(for endpoint: RPCEndpoint) async throws(RPCError) {
         let bucket = bucket(for: endpoint)
-        await bucket.consume()
+        try await bucket.consume()
     }
 
     private func bucket(for endpoint: RPCEndpoint) -> TokenBucket {
@@ -45,20 +50,42 @@ actor RateLimiter {
 /// guarantees consume-then-refill ordering without explicit locks.
 actor TokenBucket {
     private var availableTokens: Double
-    private var lastRefill: Date
+    private var lastRefill: ContinuousClock.Instant
     private let limit: RPCEndpoint.RateLimit
+
+    /// Monotonic time source (2026-06-11). Wall-clock `Date` made
+    /// the refill arithmetic vulnerable to backwards clock
+    /// adjustments (NTP correction, manual change): a negative
+    /// elapsed left `lastRefill` in the future, so no tokens ever
+    /// refilled and every call failed `.rateLimited` until the
+    /// clock caught back up. `ContinuousClock` only moves forward.
+    private static let clock = ContinuousClock()
 
     init(limit: RPCEndpoint.RateLimit) {
         self.limit = limit
         self.availableTokens = Double(limit.burstAllowance)
-        self.lastRefill = Date()
+        self.lastRefill = Self.clock.now
     }
 
     /// Consume one token. If none available, sleep until refill
     /// produces one. Loops in case the sleep undershoots due to
-    /// scheduler granularity (rare but possible).
-    func consume() async {
+    /// scheduler granularity (rare but possible). If the safety
+    /// bound is exhausted without obtaining a token (misconfigured
+    /// rate, pathological contention), throws `RPCError.rateLimited`
+    /// so the caller fails loudly instead of silently sending an
+    /// un-budgeted request.
+    func consume() async throws(RPCError) {
         for _ in 0..<10 {  // safety bound: never loop more than 10 times
+            // Cancellation propagates as cancellation (2026-06-11)
+            // — never mis-typed as `.rateLimited`. On an already-
+            // cancelled task `Task.sleep` throws immediately; the
+            // old `try?` swallowed that, busy-spinning all 10
+            // iterations, consuming a token (and burning provider
+            // quota) when one happened to be free, then reporting
+            // a rate limit no provider ever imposed — which the
+            // dispatcher treated as an endpoint failure and kept
+            // rotating instead of aborting.
+            if Task.isCancelled { throw RPCError.cancelled }
             refill()
             if availableTokens >= 1 {
                 availableTokens -= 1
@@ -74,13 +101,28 @@ actor TokenBucket {
             // single-request wait; after 60 s we fall through and
             // try again.
             let cappedWait = min(waitSeconds, 60)
-            try? await Task.sleep(for: .seconds(cappedWait))
+            do {
+                try await Task.sleep(for: .seconds(cappedWait))
+            } catch {
+                // `Task.sleep` only throws `CancellationError`.
+                throw RPCError.cancelled
+            }
         }
+        // Bounded wait exhausted without a token — surface it as the
+        // rate-limit error, estimating when the next token lands.
+        refill()
+        let neededTokens = max(0, 1 - availableTokens)
+        let waitSeconds = limit.requestsPerSecond > 0
+            ? neededTokens / limit.requestsPerSecond
+            : 60
+        throw RPCError.rateLimited(retryAfter: Date().addingTimeInterval(min(waitSeconds, 60)))
     }
 
     private func refill() {
-        let now = Date()
-        let elapsed = now.timeIntervalSince(lastRefill)
+        let now = Self.clock.now
+        // Duration → fractional seconds. Monotonic, so `elapsed`
+        // can never be negative across system clock adjustments.
+        let elapsed = (now - lastRefill) / .seconds(1)
         guard elapsed > 0 else { return }
         let refilled = elapsed * limit.requestsPerSecond
         availableTokens = min(

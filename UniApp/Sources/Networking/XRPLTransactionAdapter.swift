@@ -23,10 +23,14 @@ struct XRPLTransactionAdapter: Sendable {
             "ledger_index_max": -1,
             "binary": false,
         ]
+        // rippled never echoes the JSON-RPC `id`, so the default
+        // id-echo validation rejects every response and history comes
+        // back permanently empty — opt out for XRPL.
         let data = try await client.callJSONResultData(
             chain: .ripple,
             method: "account_tx",
-            params: [params]
+            params: [params],
+            validatesIDEcho: false
         )
         guard let result = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
               let transactions = result["transactions"] as? [[String: Any]] else {
@@ -54,24 +58,43 @@ struct XRPLTransactionAdapter: Sendable {
             let txResult = (metaDict["TransactionResult"] as? String) ?? "tesSUCCESS"
             let status: TransactionStatus = (validated && txResult == "tesSUCCESS") ? .confirmed : (validated ? .failed : .pending)
 
-            // Amount can be either a string (XRP, in drops) or a
+            // Partial-payment safety (xrpl.org "partial payments"
+            // warning): `tx.Amount` is only the UPPER BOUND when the
+            // tfPartialPayment flag is set — a scam Payment can carry
+            // Amount = 10,000 XRP and deliver 1 drop. The value that
+            // actually moved is `meta.delivered_amount` (legacy
+            // spelling `meta.DeliveredAmount`); trust `tx.Amount`
+            // only when meta genuinely carries neither (pre-2014
+            // ledgers, where `delivered_amount` is the literal
+            // string "unavailable").
+            let deliveredField = metaDict["delivered_amount"] ?? metaDict["DeliveredAmount"]
+            let amountField: Any?
+            if let delivered = deliveredField,
+               !(delivered is NSNull),
+               (delivered as? String) != "unavailable" {
+                amountField = delivered
+            } else {
+                amountField = tx["Amount"]
+            }
+
+            // The amount can be either a string (XRP, in drops) or a
             // dictionary (issued currency, with `currency`, `issuer`,
             // `value`). For an issued-currency payment we report the
-            // value as the amount and the currency code as the
-            // symbol; the issuer becomes the token contract.
+            // value as the amount and the resolved currency code as
+            // the symbol; the issuer becomes the token contract.
             let symbol: String
             let amount: Decimal
             let contract: String?
-            if let dropsString = tx["Amount"] as? String, let drops = Decimal(string: dropsString) {
+            if let dropsString = amountField as? String, let drops = Decimal(string: dropsString) {
                 symbol = "XRP"
                 amount = drops / Self.dropsPerXRP
                 contract = nil
-            } else if let issuedAmount = tx["Amount"] as? [String: Any],
+            } else if let issuedAmount = amountField as? [String: Any],
                       let valueString = issuedAmount["value"] as? String,
                       let currencyCode = issuedAmount["currency"] as? String,
                       let issuer = issuedAmount["issuer"] as? String,
                       let parsedValue = Decimal(string: valueString) {
-                symbol = currencyCode
+                symbol = Self.displaySymbol(currency: currencyCode, issuer: issuer)
                 amount = parsedValue
                 contract = issuer
             } else {
@@ -125,6 +148,47 @@ struct XRPLTransactionAdapter: Sendable {
             ))
         }
         return events
+    }
+
+    /// Resolve the display symbol for an issued currency. The
+    /// registry's (currency, issuer) mapping wins (RLUSD ships as a
+    /// 40-char hex code); otherwise non-standard 40-char hex codes
+    /// decode to ASCII (trailing NUL padding trimmed) so the feed
+    /// never renders a raw "524C5553…" string.
+    private static func displaySymbol(currency: String, issuer: String) -> String {
+        if let entry = XRPLTokenRegistry.tokens.first(where: {
+            $0.currency.caseInsensitiveCompare(currency) == .orderedSame && $0.issuer == issuer
+        }) {
+            return entry.symbol
+        }
+        return decodeHexCurrency(currency) ?? currency
+    }
+
+    /// Decode a non-standard 40-char hex XRPL currency code to its
+    /// ASCII form. Returns `nil` unless every non-padding byte is
+    /// printable ASCII — garbage codes stay hex rather than render
+    /// as control characters.
+    private static func decodeHexCurrency(_ code: String) -> String? {
+        guard code.count == 40, let bytes = hexBytes(code) else { return nil }
+        var trimmed = bytes
+        while trimmed.last == 0 { trimmed.removeLast() }
+        guard !trimmed.isEmpty,
+              trimmed.allSatisfy({ $0 >= 0x21 && $0 <= 0x7E }) else { return nil }
+        return String(decoding: trimmed, as: UTF8.self)
+    }
+
+    private static func hexBytes(_ hex: String) -> [UInt8]? {
+        guard hex.count % 2 == 0 else { return nil }
+        var result: [UInt8] = []
+        result.reserveCapacity(hex.count / 2)
+        var i = hex.startIndex
+        while i < hex.endIndex {
+            let next = hex.index(i, offsetBy: 2)
+            guard let byte = UInt8(hex[i..<next], radix: 16) else { return nil }
+            result.append(byte)
+            i = next
+        }
+        return result
     }
 
     private static let dropsPerXRP: Decimal = {

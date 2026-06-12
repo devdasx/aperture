@@ -121,12 +121,23 @@ struct UniButton: View {
     /// today; kept on the public surface so future toolbar / action-class
     /// variants can adopt it without an API break.
     var icon: String? = nil
-    /// Wallet identity (`.walletPill` only). When both values are
-    /// non-nil the pill renders a leading `WalletAvatar`. When either is
-    /// nil the pill collapses to the `.toolbarPill` text-only layout.
-    /// Ignored by all other variants.
+    /// LEGACY wallet identity (`.walletPill` only). The pre-2026-06-09
+    /// flat-circle avatar took an SF Symbol + hex color tuple. The
+    /// 2026-06-09 redesign passes a `WalletAvatarSpec` via the new
+    /// `walletSpec:` parameter — keep these two for source
+    /// compatibility until every call site migrates.
     var walletSymbol: String? = nil
     var walletColorHex: String? = nil
+    /// 2026-06-09 wallet-identity spec — gradient + glyph or monogram
+    /// + derived badge. When set, the `.walletPill` label renders the
+    /// new gradient-disc `WalletAvatar`. Takes precedence over
+    /// `walletSymbol` / `walletColorHex` when both are provided.
+    var walletSpec: WalletAvatarSpec? = nil
+    /// 2026-06-09 v3 — wallet UUID, threaded into the `.walletPill`'s
+    /// inner `WalletAvatar` so the `.custom` SVG branch can resolve
+    /// the cached PNG. Nil for `.toolbarPill` (no avatar) and for
+    /// cold-launch frames where no active wallet exists yet.
+    var walletId: UUID? = nil
     let action: () -> Void
 
     /// Trigger counter for the variant's default haptic. Incremented inside
@@ -169,6 +180,8 @@ struct UniButton: View {
         icon: String? = nil,
         walletSymbol: String? = nil,
         walletColorHex: String? = nil,
+        walletSpec: WalletAvatarSpec? = nil,
+        walletId: UUID? = nil,
         action: @escaping () -> Void
     ) {
         self.labelSource = .verbatim(title)
@@ -179,6 +192,8 @@ struct UniButton: View {
         self.icon = icon
         self.walletSymbol = walletSymbol
         self.walletColorHex = walletColorHex
+        self.walletSpec = walletSpec
+        self.walletId = walletId
         self.action = action
     }
 
@@ -199,7 +214,11 @@ struct UniButton: View {
         }
         .modifier(VariantStyle(variant: variant))
         .disabled(!isEnabled || isLoading)
-        .opacity(isEnabled ? 1 : 0.5)
+        // Loading shares the disabled visual: the button IS disabled
+        // while loading (taps are suppressed above), so it must read
+        // as such — full opacity + spinner alone made the surface
+        // feel frozen rather than busy-and-locked.
+        .opacity((isEnabled && !isLoading) ? 1 : 0.5)
     }
 
     /// Single source of truth for rendering the label string — picks
@@ -294,7 +313,12 @@ struct UniButton: View {
     @ViewBuilder
     private var walletPillLabel: some View {
         HStack(spacing: UniSpacing.xs) {
-            if let walletSymbol, let walletColorHex {
+            // 2026-06-09 — prefer the new gradient-disc spec when the
+            // caller supplied one; fall back to the legacy SF Symbol
+            // + hex tuple for sources that haven't migrated yet.
+            if let walletSpec {
+                WalletAvatar(spec: walletSpec, size: .toolbarPill, walletId: walletId)
+            } else if let walletSymbol, let walletColorHex {
                 WalletAvatar(
                     symbol: walletSymbol,
                     colorHex: walletColorHex,

@@ -319,7 +319,7 @@ struct ImportSecurityWarningSheet: View {
     }
 
     private var suppressToggle: some View {
-        Toggle(isOn: $hideNextTime) {
+        UniToggle(isOn: $hideNextTime) {
             UniBody(
                 text: "Don't show this warning again",
                 color: UniColors.Text.secondary

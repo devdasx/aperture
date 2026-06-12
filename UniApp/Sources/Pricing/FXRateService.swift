@@ -57,13 +57,16 @@ actor FXRateService {
 
     /// Returns the multiplier such that
     /// `1 unit of "USD" == N units of "target"` —
-    /// i.e. `targetAmount = usdAmount × rate(to: target)`.
+    /// i.e. `targetAmount = usdAmount × rate(fromUSDTo: target)`.
     /// Returns `nil` if the target isn't in the rates dictionary or
     /// the upstream call failed.
     ///
+    /// (Renamed 2026-06-10 from the misleading `rate(toUSD:)` — the
+    /// contract was always USD → target, never target → USD.)
+    ///
     /// Special case: `target == "USD"` returns `1` without making a
     /// network call — same-currency conversion is identity.
-    func rate(toUSD targetCurrency: String) async -> Decimal? {
+    func rate(fromUSDTo targetCurrency: String) async -> Decimal? {
         let target = targetCurrency.uppercased()
         guard target != "USD" else { return 1 }
 
@@ -95,7 +98,24 @@ actor FXRateService {
             rates.reserveCapacity(ratesRaw.count)
             for (code, value) in ratesRaw {
                 if let num = value as? NSNumber {
-                    rates[code.uppercased()] = NSDecimalNumber(value: num.doubleValue).decimalValue
+                    // Precision-preserving decode (2026-06-10). The
+                    // previous `NSDecimalNumber(value: num.doubleValue)`
+                    // round-tripped every rate through a binary Double,
+                    // baking float error into the stored Decimal. Use
+                    // the number's exact decimal value when
+                    // JSONSerialization handed us an NSDecimalNumber;
+                    // otherwise parse its string form (NSDecimalNumber's
+                    // parser handles exponent notation, returning
+                    // `.notANumber` — filtered below — on garbage).
+                    let dec: Decimal
+                    if let exact = num as? NSDecimalNumber {
+                        dec = exact.decimalValue
+                    } else {
+                        dec = NSDecimalNumber(string: num.stringValue).decimalValue
+                    }
+                    if !dec.isNaN {
+                        rates[code.uppercased()] = dec
+                    }
                 } else if let str = value as? String, let dec = Decimal(string: str) {
                     rates[code.uppercased()] = dec
                 }

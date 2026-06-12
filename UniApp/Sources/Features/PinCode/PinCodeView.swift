@@ -10,7 +10,11 @@ import SwiftUI
 /// - `.verify` — user unlocks an existing PIN. The view calls
 ///   `PinCodeStorage.verify(pin)` itself; on match, `onComplete("")`
 ///   (the storage layer holds the hash, not the plaintext); on mismatch,
-///   the dots shake + clear, a transient footnote.
+///   the dots shake + clear, a transient footnote. Failed attempts are
+///   recorded in Keychain and an escalating lockout (1 s doubling to a
+///   16-minute cap from the fifth failure) disables the keypad with a
+///   countdown under the dots — brute-force protection that survives
+///   app kill. No wipe: the recovery path is the recovery phrase.
 ///
 /// **Design rationale (Rule #17 §H).** Every PIN entry in the app — first
 /// setup, unlock, transaction confirmation, Settings change — uses this
@@ -76,6 +80,32 @@ struct PinCodeView: View {
     /// and `isAvailable` are resolved once, not on every body evaluation.
     @State private var biometricService = BiometricService()
 
+    /// Pending dot-clear (and confirm-mismatch callback) scheduled by
+    /// `failWith(_:)`. Stored so `.onDisappear` can cancel it — a
+    /// fire-and-forget delay outliving the view would mutate state and
+    /// invoke parent callbacks after the screen is gone.
+    @State private var clearTask: Task<Void, Never>? = nil
+
+    /// In-flight manual biometric authentication started by the keypad's
+    /// biometric key. Stored so `.onDisappear` can cancel it and the
+    /// completion callback never fires after the view has gone away.
+    @State private var biometricTask: Task<Void, Never>? = nil
+
+    /// In-flight PBKDF2 verification for `.verify` mode (the derivation
+    /// runs off the main thread). Stored so `.onDisappear` can cancel it.
+    @State private var verifyTask: Task<Void, Never>? = nil
+
+    /// Countdown driver for the brute-force lockout — sleeps in 1-second
+    /// beats until the persisted lockout window expires, then re-enables
+    /// the keypad. Stored so `.onDisappear` can cancel it.
+    @State private var lockoutTask: Task<Void, Never>? = nil
+
+    /// Seconds remaining in the active brute-force lockout window.
+    /// `0` means input is allowed. Mirrors
+    /// `PinCodeStorage.lockoutRemaining()` — the Keychain record is the
+    /// source of truth; this is the UI-facing copy the countdown updates.
+    @State private var lockoutRemaining: TimeInterval = 0
+
     // MARK: - Body
 
     var body: some View {
@@ -97,8 +127,12 @@ struct PinCodeView: View {
             // keypad context into a translated sheet).
             VStack(spacing: UniSpacing.l) {
                 dotRow
+                lockoutRow
                 Spacer(minLength: 0)
                 keypad
+                    .disabled(isLockedOut)
+                    .opacity(isLockedOut ? 0.4 : 1)
+                    .animation(.easeInOut(duration: 0.2), value: isLockedOut)
                 inlineErrorRow
                 forgotRow
             }
@@ -111,6 +145,12 @@ struct PinCodeView: View {
         .uniHaptic(.contextualImpact(.tap), trigger: keypressTrigger)
         .uniHaptic(.error, trigger: errorTrigger)
         .task {
+            guard case .verify = mode else { return }
+            // Restore any persisted brute-force lockout before anything
+            // else — the Keychain record survives app kill, so a user
+            // who force-quits mid-lockout lands back in the countdown,
+            // not on a fresh keypad.
+            refreshLockout()
             // Auto-fire Face ID / Touch ID on `.verify` entry when
             // the user has biometrics enabled. Matches iOS's own
             // pattern (Settings → Touch ID & Passcode prompts Face
@@ -119,16 +159,25 @@ struct PinCodeView: View {
             // lifecycle — exactly the right cadence here. The user
             // can still abort and type the passcode manually if the
             // biometric prompt fails or the user dismisses it.
-            guard case .verify = mode,
+            // Skipped during an active lockout — matching iOS's own
+            // passcode-lockout behavior, no input path stays open.
+            guard !isLockedOut,
                   biometricService.isAvailable,
                   PinCodePreference.isBiometricEnabled()
             else { return }
             let result = await biometricService.authenticate(
                 reason: "Unlock Aperture with Face ID."
             )
+            guard !Task.isCancelled else { return }
             if case .success = result {
                 onComplete("")
             }
+        }
+        .onDisappear {
+            clearTask?.cancel()
+            biometricTask?.cancel()
+            verifyTask?.cancel()
+            lockoutTask?.cancel()
         }
     }
 
@@ -184,6 +233,67 @@ struct PinCodeView: View {
         }
         .modifier(ShakeEffect(animatableData: CGFloat(shakeTrigger)))
         .animation(.spring(response: 0.3, dampingFraction: 0.4), value: shakeTrigger)
+    }
+
+    // MARK: - Brute-force lockout
+
+    private var isLockedOut: Bool {
+        lockoutRemaining > 0
+    }
+
+    /// Countdown line under the dots, shown in `.verify` mode while an
+    /// escalating brute-force delay is active. Reserves a fixed-height
+    /// slot (like `inlineErrorRow`) so the keypad doesn't jump when the
+    /// lockout engages or expires. `.set` / `.confirm` modes render
+    /// nothing — their layout is unchanged.
+    @ViewBuilder
+    private var lockoutRow: some View {
+        if mode == .verify {
+            Group {
+                if isLockedOut {
+                    UniFootnote(
+                        text: "Try again in \(lockoutCountdown)",
+                        alignment: .center,
+                        color: UniColors.Text.secondary
+                    )
+                } else {
+                    UniFootnote(text: " ", alignment: .center)
+                }
+            }
+            .frame(height: 20)
+        }
+    }
+
+    /// Localized remaining-time string, e.g. "16 min" / "4 sec" /
+    /// "1 min, 30 sec" — native `Duration` formatting, no hand-rolled
+    /// time math (Rule #3).
+    private var lockoutCountdown: String {
+        let seconds = Int(max(1, lockoutRemaining.rounded(.up)))
+        return Duration.seconds(seconds).formatted(
+            .units(allowed: [.minutes, .seconds], width: .abbreviated)
+        )
+    }
+
+    /// Re-read the persisted lockout window and, when one is active,
+    /// drive a once-per-second countdown by sleeping until the next
+    /// beat (a `.task`-style sleeping loop — deliberately NOT a `Timer`,
+    /// which would keep firing detached from the view lifecycle). The
+    /// loop re-reads `PinCodeStorage.lockoutRemaining()` on every beat
+    /// so the Keychain record stays the single source of truth.
+    private func refreshLockout() {
+        lockoutTask?.cancel()
+        let remaining = PinCodeStorage.lockoutRemaining()
+        lockoutRemaining = remaining
+        guard remaining > 0 else { return }
+        lockoutTask = Task {
+            while !Task.isCancelled {
+                let left = PinCodeStorage.lockoutRemaining()
+                lockoutRemaining = left
+                guard left > 0 else { return }
+                try? await Task.sleep(for: .seconds(min(left, 1)))
+                if Task.isCancelled { return }
+            }
+        }
     }
 
     // MARK: - Keypad
@@ -396,6 +506,10 @@ struct PinCodeView: View {
     // MARK: - Input handling
 
     private func handleDigitTap(_ digit: String) {
+        // Defense in depth — the keypad is `.disabled` during a lockout,
+        // but a tap racing the lockout's engagement must not slip
+        // through into `evaluate()`.
+        guard !isLockedOut else { return }
         guard digits.count < 6 else { return }
         // Clear any prior error as soon as the user touches the keypad.
         inlineError = nil
@@ -417,11 +531,17 @@ struct PinCodeView: View {
     /// On success, `onComplete("")` — same contract as a passing `.verify`.
     /// On failure, the dots stay where they are; the user can still type
     /// their PIN.
+    ///
+    /// The task handle is stored in `biometricTask` and cancelled in
+    /// `.onDisappear`; the post-`await` cancellation guard ensures
+    /// `onComplete` never fires into a parent after this view is gone.
     private func handleBiometricTap() {
-        Task { @MainActor in
+        biometricTask?.cancel()
+        biometricTask = Task {
             let result = await biometricService.authenticate(
                 reason: "Unlock Aperture with Face ID."
             )
+            guard !Task.isCancelled else { return }
             if case .success = result {
                 onComplete("")
             }
@@ -444,10 +564,39 @@ struct PinCodeView: View {
                 failWith(.mismatch)
             }
         case .verify:
-            if PinCodeStorage.verify(digits) {
+            verifyPin()
+        }
+    }
+
+    /// `.verify`-mode evaluation with brute-force rate limiting.
+    ///
+    /// - The escalating lockout (`PinCodeStorage.lockoutRemaining()`) is
+    ///   consulted before the attempt; an active window rejects the
+    ///   entry without burning PBKDF2 cycles.
+    /// - The 100k-iteration derivation runs off the main thread via the
+    ///   async `PinCodeStorage.verify(_:)` — the keypad stays responsive.
+    /// - Wrong PIN → `recordFailure()` persists the incremented count +
+    ///   timestamp to Keychain; success → `clearFailures()`.
+    private func verifyPin() {
+        guard PinCodeStorage.lockoutRemaining() <= 0 else {
+            // Keypad is disabled during lockout; this guard covers any
+            // race between expiry and a queued sixth digit.
+            digits = ""
+            refreshLockout()
+            return
+        }
+        let candidate = digits
+        verifyTask?.cancel()
+        verifyTask = Task {
+            let isValid = await PinCodeStorage.verify(candidate)
+            guard !Task.isCancelled else { return }
+            if isValid {
+                PinCodeStorage.clearFailures()
                 onComplete("")
             } else {
+                PinCodeStorage.recordFailure()
                 failWith(.incorrect)
+                refreshLockout()
             }
         }
     }
@@ -469,12 +618,18 @@ struct PinCodeView: View {
         shakeTrigger &+= 1
         // Brief pause so the user perceives the shake before the dots
         // empty — clearing immediately would make the shake invisible.
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+        // Tracked task (not `DispatchQueue.asyncAfter`) so `.onDisappear`
+        // can cancel it — the dispatch version would mutate state and
+        // call `onConfirmMismatch` into a parent after the view is gone.
+        clearTask?.cancel()
+        clearTask = Task {
+            try? await Task.sleep(for: .seconds(0.5))
+            guard !Task.isCancelled else { return }
             digits = ""
             if case .confirm = mode, let onConfirmMismatch {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
-                    onConfirmMismatch()
-                }
+                try? await Task.sleep(for: .seconds(0.4))
+                guard !Task.isCancelled else { return }
+                onConfirmMismatch()
             }
         }
     }

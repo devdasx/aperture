@@ -151,10 +151,11 @@ enum BiometricEnrollmentTracker {
         let context = LAContext()
         var error: NSError?
         _ = context.canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: &error)
-        // `evaluatedPolicyDomainState` is populated as a side-effect of
-        // `canEvaluatePolicy` for biometric policies. On devices without
-        // biometry it remains `nil`.
-        return context.evaluatedPolicyDomainState
+        // `domainState.biometry.stateHash` is the iOS 18+ replacement
+        // for the deprecated `evaluatedPolicyDomainState` — the same
+        // opaque enrollment fingerprint, populated after
+        // `canEvaluatePolicy`. Nil on devices without biometry.
+        return context.domainState.biometry.stateHash
     }
 
     private static func fetchOrCreate(context: ModelContext) throws -> BiometricEnrollmentRecord {

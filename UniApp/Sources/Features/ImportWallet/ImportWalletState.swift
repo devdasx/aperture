@@ -102,7 +102,14 @@ final class ImportWalletState {
             // in Keychain, then persist the WalletRecord with one
             // address per supported chain (already populated by the
             // mnemonic-review step via `state.service`).
-            let seed = BIP39.deriveSeed(words: mnemonicWords, passphrase: mnemonicPassphrase)
+            //
+            // PBKDF2 (2048 × HMAC-SHA512) runs off the main actor so
+            // the UI doesn't hitch during commit; the Keychain writes
+            // below stay on `@MainActor`.
+            let seed = await Self.deriveSeedOffMain(
+                words: mnemonicWords,
+                passphrase: mnemonicPassphrase
+            )
             try SeedVault.storeSeed(seed, for: walletId)
             // ALSO store the mnemonic encrypted in `MnemonicVault`
             // so the user can re-view it from Settings → Wallets
@@ -136,22 +143,23 @@ final class ImportWalletState {
             }
 
         case .privateKey(let chain):
-            // Single private-key import — store the raw key in Keychain
-            // (as the 64-byte seed-slot; PBKDF2 isn't applicable to a
-            // single-chain key, so we pad/encode the key bytes
-            // directly via SeedVault's 64-byte contract by hashing for
-            // length only when needed. For v1 we store the UTF-8 bytes
-            // of the user's typed key padded to 64 bytes — the real
-            // import (T-024..T-031) will replace this with proper
-            // per-chain key bytes).
+            // Single private-key import — decode the typed key into
+            // its raw byte payload, positively identified for `chain`
+            // (hex → 32 raw bytes; Bitcoin-family WIF → base58check
+            // payload without version byte / compression flag; Solana
+            // base58 secret → the 32-byte ed25519 seed). The decoder
+            // throws on anything it can't positively identify, so
+            // garbage never lands in the Keychain.
             //
-            // NOTE: this is intentionally lightweight for v1. The
-            // private-key import flow is stub-grade (T-024..T-031); the
-            // SeedVault row exists so the wallet's identity has a
-            // Keychain anchor that future key-extraction work can
-            // upgrade in place without changing the WalletRecord row.
-            let padded = Self.paddedTo64(string: privateKeyRaw)
-            try SeedVault.storeSeed(padded, for: walletId)
+            // **Byte format stored:** the 32 raw private-key bytes
+            // (secp256k1 scalar or ed25519 seed, per the chain's
+            // curve), zero-padded to SeedVault's fixed 64-byte slot —
+            // bytes 0..<32 are the key, bytes 32..<64 are zero padding.
+            let keyBytes = try WalletCoreKeyImportService.decodePrivateKeyBytes(
+                privateKeyRaw,
+                on: chain
+            )
+            try SeedVault.storeSeed(Self.paddedTo64(bytes: keyBytes), for: walletId)
             do {
                 try await repository.insertImportedKeyWallet(
                     id: walletId,
@@ -167,15 +175,20 @@ final class ImportWalletState {
 
         case .watchOnly(let chain):
             // Watch-only: no key material. SeedVault is skipped on
-            // purpose — there's nothing secret to store.
+            // purpose — there's nothing secret to store. Only the
+            // validated `watchOnlyAddresses` set persists; the raw
+            // entry buffer is never used as a fallback (it may hold
+            // entries that failed validation). The review screen
+            // hides the commit button while this set is empty.
+            guard !watchOnlyAddresses.isEmpty else {
+                throw KeyImportError.invalidFormat
+            }
             try await repository.insertWatchOnlyWallet(
                 id: walletId,
                 name: resolvedName,
                 colorTag: "default",
                 chainRaw: chain.rawValue,
-                addresses: watchOnlyAddresses.isEmpty
-                    ? [watchOnlyRaw].filter { !$0.isEmpty }
-                    : watchOnlyAddresses
+                addresses: watchOnlyAddresses
             )
         }
 
@@ -193,16 +206,41 @@ final class ImportWalletState {
         return walletId
     }
 
-    /// Pad a UTF-8 string to exactly 64 bytes for the SeedVault
-    /// contract. Pure transformation, no hash — placeholder for the
-    /// per-chain key-extraction work that lands as T-024..T-031.
-    private static func paddedTo64(string: String) -> Data {
-        var bytes = Data(string.utf8)
-        if bytes.count < 64 {
-            bytes.append(contentsOf: [UInt8](repeating: 0, count: 64 - bytes.count))
-        } else if bytes.count > 64 {
-            bytes = bytes.prefix(64)
+    /// Zero the sensitive in-memory inputs once persistence has
+    /// succeeded (or the entry surface is abandoned). The seed / key
+    /// bytes now live encrypted in Keychain; the plaintext words,
+    /// passphrase, and raw key string have no reason to outlive the
+    /// flow.
+    func zeroSensitiveInput() {
+        mnemonicWords = []
+        mnemonicPassphrase = ""
+        privateKeyRaw = ""
+    }
+
+    /// Zero-pad raw key bytes to exactly 64 bytes for the SeedVault
+    /// fixed-slot contract. The key occupies the leading bytes; the
+    /// remainder is zero padding. Inputs longer than 64 bytes are
+    /// rejected by the decoder before reaching here, but are truncated
+    /// defensively rather than trapping.
+    private static func paddedTo64(bytes: Data) -> Data {
+        var padded = bytes
+        if padded.count < 64 {
+            padded.append(contentsOf: [UInt8](repeating: 0, count: 64 - padded.count))
+        } else if padded.count > 64 {
+            padded = padded.prefix(64)
         }
-        return bytes
+        return padded
+    }
+
+    /// Run the PBKDF2-HMAC-SHA512 BIP-39 seed derivation off the main
+    /// actor. The class is `@MainActor`; without this hop the 2048
+    /// HMAC iterations would run on the UI thread during commit.
+    nonisolated private static func deriveSeedOffMain(
+        words: [String],
+        passphrase: String
+    ) async -> Data {
+        await Task.detached(priority: .userInitiated) {
+            BIP39.deriveSeed(words: words, passphrase: passphrase)
+        }.value
     }
 }

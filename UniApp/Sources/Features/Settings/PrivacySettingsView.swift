@@ -13,12 +13,19 @@ import SwiftUI
 ///    statement sheet, the load-bearing honest claim of the project.
 struct PrivacySettingsView: View {
     @AppStorage("backgroundBalanceRefresh") private var backgroundRefresh: Bool = true
+    @AppStorage("languagePreference") private var languageCode: String = LanguagePreference.systemCode
     @State private var isShowingBoundarySheet: Bool = false
+
+    /// Rule #12 §G direction-only key for sheet content rebuild.
+    /// `"ltr"` or `"rtl"`. Identical pattern to `OnboardingView`.
+    private var sheetDirectionKey: String {
+        LanguagePreference.layoutDirection(for: languageCode) == .rightToLeft ? "rtl" : "ltr"
+    }
 
     var body: some View {
         List {
             Section {
-                Toggle(isOn: $backgroundRefresh) {
+                UniToggle(isOn: $backgroundRefresh) {
                     HStack(spacing: UniSpacing.s) {
                         Image(systemName: "arrow.clockwise")
                             .font(.system(size: 18, weight: .regular))
@@ -75,6 +82,7 @@ struct PrivacySettingsView: View {
         .navigationBarTitleDisplayMode(.large)
         .sheet(isPresented: $isShowingBoundarySheet) {
             BoundaryStatementSheet()
+                .id(sheetDirectionKey)
                 .uniAppEnvironment()
                 .intrinsicHeightSheet()
                 .presentationBackground(UniColors.Background.primary)

@@ -31,11 +31,6 @@ import SwiftUI
 /// faithful programmatic port but the brand has moved on; this view now
 /// follows.
 struct ApertureIrisView: View {
-    /// Legacy opening-radius parameter. Now ignored — the static mark
-    /// doesn't have an opening to animate. Kept so `ApertureMotion.Frame`
-    /// callers don't need to change.
-    let rc: CGFloat
-
     /// Rotation of the mark, in radians. Driven by `ApertureMotion.splash`
     /// during the bloom phase (starts at -0.55, eases to 0). Applied as a
     /// `.rotationEffect` on the asset.
@@ -46,21 +41,23 @@ struct ApertureIrisView: View {
     /// Pass `UniColors.Tint.accent` for the Aperture Blue accent.
     let ringColor: Color
 
-    /// Legacy parameter from the Canvas implementation (was the
-    /// negative-space color used to carve the seams). The static mark has
-    /// no carving so this is now ignored. Kept for API compatibility.
-    let negativeColor: Color
-
+    /// The `rc:` (legacy opening radius) and `negativeColor:` (legacy
+    /// seam-carving color) parameters are accepted for source
+    /// compatibility with pre-2026-06-07 call sites (e.g.
+    /// `ApertureMotion.Frame` consumers, `RollYourOwnSheet`'s coin
+    /// face) and **deliberately discarded** — the static "Iris Solid"
+    /// asset has no opening to animate and no negative space to carve,
+    /// so they are not stored.
     init(
         rc: CGFloat = ApertureIrisView.openValue,
         rot: CGFloat = 0,
         ringColor: Color = UniColors.Brand.mark,
         negativeColor: Color = UniColors.Background.primary
     ) {
-        self.rc = rc
+        _ = rc
+        _ = negativeColor
         self.rot = rot
         self.ringColor = ringColor
-        self.negativeColor = negativeColor
     }
 
     // MARK: - Legacy constants
@@ -68,8 +65,11 @@ struct ApertureIrisView: View {
     /// Preserved for `ApertureMotion.splash(at:)`. With the new static mark
     /// these values no longer drive an opening; they're left in place so
     /// the motion struct's defaults still compile and read sensibly.
-    static let openValue: CGFloat = 17
-    static let shutValue: CGFloat = 2.4
+    /// `nonisolated` — pure geometry constants consumed by the
+    /// nonisolated `ApertureMotion` frame math; `CGFloat` is
+    /// `Sendable`, so cross-isolation reads are safe by construction.
+    nonisolated static let openValue: CGFloat = 17
+    nonisolated static let shutValue: CGFloat = 2.4
 
     // MARK: - Body
 

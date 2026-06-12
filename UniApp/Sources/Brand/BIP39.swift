@@ -52,6 +52,14 @@ enum BIP39WordCount: Int, Sendable, Hashable, Codable, CaseIterable {
 /// (`T-012`).
 enum BIP39 {
 
+    /// Word → index lookup over the canonical wordlist. Built once on
+    /// first use (`static let` is lazily, atomically initialized) so
+    /// validation does an O(1) hash lookup per word instead of an
+    /// O(2048) linear scan via `firstIndex(of:)`.
+    private static let wordIndex: [String: Int] = Dictionary(
+        uniqueKeysWithValues: BIP39Wordlist.english.enumerated().map { ($0.element, $0.offset) }
+    )
+
     // MARK: - Public surface
 
     /// Generates a fresh BIP-39 mnemonic of the requested length from
@@ -128,13 +136,13 @@ enum BIP39 {
     /// consistent.
     static func validate(_ words: [String]) -> Bool {
         guard words.count == 12 || words.count == 24 else { return false }
-        let wordlist = BIP39Wordlist.english
 
-        // Look up each word's index in the wordlist; bail on the first miss.
+        // Look up each word's index in the wordlist; bail on the first
+        // miss. O(1) per word via the cached `wordIndex` map.
         var indices: [Int] = []
         indices.reserveCapacity(words.count)
         for word in words {
-            guard let idx = wordlist.firstIndex(of: word) else { return false }
+            guard let idx = wordIndex[word] else { return false }
             indices.append(idx)
         }
 

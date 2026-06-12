@@ -1,0 +1,2420 @@
+{
+  " and ": [
+    {
+      "file": "UniApp/Sources/Features/PinCode/PinCodeView.swift",
+      "line": 351,
+      "context": "default:  return \"\"   // \"1\" and \"0\""
+    }
+  ],
+  "(?:javascript|data)\\s*:": [
+    {
+      "file": "UniApp/Sources/Security/SVGSanitizer.swift",
+      "line": 254,
+      "context": "let schemes = #\"(?:javascript|data)\\s*:\"#"
+    }
+  ],
+  "))|\\(customTokenRecords.count)": [
+    {
+      "file": "UniApp/Sources/Features/Receive/ReceiveAssetListView.swift",
+      "line": 42,
+      "context": "\"\\(availableChains.map(\\.rawValue).joined(separator: \",\"))|\\(customTokenRecords.count)\""
+    }
+  ],
+  "0 \\(request.chain.ticker)": [
+    {
+      "file": "UniApp/Sources/Features/Browser/DAppSendTransactionSheet.swift",
+      "line": 252,
+      "context": "return \"0 \\(request.chain.ticker)\""
+    }
+  ],
+  "0x1::fungible_asset::Metadata": [
+    {
+      "file": "UniApp/Sources/Wallet/RealRPCBalanceScanner.swift",
+      "line": 923,
+      "context": "\"type_arguments\": [\"0x1::fungible_asset::Metadata\"],"
+    }
+  ],
+  "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz": [
+    {
+      "file": "UniApp/Sources/Features/ImportWallet/KeyImportService.swift",
+      "line": 276,
+      "context": "\"123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz\""
+    }
+  ],
+  "13UVJyLnbVp9RBZYFwFGyDvVd1y27Tt8tkntv6Q7JVPhFsTB": [
+    {
+      "file": "UniApp/Sources/Features/ImportWallet/TestAddresses.swift",
+      "line": 110,
+      "context": ".polkadot: \"13UVJyLnbVp9RBZYFwFGyDvVd1y27Tt8tkntv6Q7JVPhFsTB\","
+    }
+  ],
+  "5tzFkiKscXHK5ZXCGbXZxdw7gTjjD1mBwuoFbhUvuAi9": [
+    {
+      "file": "UniApp/Sources/Features/ImportWallet/TestAddresses.swift",
+      "line": 71,
+      "context": ".solana: \"5tzFkiKscXHK5ZXCGbXZxdw7gTjjD1mBwuoFbhUvuAi9\","
+    }
+  ],
+  "<!DOCTYPE[\\s\\S]*?>": [
+    {
+      "file": "UniApp/Sources/Security/SVGSanitizer.swift",
+      "line": 134,
+      "context": "s = stripAll(in: s, pattern: #\"<!DOCTYPE[\\s\\S]*?>\"#)"
+    }
+  ],
+  "</foreignObject\\s*>": [
+    {
+      "file": "UniApp/Sources/Security/SVGSanitizer.swift",
+      "line": 159,
+      "context": "s = stripAll(in: s, pattern: #\"</foreignObject\\s*>\"#)"
+    }
+  ],
+  "<\\?xml[\\s\\S]*?\\?>": [
+    {
+      "file": "UniApp/Sources/Security/SVGSanitizer.swift",
+      "line": 132,
+      "context": "s = stripAll(in: s, pattern: #\"<\\?xml[\\s\\S]*?\\?>\"#)"
+    }
+  ],
+  "<foreignObject[\\s\\S]*?</foreignObject>": [
+    {
+      "file": "UniApp/Sources/Security/SVGSanitizer.swift",
+      "line": 138,
+      "context": "s = stripAll(in: s, pattern: #\"<foreignObject[\\s\\S]*?</foreignObject>\"#)"
+    }
+  ],
+  "<foreignObject\\b[^>]*/?>": [
+    {
+      "file": "UniApp/Sources/Security/SVGSanitizer.swift",
+      "line": 158,
+      "context": "s = stripAll(in: s, pattern: #\"<foreignObject\\b[^>]*/?>\"#)"
+    }
+  ],
+  "<script[\\s\\S]*?</script>": [
+    {
+      "file": "UniApp/Sources/Security/SVGSanitizer.swift",
+      "line": 136,
+      "context": "s = stripAll(in: s, pattern: #\"<script[\\s\\S]*?</script>\"#)"
+    }
+  ],
+  "<svg[\\s\\S]*</svg>": [
+    {
+      "file": "UniApp/Sources/Security/SVGSanitizer.swift",
+      "line": 297,
+      "context": "pattern: #\"<svg[\\s\\S]*</svg>\"#,"
+    }
+  ],
+  "AES-GCM box decode failed: \\(String(describing: error), privacy: .public)": [
+    {
+      "file": "UniApp/Sources/Security/MnemonicVault.swift",
+      "line": 96,
+      "context": "log.error(\"AES-GCM box decode failed: \\(String(describing: error), privacy: .public)\")"
+    }
+  ],
+  "AES-GCM open failed: \\(String(describing: error), privacy: .public)": [
+    {
+      "file": "UniApp/Sources/Security/SeedVault.swift",
+      "line": 109,
+      "context": "log.error(\"AES-GCM open failed: \\(String(describing: error), privacy: .public)\")"
+    },
+    {
+      "file": "UniApp/Sources/Security/MnemonicVault.swift",
+      "line": 106,
+      "context": "log.error(\"AES-GCM open failed: \\(String(describing: error), privacy: .public)\")"
+    }
+  ],
+  "AES-GCM seal failed: \\(String(describing: error), privacy: .public)": [
+    {
+      "file": "UniApp/Sources/Security/SeedVault.swift",
+      "line": 70,
+      "context": "log.error(\"AES-GCM seal failed: \\(String(describing: error), privacy: .public)\")"
+    },
+    {
+      "file": "UniApp/Sources/Security/MnemonicVault.swift",
+      "line": 69,
+      "context": "log.error(\"AES-GCM seal failed: \\(String(describing: error), privacy: .public)\")"
+    }
+  ],
+  "AES-GCM sealed-box decode failed: \\(String(describing: error), privacy: .public)": [
+    {
+      "file": "UniApp/Sources/Security/SeedVault.swift",
+      "line": 101,
+      "context": "log.error(\"AES-GCM sealed-box decode failed: \\(String(describing: error), privacy: .public)\")"
+    }
+  ],
+  "Acknowledge re-enrollment failed: \\(String(describing: error), privacy: .public)": [
+    {
+      "file": "UniApp/Sources/Security/BiometricEnrollmentTracker.swift",
+      "line": 121,
+      "context": "log.error(\"Acknowledge re-enrollment failed: \\(String(describing: error), privacy: .public)\")"
+    }
+  ],
+  "Afghan Afghani": [
+    {
+      "file": "UniApp/Sources/Settings/CurrencyPreference.swift",
+      "line": 77,
+      "context": ".init(code: \"AFN\", symbol: \"\u060b\",   englishName: \"Afghan Afghani\"),"
+    }
+  ],
+  "Albanian Lek": [
+    {
+      "file": "UniApp/Sources/Settings/CurrencyPreference.swift",
+      "line": 78,
+      "context": ".init(code: \"ALL\", symbol: \"L\",   englishName: \"Albanian Lek\"),"
+    }
+  ],
+  "Algerian Dinar": [
+    {
+      "file": "UniApp/Sources/Settings/CurrencyPreference.swift",
+      "line": 112,
+      "context": ".init(code: \"DZD\", symbol: \"\u062f.\u062c\", englishName: \"Algerian Dinar\"),"
+    }
+  ],
+  "Angolan Kwanza": [
+    {
+      "file": "UniApp/Sources/Settings/CurrencyPreference.swift",
+      "line": 81,
+      "context": ".init(code: \"AOA\", symbol: \"Kz\",  englishName: \"Angolan Kwanza\"),"
+    }
+  ],
+  "AperturePaint/CoinMarks": [
+    {
+      "file": "UniApp/Sources/Wallet/CoinMarkCache.swift",
+      "line": 255,
+      "context": "let dir = caches.appendingPathComponent(\"AperturePaint/CoinMarks\", isDirectory: true)"
+    }
+  ],
+  "ApertureProvider.js not found in bundle \u2014 dApps won't see window.ethereum.": [
+    {
+      "file": "UniApp/Sources/Features/Browser/BrowserWebView.swift",
+      "line": 77,
+      "context": "Self.log.error(\"ApertureProvider.js not found in bundle \u2014 dApps won't see window.ethereum.\")"
+    }
+  ],
+  "Apple Symbols License": [
+    {
+      "file": "UniApp/Sources/Features/Settings/AcknowledgmentsView.swift",
+      "line": 20,
+      "context": "license: \"Apple Symbols License\""
+    }
+  ],
+  "AppleWebKit/605.1.15 (KHTML, like Gecko) ": [
+    {
+      "file": "UniApp/Sources/Features/Browser/BrowserWebView.swift",
+      "line": 272,
+      "context": "\"AppleWebKit/605.1.15 (KHTML, like Gecko) \" +"
+    }
+  ],
+  "Argentine Peso": [
+    {
+      "file": "UniApp/Sources/Settings/CurrencyPreference.swift",
+      "line": 82,
+      "context": ".init(code: \"ARS\", symbol: \"$\",   englishName: \"Argentine Peso\"),"
+    }
+  ],
+  "Armenian Dram": [
+    {
+      "file": "UniApp/Sources/Settings/CurrencyPreference.swift",
+      "line": 79,
+      "context": ".init(code: \"AMD\", symbol: \"\u058f\",   englishName: \"Armenian Dram\"),"
+    }
+  ],
+  "Aruban Florin": [
+    {
+      "file": "UniApp/Sources/Settings/CurrencyPreference.swift",
+      "line": 84,
+      "context": ".init(code: \"AWG\", symbol: \"\u0192\",   englishName: \"Aruban Florin\"),"
+    }
+  ],
+  "Australian Dollar": [
+    {
+      "file": "UniApp/Sources/Settings/CurrencyPreference.swift",
+      "line": 83,
+      "context": ".init(code: \"AUD\", symbol: \"A$\",  englishName: \"Australian Dollar\"),"
+    }
+  ],
+  "Auto-lock triggered after \\(elapsed, privacy: .public)s (threshold \\(threshold, privacy: .public)s)": [
+    {
+      "file": "UniApp/Sources/Security/AutoLockController.swift",
+      "line": 86,
+      "context": "log.info(\"Auto-lock triggered after \\(elapsed, privacy: .public)s (threshold \\(threshold, privacy: .public)s)\")"
+    }
+  ],
+  "Azerbaijani Manat": [
+    {
+      "file": "UniApp/Sources/Settings/CurrencyPreference.swift",
+      "line": 85,
+      "context": ".init(code: \"AZN\", symbol: \"\u20bc\",   englishName: \"Azerbaijani Manat\"),"
+    }
+  ],
+  "B/.": [
+    {
+      "file": "UniApp/Sources/Settings/CurrencyPreference.swift",
+      "line": 164,
+      "context": ".init(code: \"PAB\", symbol: \"B/.\", englishName: \"Panamanian Balboa\"),"
+    }
+  ],
+  "BSD-2 (Bitcoin)": [
+    {
+      "file": "UniApp/Sources/Features/Settings/AcknowledgmentsView.swift",
+      "line": 40,
+      "context": "license: \"BSD-2 (Bitcoin)\""
+    }
+  ],
+  "Bahamian Dollar": [
+    {
+      "file": "UniApp/Sources/Settings/CurrencyPreference.swift",
+      "line": 96,
+      "context": ".init(code: \"BSD\", symbol: \"B$\",  englishName: \"Bahamian Dollar\"),"
+    }
+  ],
+  "Bahasa Indonesia": [
+    {
+      "file": "UniApp/Sources/Settings/LanguagePreference.swift",
+      "line": 77,
+      "context": ".init(code: \"id\",       englishName: \"Indonesian\",             nativeName: \"Bahasa Indonesia\", isRTL: false, flag: \"\ud83c\uddee\ud83c\udde9\")"
+    }
+  ],
+  "Bahasa Melayu": [
+    {
+      "file": "UniApp/Sources/Settings/LanguagePreference.swift",
+      "line": 86,
+      "context": ".init(code: \"ms\",       englishName: \"Malay\",                  nativeName: \"Bahasa Melayu\",    isRTL: false, flag: \"\ud83c\uddf2\ud83c\uddfe\")"
+    }
+  ],
+  "Bahraini Dinar": [
+    {
+      "file": "UniApp/Sources/Settings/CurrencyPreference.swift",
+      "line": 90,
+      "context": ".init(code: \"BHD\", symbol: \".\u062f.\u0628\", englishName: \"Bahraini Dinar\"),"
+    }
+  ],
+  "Bangladeshi Taka": [
+    {
+      "file": "UniApp/Sources/Settings/CurrencyPreference.swift",
+      "line": 88,
+      "context": ".init(code: \"BDT\", symbol: \"\u09f3\",   englishName: \"Bangladeshi Taka\"),"
+    }
+  ],
+  "Barbadian Dollar": [
+    {
+      "file": "UniApp/Sources/Settings/CurrencyPreference.swift",
+      "line": 87,
+      "context": ".init(code: \"BBD\", symbol: \"Bds$\", englishName: \"Barbadian Dollar\"),"
+    }
+  ],
+  "Belarusian Ruble": [
+    {
+      "file": "UniApp/Sources/Settings/CurrencyPreference.swift",
+      "line": 99,
+      "context": ".init(code: \"BYN\", symbol: \"Br\",  englishName: \"Belarusian Ruble\"),"
+    }
+  ],
+  "Belize Dollar": [
+    {
+      "file": "UniApp/Sources/Settings/CurrencyPreference.swift",
+      "line": 100,
+      "context": ".init(code: \"BZD\", symbol: \"BZ$\", englishName: \"Belize Dollar\"),"
+    }
+  ],
+  "Bermudian Dollar": [
+    {
+      "file": "UniApp/Sources/Settings/CurrencyPreference.swift",
+      "line": 92,
+      "context": ".init(code: \"BMD\", symbol: \"BD$\", englishName: \"Bermudian Dollar\"),"
+    }
+  ],
+  "Bhutanese Ngultrum": [
+    {
+      "file": "UniApp/Sources/Settings/CurrencyPreference.swift",
+      "line": 97,
+      "context": ".init(code: \"BTN\", symbol: \"Nu.\", englishName: \"Bhutanese Ngultrum\"),"
+    }
+  ],
+  "Biometric enrollment changed on device; flagging for re-enrollment.": [
+    {
+      "file": "UniApp/Sources/Security/BiometricEnrollmentTracker.swift",
+      "line": 91,
+      "context": "log.notice(\"Biometric enrollment changed on device; flagging for re-enrollment.\")"
+    }
+  ],
+  "Bolivian Boliviano": [
+    {
+      "file": "UniApp/Sources/Settings/CurrencyPreference.swift",
+      "line": 94,
+      "context": ".init(code: \"BOB\", symbol: \"Bs.\", englishName: \"Bolivian Boliviano\"),"
+    }
+  ],
+  "Bosnia-Herzegovina Convertible Mark": [
+    {
+      "file": "UniApp/Sources/Settings/CurrencyPreference.swift",
+      "line": 86,
+      "context": ".init(code: \"BAM\", symbol: \"KM\",  englishName: \"Bosnia-Herzegovina Convertible Mark\"),"
+    }
+  ],
+  "Botswanan Pula": [
+    {
+      "file": "UniApp/Sources/Settings/CurrencyPreference.swift",
+      "line": 98,
+      "context": ".init(code: \"BWP\", symbol: \"P\",   englishName: \"Botswanan Pula\"),"
+    }
+  ],
+  "Brazilian Real": [
+    {
+      "file": "UniApp/Sources/Settings/CurrencyPreference.swift",
+      "line": 95,
+      "context": ".init(code: \"BRL\", symbol: \"R$\",  englishName: \"Brazilian Real\"),"
+    }
+  ],
+  "British Pound": [
+    {
+      "file": "UniApp/Sources/Settings/CurrencyPreference.swift",
+      "line": 70,
+      "context": ".init(code: \"GBP\", symbol: \"\u00a3\",   englishName: \"British Pound\"),"
+    }
+  ],
+  "Brunei Dollar": [
+    {
+      "file": "UniApp/Sources/Settings/CurrencyPreference.swift",
+      "line": 93,
+      "context": ".init(code: \"BND\", symbol: \"B$\",  englishName: \"Brunei Dollar\"),"
+    }
+  ],
+  "Bs.": [
+    {
+      "file": "UniApp/Sources/Settings/CurrencyPreference.swift",
+      "line": 94,
+      "context": ".init(code: \"BOB\", symbol: \"Bs.\", englishName: \"Bolivian Boliviano\"),"
+    }
+  ],
+  "Bulgarian Lev": [
+    {
+      "file": "UniApp/Sources/Settings/CurrencyPreference.swift",
+      "line": 89,
+      "context": ".init(code: \"BGN\", symbol: \"\u043b\u0432\",  englishName: \"Bulgarian Lev\"),"
+    }
+  ],
+  "Burundian Franc": [
+    {
+      "file": "UniApp/Sources/Settings/CurrencyPreference.swift",
+      "line": 91,
+      "context": ".init(code: \"BIF\", symbol: \"FBu\", englishName: \"Burundian Franc\"),"
+    }
+  ],
+  "CFP Franc": [
+    {
+      "file": "UniApp/Sources/Settings/CurrencyPreference.swift",
+      "line": 202,
+      "context": ".init(code: \"XPF\", symbol: \"\u20a3\",   englishName: \"CFP Franc\"),"
+    }
+  ],
+  "Cambodian Riel": [
+    {
+      "file": "UniApp/Sources/Settings/CurrencyPreference.swift",
+      "line": 133,
+      "context": ".init(code: \"KHR\", symbol: \"\u17db\",   englishName: \"Cambodian Riel\"),"
+    }
+  ],
+  "Canadian Dollar": [
+    {
+      "file": "UniApp/Sources/Settings/CurrencyPreference.swift",
+      "line": 101,
+      "context": ".init(code: \"CAD\", symbol: \"C$\",  englishName: \"Canadian Dollar\"),"
+    }
+  ],
+  "Cape Verdean Escudo": [
+    {
+      "file": "UniApp/Sources/Settings/CurrencyPreference.swift",
+      "line": 107,
+      "context": ".init(code: \"CVE\", symbol: \"$\",   englishName: \"Cape Verdean Escudo\"),"
+    }
+  ],
+  "Captured biometric enrollment snapshot (\\(snapshot?.count ?? 0) bytes).": [
+    {
+      "file": "UniApp/Sources/Security/BiometricEnrollmentTracker.swift",
+      "line": 53,
+      "context": "log.info(\"Captured biometric enrollment snapshot (\\(snapshot?.count ?? 0) bytes).\")"
+    }
+  ],
+  "Cayman Islands Dollar": [
+    {
+      "file": "UniApp/Sources/Settings/CurrencyPreference.swift",
+      "line": 137,
+      "context": ".init(code: \"KYD\", symbol: \"CI$\", englishName: \"Cayman Islands Dollar\"),"
+    }
+  ],
+  "Central African CFA Franc": [
+    {
+      "file": "UniApp/Sources/Settings/CurrencyPreference.swift",
+      "line": 199,
+      "context": ".init(code: \"XAF\", symbol: \"FCFA\", englishName: \"Central African CFA Franc\"),"
+    }
+  ],
+  "Chilean Peso": [
+    {
+      "file": "UniApp/Sources/Settings/CurrencyPreference.swift",
+      "line": 104,
+      "context": ".init(code: \"CLP\", symbol: \"$\",   englishName: \"Chilean Peso\"),"
+    }
+  ],
+  "Chinese (Simplified)": [
+    {
+      "file": "UniApp/Sources/Settings/LanguagePreference.swift",
+      "line": 106,
+      "context": ".init(code: \"zh-Hans\",  englishName: \"Chinese (Simplified)\",   nativeName: \"\u7b80\u4f53\u4e2d\u6587\",          isRTL: false, flag: \"\ud83c\udde8\ud83c\uddf3\"),"
+    }
+  ],
+  "Chinese (Traditional)": [
+    {
+      "file": "UniApp/Sources/Settings/LanguagePreference.swift",
+      "line": 107,
+      "context": ".init(code: \"zh-Hant\",  englishName: \"Chinese (Traditional)\",  nativeName: \"\u7e41\u9ad4\u4e2d\u6587\",          isRTL: false, flag: \"\ud83c\uddf9\ud83c\uddfc\")"
+    }
+  ],
+  "Chinese Yuan": [
+    {
+      "file": "UniApp/Sources/Settings/CurrencyPreference.swift",
+      "line": 72,
+      "context": ".init(code: \"CNY\", symbol: \"\u00a5\",   englishName: \"Chinese Yuan\"),"
+    }
+  ],
+  "CoinMark fetch failed for \\(url.absoluteString, privacy: .public): \\(String(describing: error), privacy: .public)": [
+    {
+      "file": "UniApp/Sources/Wallet/CoinMarkCache.swift",
+      "line": 248,
+      "context": "log.warning(\"CoinMark fetch failed for \\(url.absoluteString, privacy: .public): \\(String(describing: error), privacy: .p"
+    }
+  ],
+  "Colombian Peso": [
+    {
+      "file": "UniApp/Sources/Settings/CurrencyPreference.swift",
+      "line": 105,
+      "context": ".init(code: \"COP\", symbol: \"$\",   englishName: \"Colombian Peso\"),"
+    }
+  ],
+  "Comorian Franc": [
+    {
+      "file": "UniApp/Sources/Settings/CurrencyPreference.swift",
+      "line": 134,
+      "context": ".init(code: \"KMF\", symbol: \"CF\",  englishName: \"Comorian Franc\"),"
+    }
+  ],
+  "Confirm \u2014 Dark": [
+    {
+      "file": "UniApp/Sources/Features/PinCode/PinCodeView.swift",
+      "line": 680,
+      "context": "#Preview(\"Confirm \u2014 Dark\") {"
+    }
+  ],
+  "Congolese Franc": [
+    {
+      "file": "UniApp/Sources/Settings/CurrencyPreference.swift",
+      "line": 102,
+      "context": ".init(code: \"CDF\", symbol: \"FC\",  englishName: \"Congolese Franc\"),"
+    }
+  ],
+  "Costa Rican Col\u00f3n": [
+    {
+      "file": "UniApp/Sources/Settings/CurrencyPreference.swift",
+      "line": 106,
+      "context": ".init(code: \"CRC\", symbol: \"\u20a1\",   englishName: \"Costa Rican Col\u00f3n\"),"
+    }
+  ],
+  "Couldn't save your wallet. Tap Retry.": [
+    {
+      "file": "UniApp/Sources/Features/CreateWallet/WalletReadyView.swift",
+      "line": 189,
+      "context": "persistState = .failed(\"Couldn't save your wallet. Tap Retry.\")"
+    }
+  ],
+  "Couldn\\u{2019}t read that file.": [
+    {
+      "file": "UniApp/Sources/Features/Wallet/WalletIconPicker.swift",
+      "line": 472,
+      "context": "return \"Couldn\\u{2019}t read that file.\""
+    }
+  ],
+  "Create-wallet persist failed: \\(String(describing: error), privacy: .public)": [
+    {
+      "file": "UniApp/Sources/Features/CreateWallet/WalletReadyView.swift",
+      "line": 187,
+      "context": "\"Create-wallet persist failed: \\(String(describing: error), privacy: .public)\""
+    }
+  ],
+  "Czech Koruna": [
+    {
+      "file": "UniApp/Sources/Settings/CurrencyPreference.swift",
+      "line": 108,
+      "context": ".init(code: \"CZK\", symbol: \"K\u010d\",  englishName: \"Czech Koruna\"),"
+    }
+  ],
+  "Danish Krone": [
+    {
+      "file": "UniApp/Sources/Settings/CurrencyPreference.swift",
+      "line": 110,
+      "context": ".init(code: \"DKK\", symbol: \"kr\",  englishName: \"Danish Krone\"),"
+    }
+  ],
+  "Djiboutian Franc": [
+    {
+      "file": "UniApp/Sources/Settings/CurrencyPreference.swift",
+      "line": 109,
+      "context": ".init(code: \"DJF\", symbol: \"Fdj\", englishName: \"Djiboutian Franc\"),"
+    }
+  ],
+  "Dominican Peso": [
+    {
+      "file": "UniApp/Sources/Settings/CurrencyPreference.swift",
+      "line": 111,
+      "context": ".init(code: \"DOP\", symbol: \"RD$\", englishName: \"Dominican Peso\"),"
+    }
+  ],
+  "Drift check failed: \\(String(describing: error), privacy: .public)": [
+    {
+      "file": "UniApp/Sources/Security/BiometricEnrollmentTracker.swift",
+      "line": 100,
+      "context": "log.error(\"Drift check failed: \\(String(describing: error), privacy: .public)\")"
+    }
+  ],
+  "EQ\\(digest.prefix(46))": [
+    {
+      "file": "UniApp/Sources/Features/ImportWallet/KeyImportService.swift",
+      "line": 245,
+      "context": "body = \"EQ\\(digest.prefix(46))\""
+    }
+  ],
+  "East Caribbean Dollar": [
+    {
+      "file": "UniApp/Sources/Settings/CurrencyPreference.swift",
+      "line": 200,
+      "context": ".init(code: \"XCD\", symbol: \"EC$\", englishName: \"East Caribbean Dollar\"),"
+    }
+  ],
+  "Egyptian Pound": [
+    {
+      "file": "UniApp/Sources/Settings/CurrencyPreference.swift",
+      "line": 113,
+      "context": ".init(code: \"EGP\", symbol: \"\u062c.\u0645\", englishName: \"Egyptian Pound\"),"
+    }
+  ],
+  "Ethiopian Birr": [
+    {
+      "file": "UniApp/Sources/Settings/CurrencyPreference.swift",
+      "line": 114,
+      "context": ".init(code: \"ETB\", symbol: \"Br\",  englishName: \"Ethiopian Birr\"),"
+    }
+  ],
+  "Failed to create cache directory: \\(String(describing: error), privacy: .public)": [
+    {
+      "file": "UniApp/Sources/Features/Wallet/Avatar/WalletCustomSvgRenderer.swift",
+      "line": 105,
+      "context": "log.error(\"Failed to create cache directory: \\(String(describing: error), privacy: .public)\")"
+    }
+  ],
+  "Failed to persist biometric snapshot: \\(String(describing: error), privacy: .public)": [
+    {
+      "file": "UniApp/Sources/Security/BiometricEnrollmentTracker.swift",
+      "line": 55,
+      "context": "log.error(\"Failed to persist biometric snapshot: \\(String(describing: error), privacy: .public)\")"
+    }
+  ],
+  "Fallback \\(index)": [
+    {
+      "file": "UniApp/Sources/Features/Settings/NetworkProvidersView.swift",
+      "line": 62,
+      "context": "Text(index == 0 ? \"Primary\" : \"Fallback \\(index)\")"
+    }
+  ],
+  "Fijian Dollar": [
+    {
+      "file": "UniApp/Sources/Settings/CurrencyPreference.swift",
+      "line": 115,
+      "context": ".init(code: \"FJD\", symbol: \"FJ$\", englishName: \"Fijian Dollar\"),"
+    }
+  ],
+  "File too large \\u{2014} max 50 KB.": [
+    {
+      "file": "UniApp/Sources/Features/Wallet/WalletIconPicker.swift",
+      "line": 476,
+      "context": "return \"File too large \\u{2014} max 50 KB.\""
+    }
+  ],
+  "Gambian Dalasi": [
+    {
+      "file": "UniApp/Sources/Settings/CurrencyPreference.swift",
+      "line": 118,
+      "context": ".init(code: \"GMD\", symbol: \"D\",   englishName: \"Gambian Dalasi\"),"
+    }
+  ],
+  "Georgian Lari": [
+    {
+      "file": "UniApp/Sources/Settings/CurrencyPreference.swift",
+      "line": 116,
+      "context": ".init(code: \"GEL\", symbol: \"\u20be\",   englishName: \"Georgian Lari\"),"
+    }
+  ],
+  "Ghanaian Cedi": [
+    {
+      "file": "UniApp/Sources/Settings/CurrencyPreference.swift",
+      "line": 117,
+      "context": ".init(code: \"GHS\", symbol: \"\u20b5\",   englishName: \"Ghanaian Cedi\"),"
+    }
+  ],
+  "Guatemalan Quetzal": [
+    {
+      "file": "UniApp/Sources/Settings/CurrencyPreference.swift",
+      "line": 120,
+      "context": ".init(code: \"GTQ\", symbol: \"Q\",   englishName: \"Guatemalan Quetzal\"),"
+    }
+  ],
+  "Guinean Franc": [
+    {
+      "file": "UniApp/Sources/Settings/CurrencyPreference.swift",
+      "line": 119,
+      "context": ".init(code: \"GNF\", symbol: \"FG\",  englishName: \"Guinean Franc\"),"
+    }
+  ],
+  "Guyanese Dollar": [
+    {
+      "file": "UniApp/Sources/Settings/CurrencyPreference.swift",
+      "line": 121,
+      "context": ".init(code: \"GYD\", symbol: \"G$\",  englishName: \"Guyanese Dollar\"),"
+    }
+  ],
+  "Held on all \\(total) networks": [
+    {
+      "file": "UniApp/Sources/Features/Wallet/AssetDetailView.swift",
+      "line": 286,
+      "context": "return \"Held on all \\(total) networks\""
+    }
+  ],
+  "Holdings empty \u2014 iris (dark)": [
+    {
+      "file": "UniApp/Sources/DesignSystem/Components/UniEmptyState.swift",
+      "line": 194,
+      "context": "#Preview(\"Holdings empty \u2014 iris (dark)\") {"
+    }
+  ],
+  "Holdings empty \u2014 iris (light)": [
+    {
+      "file": "UniApp/Sources/DesignSystem/Components/UniEmptyState.swift",
+      "line": 178,
+      "context": "#Preview(\"Holdings empty \u2014 iris (light)\") {"
+    }
+  ],
+  "Honduran Lempira": [
+    {
+      "file": "UniApp/Sources/Settings/CurrencyPreference.swift",
+      "line": 123,
+      "context": ".init(code: \"HNL\", symbol: \"L\",   englishName: \"Honduran Lempira\"),"
+    }
+  ],
+  "Hong Kong Dollar": [
+    {
+      "file": "UniApp/Sources/Settings/CurrencyPreference.swift",
+      "line": 122,
+      "context": ".init(code: \"HKD\", symbol: \"HK$\", englishName: \"Hong Kong Dollar\"),"
+    }
+  ],
+  "Hungarian Forint": [
+    {
+      "file": "UniApp/Sources/Settings/CurrencyPreference.swift",
+      "line": 124,
+      "context": ".init(code: \"HUF\", symbol: \"Ft\",  englishName: \"Hungarian Forint\"),"
+    }
+  ],
+  "Icelandic Kr\u00f3na": [
+    {
+      "file": "UniApp/Sources/Settings/CurrencyPreference.swift",
+      "line": 128,
+      "context": ".init(code: \"ISK\", symbol: \"kr\",  englishName: \"Icelandic Kr\u00f3na\"),"
+    }
+  ],
+  "Image had no PNG representation": [
+    {
+      "file": "UniApp/Sources/Features/Wallet/Avatar/WalletCustomSvgRenderer.swift",
+      "line": 272,
+      "context": "userInfo: [NSLocalizedDescriptionKey: \"Image had no PNG representation\"]"
+    }
+  ],
+  "Indian Rupee": [
+    {
+      "file": "UniApp/Sources/Settings/CurrencyPreference.swift",
+      "line": 73,
+      "context": ".init(code: \"INR\", symbol: \"\u20b9\",   englishName: \"Indian Rupee\"),"
+    }
+  ],
+  "Indonesian Rupiah": [
+    {
+      "file": "UniApp/Sources/Settings/CurrencyPreference.swift",
+      "line": 125,
+      "context": ".init(code: \"IDR\", symbol: \"Rp\",  englishName: \"Indonesian Rupiah\"),"
+    }
+  ],
+  "Iraqi Dinar": [
+    {
+      "file": "UniApp/Sources/Settings/CurrencyPreference.swift",
+      "line": 127,
+      "context": ".init(code: \"IQD\", symbol: \"\u0639.\u062f\", englishName: \"Iraqi Dinar\"),"
+    }
+  ],
+  "Israeli New Shekel": [
+    {
+      "file": "UniApp/Sources/Settings/CurrencyPreference.swift",
+      "line": 126,
+      "context": ".init(code: \"ILS\", symbol: \"\u20aa\",   englishName: \"Israeli New Shekel\"),"
+    }
+  ],
+  "Jamaican Dollar": [
+    {
+      "file": "UniApp/Sources/Settings/CurrencyPreference.swift",
+      "line": 129,
+      "context": ".init(code: \"JMD\", symbol: \"J$\",  englishName: \"Jamaican Dollar\"),"
+    }
+  ],
+  "Japanese Yen": [
+    {
+      "file": "UniApp/Sources/Settings/CurrencyPreference.swift",
+      "line": 71,
+      "context": ".init(code: \"JPY\", symbol: \"\u00a5\",   englishName: \"Japanese Yen\"),"
+    }
+  ],
+  "Jordanian Dinar": [
+    {
+      "file": "UniApp/Sources/Settings/CurrencyPreference.swift",
+      "line": 130,
+      "context": ".init(code: \"JOD\", symbol: \"\u062f.\u0627\", englishName: \"Jordanian Dinar\"),"
+    }
+  ],
+  "Kazakhstani Tenge": [
+    {
+      "file": "UniApp/Sources/Settings/CurrencyPreference.swift",
+      "line": 138,
+      "context": ".init(code: \"KZT\", symbol: \"\u20b8\",   englishName: \"Kazakhstani Tenge\"),"
+    }
+  ],
+  "Kenyan Shilling": [
+    {
+      "file": "UniApp/Sources/Settings/CurrencyPreference.swift",
+      "line": 131,
+      "context": ".init(code: \"KES\", symbol: \"KSh\", englishName: \"Kenyan Shilling\"),"
+    }
+  ],
+  "Keychain delete failed status=\\(status) service=\\(service, privacy: .public)": [
+    {
+      "file": "UniApp/Sources/Security/SeedVault.swift",
+      "line": 182,
+      "context": "log.error(\"Keychain delete failed status=\\(status) service=\\(service, privacy: .public)\")"
+    },
+    {
+      "file": "UniApp/Sources/Security/MnemonicVault.swift",
+      "line": 173,
+      "context": "log.error(\"Keychain delete failed status=\\(status) service=\\(service, privacy: .public)\")"
+    }
+  ],
+  "Keychain read failed status=\\(status)": [
+    {
+      "file": "UniApp/Sources/Security/WalletManifestStore.swift",
+      "line": 307,
+      "context": "log.error(\"Keychain read failed status=\\(status)\")"
+    }
+  ],
+  "Keychain read failed status=\\(status) service=\\(service, privacy: .public)": [
+    {
+      "file": "UniApp/Sources/Security/SeedVault.swift",
+      "line": 166,
+      "context": "log.error(\"Keychain read failed status=\\(status) service=\\(service, privacy: .public)\")"
+    },
+    {
+      "file": "UniApp/Sources/Security/MnemonicVault.swift",
+      "line": 158,
+      "context": "log.error(\"Keychain read failed status=\\(status) service=\\(service, privacy: .public)\")"
+    }
+  ],
+  "Keychain write failed": [
+    {
+      "file": "UniApp/Sources/Security/WalletManifestStore.swift",
+      "line": 286,
+      "context": "userInfo: [NSLocalizedDescriptionKey: \"Keychain write failed\"]"
+    }
+  ],
+  "Keychain write failed status=\\(status)": [
+    {
+      "file": "UniApp/Sources/Security/WalletManifestStore.swift",
+      "line": 282,
+      "context": "log.error(\"Keychain write failed status=\\(status)\")"
+    }
+  ],
+  "Keychain write failed status=\\(status) service=\\(service, privacy: .public)": [
+    {
+      "file": "UniApp/Sources/Security/SeedVault.swift",
+      "line": 145,
+      "context": "log.error(\"Keychain write failed status=\\(status) service=\\(service, privacy: .public)\")"
+    },
+    {
+      "file": "UniApp/Sources/Security/MnemonicVault.swift",
+      "line": 139,
+      "context": "log.error(\"Keychain write failed status=\\(status) service=\\(service, privacy: .public)\")"
+    }
+  ],
+  "Kuwaiti Dinar": [
+    {
+      "file": "UniApp/Sources/Settings/CurrencyPreference.swift",
+      "line": 136,
+      "context": ".init(code: \"KWD\", symbol: \"\u062f.\u0643\", englishName: \"Kuwaiti Dinar\"),"
+    }
+  ],
+  "Kyrgyzstani Som": [
+    {
+      "file": "UniApp/Sources/Settings/CurrencyPreference.swift",
+      "line": 132,
+      "context": ".init(code: \"KGS\", symbol: \"\u0441\",   englishName: \"Kyrgyzstani Som\"),"
+    }
+  ],
+  "Lao Kip": [
+    {
+      "file": "UniApp/Sources/Settings/CurrencyPreference.swift",
+      "line": 139,
+      "context": ".init(code: \"LAK\", symbol: \"\u20ad\",   englishName: \"Lao Kip\"),"
+    }
+  ],
+  "Lebanese Pound": [
+    {
+      "file": "UniApp/Sources/Settings/CurrencyPreference.swift",
+      "line": 140,
+      "context": ".init(code: \"LBP\", symbol: \"\u0644.\u0644\", englishName: \"Lebanese Pound\"),"
+    }
+  ],
+  "Lesotho Loti": [
+    {
+      "file": "UniApp/Sources/Settings/CurrencyPreference.swift",
+      "line": 143,
+      "context": ".init(code: \"LSL\", symbol: \"L\",   englishName: \"Lesotho Loti\"),"
+    }
+  ],
+  "Liberian Dollar": [
+    {
+      "file": "UniApp/Sources/Settings/CurrencyPreference.swift",
+      "line": 142,
+      "context": ".init(code: \"LRD\", symbol: \"L$\",  englishName: \"Liberian Dollar\"),"
+    }
+  ],
+  "Macanese Pataca": [
+    {
+      "file": "UniApp/Sources/Settings/CurrencyPreference.swift",
+      "line": 150,
+      "context": ".init(code: \"MOP\", symbol: \"MOP$\", englishName: \"Macanese Pataca\"),"
+    }
+  ],
+  "Macedonian Denar": [
+    {
+      "file": "UniApp/Sources/Settings/CurrencyPreference.swift",
+      "line": 147,
+      "context": ".init(code: \"MKD\", symbol: \"\u0434\u0435\u043d\", englishName: \"Macedonian Denar\"),"
+    }
+  ],
+  "Magic Eden": [
+    {
+      "file": "UniApp/Sources/Features/Browser/BrowserFavorite.swift",
+      "line": 145,
+      "context": "name: \"Magic Eden\","
+    }
+  ],
+  "Malagasy Ariary": [
+    {
+      "file": "UniApp/Sources/Settings/CurrencyPreference.swift",
+      "line": 146,
+      "context": ".init(code: \"MGA\", symbol: \"Ar\",  englishName: \"Malagasy Ariary\"),"
+    }
+  ],
+  "Malawian Kwacha": [
+    {
+      "file": "UniApp/Sources/Settings/CurrencyPreference.swift",
+      "line": 153,
+      "context": ".init(code: \"MWK\", symbol: \"MK\",  englishName: \"Malawian Kwacha\"),"
+    }
+  ],
+  "Malaysian Ringgit": [
+    {
+      "file": "UniApp/Sources/Settings/CurrencyPreference.swift",
+      "line": 155,
+      "context": ".init(code: \"MYR\", symbol: \"RM\",  englishName: \"Malaysian Ringgit\"),"
+    }
+  ],
+  "Maldivian Rufiyaa": [
+    {
+      "file": "UniApp/Sources/Settings/CurrencyPreference.swift",
+      "line": 152,
+      "context": ".init(code: \"MVR\", symbol: \"Rf\",  englishName: \"Maldivian Rufiyaa\"),"
+    }
+  ],
+  "Manifest decode failed: \\(String(describing: error), privacy: .public). Treating as empty.": [
+    {
+      "file": "UniApp/Sources/Security/WalletManifestStore.swift",
+      "line": 145,
+      "context": "log.error(\"Manifest decode failed: \\(String(describing: error), privacy: .public). Treating as empty.\")"
+    }
+  ],
+  "Manifest sync failed: \\(String(describing: error), privacy: .public)": [
+    {
+      "file": "UniApp/Sources/Security/WalletManifestStore.swift",
+      "line": 187,
+      "context": "log.error(\"Manifest sync failed: \\(String(describing: error), privacy: .public)\")"
+    }
+  ],
+  "Manifest synced: \\(entries.count) wallets": [
+    {
+      "file": "UniApp/Sources/Security/WalletManifestStore.swift",
+      "line": 185,
+      "context": "log.debug(\"Manifest synced: \\(entries.count) wallets\")"
+    }
+  ],
+  "Mauritian Rupee": [
+    {
+      "file": "UniApp/Sources/Settings/CurrencyPreference.swift",
+      "line": 151,
+      "context": ".init(code: \"MUR\", symbol: \"\u20a8\",   englishName: \"Mauritian Rupee\"),"
+    }
+  ],
+  "Mexican Peso": [
+    {
+      "file": "UniApp/Sources/Settings/CurrencyPreference.swift",
+      "line": 154,
+      "context": ".init(code: \"MXN\", symbol: \"MX$\", englishName: \"Mexican Peso\"),"
+    }
+  ],
+  "Moldovan Leu": [
+    {
+      "file": "UniApp/Sources/Settings/CurrencyPreference.swift",
+      "line": 145,
+      "context": ".init(code: \"MDL\", symbol: \"L\",   englishName: \"Moldovan Leu\"),"
+    }
+  ],
+  "Mongolian T\u00f6gr\u00f6g": [
+    {
+      "file": "UniApp/Sources/Settings/CurrencyPreference.swift",
+      "line": 149,
+      "context": ".init(code: \"MNT\", symbol: \"\u20ae\",   englishName: \"Mongolian T\u00f6gr\u00f6g\"),"
+    }
+  ],
+  "Moroccan Dirham": [
+    {
+      "file": "UniApp/Sources/Settings/CurrencyPreference.swift",
+      "line": 144,
+      "context": ".init(code: \"MAD\", symbol: \"\u062f.\u0645.\", englishName: \"Moroccan Dirham\"),"
+    }
+  ],
+  "Mozambican Metical": [
+    {
+      "file": "UniApp/Sources/Settings/CurrencyPreference.swift",
+      "line": 156,
+      "context": ".init(code: \"MZN\", symbol: \"MT\",  englishName: \"Mozambican Metical\"),"
+    }
+  ],
+  "Mozilla/5.0 (iPhone; CPU iPhone OS 26_0 like Mac OS X) ": [
+    {
+      "file": "UniApp/Sources/Features/Browser/BrowserWebView.swift",
+      "line": 271,
+      "context": "\"Mozilla/5.0 (iPhone; CPU iPhone OS 26_0 like Mac OS X) \" +"
+    }
+  ],
+  "Myanmar Kyat": [
+    {
+      "file": "UniApp/Sources/Settings/CurrencyPreference.swift",
+      "line": 148,
+      "context": ".init(code: \"MMK\", symbol: \"K\",   englishName: \"Myanmar Kyat\"),"
+    }
+  ],
+  "Namibian Dollar": [
+    {
+      "file": "UniApp/Sources/Settings/CurrencyPreference.swift",
+      "line": 157,
+      "context": ".init(code: \"NAD\", symbol: \"N$\",  englishName: \"Namibian Dollar\"),"
+    }
+  ],
+  "Native balance for \\(snap.chain.rawValue, privacy: .public)/\\(snap.address, privacy: .public): \\(String(describing: chainBalance.nativeBalance), privacy: .public)": [
+    {
+      "file": "UniApp/Sources/Features/Wallet/WalletRefreshCoordinator.swift",
+      "line": 214,
+      "context": "Self.log.info(\"Native balance for \\(snap.chain.rawValue, privacy: .public)/\\(snap.address, privacy: .public): \\(String(d"
+    }
+  ],
+  "Nepalese Rupee": [
+    {
+      "file": "UniApp/Sources/Settings/CurrencyPreference.swift",
+      "line": 161,
+      "context": ".init(code: \"NPR\", symbol: \"\u0930\u0942\",  englishName: \"Nepalese Rupee\"),"
+    }
+  ],
+  "Netherlands Antillean Guilder": [
+    {
+      "file": "UniApp/Sources/Settings/CurrencyPreference.swift",
+      "line": 80,
+      "context": ".init(code: \"ANG\", symbol: \"\u0192\",   englishName: \"Netherlands Antillean Guilder\"),"
+    }
+  ],
+  "Neutral symbol variant": [
+    {
+      "file": "UniApp/Sources/DesignSystem/Components/UniEmptyState.swift",
+      "line": 210,
+      "context": "#Preview(\"Neutral symbol variant\") {"
+    }
+  ],
+  "New Zealand Dollar": [
+    {
+      "file": "UniApp/Sources/Settings/CurrencyPreference.swift",
+      "line": 162,
+      "context": ".init(code: \"NZD\", symbol: \"NZ$\", englishName: \"New Zealand Dollar\"),"
+    }
+  ],
+  "Nicaraguan C\u00f3rdoba": [
+    {
+      "file": "UniApp/Sources/Settings/CurrencyPreference.swift",
+      "line": 159,
+      "context": ".init(code: \"NIO\", symbol: \"C$\",  englishName: \"Nicaraguan C\u00f3rdoba\"),"
+    }
+  ],
+  "Nigerian Naira": [
+    {
+      "file": "UniApp/Sources/Settings/CurrencyPreference.swift",
+      "line": 158,
+      "context": ".init(code: \"NGN\", symbol: \"\u20a6\",   englishName: \"Nigerian Naira\"),"
+    }
+  ],
+  "No activity on \\(chain.displayName).": [
+    {
+      "file": "UniApp/Sources/Features/Wallet/AssetNetworkDetailView.swift",
+      "line": 197,
+      "context": "? \"No activity on \\(chain.displayName).\""
+    }
+  ],
+  "Norsk bokm\u00e5l": [
+    {
+      "file": "UniApp/Sources/Settings/LanguagePreference.swift",
+      "line": 87,
+      "context": ".init(code: \"nb\",       englishName: \"Norwegian Bokm\u00e5l\",       nativeName: \"Norsk bokm\u00e5l\",     isRTL: false, flag: \"\ud83c\uddf3\ud83c\uddf4\")"
+    }
+  ],
+  "Norwegian Bokm\u00e5l": [
+    {
+      "file": "UniApp/Sources/Settings/LanguagePreference.swift",
+      "line": 87,
+      "context": ".init(code: \"nb\",       englishName: \"Norwegian Bokm\u00e5l\",       nativeName: \"Norsk bokm\u00e5l\",     isRTL: false, flag: \"\ud83c\uddf3\ud83c\uddf4\")"
+    }
+  ],
+  "Norwegian Krone": [
+    {
+      "file": "UniApp/Sources/Settings/CurrencyPreference.swift",
+      "line": 160,
+      "context": ".init(code: \"NOK\", symbol: \"kr\",  englishName: \"Norwegian Krone\"),"
+    }
+  ],
+  "Nu.": [
+    {
+      "file": "UniApp/Sources/Settings/CurrencyPreference.swift",
+      "line": 97,
+      "context": ".init(code: \"BTN\", symbol: \"Nu.\", englishName: \"Bhutanese Ngultrum\"),"
+    }
+  ],
+  "Omani Rial": [
+    {
+      "file": "UniApp/Sources/Settings/CurrencyPreference.swift",
+      "line": 163,
+      "context": ".init(code: \"OMR\", symbol: \"\u0631.\u0639.\", englishName: \"Omani Rial\"),"
+    }
+  ],
+  "On \\(chain.displayName)": [
+    {
+      "file": "UniApp/Sources/Features/Wallet/AssetDetailView.swift",
+      "line": 278,
+      "context": "return \"On \\(chain.displayName)\""
+    }
+  ],
+  "On \\(total) networks": [
+    {
+      "file": "UniApp/Sources/Features/Wallet/AssetDetailView.swift",
+      "line": 288,
+      "context": "return \"On \\(total) networks\""
+    }
+  ],
+  "On \\(total) networks \u00b7 held on \\(held)": [
+    {
+      "file": "UniApp/Sources/Features/Wallet/AssetDetailView.swift",
+      "line": 283,
+      "context": "return \"On \\(total) networks \u00b7 held on \\(held)\""
+    }
+  ],
+  "PBKDF2 derived key length must be positive": [
+    {
+      "file": "UniApp/Sources/Security/PinCodeStorage.swift",
+      "line": 251,
+      "context": "precondition(keyLength > 0, \"PBKDF2 derived key length must be positive\")"
+    }
+  ],
+  "PBKDF2 iteration count must be positive": [
+    {
+      "file": "UniApp/Sources/Security/PinCodeStorage.swift",
+      "line": 250,
+      "context": "precondition(iterations > 0, \"PBKDF2 iteration count must be positive\")"
+    }
+  ],
+  "Pakistani Rupee": [
+    {
+      "file": "UniApp/Sources/Settings/CurrencyPreference.swift",
+      "line": 168,
+      "context": ".init(code: \"PKR\", symbol: \"\u20a8\",   englishName: \"Pakistani Rupee\"),"
+    }
+  ],
+  "Panamanian Balboa": [
+    {
+      "file": "UniApp/Sources/Settings/CurrencyPreference.swift",
+      "line": 164,
+      "context": ".init(code: \"PAB\", symbol: \"B/.\", englishName: \"Panamanian Balboa\"),"
+    }
+  ],
+  "Papua New Guinean Kina": [
+    {
+      "file": "UniApp/Sources/Settings/CurrencyPreference.swift",
+      "line": 166,
+      "context": ".init(code: \"PGK\", symbol: \"K\",   englishName: \"Papua New Guinean Kina\"),"
+    }
+  ],
+  "Paraguayan Guaran\u00ed": [
+    {
+      "file": "UniApp/Sources/Settings/CurrencyPreference.swift",
+      "line": 170,
+      "context": ".init(code: \"PYG\", symbol: \"\u20b2\",   englishName: \"Paraguayan Guaran\u00ed\"),"
+    }
+  ],
+  "Peruvian Sol": [
+    {
+      "file": "UniApp/Sources/Settings/CurrencyPreference.swift",
+      "line": 165,
+      "context": ".init(code: \"PEN\", symbol: \"S/\",  englishName: \"Peruvian Sol\"),"
+    }
+  ],
+  "Philippine Peso": [
+    {
+      "file": "UniApp/Sources/Settings/CurrencyPreference.swift",
+      "line": 167,
+      "context": ".init(code: \"PHP\", symbol: \"\u20b1\",   englishName: \"Philippine Peso\"),"
+    }
+  ],
+  "Playground wallet": [
+    {
+      "file": "UniApp/Sources/Features/TestScreen/TestScreenView.swift",
+      "line": 209,
+      "context": "walletName: String.apertureLocalized(\"Playground wallet\"),"
+    }
+  ],
+  "Polish Z\u0142oty": [
+    {
+      "file": "UniApp/Sources/Settings/CurrencyPreference.swift",
+      "line": 169,
+      "context": ".init(code: \"PLN\", symbol: \"z\u0142\",  englishName: \"Polish Z\u0142oty\"),"
+    }
+  ],
+  "Portuguese (Brazil)": [
+    {
+      "file": "UniApp/Sources/Settings/LanguagePreference.swift",
+      "line": 91,
+      "context": ".init(code: \"pt-BR\",    englishName: \"Portuguese (Brazil)\",    nativeName: \"Portugu\u00eas (Brasil)\", isRTL: false, flag: \"\ud83c\udde7\ud83c\uddf7"
+    }
+  ],
+  "Portugu\u00eas (Brasil)": [
+    {
+      "file": "UniApp/Sources/Settings/LanguagePreference.swift",
+      "line": 91,
+      "context": ".init(code: \"pt-BR\",    englishName: \"Portuguese (Brazil)\",    nativeName: \"Portugu\u00eas (Brasil)\", isRTL: false, flag: \"\ud83c\udde7\ud83c\uddf7"
+    }
+  ],
+  "Punjabi (Gurmukhi)": [
+    {
+      "file": "UniApp/Sources/Settings/LanguagePreference.swift",
+      "line": 89,
+      "context": ".init(code: \"pa\",       englishName: \"Punjabi (Gurmukhi)\",     nativeName: \"\u0a2a\u0a70\u0a1c\u0a3e\u0a2c\u0a40\",            isRTL: false, flag: \"\ud83c\uddee\ud83c\uddf3\""
+    }
+  ],
+  "QR code for \\(chain.displayName) address": [
+    {
+      "file": "UniApp/Sources/Features/Receive/ReceiveQRCard.swift",
+      "line": 67,
+      "context": "return \"QR code for \\(chain.displayName) address\""
+    }
+  ],
+  "QR code for \\(tokenSymbol) address on \\(chain.displayName)": [
+    {
+      "file": "UniApp/Sources/Features/Receive/ReceiveQRCard.swift",
+      "line": 65,
+      "context": "return \"QR code for \\(tokenSymbol) address on \\(chain.displayName)\""
+    }
+  ],
+  "Qatari Riyal": [
+    {
+      "file": "UniApp/Sources/Settings/CurrencyPreference.swift",
+      "line": 171,
+      "context": ".init(code: \"QAR\", symbol: \"\u0631.\u0642\", englishName: \"Qatari Riyal\"),"
+    }
+  ],
+  "Real RPC scan failed for \\(address.address, privacy: .public)": [
+    {
+      "file": "UniApp/Sources/Features/Wallet/WalletRefreshCoordinator.swift",
+      "line": 419,
+      "context": "Self.log.error(\"Real RPC scan failed for \\(address.address, privacy: .public)\")"
+    }
+  ],
+  "Real RPC scan for \\(address.chain.rawValue, privacy: .public)/\\(address.address, privacy: .public): balance=\\(String(describing: summary.nativeBalance), privacy: .public) isUsed=\\(summary.isUsed, privacy: .public)": [
+    {
+      "file": "UniApp/Sources/Features/Wallet/WalletRefreshCoordinator.swift",
+      "line": 444,
+      "context": "Self.log.info(\"Real RPC scan for \\(address.chain.rawValue, privacy: .public)/\\(address.address, privacy: .public): balan"
+    }
+  ],
+  "Reset Aperture completed: \\(ids.count, privacy: .public) wallets purged, PIN cleared, defaults wiped.": [
+    {
+      "file": "UniApp/Sources/Features/Settings/AdvancedSettingsView.swift",
+      "line": 211,
+      "context": "log.notice(\"Reset Aperture completed: \\(ids.count, privacy: .public) wallets purged, PIN cleared, defaults wiped.\")"
+    }
+  ],
+  "Reset Aperture: auxiliary user-data wipe failed: \\(String(describing: error), privacy: .public)": [
+    {
+      "file": "UniApp/Sources/Features/Settings/AdvancedSettingsView.swift",
+      "line": 197,
+      "context": "log.error(\"Reset Aperture: auxiliary user-data wipe failed: \\(String(describing: error), privacy: .public)\")"
+    }
+  ],
+  "Restore failed: \\(String(describing: error), privacy: .public)": [
+    {
+      "file": "UniApp/Sources/Security/WalletManifestStore.swift",
+      "line": 262,
+      "context": "log.error(\"Restore failed: \\(String(describing: error), privacy: .public)\")"
+    }
+  ],
+  "Restore skipped: SwiftData already has \\(existingCount) wallets": [
+    {
+      "file": "UniApp/Sources/Security/WalletManifestStore.swift",
+      "line": 206,
+      "context": "log.debug(\"Restore skipped: SwiftData already has \\(existingCount) wallets\")"
+    }
+  ],
+  "Restore skipped: manifest is empty (fresh install)": [
+    {
+      "file": "UniApp/Sources/Security/WalletManifestStore.swift",
+      "line": 211,
+      "context": "log.debug(\"Restore skipped: manifest is empty (fresh install)\")"
+    }
+  ],
+  "Restoring \\(entries.count) wallets from manifest after reinstall": [
+    {
+      "file": "UniApp/Sources/Security/WalletManifestStore.swift",
+      "line": 215,
+      "context": "log.info(\"Restoring \\(entries.count) wallets from manifest after reinstall\")"
+    }
+  ],
+  "Romanian Leu": [
+    {
+      "file": "UniApp/Sources/Settings/CurrencyPreference.swift",
+      "line": 172,
+      "context": ".init(code: \"RON\", symbol: \"lei\", englishName: \"Romanian Leu\"),"
+    }
+  ],
+  "Russian Ruble": [
+    {
+      "file": "UniApp/Sources/Settings/CurrencyPreference.swift",
+      "line": 174,
+      "context": ".init(code: \"RUB\", symbol: \"\u20bd\",   englishName: \"Russian Ruble\"),"
+    }
+  ],
+  "Rwandan Franc": [
+    {
+      "file": "UniApp/Sources/Settings/CurrencyPreference.swift",
+      "line": 175,
+      "context": ".init(code: \"RWF\", symbol: \"RF\",  englishName: \"Rwandan Franc\"),"
+    }
+  ],
+  "Samoan Tala": [
+    {
+      "file": "UniApp/Sources/Settings/CurrencyPreference.swift",
+      "line": 198,
+      "context": ".init(code: \"WST\", symbol: \"WS$\", englishName: \"Samoan Tala\"),"
+    }
+  ],
+  "Saudi Riyal": [
+    {
+      "file": "UniApp/Sources/Settings/CurrencyPreference.swift",
+      "line": 176,
+      "context": ".init(code: \"SAR\", symbol: \"\u0631.\u0633\", englishName: \"Saudi Riyal\"),"
+    }
+  ],
+  "Scene backgrounded at \\(Date(), privacy: .public)": [
+    {
+      "file": "UniApp/Sources/Security/AutoLockController.swift",
+      "line": 65,
+      "context": "log.debug(\"Scene backgrounded at \\(Date(), privacy: .public)\")"
+    }
+  ],
+  "Serbian Dinar": [
+    {
+      "file": "UniApp/Sources/Settings/CurrencyPreference.swift",
+      "line": 173,
+      "context": ".init(code: \"RSD\", symbol: \"\u0434\u0438\u043d.\", englishName: \"Serbian Dinar\"),"
+    }
+  ],
+  "Set \u2014 Light": [
+    {
+      "file": "UniApp/Sources/Features/PinCode/PinCodeView.swift",
+      "line": 675,
+      "context": "#Preview(\"Set \u2014 Light\") {"
+    }
+  ],
+  "Seychellois Rupee": [
+    {
+      "file": "UniApp/Sources/Settings/CurrencyPreference.swift",
+      "line": 178,
+      "context": ".init(code: \"SCR\", symbol: \"\u20a8\",   englishName: \"Seychellois Rupee\"),"
+    }
+  ],
+  "Singapore Dollar": [
+    {
+      "file": "UniApp/Sources/Settings/CurrencyPreference.swift",
+      "line": 180,
+      "context": ".init(code: \"SGD\", symbol: \"S$\",  englishName: \"Singapore Dollar\"),"
+    }
+  ],
+  "Smart Chain": [
+    {
+      "file": "UniApp/Sources/Features/ImportWallet/WalletCoreKeyImportService.swift",
+      "line": 61,
+      "context": ".bnbChain:     20000714,   // \"Smart Chain\""
+    }
+  ],
+  "Solomon Islands Dollar": [
+    {
+      "file": "UniApp/Sources/Settings/CurrencyPreference.swift",
+      "line": 177,
+      "context": ".init(code: \"SBD\", symbol: \"SI$\", englishName: \"Solomon Islands Dollar\"),"
+    }
+  ],
+  "South African Rand": [
+    {
+      "file": "UniApp/Sources/Settings/CurrencyPreference.swift",
+      "line": 204,
+      "context": ".init(code: \"ZAR\", symbol: \"R\",   englishName: \"South African Rand\"),"
+    }
+  ],
+  "South Korean Won": [
+    {
+      "file": "UniApp/Sources/Settings/CurrencyPreference.swift",
+      "line": 135,
+      "context": ".init(code: \"KRW\", symbol: \"\u20a9\",   englishName: \"South Korean Won\"),"
+    }
+  ],
+  "Sri Lankan Rupee": [
+    {
+      "file": "UniApp/Sources/Settings/CurrencyPreference.swift",
+      "line": 141,
+      "context": ".init(code: \"LKR\", symbol: \"Rs\",  englishName: \"Sri Lankan Rupee\"),"
+    }
+  ],
+  "Surinamese Dollar": [
+    {
+      "file": "UniApp/Sources/Settings/CurrencyPreference.swift",
+      "line": 181,
+      "context": ".init(code: \"SRD\", symbol: \"Sr$\", englishName: \"Surinamese Dollar\"),"
+    }
+  ],
+  "Swazi Lilangeni": [
+    {
+      "file": "UniApp/Sources/Settings/CurrencyPreference.swift",
+      "line": 182,
+      "context": ".init(code: \"SZL\", symbol: \"E\",   englishName: \"Swazi Lilangeni\"),"
+    }
+  ],
+  "Swedish Krona": [
+    {
+      "file": "UniApp/Sources/Settings/CurrencyPreference.swift",
+      "line": 179,
+      "context": ".init(code: \"SEK\", symbol: \"kr\",  englishName: \"Swedish Krona\"),"
+    }
+  ],
+  "Swiss Franc": [
+    {
+      "file": "UniApp/Sources/Settings/CurrencyPreference.swift",
+      "line": 103,
+      "context": ".init(code: \"CHF\", symbol: \"CHF\", englishName: \"Swiss Franc\"),"
+    }
+  ],
+  "Switch wallet, currently \\(activeWallet?.name ?? ": [
+    {
+      "file": "UniApp/Sources/Features/Wallet/WalletHomeView.swift",
+      "line": 1741,
+      "context": ".accessibilityLabel(Text(\"Switch wallet, currently \\(activeWallet?.name ?? \"\")\"))"
+    }
+  ],
+  "Taiwan Dollar": [
+    {
+      "file": "UniApp/Sources/Settings/CurrencyPreference.swift",
+      "line": 189,
+      "context": ".init(code: \"TWD\", symbol: \"NT$\", englishName: \"Taiwan Dollar\"),"
+    }
+  ],
+  "Tajikistani Somoni": [
+    {
+      "file": "UniApp/Sources/Settings/CurrencyPreference.swift",
+      "line": 184,
+      "context": ".init(code: \"TJS\", symbol: \"\u0405\u041c\",  englishName: \"Tajikistani Somoni\"),"
+    }
+  ],
+  "Tanzanian Shilling": [
+    {
+      "file": "UniApp/Sources/Settings/CurrencyPreference.swift",
+      "line": 190,
+      "context": ".init(code: \"TZS\", symbol: \"TSh\", englishName: \"Tanzanian Shilling\"),"
+    }
+  ],
+  "Tether USD": [
+    {
+      "file": "UniApp/Sources/Wallet/TokenBalance.swift",
+      "line": 17,
+      "context": "let name: String                 // \"USD Coin\", \"Tether USD\", \u2026"
+    }
+  ],
+  "Thai Baht": [
+    {
+      "file": "UniApp/Sources/Settings/CurrencyPreference.swift",
+      "line": 183,
+      "context": ".init(code: \"THB\", symbol: \"\u0e3f\",   englishName: \"Thai Baht\"),"
+    }
+  ],
+  "This doesn't parse as a \\(chain.displayName) key. Check the format.": [
+    {
+      "file": "UniApp/Sources/Features/ImportWallet/PrivateKeyImport.swift",
+      "line": 203,
+      "context": "return (\"This doesn't parse as a \\(chain.displayName) key. Check the format.\", UniColors.Status.warningForeground)"
+    }
+  ],
+  "This isn\\u{2019}t a valid SVG.": [
+    {
+      "file": "UniApp/Sources/Features/Wallet/WalletIconPicker.swift",
+      "line": 474,
+      "context": "return \"This isn\\u{2019}t a valid SVG.\""
+    }
+  ],
+  "Ti\u1ebfng Vi\u1ec7t": [
+    {
+      "file": "UniApp/Sources/Settings/LanguagePreference.swift",
+      "line": 105,
+      "context": ".init(code: \"vi\",       englishName: \"Vietnamese\",             nativeName: \"Ti\u1ebfng Vi\u1ec7t\",       isRTL: false, flag: \"\ud83c\uddfb\ud83c\uddf3\")"
+    }
+  ],
+  "Token balance for \\(snap.chain.rawValue, privacy: .public)/\\(tokenBalance.symbol, privacy: .public): \\(String(describing: tokenBalance.amount), privacy: .public) (raw \\(rawString, privacy: .public))": [
+    {
+      "file": "UniApp/Sources/Features/Wallet/WalletRefreshCoordinator.swift",
+      "line": 256,
+      "context": "Self.log.info(\"Token balance for \\(snap.chain.rawValue, privacy: .public)/\\(tokenBalance.symbol, privacy: .public): \\(St"
+    }
+  ],
+  "Tongan Pa\u02bbanga": [
+    {
+      "file": "UniApp/Sources/Settings/CurrencyPreference.swift",
+      "line": 186,
+      "context": ".init(code: \"TOP\", symbol: \"T$\",  englishName: \"Tongan Pa\u02bbanga\"),"
+    }
+  ],
+  "Transaction fetch failed for \\(chain.rawValue, privacy: .public) at \\(address, privacy: .private): \\(String(describing: error), privacy: .public)": [
+    {
+      "file": "UniApp/Sources/Wallet/RealRPCTransactionScanner.swift",
+      "line": 182,
+      "context": "log.warning(\"Transaction fetch failed for \\(chain.rawValue, privacy: .public) at \\(address, privacy: .private): \\(String"
+    }
+  ],
+  "Transaction history for \\(address.chain.rawValue, privacy: .public)/\\(address.address, privacy: .public): persisted \\(events.count, privacy: .public) events": [
+    {
+      "file": "UniApp/Sources/Features/Wallet/WalletRefreshCoordinator.swift",
+      "line": 491,
+      "context": "Self.log.info(\"Transaction history for \\(address.chain.rawValue, privacy: .public)/\\(address.address, privacy: .public):"
+    }
+  ],
+  "Transactions involving \\(identity.symbol) on \\(chain.displayName) appear here as they confirm on-chain.": [
+    {
+      "file": "UniApp/Sources/Features/Wallet/AssetNetworkDetailView.swift",
+      "line": 200,
+      "context": "? \"Transactions involving \\(identity.symbol) on \\(chain.displayName) appear here as they confirm on-chain.\""
+    }
+  ],
+  "Trinidad & Tobago Dollar": [
+    {
+      "file": "UniApp/Sources/Settings/CurrencyPreference.swift",
+      "line": 188,
+      "context": ".init(code: \"TTD\", symbol: \"TT$\", englishName: \"Trinidad & Tobago Dollar\"),"
+    }
+  ],
+  "Tunisian Dinar": [
+    {
+      "file": "UniApp/Sources/Settings/CurrencyPreference.swift",
+      "line": 185,
+      "context": ".init(code: \"TND\", symbol: \"\u062f.\u062a\", englishName: \"Tunisian Dinar\"),"
+    }
+  ],
+  "Turkish Lira": [
+    {
+      "file": "UniApp/Sources/Settings/CurrencyPreference.swift",
+      "line": 187,
+      "context": ".init(code: \"TRY\", symbol: \"\u20ba\",   englishName: \"Turkish Lira\"),"
+    }
+  ],
+  "UAE Dirham": [
+    {
+      "file": "UniApp/Sources/Settings/CurrencyPreference.swift",
+      "line": 76,
+      "context": ".init(code: \"AED\", symbol: \"\u062f.\u0625\", englishName: \"UAE Dirham\"),"
+    }
+  ],
+  "URL: \\(displayHost)": [
+    {
+      "file": "UniApp/Sources/Features/Browser/BrowserSessionView.swift",
+      "line": 271,
+      "context": ".accessibilityLabel(Text(verbatim: \"URL: \\(displayHost)\"))"
+    }
+  ],
+  "US Dollar": [
+    {
+      "file": "UniApp/Sources/Settings/CurrencyPreference.swift",
+      "line": 68,
+      "context": ".init(code: \"USD\", symbol: \"$\",   englishName: \"US Dollar\"),"
+    }
+  ],
+  "USD Coin": [
+    {
+      "file": "UniApp/Sources/Wallet/TokenBalance.swift",
+      "line": 17,
+      "context": "let name: String                 // \"USD Coin\", \"Tether USD\", \u2026"
+    }
+  ],
+  "Ugandan Shilling": [
+    {
+      "file": "UniApp/Sources/Settings/CurrencyPreference.swift",
+      "line": 192,
+      "context": ".init(code: \"UGX\", symbol: \"USh\", englishName: \"Ugandan Shilling\"),"
+    }
+  ],
+  "Ukrainian Hryvnia": [
+    {
+      "file": "UniApp/Sources/Settings/CurrencyPreference.swift",
+      "line": 191,
+      "context": ".init(code: \"UAH\", symbol: \"\u20b4\",   englishName: \"Ukrainian Hryvnia\"),"
+    }
+  ],
+  "Under \\(value)": [
+    {
+      "file": "UniApp/Sources/Settings/WalletHomeFilterPreferences.swift",
+      "line": 370,
+      "context": "return String.apertureLocalized(\"Under \\(value)\")"
+    },
+    {
+      "file": "UniApp/Sources/Settings/HideBalancesPreference.swift",
+      "line": 36,
+      "context": "return String.apertureLocalized(\"Under \\(value)\")"
+    },
+    {
+      "file": "UniApp/Sources/Features/Wallet/WalletHomeFilterSheet.swift",
+      "line": 638,
+      "context": "return String.apertureLocalized(\"Under \\(value)\")"
+    }
+  ],
+  "Uruguayan Peso": [
+    {
+      "file": "UniApp/Sources/Settings/CurrencyPreference.swift",
+      "line": 193,
+      "context": ".init(code: \"UYU\", symbol: \"$U\",  englishName: \"Uruguayan Peso\"),"
+    }
+  ],
+  "Uzbekistani Som": [
+    {
+      "file": "UniApp/Sources/Settings/CurrencyPreference.swift",
+      "line": 194,
+      "context": ".init(code: \"UZS\", symbol: \"\u043b\u0432\",  englishName: \"Uzbekistani Som\"),"
+    }
+  ],
+  "Vanuatu Vatu": [
+    {
+      "file": "UniApp/Sources/Settings/CurrencyPreference.swift",
+      "line": 197,
+      "context": ".init(code: \"VUV\", symbol: \"VT\",  englishName: \"Vanuatu Vatu\"),"
+    }
+  ],
+  "Venezuelan Bol\u00edvar": [
+    {
+      "file": "UniApp/Sources/Settings/CurrencyPreference.swift",
+      "line": 195,
+      "context": ".init(code: \"VES\", symbol: \"Bs.S\", englishName: \"Venezuelan Bol\u00edvar\"),"
+    }
+  ],
+  "Verify \u2014 Light": [
+    {
+      "file": "UniApp/Sources/Features/PinCode/PinCodeView.swift",
+      "line": 689,
+      "context": "#Preview(\"Verify \u2014 Light\") {"
+    }
+  ],
+  "Version/26.0 Mobile/15E148 Safari/604.1 Aperture/1.0": [
+    {
+      "file": "UniApp/Sources/Features/Browser/BrowserWebView.swift",
+      "line": 273,
+      "context": "\"Version/26.0 Mobile/15E148 Safari/604.1 Aperture/1.0\""
+    }
+  ],
+  "Vietnamese \u0110\u1ed3ng": [
+    {
+      "file": "UniApp/Sources/Settings/CurrencyPreference.swift",
+      "line": 196,
+      "context": ".init(code: \"VND\", symbol: \"\u20ab\",   englishName: \"Vietnamese \u0110\u1ed3ng\"),"
+    }
+  ],
+  "WKWebView load failed: \\(String(describing: error), privacy: .public)": [
+    {
+      "file": "UniApp/Sources/Features/Wallet/Avatar/WalletCustomSvgRenderer.swift",
+      "line": 212,
+      "context": "log.error(\"WKWebView load failed: \\(String(describing: error), privacy: .public)\")"
+    }
+  ],
+  "WKWebView snapshot failed: \\(String(describing: error), privacy: .public)": [
+    {
+      "file": "UniApp/Sources/Features/Wallet/Avatar/WalletCustomSvgRenderer.swift",
+      "line": 207,
+      "context": "log.error(\"WKWebView snapshot failed: \\(String(describing: error), privacy: .public)\")"
+    }
+  ],
+  "Wallet import persist failed: \\(String(describing: error), privacy: .public)": [
+    {
+      "file": "UniApp/Sources/Features/ImportWallet/ImportWalletFlow.swift",
+      "line": 155,
+      "context": "\"Wallet import persist failed: \\(String(describing: error), privacy: .public)\""
+    }
+  ],
+  "WalletConnect disconnect requested for session \\(sessionId, privacy: .public)": [
+    {
+      "file": "UniApp/Sources/Features/Browser/WalletConnectClient.swift",
+      "line": 100,
+      "context": "log.info(\"WalletConnect disconnect requested for session \\(sessionId, privacy: .public)\")"
+    }
+  ],
+  "WalletConnect pair failed for \\(uri, privacy: .public): \\(String(describing: error), privacy: .public)": [
+    {
+      "file": "UniApp/Sources/Features/Browser/DAppRequestRouter.swift",
+      "line": 112,
+      "context": "log.error(\"WalletConnect pair failed for \\(uri, privacy: .public): \\(String(describing: error), privacy: .public)\")"
+    }
+  ],
+  "WalletConnect pair requested for \\(uri.prefix(64), privacy: .public)\u2026": [
+    {
+      "file": "UniApp/Sources/Features/Browser/WalletConnectClient.swift",
+      "line": 93,
+      "context": "log.info(\"WalletConnect pair requested for \\(uri.prefix(64), privacy: .public)\u2026\")"
+    }
+  ],
+  "WalletConnectClient configured with project ID \\(Self.projectID, privacy: .private)": [
+    {
+      "file": "UniApp/Sources/Features/Browser/WalletConnectClient.swift",
+      "line": 83,
+      "context": "log.info(\"WalletConnectClient configured with project ID \\(Self.projectID, privacy: .private)\")"
+    }
+  ],
+  "West African CFA Franc": [
+    {
+      "file": "UniApp/Sources/Settings/CurrencyPreference.swift",
+      "line": 201,
+      "context": ".init(code: \"XOF\", symbol: \"CFA\", englishName: \"West African CFA Franc\"),"
+    }
+  ],
+  "Word \\(index + 1)": [
+    {
+      "file": "UniApp/Sources/Features/CreateWallet/BackupVerifyView.swift",
+      "line": 241,
+      "context": "String.apertureLocalized(\"Word \\(index + 1)\")"
+    }
+  ],
+  "Yemeni Rial": [
+    {
+      "file": "UniApp/Sources/Settings/CurrencyPreference.swift",
+      "line": 203,
+      "context": ".init(code: \"YER\", symbol: \"\ufdfc\",   englishName: \"Yemeni Rial\"),"
+    }
+  ],
+  "Zambian Kwacha": [
+    {
+      "file": "UniApp/Sources/Settings/CurrencyPreference.swift",
+      "line": 205,
+      "context": ".init(code: \"ZMW\", symbol: \"ZK\",  englishName: \"Zambian Kwacha\")"
+    }
+  ],
+  "[STUB \\(prefix.rawValue) #\\(i)] ": [
+    {
+      "file": "UniApp/Sources/Features/ImportWallet/KeyImportService.swift",
+      "line": 164,
+      "context": "\"[STUB \\(prefix.rawValue) #\\(i)] \" + mockAddress(for: chain, salt: \"\\(raw)-\\(i)\")"
+    }
+  ],
+  "\\($0.chain.rawValue)|\\($0.contract?.lowercased() ?? ": [
+    {
+      "file": "UniApp/Sources/Features/Wallet/AssetDetailResolver.swift",
+      "line": 327,
+      "context": "var emittedKeys = Set(rows.map { \"\\($0.chain.rawValue)|\\($0.contract?.lowercased() ?? \"\")\" })"
+    }
+  ],
+  "\\(activeWalletIdRaw)|\\(allWallets.count)": [
+    {
+      "file": "UniApp/Sources/Features/Receive/ReceiveView.swift",
+      "line": 165,
+      "context": "\"\\(activeWalletIdRaw)|\\(allWallets.count)\""
+    }
+  ],
+  "\\(amount) \\(identity.symbol)": [
+    {
+      "file": "UniApp/Sources/Features/Wallet/AssetDetailView.swift",
+      "line": 332,
+      "context": "return Text(verbatim: \"\\(amount) \\(identity.symbol)\")"
+    }
+  ],
+  "\\(amount.formatted(style)) \\(chain.ticker)": [
+    {
+      "file": "UniApp/Sources/Wallet/BalanceFormatter.swift",
+      "line": 22,
+      "context": "return \"\\(amount.formatted(style)) \\(chain.ticker)\""
+    }
+  ],
+  "\\(amountText) \\(assetSymbol)": [
+    {
+      "file": "UniApp/Sources/Features/Wallet/AssetDetailView.swift",
+      "line": 711,
+      "context": "return \"\\(amountText) \\(assetSymbol)\""
+    }
+  ],
+  "\\(amountText) \\(identity.symbol)": [
+    {
+      "file": "UniApp/Sources/Features/Wallet/AssetNetworkDetailView.swift",
+      "line": 163,
+      "context": "return \"\\(amountText) \\(identity.symbol)\""
+    }
+  ],
+  "\\(availableChains.map(\\.rawValue).joined(separator: ": [
+    {
+      "file": "UniApp/Sources/Features/Receive/ReceiveAssetListView.swift",
+      "line": 42,
+      "context": "\"\\(availableChains.map(\\.rawValue).joined(separator: \",\"))|\\(customTokenRecords.count)\""
+    }
+  ],
+  "\\(chain.displayName) \u00b7 \\(chain.ticker)": [
+    {
+      "file": "UniApp/Sources/Features/Receive/ReceiveQRCard.swift",
+      "line": 30,
+      "context": "return \"\\(chain.displayName) \u00b7 \\(chain.ticker)\""
+    }
+  ],
+  "\\(chain.displayName) \u2014 \\(chain.ticker)": [
+    {
+      "file": "UniApp/Sources/Features/Receive/ReceiveAssetListView.swift",
+      "line": 80,
+      "context": ".accessibilityLabel(Text(verbatim: \"\\(chain.displayName) \u2014 \\(chain.ticker)\"))"
+    }
+  ],
+  "\\(chain.displayName) \u2014 receive address": [
+    {
+      "file": "UniApp/Sources/Features/Receive/ReceiveQRDetailView.swift",
+      "line": 121,
+      "context": "return \"\\(chain.displayName) \u2014 receive address\""
+    }
+  ],
+  "\\(chain.rawValue)|\\(contract ?? ": [
+    {
+      "file": "UniApp/Sources/Features/Wallet/AssetDetailResolver.swift",
+      "line": 19,
+      "context": "var id: String { \"\\(chain.rawValue)|\\(contract ?? \"\")\" }"
+    }
+  ],
+  "\\(chain.rawValue)|\\(contract)": [
+    {
+      "file": "UniApp/Sources/Wallet/TokenBalance.swift",
+      "line": 26,
+      "context": "var id: String { \"\\(chain.rawValue)|\\(contract)\" }"
+    }
+  ],
+  "\\(chain.rawValue)|\\(contract.lowercased())": [
+    {
+      "file": "UniApp/Sources/Features/Wallet/WalletSupportedRows.swift",
+      "line": 275,
+      "context": "storage[\"\\(chain.rawValue)|\\(contract.lowercased())\"]"
+    },
+    {
+      "file": "UniApp/Sources/Features/Wallet/AssetDetailResolver.swift",
+      "line": 432,
+      "context": "storage[\"\\(chain.rawValue)|\\(contract.lowercased())\"]"
+    }
+  ],
+  "\\(chain.ticker) activity": [
+    {
+      "file": "UniApp/Sources/Features/Wallet/AssetActivityView.swift",
+      "line": 125,
+      "context": "return \"\\(chain.ticker) activity\""
+    }
+  ],
+  "\\(chainRaw)|\\(contract ?? ": [
+    {
+      "file": "UniApp/Sources/Settings/WalletHomeFilterPreferences.swift",
+      "line": 260,
+      "context": "\"\\(chainRaw)|\\(contract ?? \"\")|\\(symbol)\""
+    }
+  ],
+  "\\(count) digits": [
+    {
+      "file": "UniApp/Sources/Features/CreateWallet/RollYourOwn/RollYourOwnSheet.swift",
+      "line": 172,
+      "context": "case .numbers: return String.apertureLocalized(\"\\(count) digits\")"
+    }
+  ],
+  "\\(count) flips": [
+    {
+      "file": "UniApp/Sources/Features/CreateWallet/RollYourOwn/RollYourOwnSheet.swift",
+      "line": 171,
+      "context": "case .coin:    return String.apertureLocalized(\"\\(count) flips\")"
+    }
+  ],
+  "\\(count) rolls": [
+    {
+      "file": "UniApp/Sources/Features/CreateWallet/RollYourOwn/RollYourOwnSheet.swift",
+      "line": 170,
+      "context": "case .dice:    return String.apertureLocalized(\"\\(count) rolls\")"
+    }
+  ],
+  "\\(displayScale)": [
+    {
+      "file": "UniApp/Sources/Features/Wallet/Avatar/WalletAvatarTabImage.swift",
+      "line": 105,
+      "context": "\"\\(displayScale)\""
+    }
+  ],
+  "\\(entry.chain.rawValue)|\\(contract.lowercased())": [
+    {
+      "file": "UniApp/Sources/Features/Wallet/WalletSupportedRows.swift",
+      "line": 268,
+      "context": "let key = \"\\(entry.chain.rawValue)|\\(contract.lowercased())\""
+    },
+    {
+      "file": "UniApp/Sources/Features/Wallet/AssetDetailResolver.swift",
+      "line": 332,
+      "context": "let key = \"\\(entry.chain.rawValue)|\\(contract.lowercased())\""
+    },
+    {
+      "file": "UniApp/Sources/Features/Wallet/AssetDetailResolver.swift",
+      "line": 426,
+      "context": "dict[\"\\(entry.chain.rawValue)|\\(contract.lowercased())\"] = entry.balance"
+    }
+  ],
+  "\\(formatted) \\(token.symbol)": [
+    {
+      "file": "UniApp/Sources/Features/ImportWallet/ReviewTokenRow.swift",
+      "line": 120,
+      "context": "return \"\\(formatted) \\(token.symbol)\""
+    }
+  ],
+  "\\(gradient.rawValue)|\\(tint.rawValue)|\\(svgKey)": [
+    {
+      "file": "UniApp/Sources/Features/Wallet/WalletIconPicker.swift",
+      "line": 804,
+      "context": "return \"\\(gradient.rawValue)|\\(tint.rawValue)|\\(svgKey)\""
+    }
+  ],
+  "\\(head) ending in \\(tail)": [
+    {
+      "file": "UniApp/Sources/Features/Receive/ReceiveAddressRow.swift",
+      "line": 151,
+      "context": "return \"\\(head) ending in \\(tail)\""
+    }
+  ],
+  "\\(hiddenAssetCount)": [
+    {
+      "file": "UniApp/Sources/Features/Wallet/WalletHomeFilterSheet.swift",
+      "line": 459,
+      "context": "Text(verbatim: \"\\(hiddenAssetCount)\")"
+    }
+  ],
+  "\\(hiddenChainCount)": [
+    {
+      "file": "UniApp/Sources/Features/Wallet/WalletHomeFilterSheet.swift",
+      "line": 482,
+      "context": "Text(verbatim: \"\\(hiddenChainCount)\")"
+    }
+  ],
+  "\\(history.count) dApps in your recent list.": [
+    {
+      "file": "UniApp/Sources/Features/Browser/BrowserSettingsView.swift",
+      "line": 76,
+      "context": ": \"\\(history.count) dApps in your recent list.\","
+    }
+  ],
+  "\\(identity.symbol) activity": [
+    {
+      "file": "UniApp/Sources/Features/Wallet/AssetActivityView.swift",
+      "line": 127,
+      "context": "return \"\\(identity.symbol) activity\""
+    }
+  ],
+  "\\(identity.symbol) on \\(chain.displayName)": [
+    {
+      "file": "UniApp/Sources/Features/Wallet/AssetNetworkDetailView.swift",
+      "line": 87,
+      "context": "\"\\(identity.symbol) on \\(chain.displayName)\""
+    }
+  ],
+  "\\(localizedName) \u2014 \\(currency.code)": [
+    {
+      "file": "UniApp/Sources/Features/Settings/CurrencyPickerView.swift",
+      "line": 91,
+      "context": ".accessibilityLabel(Text(verbatim: \"\\(localizedName) \u2014 \\(currency.code)\"))"
+    }
+  ],
+  "\\(nativeName) \u2014 \\(localizedName)": [
+    {
+      "file": "UniApp/Sources/Features/Settings/LanguagePickerView.swift",
+      "line": 134,
+      "context": ".accessibilityLabel(Text(verbatim: isSystemRow ? \"System\" : \"\\(nativeName) \u2014 \\(localizedName)\"))"
+    }
+  ],
+  "\\(pinnedAssetCount)": [
+    {
+      "file": "UniApp/Sources/Features/Wallet/WalletHomeFilterSheet.swift",
+      "line": 505,
+      "context": "Text(verbatim: \"\\(pinnedAssetCount)\")"
+    }
+  ],
+  "\\(position), \\(word)": [
+    {
+      "file": "UniApp/Sources/Features/CreateWallet/RecoveryPhraseView.swift",
+      "line": 474,
+      "context": ".accessibilityLabel(Text(verbatim: \"\\(position), \\(word)\"))"
+    }
+  ],
+  "\\(prefix) \\(existingCount + 1)": [
+    {
+      "file": "UniApp/Sources/Features/ImportWallet/ImportWalletState.swift",
+      "line": 97,
+      "context": "resolvedName = \"\\(prefix) \\(existingCount + 1)\""
+    },
+    {
+      "file": "UniApp/Sources/Features/CreateWallet/CreateWalletState.swift",
+      "line": 175,
+      "context": "resolvedName = \"\\(prefix) \\(existingCount + 1)\""
+    }
+  ],
+  "\\(raw) \\(request.chain.ticker)": [
+    {
+      "file": "UniApp/Sources/Features/Browser/DAppSendTransactionSheet.swift",
+      "line": 254,
+      "context": "return \"\\(raw) \\(request.chain.ticker)\""
+    }
+  ],
+  "\\(row.symbol), \\(row.name), on \\(row.chain.displayName)": [
+    {
+      "file": "UniApp/Sources/Features/Wallet/AllSupportedAssetsView.swift",
+      "line": 500,
+      "context": ".accessibilityLabel(Text(verbatim: \"\\(row.symbol), \\(row.name), on \\(row.chain.displayName)\"))"
+    }
+  ],
+  "\\(session.dAppName), \\(session.chain.displayName), \\(session.transport == .walletConnect ? ": [
+    {
+      "file": "UniApp/Sources/Features/Browser/BrowserConnectedRow.swift",
+      "line": 53,
+      "context": ".accessibilityLabel(Text(verbatim: \"\\(session.dAppName), \\(session.chain.displayName), \\(session.transport == .walletCon"
+    }
+  ],
+  "\\(short) (\\(build))": [
+    {
+      "file": "UniApp/Sources/Features/Settings/SettingsView.swift",
+      "line": 489,
+      "context": "return \"\\(short) (\\(build))\""
+    }
+  ],
+  "\\(sign)\\(WalletFormatting.native(amount, decimals: 6)) \\(tokenSymbol)": [
+    {
+      "file": "UniApp/Sources/Features/Wallet/ActivityRow.swift",
+      "line": 162,
+      "context": "return \"\\(sign)\\(WalletFormatting.native(amount, decimals: 6)) \\(tokenSymbol)\""
+    }
+  ],
+  "\\(sign)\\(formatted) \\(tx.tokenSymbol)": [
+    {
+      "file": "UniApp/Sources/Features/Wallet/TransactionDetailView.swift",
+      "line": 139,
+      "context": "return \"\\(sign)\\(formatted) \\(tx.tokenSymbol)\""
+    }
+  ],
+  "\\(symbol), \\(name)": [
+    {
+      "file": "UniApp/Sources/Features/Receive/ReceiveAssetListView.swift",
+      "line": 229,
+      "context": ".accessibilityLabel(Text(verbatim: \"\\(symbol), \\(name)\"))"
+    }
+  ],
+  "\\(symbol)|\\(colorHex)": [
+    {
+      "file": "UniApp/Sources/Features/Wallet/WalletAvatar.swift",
+      "line": 305,
+      "context": "Int(WalletAvatarSpec.deterministicHash(\"\\(symbol)|\\(colorHex)\")"
+    }
+  ],
+  "\\(tokenSymbol) on \\(chain.displayName)": [
+    {
+      "file": "UniApp/Sources/Features/Receive/ReceiveQRCard.swift",
+      "line": 28,
+      "context": "return \"\\(tokenSymbol) on \\(chain.displayName)\""
+    }
+  ],
+  "\\(tokenSymbol) on \\(chain.displayName) \u2014 receive address": [
+    {
+      "file": "UniApp/Sources/Features/Receive/ReceiveQRDetailView.swift",
+      "line": 119,
+      "context": "return \"\\(tokenSymbol) on \\(chain.displayName) \u2014 receive address\""
+    }
+  ],
+  "\\(tx.statusRaw)": [
+    {
+      "file": "UniApp/Sources/Features/Wallet/TransactionDetailView.swift",
+      "line": 65,
+      "context": "case nil:        UniBadge(text: \"\\(tx.statusRaw)\", kind: .neutral)"
+    }
+  ],
+  "\\(wallet.id.uuidString)|\\(balanceCount)|\\(latestBalanceUpdate)|\\(txCount)|\\(latestTx)|\\(unconfirmed)": [
+    {
+      "file": "UniApp/Sources/Features/Wallet/AssetDetailResolver.swift",
+      "line": 472,
+      "context": "return \"\\(wallet.id.uuidString)|\\(balanceCount)|\\(latestBalanceUpdate)|\\(txCount)|\\(latestTx)|\\(unconfirmed)\""
+    }
+  ],
+  "\\(walletId.uuidString).png": [
+    {
+      "file": "UniApp/Sources/Features/Wallet/Avatar/WalletCustomSvgRenderer.swift",
+      "line": 112,
+      "context": "cacheDirectory.appendingPathComponent(\"\\(walletId.uuidString).png\", isDirectory: false)"
+    }
+  ],
+  "\\(walletId.uuidString)|\\(tint.rawValue)|\\(svgKey)": [
+    {
+      "file": "UniApp/Sources/Features/Wallet/WalletAvatar.swift",
+      "line": 356,
+      "context": "return \"\\(walletId.uuidString)|\\(tint.rawValue)|\\(svgKey)\""
+    }
+  ],
+  "\\u{19}Ethereum Signed Message:\\n\\(message.count)": [
+    {
+      "file": "UniApp/Sources/Wallet/EVMDAppSigner.swift",
+      "line": 87,
+      "context": "let prefix = \"\\u{19}Ethereum Signed Message:\\n\\(message.count)\""
+    }
+  ],
+  "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about": [
+    {
+      "file": "UniApp/Sources/Features/ImportWallet/ImportGuideSheets.swift",
+      "line": 55,
+      "context": "Text(verbatim: \"abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about\")"
+    }
+  ],
+  "abandon abandon abandon \u2026 about": [
+    {
+      "file": "UniApp/Sources/Features/ImportWallet/MnemonicImport.swift",
+      "line": 134,
+      "context": "example: \"abandon abandon abandon \u2026 about\","
+    }
+  ],
+  "all networks": [
+    {
+      "file": "UniApp/Sources/Features/Wallet/WalletHomeNetworksView.swift",
+      "line": 131,
+      "context": "if selectedSet.isEmpty { return true }  // sentinel \u2014 \"all networks\""
+    }
+  ],
+  "attach: installed UIContextMenuInteraction on UITabBar": [
+    {
+      "file": "UniApp/Sources/Features/Main/TabBarLongPressInstaller.swift",
+      "line": 217,
+      "context": "installerLog.info(\"attach: installed UIContextMenuInteraction on UITabBar\")"
+    }
+  ],
+  "balanceOf(address)": [
+    {
+      "file": "UniApp/Sources/Wallet/RealRPCBalanceScanner.swift",
+      "line": 815,
+      "context": "\"function_selector\": \"balanceOf(address)\","
+    }
+  ],
+  "coin.\\(row.chain.rawValue)": [
+    {
+      "file": "UniApp/Sources/Features/Wallet/WalletHomeView.swift",
+      "line": 2185,
+      "context": "return \"coin.\\(row.chain.rawValue)\""
+    }
+  ],
+  "ctx-menu: presenting menu for tab \\(self.tabIndex)": [
+    {
+      "file": "UniApp/Sources/Features/Main/TabBarLongPressInstaller.swift",
+      "line": 269,
+      "context": "installerLog.info(\"ctx-menu: presenting menu for tab \\(self.tabIndex)\")"
+    }
+  ],
+  "ctx-menu: skipped (pressed segment \\(pressedIndex), target segment \\(targetIndex))": [
+    {
+      "file": "UniApp/Sources/Features/Main/TabBarLongPressInstaller.swift",
+      "line": 266,
+      "context": "installerLog.debug(\"ctx-menu: skipped (pressed segment \\(pressedIndex), target segment \\(targetIndex))\")"
+    }
+  ],
+  "custom-token scan failed for \\(chain.rawValue, privacy: .public): \\(String(describing: error), privacy: .public)": [
+    {
+      "file": "UniApp/Sources/Wallet/RealRPCBalanceScanner.swift",
+      "line": 612,
+      "context": "\"custom-token scan failed for \\(chain.rawValue, privacy: .public): \\(String(describing: error), privacy: .public)\""
+    }
+  ],
+  "didMove(toParent:)": [
+    {
+      "file": "UniApp/Sources/Features/Main/TabBarLongPressInstaller.swift",
+      "line": 138,
+      "context": "installIfNeeded(reason: \"didMove(toParent:)\")"
+    }
+  ],
+  "didMove(toParent:) parent=\\(parent.map { String(describing: type(of: $0)) } ?? ": [
+    {
+      "file": "UniApp/Sources/Features/Main/TabBarLongPressInstaller.swift",
+      "line": 136,
+      "context": "\"didMove(toParent:) parent=\\(parent.map { String(describing: type(of: $0)) } ?? \"nil\")\""
+    }
+  ],
+  "dot.\\(assetIdString)": [
+    {
+      "file": "UniApp/Sources/Features/Wallet/WalletSupportedRows.swift",
+      "line": 193,
+      "context": "id: \"dot.\\(assetIdString)\", chain: .polkadot,"
+    },
+    {
+      "file": "UniApp/Sources/Features/Wallet/AllSupportedAssetsView.swift",
+      "line": 351,
+      "context": "id: \"dot.\\(assetIdString)\","
+    }
+  ],
+  "evm.\\(chain.rawValue).\\(entry.contract)": [
+    {
+      "file": "UniApp/Sources/Features/Wallet/WalletSupportedRows.swift",
+      "line": 132,
+      "context": "id: \"evm.\\(chain.rawValue).\\(entry.contract)\","
+    },
+    {
+      "file": "UniApp/Sources/Features/Wallet/AllSupportedAssetsView.swift",
+      "line": 244,
+      "context": "id: \"evm.\\(chain.rawValue).\\(entry.contract)\","
+    }
+  ],
+  "filter: brightness(0) invert(1);": [
+    {
+      "file": "UniApp/Sources/Features/Wallet/Avatar/WalletCustomSvgRenderer.swift",
+      "line": 236,
+      "context": "? \"filter: brightness(0) invert(1);\""
+    }
+  ],
+  "installIfNeeded[\\(reason)]: no UITabBarController": [
+    {
+      "file": "UniApp/Sources/Features/Main/TabBarLongPressInstaller.swift",
+      "line": 155,
+      "context": "installerLog.debug(\"installIfNeeded[\\(reason)]: no UITabBarController\")"
+    }
+  ],
+  "makeUIViewController for tabIndex=\\(tabIndex)": [
+    {
+      "file": "UniApp/Sources/Features/Main/TabBarLongPressInstaller.swift",
+      "line": 62,
+      "context": "installerLog.info(\"makeUIViewController for tabIndex=\\(tabIndex)\")"
+    }
+  ],
+  "native.\\(chain.rawValue)": [
+    {
+      "file": "UniApp/Sources/Features/Receive/ReceiveAsset.swift",
+      "line": 25,
+      "context": "case .native(let chain):       return \"native.\\(chain.rawValue)\""
+    }
+  ],
+  "nep.\\(entry.tokenAccount)": [
+    {
+      "file": "UniApp/Sources/Features/Wallet/WalletSupportedRows.swift",
+      "line": 170,
+      "context": "id: \"nep.\\(entry.tokenAccount)\", chain: .near,"
+    },
+    {
+      "file": "UniApp/Sources/Features/Wallet/AllSupportedAssetsView.swift",
+      "line": 308,
+      "context": "id: \"nep.\\(entry.tokenAccount)\","
+    }
+  ],
+  "on \\(token.chain.displayName)": [
+    {
+      "file": "UniApp/Sources/Features/ImportWallet/ReviewTokenRow.swift",
+      "line": 40,
+      "context": "Text(verbatim: \"on \\(token.chain.displayName)\")"
+    }
+  ],
+  "passThrough decode failed": [
+    {
+      "file": "UniApp/Sources/Features/Browser/DAppRequestRouter.swift",
+      "line": 281,
+      "context": "return .failure(.failed(\"passThrough decode failed\"))"
+    }
+  ],
+  "price upsert failed for \\(symbol, privacy: .public)/USD: \\(String(describing: error), privacy: .public)": [
+    {
+      "file": "UniApp/Sources/Features/Wallet/WalletRefreshCoordinator.swift",
+      "line": 597,
+      "context": "Self.log.error(\"price upsert failed for \\(symbol, privacy: .public)/USD: \\(String(describing: error), privacy: .public)\""
+    }
+  ],
+  "scan failed for \\(chain.rawValue, privacy: .public)/\\(String(address.prefix(8)), privacy: .public)\u2026: \\(String(describing: error), privacy: .public)": [
+    {
+      "file": "UniApp/Sources/Wallet/RealRPCBalanceScanner.swift",
+      "line": 1154,
+      "context": "\"scan failed for \\(chain.rawValue, privacy: .public)/\\(String(address.prefix(8)), privacy: .public)\u2026: \\(String(describin"
+    }
+  ],
+  "smoke check: cleanup did not remove test items": [
+    {
+      "file": "UniApp/Sources/Security/PinCodeStorage.swift",
+      "line": 433,
+      "context": "\"smoke check: cleanup did not remove test items\")"
+    }
+  ],
+  "smoke check: hash write failed": [
+    {
+      "file": "UniApp/Sources/Security/PinCodeStorage.swift",
+      "line": 406,
+      "context": "\"smoke check: hash write failed\")"
+    }
+  ],
+  "smoke check: salt write failed": [
+    {
+      "file": "UniApp/Sources/Security/PinCodeStorage.swift",
+      "line": 404,
+      "context": "\"smoke check: salt write failed\")"
+    }
+  ],
+  "smoke check: verify of correct PIN returned false": [
+    {
+      "file": "UniApp/Sources/Security/PinCodeStorage.swift",
+      "line": 426,
+      "context": "\"smoke check: verify of correct PIN returned false\")"
+    }
+  ],
+  "smoke check: verify of wrong PIN returned true": [
+    {
+      "file": "UniApp/Sources/Security/PinCodeStorage.swift",
+      "line": 428,
+      "context": "\"smoke check: verify of wrong PIN returned true\")"
+    }
+  ],
+  "token scan failed for \\(chain.rawValue, privacy: .public): \\(String(describing: error), privacy: .public)": [
+    {
+      "file": "UniApp/Sources/Wallet/RealRPCBalanceScanner.swift",
+      "line": 308,
+      "context": "\"token scan failed for \\(chain.rawValue, privacy: .public): \\(String(describing: error), privacy: .public)\""
+    }
+  ],
+  "ton.\\(entry.masterContract)": [
+    {
+      "file": "UniApp/Sources/Features/Wallet/WalletSupportedRows.swift",
+      "line": 216,
+      "context": "id: \"ton.\\(entry.masterContract)\", chain: .ton,"
+    },
+    {
+      "file": "UniApp/Sources/Features/Wallet/AllSupportedAssetsView.swift",
+      "line": 394,
+      "context": "id: \"ton.\\(entry.masterContract)\","
+    }
+  ],
+  "upsertBalance (native) failed for \\(snap.address, privacy: .public): \\(String(describing: error), privacy: .public)": [
+    {
+      "file": "UniApp/Sources/Features/Wallet/WalletRefreshCoordinator.swift",
+      "line": 216,
+      "context": "Self.log.error(\"upsertBalance (native) failed for \\(snap.address, privacy: .public): \\(String(describing: error), privac"
+    }
+  ],
+  "upsertBalance (token) failed for \\(tokenBalance.symbol, privacy: .public) on \\(snap.address, privacy: .public): \\(String(describing: error), privacy: .public)": [
+    {
+      "file": "UniApp/Sources/Features/Wallet/WalletRefreshCoordinator.swift",
+      "line": 258,
+      "context": "Self.log.error(\"upsertBalance (token) failed for \\(tokenBalance.symbol, privacy: .public) on \\(snap.address, privacy: .p"
+    }
+  ],
+  "upsertBalance failed for \\(address.address, privacy: .public): \\(String(describing: error), privacy: .public)": [
+    {
+      "file": "UniApp/Sources/Features/Wallet/WalletRefreshCoordinator.swift",
+      "line": 446,
+      "context": "Self.log.error(\"upsertBalance failed for \\(address.address, privacy: .public): \\(String(describing: error), privacy: .pu"
+    }
+  ],
+  "upsertTransaction failed for \\(event.txHash, privacy: .public) on \\(address.chain.rawValue, privacy: .public): \\(String(describing: error), privacy: .public)": [
+    {
+      "file": "UniApp/Sources/Features/Wallet/WalletRefreshCoordinator.swift",
+      "line": 488,
+      "context": "Self.log.error(\"upsertTransaction failed for \\(event.txHash, privacy: .public) on \\(address.chain.rawValue, privacy: .pu"
+    }
+  ],
+  "viewDidAppear+\\(delay)s": [
+    {
+      "file": "UniApp/Sources/Features/Main/TabBarLongPressInstaller.swift",
+      "line": 123,
+      "context": "self.installIfNeeded(reason: \"viewDidAppear+\\(delay)s\")"
+    }
+  ],
+  "viewDidAppear: tabIndex=\\(self.tabIndex)": [
+    {
+      "file": "UniApp/Sources/Features/Main/TabBarLongPressInstaller.swift",
+      "line": 110,
+      "context": "installerLog.info(\"viewDidAppear: tabIndex=\\(self.tabIndex)\")"
+    }
+  ],
+  "wc:": [
+    {
+      "file": "UniApp/Sources/Features/Browser/BrowserQRScanSheet.swift",
+      "line": 90,
+      "context": "guard decoded.hasPrefix(\"wc:\") else { return }"
+    },
+    {
+      "file": "UniApp/Sources/Features/Browser/WalletConnectClient.swift",
+      "line": 90,
+      "context": "guard uri.hasPrefix(\"wc:\") else {"
+    }
+  ],
+  "window.__apertureDispatch && window.__apertureDispatch(\\(envelope));": [
+    {
+      "file": "UniApp/Sources/Features/Browser/BrowserWebView.swift",
+      "line": 251,
+      "context": "let js = \"window.__apertureDispatch && window.__apertureDispatch(\\(envelope));\""
+    }
+  ],
+  "{\\\"id\\\":\\(Self.jsonString(id)),\\\"error\\\":{\\\"code\\\":\\(error.code),\\\"message\\\":\\(Self.jsonString(error.message))}}": [
+    {
+      "file": "UniApp/Sources/Features/Browser/BrowserWebView.swift",
+      "line": 249,
+      "context": "envelope = \"{\\\"id\\\":\\(Self.jsonString(id)),\\\"error\\\":{\\\"code\\\":\\(error.code),\\\"message\\\":\\(Self.jsonString(error.message"
+    }
+  ],
+  "{\\\"id\\\":\\(Self.jsonString(id)),\\\"result\\\":\\(Self.jsonString(value))}": [
+    {
+      "file": "UniApp/Sources/Features/Browser/BrowserWebView.swift",
+      "line": 247,
+      "context": "envelope = \"{\\\"id\\\":\\(Self.jsonString(id)),\\\"result\\\":\\(Self.jsonString(value))}\""
+    }
+  ],
+  "\u2248 \\(amount.formatted(style))": [
+    {
+      "file": "UniApp/Sources/Wallet/BalanceFormatter.swift",
+      "line": 31,
+      "context": "return \"\u2248 \\(amount.formatted(style))\""
+    }
+  ]
+}

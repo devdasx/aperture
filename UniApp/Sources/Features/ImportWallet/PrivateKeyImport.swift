@@ -10,6 +10,18 @@ struct PrivateKeyEntryView: View {
     @State private var isShowingGuide: Bool = false
     @State private var isShowingLeakedWarning: Bool = false
 
+    /// `true` while the view is disappearing because the user chose to
+    /// continue forward (review push). Back-navigation leaves it
+    /// `false`, and `.onDisappear` then wipes the typed key so the
+    /// secret doesn't linger in memory after the user abandons entry.
+    @State private var willContinue: Bool = false
+
+    /// Set by the leaked-key warning's "use anyway" path. The actual
+    /// `onContinue()` fires from `.onChange(of: isShowingLeakedWarning)`
+    /// once the sheet has fully dismissed — the repo's established
+    /// dismiss-then-present pattern.
+    @State private var pendingContinueAfterWarning: Bool = false
+
     private var isLeakedKey: Bool {
         KnownLeakedSeeds.isLeaked(privateKey: state.privateKeyRaw)
     }
@@ -65,8 +77,13 @@ struct PrivateKeyEntryView: View {
             ToolbarItem(placement: .topBarTrailing) {
                 Button("Paste") {
                     if let clipboard = UIPasteboard.general.string {
-                        state.privateKeyRaw = clipboard.trimmingCharacters(in: .whitespacesAndNewlines)
-                        UIPasteboard.general.string = ""
+                        let trimmed = clipboard.trimmingCharacters(in: .whitespacesAndNewlines)
+                        guard !trimmed.isEmpty else { return }
+                        state.privateKeyRaw = trimmed
+                        // Clear properly — `items = []` removes the
+                        // entry; assigning `""` would leave an empty
+                        // string item behind.
+                        UIPasteboard.general.items = []
                     }
                 }
             }
@@ -90,15 +107,36 @@ struct PrivateKeyEntryView: View {
                     isShowingLeakedWarning = false
                 },
                 onUseAnyway: {
+                    pendingContinueAfterWarning = true
                     isShowingLeakedWarning = false
-                    DispatchQueue.main.async {
-                        onContinue()
-                    }
                 }
             )
             .uniAppEnvironment()
             .intrinsicHeightSheet()
             .presentationBackground(UniColors.Background.primary)
+        }
+        // Dismiss-then-present: push the review only once the warning
+        // sheet has actually dismissed, so the sheet teardown and the
+        // NavigationStack push don't race.
+        .onChange(of: isShowingLeakedWarning) { _, isPresented in
+            if !isPresented, pendingContinueAfterWarning {
+                pendingContinueAfterWarning = false
+                willContinue = true
+                onContinue()
+            }
+        }
+        .onAppear {
+            // Re-arm the back-navigation wipe each time the view
+            // returns to the front (e.g. popping back from review).
+            willContinue = false
+        }
+        .onDisappear {
+            // Back-navigation (or cover dismissal) abandons entry —
+            // wipe the typed key. Forward navigation to review keeps
+            // it; the flow zeroes it after a successful persist.
+            if !willContinue {
+                state.privateKeyRaw = ""
+            }
         }
     }
 
@@ -109,6 +147,7 @@ struct PrivateKeyEntryView: View {
             if isLeakedKey {
                 isShowingLeakedWarning = true
             } else {
+                willContinue = true
                 onContinue()
             }
         }

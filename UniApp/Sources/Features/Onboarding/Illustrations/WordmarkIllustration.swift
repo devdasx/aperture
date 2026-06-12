@@ -10,16 +10,16 @@ import SwiftUI
 /// **2026-06-07 rewrite.** This used to render the bare 7-blade iris
 /// from the deleted `ApertureIrisView` Canvas implementation, with a
 /// tap-cycle Easter egg that closed/opened the shutter and presented
-/// `HelloSheet`. The new design handoff
+/// a hello sheet. The new design handoff
 /// (`design_handoff_splash_to_onboarding/`) replaces that with the
 /// dark-gradient circle logo, and the Easter egg is dropped — the
-/// new logo is brand identity, not a tappable affordance. The
-/// `HelloSheet` view is left in the repo for any future surface that
-/// wants it, but no longer reachable from here.
+/// new logo is brand identity, not a tappable affordance. (The old
+/// `HelloSheet` view was deleted 2026-06-10 as unreferenced dead
+/// code.)
 ///
 /// **No bespoke motion in this view.** The logo blooms in via the
-/// splash's Lottie (`splash-logo.json`) on cold launch, then flies
-/// here via matchedGeometryEffect on the splash → onboarding
+/// splash's native scale + opacity keyframe on cold launch, then
+/// flies here via matchedGeometryEffect on the splash → onboarding
 /// transition. After landing, it's static — Ive restraint: one
 /// animation, one moment, earned. The `isActive` flag is accepted
 /// for API parity with the other illustration views but is unused.
