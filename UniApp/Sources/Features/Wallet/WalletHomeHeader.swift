@@ -98,16 +98,21 @@ struct WalletHomeHeader: View {
                 .lineLimit(1)
                 .minimumScaleFactor(0.5)
                 .contentTransition(.numericText())
-                // **2026-06-10 handoff `countUp` haptic.** Whisper-
-                // soft tick whenever the displayed hero string
-                // changes (rolling balance update, currency swap,
-                // hide/reveal flip, scrub-driven preview). Fires
-                // through `UniHaptic.countUp` (light impact at
-                // 0.22 intensity) — SwiftUI's `.numericText()`
-                // transition guarantees this only fires on actual
-                // value changes, not on every body render, so no
-                // additional throttling is needed.
-                .uniHaptic(.countUp, trigger: display)
+                // **2026-06-12 — countUp haptic REMOVED.** The
+                // 2026-06-10 handoff bound `.uniHaptic(.countUp,
+                // trigger: display)` here, ticking whenever the hero
+                // string changed. That trigger is NOT touch-gated:
+                // background balance scans (balance-first yields,
+                // price re-yields, per-chain retries) re-render the
+                // hero every few seconds while the user does nothing,
+                // and the wallet home stays mounted behind the tab
+                // bar — so the whole app buzzed at idle (user report
+                // 2026-06-12: "it's doing haptic feedbacks without
+                // me touching anything every few seconds"). Haptics
+                // acknowledge the user's own actions (Rule #2
+                // restraint); passive data updates are not the
+                // user's hand. Scrubbing already has its own
+                // dedicated scrub-tick haptics in the chart.
         }
         .buttonStyle(.plain)
         .accessibilityLabel(
