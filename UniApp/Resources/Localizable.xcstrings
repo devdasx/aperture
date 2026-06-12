@@ -308243,6 +308243,116 @@
           }
         }
       }
+    },
+    "A wallet whose recovery phrase you never wrote down cannot be recovered. There is no backup on a server — there is no server.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "A wallet whose recovery phrase you never wrote down cannot be recovered. There is no backup on a server — there is no server."
+          }
+        }
+      }
+    },
+    "Erase everything": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Erase everything"
+          }
+        }
+      }
+    },
+    "Erase this iPhone's wallets": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Erase this iPhone's wallets"
+          }
+        }
+      }
+    },
+    "Erase this iPhone's wallets?": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Erase this iPhone's wallets?"
+          }
+        }
+      }
+    },
+    "Every cached balance and price": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Every cached balance and price"
+          }
+        }
+      }
+    },
+    "Every encrypted seed and key": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Every encrypted seed and key"
+          }
+        }
+      }
+    },
+    "Every preference and setting": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Every preference and setting"
+          }
+        }
+      }
+    },
+    "Every wallet": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Every wallet"
+          }
+        }
+      }
+    },
+    "This can't be undone. Wallets you didn't back up will be lost.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This can't be undone. Wallets you didn't back up will be lost."
+          }
+        }
+      }
+    },
+    "This erases everything Aperture keeps on this iPhone. A wallet you backed up can be imported again with its recovery phrase.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This erases everything Aperture keeps on this iPhone. A wallet you backed up can be imported again with its recovery phrase."
+          }
+        }
+      }
     }
   },
   "version": "1.0"
