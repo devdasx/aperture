@@ -1063,7 +1063,16 @@ ship.
 
 ---
 
-## Rule #9 — Full i18n. Every user-facing string is localizable. Translations stay in sync via two background agents.
+## Rule #9 — Full i18n. Every user-facing string is localizable. (AMENDED 2026-06-12: English keys only until app completion.)
+
+> **Amendment 2026-06-12 (user direction — same direction that retired
+> Rule #13):** the *authoring* contract below is unchanged — every
+> user-facing string is a localizable literal, and every string in code
+> gets a catalog entry. But the *translation fanout* is deferred: new
+> catalog entries carry the **English source only**. The per-edit
+> translator dispatch described in Parts D–F below is **suspended**;
+> one full 50-language pass runs when the app is finished (see Rule #20
+> as amended). Parts D–F remain as the spec for that final pass.
 
 UniApp ships in **20 languages** from day one. Every string a user can see
 must be a `String(localized:)` / `LocalizedStringKey` / `LocalizedStringResource`
@@ -1071,7 +1080,8 @@ reference — never a bare `String` literal in a `Text(...)`, `Button(...)`,
 `Label(...)`, alert title, or anywhere else that renders.
 
 A pair of **translator agents** keeps the `Localizable.xcstrings` String
-Catalog in sync after every edit that introduces a new string.
+Catalog in sync — per the 2026-06-12 amendment they run only in the final
+app-completion pass, not after every edit.
 
 ---
 
@@ -1818,7 +1828,45 @@ any future presentation surface that hosts its content in a separate
 
 ---
 
-## Rule #13 — Translations run after every edit. No session ends with untranslated strings.
+## Rule #13 — RETIRED 2026-06-12 per user direction. English keys only until the app is finished.
+
+**The user retired the per-edit translation requirement on 2026-06-12**:
+
+> *"remove the rule that push the agents to translate to all languages,
+> and instead replace it with a rule to only add the english keys for
+> all future new strings, and later on we'll translate them all to all
+> languages once we finish the app."*
+
+Effective immediately:
+
+- **New user-facing strings get an ENGLISH catalog entry only.** The
+  scanner + catalog-writer stages (Rule #20, stages 1–2) still run after
+  string-bearing edits so `Localizable.xcstrings` never drifts from the
+  code — but the entry carries just the English source `stringUnit`.
+- **Do NOT dispatch `translator-primary` / `translator-secondary` /
+  `aperture-i18n-translator-*` after edits.** No per-session translation
+  fanout, no "translated entry for every language before the session
+  ends" gate. Untranslated cells for new keys are EXPECTED state, not
+  drift.
+- **The 50-language catalog that already exists stays as-is.** Existing
+  translations are not deleted; they keep working at runtime. New keys
+  simply render their English source in every locale until the final
+  pass.
+- **One full translation pass happens at app completion**, on explicit
+  user request — at that point the translator agents sweep every key
+  whose non-English cells are missing/new/stale, exactly as they did
+  for the 2026-06-12 backlog closures.
+- The session-end audit (old Part D below) and the "no session ends
+  with untranslated strings" gate are inert. The audit hook reports
+  untranslated cells as informational only.
+- Rule #9's authoring contract is UNCHANGED: every user-facing string
+  is still a localizable `Text("...")` / `String(localized:)` literal
+  (never `Text(verbatim:)` for UI copy). Only the translation *fanout*
+  is deferred — never the localizability of the source.
+
+---
+
+## Rule #13 (original, RETIRED) — Translations run after every edit. No session ends with untranslated strings.
 
 Whenever any agent (main, `jony-ive`, or anyone else) introduces a new
 user-facing English string to `UniApp/Resources/Localizable.xcstrings`, or
@@ -2976,33 +3024,46 @@ Before any feature surface ships:
 
 ---
 
-## Rule #20 — Self-sustaining i18n loop. Four background agents run after every editing turn that touches `.swift` or `.xcstrings`.
+## Rule #20 — i18n loop (AMENDED 2026-06-12). Two background agents — scanner + catalog-writer — run after every editing turn that touches `.swift` or `.xcstrings`. Translators are DEFERRED until app completion.
 
-The Rule #9 + Rule #13 i18n contract was repeatedly violated through 2026-06-06 because the closure work was never automated — the main agent would introduce new English strings, claim "translators will run next session," and never close the loop (see `MISTAKES.md` M-007 audit theater and M-009 self-sustaining loop). This rule prevents recurrence by binding the closure into the editing workflow itself.
+**Amendment 2026-06-12 per user direction** (same direction that retired
+Rule #13): *"only add the english keys for all future new strings, and
+later on we'll translate them all to all languages once we finish the
+app."* The chain shrinks from four stages to two. Stages 3–4 (the
+translators) do NOT run per-turn anymore — they run ONCE, on explicit
+user request, when the app is declared finished.
 
-### The four agents (defined in `~/.claude/agents/aperture-i18n-*.md`)
+The original rationale stands for the surviving stages: the catalog must
+never drift from the code (M-007 audit theater, M-009 self-sustaining
+loop). A string in code with no catalog entry is still drift and still
+gets closed every turn — in English.
+
+### The agents (defined in `~/.claude/agents/aperture-i18n-*.md`)
+
+Per-turn (the surviving chain):
 
 1. **`aperture-i18n-scanner`** — scans every `.swift` file under `UniApp/Sources/`, finds string literals not yet in `Localizable.xcstrings`, writes findings to `.claude/i18n-missing.json`. Read-only on the catalog.
-2. **`aperture-i18n-catalog-writer`** — reads `.claude/i18n-missing.json`, inserts each missing key into `Localizable.xcstrings` with `extractionState: "manual"` and an English source `stringUnit`. Truncates the JSON input + the legacy `.claude/translation-queue.log` on completion.
-3. **`aperture-i18n-translator-primary`** — translates every catalog entry with `state != "translated"` to **25 languages** (`es zh-Hans zh-Hant hi ar pt-BR bn ru ja de uk el ro cs hu sv nb da fi he ca hr sk sl sr`). Opus model. Honors per-language register conventions.
-4. **`aperture-i18n-translator-secondary`** — translates every catalog entry with `state != "translated"` to the **other 25 languages** (`fr ko it tr vi th id fa pl nl ur bg et lt lv is ms fil sw af ta te ml mr pa`). Opus model. Runs **after** primary completes — never in parallel; the two share the catalog as a write target.
+2. **`aperture-i18n-catalog-writer`** — reads `.claude/i18n-missing.json`, inserts each missing key into `Localizable.xcstrings` with an English source `stringUnit` ONLY. Truncates the JSON input + the legacy `.claude/translation-queue.log` on completion.
+
+Deferred to app completion (do NOT dispatch per-turn):
+
+3. **`aperture-i18n-translator-primary`** — 25 languages (`es zh-Hans zh-Hant hi ar pt-BR bn ru ja de uk el ro cs hu sv nb da fi he ca hr sk sl sr`).
+4. **`aperture-i18n-translator-secondary`** — the other 25 (`fr ko it tr vi th id fa pl nl ur bg et lt lv is ms fil sw af ta te ml mr pa`). Runs after primary — never in parallel (shared catalog write target). When the final pass runs, use the proven anti-stall discipline: batches of ≤5 languages per agent run, one language per save, atomic writes, progress lines (see the 2026-06-12 backlog closure).
 
 ### When the loop runs
 
-**Every turn** that creates or modifies a `.swift` file under `UniApp/Sources/` OR `Localizable.xcstrings` triggers the four-agent chain at the end of the turn, **before** the main agent declares the turn complete.
+**Every turn** that creates or modifies a `.swift` file under `UniApp/Sources/` OR `Localizable.xcstrings` triggers the two-agent chain at the end of the turn, **before** the main agent declares the turn complete.
 
 ### How the main agent dispatches them
 
-In sequence, all four with `run_in_background: true`. Each next stage starts only after the prior stage's completion notification arrives:
+In sequence, both with `run_in_background: true`; the writer starts only after the scanner's completion notification arrives:
 
 ```
 1. Agent(subagent_type: "aperture-i18n-scanner", run_in_background: true)
 2. Agent(subagent_type: "aperture-i18n-catalog-writer", run_in_background: true)
-3. Agent(subagent_type: "aperture-i18n-translator-primary", run_in_background: true)
-4. Agent(subagent_type: "aperture-i18n-translator-secondary", run_in_background: true)
 ```
 
-Each prompt is short: "Honor your agent definition. Process the inputs. Report back."
+Each prompt is short: "Honor your agent definition. Process the inputs. English source entries only — translators are deferred per Rule #20 (2026-06-12 amendment). Report back."
 
 ### Skip conditions
 
@@ -3015,18 +3076,19 @@ Any turn that edits a `.swift` file or `.xcstrings` file requires the chain. No 
 
 ### Stop-hook complement
 
-`.claude/hooks/audit-rules.sh` runs at every Stop event and prints drift to stderr + writes `.claude/rule-audit.log`. The `SessionStart` hook surfaces the log to the next session. If a turn ends with drift > 0 AND the chain wasn't run, the next session's main agent (reading the audit log at startup) MUST diagnose this as an M-007 recurrence and dispatch the chain immediately.
+`.claude/hooks/audit-rules.sh` runs at every Stop event and prints drift to stderr + writes `.claude/rule-audit.log`. The `SessionStart` hook surfaces the log to the next session. **Drift now means only: strings in code missing from the catalog** (the Rule #9 metric). Untranslated non-English cells are informational, NOT drift — do not dispatch translators to close them. If a turn ends with catalog drift > 0 AND the two-stage chain wasn't run, the next session's main agent MUST diagnose this as an M-007 recurrence and dispatch the chain immediately.
 
-### Why this is Rule-20-level (not Rule-9 or Rule-13 §)
+### The final translation pass (app completion)
 
-Rules #9 and #13 define the *contract*. Rule #20 defines the *mechanism* that makes the contract self-enforcing. Without the mechanism, the contract was being signed and broken every turn. With the mechanism, the contract is signed and *executed* every turn.
+When the user says the app is finished and asks for translations: run stages 3–4 over every key whose non-English cells are missing/`new`/`stale`, then run the old Rule #13 Part D audit until it reports `Missing: 0` across all 50 languages. Until that day, English-only entries are the correct, expected state.
 
 ### Forbidden
 
-- **Manually translating strings inline** instead of dispatching the agents. The specialized agents have the per-language register knowledge encoded in their definitions; the main agent has been wrong about translations 169 times in one day.
-- **Claiming "Rule #13 ✓" in `SHIPPED.md`** when the chain has not run OR the audit hook returns drift > 0. That is M-007 recurring.
-- **Running primary + secondary translator in parallel.** The catalog is a shared write target. Sequential is the contract.
+- **Manually translating strings inline** instead of dispatching the agents (when the final pass runs). The specialized agents have the per-language register knowledge encoded in their definitions; the main agent has been wrong about translations 169 times in one day.
+- **Dispatching the translator agents per-turn.** That is the retired Rule #13 behavior. English keys only until app completion.
+- **Running primary + secondary translator in parallel** (final pass). The catalog is a shared write target. Sequential is the contract.
 - **Skipping the chain on a turn that touched `.swift` files** because "the strings haven't changed." The scanner is the source of truth for what changed, not the main agent's memory.
+- **Hand-editing existing non-English translations** while the deferral is in effect. The 50-language catalog that shipped through 2026-06-12 stays frozen until the final pass.
 
 ---
 
@@ -3108,7 +3170,39 @@ The install step is also load-bearing for the SHIPPED.md per-rule audit (Rule #1
 
 ---
 
-## Rule #23 — Never `git push` (or any remote-mutating git operation) without an explicit per-turn user request.
+## Rule #23 — REVERSED 2026-06-12 per user direction. Always commit AND push to GitHub after every editing turn. Never ask first.
+
+**The user reversed this rule on 2026-06-12** (verbatim):
+
+> *"always should be pushed to github, so edit the claude.md to push
+> any new edits to github after each edit, and remove that it should
+> ask me for it."*
+
+This is a standing, durable authorization from the repository owner.
+Effective immediately:
+
+- **Every editing turn that changes repo files ends with `git commit`
+  (conventional-commits format, per Rule #21 / common-git-workflow.md)
+  followed by `git push origin main`.** No per-turn permission, no
+  "say push when you want it on origin" prompts — just push.
+- Group a turn's changes into one or a few **logical commits** (feat /
+  fix / chore / docs scope per change), not one giant blob, when the
+  turn's work spans clearly separable concerns.
+- The push happens AFTER the turn's build/install obligations (Rule
+  #22) so the pushed history reflects verified work. If the build is
+  red, fix it first — never push a knowingly broken main.
+- **Still forbidden without an explicit per-turn request:**
+  `git push --force` / `--force-with-lease` (rewrites public history),
+  deleting remote branches, `gh release create`, and any history
+  rewrite of already-pushed commits. Those remain Part-A-class actions
+  needing explicit per-turn user authorization.
+- If the push fails (auth, network, non-fast-forward), surface the
+  failure honestly in the final reply — never claim pushed when it
+  didn't land.
+
+---
+
+## Rule #23 (original, REVERSED) — Never `git push` (or any remote-mutating git operation) without an explicit per-turn user request.
 
 A `git push` is an irreversible, externally-visible action — the published commit is now part of the open-source GitHub history that other people (and the user's future self) read. Pushing without explicit per-turn authorization violates the system protocol's exact warning:
 
