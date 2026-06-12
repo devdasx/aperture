@@ -8,8 +8,10 @@ import SwiftUI
 /// tactile beat (`Rigid impact` weight). Rather than ask every
 /// settings file to remember `.uniHaptic(.toggle, trigger: state)`
 /// after each `Toggle`, we ship the wrapper once. The haptic is
-/// automatically gated by `@AppStorage("hapticFeedbackEnabled")`
-/// through `UniHapticModifier`.
+/// automatically gated by the `hapticFeedbackEnabled` preference,
+/// read at fire time inside `UniHapticModifier` (never via
+/// `@AppStorage` — see that modifier's doc for the 2026-06-13
+/// navigation-pop rationale).
 ///
 /// **Usage.**
 /// ```swift

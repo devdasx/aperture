@@ -184,7 +184,14 @@ struct WalletHomeView: View {
     /// this view's body the moment the sheet writes them.
     @State private var isShowingFilter: Bool = false
     @State private var receivePath: NavigationPath = NavigationPath()
-    @State private var navigationPath: NavigationPath = NavigationPath()
+    /// **Last-screen restoration (2026-06-13).** Seeded from
+    /// `ScreenRestoration`'s mirror in `init` (below) and mirrored
+    /// back on every change — cold launches within the 2-minute
+    /// window land the user back on the asset / transaction screen
+    /// they left; `ScreenRestoration.resolveOnLaunch()` clears the
+    /// mirror for longer absences. Every `WalletHomeDestination`
+    /// case is Codable, so the whole stack round-trips.
+    @State private var navigationPath: NavigationPath
     @State private var createPath: NavigationPath = NavigationPath()
     @State private var importPath: NavigationPath = NavigationPath()
     // Settings is now a top-level tab in `MainTabView` (2026-06-09);
@@ -260,7 +267,7 @@ struct WalletHomeView: View {
     /// wallets" row flips this to `.settings` to land the user on the
     /// Settings tab. `MainTabView` reads the same `@AppStorage` key
     /// reactively.
-    @AppStorage("selectedTab") private var selectedTabRaw: String = MainTab.wallet.rawValue
+    @AppStorage(MainTab.storageKey) private var selectedTabRaw: String = MainTab.wallet.rawValue
 
     /// Deep-link token consumed by `SettingsView` on appear. The
     /// long-press menu's "Manage wallets" row stamps `"wallets"`;
@@ -385,6 +392,15 @@ struct WalletHomeView: View {
     }
 
     @State private var pendingSwitcherFollowUp: SwitcherFollowUp?
+
+    init() {
+        // Last-screen restoration seed (2026-06-13). `@State` reads
+        // its initial value only when the view's identity is fresh —
+        // cold launch and the root direction-flip rebuild — which are
+        // exactly the restoration moments. All other properties keep
+        // their declaration defaults.
+        _navigationPath = State(initialValue: ScreenRestoration.restoredWalletHomePath())
+    }
 
     var body: some View {
         NavigationStack(path: $navigationPath) {
@@ -526,6 +542,14 @@ struct WalletHomeView: View {
                 .onChange(of: activeWalletIdRaw) { _, _ in
                     rebuildDisplayRows()
                     rebuildTransactionRows()
+                }
+                // Last-screen restoration mirror (2026-06-13). Every
+                // push / pop lands in `ScreenRestoration`'s
+                // UserDefaults mirror so a force-quit needs no
+                // last-moment save. Consumed by `init` on the next
+                // fresh identity.
+                .onChange(of: navigationPath) { _, newPath in
+                    ScreenRestoration.saveWalletHomePath(newPath)
                 }
                 .onChange(of: currencyCode) { _, _ in
                     rebuildDisplayRows()

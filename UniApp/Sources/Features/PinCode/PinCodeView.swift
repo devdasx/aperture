@@ -15,6 +15,9 @@ import SwiftUI
 ///   16-minute cap from the fifth failure) disables the keypad with a
 ///   countdown under the dots — brute-force protection that survives
 ///   app kill. No wipe: the recovery path is the recovery phrase.
+///   `.verify` is Face ID-first by default; callers that must be
+///   passcode-only (Security gate, wallet removal, Reset Aperture —
+///   user direction 2026-06-13) pass `allowsBiometrics: false`.
 ///
 /// **Design rationale (Rule #17 §H).** Every PIN entry in the app — first
 /// setup, unlock, transaction confirmation, Settings change — uses this
@@ -55,6 +58,24 @@ struct PinCodeView: View {
     /// against an unknown expected value; they should be sent back to
     /// pick a fresh PIN.
     var onConfirmMismatch: (() -> Void)? = nil
+    /// Biometric policy for `.verify` mode. Default `true` — every
+    /// pre-existing call site keeps the Face ID-first behavior
+    /// unchanged (auto-prompt on entry + biometric keypad key).
+    ///
+    /// `false` makes the verify **passcode-only**: the `.task`
+    /// auto-prompt never fires and the keypad's biometric key is not
+    /// rendered, even when the device supports biometrics and the
+    /// user has them enabled. The Forgot affordance is unaffected.
+    ///
+    /// Per user direction 2026-06-13, the passcode-only gates are:
+    /// the Settings → Security entry gate, wallet removal, and Reset
+    /// Aperture. Face ID-first remains the policy everywhere else
+    /// (app unlock, secret reveals, transaction signing, dApps).
+    ///
+    /// Ignored in `.set` / `.confirm` modes — they never offer
+    /// biometrics regardless. This stays the ONE PIN surface per
+    /// Rule #17; policy is a parameter, never a second component.
+    var allowsBiometrics: Bool = true
 
     // MARK: - State
 
@@ -161,7 +182,12 @@ struct PinCodeView: View {
             // biometric prompt fails or the user dismisses it.
             // Skipped during an active lockout — matching iOS's own
             // passcode-lockout behavior, no input path stays open.
-            guard !isLockedOut,
+            // Skipped entirely when the caller declared this verify
+            // passcode-only (`allowsBiometrics: false` — Security
+            // gate / wallet removal / Reset, user direction
+            // 2026-06-13).
+            guard allowsBiometrics,
+                  !isLockedOut,
                   biometricService.isAvailable,
                   PinCodePreference.isBiometricEnabled()
             else { return }
@@ -480,6 +506,10 @@ struct PinCodeView: View {
     // MARK: - Biometric symbol resolution
 
     private var shouldShowBiometricKey: Bool {
+        // Caller-declared passcode-only verify (Security gate, wallet
+        // removal, Reset) never renders the biometric key — the grid
+        // shows the empty placeholder instead.
+        guard allowsBiometrics else { return false }
         guard case .verify = mode else { return false }
         guard biometricService.isAvailable else { return false }
         return PinCodePreference.isBiometricEnabled()
@@ -536,6 +566,11 @@ struct PinCodeView: View {
     /// `.onDisappear`; the post-`await` cancellation guard ensures
     /// `onComplete` never fires into a parent after this view is gone.
     private func handleBiometricTap() {
+        // Defense in depth — the biometric key isn't rendered when the
+        // caller declared this verify passcode-only, so this path is
+        // unreachable; the guard keeps it that way if the keypad ever
+        // changes shape.
+        guard allowsBiometrics else { return }
         biometricTask?.cancel()
         biometricTask = Task {
             let result = await biometricService.authenticate(

@@ -9,7 +9,11 @@ import OSLog
 ///    refresh repopulates from Coinbase.
 /// 3. **Reset Aperture** — the nuclear hatch. Wipes SwiftData,
 ///    every `SeedVault` + `MnemonicVault` Keychain item, and every
-///    `@AppStorage` key. Requires typed wallet-name confirm.
+///    `@AppStorage` key. Authorized by the user's passcode — or, when
+///    no passcode is set, a native destructive confirmation. No typed
+///    confirmation, ever (user direction 2026-06-13). The sheet itself
+///    lives in `ResetApertureSheet.swift`; `resetAll()` here is run
+///    only once that sheet reports the wipe authorized.
 struct AdvancedSettingsView: View {
     @Query private var wallets: [WalletRecord]
     @Query private var addresses: [WalletAddressRecord]
@@ -116,7 +120,14 @@ struct AdvancedSettingsView: View {
         .navigationBarTitleDisplayMode(.large)
         .sheet(isPresented: $isShowingResetSheet) {
             ResetApertureSheet(
-                onConfirm: { Task { await resetAll() } }
+                onAuthorized: {
+                    // The sheet has already verified the passcode (or
+                    // taken the no-passcode destructive confirmation).
+                    // Dismiss the sheet first so the wipe runs against
+                    // a clean presentation stack, then perform it.
+                    isShowingResetSheet = false
+                    Task { await resetAll() }
+                }
             )
             .id(sheetDirectionKey)
             .uniAppEnvironment()
@@ -212,86 +223,7 @@ struct AdvancedSettingsView: View {
         log.notice("Reset Aperture completed: \(ids.count, privacy: .public) wallets purged, PIN cleared, defaults wiped.")
         // The RootGate's @Query will observe the wallet count flip
         // to zero and route the user back to onboarding automatically.
-        isShowingResetSheet = false
-    }
-}
-
-// MARK: - Reset confirmation
-
-private struct ResetApertureSheet: View {
-    let onConfirm: () -> Void
-    @Environment(\.dismiss) private var dismiss
-    @State private var typed: String = ""
-
-    private static let phrase = "RESET APERTURE"
-
-    private var matches: Bool {
-        typed.trimmingCharacters(in: .whitespaces).uppercased() == Self.phrase
-    }
-
-    var body: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: UniSpacing.l) {
-                    hero
-                    UniBody(
-                        text: "This deletes every wallet on this iPhone, every encrypted seed, every cached balance, every preference. The recovery phrases you wrote down still work — you can import any wallet back if you have its phrase.",
-                        color: UniColors.Text.secondary
-                    )
-                    .fixedSize(horizontal: false, vertical: true)
-                    UniBody(
-                        text: "If you don't have your recovery phrases written down, any wallet you didn't back up will be lost.",
-                        color: UniColors.Status.errorForeground
-                    )
-                    .fixedSize(horizontal: false, vertical: true)
-
-                    VStack(alignment: .leading, spacing: UniSpacing.xs) {
-                        Text("Type RESET APERTURE to confirm:")
-                            .font(UniTypography.footnote)
-                            .foregroundStyle(UniColors.Text.tertiary)
-                        UniTextField(
-                            placeholder: "RESET APERTURE",
-                            text: $typed,
-                            directionPolicy: .forceLTR
-                        )
-                    }
-                }
-                .padding(UniSpacing.l)
-            }
-            .background(UniColors.Background.primary.ignoresSafeArea())
-            .navigationTitle(Text("Reset Aperture"))
-            .navigationBarTitleDisplayMode(.large)
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button { dismiss() } label: {
-                        Image(systemName: "xmark")
-                            .font(.system(size: 17, weight: .semibold))
-                    }
-                    .accessibilityLabel(Text("Cancel"))
-                }
-            }
-            .safeAreaInset(edge: .bottom) {
-                GlassEffectContainer(spacing: UniSpacing.s) {
-                    UniButton(
-                        title: "Delete everything",
-                        variant: .destructive,
-                        isEnabled: matches
-                    ) {
-                        onConfirm()
-                    }
-                }
-                .padding(.horizontal, UniSpacing.l)
-                .padding(.bottom, UniSpacing.l)
-            }
-        }
-    }
-
-    private var hero: some View {
-        Image(systemName: "trash.fill")
-            .font(.system(size: 56, weight: .light))
-            .symbolRenderingMode(.hierarchical)
-            .foregroundStyle(UniColors.Status.errorForeground)
-            .frame(maxWidth: .infinity, alignment: .center)
-            .accessibilityHidden(true)
+        // `isShowingResetSheet` was already cleared by the sheet's
+        // `onAuthorized` callback before this ran.
     }
 }
