@@ -28,6 +28,16 @@ struct SecuritySettingsView: View {
     /// dismiss the cover, revealing the real settings list. If
     /// the user cancels the verify, the navigation pops back to
     /// the Settings root.
+    ///
+    /// **The flag means "this visit is authorized" (2026-06-13).**
+    /// A user who enters with NO passcode set is authorized by
+    /// definition — there is nothing to verify against — so
+    /// `onAppear` marks the visit unlocked. Without that, creating
+    /// a passcode mid-visit flipped `PinCodeStorage.hasPin` to true
+    /// while `isUnlocked` was still false, and the gate re-armed
+    /// against the very passcode the user had just typed twice:
+    /// the list vanished to the empty backdrop and a spurious
+    /// verify prompt appeared (user report 2026-06-13).
     @State private var isUnlocked: Bool = false
 
     var body: some View {
@@ -36,17 +46,24 @@ struct SecuritySettingsView: View {
                 content
             } else {
                 // Empty backdrop while gating — the actual settings
-                // list is hidden behind the fullScreenCover. Using
-                // `Color.clear` rather than the list so a quick
-                // glance at the screen below the cover doesn't
+                // list is hidden behind the fullScreenCover, so a
+                // quick glance at the screen below the cover doesn't
                 // briefly leak the toggles before auth.
-                Color(uiColor: .systemBackground).ignoresSafeArea()
+                UniColors.Background.primary.ignoresSafeArea()
             }
         }
         .background(UniColors.Background.primary)
         .navigationTitle(Text("Security"))
         .navigationBarTitleDisplayMode(.large)
-        .onAppear { biometricAvailable = BiometricService().isAvailable }
+        .onAppear {
+            biometricAvailable = BiometricService().isAvailable
+            // No passcode ⇒ nothing to gate ⇒ the visit is
+            // authorized for its whole lifetime, including after a
+            // passcode is created mid-visit (see `isUnlocked` doc).
+            if !PinCodeStorage.hasPin {
+                isUnlocked = true
+            }
+        }
         .fullScreenCover(isPresented: shouldShowGate) {
             NavigationStack {
                 PinCodeView(
@@ -215,9 +232,17 @@ struct SecuritySettingsView: View {
         .fullScreenCover(isPresented: $isShowingPinSetup) {
             // Re-uses the canonical PIN setup flow per Rule #17.
             // On finish, pinEnabled has been written by PinSetupFlow's
-            // internal handler; we just dismiss.
+            // internal handler. Mark the visit authorized BEFORE
+            // dismissing — the user just chose and confirmed this
+            // passcode seconds ago; re-verifying it immediately is
+            // hostile and was the Bug-B loop (belt-and-braces with
+            // the `onAppear` authorization; this also covers the
+            // entered-with-no-PIN → created-one path directly).
             PinSetupFlow(
-                onFinish: { isShowingPinSetup = false },
+                onFinish: {
+                    isUnlocked = true
+                    isShowingPinSetup = false
+                },
                 onBack:   { isShowingPinSetup = false }
             )
             .uniAppEnvironment()

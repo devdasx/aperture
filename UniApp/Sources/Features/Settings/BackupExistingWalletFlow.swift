@@ -39,13 +39,14 @@ import SwiftUI
 /// rather than crashing.
 ///
 /// **On verify success.** Calls `WalletRepository.markBackupComplete(
-/// id:)` to flip `WalletRecord.requiresBackup` → `false`. Then
-/// deletes the encrypted-local mnemonic from `MnemonicVault` — the
-/// user is now the only copy, which is the honest contract the
-/// disclosure sheet promises at create-wallet time. Dismisses the
-/// sheet; SwiftData `@Query` reactivity on the parent
-/// `WalletDetailView` swaps the backup card from "Back up this
-/// wallet" → "Backed up." in front of the user.
+/// id:)` to flip `WalletRecord.requiresBackup` → `false`. The
+/// encrypted-local mnemonic in `MnemonicVault` is KEPT — per the
+/// always-store contract (`CreateWalletState.persist`), the phrase
+/// stays viewable from Settings → Wallets → "View recovery phrase"
+/// for the wallet's lifetime; only wallet deletion / Reset Aperture
+/// removes it. Dismisses the sheet; SwiftData `@Query` reactivity on
+/// the parent `WalletDetailView` swaps the backup card from "Back up
+/// this wallet" → "Backed up." in front of the user.
 ///
 /// **Honesty (Rule #16 §A.6).** The verification gesture is real:
 /// missing positions or wrong picks block completion. We never
@@ -185,33 +186,26 @@ struct BackupExistingWalletFlow: View {
     }
 
     /// Run after `BackupVerifyView` reports success. Flips the
-    /// persistence flag, deletes the encrypted local mnemonic (the
-    /// user is now the only copy — that's the contract), and
-    /// dismisses. SwiftData `@Query` reactivity on the parent
-    /// surfaces the Done state.
+    /// persistence flag and dismisses. SwiftData `@Query` reactivity
+    /// on the parent surfaces the Done state.
+    ///
+    /// The encrypted local mnemonic is deliberately KEPT. An earlier
+    /// contract deleted it here ("the user is now the only copy"),
+    /// which contradicted the always-store policy that shipped in
+    /// `CreateWalletState.persist` — completing a backup would have
+    /// silently disabled "View recovery phrase" and shown the false
+    /// "Aperture no longer has your phrase" footer. The phrase stays
+    /// viewable for the wallet's lifetime; only wallet deletion /
+    /// Reset Aperture removes the vault entry.
     @MainActor
     private func complete() async {
         let repo = WalletRepository(modelContainer: modelContext.container)
         do {
             try await repo.markBackupComplete(id: walletId)
         } catch {
-            // The database still says "unverified" — deleting the
-            // mnemonic now would leave this wallet permanently
-            // unbackupable (the card would keep demanding a backup
-            // the vault can no longer serve). Keep the mnemonic,
-            // surface the failure, and let the user retry.
             isShowingCompleteError = true
             return
         }
-        // The encrypted local copy was the safety net for an
-        // unbacked wallet. Now that the user has proven they have the
-        // phrase, Aperture honors the disclosure-sheet promise that
-        // backed-up wallets exist as one user-held copy. The
-        // `RecoveryPhraseRevealSheet` reads from this vault — its
-        // call site (`WalletDetailView.viewPhraseRow`) already gates
-        // the affordance on `MnemonicVault.hasMnemonic(for:)`, so
-        // deletion is what makes the View-Phrase row disappear too.
-        try? MnemonicVault.deleteMnemonic(for: walletId)
         onCompleted()
         dismiss()
     }

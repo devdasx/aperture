@@ -5,15 +5,19 @@ import SwiftData
 /// rename, view recovery phrase (honest about post-backup
 /// availability), inspect addresses, delete.
 ///
-/// **Backup-status honesty (Rule #16 + Rule #2 §A.7):**
-/// - If `MnemonicVault.hasMnemonic(for:)` returns true (the user
-///   skipped backup at create time, mnemonic is encrypted locally) →
-///   "View recovery phrase" is enabled and opens the
-///   `RecoveryPhraseRevealSheet`.
-/// - If the mnemonic is gone (backed-up wallets, imported wallets,
-///   non-mnemonic kinds) → "View recovery phrase" is disabled with a
-///   footnote: "Aperture no longer has your phrase. You're the only
-///   copy." That's honest about BIP-39's one-way derivation.
+/// **Secret-reveal honesty (Rule #16 + Rule #2 §A.7), per kind:**
+/// - Created / Imported (phrase): "View recovery phrase", enabled iff
+///   `MnemonicVault.hasMnemonic(for:)` — the vault stores the phrase
+///   at persist time for both kinds. Disabled only for wallets
+///   persisted before the always-store policy shipped, with a footer
+///   that names the truth for that kind (created → the user is the
+///   only copy; imported → the phrase wasn't kept at import time,
+///   re-import to store it).
+/// - Imported (key): "View private key", enabled iff
+///   `MnemonicVault.hasPrivateKey(for:)`, same biometric gate, opens
+///   `PrivateKeyRevealSheet`.
+/// - Watch-only: no reveal row — the Details footer states that no
+///   secret exists on this device.
 struct WalletDetailView: View {
     let walletId: UUID
 
@@ -26,6 +30,7 @@ struct WalletDetailView: View {
     @State private var editedName: String = ""
     @State private var isShowingDeleteConfirm: Bool = false
     @State private var isShowingPhrase: Bool = false
+    @State private var isShowingKey: Bool = false
     @State private var isShowingBackupFlow: Bool = false
     @State private var isShowingIconPicker: Bool = false
     @State private var biometricChallenge: BiometricChallenge?
@@ -122,38 +127,56 @@ struct WalletDetailView: View {
                 .animation(.smooth(duration: 0.4), value: wallet.requiresBackup)
             }
 
-            // 2026-06-09 — wallet-identity section. A `.preview`-sized
-            // `WalletAvatar` centered above a single "Customise..."
-            // row that pushes the icon picker sheet. The hero
-            // preview here matches the sheet's hero preview so the
-            // user reads the same affordance whether they enter
-            // from the long-press tab menu or from this detail
-            // screen. The avatar updates live via `@Query` when
-            // the picker writes through `WalletRepository`.
+            // 2026-06-13 — wallet-identity hero. The `.preview`-sized
+            // `WalletAvatar` is the identity hero; beneath it sits a
+            // compact Liquid Glass "Customise wallet" chip that opens
+            // the icon picker. The hero preview matches the sheet's
+            // hero preview so the user reads the same affordance
+            // whether they enter from the long-press wallet-pill menu
+            // or from this detail screen; the chip's verb + symbol
+            // (`paintpalette`) match that menu's "Customise wallet"
+            // row so the vocabulary is consistent across both entry
+            // points. The avatar updates live via `@Query` when the
+            // picker writes through `WalletRepository`.
+            //
+            // **The chip — `.secondary`, not `.tertiary` (Rule #19).**
+            // This control commits to a flow (it opens
+            // `WalletIconPickerSheet`), so it goes through `UniButton`
+            // with a real material — not a bare inline text link. The
+            // earlier `.tertiary` rendered as background-less grey text
+            // ("Customise…" truncated), which didn't read as a control.
+            // `.secondary` gives the canonical `.buttonStyle(.glass)`
+            // surface (translucency + specular + motion via the system
+            // API per Rule #2 §B.5), the `.selection` haptic, and the
+            // `.contentShape(Capsule())` hit-test contract — all for
+            // free. `.fixedSize()` collapses the variant's full-bleed
+            // width so it hugs its label as a compact chip rather than
+            // spanning the row as a CTA bar; the avatar stays the louder
+            // element. Stripped the "Identity" section header (Rule #2
+            // §D.5) — the avatar already IS the identity; a label
+            // naming it restated the hero.
             Section {
-                VStack(spacing: UniSpacing.s) {
-                    // 2026-06-09 — gradient-disc avatar per the
-                    // design handoff. `wallet.avatarSpec` hydrates
-                    // the persisted columns with auto(name) fallback;
-                    // the picker writes through the same hydrate
-                    // path so this hero preview updates live the
-                    // moment the user taps Save.
+                VStack(spacing: UniSpacing.m) {
+                    // Gradient-disc avatar per the design handoff.
+                    // `wallet.avatarSpec` hydrates the persisted columns
+                    // with auto(name) fallback; the picker writes through
+                    // the same hydrate path so this hero preview updates
+                    // live the moment the user taps Save.
                     WalletAvatar(spec: wallet.avatarSpec, size: .preview, walletId: wallet.id)
-                        .padding(.top, UniSpacing.xs)
 
                     UniButton(
-                        title: "Customise…",
-                        variant: .tertiary
+                        title: "Customise wallet",
+                        variant: .secondary,
+                        systemImage: "paintpalette"
                     ) {
                         isShowingIconPicker = true
                     }
+                    .fixedSize()
                 }
                 .frame(maxWidth: .infinity)
-                .padding(.vertical, UniSpacing.xs)
+                .padding(.vertical, UniSpacing.m)
                 .listRowBackground(Color.clear)
                 .listRowSeparator(.hidden)
-            } header: {
-                Text("Identity").font(UniTypography.footnote).foregroundStyle(UniColors.Text.tertiary)
             }
 
             Section {
@@ -172,15 +195,34 @@ struct WalletDetailView: View {
                 addressesRow(wallet)
             } header: {
                 Text("Details").font(UniTypography.footnote).foregroundStyle(UniColors.Text.tertiary)
+            } footer: {
+                // Watch-only wallets have no reveal section below, so
+                // the honest "no secret on this device" statement
+                // lives here instead (Rule #16 §A.5).
+                if wallet.kind == .watchOnly {
+                    Text("This wallet watches an address. There is no recovery phrase or private key on this iPhone — nothing secret is stored.")
+                        .font(UniTypography.footnote)
+                        .foregroundStyle(UniColors.Text.tertiary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
 
-            Section {
-                viewPhraseRow(wallet)
-            } footer: {
-                Text(phraseFooter(wallet))
-                    .font(UniTypography.footnote)
-                    .foregroundStyle(UniColors.Text.tertiary)
-                    .fixedSize(horizontal: false, vertical: true)
+            // Secret-reveal section. Watch-only wallets hold no secret
+            // — no row at all (an enabled-looking row that can't ever
+            // reveal anything would be dishonest chrome).
+            if wallet.kind != .watchOnly {
+                Section {
+                    if wallet.kind == .importedKey {
+                        viewKeyRow(wallet)
+                    } else {
+                        viewPhraseRow(wallet)
+                    }
+                } footer: {
+                    Text(secretFooter(wallet))
+                        .font(UniTypography.footnote)
+                        .foregroundStyle(UniColors.Text.tertiary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
 
             // Custom tokens — Aperture reads what the contract says
@@ -224,6 +266,12 @@ struct WalletDetailView: View {
         }
         .sheet(isPresented: $isShowingPhrase) {
             RecoveryPhraseRevealSheet(walletId: wallet.id)
+                .uniAppEnvironment()
+                .presentationDetents([.large])
+                .presentationBackground(UniColors.Background.primary)
+        }
+        .sheet(isPresented: $isShowingKey) {
+            PrivateKeyRevealSheet(walletId: wallet.id)
                 .uniAppEnvironment()
                 .presentationDetents([.large])
                 .presentationBackground(UniColors.Background.primary)
@@ -367,6 +415,52 @@ struct WalletDetailView: View {
         .listRowBackground(UniColors.Background.secondary)
     }
 
+    /// "View private key" — the imported-key counterpart of
+    /// `viewPhraseRow`. Same biometric gate, same enabled/disabled
+    /// register; enabled iff the import stored the key string in
+    /// `MnemonicVault` (always, since the always-store policy — only
+    /// key wallets imported before it lack the entry).
+    private func viewKeyRow(_ wallet: WalletRecord) -> some View {
+        let hasKey = MnemonicVault.hasPrivateKey(for: wallet.id)
+        return Button {
+            guard hasKey else { return }
+            // Same gate as the phrase reveal — the key must not be
+            // trivially viewable by anyone holding the unlocked phone
+            // (Rule #16).
+            if biometricEnabled {
+                biometricChallenge = BiometricChallenge(
+                    reason: LocalizedStringResource("Confirm to view your private key."),
+                    onSuccess: {
+                        biometricChallenge = nil
+                        isShowingKey = true
+                    }
+                )
+            } else {
+                isShowingKey = true
+            }
+        } label: {
+            HStack(spacing: UniSpacing.s) {
+                Image(systemName: "key.horizontal")
+                    .font(.system(size: 17, weight: .regular))
+                    .foregroundStyle(hasKey ? UniColors.Icon.accent : UniColors.Icon.tertiary)
+                    .frame(width: 28)
+                Text("View private key")
+                    .font(UniTypography.body)
+                    .foregroundStyle(hasKey ? UniColors.Text.primary : UniColors.Text.tertiary)
+                Spacer()
+                if hasKey {
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(UniColors.Icon.tertiary)
+                }
+            }
+            .padding(.vertical, UniSpacing.xxs)
+        }
+        .buttonStyle(.plain)
+        .disabled(!hasKey)
+        .listRowBackground(UniColors.Background.secondary)
+    }
+
     private func deleteRow(_ wallet: WalletRecord) -> some View {
         Button {
             isShowingDeleteConfirm = true
@@ -413,17 +507,32 @@ struct WalletDetailView: View {
         }
     }
 
-    private func phraseFooter(_ wallet: WalletRecord) -> LocalizedStringKey {
-        if MnemonicVault.hasMnemonic(for: wallet.id) {
-            return "Your recovery phrase is stored encrypted on this iPhone (AES-GCM 256-bit, Keychain). Tap “View recovery phrase” anytime — the phrase never leaves this device."
-        }
+    /// Footer under the secret-reveal section. States, per kind and
+    /// per actual vault contents, exactly what is stored on this
+    /// iPhone — never claims a secret is gone while it's held, never
+    /// claims it's held while it's gone (Rule #16 §A, Rule #2 §A.7).
+    private func secretFooter(_ wallet: WalletRecord) -> LocalizedStringKey {
         switch wallet.kind {
         case .created, .importedMnemonic:
+            if MnemonicVault.hasMnemonic(for: wallet.id) {
+                return "Your recovery phrase is stored encrypted on this iPhone (AES-GCM 256-bit, Keychain). Tap “View recovery phrase” anytime — the phrase never leaves this device."
+            }
+            if wallet.kind == .importedMnemonic {
+                // Migration gap: phrase-import wallets persisted before
+                // the always-store policy never had their phrase kept.
+                // Name the truth and the way out — no backfill flow.
+                return "Your phrase wasn't kept when this wallet was imported. You still have it — to store it on this iPhone too, delete this wallet and import the phrase again."
+            }
             return "Aperture no longer has your phrase. You're the only copy — write it down and keep it safe."
         case .importedKey:
-            return "This wallet was imported from a private key. There is no recovery phrase to show."
+            if MnemonicVault.hasPrivateKey(for: wallet.id) {
+                return "Your private key is stored encrypted on this iPhone (AES-GCM 256-bit, Keychain). Tap “View private key” anytime — the key never leaves this device."
+            }
+            return "Your key wasn't kept when this wallet was imported. You still have it — to store it on this iPhone too, delete this wallet and import the key again."
         case .watchOnly:
-            return "Watch-only wallets have no recovery phrase — they hold no key."
+            // Unreachable — the watch-only kind renders no reveal
+            // section (the Details footer carries the statement).
+            return "This wallet watches an address. There is no recovery phrase or private key on this iPhone — nothing secret is stored."
         }
     }
 
@@ -455,6 +564,7 @@ struct WalletDetailView: View {
         // Keychain secrets with no UI left to reach them.
         try? SeedVault.deleteSeed(for: id)
         try? MnemonicVault.deleteMnemonic(for: id)
+        try? MnemonicVault.deletePrivateKey(for: id)
         let repo = WalletRepository(modelContainer: modelContext.container)
         do {
             try await repo.deleteWallet(id: id)

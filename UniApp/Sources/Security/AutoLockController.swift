@@ -8,13 +8,26 @@ import OSLog
 /// controller stays idle and the wallet remains accessible whenever the
 /// scene is active.
 ///
-/// **Mechanism.** When the scene transitions to `.background` or
-/// `.inactive`, capture `Date()`. When the scene returns to `.active`,
-/// compare the elapsed time against the stored auto-lock duration; if
-/// it exceeded the threshold, set `isLocked = true`. The wallet-home
-/// surfaces a `.fullScreenCover` of `AppLockView` when `isLocked` is
-/// true; the user authenticates (PIN or biometric), and on success
-/// `isLocked` flips back to `false` and the cover dismisses.
+/// **Mechanism.** When the scene transitions to `.background`, capture
+/// `Date()`. When the scene returns to `.active`, compare the elapsed
+/// time against the stored auto-lock duration; if it exceeded the
+/// threshold, set `isLocked = true`. The lock overlay window (see
+/// `LockOverlayRoot` in `UniAppApp.swift`) renders `AppLockView` above
+/// the untouched content tree while `isLocked` is true; the user
+/// authenticates (PIN or biometric), and on success `isLocked` flips
+/// back to `false` and the overlay fades away — the content underneath
+/// keeps every bit of its navigation and presentation state.
+///
+/// **`.inactive` is NOT a departure (2026-06-13).** System UI — the
+/// paste-permission prompt, the Face ID sheet, in-app alerts, Control
+/// Center, notification pulls, app-switcher peeks — drives the scene
+/// to `.inactive` without the app ever leaving the foreground.
+/// Stamping the departure there armed the lock on every system prompt
+/// when the timer was "Immediately": tapping Paste in the import flow
+/// fired the passcode and threw the user out of the flow (user report
+/// 2026-06-13). `.inactive` only feeds the privacy mask via
+/// `isSceneActive`; the lock arms exclusively on a real `.background`
+/// transition.
 ///
 /// **Cold-launch policy.** A fresh cold launch with a PIN enabled
 /// always starts locked — the user has not authenticated in this scene
@@ -29,8 +42,23 @@ final class AutoLockController {
     /// `@Environment` (after the controller is injected at the app root).
     var isLocked: Bool
 
-    /// When the scene most recently became inactive / background. Nil
-    /// when the scene has been continuously active since launch.
+    /// Mirrors the scene's activation state for surfaces hosted outside
+    /// the main window — the lock overlay window's `UIHostingController`
+    /// does not receive `\.scenePhase` updates from the SwiftUI scene
+    /// machinery, so the privacy mask reads this instead. `true` iff the
+    /// most recently reported phase was `.active`.
+    private(set) var isSceneActive: Bool = true
+
+    /// `true` while the cold-launch splash is still the active surface.
+    /// Flipped to `false` by `AppRoot`'s `onSplashComplete`. The lock
+    /// overlay keeps `AppLockView` invisible while the splash plays, so
+    /// a locked cold launch still shows the full splash animation before
+    /// the passcode surface takes over.
+    var isSplashActive: Bool = true
+
+    /// When the scene most recently entered `.background`. Nil while the
+    /// scene has not actually left the foreground — `.inactive` bounces
+    /// (system prompts, Face ID sheets) never set this.
     private var backgroundedAt: Date?
 
     private let log = Logger(subsystem: "com.thuglife.aperture", category: "auto-lock")
@@ -47,6 +75,8 @@ final class AutoLockController {
     /// `UserDefaults` at call time so the controller doesn't need a
     /// View context for storage.
     func handleScenePhaseChange(_ phase: ScenePhase) {
+        isSceneActive = (phase == .active)
+
         let pinEnabled = UserDefaults.standard.bool(forKey: "pinEnabled")
         guard pinEnabled else {
             // No PIN configured: never lock.
@@ -56,14 +86,22 @@ final class AutoLockController {
         }
 
         switch phase {
-        case .background, .inactive:
-            // Stamp the moment of departure. Only stamp once per
-            // departure (multiple `.inactive` events during a single
-            // background can fire; first one wins).
+        case .background:
+            // Stamp the moment the app actually left the foreground.
+            // Only stamp once per departure (first one wins). The stamp
+            // survives the `.inactive` hop on the way back to `.active`,
+            // so elapsed time is measured from the real background entry.
             if backgroundedAt == nil {
                 backgroundedAt = Date()
                 log.debug("Scene backgrounded at \(Date(), privacy: .public)")
             }
+        case .inactive:
+            // Deliberately a no-op for the lock (see the type doc):
+            // system prompts hold the scene `.inactive` without leaving
+            // the app. Arming here would also let the unlock Face ID
+            // prompt re-arm the very lock it is unlocking — its own
+            // sheet bounces `.inactive`, never `.background`.
+            break
         case .active:
             if let stamp = backgroundedAt {
                 let elapsed = Date().timeIntervalSince(stamp)

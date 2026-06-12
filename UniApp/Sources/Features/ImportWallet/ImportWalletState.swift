@@ -160,6 +160,24 @@ final class ImportWalletState {
                 on: chain
             )
             try SeedVault.storeSeed(Self.paddedTo64(bytes: keyBytes), for: walletId)
+            // ALSO store the original key string (hex / WIF, as typed
+            // after trimming) encrypted in `MnemonicVault` so the user
+            // can re-view it from Settings → Wallets → "View private
+            // key" at any time. The SeedVault slot above holds only the
+            // decoded raw bytes — those can't be rendered back to the
+            // WIF/base58 form the user imported. AES-GCM 256-bit +
+            // Keychain `WhenPasscodeSetThisDeviceOnly` ACL — the key
+            // stays on this iPhone and is unreadable while the device
+            // is locked. Matches the mnemonic path below.
+            do {
+                try MnemonicVault.storePrivateKey(
+                    privateKeyRaw.trimmingCharacters(in: .whitespacesAndNewlines),
+                    for: walletId
+                )
+            } catch {
+                try? SeedVault.deleteSeed(for: walletId)
+                throw error
+            }
             do {
                 try await repository.insertImportedKeyWallet(
                     id: walletId,
@@ -170,6 +188,7 @@ final class ImportWalletState {
                 )
             } catch {
                 try? SeedVault.deleteSeed(for: walletId)
+                try? MnemonicVault.deletePrivateKey(for: walletId)
                 throw error
             }
 

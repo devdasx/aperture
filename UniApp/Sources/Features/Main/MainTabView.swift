@@ -92,6 +92,10 @@ struct MainTabView: View {
     /// fullScreenCovers in reaction.
     @State private var isShowingCreate: Bool = false
     @State private var isShowingPicker: Bool = false
+    /// "Wallet settings" in the wallet-tab context menu presents the
+    /// ACTIVE wallet's `WalletDetailView` as a sheet — it must never
+    /// just switch to the app Settings tab (2026-06-13 fix).
+    @State private var isShowingWalletSettings: Bool = false
     @State private var isShowingImport: Bool = false
     @State private var createPath: NavigationPath = NavigationPath()
     @State private var importPath: NavigationPath = NavigationPath()
@@ -207,6 +211,23 @@ struct MainTabView: View {
                     .presentationDetents([.large])
                     .presentationDragIndicator(.visible)
                     .presentationBackground(UniColors.Background.primary)
+            }
+        }
+        // Wallet settings — surfaced by the "Wallet settings" item in
+        // the long-press context menu. Presents the active wallet's
+        // detail screen (the same `WalletDetailView` Settings →
+        // Wallets pushes) wrapped in its own NavigationStack per
+        // Rule #15. Its sub-links use closure-form NavigationLink,
+        // so the standalone stack needs no destination registrations.
+        .sheet(isPresented: $isShowingWalletSettings) {
+            if let active = activeWallet {
+                NavigationStack {
+                    WalletDetailView(walletId: active.id)
+                }
+                .uniAppEnvironment()
+                .presentationDetents([.large])
+                .presentationDragIndicator(.visible)
+                .presentationBackground(UniColors.Background.primary)
             }
         }
         .fullScreenCover(isPresented: $isShowingCreate, onDismiss: {
@@ -346,7 +367,11 @@ struct MainTabView: View {
                     title: String(localized: "Wallet settings"),
                     image: UIImage(systemName: "gearshape")
                 ) { _ in
-                    selectedTabRaw = MainTab.settings.rawValue
+                    // Open the ACTIVE WALLET's settings directly —
+                    // not the app Settings tab (2026-06-13 user
+                    // report: "it navigates me to app settings, it
+                    // doesn't open the wallet settings").
+                    isShowingWalletSettings = true
                 }
             )
         }
