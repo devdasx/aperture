@@ -308144,6 +308144,105 @@
           }
         }
       }
+    },
+    "Anyone with this key can take the funds on its address. Aperture cannot undo a leak.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Anyone with this key can take the funds on its address. Aperture cannot undo a leak."
+          }
+        }
+      }
+    },
+    "Confirm to view your private key.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Confirm to view your private key."
+          }
+        }
+      }
+    },
+    "Never share this key.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Never share this key."
+          }
+        }
+      }
+    },
+    "Stored on this iPhone — keep a written copy": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Stored on this iPhone — keep a written copy"
+          }
+        }
+      }
+    },
+    "Stored on this iPhone — keep your own copy": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Stored on this iPhone — keep your own copy"
+          }
+        }
+      }
+    },
+    "This key is encrypted in your iPhone's Keychain and never leaves this device. If you lose this iPhone and have no other copy, the funds are gone — keep your own record somewhere safe.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This key is encrypted in your iPhone's Keychain and never leaves this device. If you lose this iPhone and have no other copy, the funds are gone — keep your own record somewhere safe."
+          }
+        }
+      }
+    },
+    "This phrase is encrypted in your iPhone's Keychain and never leaves this device. If you lose this iPhone and have no written copy, the funds are gone — write it down and keep it somewhere safe.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This phrase is encrypted in your iPhone's Keychain and never leaves this device. If you lose this iPhone and have no written copy, the funds are gone — write it down and keep it somewhere safe."
+          }
+        }
+      }
+    },
+    "This wallet watches an address. There is no recovery phrase or private key on this iPhone — nothing secret is stored.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This wallet watches an address. There is no recovery phrase or private key on this iPhone — nothing secret is stored."
+          }
+        }
+      }
+    },
+    "View private key": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "View private key"
+          }
+        }
+      }
     }
   },
   "version": "1.0"
