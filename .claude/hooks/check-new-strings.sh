@@ -36,7 +36,14 @@ case "$FILE_PATH" in
     ;;
 esac
 
-REPO_ROOT="/Users/thuglifex/Documents/UniApp"
+# Resolve the repo root portably so this hook works on every surface:
+#   - In a Claude Code hook context, $CLAUDE_PROJECT_DIR is the project root.
+#   - Otherwise (manual run, other shells), derive it from this script's
+#     own location ($REPO_ROOT/.claude/hooks/check-new-strings.sh).
+# This replaces a previously hardcoded macOS path that silently no-op'd in
+# cloud / mobile (Claude Code on the web) sessions, where the repo lives
+# under a different filesystem root.
+REPO_ROOT="${CLAUDE_PROJECT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
 QUEUE_LOG="$REPO_ROOT/.claude/translation-queue.log"
 CATALOG="$REPO_ROOT/UniApp/Resources/Localizable.xcstrings"
 
