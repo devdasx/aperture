@@ -238,6 +238,27 @@ struct WalletRefreshCoordinator: Sendable {
 
         await txHistoryTask
 
+        // 2026-06-13 — persist this wallet's portfolio-value timeline.
+        // The repository sums the freshly-upserted balance rows in the
+        // active currency and appends one `WalletChartSnapshotRecord`
+        // (throttled to 10 min per wallet+currency, pruned per its
+        // growth bound). Failed chains keep their last-known persisted
+        // rows, so a partial refresh still records an honest
+        // last-known total. Skipped when cancelled — a replaced
+        // pipeline must not stamp a point its replacement will also
+        // stamp.
+        if !Task.isCancelled {
+            let chartRepo = WalletChartSnapshotRepository(modelContainer: container)
+            do {
+                try await chartRepo.captureFromPersistedBalances(
+                    walletId: walletId,
+                    currencyCode: currency.code
+                )
+            } catch {
+                Self.log.error("chart snapshot capture failed for \(walletId.uuidString, privacy: .public): \(String(describing: error), privacy: .public)")
+            }
+        }
+
         // Publish the outcome. The generation guard inside
         // `endRefresh` discards stale completions — a cancelled
         // pipeline that limps to this line after its replacement

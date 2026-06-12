@@ -1,6 +1,13 @@
 import SwiftUI
 import SwiftData
 import OSLog
+// WebKit + TipKit are imported ONLY for `resetAll()`'s factory wipe:
+// the dApp browser persists cookies/storage in the default
+// `WKWebsiteDataStore`, and TipKit persists "shown once" counters in
+// its own datastore — both must go for the reset to equal a first
+// install.
+import WebKit
+import TipKit
 
 /// Settings → Advanced. The diagnostic + reset surface. Three rows:
 /// 1. **Database stats** — read-only counts (wallets, addresses,
@@ -167,6 +174,16 @@ struct AdvancedSettingsView: View {
         isClearingCache = false
     }
 
+    /// The factory wipe. After this returns, the app's persistent
+    /// state must be indistinguishable from a first install (user
+    /// direction 2026-06-13): every SwiftData table empty, every
+    /// Aperture Keychain item gone, the full `UserDefaults` domain
+    /// removed, the dApp browser's website data cleared, the TipKit
+    /// datastore reset, and the token-logo disk cache deleted.
+    /// `RootGate` observes the wallet count flip to zero and routes
+    /// back to onboarding; the next launch's
+    /// `ApertureDatabase.bootstrap()` recreates the singleton rows
+    /// with first-install values.
     @MainActor
     private func resetAll() async {
         let log = Logger(subsystem: "com.thuglife.aperture", category: "reset")
@@ -178,7 +195,11 @@ struct AdvancedSettingsView: View {
         // yet — the user keeps a fully working app and can retry.
         // Wiping Keychain before the database would, on a database
         // failure, leave wallet records pointing at seeds that no
-        // longer exist.
+        // longer exist. `deleteAllWallets()` is the custody gate: it
+        // refuses the in-memory fallback store, drops every wallet
+        // row (with cascades) plus the primitive-keyed chart
+        // snapshots, and clears the Keychain wallet manifest so the
+        // next launch can't "restore" the nuked wallets.
         do {
             try await repo.deleteAllWallets()
         } catch {
@@ -186,41 +207,76 @@ struct AdvancedSettingsView: View {
             isShowingResetError = true
             return
         }
-        // Wipe the user-data stores `deleteAllWallets()` deliberately
-        // leaves behind (its scope is WalletRecord + cascades only):
-        // dApp browser history + bookmarks (privacy-sensitive), the
-        // user-added custom-token registry, the price cache, and the
-        // previous owner's biometric enrollment snapshot. Without
-        // this, the next person who creates a wallet on the device
-        // inherits the prior owner's browsing history, bookmarks,
-        // and token list. `AppMetadataRecord` (schema version) is app
-        // metadata, not user data — it stays. The wallets are already
-        // gone at this point, so a failure here is logged and the
-        // reset continues rather than stranding a half-reset device.
+        // Structural wipe of EVERY model in `ApertureSchemaV1.models`:
+        // browser history + bookmarks, the custom-token registry, all
+        // three price tables (`CachedPriceRecord`,
+        // `HistoricalPriceRecord`, `PriceSnapshotRecord`), the
+        // per-wallet chart timelines, the biometric enrollment
+        // snapshot, and the `AppMetadataRecord` singleton (its
+        // `firstLaunchAt` describes the previous owner; bootstrap
+        // recreates it next launch). Enumerating the schema's model
+        // list means a table added tomorrow is wiped automatically —
+        // no per-table call site to forget. `ResetCompletenessTests`
+        // pins the contract. The wallets are already gone at this
+        // point, so a failure here is logged and the reset continues
+        // rather than stranding a half-reset device.
         do {
-            try modelContext.delete(model: BrowserHistoryRecord.self)
-            try modelContext.delete(model: BrowserBookmarkRecord.self)
-            try modelContext.delete(model: CustomTokenRecord.self)
-            try modelContext.delete(model: CachedPriceRecord.self)
-            try modelContext.delete(model: BiometricEnrollmentRecord.self)
-            try modelContext.save()
+            try FactoryReset.wipeAllModels(in: modelContext)
         } catch {
-            log.error("Reset Aperture: auxiliary user-data wipe failed: \(String(describing: error), privacy: .public)")
+            log.error("Reset Aperture: structural model wipe failed: \(String(describing: error), privacy: .public)")
         }
+        // Keychain — per-wallet seed / mnemonic / imported-key
+        // material. Idempotent: missing items are success.
         for id in ids {
             try? SeedVault.deleteSeed(for: id)
             try? MnemonicVault.deleteMnemonic(for: id)
             try? MnemonicVault.deletePrivateKey(for: id)
         }
-        // Wipe PIN + biometric state.
+        // Keychain — PIN hash + salt + failed-attempt record.
         PinCodeStorage.clear()
-        // Wipe every @AppStorage key. UserDefaults' removePersistentDomain
-        // removes ALL keys under the app's domain — this is the nuclear
-        // option the row's footer warned about.
+        // dApp-browser website data: cookies, local/session storage,
+        // IndexedDB, on-disk caches. `BrowserWebView` runs on the
+        // persistent `WKWebsiteDataStore.default()`, so a previous
+        // owner's dApp logins would otherwise survive the reset.
+        await WKWebsiteDataStore.default().removeData(
+            ofTypes: WKWebsiteDataStore.allWebsiteDataTypes(),
+            modifiedSince: .distantPast
+        )
+        // Foundation-level network residue outside WKWebView (favicon
+        // fetches, any URLSession-cached response or cookie).
+        URLCache.shared.removeAllCachedResponses()
+        HTTPCookieStorage.shared.removeCookies(since: .distantPast)
+        // Token-logo disk cache (Caches/AperturePaint/CoinMarks).
+        await CoinMarkCache.shared.clearAll()
+        // TipKit datastore — the "shown once" counters (e.g.
+        // `WalletTabSwitcherTip`). A first install shows first-time
+        // tips again, so the reset must too. Apple's contract wants
+        // `resetDatastore()` before `configure(_:)`; since configure
+        // already ran in `UniAppApp.init()`, this is best-effort: on
+        // success we reconfigure so TipKit stays coherent for the
+        // rest of the session, on failure we log honestly (the
+        // datastore still dies with the sandbox on a real uninstall).
+        do {
+            try Tips.resetDatastore()
+            try Tips.configure([
+                .displayFrequency(.immediate),
+                .datastoreLocation(.applicationDefault)
+            ])
+        } catch {
+            log.error("Reset Aperture: TipKit datastore reset failed (tip state persists until reinstall): \(String(describing: error), privacy: .public)")
+        }
+        // Wipe every @AppStorage key. `removePersistentDomain` removes
+        // ALL keys under the app's standard domain — active-wallet
+        // pointer, selected tab, theme/language/currency, pin/biometric
+        // flags, `ScreenRestoration`'s stamps and paths (every store in
+        // the app uses the standard domain; no custom suites exist —
+        // audited 2026-06-13). It also removes `FreshInstallGuard`'s
+        // install marker, so the NEXT launch re-runs the fresh-install
+        // Keychain purge — a second, idempotent sweep behind this one.
         if let bundleId = Bundle.main.bundleIdentifier {
             UserDefaults.standard.removePersistentDomain(forName: bundleId)
         }
-        log.notice("Reset Aperture completed: \(ids.count, privacy: .public) wallets purged, PIN cleared, defaults wiped.")
+        log.notice("Reset Aperture completed: \(ids.count, privacy: .public) wallets purged, all SwiftData tables wiped, PIN cleared, web data cleared, defaults wiped.")
         // The RootGate's @Query will observe the wallet count flip
         // to zero and route the user back to onboarding automatically.
         // `isShowingResetSheet` was already cleared by the sheet's

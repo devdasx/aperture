@@ -37,7 +37,9 @@ enum ApertureSchemaV1: VersionedSchema {
             CustomTokenRecord.self,
             BrowserHistoryRecord.self,
             BrowserBookmarkRecord.self,
-            HistoricalPriceRecord.self
+            HistoricalPriceRecord.self,
+            PriceSnapshotRecord.self,
+            WalletChartSnapshotRecord.self
         ]
     }
 }
@@ -506,6 +508,19 @@ final class TransactionRecord {
     /// Written alongside `address` at every insert in
     /// `TransactionRepository.upsertTransaction`.
     var addressId: UUID?
+
+    /// Transaction taxonomy (2026-06-13, additive). Raw value of
+    /// `TransactionKind` — `"transfer"` / `"swap"` / `"bridge"` /
+    /// `"selfTransfer"`. Optional so the column is an additive
+    /// lightweight migration: rows written before the taxonomy
+    /// existed decode `nil` and resolve through
+    /// `TransactionKind.effectiveKind(kindRaw:directionRaw:)` (the
+    /// adapters' `.internal` direction → `.selfTransfer`, everything
+    /// else → `.transfer`). Written at every insert — and backfilled
+    /// on touch — by `TransactionRepository.upsertTransaction`. Read
+    /// via the `TransactionRecord.kind` computed property in
+    /// `TransactionKind.swift`, never directly.
+    var kindRaw: String?
 
     init(
         id: UUID = UUID(),
