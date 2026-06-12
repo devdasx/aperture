@@ -393,22 +393,126 @@ actor WalletRepository {
     /// material (watch-only, already-wiped) delete cleanly. Vault
     /// failures are logged at the source (`VaultError` paths) and do
     /// not block the record deletion.
+    ///
+    /// **2026-06-13 — delegates to `deleteWalletAndActivateNext`** so
+    /// every existing delete call site (today: `WalletDetailView`)
+    /// gets the canonical post-delete activation contract for free:
+    /// deleting the ACTIVE wallet moves the `activeWalletId` pointer
+    /// to a deterministic successor BEFORE the delete commits, exactly
+    /// the way a manual switch in `WalletSwitcherSheet` lands.
     func deleteWallet(id: UUID) async throws {
+        _ = try await deleteWalletAndActivateNext(walletId: id)
+    }
+
+    /// Canonical delete + post-delete activation (2026-06-13). The fix
+    /// for the "$50 wallet selected, $700 wallet's data" report: after
+    /// a delete-then-clear (`activeWalletIdRaw = ""`), the wallet-home
+    /// self-healed from a `@Query` snapshot that could still contain
+    /// the just-deleted record mid-merge — selection and the memoized
+    /// projections resolved "the active wallet" at different instants
+    /// and disagreed. This method makes the post-delete switch
+    /// IDENTICAL to a manual switch: one `activeWalletId` write naming
+    /// a wallet that verifiably exists in the store, fired before any
+    /// observer can see the deletion.
+    ///
+    /// **Ordering contract.** When the deleted wallet IS the active
+    /// one, the successor id is written to `UserDefaults` BEFORE
+    /// `modelContext.save()` commits the delete — so no main-actor
+    /// observer (`WalletHomeView`'s `.task(id: activeWalletIdRaw)`,
+    /// the Receive sheet, the Browser signer) ever resolves the
+    /// deleted id. The successor itself is never mid-delete, so it
+    /// resolves against the store even before the main context's
+    /// `@Query` merge lands.
+    ///
+    /// **Successor rule (deterministic).** Next wallet by `sortOrder`
+    /// after the deleted one; else the first remaining by `sortOrder`;
+    /// else `nil` (last wallet deleted → pointer cleared; `RootGate`
+    /// routes back to onboarding when the query empties).
+    ///
+    /// **Non-active deletes never touch the selection.** The pointer
+    /// is compared against the deleted id and rewritten only on match.
+    ///
+    /// **Failure honesty.** If the save throws, the pointer is
+    /// restored to its pre-call value — a failed delete must not
+    /// strand the user on a different wallet — and the error is
+    /// rethrown for the caller to surface.
+    ///
+    /// - Returns: the wallet id that is active AFTER this call — the
+    ///   successor when the active wallet was deleted, the unchanged
+    ///   active id when a non-active wallet was deleted, `nil` when
+    ///   no wallets remain.
+    @discardableResult
+    func deleteWalletAndActivateNext(walletId: UUID) async throws -> UUID? {
         try ensureDurableStore()
         var descriptor = FetchDescriptor<WalletRecord>(
-            predicate: #Predicate { $0.id == id }
+            predicate: #Predicate { $0.id == walletId }
         )
         descriptor.fetchLimit = 1
-        guard let record = try modelContext.fetch(descriptor).first else { return }
-        // Commit the durable record delete FIRST. If the save throws
-        // (disk full is the realistic trigger), the wallet stays fully
-        // intact — record, seed, and mnemonic — and the caller can
-        // surface the failure honestly. Wiping the vaults before the
-        // save risked the opposite: a failed save would leave a
-        // visible, healthy-looking wallet whose signing material was
-        // already destroyed forever.
-        modelContext.delete(record)
-        try modelContext.save()
+        guard let record = try modelContext.fetch(descriptor).first else {
+            // Idempotent — the record is already gone. Still sweep any
+            // chart snapshots left behind for this id (primitive-keyed,
+            // no cascade — a crash between a prior delete's save and
+            // its cleanup could have orphaned them), then report
+            // whoever is active now so callers can still route.
+            try? deleteChartSnapshots(walletId: walletId, save: true)
+            return await MainActor.run { ActiveWalletPointer.currentId }
+        }
+
+        // Successor — resolved from THIS actor's context (store
+        // truth), never from a main-actor `@Query` that may still be
+        // mid-merge.
+        let deletedSortOrder = record.sortOrder
+        let remaining = try modelContext.fetch(
+            FetchDescriptor<WalletRecord>(
+                sortBy: [SortDescriptor(\WalletRecord.sortOrder)]
+            )
+        ).filter { $0.id != walletId }
+        let successorId = remaining
+            .first(where: { $0.sortOrder > deletedSortOrder })?.id
+            ?? remaining.first?.id
+
+        // Move the pointer BEFORE the delete commits — and only when
+        // the deleted wallet IS the active one. Snapshot the prior
+        // raw value so a failed save can restore it.
+        let rollbackRaw: String? = await MainActor.run {
+            let prior = ActiveWalletPointer.rawValue
+            guard prior == walletId.uuidString else { return nil }
+            ActiveWalletPointer.set(successorId)
+            return prior
+        }
+
+        do {
+            // Chart snapshots are keyed by PRIMITIVE `walletId` —
+            // `WalletChartSnapshotRecord` has no relationship to
+            // `WalletRecord`, so deleting the record does NOT cascade
+            // to the wallet's portfolio timeline. Delete them in the
+            // SAME context and the SAME save as the record so the
+            // cleanup is atomic with the delete: a failed save leaves
+            // wallet AND timeline fully intact (and the pointer
+            // rolls back below); a successful save leaves neither.
+            // Equivalent contract to
+            // `WalletChartSnapshotRepository.deleteAll(walletId:)`,
+            // in-context for atomicity.
+            try deleteChartSnapshots(walletId: walletId, save: false)
+            // Commit the durable record delete. If the save throws
+            // (disk full is the realistic trigger), the wallet stays
+            // fully intact — record, seed, and mnemonic — and the
+            // caller can surface the failure honestly. Wiping the
+            // vaults before the save risked the opposite: a failed
+            // save would leave a visible, healthy-looking wallet
+            // whose signing material was already destroyed forever.
+            modelContext.delete(record)
+            try modelContext.save()
+        } catch {
+            // Discard the pending (unsaved) deletes so a later save
+            // by any other mutation can't silently commit a
+            // half-finished wallet removal.
+            modelContext.rollback()
+            if let rollbackRaw {
+                await MainActor.run { ActiveWalletPointer.setRaw(rollbackRaw) }
+            }
+            throw error
+        }
         syncManifestIfDurable()
         // Both vaults are @MainActor (Keychain access policy) — hop
         // explicitly. Wiping AFTER the save means the worst failure
@@ -417,10 +521,11 @@ actor WalletRepository {
         // Keychain ids against `allWalletIds()`), never a live record
         // without a seed.
         await MainActor.run {
-            try? SeedVault.deleteSeed(for: id)
-            try? MnemonicVault.deleteMnemonic(for: id)
-            try? MnemonicVault.deletePrivateKey(for: id)
+            try? SeedVault.deleteSeed(for: walletId)
+            try? MnemonicVault.deleteMnemonic(for: walletId)
+            try? MnemonicVault.deletePrivateKey(for: walletId)
         }
+        return await MainActor.run { ActiveWalletPointer.currentId }
     }
 
     /// Mark the wallet as backed-up (clears `requiresBackup`). Called
@@ -451,9 +556,13 @@ actor WalletRepository {
     }
 
     /// Delete every `WalletRecord` (and cascading `WalletAddressRecord`
-    /// + `TransactionRecord` + `TokenBalanceRecord` rows). The
-    /// `AppMetadataRecord` and `BiometricEnrollmentRecord` singletons
-    /// are left in place — they're app-wide state, not per-wallet.
+    /// + `TransactionRecord` + `TokenBalanceRecord` rows), plus every
+    /// `WalletChartSnapshotRecord` — the timeline table is keyed by
+    /// primitive `walletId` and does NOT cascade, so it's wiped
+    /// explicitly in the same save. The `AppMetadataRecord` and
+    /// `BiometricEnrollmentRecord` singletons are left in place by
+    /// THIS method — the full factory reset path
+    /// (`FactoryReset.wipeAllModels`) wipes those structurally.
     /// Caller is responsible for the matching Keychain wipes via
     /// `allWalletIds()` first.
     func deleteAllWallets() throws {
@@ -461,12 +570,83 @@ actor WalletRepository {
         let descriptor = FetchDescriptor<WalletRecord>()
         let rows = try modelContext.fetch(descriptor)
         for row in rows { modelContext.delete(row) }
+        // Per-wallet chart snapshots — primitive-keyed, no cascade.
+        let snapshots = try modelContext.fetch(
+            FetchDescriptor<WalletChartSnapshotRecord>()
+        )
+        for snapshot in snapshots { modelContext.delete(snapshot) }
         try modelContext.save()
         // Also wipe the Keychain manifest — otherwise the next launch
         // would happily "restore" the wallets the user just nuked.
         // Safe to touch the REAL manifest here: `ensureDurableStore()`
         // above guarantees this session is backed by the on-disk store.
         WalletManifestStore.clear()
+    }
+
+    // MARK: - Chart-snapshot cleanup (primitive-keyed, no cascade)
+
+    /// Delete every `WalletChartSnapshotRecord` for `walletId` from
+    /// THIS actor's context. The snapshots table references wallets by
+    /// primitive UUID column (see `WalletChartSnapshotRecord.walletId`)
+    /// — SwiftData's cascade rules never touch it, so every wallet-
+    /// removal path must call this explicitly.
+    ///
+    /// - parameter save: pass `false` to batch the deletions into a
+    ///   caller-owned save (the atomic delete path); `true` commits
+    ///   immediately (the idempotent orphan sweep).
+    private func deleteChartSnapshots(walletId: UUID, save: Bool) throws {
+        let descriptor = FetchDescriptor<WalletChartSnapshotRecord>(
+            predicate: #Predicate { $0.walletId == walletId }
+        )
+        for row in try modelContext.fetch(descriptor) {
+            modelContext.delete(row)
+        }
+        if save, modelContext.hasChanges {
+            try modelContext.save()
+        }
+    }
+}
+
+// MARK: - Active-wallet pointer
+
+/// The single `UserDefaults` pointer naming the active wallet — the
+/// same `"activeWalletId"` key every `@AppStorage("activeWalletId")`
+/// binding across the app observes. Centralised here so the delete
+/// flow can move the pointer atomically-with the record delete
+/// (2026-06-13 post-delete switch fix): the successor id is written
+/// BEFORE the delete commits, so no observer ever resolves the
+/// deleted id.
+///
+/// `@MainActor` so writes land in the same isolation `@AppStorage`
+/// observes from — `UserDefaults` itself is thread-safe, but
+/// confining the writes keeps the change-notification ordering
+/// deterministic with respect to SwiftUI body evaluation.
+@MainActor
+enum ActiveWalletPointer {
+    /// The `@AppStorage` key. Views keep binding the literal; this
+    /// constant is the imperative-path mirror.
+    static let storageKey = "activeWalletId"
+
+    /// Current pointer, parsed. `nil` when unset / empty / not a UUID.
+    static var currentId: UUID? {
+        UUID(uuidString: rawValue)
+    }
+
+    /// Current raw string — empty when unset, matching `@AppStorage`'s
+    /// declared default across the app.
+    static var rawValue: String {
+        UserDefaults.standard.string(forKey: storageKey) ?? ""
+    }
+
+    /// Point the selection at `id`, or clear it with `nil` (the
+    /// "no wallets remain" state — `RootGate` routes to onboarding).
+    static func set(_ id: UUID?) {
+        UserDefaults.standard.set(id?.uuidString ?? "", forKey: storageKey)
+    }
+
+    /// Restore a previously-snapshotted raw value (delete rollback).
+    static func setRaw(_ raw: String) {
+        UserDefaults.standard.set(raw, forKey: storageKey)
     }
 }
 

@@ -57,7 +57,20 @@ final class ApertureDatabase {
             AppMetadataRecord.self,
             CustomTokenRecord.self,
             BrowserHistoryRecord.self,
-            BrowserBookmarkRecord.self
+            BrowserBookmarkRecord.self,
+            // 2026-06-13 — `HistoricalPriceRecord` had shipped in
+            // `ApertureSchemaV1.models` but was MISSING from this
+            // container schema, so the chart's daily-close table was
+            // never registered with the store (`@Query` /
+            // `HistoricalPriceRepository` against the main container
+            // had no entity to resolve). Registered now; adding an
+            // entity is an additive lightweight migration.
+            HistoricalPriceRecord.self,
+            // 2026-06-13 — persistent-database rebuild additions:
+            // append-only price observations (24h change surface) and
+            // per-wallet portfolio-value chart snapshots.
+            PriceSnapshotRecord.self,
+            WalletChartSnapshotRecord.self
         ])
         let storeURL = Self.defaultStoreURL()
         let onDiskConfig = ModelConfiguration(

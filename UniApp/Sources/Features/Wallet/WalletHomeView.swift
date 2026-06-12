@@ -2094,12 +2094,44 @@ struct WalletHomeView: View {
     // `WalletAvatarSpec.hydrate(...)` with auto(name) fallback so the
     // disc is never blank).
 
+    /// Single resolution rule for "the active wallet" (2026-06-13).
+    /// The STORED id is authoritative, verified against the store; the
+    /// `@Query` is only an index. Every projection input — hero
+    /// `balances`, `allHeldRows`, the memoized display/transaction
+    /// rows, the chart inputs, the revision proxies — and the toolbar
+    /// pill resolve through this one property, so the displayed
+    /// selection and the displayed data derive from the same wallet
+    /// id on every pass and cannot disagree.
+    ///
+    /// Resolution order:
+    /// 1. Stored id has a `@Query` match → that record (the normal,
+    ///    cheap path; no store round-trip).
+    /// 2. Stored id resolves directly against the store → that
+    ///    record. Covers BOTH merge windows: an import the main
+    ///    context hasn't merged yet (the 2026-06-12 pattern), and a
+    ///    post-delete successor write that landed before this body
+    ///    pass saw the updated query results.
+    /// 3. No / dangling stored id → the first query record that still
+    ///    exists in the store. Skipping store-deleted rows matters:
+    ///    during the post-delete merge window the `@Query` can still
+    ///    contain the deleted record, and the prior unconditional
+    ///    `allWallets.first` fallback let the pill and the memoized
+    ///    projections resolve DIFFERENT wallets at different instants
+    ///    — the "$50 wallet selected, $700 wallet's data" report.
     private var activeWallet: WalletRecord? {
-        if let uuid = UUID(uuidString: activeWalletIdRaw),
-           let match = allWallets.first(where: { $0.id == uuid }) {
-            return match
+        if let uuid = UUID(uuidString: activeWalletIdRaw) {
+            if let match = allWallets.first(where: { $0.id == uuid }) {
+                return match
+            }
+            var descriptor = FetchDescriptor<WalletRecord>(
+                predicate: #Predicate { $0.id == uuid }
+            )
+            descriptor.fetchLimit = 1
+            if let stored = try? modelContext.fetch(descriptor).first {
+                return stored
+            }
         }
-        return allWallets.first
+        return allWallets.first(where: { walletExists(id: $0.id) })
     }
 
     /// All balances belonging to the active wallet, sorted by fiat
@@ -2220,7 +2252,23 @@ struct WalletHomeView: View {
                 return
             }
         }
-        if let first = allWallets.first {
+        // Stored id is empty or names a wallet the store no longer
+        // has. Heal from STORE truth, not from the `@Query`: during
+        // the post-delete merge window `allWallets` can still contain
+        // the just-deleted record, and stamping that id would
+        // re-dangle the pointer with nothing left to heal it
+        // (`.task(id:)` only re-fires on a raw change) — the home
+        // then shows one wallet in the pill (the query fallback) and
+        // another wallet's memoized rows (the 2026-06-13 post-delete
+        // mismatch). First wallet by `sortOrder` — the same
+        // deterministic landing `WalletRepository
+        // .deleteWalletAndActivateNext` uses, which a direct store
+        // fetch sees correctly even mid-merge.
+        var descriptor = FetchDescriptor<WalletRecord>(
+            sortBy: [SortDescriptor(\WalletRecord.sortOrder)]
+        )
+        descriptor.fetchLimit = 1
+        if let first = try? modelContext.fetch(descriptor).first {
             activeWalletIdRaw = first.id.uuidString
         }
     }

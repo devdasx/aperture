@@ -63,6 +63,15 @@ actor TransactionRepository {
     /// transfers of the same token inside one tx still collapse to one
     /// row — distinguishing those needs a per-leg log index the
     /// adapters don't surface yet.)
+    ///
+    /// **Taxonomy (2026-06-13).** `kind` persists the transaction
+    /// taxonomy (`TransactionKind`). When the caller passes `nil` —
+    /// every adapter today; swap/bridge classification is T-067 — the
+    /// kind derives from the direction: `.internal` → `.selfTransfer`,
+    /// everything else → `.transfer`. An explicit non-nil `kind`
+    /// overwrites an existing row's stored value (a later, smarter
+    /// scan may reclassify a `.transfer` as `.swap`); legacy rows
+    /// whose `kindRaw` is `nil` are backfilled on touch.
     func upsertTransaction(
         addressId: UUID,
         txHash: String,
@@ -70,6 +79,7 @@ actor TransactionRepository {
         amountRaw: String,
         tokenSymbol: String,
         tokenContract: String? = nil,
+        kind: TransactionKind? = nil,
         blockNumber: Int64?,
         occurredAt: Date,
         status: TransactionStatus,
@@ -102,10 +112,21 @@ actor TransactionRepository {
         txDescriptor.fetchLimit = 1
         let existing = try modelContext.fetch(txDescriptor).first
 
+        let resolvedKind = kind ?? TransactionKind.defaultKind(for: direction)
+
         if let existing {
             existing.statusRaw = status.rawValue
             existing.blockNumber = blockNumber
             existing.feeRaw = feeRaw
+            // Taxonomy: an explicit kind from the caller reclassifies;
+            // a nil-kind touch only backfills rows that pre-date the
+            // column (never downgrades an adapter's classification to
+            // the direction-derived default).
+            if let kind {
+                existing.kindRaw = kind.rawValue
+            } else if existing.kindRaw == nil {
+                existing.kindRaw = resolvedKind.rawValue
+            }
             // Don't touch direction / amount / counterparty / occurredAt —
             // those are immutable once a tx is on-chain.
         } else {
@@ -121,11 +142,132 @@ actor TransactionRepository {
                 counterparty: counterparty,
                 feeRaw: feeRaw
             )
+            record.kindRaw = resolvedKind.rawValue
             record.address = address
             record.addressId = addressId
             modelContext.insert(record)
         }
         try modelContext.save()
+    }
+
+    // MARK: - Transaction queries (2026-06-13 taxonomy surface)
+
+    /// One transaction leg flattened to a Sendable value for
+    /// cross-actor reads — `@Model` instances must not cross the
+    /// actor boundary.
+    struct TransactionSnapshot: Sendable {
+        let id: UUID
+        let addressId: UUID
+        let txHash: String
+        let direction: TransactionDirection
+        let kind: TransactionKind
+        let status: TransactionStatus
+        let amountRaw: String
+        let tokenSymbol: String
+        let tokenContract: String?
+        let blockNumber: Int64?
+        let occurredAt: Date
+        let counterparty: String
+        let feeRaw: String?
+    }
+
+    /// Query one wallet's transaction legs, newest first, with
+    /// optional taxonomy filters. The three axes compose:
+    ///
+    /// - sending      → `direction: .outgoing`
+    /// - receiving    → `direction: .incoming`
+    /// - failed       → `status: .failed`
+    /// - swap / bridge / self-transfer → `kind:`
+    ///
+    /// Status and direction filter in the store predicate (plain raw
+    /// string equality). The `kind` filter resolves in memory via
+    /// `TransactionKind.effectiveKind` because legacy rows persist
+    /// `kindRaw == nil` whose effective kind depends on the direction
+    /// column — a cross-column rule a store predicate can't express
+    /// without force-unwrap gymnastics. Wallet histories are bounded
+    /// (~25 legs per chain per scan), so the in-memory pass is cheap.
+    ///
+    /// `limit` caps the RESULT (applied after filtering); `0` = all.
+    func transactions(
+        walletId: UUID,
+        kind: TransactionKind? = nil,
+        status: TransactionStatus? = nil,
+        direction: TransactionDirection? = nil,
+        limit: Int = 0
+    ) throws -> [TransactionSnapshot] {
+        try ensureLegacyAddressIdBackfill()
+
+        var walletDescriptor = FetchDescriptor<WalletRecord>(
+            predicate: #Predicate { $0.id == walletId }
+        )
+        walletDescriptor.fetchLimit = 1
+        guard let wallet = try modelContext.fetch(walletDescriptor).first else { return [] }
+        let addressIds = wallet.addresses.map { $0.id }
+
+        // Optional status/direction filters run IN MEMORY after the
+        // indexed addressId fetch — `#Predicate` cannot compare the
+        // non-optional `row.statusRaw` against an optional capture
+        // (the macro expansion fails to unwrap it), and the per-address
+        // row count is bounded by the scanner's 1,000-tx cap, so the
+        // in-memory pass is cheap. The `kind` filter below already
+        // works the same way.
+        let statusRaw: String? = status?.rawValue
+        let directionRaw: String? = direction?.rawValue
+
+        // One indexed fetch per address (≤ chain count) on the stored
+        // `addressId` primitive. Avoids the optional-relationship
+        // traversal AND collection-contains-on-optional predicate
+        // shapes.
+        var rows: [TransactionRecord] = []
+        for addressId in addressIds {
+            let descriptor = FetchDescriptor<TransactionRecord>(
+                predicate: #Predicate { row in
+                    row.addressId == addressId
+                }
+            )
+            var fetched = try modelContext.fetch(descriptor)
+            if let statusRaw {
+                fetched = fetched.filter { $0.statusRaw == statusRaw }
+            }
+            if let directionRaw {
+                fetched = fetched.filter { $0.directionRaw == directionRaw }
+            }
+            rows.append(contentsOf: fetched)
+        }
+
+        var snapshots = rows.compactMap { row -> TransactionSnapshot? in
+            guard let rowAddressId = row.addressId else { return nil }
+            let effectiveKind = TransactionKind.effectiveKind(
+                kindRaw: row.kindRaw,
+                directionRaw: row.directionRaw
+            )
+            if let kind, effectiveKind != kind { return nil }
+            return TransactionSnapshot(
+                id: row.id,
+                addressId: rowAddressId,
+                txHash: row.txHash,
+                direction: TransactionDirection(rawValue: row.directionRaw) ?? .incoming,
+                kind: effectiveKind,
+                status: TransactionStatus(rawValue: row.statusRaw) ?? .pending,
+                amountRaw: row.amountRaw,
+                tokenSymbol: row.tokenSymbol,
+                tokenContract: row.tokenContract,
+                blockNumber: row.blockNumber,
+                occurredAt: row.occurredAt,
+                counterparty: row.counterparty,
+                feeRaw: row.feeRaw
+            )
+        }
+        snapshots.sort { $0.occurredAt > $1.occurredAt }
+        if limit > 0 && snapshots.count > limit {
+            snapshots.removeLast(snapshots.count - limit)
+        }
+        return snapshots
+    }
+
+    /// Convenience: one wallet's failed legs, newest first.
+    func failedTransactions(walletId: UUID, limit: Int = 0) throws -> [TransactionSnapshot] {
+        try transactions(walletId: walletId, status: .failed, limit: limit)
     }
 
     /// Delete all transactions for a given address. Used when a watch-only

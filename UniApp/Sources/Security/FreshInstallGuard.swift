@@ -49,20 +49,43 @@ enum FreshInstallGuard {
 
     /// Every Keychain `kSecAttrService` identifier Aperture writes
     /// under. Adding a new vault later requires adding its service
-    /// string here so the fresh-install wipe covers it. The audit:
-    /// `grep -rnE 'kSecAttrService as String:' UniApp/Sources/Security/`
-    /// — every result's service literal must be in this list.
+    /// string here so the fresh-install wipe covers it — a service
+    /// missing from this list means wallets RESURRECT after a delete
+    /// + reinstall, breaking the user's zero-data contract.
+    ///
+    /// **Test-facing inventory (audited 2026-06-13).** Each entry
+    /// below mirrors the `static let` service constant in the file
+    /// named in its comment — those constants are `private`, so the
+    /// literal is duplicated here by design and the pairing is pinned
+    /// two ways:
+    ///
+    /// 1. `ResetCompletenessTests.freshInstallGuardCoversEveryKnownKeychainService`
+    ///    compares `knownServicesForAudit` against the expected set —
+    ///    a new vault that forgets this list fails the suite.
+    /// 2. The grep audit:
+    ///    `grep -rnE 'kSecAttrService as String:|com\.thuglife\.aperture\.' UniApp/Sources/`
+    ///    — every service literal in the codebase must appear here.
+    ///    As of 2026-06-13 the only files touching Keychain are
+    ///    `SeedVault`, `MnemonicVault`, `WalletManifestStore`,
+    ///    `PinCodeStorage`, and this guard. (The Reown/WalletConnect
+    ///    SDK is not yet configured — `WalletConnectClient` is a
+    ///    stub; when it goes live its Keychain service(s) must be
+    ///    added here.)
     private static let knownServices: [String] = [
-        "com.thuglife.aperture.seed.cipher",       // SeedVault — encrypted BIP-39 seeds
-        "com.thuglife.aperture.seed.key",          // SeedVault — AES-GCM keys
-        "com.thuglife.aperture.mnemonic.cipher",   // MnemonicVault — encrypted phrases
-        "com.thuglife.aperture.mnemonic.key",      // MnemonicVault — AES-GCM keys
-        "com.thuglife.aperture.privatekey.cipher", // MnemonicVault — encrypted imported key strings
-        "com.thuglife.aperture.privatekey.key",    // MnemonicVault — AES-GCM keys (imported keys)
-        "com.thuglife.aperture.wallet-manifest",   // WalletManifestStore — wallet list metadata
-        "com.thuglife.aperture.pin",               // PinCodeStorage — PBKDF2 hashes + salt
-        "com.thuglife.aperture.pin.smoketest",     // PinCodeStorage — DEBUG smoke check
+        "com.thuglife.aperture.seed.cipher",       // SeedVault.cipherService — encrypted BIP-39 seeds
+        "com.thuglife.aperture.seed.key",          // SeedVault.keyService — AES-GCM keys
+        "com.thuglife.aperture.mnemonic.cipher",   // MnemonicVault.cipherService — encrypted phrases
+        "com.thuglife.aperture.mnemonic.key",      // MnemonicVault.keyService — AES-GCM keys
+        "com.thuglife.aperture.privatekey.cipher", // MnemonicVault.privateKeyCipherService — encrypted imported key strings
+        "com.thuglife.aperture.privatekey.key",    // MnemonicVault.privateKeyKeyService — AES-GCM keys (imported keys)
+        "com.thuglife.aperture.wallet-manifest",   // WalletManifestStore.service — wallet list metadata
+        "com.thuglife.aperture.pin",               // PinCodeStorage.service — PBKDF2 hash + salt + failure record
+        "com.thuglife.aperture.pin.smoketest",     // PinCodeStorage.smokeCheckService — DEBUG smoke check
     ]
+
+    /// Read-only mirror of `knownServices` for the audit test
+    /// (`ResetCompletenessTests`). Never used by production code.
+    static var knownServicesForAudit: [String] { knownServices }
 
     /// Every Keychain class Aperture touches across the services
     /// above. Today everything is `kSecClassGenericPassword`; the

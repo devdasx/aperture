@@ -146,6 +146,26 @@ actor CoinMarkCache {
         }
     }
 
+    /// Factory-reset surface (Settings → Advanced → Reset Aperture).
+    /// Cancels in-flight downloads, drops the in-memory caches, and
+    /// removes the on-disk mark directory. The marks themselves are
+    /// public brand assets, but a factory-state device must not carry
+    /// the previous owner's "which tokens did they hold" inference
+    /// that a populated cache directory would allow.
+    ///
+    /// Best-effort by design: a cancelled download that races the
+    /// directory removal can re-write at most one file, and the
+    /// directory lives under `Caches/` where iOS itself evicts under
+    /// pressure — nothing here is load-bearing state.
+    func clearAll() {
+        for task in inflight.values { task.cancel() }
+        inflight.removeAll()
+        memory.removeAll()
+        memoryOrder.removeAll()
+        negativeUntil.removeAll()
+        try? FileManager.default.removeItem(at: Self.diskDirectory)
+    }
+
     /// Builds the Trust Wallet URL for a token's logo. Returns nil
     /// for chains the table doesn't know how to address (a small but
     /// honest set — the registry tokens we list always have a slug).
@@ -250,11 +270,17 @@ actor CoinMarkCache {
         }
     }
 
-    nonisolated static func diskPath(for url: URL) -> URL {
+    /// The one on-disk location this cache writes to. `clearAll()`
+    /// removes exactly this directory; `diskPath(for:)` builds file
+    /// paths inside it — one source of truth for both.
+    nonisolated static var diskDirectory: URL {
         let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
-        let dir = caches.appendingPathComponent("AperturePaint/CoinMarks", isDirectory: true)
+        return caches.appendingPathComponent("AperturePaint/CoinMarks", isDirectory: true)
+    }
+
+    nonisolated static func diskPath(for url: URL) -> URL {
         let hash = sha256(url.absoluteString)
-        return dir.appendingPathComponent(hash).appendingPathExtension("png")
+        return diskDirectory.appendingPathComponent(hash).appendingPathExtension("png")
     }
 
     nonisolated static func sha256(_ s: String) -> String {

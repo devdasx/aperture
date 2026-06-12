@@ -72,6 +72,7 @@ actor TokenPricingEngine {
     /// `ApertureDatabase.shared.container` on first cache access.
     private let injectedContainer: ModelContainer?
     private var cachedRepository: PriceCacheRepository?
+    private var cachedSnapshotRepository: PriceSnapshotRepository?
 
     init(
         container: ModelContainer? = nil,
@@ -181,6 +182,25 @@ actor TokenPricingEngine {
             } catch {
                 Self.log.error("price-cache bulk upsert failed for \(code, privacy: .public): \(String(describing: error), privacy: .public)")
             }
+
+            // 2026-06-13 — append the same LIVE quotes to the
+            // immutable `PriceSnapshotRecord` history (the cache row
+            // above is overwritten in place; the snapshot table is
+            // what makes "price change in the last 24h" and
+            // balance-change attribution answerable from local data).
+            // Cache-served (stale) entries are deliberately excluded —
+            // re-recording an old observation as a new one would
+            // forge the timeline. Failures log and never block the
+            // pricing ladder.
+            let snapshotRepo = await snapshotRepository()
+            let snapshotEntries = entries.map {
+                (symbol: $0.symbol, currencyCode: $0.fiat, price: $0.price, source: $0.source)
+            }
+            do {
+                try await snapshotRepo.record(snapshotEntries)
+            } catch {
+                Self.log.error("price-snapshot record failed for \(code, privacy: .public): \(String(describing: error), privacy: .public)")
+            }
         }
 
         if !missing.isEmpty {
@@ -217,14 +237,24 @@ actor TokenPricingEngine {
     /// app launch, read here via one main-actor hop.
     private func repository() async -> PriceCacheRepository {
         if let cachedRepository { return cachedRepository }
-        let container: ModelContainer
-        if let injectedContainer {
-            container = injectedContainer
-        } else {
-            container = await MainActor.run { ApertureDatabase.shared.container }
-        }
-        let repo = PriceCacheRepository(modelContainer: container)
+        let repo = PriceCacheRepository(modelContainer: await resolvedContainer())
         cachedRepository = repo
         return repo
+    }
+
+    /// `PriceSnapshotRepository` bound to the same container as the
+    /// cache repository — the append-only observation log the 24h
+    /// change surface reads (see the snapshot hook in `unitPrices`).
+    private func snapshotRepository() async -> PriceSnapshotRepository {
+        if let cachedSnapshotRepository { return cachedSnapshotRepository }
+        let repo = PriceSnapshotRepository(modelContainer: await resolvedContainer())
+        cachedSnapshotRepository = repo
+        return repo
+    }
+
+    /// Shared container resolution for both lazy repositories.
+    private func resolvedContainer() async -> ModelContainer {
+        if let injectedContainer { return injectedContainer }
+        return await MainActor.run { ApertureDatabase.shared.container }
     }
 }

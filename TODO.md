@@ -660,6 +660,21 @@
   "Request 0.001 BTC" rather than "Amount: 0.001 BTC".
 - **Depends on:** none.
 
+### T-067 · Transaction taxonomy — swap / bridge classification at the adapter layer
+- **Status:** OPEN
+- **Priority:** P2
+- **Area:** Database · Networking · Transaction history
+- **File:** `UniApp/Sources/Database/TransactionKind.swift` (the seam doc); the chain adapters under `UniApp/Sources/Networking/` (`EVMTransactionAdapter`, `SolanaTransactionAdapter`, `BitcoinFamilyTransactionAdapter`, `TronTransactionAdapter`, `XRPLTransactionAdapter`, `LongTailTransactionAdapters`).
+- **Inline comment:** `// TODO: (T-067) Swap / bridge classification — the chain adapters emit only direction today, so every non-self transfer persists as `.transfer` until router/bridge contract recognition lands. See TODO.md.`
+- **Context:** 2026-06-13's persistent-database rebuild added the stored transaction taxonomy: `TransactionRecord.kindRaw` (optional, additive column) + `TransactionKind` (`transfer` / `swap` / `bridge` / `selfTransfer`). The repository persists and filters kinds, and the adapters' `.internal` direction maps to `.selfTransfer` automatically at upsert (`TransactionRepository.upsertTransaction`). But nothing CLASSIFIES swaps or bridges yet — every adapter returns direction + amount + counterparty only, so every non-self leg persists as `.transfer`. The seam is fully live: `upsertTransaction(kind:)` accepts the classification, an explicit kind overwrites a previously-stored one (reclassification on a later, smarter scan is supported and tested), and `transactions(walletId:kind:)` filters on it.
+- **What "done" looks like:**
+  1. The EVM adapter recognizes known DEX router / aggregator interactions (Uniswap Universal Router, 0x Exchange Proxy, 1inch, …) and passes `kind: .swap` for both legs of the trade.
+  2. Canonical bridge endpoints (native L1↔L2 bridges, LayerZero, Wormhole) classify as `.bridge`.
+  3. Equivalent per-family tables for Solana (Jupiter), Tron (SunSwap), etc., landing incrementally — each chain family can ship independently.
+  4. Classification fixtures per adapter family in `UniApp/Tests/` (the `TransactionKindTests` repository-side coverage already exists).
+- **Honesty checks:** never guess — an unrecognized contract interaction stays `.transfer`. The UI must not label a row "Swap" unless the router is positively identified; a wrong "Transfer" label is honest-incomplete, a wrong "Swap" label is a lie.
+- **Depends on:** none (the persistence seam shipped 2026-06-13; the classification tables are the remaining work).
+
 ---
 
 ## Backlog (anticipated TODOs not yet placed inline)

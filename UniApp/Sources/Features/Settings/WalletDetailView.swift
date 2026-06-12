@@ -22,27 +22,21 @@ struct WalletDetailView: View {
     let walletId: UUID
 
     @Query private var matches: [WalletRecord]
-    @AppStorage("activeWalletId") private var activeWalletIdRaw: String = ""
+    // `activeWalletId` is no longer read or written here — the repository's
+    // `deleteWalletAndActivateNext` owns the post-delete pointer move
+    // (2026-06-13). The old `@AppStorage("activeWalletId")` clobber is gone
+    // (see `deleteWallet`).
     @AppStorage("biometricEnabled") private var biometricEnabled: Bool = false
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
 
     @State private var editedName: String = ""
+    /// Presents `WalletDeleteSheet`, the wallet-scoped sibling of
+    /// `ResetApertureSheet`. The sheet owns its own authorization gate
+    /// internally — passcode-only verify when a passcode is set, native
+    /// destructive confirmation otherwise (user direction 2026-06-13).
+    /// No typed wallet name, no separate passcode-cover state here.
     @State private var isShowingDeleteConfirm: Bool = false
-    /// Passcode-only verify gate presented after the typed-name
-    /// confirmation and before the destructive delete fires. Per
-    /// user direction 2026-06-13, wallet removal asks for the
-    /// passcode — never Face ID — so the gate's `PinCodeView` runs
-    /// with `allowsBiometrics: false`. Armed only when a passcode
-    /// exists: no-passcode users keep the typed-name confirmation
-    /// as the sole gate (PIN is optional per Rule #17).
-    @State private var isShowingDeletePinVerify: Bool = false
-    /// Set by the confirmation sheet's `onConfirm` when a passcode
-    /// gate must follow; consumed in the sheet's `onDismiss` so the
-    /// verify cover presents only after the sheet has fully gone —
-    /// presenting a second surface mid-dismissal races the
-    /// transition and can drop the presentation.
-    @State private var pendingDeletePinVerify: Bool = false
     @State private var isShowingPhrase: Bool = false
     @State private var isShowingKey: Bool = false
     @State private var isShowingBackupFlow: Bool = false
@@ -267,71 +261,27 @@ struct WalletDetailView: View {
         .listStyle(.insetGrouped)
         .scrollContentBackground(.hidden)
         .background(UniColors.Background.primary)
-        .sheet(
-            isPresented: $isShowingDeleteConfirm,
-            onDismiss: {
-                // Hand off to the passcode gate only after the
-                // confirmation sheet has fully dismissed (see
-                // `pendingDeletePinVerify` doc). Cancel / swipe-down
-                // never sets the flag, so plain dismissals are inert.
-                if pendingDeletePinVerify {
-                    pendingDeletePinVerify = false
-                    isShowingDeletePinVerify = true
-                }
-            }
-        ) {
-            DeleteWalletConfirmationSheet(
+        .sheet(isPresented: $isShowingDeleteConfirm) {
+            // Wallet-scoped sibling of `ResetApertureSheet` (user
+            // direction 2026-06-13: "it should match resetting the
+            // whole app flow but for wallet"). No typed wallet name —
+            // the sheet owns its own passcode-only verify gate (passcode
+            // set) or native destructive `confirmationDialog` (no
+            // passcode) internally, exactly like the reset flow. On
+            // authorization it calls back into `deleteWallet` here, which
+            // delegates to the canonical repository helper.
+            WalletDeleteSheet(
                 walletName: wallet.name,
-                onConfirm: {
-                    // Typed-name semantics are unchanged — this fires
-                    // only once the name matches. With a passcode set,
-                    // the destructive action is deferred behind the
-                    // passcode-only verify gate (user direction
-                    // 2026-06-13); without one, the existing
-                    // confirm-then-delete behavior stays as-is.
-                    if PinCodeStorage.hasPin {
-                        pendingDeletePinVerify = true
-                    } else {
-                        Task { await deleteWallet(wallet) }
-                    }
+                kind: wallet.kind,
+                networkCount: Set(wallet.addresses.map(\.chainRaw)).count,
+                hasStoredSecret: walletHasStoredSecret(wallet),
+                onAuthorized: {
+                    isShowingDeleteConfirm = false
+                    Task { await deleteWallet(wallet) }
                 }
             )
             .uniAppEnvironment()
-            .intrinsicHeightSheet()
-            .presentationBackground(UniColors.Background.primary)
-        }
-        .fullScreenCover(isPresented: $isShowingDeletePinVerify) {
-            // Same presentation shape as the Security entry gate and
-            // `PinDisableVerifyFlow`: NavigationStack so the close
-            // affordance lives in a native toolbar slot (Rule #15),
-            // canonical `PinCodeView` per Rule #17 — passcode-only,
-            // so no Face ID auto-prompt and no biometric keypad key.
-            NavigationStack {
-                PinCodeView(
-                    mode: .verify,
-                    onComplete: { _ in
-                        isShowingDeletePinVerify = false
-                        Task { await deleteWallet(wallet) }
-                    },
-                    onCancel: {
-                        // Declining to authenticate aborts the
-                        // deletion entirely — back to the detail
-                        // screen, wallet untouched.
-                        isShowingDeletePinVerify = false
-                    },
-                    allowsBiometrics: false
-                )
-                .toolbar {
-                    ToolbarItem(placement: .topBarLeading) {
-                        Button { isShowingDeletePinVerify = false } label: {
-                            Image(systemName: "xmark")
-                                .font(.system(size: 17, weight: .semibold))
-                        }
-                        .accessibilityLabel(Text("Cancel"))
-                    }
-                }
-            }
-            .uniAppEnvironment()
+            .presentationDetents([.large])
             .presentationBackground(UniColors.Background.primary)
         }
         .sheet(isPresented: $isShowingPhrase) {
@@ -628,13 +578,17 @@ struct WalletDetailView: View {
     @MainActor
     private func deleteWallet(_ wallet: WalletRecord) async {
         let id = wallet.id
-        // Keychain first: if a vault delete fails the database record
-        // survives, so the wallet stays reachable and the user can
-        // retry. Deleting the database row first would orphan the
-        // Keychain secrets with no UI left to reach them.
-        try? SeedVault.deleteSeed(for: id)
-        try? MnemonicVault.deleteMnemonic(for: id)
-        try? MnemonicVault.deletePrivateKey(for: id)
+        // `deleteWallet(id:)` delegates to the canonical
+        // `deleteWalletAndActivateNext(walletId:)`, which owns the whole
+        // contract atomically (2026-06-13): it wipes both Keychain vaults
+        // idempotently, deletes the record, and — when the deleted wallet
+        // is the active one — moves `activeWalletId` to a deterministic
+        // successor BEFORE the save commits. So no manual `SeedVault` /
+        // `MnemonicVault` wipes here (the repo does it, and doing it
+        // twice risked destroying the secret before a failed save left a
+        // live record), and no `activeWalletIdRaw = ""` clobber (the repo
+        // names a real successor; the old clear was the source of the
+        // "$50 wallet selected, $700 wallet's data" report).
         let repo = WalletRepository(modelContainer: modelContext.container)
         do {
             try await repo.deleteWallet(id: id)
@@ -642,10 +596,25 @@ struct WalletDetailView: View {
             errorAlertMessage = String.apertureLocalized("Couldn't delete this wallet from the local database. Try again.")
             return
         }
-        // If this was the active wallet, clear the pointer; the
-        // wallet-home will pick a new active on next appear.
-        if activeWalletIdRaw == id.uuidString { activeWalletIdRaw = "" }
+        // The deleted wallet's detail screen can't stay on screen —
+        // dismiss back to the wallet list.
         dismiss()
+    }
+
+    /// `true` iff this wallet's secret material (recovery phrase or
+    /// private key) actually lives in the Keychain on this iPhone.
+    /// Watch-only wallets and imports persisted before the always-store
+    /// policy hold none — drives `WalletDeleteSheet`'s reversible-vs-final
+    /// consequence line and the inventory's encrypted-secret row.
+    private func walletHasStoredSecret(_ wallet: WalletRecord) -> Bool {
+        switch wallet.kind {
+        case .importedKey:
+            return MnemonicVault.hasPrivateKey(for: wallet.id)
+        case .created, .importedMnemonic:
+            return MnemonicVault.hasMnemonic(for: wallet.id)
+        case .watchOnly:
+            return false
+        }
     }
 }
 
@@ -702,67 +671,6 @@ private struct BiometricChallengeSheet: View {
         guard !hasCompleted else { return }
         hasCompleted = true
         if case .success = outcome { onSuccess() } else { onFailure() }
-    }
-}
-
-// MARK: - Delete confirmation
-
-struct DeleteWalletConfirmationSheet: View {
-    let walletName: String
-    let onConfirm: () -> Void
-    @Environment(\.dismiss) private var dismiss
-    @State private var typedConfirmation: String = ""
-
-    private var matchesName: Bool {
-        typedConfirmation.trimmingCharacters(in: .whitespaces).localizedCaseInsensitiveCompare(walletName) == .orderedSame
-    }
-
-    var body: some View {
-        UniSheet(title: "Delete this wallet?") {
-            VStack(alignment: .leading, spacing: UniSpacing.m) {
-                Image(systemName: "trash.circle.fill")
-                    .font(.system(size: 44, weight: .light))
-                    .symbolRenderingMode(.hierarchical)
-                    .foregroundStyle(UniColors.Status.errorForeground)
-                    .frame(maxWidth: .infinity, alignment: .center)
-                    .accessibilityHidden(true)
-
-                UniBody(
-                    text: "This deletes \(walletName) from this iPhone, including its encrypted seed and any cached balances and transactions.",
-                    color: UniColors.Text.secondary
-                )
-                .fixedSize(horizontal: false, vertical: true)
-
-                UniBody(
-                    text: "If you have your recovery phrase written down, you can restore this wallet later by importing it. If you don't, the funds are gone.",
-                    color: UniColors.Text.secondary
-                )
-                .fixedSize(horizontal: false, vertical: true)
-
-                VStack(alignment: .leading, spacing: UniSpacing.xs) {
-                    Text("Type the wallet's name to confirm:")
-                        .font(UniTypography.footnote)
-                        .foregroundStyle(UniColors.Text.tertiary)
-                    UniTextField(
-                        placeholder: LocalizedStringKey(walletName),
-                        text: $typedConfirmation,
-                        directionPolicy: .automatic
-                    )
-                }
-            }
-        } actions: {
-            VStack(spacing: UniSpacing.s) {
-                UniButton(
-                    title: "Delete wallet",
-                    variant: .destructive,
-                    isEnabled: matchesName
-                ) {
-                    onConfirm()
-                    dismiss()
-                }
-                UniButton(title: "Cancel", variant: .secondary) { dismiss() }
-            }
-        }
     }
 }
 
