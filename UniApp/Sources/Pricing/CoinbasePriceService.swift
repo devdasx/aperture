@@ -29,14 +29,36 @@ actor CoinbasePriceService: PriceService {
     /// endpoint but throttles aggressive concurrency; 8 is conservative.
     private let maxParallelism: Int
 
+    /// How many `maxParallelism`-sized chunks a batch keeps in flight
+    /// at once (2026-06-12). Strictly-sequential chunks meant one
+    /// degraded chunk gated every chunk behind it — with ~49 symbols
+    /// per refresh that was minutes of wall clock on a bad network.
+    /// Three concurrent chunks cap peak concurrency at 24 requests,
+    /// still polite for the public endpoint.
+    private static let maxConcurrentChunks = 3
+
+    /// Dedicated session for the spot endpoint (2026-06-12). The
+    /// shared session's 60 s default request timeout let a single
+    /// degraded round trip stall a whole price batch — and every
+    /// `streamScan` row used to wait on that batch. Spot quotes are
+    /// tiny JSON payloads; 8 s is generous. Ephemeral configuration:
+    /// no disk cache for price data (the actor's TTL cache is the
+    /// only cache layer we want).
+    private static let spotSession: URLSession = {
+        let config = URLSessionConfiguration.ephemeral
+        config.timeoutIntervalForRequest = 8
+        config.timeoutIntervalForResource = 16
+        return URLSession(configuration: config)
+    }()
+
     private let session: URLSession
 
     init(
-        session: URLSession = .shared,
+        session: URLSession? = nil,
         cacheTTL: TimeInterval = 60,
         maxParallelism: Int = 8
     ) {
-        self.session = session
+        self.session = session ?? Self.spotSession
         self.cacheTTL = cacheTTL
         self.maxParallelism = maxParallelism
     }
@@ -140,27 +162,52 @@ actor CoinbasePriceService: PriceService {
         let unique = Array(Set(symbols.map { $0.uppercased() }))
         var results: [String: TokenPrice] = [:]
 
-        // Bounded parallelism via a chunked TaskGroup. Each chunk runs up to
-        // `maxParallelism` concurrent fetches; chunks are processed in order.
-        for chunk in unique.chunked(into: maxParallelism) {
-            let chunkResults = await withTaskGroup(of: (String, TokenPrice?).self) { group in
-                for symbol in chunk {
+        // Bounded two-level parallelism (2026-06-12). A sliding
+        // window keeps up to `maxConcurrentChunks` chunks in flight,
+        // each running up to `maxParallelism` concurrent fetches —
+        // previously chunks ran strictly sequentially, so one slow
+        // chunk stalled every chunk behind it.
+        let chunks = unique.chunked(into: maxParallelism)
+        await withTaskGroup(of: [(String, TokenPrice?)].self) { group in
+            var pending = chunks.makeIterator()
+            var inFlight = 0
+            while inFlight < Self.maxConcurrentChunks, let chunk = pending.next() {
+                group.addTask { [self] in
+                    await self.fetchChunk(chunk, fiat: fiat)
+                }
+                inFlight += 1
+            }
+            while let chunkResults = await group.next() {
+                for (symbol, price) in chunkResults {
+                    if let price { results[symbol] = price }
+                }
+                if let chunk = pending.next() {
                     group.addTask { [self] in
-                        let p = await self.price(symbol: symbol, fiat: fiat)
-                        return (symbol, p)
+                        await self.fetchChunk(chunk, fiat: fiat)
                     }
                 }
-                var collected: [(String, TokenPrice?)] = []
-                for await result in group {
-                    collected.append(result)
-                }
-                return collected
-            }
-            for (symbol, price) in chunkResults {
-                if let price { results[symbol] = price }
             }
         }
         return results
+    }
+
+    /// One chunk's worth of concurrent single-symbol lookups.
+    /// Factored out of `prices(symbols:fiat:)` so the batch path can
+    /// keep several chunks in flight at once.
+    private func fetchChunk(_ chunk: [String], fiat: String) async -> [(String, TokenPrice?)] {
+        await withTaskGroup(of: (String, TokenPrice?).self) { group in
+            for symbol in chunk {
+                group.addTask { [self] in
+                    let p = await self.price(symbol: symbol, fiat: fiat)
+                    return (symbol, p)
+                }
+            }
+            var collected: [(String, TokenPrice?)] = []
+            for await result in group {
+                collected.append(result)
+            }
+            return collected
+        }
     }
 
     // MARK: - Network

@@ -238,6 +238,17 @@ actor RPCClient {
                     lastError = error
                     continue
                 }
+                // 3. Rate limiting (provider 429 OR the local
+                //    limiter's bounded-wait bailout) proves the
+                //    endpoint is alive — just saturated. Rotate to a
+                //    fallback, but never record a breaker failure:
+                //    on the shared client a transient throttle would
+                //    otherwise latch healthy endpoints open for whole
+                //    cooldown windows.
+                if case .rateLimited = error {
+                    lastError = error
+                    continue
+                }
                 lastError = error
                 recordFailure(for: endpoint.id)
                 continue
@@ -371,6 +382,14 @@ actor RPCClient {
                     log.error("RPC failed on \(endpoint.id, privacy: .public): \(String(describing: error), privacy: .public)")
                     continue
                 }
+                // Rate limiting (429 / local limiter bailout) — the
+                // endpoint is alive, just saturated. Rotate without
+                // breaker bookkeeping (see dispatchJSON).
+                if case .rateLimited = error {
+                    lastError = error
+                    log.error("RPC rate-limited on \(endpoint.id, privacy: .public)")
+                    continue
+                }
                 lastError = error
                 recordFailure(for: endpoint.id)
                 log.error("RPC failed on \(endpoint.id, privacy: .public): \(String(describing: error), privacy: .public)")
@@ -413,6 +432,13 @@ actor RPCClient {
                 // propagates FIRST (2026-06-11) — it must never be
                 // recorded as an endpoint failure.
                 if case .cancelled = error { throw error }
+                // Rate limiting (429 / local limiter bailout) — the
+                // endpoint is alive, just saturated. Rotate without
+                // breaker bookkeeping (see dispatchJSON).
+                if case .rateLimited = error {
+                    lastError = error
+                    continue
+                }
                 lastError = error
                 recordFailure(for: endpoint.id)
                 continue
@@ -496,6 +522,13 @@ actor RPCClient {
                 // propagates FIRST (2026-06-11) — it must never be
                 // recorded as an endpoint failure.
                 if case .cancelled = error { throw error }
+                // Rate limiting (429 / local limiter bailout) — the
+                // endpoint is alive, just saturated. Rotate without
+                // breaker bookkeeping (see dispatchJSON).
+                if case .rateLimited = error {
+                    lastError = error
+                    continue
+                }
                 lastError = error
                 recordFailure(for: endpoint.id)
                 continue
