@@ -199,6 +199,7 @@ struct AdvancedSettingsView: View {
         for id in ids {
             try? SeedVault.deleteSeed(for: id)
             try? MnemonicVault.deleteMnemonic(for: id)
+            try? MnemonicVault.deletePrivateKey(for: id)
         }
         // Wipe PIN + biometric state.
         PinCodeStorage.clear()

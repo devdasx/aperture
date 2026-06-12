@@ -57,6 +57,8 @@ enum FreshInstallGuard {
         "com.thuglife.aperture.seed.key",          // SeedVault — AES-GCM keys
         "com.thuglife.aperture.mnemonic.cipher",   // MnemonicVault — encrypted phrases
         "com.thuglife.aperture.mnemonic.key",      // MnemonicVault — AES-GCM keys
+        "com.thuglife.aperture.privatekey.cipher", // MnemonicVault — encrypted imported key strings
+        "com.thuglife.aperture.privatekey.key",    // MnemonicVault — AES-GCM keys (imported keys)
         "com.thuglife.aperture.wallet-manifest",   // WalletManifestStore — wallet list metadata
         "com.thuglife.aperture.pin",               // PinCodeStorage — PBKDF2 hashes + salt
         "com.thuglife.aperture.pin.smoketest",     // PinCodeStorage — DEBUG smoke check

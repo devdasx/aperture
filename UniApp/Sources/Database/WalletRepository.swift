@@ -419,6 +419,7 @@ actor WalletRepository {
         await MainActor.run {
             try? SeedVault.deleteSeed(for: id)
             try? MnemonicVault.deleteMnemonic(for: id)
+            try? MnemonicVault.deletePrivateKey(for: id)
         }
     }
 

@@ -1,20 +1,27 @@
 import SwiftUI
 import SwiftData
 
-/// Full-screen lock surface presented over the wallet home when
+/// Full-screen lock surface shown over the app when
 /// `AutoLockController.isLocked` is `true`. Wraps the canonical
 /// `PinCodeView(mode: .verify)` per Rule #17 § H — same dots, same
 /// keypad, same Face ID fallback position as the create-wallet PIN
 /// screen. Muscle memory IS a security property.
 ///
-/// **Cold launch path:** if the user has a PIN, this presents
-/// immediately as a `.fullScreenCover` over the wallet home before any
-/// data is visible. After successful auth, the cover dismisses and the
-/// wallet home is revealed.
+/// **Hosting (2026-06-13 — detached overlay window).** Rendered by
+/// `LockOverlayRoot` (UniAppApp.swift) inside a dedicated `UIWindow`
+/// layered above the main window. The content tree underneath —
+/// every `NavigationStack`, every presented sheet and
+/// `fullScreenCover` — is never unmounted by a lock; unlocking just
+/// fades this overlay away and the user is exactly where they were.
 ///
-/// **Background-return path:** if elapsed time exceeded
-/// `AutoLockPreference.resolvedDuration(...)`, this presents on the
-/// `.active` phase transition.
+/// **Cold launch path:** if the user has a PIN, this becomes visible
+/// the instant the splash hands off, before any data is visible.
+///
+/// **Background-return path:** if the time spent in `.background`
+/// exceeded `AutoLockPreference.resolvedDuration(...)`, this appears
+/// on the `.active` phase transition, beneath the fading privacy
+/// mask. `.inactive` bounces (system prompts, Face ID sheets) never
+/// arm it.
 ///
 /// **Forgot PIN:** routes to a Rule #16-honest sheet that explains
 /// recovery requires re-importing from the recovery phrase. No "reset

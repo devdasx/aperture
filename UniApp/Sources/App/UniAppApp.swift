@@ -1,15 +1,23 @@
 import SwiftUI
 import SwiftData
 import TipKit
+// UIKit is imported ONLY for the detached lock-overlay `UIWindow` +
+// `UIHostingController` (see `AppRoot.mountLockOverlayWindowIfNeeded`).
+// Rule #12 §B item 5 names a detached `UIWindow` as a legitimate
+// presentation surface; there is no SwiftUI-native way to layer the
+// privacy mask / lock above presented sheets and fullScreenCovers.
+import UIKit
 
 @main
 struct UniAppApp: App {
     /// Shared auto-lock controller. Observes `ScenePhase` and flips
-    /// `isLocked` after the configured idle threshold. Cold-launch
-    /// initializes locked iff PIN is enabled. The wallet-home reads
-    /// the controller via `@Environment(\.autoLockController)` and
-    /// presents `AppLockView` as a `.fullScreenCover` over the entire
-    /// UI when locked.
+    /// `isLocked` after the configured idle threshold (measured from a
+    /// real `.background` entry — `.inactive` bounces from system
+    /// prompts never arm it). Cold-launch initializes locked iff PIN is
+    /// enabled. The detached lock overlay window (see `LockOverlayRoot`
+    /// below) renders `AppLockView` above the untouched content tree
+    /// while locked — content navigation and presented sheets/covers
+    /// survive a lock/unlock cycle intact.
     @State private var lockController = AutoLockController()
 
     @Environment(\.scenePhase) private var scenePhase
@@ -151,39 +159,43 @@ struct UniAppApp: App {
 /// means every off-by-a-frame timing bug in SwiftUI's transition
 /// pipeline could let it peek through.
 ///
-/// The v4 architecture is the apple-native single-root pattern
-/// every banking app on the App Store uses: **exactly one of
-/// splash / lock / home is mounted at any given time, picked by
-/// SwiftUI's `if` / `else if` / `else`.** The wallet home isn't in
-/// the view tree at all while the lock is visible. There is no
-/// race because there is no view to flash.
+/// The v4 architecture was the single-root pattern: **exactly one of
+/// splash / lock / home mounted at any given time, picked by
+/// SwiftUI's `if` / `else if` / `else`.** That eliminated the
+/// "wallet home flashes between splash and lock" race — but it
+/// created a worse one (2026-06-13 user reports): every lock
+/// REPLACED the content tree, so unlocking rebuilt `RootGate` from
+/// scratch — every `NavigationStack` reset, every presented
+/// `fullScreenCover` (the import flow!) dismissed. A paste-
+/// permission prompt with the "Immediately" timer dumped the user
+/// from the recovery-phrase entry back to the main screen.
 ///
-/// SwiftUI's `.animation(_:value:)` on the wrapping container
-/// crossfades the switch between branches — Apple's documented
-/// pattern for state-driven UI swaps. Same primitive Apple Wallet,
-/// Mail's "Mailboxes ↔ Account picker", and Settings' biometric
-/// re-auth sheet all use.
+/// **v5 (2026-06-13) — lock + privacy mask move to a detached
+/// overlay `UIWindow`.** The content branch (`splash` ⟷ `RootGate`)
+/// is the ONLY thing this view mounts; it is never unmounted by a
+/// lock. `AppLockView` + `PrivacyMaskView` render in their own
+/// `UIWindow` (`LockOverlayRoot`) layered above the main window.
+/// Why a window and not a ZStack layer: sheets and fullScreenCovers
+/// present ABOVE the root view's ZStack — a ZStack-layer lock would
+/// be invisible behind the import/create covers, and the app-switcher
+/// snapshot would leak whatever the cover showed. The overlay window
+/// covers everything, and the content tree (including presentations)
+/// survives untouched underneath. Unlock = the overlay fades out;
+/// nothing else changes.
 ///
-/// **Phase machine simplified to one bool**: `isShowingSplash`.
-/// The 3-state `AppPhase` enum (.splash / .transitioning /
-/// .onboarding) is kept ONLY for the environment value that
-/// descendant surfaces still read — populated from
-/// `isShowingSplash ? .splash : .onboarding`. The `.transitioning`
-/// middle state is gone because the if/else swap doesn't need it.
+/// **No flash risk either way:** `AppLockView` owns an opaque
+/// background, mounts instantly (no insertion transition) beneath
+/// the privacy mask, and stays transparent until the splash
+/// finishes — so neither the splash nor the home can peek through.
 ///
-/// **MatchedGeometryEffect dropped.** The fancy splash→onboarding
-/// logo morph was the reason the prior code had to mount both
-/// views simultaneously. Per the user direction (*"not custom"*),
-/// that's the trade — a clean state machine over a polished
-/// element transition. The splash still renders its full
-/// animation; the onboarding logo just fades in at its destination
-/// position with a smooth spring instead of materializing from
-/// the splash logo's frame.
+/// **Phase machine stays one bool**: `isShowingSplash`. The 3-state
+/// `AppPhase` enum (.splash / .transitioning / .onboarding) is kept
+/// ONLY for the environment value that descendant surfaces still
+/// read — populated from `isShowingSplash ? .splash : .onboarding`.
 ///
-/// **Privacy mask retained** as a separate overlay at the top of
-/// the ZStack — its job (hide wallet content from the iOS task
-/// switcher snapshot when scene is inactive) is orthogonal to
-/// which screen is currently active.
+/// **MatchedGeometryEffect dropped** (v4 decision, unchanged). The
+/// splash still renders its full animation; the onboarding logo just
+/// fades in at its destination position with a smooth spring.
 private struct AppRoot: View {
     /// Kept for `SplashView`'s constructor signature. The matched
     /// geometry pairing it powered (with `OnboardingView`'s logo)
@@ -197,74 +209,46 @@ private struct AppRoot: View {
     @State private var isShowingSplash: Bool = true
 
     @Environment(\.autoLockController) private var lockController
-    @Environment(\.scenePhase) private var scenePhase
 
-    /// Live PIN-enabled flag. `@AppStorage` (2026-06-10) so the view
-    /// re-evaluates reactively when the user enables / disables their
-    /// PIN in Settings — the previous bare `UserDefaults` computed
-    /// property only re-read on unrelated body invalidations, leaving
-    /// the privacy-mask gate stale until something else redrew.
-    @AppStorage(PinCodePreference.pinEnabledKey)
-    private var pinEnabled: Bool = PinCodePreference.defaultValue
+    /// The detached overlay window hosting `PrivacyMaskView` +
+    /// `AppLockView` above the main window (see the type doc for why
+    /// this is a window, not a ZStack layer). Created once, on first
+    /// appear, and kept for the app's lifetime. Always visible —
+    /// `LockOverlayRoot` renders nothing (fully transparent) when
+    /// there's nothing to show; touch passthrough is handled by
+    /// toggling `isUserInteractionEnabled` in `syncLockOverlay()`.
+    @State private var lockOverlayWindow: UIWindow?
 
-    /// User preference — Settings → Preferences → "Privacy mask".
-    /// Default ON. When OFF, the privacy mask never mounts, and the
-    /// scene's last-active frame becomes the task-switcher snapshot
-    /// — explicit opt-out the user can flip in Settings.
-    @AppStorage(PrivacyMaskPreference.storageKey)
-    private var privacyMaskEnabled: Bool = PrivacyMaskPreference.defaultValue
-
-    /// `true` whenever the privacy mask should be on screen — any
-    /// time the scene isn't fully active AND the user has PIN
-    /// protection enabled AND they haven't disabled the privacy
-    /// mask in Settings.
-    private var shouldShowPrivacyMask: Bool {
-        pinEnabled && privacyMaskEnabled && scenePhase != .active
+    /// `true` whenever the lock surface is interactive on screen —
+    /// the overlay window must swallow touches exactly then, and
+    /// pass them through to the content window otherwise.
+    private var isLockSurfaceVisible: Bool {
+        !isShowingSplash && lockController.isLocked
     }
 
     var body: some View {
         ZStack {
-            // Single-active-surface root. Exactly one of splash /
-            // lock / home is mounted. SwiftUI's
-            // `.animation(_:value:)` below crossfades when the
-            // discriminating state flips.
+            // Content root: splash, then `RootGate` — and nothing
+            // else, ever. The lock no longer replaces this tree; it
+            // overlays it from the detached window, so every
+            // NavigationStack, sheet, and fullScreenCover survives a
+            // lock/unlock cycle (2026-06-13 fix).
             activeSurface
-
-            // Privacy mask — separate top layer, scene-phase
-            // gated. Covers everything when scene goes inactive.
-            //
-            // **2026-06-09 — `.opacity` transition replaces
-            // `.identity`.** Per user direction: *"it should
-            // navigate also from this screen to pin code screen"*.
-            // The mask now fades out as the scene becomes active,
-            // revealing whatever `activeSurface` resolved to
-            // underneath — which is `AppLockView` when
-            // `isLocked == true` (set by `AutoLockController` while
-            // the scene was inactive). The user reads a smooth
-            // privacy → PIN navigation instead of an instant cut.
-            // Insertion stays `.opacity` symmetric so the mask
-            // fades IN on background too (no harsh snap).
-            if shouldShowPrivacyMask {
-                PrivacyMaskView()
-                    .transition(.opacity)
-                    .zIndex(100)
-            }
         }
-        // 2026-06-09 v4 — `.smooth(duration: 0.55)` spring on each
-        // state-discriminator. SwiftUI crossfades the if/else
-        // branches via the default `.opacity` transition; the
-        // spring controls the timing. Splash → lock / home: one
-        // value-driven animation. Lock → home: another.
+        // `.smooth(duration: 0.55)` spring on the splash → content
+        // crossfade. SwiftUI crossfades the if/else branches via the
+        // default `.opacity` transition; the spring controls timing.
         .animation(.smooth(duration: 0.55), value: isShowingSplash)
-        .animation(.smooth(duration: 0.55), value: lockController.isLocked)
-        // Privacy mask fade duration — slightly tighter than the
-        // splash/lock springs (0.35s vs 0.55s) so the privacy → PIN
-        // handoff feels prompt without being abrupt.
-        .animation(.easeInOut(duration: 0.35), value: shouldShowPrivacyMask)
         // Publish the simplified phase so descendant surfaces
         // still see `.splash` / `.onboarding` as before. The
         // `.transitioning` middle state is gone.
         .environment(\.appPhase, isShowingSplash ? .splash : .onboarding)
+        .onAppear {
+            mountLockOverlayWindowIfNeeded()
+        }
+        .onChange(of: isLockSurfaceVisible) { _, visible in
+            syncLockOverlay(lockVisible: visible)
+        }
     }
 
     @ViewBuilder
@@ -282,17 +266,161 @@ private struct AppRoot: View {
                     // AppStorage opt-out and Reduce Motion.
                     UniHapticEngine.shared.play(.signature(.irisSettle))
                     isShowingSplash = false
+                    // Let the lock overlay take over: on a locked
+                    // cold launch `AppLockView` becomes visible the
+                    // instant the splash hands off (opaque, no
+                    // fade-in — so the splash → home crossfade
+                    // running underneath can never peek through).
+                    lockController.isSplashActive = false
                 }
             )
             .transition(.opacity)
-        } else if lockController.isLocked {
-            AppLockView()
-                .uniAppEnvironment()
-                .transition(.opacity)
         } else {
             RootGate(logoNamespace: logoNamespace, phase: .onboarding)
                 .transition(.opacity)
         }
+    }
+
+    // MARK: - Lock overlay window plumbing
+
+    /// Creates the overlay window on the app's `UIWindowScene`. The
+    /// window hosts `LockOverlayRoot` with the same environment the
+    /// main window gets: the shared lock controller, the SwiftData
+    /// container (`AppLockView` captures a biometric snapshot after a
+    /// successful unlock), and `.uniAppEnvironment()` per Rule #12 §B
+    /// item 5 (a detached `UIWindow` is a presentation surface).
+    private func mountLockOverlayWindowIfNeeded() {
+        guard lockOverlayWindow == nil else { return }
+        guard let scene = UIApplication.shared.connectedScenes
+            .compactMap({ $0 as? UIWindowScene })
+            .first
+        else { return }
+
+        let host = UIHostingController(
+            rootView: LockOverlayRoot()
+                .environment(\.autoLockController, lockController)
+                .modelContainer(ApertureDatabase.shared.container)
+                .uniAppEnvironment()
+        )
+        // The hosting view must be transparent — `UIHostingController`
+        // defaults to an opaque `systemBackground` that would black
+        // out the whole app underneath.
+        host.view.backgroundColor = .clear
+
+        let window = UIWindow(windowScene: scene)
+        window.rootViewController = host
+        // Above the main window AND above anything presented inside
+        // it (sheets, covers, alerts all live in the main window's
+        // presentation hierarchy — window *level* outranks them all).
+        window.windowLevel = .alert + 1
+        window.isHidden = false
+        window.isUserInteractionEnabled = isLockSurfaceVisible
+        lockOverlayWindow = window
+    }
+
+    /// Touch routing for the always-mounted overlay window. iOS skips
+    /// windows with `isUserInteractionEnabled == false` during
+    /// hit-testing, so when nothing is locked the transparent overlay
+    /// is invisible to touches and the content window behaves exactly
+    /// as if the overlay didn't exist.
+    private func syncLockOverlay(lockVisible: Bool) {
+        lockOverlayWindow?.isUserInteractionEnabled = lockVisible
+        guard lockVisible, let scene = lockOverlayWindow?.windowScene else { return }
+        // Drop any active text focus in the content window the moment
+        // the lock lands. The keyboard lives in its own system window
+        // ABOVE the overlay; leaving a field focused would keep the
+        // keyboard floating over the lock and let key taps reach a
+        // hidden input while locked.
+        for contentWindow in scene.windows where contentWindow !== lockOverlayWindow {
+            contentWindow.endEditing(true)
+        }
+    }
+}
+
+// MARK: - Lock overlay root
+
+/// Root view of the detached lock overlay window. Two layers, both
+/// optional, both above EVERYTHING in the main window (including
+/// presented sheets and fullScreenCovers — the reason this lives in
+/// its own window at all):
+///
+/// 1. **`AppLockView`** — mounted while `AutoLockController.isLocked`.
+///    Inserts instantly (it lands beneath the privacy mask on a
+///    background-return, and stays transparent until the splash hands
+///    off on a locked cold launch); fades out over the standard
+///    0.55s smooth spring on unlock, revealing the untouched content
+///    tree underneath.
+/// 2. **`PrivacyMaskView`** — the task-switcher snapshot shield.
+///    Mounted whenever the scene isn't `.active` (mirrored through
+///    `AutoLockController.isSceneActive`, since `\.scenePhase` does
+///    not propagate into a hand-mounted `UIHostingController`), the
+///    user has a PIN, and the mask preference is on. Showing the mask
+///    on `.inactive` is deliberate and correct — the snapshot is taken
+///    from that state; it's the LOCK that must wait for `.background`
+///    (see `AutoLockController.handleScenePhaseChange`).
+private struct LockOverlayRoot: View {
+    @Environment(\.autoLockController) private var lockController
+
+    /// Live PIN-enabled flag — reactive so enabling / disabling the
+    /// PIN in Settings flips the mask gate immediately.
+    @AppStorage(PinCodePreference.pinEnabledKey)
+    private var pinEnabled: Bool = PinCodePreference.defaultValue
+
+    /// User preference — Settings → Preferences → "Privacy mask".
+    /// Default ON. When OFF, the privacy mask never mounts, and the
+    /// scene's last-active frame becomes the task-switcher snapshot
+    /// — explicit opt-out the user can flip in Settings.
+    @AppStorage(PrivacyMaskPreference.storageKey)
+    private var privacyMaskEnabled: Bool = PrivacyMaskPreference.defaultValue
+
+    /// `true` whenever the privacy mask should be on screen — any
+    /// time the scene isn't fully active AND the user has PIN
+    /// protection enabled AND they haven't disabled the privacy mask
+    /// in Settings. Suppressed during the splash: there's nothing
+    /// sensitive to shield yet, and a launch-time `.inactive` beat
+    /// would otherwise flash the mask over the splash animation.
+    private var isMaskVisible: Bool {
+        pinEnabled && privacyMaskEnabled
+            && !lockController.isSceneActive
+            && !lockController.isSplashActive
+    }
+
+    var body: some View {
+        ZStack {
+            if lockController.isLocked {
+                AppLockView()
+                    // Invisible while the splash plays — a locked cold
+                    // launch shows the full splash first, then the
+                    // lock snaps in opaque at the handoff beat (no
+                    // crossfade shimmer of the home underneath).
+                    .opacity(lockController.isSplashActive ? 0 : 1)
+                    // Insert instantly; fade ONLY on unlock. An
+                    // animated insertion would let the content shine
+                    // through a half-opaque lock for half a second.
+                    .transition(.asymmetric(insertion: .identity, removal: .opacity))
+            }
+
+            // Privacy mask — top layer, scene-phase gated.
+            //
+            // **2026-06-09 — `.opacity` transition.** The mask fades
+            // out as the scene becomes active, revealing whatever is
+            // underneath — `AppLockView` when a real background
+            // period exceeded the auto-lock threshold. The user reads
+            // a smooth privacy → PIN navigation instead of an instant
+            // cut. Insertion stays `.opacity` symmetric so the mask
+            // fades IN on backgrounding too (no harsh snap).
+            if isMaskVisible {
+                PrivacyMaskView()
+                    .transition(.opacity)
+                    .zIndex(100)
+            }
+        }
+        // Unlock fade — same 0.55s smooth spring the splash → content
+        // crossfade uses, so the lock's exit reads as one system.
+        .animation(.smooth(duration: 0.55), value: lockController.isLocked)
+        // Privacy mask fade — slightly tighter (0.35s vs 0.55s) so
+        // the privacy → PIN handoff feels prompt without being abrupt.
+        .animation(.easeInOut(duration: 0.35), value: isMaskVisible)
     }
 }
 

@@ -30,8 +30,13 @@ import SwiftUI
 /// motion, no tagline, no loader; the simpler the surface, the less
 /// it competes with the PIN prompt the user is about to read.
 ///
-/// Mounted in `AppRoot`'s ZStack at the topmost `zIndex`. Gated on
-/// `scenePhase != .active && PinCodePreference.isPinEnabled() &&
+/// Mounted in the detached lock overlay window (`LockOverlayRoot`
+/// in UniAppApp.swift, 2026-06-13) at the topmost `zIndex` — above
+/// the main window AND anything presented inside it, so the
+/// task-switcher snapshot is shielded even when a sheet or
+/// fullScreenCover (import flow, receive sheet) is up. Gated on
+/// "scene not active" (mirrored via `AutoLockController.isSceneActive`)
+/// `&& PinCodePreference.isPinEnabled() &&
 /// PrivacyMaskPreference.isEnabled()` — PIN-disabled users don't
 /// need a privacy mask because their wallet was already reachable
 /// without authentication; users who explicitly toggled off

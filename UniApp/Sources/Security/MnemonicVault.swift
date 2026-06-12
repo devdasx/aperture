@@ -3,42 +3,45 @@ import Security
 import CryptoKit
 import OSLog
 
-/// Keychain-backed encrypted storage for BIP-39 mnemonics on **unbacked
-/// wallets only**. Mirrors `SeedVault`'s shape (AES-GCM 256-bit cipher,
+/// Keychain-backed encrypted storage for the **user-readable secret**
+/// behind each wallet — the BIP-39 mnemonic for created / phrase-import
+/// wallets, the original private-key string (hex or WIF) for key-import
+/// wallets. Mirrors `SeedVault`'s shape (AES-GCM 256-bit cipher,
 /// per-wallet symmetric key stored as a separate Keychain item, ACL
-/// `kSecAttrAccessibleWhenPasscodeSetThisDeviceOnly`) but with a
-/// short-lived contract: the mnemonic is stored ONLY for wallets the
-/// user skipped backup on, and is deleted as soon as the user completes
-/// the backup verification.
+/// `kSecAttrAccessibleWhenPasscodeSetThisDeviceOnly`).
 ///
-/// **Why this exists.** BIP-39 derivation is one-way: a stored seed
-/// cannot be reversed to the original mnemonic. So once the user
-/// completes backup verification, the mnemonic is genuinely gone from
-/// the device — only the derived seed remains. For users who *skipped*
-/// backup, they expect to be able to back up later via Settings →
-/// Wallets → "Back up your recovery phrase." That UX requires the
-/// mnemonic to be retrievable. This vault solves that, honestly:
+/// **Why this exists.** Seed/key derivation is one-way: the 64-byte
+/// `SeedVault` slot cannot be reversed to the original mnemonic or the
+/// exact key string the user typed. Anything the user entrusts to
+/// Aperture — generated phrase, imported phrase, imported key — must
+/// remain viewable from Settings → Wallets on this device. The current
+/// contract (per the user's 2026-06-13 direction: "anything user import
+/// via app should be saved in the app locally"):
 ///
-/// 1. Created wallet, **user backs up at create**: mnemonic is NEVER
-///    stored in this vault (the user wrote it down; that's the only
-///    copy).
-/// 2. Created wallet, **user skips backup at create**: mnemonic IS
-///    stored here, encrypted. The skip-backup warning copy is
-///    updated to name this honestly ("Your phrase is stored encrypted
-///    on this iPhone until you back it up — once you back it up, the
-///    local copy is deleted").
-/// 3. Imported wallet (mnemonic): user already has the phrase by
-///    definition. Vault is NOT used.
-/// 4. Imported wallet (private key or watch-only): no mnemonic exists.
-///    Vault is NOT used.
+/// 1. **Created wallet:** mnemonic stored here at persist time, always.
+/// 2. **Imported wallet (mnemonic):** the typed phrase stored here at
+///    import time, always.
+/// 3. **Imported wallet (private key / WIF):** the typed key string
+///    stored here at import time, always (separate Keychain services —
+///    see `storePrivateKey`).
+/// 4. **Watch-only wallet:** no secret exists. Vault is NOT used.
 ///
-/// Per Rule #16 §A.7, this transparency is the difference between
-/// "wallet that helps the user" and "wallet that pretends not to know
-/// the phrase while having it."
+/// Entries are deleted ONLY by wallet deletion
+/// (`WalletDetailView.deleteWallet`, `WalletRepository.deleteWallet`),
+/// Reset Aperture (`AdvancedSettingsView`), and the fresh-install purge
+/// (`FreshInstallGuard`). Per Rule #16 §A.7, this transparency is the
+/// difference between "wallet that helps the user" and "wallet that
+/// pretends not to know the phrase while having it."
 @MainActor
 enum MnemonicVault {
     private static let cipherService = "com.thuglife.aperture.mnemonic.cipher"
     private static let keyService = "com.thuglife.aperture.mnemonic.key"
+    /// Separate services for imported private-key strings so a key
+    /// entry can never be confused with (or shadow) a phrase entry
+    /// for the same wallet id. Both are listed in
+    /// `FreshInstallGuard.knownServices`.
+    private static let privateKeyCipherService = "com.thuglife.aperture.privatekey.cipher"
+    private static let privateKeyKeyService = "com.thuglife.aperture.privatekey.key"
 
     private static let log = Logger(subsystem: "com.thuglife.aperture", category: "mnemonic-vault")
 
@@ -57,8 +60,91 @@ enum MnemonicVault {
     /// joined with single-space separators (matches the
     /// `BIP39.deriveSeed` input shape) and stored as UTF-8 bytes.
     static func storeMnemonic(_ words: [String], for walletId: UUID) throws(VaultError) {
-        let joined = words.joined(separator: " ")
-        guard let plaintext = joined.data(using: .utf8) else { throw .encodingFailed }
+        try storeSecret(
+            words.joined(separator: " "),
+            cipherService: cipherService,
+            keyService: keyService,
+            account: walletId.uuidString
+        )
+    }
+
+    /// Decrypt and return the mnemonic words for `walletId`. Returns
+    /// `nil` if no mnemonic is stored for this wallet (imported-key /
+    /// watch-only kinds, or wallets persisted before the always-store
+    /// policy shipped).
+    static func loadMnemonic(for walletId: UUID) throws(VaultError) -> [String]? {
+        guard let joined = try loadSecret(
+            cipherService: cipherService,
+            keyService: keyService,
+            account: walletId.uuidString
+        ) else { return nil }
+        return joined.split(separator: " ").map(String.init)
+    }
+
+    /// `true` if Keychain holds a mnemonic for `walletId`. Cheap —
+    /// does not decrypt.
+    static func hasMnemonic(for walletId: UUID) -> Bool {
+        (try? readItem(service: cipherService, account: walletId.uuidString)) != nil
+    }
+
+    /// Delete both ciphertext and key for `walletId`. Called by wallet
+    /// deletion / Reset Aperture. Idempotent.
+    static func deleteMnemonic(for walletId: UUID) throws(VaultError) {
+        try deleteItem(service: cipherService, account: walletId.uuidString)
+        try deleteItem(service: keyService, account: walletId.uuidString)
+    }
+
+    // MARK: - Imported private-key strings
+
+    /// Encrypt and store the original private-key string the user
+    /// imported (hex or WIF, exactly as typed after trimming) for
+    /// `walletId`. `SeedVault` holds only the decoded raw bytes, which
+    /// can't be rendered back to the WIF/base58 form the user expects
+    /// to see — this slot preserves the displayable original.
+    static func storePrivateKey(_ keyString: String, for walletId: UUID) throws(VaultError) {
+        try storeSecret(
+            keyString,
+            cipherService: privateKeyCipherService,
+            keyService: privateKeyKeyService,
+            account: walletId.uuidString
+        )
+    }
+
+    /// Decrypt and return the imported private-key string for
+    /// `walletId`. Returns `nil` if none is stored (non-key kinds, or
+    /// key wallets imported before the always-store policy shipped).
+    static func loadPrivateKey(for walletId: UUID) throws(VaultError) -> String? {
+        try loadSecret(
+            cipherService: privateKeyCipherService,
+            keyService: privateKeyKeyService,
+            account: walletId.uuidString
+        )
+    }
+
+    /// `true` if Keychain holds an imported private-key string for
+    /// `walletId`. Cheap — does not decrypt.
+    static func hasPrivateKey(for walletId: UUID) -> Bool {
+        (try? readItem(service: privateKeyCipherService, account: walletId.uuidString)) != nil
+    }
+
+    /// Delete the stored private-key string for `walletId`. Called by
+    /// wallet deletion / Reset Aperture. Idempotent.
+    static func deletePrivateKey(for walletId: UUID) throws(VaultError) {
+        try deleteItem(service: privateKeyCipherService, account: walletId.uuidString)
+        try deleteItem(service: privateKeyKeyService, account: walletId.uuidString)
+    }
+
+    // MARK: - Shared seal/open
+
+    /// Seal `secret` with a fresh AES-GCM 256-bit key and write both
+    /// items to Keychain under the given services.
+    private static func storeSecret(
+        _ secret: String,
+        cipherService: String,
+        keyService: String,
+        account: String
+    ) throws(VaultError) {
+        guard let plaintext = secret.data(using: .utf8) else { throw .encodingFailed }
 
         let key = SymmetricKey(size: .bits256)
         let nonce = AES.GCM.Nonce()
@@ -74,18 +160,21 @@ enum MnemonicVault {
         }
 
         let keyData = key.withUnsafeBytes { Data($0) }
-        try writeItem(service: keyService, account: walletId.uuidString, data: keyData)
-        try writeItem(service: cipherService, account: walletId.uuidString, data: ciphertextBlob)
+        try writeItem(service: keyService, account: account, data: keyData)
+        try writeItem(service: cipherService, account: account, data: ciphertextBlob)
     }
 
-    /// Decrypt and return the mnemonic words for `walletId`. Returns
-    /// `nil` if no mnemonic is stored for this wallet (typical for
-    /// backed-up wallets — by design they have only the seed).
-    static func loadMnemonic(for walletId: UUID) throws(VaultError) -> [String]? {
-        guard let keyData = try readItem(service: keyService, account: walletId.uuidString) else {
+    /// Read + open the sealed secret under the given services. Returns
+    /// `nil` when either item is absent.
+    private static func loadSecret(
+        cipherService: String,
+        keyService: String,
+        account: String
+    ) throws(VaultError) -> String? {
+        guard let keyData = try readItem(service: keyService, account: account) else {
             return nil
         }
-        guard let cipherData = try readItem(service: cipherService, account: walletId.uuidString) else {
+        guard let cipherData = try readItem(service: cipherService, account: account) else {
             return nil
         }
         let key = SymmetricKey(data: keyData)
@@ -98,28 +187,14 @@ enum MnemonicVault {
         }
         do {
             let plaintext = try AES.GCM.open(sealed, using: key)
-            guard let joined = String(data: plaintext, encoding: .utf8) else {
+            guard let secret = String(data: plaintext, encoding: .utf8) else {
                 throw VaultError.decryptionFailed
             }
-            return joined.split(separator: " ").map(String.init)
+            return secret
         } catch {
             log.error("AES-GCM open failed: \(String(describing: error), privacy: .public)")
             throw .decryptionFailed
         }
-    }
-
-    /// `true` if Keychain holds a mnemonic for `walletId`. Cheap —
-    /// does not decrypt.
-    static func hasMnemonic(for walletId: UUID) -> Bool {
-        (try? readItem(service: cipherService, account: walletId.uuidString)) != nil
-    }
-
-    /// Delete both ciphertext and key for `walletId`. Called after
-    /// the user completes backup verification — the local copy is no
-    /// longer needed because the user has the phrase. Idempotent.
-    static func deleteMnemonic(for walletId: UUID) throws(VaultError) {
-        try deleteItem(service: cipherService, account: walletId.uuidString)
-        try deleteItem(service: keyService, account: walletId.uuidString)
     }
 
     // MARK: - Keychain primitives (parallel to SeedVault)
