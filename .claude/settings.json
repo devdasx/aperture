@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "/Users/thuglifex/Documents/UniApp/.claude/hooks/check-new-strings.sh"
+            "command": "\"$CLAUDE_PROJECT_DIR/.claude/hooks/check-new-strings.sh\""
           }
         ]
       }
@@ -16,7 +16,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "/Users/thuglifex/Documents/UniApp/.claude/hooks/audit-rules.sh"
+            "command": "\"$CLAUDE_PROJECT_DIR/.claude/hooks/audit-rules.sh\""
           }
         ]
       }
@@ -26,7 +26,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "cat /Users/thuglifex/Documents/UniApp/.claude/rule-audit.log 2>/dev/null || true"
+            "command": "cat \"$CLAUDE_PROJECT_DIR/.claude/rule-audit.log\" 2>/dev/null || true"
           }
         ]
       }
