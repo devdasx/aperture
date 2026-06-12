@@ -15,31 +15,87 @@ struct XRPLTransactionAdapter: Sendable {
 
     private static let log = Logger(subsystem: "com.thuglife.aperture", category: "xrp-tx-adapter")
 
+    /// **Full history (2026-06-13).** `account_tx` pages with the
+    /// opaque `marker` resume token (echoed back verbatim on the
+    /// next call; absent when history is exhausted). Pages of up to
+    /// 200 envelopes run sequentially through the rate-limited
+    /// `RPCClient` until `limit` events (the per-chain full-history
+    /// cap — logged when hit), no marker, or a mid-pagination
+    /// failure — which keeps the pages already fetched
+    /// (`RPCError.cancelled` still propagates immediately). The
+    /// fetched-envelope budget is also capped at `limit` so an
+    /// account with endless non-Payment traffic can't spin the loop.
     func fetch(address: String, limit: Int) async throws -> [TransactionEvent] {
-        let params: [String: Sendable] = [
-            "account": address,
-            "limit": limit,
-            "ledger_index_min": -1,
-            "ledger_index_max": -1,
-            "binary": false,
-        ]
-        // rippled never echoes the JSON-RPC `id`, so the default
-        // id-echo validation rejects every response and history comes
-        // back permanently empty — opt out for XRPL.
-        let data = try await client.callJSONResultData(
-            chain: .ripple,
-            method: "account_tx",
-            params: [params],
-            validatesIDEcho: false
-        )
-        guard let result = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
-              let transactions = result["transactions"] as? [[String: Any]] else {
-            return []
-        }
-
+        /// rippled clamps non-admin `account_tx` pages well below
+        /// this; 200 is the commonly-honored public-server maximum.
+        let pageSize = min(limit, 200)
         var events: [TransactionEvent] = []
-        events.reserveCapacity(min(transactions.count, limit))
-        for envelope in transactions.prefix(limit) {
+        var marker: Sendable?
+        var fetchedEnvelopes = 0
+        var isFirstPage = true
+        while events.count < limit && fetchedEnvelopes < limit {
+            if Task.isCancelled { throw RPCError.cancelled }
+            var params: [String: Sendable] = [
+                "account": address,
+                "limit": pageSize,
+                "ledger_index_min": -1,
+                "ledger_index_max": -1,
+                "binary": false,
+            ]
+            if let marker { params["marker"] = marker }
+            // rippled never echoes the JSON-RPC `id`, so the default
+            // id-echo validation rejects every response and history comes
+            // back permanently empty — opt out for XRPL.
+            let data: Data
+            do {
+                data = try await client.callJSONResultData(
+                    chain: .ripple,
+                    method: "account_tx",
+                    params: [params],
+                    validatesIDEcho: false
+                )
+            } catch {
+                if case .cancelled = error { throw error }
+                if isFirstPage { throw error }
+                Self.log.warning("account_tx page failed — keeping \(events.count, privacy: .public) events")
+                break
+            }
+            guard let result = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
+                  let transactions = result["transactions"] as? [[String: Any]] else {
+                break
+            }
+            // An empty page can't advance the envelope budget — stop
+            // rather than spin on a marker that yields nothing.
+            if transactions.isEmpty { break }
+            fetchedEnvelopes += transactions.count
+            appendEvents(from: transactions, address: address, limit: limit, into: &events)
+            // No marker = history exhausted; an un-echoable marker
+            // (shape we can't mirror into Sendable) also ends the
+            // walk honestly rather than looping on page 1.
+            guard let rawMarker = result["marker"],
+                  let nextMarker = Self.sendableJSON(rawMarker) else { break }
+            marker = nextMarker
+            isFirstPage = false
+            if events.count >= limit || fetchedEnvelopes >= limit {
+                // Honest bound: RealRPCTransactionScanner.fullHistoryCap.
+                Self.log.info("XRPL account_tx hit the \(limit, privacy: .public)-row full-history cap — older rows not fetched this scan")
+            }
+        }
+        return events
+    }
+
+    /// Parse one `account_tx` page of envelopes into events,
+    /// appending until `limit`. Extracted verbatim from the previous
+    /// single-page `fetch` body so pagination wraps it unchanged.
+    private func appendEvents(
+        from transactions: [[String: Any]],
+        address: String,
+        limit: Int,
+        into events: inout [TransactionEvent]
+    ) {
+        events.reserveCapacity(min(events.count + transactions.count, limit))
+        for envelope in transactions {
+            if events.count >= limit { break }
             // XRPL wraps each entry as `{ tx: {...}, meta: {...}, validated: true }`.
             // Older nodes use `tx_json` instead of `tx`.
             let tx = (envelope["tx"] as? [String: Any])
@@ -147,7 +203,51 @@ struct XRPLTransactionAdapter: Sendable {
                 fee: fee
             ))
         }
-        return events
+    }
+
+    /// Mirror a JSON fragment (as produced by `JSONSerialization`)
+    /// into `Sendable`-typed values so it can be echoed back in the
+    /// next request's params. rippled's `account_tx` `marker` is an
+    /// opaque token — a string on some servers, an object
+    /// (`{"ledger": n, "seq": n}`) on others — and the spec requires
+    /// passing it back EXACTLY as received. Returns `nil` for any
+    /// fragment that can't be mirrored losslessly (the caller then
+    /// stops paginating rather than sending a corrupted marker).
+    private static func sendableJSON(_ value: Any) -> Sendable? {
+        switch value {
+        case let string as String:
+            return string
+        case let number as NSNumber:
+            // JSONSerialization vends booleans as the shared
+            // CFBoolean singletons; everything else mirrors as
+            // Int64 (ledger/seq markers) or Double.
+            if number === kCFBooleanTrue || number === kCFBooleanFalse {
+                return number.boolValue
+            }
+            let objCType = String(cString: number.objCType)
+            if objCType == "d" || objCType == "f" {
+                return number.doubleValue
+            }
+            return number.int64Value
+        case let array as [Any]:
+            var out: [Sendable] = []
+            out.reserveCapacity(array.count)
+            for element in array {
+                guard let mirrored = sendableJSON(element) else { return nil }
+                out.append(mirrored)
+            }
+            return out
+        case let dictionary as [String: Any]:
+            var out: [String: Sendable] = [:]
+            out.reserveCapacity(dictionary.count)
+            for (key, element) in dictionary {
+                guard let mirrored = sendableJSON(element) else { return nil }
+                out[key] = mirrored
+            }
+            return out
+        default:
+            return nil
+        }
     }
 
     /// Resolve the display symbol for an issued currency. The

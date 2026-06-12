@@ -33,6 +33,43 @@ actor PriceCacheRepository {
         try modelContext.save()
     }
 
+    /// Bulk upsert — one fetch + one save for a whole refresh's worth
+    /// of live quotes (the `TokenPricingEngine` writes every freshly
+    /// resolved `(symbol, currency)` price here so the per-currency
+    /// cache rung can answer after a provider failure). Same
+    /// fetch-then-update semantics as the single `upsert`, amortized
+    /// across one actor hop.
+    func upsertMany(_ entries: [(symbol: String, fiat: String, price: Decimal, source: String)]) throws {
+        guard !entries.isEmpty else { return }
+        let keys = entries.map { "\($0.symbol)-\($0.fiat)" }
+        var descriptor = FetchDescriptor<CachedPriceRecord>(
+            predicate: #Predicate { keys.contains($0.key) }
+        )
+        descriptor.fetchLimit = keys.count
+        var existingByKey: [String: CachedPriceRecord] = [:]
+        for record in try modelContext.fetch(descriptor) {
+            existingByKey[record.key] = record
+        }
+        let now = Date()
+        for entry in entries {
+            let key = "\(entry.symbol)-\(entry.fiat)"
+            if let record = existingByKey[key] {
+                record.price = entry.price
+                record.fetchedAt = now
+                record.source = entry.source
+            } else {
+                modelContext.insert(CachedPriceRecord(
+                    symbol: entry.symbol,
+                    fiat: entry.fiat,
+                    price: entry.price,
+                    fetchedAt: now,
+                    source: entry.source
+                ))
+            }
+        }
+        try modelContext.save()
+    }
+
     /// Last-known price for a `(symbol, fiat)` pair. Returns `nil` if
     /// never fetched. The wallet screen reads this synchronously on
     /// view-mount for the zero-latency fiat display, then fires a

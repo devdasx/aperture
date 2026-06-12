@@ -32,6 +32,18 @@ struct RealRPCTransactionScanner: TransactionScanner {
 
     private static let log = Logger(subsystem: "com.thuglife.aperture", category: "tx-scanner")
 
+    /// **The honest full-history bound (2026-06-13).** The bulk
+    /// `scan` path — the one that persists into SwiftData and feeds
+    /// the balance chart — fetches the wallet's FULL transaction
+    /// history via per-chain pagination, hard-capped at this many
+    /// events per chain per scan. The cap is a safety rail against
+    /// pathological accounts (exchanges, airdrop magnets with tens
+    /// of thousands of rows) hammering free public endpoints; each
+    /// adapter logs when it stops at the cap so the truncation is
+    /// never silent. Wallets under the cap — the overwhelming
+    /// majority — get every transaction they have.
+    static let fullHistoryCap = 1_000
+
     let client: RPCClient
 
     init(client: RPCClient = RPCClient.shared) {
@@ -47,26 +59,38 @@ struct RealRPCTransactionScanner: TransactionScanner {
         await scan(addresses: addresses, limit: limit, customContractsByChain: [:])
     }
 
+    /// **Full-depth contract (2026-06-13).** The bulk scan is the
+    /// persistence path (`WalletRefreshCoordinator` upserts every
+    /// returned event into SwiftData, and the balance chart is
+    /// rebuilt purely from those rows) — so a shallow `limit` here
+    /// silently erased historical peaks from the chart (the
+    /// user's 10,000-USDT receive never appeared because only the
+    /// newest 25 rows were ever fetched). The caller's `limit` is
+    /// therefore treated as a FLOOR: the effective per-chain depth
+    /// is `max(limit, fullHistoryCap)`. `streamScan` (the
+    /// test-mode live feed) keeps the caller's literal limit — a
+    /// preview feed doesn't need a thousand rows.
     func scan(
         addresses: [SupportedChain: String],
         limit: Int,
         customContractsByChain: [SupportedChain: [String]]
     ) async -> [TransactionEvent] {
-        await withTaskGroup(of: [TransactionEvent].self) { group in
+        let depth = max(limit, Self.fullHistoryCap)
+        return await withTaskGroup(of: [TransactionEvent].self) { group in
             for (chain, address) in addresses {
                 let custom = customContractsByChain[chain] ?? []
                 group.addTask { [client] in
                     await Self.fetch(
                         chain: chain,
                         address: address,
-                        limit: limit,
+                        limit: depth,
                         client: client,
                         customContracts: custom
                     )
                 }
             }
             var events: [TransactionEvent] = []
-            events.reserveCapacity(addresses.count * limit)
+            events.reserveCapacity(addresses.count * min(depth, 64))
             for await batch in group {
                 events.append(contentsOf: batch)
             }

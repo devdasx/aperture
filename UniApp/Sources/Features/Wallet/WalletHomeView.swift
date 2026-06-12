@@ -393,6 +393,11 @@ struct WalletHomeView: View {
 
     @State private var pendingSwitcherFollowUp: SwitcherFollowUp?
 
+    /// Tracked currency-change pipeline (re-price + refresh). A rapid
+    /// second currency flip cancels the first pass so two re-prices
+    /// never interleave writes for different currencies.
+    @State private var currencyChangeTask: Task<Void, Never>?
+
     init() {
         // Last-screen restoration seed (2026-06-13). `@State` reads
         // its initial value only when the view's identity is fresh —
@@ -552,7 +557,18 @@ struct WalletHomeView: View {
                     ScreenRestoration.saveWalletHomePath(newPath)
                 }
                 .onChange(of: currencyCode) { _, _ in
+                    // Labels react immediately (the hero + unheld rows
+                    // read `currencyCode` directly)…
                     rebuildDisplayRows()
+                    // …and the VALUES re-price right behind them
+                    // (2026-06-13): a fast re-price of the persisted
+                    // balances into the new currency (one price batch,
+                    // no chain rescan — see `WalletRefreshCoordinator
+                    // .repriceWallet` for the pricing ladder), then a
+                    // full refresh that cancel-and-replaces any
+                    // pipeline still pricing in the previous currency.
+                    currencyChangeTask?.cancel()
+                    currencyChangeTask = Task { await repriceForCurrencyChange() }
                 }
                 .onChange(of: balanceRowsRevision) { _, _ in
                     rebuildDisplayRows()
@@ -2106,8 +2122,17 @@ struct WalletHomeView: View {
         return result.sorted { $0.1.fiatValueCached > $1.1.fiatValueCached }
     }
 
+    /// Hero total. Sums ONLY rows whose persisted fiat is denominated
+    /// in the ACTIVE currency — the hero formats with `currencyCode`,
+    /// so adding a row still carrying the previous currency's value
+    /// would render 35 JOD as "$35" (the 2026-06-13 currency-change
+    /// bug). Rows in the old currency drop out of the total for the
+    /// brief window until `repriceWallet` re-denominates them.
     private var totalFiat: Decimal {
-        balances.reduce(Decimal.zero) { running, entry in running + entry.balance.fiatValueCached }
+        balances.reduce(Decimal.zero) { running, entry in
+            guard entry.balance.fiatCurrencyCode == currencyCode else { return running }
+            return running + entry.balance.fiatValueCached
+        }
     }
 
     /// Distinct chains with at least one non-zero balance row. Used by
@@ -2331,6 +2356,44 @@ struct WalletHomeView: View {
             if userInitiated, !refreshState.isRefreshing {
                 UniHapticEngine.shared.play(.signature(.irisSettle))
             }
+        }
+    }
+
+    /// Currency-change pipeline (2026-06-13). Two phases:
+    ///
+    /// 1. **Fast re-price** — `WalletRefreshCoordinator.repriceWallet`
+    ///    re-values every persisted balance row into the new currency
+    ///    via the `TokenPricingEngine` ladder (Coinbase → per-currency
+    ///    cache → CoinGecko → balance-derived FX cross). One price
+    ///    batch, no chain rescan — the hero and rows heal in seconds.
+    /// 2. **Full refresh** — the normal coordinator pipeline, which
+    ///    prices in the active currency end-to-end. Called with
+    ///    `userInitiated: true` so an in-flight pipeline still
+    ///    pricing in the PREVIOUS currency is cancelled and replaced
+    ///    — joining it (the registry's default dedupe) would let
+    ///    old-currency rows land on top of the re-price. No settle
+    ///    haptic: the user's gesture was a Settings tap, not a pull.
+    private func repriceForCurrencyChange() async {
+        guard !isTestMode else { return }
+        guard let walletId = await resolveRefreshWalletId() else { return }
+        let coordinator = WalletRefreshCoordinator(container: modelContext.container)
+        await coordinator.repriceWallet(walletId: walletId, fiatCode: currencyCode)
+        guard !Task.isCancelled else { return }
+        await MainActor.run {
+            // Value-only updates don't move the count proxies —
+            // rebuild the memoized projections explicitly.
+            rebuildDisplayRows()
+        }
+        guard !Task.isCancelled else { return }
+        await coordinator.refreshWallet(
+            walletId: walletId,
+            fiatCode: currencyCode,
+            userInitiated: true
+        )
+        guard !Task.isCancelled else { return }
+        await MainActor.run {
+            rebuildDisplayRows()
+            rebuildTransactionRows()
         }
     }
 

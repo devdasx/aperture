@@ -19,31 +19,83 @@ struct TronTransactionAdapter: Sendable {
     func fetch(address: String, limit: Int) async throws -> [TransactionEvent] {
         // Native + TRC-20 fan out in parallel. `try?` on each await
         // so a single failing endpoint doesn't cancel the other.
+        // (Each stream pages SEQUENTIALLY inside itself; the
+        // parallelism here is only the two streams.)
         async let nativeEventsRaw = fetchNative(address: address, limit: limit)
         async let trc20EventsRaw = fetchTRC20(address: address, limit: limit)
         let native = (try? await nativeEventsRaw) ?? []
         let trc20 = (try? await trc20EventsRaw) ?? []
         let combined = native + trc20
+        if combined.count > limit {
+            // Honest bound: RealRPCTransactionScanner.fullHistoryCap.
+            Self.log.info("Combined TRX+TRC-20 history (\(combined.count, privacy: .public) rows) exceeds the \(limit, privacy: .public)-row full-history cap — oldest rows truncated")
+        }
         return combined
             .sorted { $0.occurredAt > $1.occurredAt }
             .prefix(limit)
             .map { $0 }
     }
 
+    /// **Full history (2026-06-13).** TronGrid pages with the opaque
+    /// `fingerprint` cursor returned under `meta.fingerprint`
+    /// (absent when history is exhausted); per-page maximum is 200.
+    /// Pages run sequentially through the rate-limited `RPCClient`
+    /// until `limit` events (the per-chain full-history cap — logged
+    /// when hit), no fingerprint, or a mid-pagination failure —
+    /// which keeps the pages already fetched (`RPCError.cancelled`
+    /// still propagates immediately). Same contract for the TRC-20
+    /// sibling below.
     private func fetchNative(address: String, limit: Int) async throws -> [TransactionEvent] {
         let path = "/v1/accounts/\(address)/transactions"
-        let query: [URLQueryItem] = [
-            URLQueryItem(name: "limit", value: String(limit)),
-            URLQueryItem(name: "only_confirmed", value: "true"),
-        ]
-        let data = try await client.callREST(chain: .tron, path: path, query: query)
-        guard let root = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
-              let txs = root["data"] as? [[String: Any]] else {
-            return []
-        }
+        let pageSize = min(limit, 200)
         var events: [TransactionEvent] = []
-        events.reserveCapacity(txs.count)
+        var fingerprint: String?
+        while events.count < limit {
+            var query: [URLQueryItem] = [
+                URLQueryItem(name: "limit", value: String(pageSize)),
+                URLQueryItem(name: "only_confirmed", value: "true"),
+            ]
+            if let fingerprint {
+                query.append(URLQueryItem(name: "fingerprint", value: fingerprint))
+            }
+            let data: Data
+            do {
+                data = try await client.callREST(chain: .tron, path: path, query: query)
+            } catch {
+                if case .cancelled = error { throw error }
+                if fingerprint == nil { throw error }
+                Self.log.warning("TronGrid native page failed — keeping \(events.count, privacy: .public) events")
+                break
+            }
+            guard let root = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
+                  let txs = root["data"] as? [[String: Any]] else {
+                break
+            }
+            if txs.isEmpty { break }
+            appendNativeEvents(from: txs, address: address, limit: limit, into: &events)
+            let meta = root["meta"] as? [String: Any]
+            guard let next = meta?["fingerprint"] as? String, next != fingerprint else { break }
+            fingerprint = next
+            if events.count >= limit {
+                // Honest bound: RealRPCTransactionScanner.fullHistoryCap.
+                Self.log.info("TronGrid native history hit the \(limit, privacy: .public)-event full-history cap — older rows not fetched this scan")
+            }
+        }
+        return events
+    }
+
+    /// Parse one TronGrid native page, appending events until
+    /// `limit`. Extracted verbatim from the previous single-page
+    /// `fetchNative` body so pagination wraps it unchanged.
+    private func appendNativeEvents(
+        from txs: [[String: Any]],
+        address: String,
+        limit: Int,
+        into events: inout [TransactionEvent]
+    ) {
+        events.reserveCapacity(min(events.count + txs.count, limit))
         for tx in txs {
+            if events.count >= limit { break }
             guard let txID = tx["txID"] as? String,
                   let rawData = tx["raw_data"] as? [String: Any],
                   let contracts = rawData["contract"] as? [[String: Any]],
@@ -100,22 +152,60 @@ struct TronTransactionAdapter: Sendable {
                 fee: nil
             ))
         }
+    }
+
+    /// TRC-20 history. Same `fingerprint` pagination contract as
+    /// `fetchNative` — see its doc comment.
+    private func fetchTRC20(address: String, limit: Int) async throws -> [TransactionEvent] {
+        let path = "/v1/accounts/\(address)/transactions/trc20"
+        let pageSize = min(limit, 200)
+        var events: [TransactionEvent] = []
+        var fingerprint: String?
+        while events.count < limit {
+            var query: [URLQueryItem] = [
+                URLQueryItem(name: "limit", value: String(pageSize)),
+                URLQueryItem(name: "only_confirmed", value: "true"),
+            ]
+            if let fingerprint {
+                query.append(URLQueryItem(name: "fingerprint", value: fingerprint))
+            }
+            let data: Data
+            do {
+                data = try await client.callREST(chain: .tron, path: path, query: query)
+            } catch {
+                if case .cancelled = error { throw error }
+                if fingerprint == nil { throw error }
+                Self.log.warning("TronGrid TRC-20 page failed — keeping \(events.count, privacy: .public) events")
+                break
+            }
+            guard let root = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
+                  let txs = root["data"] as? [[String: Any]] else {
+                break
+            }
+            if txs.isEmpty { break }
+            appendTRC20Events(from: txs, address: address, limit: limit, into: &events)
+            let meta = root["meta"] as? [String: Any]
+            guard let next = meta?["fingerprint"] as? String, next != fingerprint else { break }
+            fingerprint = next
+            if events.count >= limit {
+                // Honest bound: RealRPCTransactionScanner.fullHistoryCap.
+                Self.log.info("TronGrid TRC-20 history hit the \(limit, privacy: .public)-event full-history cap — older rows not fetched this scan")
+            }
+        }
         return events
     }
 
-    private func fetchTRC20(address: String, limit: Int) async throws -> [TransactionEvent] {
-        let path = "/v1/accounts/\(address)/transactions/trc20"
-        let query: [URLQueryItem] = [
-            URLQueryItem(name: "limit", value: String(limit)),
-            URLQueryItem(name: "only_confirmed", value: "true"),
-        ]
-        let data = try await client.callREST(chain: .tron, path: path, query: query)
-        guard let root = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
-              let txs = root["data"] as? [[String: Any]] else {
-            return []
-        }
-        var events: [TransactionEvent] = []
+    /// Parse one TronGrid TRC-20 page, appending events until
+    /// `limit`. Extracted verbatim from the previous single-page
+    /// `fetchTRC20` body so pagination wraps it unchanged.
+    private func appendTRC20Events(
+        from txs: [[String: Any]],
+        address: String,
+        limit: Int,
+        into events: inout [TransactionEvent]
+    ) {
         for tx in txs {
+            if events.count >= limit { break }
             guard let txID = tx["transaction_id"] as? String,
                   let from = tx["from"] as? String,
                   let to = tx["to"] as? String,
@@ -171,7 +261,6 @@ struct TronTransactionAdapter: Sendable {
                 fee: nil
             ))
         }
-        return events
     }
 
     /// Tron raw addresses are hex with a `41` prefix; the user-facing

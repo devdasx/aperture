@@ -269,13 +269,22 @@ struct MnemonicEntryView: View {
                 .presentationBackground(UniColors.Background.primary)
         }
         .sheet(isPresented: $isShowingPassphraseSheet) {
+            // Unified intrinsic-height sheet (Rule #18's
+            // `.intrinsicHeightSheet()`), matching the create flow's
+            // PassphraseSheet call site in `RecoveryPhraseView` exactly.
+            // A fixed `.medium` detent clipped the passphrase field and
+            // overlapped the Save/Cancel CTAs once the keyboard rose
+            // (user screenshot 2026-06-13) — the content-sized detent
+            // with `.large` fallback lets `UniSheet`'s inner ScrollView
+            // absorb keyboard-compressed space instead of clipping.
+            // The modifier owns the detents and drag indicator; do not
+            // re-add `.presentationDetents` here.
             PassphraseSheet(
                 passphrase: $state.mnemonicPassphrase,
                 onDismiss: { isShowingPassphraseSheet = false }
             )
             .uniAppEnvironment()
-            .presentationDetents([.medium])
-            .presentationDragIndicator(.visible)
+            .intrinsicHeightSheet()
             .presentationBackground(UniColors.Background.primary)
         }
         .sheet(isPresented: $isShowingLeakedWarning) {
