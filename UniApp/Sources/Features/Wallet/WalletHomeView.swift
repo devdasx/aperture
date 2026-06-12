@@ -2293,11 +2293,18 @@ struct WalletHomeView: View {
             // through `UniHapticEngine` so the AppStorage toggle
             // and Reduce Motion are both honored.
             //
-            // Skipped while a replacement pipeline is still running
-            // (this run was cancelled by a user pull, or superseded
-            // by a wallet switch) — "settled" before the spinner
-            // stops would be a lie in the hand (2026-06-12).
-            if !refreshState.isRefreshing {
+            // **userInitiated-only (2026-06-12).** Silent automatic
+            // refreshes (on appear, on wallet switch, post-import)
+            // used to fire this too — a phantom buzz with no touch
+            // behind it (part of the user's "haptics while doing
+            // nothing" report). A settle haptic answers the user's
+            // own pull; the system's background work stays silent.
+            //
+            // Also skipped while a replacement pipeline is still
+            // running (this run was cancelled by a user pull, or
+            // superseded by a wallet switch) — "settled" before the
+            // spinner stops would be a lie in the hand (2026-06-12).
+            if userInitiated, !refreshState.isRefreshing {
                 UniHapticEngine.shared.play(.signature(.irisSettle))
             }
         }
