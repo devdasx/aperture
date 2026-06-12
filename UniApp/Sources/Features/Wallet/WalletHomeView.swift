@@ -193,6 +193,50 @@ struct WalletHomeView: View {
     // retired in the same change.
     @State private var isRefreshing: Bool = false
 
+    /// Shared refresh-outcome surface (2026-06-12). The coordinator
+    /// publishes the chains whose balance scan yielded nothing (after
+    /// its bounded retry pass) here; this view reads it to choose
+    /// between the normal holdings list, the partial-failure
+    /// footnote, and the total-failure "Couldn't reach the network"
+    /// state. `@Observable` — property reads in `body` register
+    /// dependencies; no `@State` wrapper needed for a singleton.
+    private let refreshState = WalletRefreshState.shared
+
+    /// `true` while any refresh pipeline is in flight — the local
+    /// flag covers refreshes this view started; the shared flag
+    /// covers a replacement pipeline still running after a cancelled
+    /// run's completion flipped the local flag back early.
+    private var isAnyRefreshInFlight: Bool {
+        isRefreshing || refreshState.isRefreshing
+    }
+
+    /// The published refresh outcome only speaks for the wallet it
+    /// ran against — never let wallet A's failure paint wallet B.
+    private var refreshOutcomeAppliesToActiveWallet: Bool {
+        refreshState.lastRefreshWalletId != nil
+            && refreshState.lastRefreshWalletId == activeWallet?.id
+    }
+
+    /// Total failure on a wallet with nothing persisted (the fresh
+    /// import whose every chain failed): rendering the all-supported
+    /// $0.00 list would claim "you hold nothing" when the truth is
+    /// "we couldn't ask." Show the honest error state instead.
+    private var showsNetworkErrorState: Bool {
+        !isTestMode
+            && refreshOutcomeAppliesToActiveWallet
+            && !refreshState.lastRefreshFailedChains.isEmpty
+            && allHeldRows.isEmpty
+    }
+
+    /// Some chains reported, some didn't — the successful rows render
+    /// normally and one quiet footnote keeps the surface honest.
+    private var showsPartialNetworkFootnote: Bool {
+        !isTestMode
+            && refreshOutcomeAppliesToActiveWallet
+            && !refreshState.lastRefreshFailedChains.isEmpty
+            && !allHeldRows.isEmpty
+    }
+
     // MARK: - Long-press wallet switcher (the Telegram / Instagram pattern)
     //
     // 2026-06-09 — the long-press context menu lives on the toolbar
@@ -393,7 +437,7 @@ struct WalletHomeView: View {
                 }
                 .navigationDestination(for: WalletHomeDestination.self) { destination in
                     switch destination {
-                    case .send:                                 SendPlaceholderView()
+                    case .send:                                 SendFlowView()
                     case .swap:                                 SwapPlaceholderView()
                     case .transaction(let id):                  TransactionDetailView(transactionId: id)
                     case .allSupported:                         AllSupportedAssetsView()
@@ -418,8 +462,11 @@ struct WalletHomeView: View {
                 // gesture + release-haptic + cancellation. The
                 // 2026-06-09 Lottie indicator was reverted per
                 // user direction.
-                .refreshable { await runRefresh() }
-                .task {
+                // User-initiated: a pull against a wedged in-flight
+                // pipeline CANCELS it and starts fresh instead of
+                // silently joining the stall (2026-06-12).
+                .refreshable { await runRefresh(userInitiated: true) }
+                .task(id: activeWalletIdRaw) {
                     ensureActiveWalletSet()
                     // Seed the memoized projections before the first
                     // refresh lands so the home renders the persisted
@@ -428,16 +475,23 @@ struct WalletHomeView: View {
                     rebuildFilterInputs()
                     rebuildDisplayRows()
                     rebuildTransactionRows()
-                    // Auto-refresh on appear so the wallet shows live
-                    // balances + transaction history without forcing
-                    // the user to pull-to-refresh on every open. Runs
-                    // once per view lifecycle (`.task` semantics) so
-                    // it doesn't thrash the RPC providers on every
-                    // re-render. The refresh is silent unless it
-                    // produces a change — the user sees the
-                    // `mostRecentScanAt` footer tick over honestly.
+                    // Auto-refresh on appear AND on active-wallet
+                    // change so the wallet shows live balances +
+                    // transaction history without forcing the user
+                    // to pull-to-refresh. `.task(id:)` re-fires when
+                    // `activeWalletIdRaw` flips — a freshly imported
+                    // or switched-to wallet gets its balance and
+                    // history fetch immediately (2026-06-12; the
+                    // prior id-less `.task` ran once per view
+                    // lifecycle, so an import landed on a home that
+                    // never scanned it). The refresh registry dedupes
+                    // concurrent same-wallet refreshes, so racing the
+                    // import flow's own scan is safe. The refresh is
+                    // silent unless it produces a change — the user
+                    // sees the `mostRecentScanAt` footer tick over
+                    // honestly.
                     //
-                    // Test mode does its own scan via the toolbar
+                    // Test mode does its own scan via the Settings
                     // toggle; we guard against double-firing here.
                     guard !isTestMode else { return }
                     await runRefresh()
@@ -481,6 +535,25 @@ struct WalletHomeView: View {
                 }
                 .onChange(of: transactionRowsRevision) { _, _ in
                     rebuildTransactionRows()
+                }
+                .onChange(of: refreshState.isRefreshing) { wasRefreshing, isRefreshing in
+                    // A refresh pipeline this view did NOT await just
+                    // completed — the import flow's post-persist
+                    // refresh, or a replacement pipeline after a
+                    // cancelled pull. The post-`runRefresh` rebuild
+                    // never runs for those, and a re-pricing pass can
+                    // change row CONTENT without moving the count
+                    // proxies above. Rebuild when the completed
+                    // refresh belongs to the active wallet
+                    // (2026-06-12). One cheap call per refresh
+                    // completion — no per-frame work.
+                    guard wasRefreshing, !isRefreshing else { return }
+                    guard let completedId = refreshState.lastRefreshWalletId else { return }
+                    let activeId = UUID(uuidString: activeWalletIdRaw) ?? activeWallet?.id
+                    if completedId == activeId {
+                        rebuildDisplayRows()
+                        rebuildTransactionRows()
+                    }
                 }
         }
         // Settings is now reached via the four-tab shell (`MainTabView`
@@ -692,6 +765,12 @@ struct WalletHomeView: View {
     private var holdingsBody: some View {
         if isTestMode {
             holdingsListSection
+        } else if showsNetworkErrorState {
+            // Fresh wallet + total scan failure — nothing persisted,
+            // so the all-supported $0.00 list would be a lie. Show
+            // the honest error state with a Retry CTA instead
+            // (2026-06-12).
+            networkErrorSection
         } else {
             switch filterViewMode {
             case .split:
@@ -701,6 +780,9 @@ struct WalletHomeView: View {
                 }
             case .combined:
                 combinedSection
+            }
+            if showsPartialNetworkFootnote {
+                partialNetworkFootnoteSection
             }
         }
     }
@@ -815,7 +897,10 @@ struct WalletHomeView: View {
                 ? TestAddresses.map.count
                 : WalletFormatting.chainCount(activeWallet?.addresses ?? []),
             hasAnyBalance: isTestMode ? !testBalances.isEmpty : !balances.isEmpty,
-            isRefreshing: isRefreshing,
+            // Local OR shared — a user pull that replaced a wedged
+            // pipeline keeps the header honest about the replacement
+            // still running (2026-06-12).
+            isRefreshing: isAnyRefreshInFlight,
             lastSyncedAt: mostRecentScanAt,
             hideBalance: hideBalanceOnHome,
             onSwitchWallet: { isShowingSwitcher = true }
@@ -895,7 +980,10 @@ struct WalletHomeView: View {
             // visual noise; the filter sheet's "Style → Combined"
             // choice IS the affordance, and the picker disappears
             // to honor it.
-            if !isTestMode && filterViewMode == .split {
+            // Also hidden while the total-failure error state owns
+            // the holdings region — switching Coins/Tokens over an
+            // error card would be a no-op (2026-06-12).
+            if !isTestMode && filterViewMode == .split && !showsNetworkErrorState {
                 holdingsTabPicker
                     .listRowBackground(Color.clear)
                     .listRowSeparator(.hidden)
@@ -1284,6 +1372,69 @@ struct WalletHomeView: View {
             .listRowInsets(EdgeInsets())
         } header: {
             Text("Holdings")
+        }
+    }
+
+    // MARK: - Network failure surfaces (2026-06-12)
+
+    /// Honest total-failure state. Appears only when the most recent
+    /// completed refresh for THIS wallet left failed chains AND no
+    /// balance row has ever persisted (fresh import, every chain
+    /// unreachable). Same `UniEmptyState` primitive as the calm empty
+    /// surfaces so the error reads as part of the family — restrained,
+    /// not alarming (Rule #16 §B: no red as decoration; an unreachable
+    /// network is a circumstance, not an error of the user's making).
+    /// Retry is a real CTA per Rule #19 — `UniButton(.secondary)`
+    /// driving the same user-initiated path as pull-to-refresh, so a
+    /// wedged pipeline is cancelled rather than joined.
+    @ViewBuilder
+    private var networkErrorSection: some View {
+        Section {
+            UniEmptyState(
+                title: "Couldn't reach the network",
+                detail: "Your balances will appear once Aperture can reach the chains.",
+                mark: .icon(systemName: "wifi.slash")
+            )
+            .listRowBackground(Color.clear)
+            .listRowSeparator(.hidden)
+            .listRowInsets(EdgeInsets())
+
+            UniButton(
+                title: "Retry",
+                variant: .secondary,
+                isEnabled: !isAnyRefreshInFlight
+            ) {
+                Task { await runRefresh(userInitiated: true) }
+            }
+            .listRowBackground(Color.clear)
+            .listRowSeparator(.hidden)
+            .listRowInsets(EdgeInsets(
+                top: UniSpacing.s,
+                leading: UniSpacing.m,
+                bottom: 0,
+                trailing: UniSpacing.m
+            ))
+        } header: {
+            Text("Holdings")
+        }
+    }
+
+    /// Partial-failure footnote — some chains reported, some didn't.
+    /// The successful rows render normally above; this single quiet
+    /// line keeps the surface honest without blocking anything. Pull
+    /// (or the next auto-refresh) retries the failed chains.
+    @ViewBuilder
+    private var partialNetworkFootnoteSection: some View {
+        Section {
+            UniFootnote(
+                text: "Some networks didn't respond — pull to retry.",
+                alignment: .center,
+                color: UniColors.Text.tertiary
+            )
+            .frame(maxWidth: .infinity)
+            .listRowBackground(Color.clear)
+            .listRowSeparator(.hidden)
+            .listRowInsets(EdgeInsets())
         }
     }
 
@@ -2003,13 +2154,38 @@ struct WalletHomeView: View {
     /// wallet got deleted. Sets the first wallet by sortOrder as
     /// active when the stored id is empty or stale.
     private func ensureActiveWalletSet() {
-        if let uuid = UUID(uuidString: activeWalletIdRaw),
-           allWallets.contains(where: { $0.id == uuid }) {
-            return
+        if let uuid = UUID(uuidString: activeWalletIdRaw) {
+            if allWallets.contains(where: { $0.id == uuid }) {
+                return
+            }
+            // The `@Query` lags repository inserts — the import flow
+            // writes `activeWalletId` only after its `@ModelActor`
+            // context has saved, but the main context's merge is
+            // asynchronous. Reverting to the first wallet in that
+            // window hijacked the active selection away from the
+            // just-imported wallet AND aimed the auto-refresh at the
+            // wrong wallet (the 2026-06-12 "imported wallet shows 0
+            // until relaunch" bug). Ask the store directly before
+            // declaring the id stale.
+            if walletExists(id: uuid) {
+                return
+            }
         }
         if let first = allWallets.first {
             activeWalletIdRaw = first.id.uuidString
         }
+    }
+
+    /// Store-truth existence check for a wallet id. A direct
+    /// `fetchCount` hits the persistent store, so it sees rows the
+    /// repository actor has already saved even before this view's
+    /// `@Query` has merged them.
+    private func walletExists(id: UUID) -> Bool {
+        var descriptor = FetchDescriptor<WalletRecord>(
+            predicate: #Predicate { $0.id == id }
+        )
+        descriptor.fetchLimit = 1
+        return ((try? modelContext.fetchCount(descriptor)) ?? 0) > 0
     }
 
     // MARK: - Historical-price ensure-loop (2026-06-12)
@@ -2086,11 +2262,23 @@ struct WalletHomeView: View {
 
     // MARK: - Refresh
 
-    private func runRefresh() async {
-        guard let walletId = activeWallet?.id else { return }
+    /// Run one wallet refresh. `userInitiated` distinguishes a
+    /// pull-to-refresh / Retry tap from the auto-refresh: a user
+    /// pull CANCELS any wedged in-flight pipeline and starts fresh
+    /// (the user asked for *now*, not for "whenever the stalled one
+    /// finishes"); the auto-refresh keeps the cheaper join
+    /// semantics. The refresh outcome (failed chains, if any) is
+    /// published on `WalletRefreshState.shared`, which this view
+    /// observes to render the honest network-error surfaces.
+    private func runRefresh(userInitiated: Bool = false) async {
+        guard let walletId = await resolveRefreshWalletId() else { return }
         await MainActor.run { isRefreshing = true }
         let coordinator = WalletRefreshCoordinator(container: modelContext.container)
-        await coordinator.refreshWallet(walletId: walletId, fiatCode: currencyCode)
+        await coordinator.refreshWallet(
+            walletId: walletId,
+            fiatCode: currencyCode,
+            userInitiated: userInitiated
+        )
         await MainActor.run {
             isRefreshing = false
             // A refresh can re-price existing rows without changing
@@ -2104,8 +2292,41 @@ struct WalletHomeView: View {
             // medium tap). Per Rule #10 §I, signatures are gated
             // through `UniHapticEngine` so the AppStorage toggle
             // and Reduce Motion are both honored.
-            UniHapticEngine.shared.play(.signature(.irisSettle))
+            //
+            // Skipped while a replacement pipeline is still running
+            // (this run was cancelled by a user pull, or superseded
+            // by a wallet switch) — "settled" before the spinner
+            // stops would be a lie in the hand (2026-06-12).
+            if !refreshState.isRefreshing {
+                UniHapticEngine.shared.play(.signature(.irisSettle))
+            }
         }
+    }
+
+    /// Resolve the wallet id a refresh should run against. Prefers
+    /// the stored `activeWalletId` — verified against the store
+    /// directly, because the `@Query`-backed `activeWallet` lags the
+    /// import flow's actor-context insert: in the merge window right
+    /// after an import it silently resolved to the WRONG wallet (the
+    /// first one), so the freshly-imported wallet never got scanned
+    /// in-session and showed $0.00 until relaunch (2026-06-12). The
+    /// bounded retry covers the save-to-visible gap; the `@Query`
+    /// fallback keeps the legacy behavior for an empty or genuinely
+    /// stale stored id.
+    private func resolveRefreshWalletId() async -> UUID? {
+        if let uuid = UUID(uuidString: activeWalletIdRaw) {
+            if allWallets.contains(where: { $0.id == uuid }) || walletExists(id: uuid) {
+                return uuid
+            }
+            // The id may name a wallet whose insert hasn't become
+            // visible yet — re-ask the store briefly before falling
+            // back to the query's resolution.
+            for _ in 0..<3 {
+                try? await Task.sleep(for: .milliseconds(400))
+                if walletExists(id: uuid) { return uuid }
+            }
+        }
+        return activeWallet?.id
     }
 
     // MARK: - Test mode bottom banner + actions

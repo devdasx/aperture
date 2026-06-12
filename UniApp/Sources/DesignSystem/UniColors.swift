@@ -477,6 +477,84 @@ enum UniColors {
         }
     }
 
+    // MARK: - Send (the money-leaving-your-hands flow)
+
+    /// Brand-specific color roles for the Send flow's signature
+    /// surfaces — the dark Sending / Sent screens, the swipe-to-send
+    /// track, and the positive / negative status accents the design
+    /// handoff (`design_handoff_send/README.md`) specifies as exact
+    /// brand values rather than system semantics.
+    ///
+    /// **Why these are brand-fixed, not system-adaptive.** Per the
+    /// handoff, the Sending and Sent screens are *always dark* —
+    /// `#0E1015 → #08090C` — regardless of the user's appearance
+    /// preference. They're the one moment the flow goes full-bleed
+    /// dark to make the commit feel like a held breath: a brand
+    /// surface, like the splash. The swipe track is brand Ink
+    /// (`#0A0C10`) with a white knob, again fixed. These four values
+    /// (`darkScreenTop`, `darkScreenBottom`, `track`, `knob`) do not
+    /// flip with light/dark mode — they ARE the surface.
+    ///
+    /// **The status accents** (`positive` / `negative`) use the
+    /// handoff's exact greens/reds (`#179A5B` / `#E0483D`) for the
+    /// ENS-resolved row, the Sent hero check, and inline error text —
+    /// slightly richer than `systemGreen` / `systemRed` to match the
+    /// brand. They're defined once here so feature code references a
+    /// role, never the hex (Rule #4 §B — hex → Color only inside this
+    /// file). For genuinely system-semantic status (badges, alerts)
+    /// continue to use `Status.*` / `Crypto.*`; the `Send.*` accents
+    /// are for the Send flow's own surfaces.
+    enum Send {
+        /// Top stop of the dark Sending / Sent screen radial-lift
+        /// gradient. `#0E1015`. Brand-fixed (does not flip with mode).
+        static let darkScreenTop = Color(hex: "#0E1015") ?? Color.black
+        /// Bottom stop of the dark Sending / Sent screen gradient.
+        /// `#08090C`. Brand-fixed.
+        static let darkScreenBottom = Color(hex: "#08090C") ?? Color.black
+        /// A subtle lighter lift at the top of the dark screen, used as
+        /// the radial highlight stop. `#1A1D24`. Brand-fixed.
+        static let darkScreenLift = Color(hex: "#1A1D24") ?? Color.black
+        /// Text drawn on the dark Sending / Sent screens. Always white
+        /// because the surface is always dark.
+        static let onDark = Color.white
+        /// Secondary text on the dark screens (sub copy). White @ 0.6.
+        static let onDarkSecondary = Color.white.opacity(0.6)
+
+        /// The swipe-to-send track fill — brand Ink. `#0A0C10`.
+        /// Brand-fixed (the commit gesture reads the same in any mode).
+        static let track = Color(hex: "#0A0C10") ?? Color.black
+        /// The label text floating on the unfilled track. White @ 0.6.
+        static let trackLabel = Color.white.opacity(0.6)
+        /// The draggable knob. Always white — it's the bright object
+        /// the user pushes across the dark track.
+        static let knob = Color.white
+        /// The iris glyph painted inside the knob — brand Ink so it
+        /// reads on the white knob.
+        static let knobGlyph = Color(hex: "#0A0C10") ?? Color.black
+        /// Drop-shadow color under the white knob, so it lifts off the
+        /// dark track. Black at low opacity — defined here so the call
+        /// site references a role, not a `Color.black` literal (Rule #4).
+        static let knobShadow = Color.black.opacity(0.3)
+        /// Glyph / text drawn over the positive (green) or negative
+        /// (red) hero discs on the Sent / Failed screens. Always white —
+        /// both discs are guaranteed-colored, so white reads in any
+        /// appearance. (Mirrors `Text.onMedia`, named for this surface.)
+        static let onAccentDisc = Color.white
+
+        /// Positive accent — ENS-resolved row, the Sent hero check
+        /// background. `#179A5B`. The brand green (richer than
+        /// `systemGreen`).
+        static let positive = Color(hex: "#179A5B") ?? Color.green
+        /// A 10%-opacity wash of `positive` for chip / pill
+        /// backgrounds behind positive text.
+        static let positiveWash = (Color(hex: "#179A5B") ?? Color.green).opacity(0.1)
+        /// Negative accent — failed-send copy, validation errors that
+        /// must read as a stop. `#E0483D`. The brand red.
+        static let negative = Color(hex: "#E0483D") ?? Color.red
+        /// A wash of `negative` for the failed-state hero background.
+        static let negativeWash = (Color(hex: "#E0483D") ?? Color.red).opacity(0.1)
+    }
+
     // MARK: - Illustration (onboarding native scenes)
 
     /// Color roles for SwiftUI-native illustrations (onboarding heroes etc.).

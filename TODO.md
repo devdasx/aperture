@@ -791,6 +791,98 @@ forget them when we get there.
 - **Honesty checks:** the "Forgot PIN?" sheet must clearly state the trade-off — recovery via mnemonic re-imports the wallet, it does not "reset the PIN."
 - **Depends on:** T-018 (wallet home destination), T-012's seed-encryption half (so the unlock has something meaningful to unlock).
 
+### T-061 · Send — real balance + price reads (replace `SendMockData` balances/rates)
+- **Status:** OPEN
+- **Priority:** P0
+- **Area:** Send · Wallet data
+- **File:** `UniApp/Sources/Features/Send/SendMockData.swift` (`sampleBalance`, `sampleFiatRate`); consumed by `SendDraft.availableBalance`, `SendDraft.unitFiatRate`, `SendAsset.decimals`.
+- **Inline comment:** `// TODO: (T-061)` markers in `SendDraft.swift` (availableBalance/unitFiatRate/applyMax), `SendAsset.swift` (decimals/contractFor).
+- **Context:** The Send design ships with a fixed mock balance per ticker and a fixed fiat rate so the amount screen, MAX, and review total compute against believable numbers. Real balances come from the wallet's `TokenBalanceRecord` rows (the same source the wallet-home roll-up reads); real prices from `CoinbasePriceService` in the active currency.
+- **What "done" looks like:**
+  1. `SendDraft.availableBalance` reads the active wallet's cached balance for the selected `(asset, network)` from SwiftData, not `SendMockData`.
+  2. `SendDraft.unitFiatRate` reads the live price for the asset's ticker in the active currency; renders "Price unavailable"-class fallback when the rate is unknown (never a fake number — Rule #16 §A.5).
+  3. `SendAsset.decimals` for tokens threads the real registry decimals per `(symbol, network)` instead of the hardcoded `6`.
+  4. `applyMax()` for native sends reserves the network fee from the balance so the user isn't left unable to cover gas (see T-063).
+  5. Delete `SendMockData.sampleBalance` / `sampleFiatRate`.
+- **Honesty checks:** never show a balance the wallet doesn't actually hold; never show a fiat figure when the price is unknown.
+- **Depends on:** existing balance-scan + price-service plumbing (already in the repo).
+
+### T-062 · Send — recipient resolution + address validation + safety guards
+- **Status:** OPEN
+- **Priority:** P0
+- **Area:** Send · Recipient · Security
+- **File:** `UniApp/Sources/Features/Send/SendDraft.swift` (`resolvedName`/`resolvedAddress`/`isRecipientValid`/`isFirstSend`); `SendRecipientView.swift` (`paste`); mock data in `SendMockData.swift` (`isResolvableName`/`sampleResolvedAddress`/`recents`).
+- **Inline comment:** `// TODO: (T-062)` markers in `SendDraft.swift` + `SendRecipientView.swift`.
+- **Context:** The design mocks ENS resolution for the single sample input `vitalik.eth`, a placeholder validity flag (length floor), and a sample recents list. Real: ENS/SNS/name resolution with the resolved address always visible before send; per-chain address checksum/format validation (EIP-55 for EVM, bech32 for BTC, base58 for SOL, …); network-match guard (don't let an EVM address send on the wrong chain; warn on exchange-deposit mismatches); first-send detection from the wallet's tx history; address-book labels + "known address" badge; paste-from-clipboard malicious-swap guard.
+- **What "done" looks like:**
+  1. `resolvedName`/`resolvedAddress` resolve real names per the asset's chain (ENS on EVM, SNS on Solana, etc.), with the resolved address shown before Continue is enabled.
+  2. `isRecipientValid` runs the real per-family checksum/format validator + the network-match guard; Continue gates on it.
+  3. `isFirstSend` reads the wallet's transaction history for the `(address, network)` pair.
+  4. `paste()` runs the malicious-swap guard (compare clipboard before/after, flag homoglyph/format mismatches) per the handoff "address safety".
+  5. Recents come from real history + the address book; delete `SendMockData.recents`.
+- **Honesty checks:** the resolved address must be visible and exact before send (Rule #16); the first-send and network-match warnings must be plain, not alarming-red decoration.
+- **Depends on:** T-061 (asset selection), an ENS/SNS resolver (domain layer).
+
+### T-063 · Send — real fee estimation (replace `SendMockData` fee numbers)
+- **Status:** OPEN
+- **Priority:** P0
+- **Area:** Send · Fees
+- **File:** `UniApp/Sources/Features/Send/SendMockData.swift` (`sampleFeeFiat`/`sampleFeeNative`/`sampleUTXOs`); consumed by `SendDraft` (networkFeeFiat/networkFeeNative/totalFiat) + every Advanced sheet's preset rows/slider read-outs.
+- **Inline comment:** `// TODO: (T-063)` markers in `SendDraft.swift`, `SendAdvancedParams.swift`, the four Advanced sheets, and the coin-control sheet.
+- **Context:** The design ships sample fee figures per family + a sample UTXO set so the Advanced sheets and the Review total are realistic. Real fee estimation is per-family: Bitcoin sat/vB → confirm-time + fiat from a mempool fee estimator; EVM EIP-1559 base/priority from the node; Solana compute-unit price from recent-prioritization-fees; long-tail chains from their native fee endpoints.
+- **What "done" looks like:**
+  1. Each family's preset rows + custom slider show real estimated rates, confirm-times, and fiat.
+  2. `SendDraft.networkFeeFiat`/`networkFeeNative`/`totalFiat` compute from the real estimate for the chosen preset/custom value.
+  3. The Bitcoin coin-control sheet lists the wallet's real UTXOs and the selected total funds the send.
+  4. `applyMax()` (T-061) subtracts the real native-send fee.
+  5. Delete `SendMockData.sampleFeeFiat`/`sampleFeeNative`/`sampleUTXOs`.
+- **Honesty checks:** fee estimates carry their uncertainty honestly (≈); the token-send total names that the fee is paid in the network's native asset.
+- **Depends on:** per-chain fee endpoints (networking layer), T-061.
+
+### T-064 · Send — real authorize (BiometricService + PIN fallback)
+- **Status:** OPEN
+- **Priority:** P0
+- **Area:** Send · Security
+- **File:** `UniApp/Sources/Features/Send/SendAuthorizeView.swift` (the Confirm CTA); `SendAsset.isSendable`.
+- **Inline comment:** `// TODO: (T-064)` markers in `SendAuthorizeView.swift` + `SendAsset.swift`.
+- **Context:** The design advances from the Authorize screen to Sending immediately on tap (mock auth). Real: run `BiometricService.authenticate(reason:)` (Rule #17 — never raw `LAContext`), with a PIN-entry fallback via `PinCodeView(mode: .verify)` when biometrics are unavailable/declined. Watch-only wallets can't reach this screen (no signing key) — `SendAsset.isSendable` must read the wallet's signing capability and the flow must gate Send accordingly upstream.
+- **What "done" looks like:**
+  1. The Confirm CTA calls `BiometricService.authenticate(reason: "Confirm sending …")`; on success → Sending; on failure → PIN fallback or an honest retry.
+  2. `SendAsset.isSendable` reflects the active wallet's real signing capability; watch-only wallets get Send disabled at the wallet-home (it already gates `canSend`).
+- **Honesty checks:** the amount/fee/total restated on the Authorize screen must exactly match what will be signed (Rule #16).
+- **Depends on:** `BiometricService`, `PinCodeStorage` (both already in the repo), T-063.
+
+### T-065 · Send — apply advanced params to the signed transaction
+- **Status:** OPEN
+- **Priority:** P1
+- **Area:** Send · Signing
+- **File:** `UniApp/Sources/Features/Send/SendAdvancedParams.swift` (every field); the four Advanced sheets that edit them.
+- **Inline comment:** `// TODO: (T-065)` markers in `SendAdvancedParams.swift`.
+- **Context:** The Advanced sheets edit real `SendAdvancedParams` state (RBF, OP_RETURN, coin-control selection, EVM max/priority/gas-limit/nonce/hex, Solana compute-unit price). The design persists those edits in the draft; the real signing path must apply them when building the transaction.
+- **What "done" looks like:**
+  1. Bitcoin: the chosen fee rate, RBF flag, OP_RETURN data, and selected UTXOs are honored when building the PSBT.
+  2. EVM: max/priority fee, gas limit, nonce, and hex data are set on the EIP-1559 transaction.
+  3. Solana: the compute-unit price + auto compute-unit limit are set on the transaction.
+  4. Long-tail chains (no Advanced sheet) build with the smart default fee.
+- **Honesty checks:** a wrong nonce / fee can make a tx fail; the EVM sheet's note already warns; the signing path must surface failures honestly (T-066).
+- **Depends on:** per-chain signing path (domain layer), T-063, T-064.
+
+### T-066 · Send — real broadcast + outcome (Sending → Sent/Failed) + explorer link
+- **Status:** OPEN
+- **Priority:** P0
+- **Area:** Send · Broadcast
+- **File:** `UniApp/Sources/Features/Send/SendFlowView.swift` (the `.sending` step's `.task`); `SendingView.swift`; `SendDraft.transactionHash`/`outcome`; `SendMockData.sampleTransactionHash`.
+- **Inline comment:** `// TODO: (T-066)` markers in `SendFlowView.swift`, `SendingView.swift`, `SendDraft.swift`.
+- **Context:** The design's Sending screen advances to Sent on a timer (mock). Real: sign + broadcast to the chain's RPC, set `SendDraft.outcome` from the result (`.sent` / `.failed`), thread the real transaction hash, and open the chain's explorer from the Sent screen's "View on explorer" via `Link(_:destination:)`. Per the handoff: "failures never show the success state" — the Failed screen must be reached on any broadcast error, never the Sent screen.
+- **What "done" looks like:**
+  1. The `.sending` step submits the signed tx to the network and awaits acceptance.
+  2. On accept → `.sent` with the real hash; on reject/error → `.failed` (and the funds-are-safe copy is true).
+  3. "View on explorer" opens the correct per-chain explorer URL for the hash.
+  4. Record the pending transaction so the wallet-home activity reflects it immediately.
+  5. Delete `SendMockData.sampleTransactionHash`.
+- **Honesty checks:** the Failed screen states "nothing left your wallet" only when that's true; if a tx was broadcast-then-failed-on-chain the copy must reflect the real state.
+- **Depends on:** per-chain RPC broadcast (networking layer), T-064, T-065.
+
 ---
 
 ## Resolved
