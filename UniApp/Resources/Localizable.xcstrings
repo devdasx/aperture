@@ -308353,6 +308353,116 @@
           }
         }
       }
+    },
+    "Its transaction and chart history on this iPhone": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Its transaction and chart history on this iPhone"
+          }
+        }
+      }
+    },
+    "Remove \\(walletName)?": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Remove \\(walletName)?"
+          }
+        }
+      }
+    },
+    "Remove this wallet": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Remove this wallet"
+          }
+        }
+      }
+    },
+    "Remove wallet": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Remove wallet"
+          }
+        }
+      }
+    },
+    "This removes \\(walletName) from this iPhone. Every other wallet stays exactly as it is.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This removes \\(walletName) from this iPhone. Every other wallet stays exactly as it is."
+          }
+        }
+      }
+    },
+    "This wallet only watches an address — nothing secret is stored on this iPhone, so nothing secret is lost. You can add it again anytime.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This wallet only watches an address — nothing secret is stored on this iPhone, so nothing secret is lost. You can add it again anytime."
+          }
+        }
+      }
+    },
+    "This wallet’s private key isn’t stored on this iPhone. Unless you have it saved elsewhere, removing it here is final — the funds in it can’t be recovered.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This wallet’s private key isn’t stored on this iPhone. Unless you have it saved elsewhere, removing it here is final — the funds in it can’t be recovered."
+          }
+        }
+      }
+    },
+    "This wallet’s recovery phrase isn’t stored on this iPhone. Unless you have it written down elsewhere, removing it here is final — the funds in it can’t be recovered.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This wallet’s recovery phrase isn’t stored on this iPhone. Unless you have it written down elsewhere, removing it here is final — the funds in it can’t be recovered."
+          }
+        }
+      }
+    },
+    "Your private key stays yours. You can import this wallet again with it — there is no server, and removing it here loses nothing you’ve saved.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Your private key stays yours. You can import this wallet again with it — there is no server, and removing it here loses nothing you’ve saved."
+          }
+        }
+      }
+    },
+    "Your recovery phrase stays yours. You can import this wallet again with it — there is no server, and removing it here loses nothing you’ve written down.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Your recovery phrase stays yours. You can import this wallet again with it — there is no server, and removing it here loses nothing you’ve written down."
+          }
+        }
+      }
     }
   },
   "version": "1.0"
