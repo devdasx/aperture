@@ -252,10 +252,20 @@ struct BalanceHistoryChart: View {
         var hasher = Hasher()
         hasher.combine(transactions.count)
         var latest = Date.distantPast
-        for tx in transactions where tx.occurredAt > latest {
-            latest = tx.occurredAt
+        // 2026-06-13 — the reconstructor walks only non-failed
+        // transactions, so a confirmed→failed status flip changes
+        // the series without moving the count or the newest
+        // timestamp. Tallying non-failed rows in the same O(N) scan
+        // closes that gap for free.
+        var nonFailedCount = 0
+        for tx in transactions {
+            if tx.occurredAt > latest { latest = tx.occurredAt }
+            if tx.statusRaw != TransactionStatus.failed.rawValue {
+                nonFailedCount += 1
+            }
         }
         hasher.combine(latest)
+        hasher.combine(nonFailedCount)
         var fiatTotal = Decimal.zero
         for balance in currentBalances {
             fiatTotal += balance.fiatValueCached

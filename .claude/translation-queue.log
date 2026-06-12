@@ -87,3 +87,7 @@
 2026-06-12T16:24:51Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/ImportWallet/ImportWalletFlow.swift	Couldn't save your wallet
 2026-06-12T16:24:51Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/ImportWallet/ImportWalletFlow.swift	OK
 2026-06-12T16:24:51Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/ImportWallet/ImportWalletFlow.swift	Watch-only wallets can see balances and transactions. They cannot send. Imported private keys cover a single chain — your other chains stay outside Aperture until you also import their keys or your recovery phrase.
+2026-06-12T18:18:07Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/BalanceHistoryChart.swift	Balance history chart
+2026-06-12T18:18:07Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/BalanceHistoryChart.swift	Balance history range
+2026-06-12T18:18:07Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/BalanceHistoryChart.swift	No data
+2026-06-12T18:18:07Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/BalanceHistoryChart.swift	Range \(currentRange.shortLabel). From \(start) to \(end). Change \(delta).

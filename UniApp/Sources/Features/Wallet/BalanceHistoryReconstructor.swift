@@ -59,124 +59,113 @@ enum BalanceHistoryRange: String, CaseIterable, Hashable, Sendable {
 // MARK: - BalanceHistoryReconstructor
 
 /// Reconstructs a wallet's total-fiat balance through time from its
-/// transaction history and its current balances.
+/// transaction history. **Transactions are the only truth source for
+/// the curve's SHAPE** (2026-06-13 rebuild, per explicit user
+/// direction: *"we'll update the chart to use transactions as real
+/// and truth source only, and each transaction should appear in the
+/// chart"*).
 ///
-/// **The math (the honest one).**
+/// **The math (the forward walk).**
 ///
-/// We don't have historical price feeds — `CoinbasePriceService`
-/// returns the current price and `CachedPriceRecord` only caches the
-/// latest. Fetching historical OHLC per held token per day would
-/// require dozens of network roundtrips on every wallet open and
-/// would leave gaps for assets without published history. So
-/// instead, the chart answers a slightly different (but still
-/// honest) question: **what would my wallet's history have been
-/// worth at TODAY's prices?**
+/// Sort every non-failed transaction oldest-first. Per-token running
+/// quantities start at **zero** and accumulate each transaction's
+/// effect in chronological order: incoming adds, outgoing subtracts,
+/// internal (between the wallet's own addresses) is a no-op. Negative
+/// residue — precision drift or pre-history activity the explorers
+/// never reported — clamps to zero; quantities never go below zero.
 ///
-/// For each held `(chain, symbol, contract)` triple we derive the
-/// implicit current fiat-per-unit:
+/// For the selected range `[cutoff, now]` the emitted series is:
 ///
-/// ```
-/// currentFiatPerUnit = fiatValueCached / decimalAmount(rawBalance, decimals)
-/// ```
+/// 1. **Leading anchor at `cutoff`**, valued from the state
+///    accumulated over ALL transactions BEFORE the cutoff — so the
+///    line starts at the true balance-as-of-window-start, not at
+///    zero. (`.all` has no separate leading anchor: the oldest
+///    transaction's before-step at state zero IS the leading edge.)
+/// 2. **A before/after step pair for EVERY in-window transaction** at
+///    its exact timestamp. The before-point sits 1 ms earlier so the
+///    chart plots a vertical step; both halves are valued at the same
+///    day's price. Every receive is a visible up-step, every send a
+///    visible down-step — no transaction is ever smoothed away.
+/// 3. **Trailing anchor at `now`** with the final cumulative state,
+///    valued at current prices.
 ///
-/// Then we walk transactions newest-first, reverse-applying their
-/// effect on quantity to recover the quantity-held at each prior
-/// timestamp. At every sample point the curve's value is:
+/// **Valuation ladder (unchanged from the 2026-06-12 design).** Each
+/// point's fiat is `Σ quantity × price` where price resolves, per
+/// token, through:
 ///
-/// ```
-/// fiat(t) = Σ over tokens of (quantity_held(t) × currentFiatPerUnit)
-/// ```
+///   `priceHistory[symbol][dayKey(t)]` (the honest then-price)
+///   → `priceCache[symbol]` (today's spot)
+///   → `fiatPerUnit[key]` (balance-derived per-unit fallback).
 ///
-/// The chart's caption ("Valued at today's prices") names this so
-/// the user can read the shape as a record of activity, not as a
-/// real-time dollar valuation of past states.
+/// `currentBalances` feeds ONLY that last valuation rung (fiat ÷
+/// quantity per held token) — it never shapes the curve.
 ///
-/// **Why this is honest.** Two valid questions a user could ask of
-/// a balance history: (a) "how did the dollar value of my wallet
-/// move?" and (b) "how did my activity move my position?" Both have
-/// merit. Without historical price data we'd fake (a); shipping
-/// (b) with the explicit caveat is the truthful trade.
+/// **Key normalization (2026-06-13 — the invisible-transactions
+/// fix).** Transaction rows and balance rows are written by DIFFERENT
+/// code: explorer adapters write `tokenContract` verbatim from the
+/// API response (Etherscan-family returns **lowercased** EVM
+/// contracts — `EVMTransactionAdapter` line ~603), while the balance
+/// scanner writes the registry's **EIP-55 checksummed** form
+/// (`WalletRefreshCoordinator` line ~378 ← `EVMTokenRegistry`).
+/// The old `(symbol, contract)` key compared those byte-for-byte, so
+/// a USDT receive (`0xdac1…`) and the USDT balance row (`0xdAC1…`)
+/// landed under DIFFERENT keys — the walk's quantity deltas were
+/// unpriceable, every step contributed zero, and the chart drew a
+/// flat line through real activity (the 2026-06-13 user report:
+/// received 12 → 10 → 500 → 300 USDT, chart never moved). `TokenKey`
+/// now folds case at construction — symbols uppercased, contracts
+/// lowercased — and every lookup goes through the normalized key.
+/// The stored records stay verbatim (schema rule: contract addresses
+/// are case-sensitive on some chains and are never rewritten);
+/// normalization is internal matching only.
+///
+/// **Honesty disclosure (Rule #2 §A.7).** With transactions as the
+/// only truth source, the trailing edge equals the
+/// **cumulative-transaction total**, which can differ from the hero
+/// balance above the chart when history is incomplete for some chain
+/// (an explorer that returns balances but not transfers, pagination
+/// gaps, pre-import activity). That divergence is the user's explicit
+/// choice — the chart tells the story the transactions tell, and the
+/// hero tells the story the balance scan tells. We do not silently
+/// re-anchor one to the other.
+///
+/// **Preserved edge-case behaviors.**
+///
+/// 1. **Zero transactions ever + zero balances ⇒ empty.** The caller
+///    renders the zero baseline ("no history yet").
+/// 2. **Zero transactions ever + non-zero balances ⇒ flat line at the
+///    balance-derived current total.** The one place balances still
+///    pick the level: a wallet that demonstrably holds funds but has
+///    no fetched history yet would otherwise draw a dishonest flat
+///    zero. For `.all` the synthetic leading anchor sits 30 days back
+///    so the plateau reads as a line, not a dot.
+/// 3. **Zero IN-window transactions + accumulated pre-window state ⇒
+///    flat line at that state's value across the window** ("the
+///    wallet sat here all week"). Both endpoints value through the
+///    ladder at their own timestamps, so with historical price
+///    coverage the segment honestly tracks price movement.
 ///
 /// **Why this is a pure function.** Easy to verify against test
 /// vectors; no SwiftUI dependency; safely callable from any actor.
 enum BalanceHistoryReconstructor {
 
     /// Reconstruct the balance curve for `range`. Returns sample
-    /// points anchored at every transaction's timestamp plus the
-    /// chart's leading-edge anchor (cutoff or oldest tx) and its
-    /// trailing-edge anchor (`now`). Empty when the wallet has no
-    /// current non-zero balances AND no transactions — the honest
-    /// "no history yet" state.
+    /// points oldest-to-newest: the leading-edge anchor, a
+    /// before/after pair per in-window transaction, and the
+    /// trailing-edge anchor at `now`. Empty when the wallet has no
+    /// transactions AND no current balance fiat — the honest "no
+    /// history yet" state.
     ///
-    /// `currentBalances` contains the latest cached balance rows the
-    /// wallet holds (non-zero only — the caller already filters).
-    /// `transactions` is the full history across every address —
-    /// the caller passes the un-prefixed feed (not the home's
-    /// 10-most-recent slice).
-    ///
-    /// **Per-period guarantees (2026-06-09 hardening).**
-    ///
-    /// 1. **The curve's trailing-edge value equals the wallet's
-    ///    current total fiat.** Always. The rightmost sample is
-    ///    `(now, currentTotalFiat)` and the reverse-walk math
-    ///    never mutates that anchor.
-    ///
-    /// 2. **Zero in-range transactions + non-zero balance ⇒ flat
-    ///    horizontal line at the current balance.** The user's
-    ///    2026-06-09 direction: showing "no data" for a wallet
-    ///    that genuinely DID hold a balance for the whole period
-    ///    (nothing changed) was dishonest. A flat line at the
-    ///    current value IS the truthful shape for "the wallet sat
-    ///    here all week."
-    ///
-    /// 3. **Zero balance + zero in-range transactions ⇒ empty
-    ///    state.** Empty list. The caller's chart renders the
-    ///    "no history yet" copy. Honest because there's literally
-    ///    nothing to draw.
-    ///
-    /// 4. **`.all` with at least one transaction** anchors the
-    ///    leading edge at the oldest transaction's timestamp.
-    ///    Cutoff is `.distantPast` so no in-range filter excludes
-    ///    the oldest point.
-    ///
-    /// 5. **`.all` with zero transactions + non-zero balance** —
-    ///    we don't know when the wallet was created. Fall back to
-    ///    a synthetic 30-day-ago leading anchor at the current
-    ///    fiat so the line still reads as a flat plateau rather
-    ///    than collapsing to a single point.
-    /// `priceCache` is a per-symbol last-known fiat price keyed
-    /// by **uppercased symbol** (e.g. `"USDT": 1.0`,
-    /// `"ETH": 3782.41`). Used as the per-unit fallback for tokens
-    /// that appear in `transactions` but NOT in `currentBalances`
-    /// — i.e. fully cashed-out positions. Without this fallback,
-    /// every past holding of a now-zero token contributed zero
-    /// fiat to the curve, so a user who received 747 USDT then
-    /// sent it all saw a flat-zero chart on USDT despite the
-    /// activity (2026-06-12 bug — see SHIPPED-equivalent in commit
-    /// log). Callers read from `PriceCacheRepository.prices(...)`
-    /// and pass the resulting `[symbol: price]` dict.
-    ///
-    /// Caller responsibility: keys MUST be uppercased. The
-    /// reconstructor does NOT case-fold the lookup so the
-    /// happy-path is a single hash hit.
-    /// `priceHistory` is a `[symbol-uppercased: [yyyymmdd: spot-price]]`
-    /// map of **historical closes**. When supplied, each curve
-    /// point at timestamp T values its held quantities using the
-    /// close price for `DayKey.from(T)` — i.e. the actual
-    /// then-price — rather than today's spot. This is the fix for
-    /// the 2026-06-12 "I had $4000 in the past but the chart shows
-    /// $50" report: a token whose price has fallen 99% since
-    /// receive renders the past peak at its real then-value
-    /// instead of today's collapsed valuation.
-    ///
-    /// Lookups fall through:
-    ///   `priceHistory[symbol]?[dayKey(timestamp)]`
-    ///   → `priceCache[symbol]` (today's spot)
-    ///   → `fiatPerUnit[key]` (balance-derived per-unit).
-    ///
-    /// The trailing-edge anchor (`now`) intentionally bypasses
-    /// `priceHistory` and uses balance-derived totals so the chart
-    /// resolves exactly to the wallet's displayed hero number.
+    /// - `transactions`: the FULL history across every address — the
+    ///   caller passes the un-prefixed feed (not the home's
+    ///   10-most-recent slice). Failed transactions are ignored.
+    /// - `currentBalances`: the latest cached balance rows. Used ONLY
+    ///   to derive the per-unit valuation fallback and the
+    ///   no-history-yet plateau level — never the curve's shape.
+    /// - `priceCache`: per-symbol last-known spot price keyed by
+    ///   **uppercased symbol** (the call sites' canonical storage).
+    /// - `priceHistory`: `[symbol-uppercased: [yyyymmdd: close]]`
+    ///   historical closes; the first valuation rung.
     static func reconstruct(
         transactions: [TransactionRecord],
         currentBalances: [TokenBalanceRecord],
@@ -185,24 +174,22 @@ enum BalanceHistoryReconstructor {
         range: BalanceHistoryRange,
         now: Date = Date()
     ) -> [BalancePoint] {
-        // Honest empty state — no balance, no history, nothing to
-        // draw. The caller renders the "balance changes will appear
-        // here" copy.
-        if currentBalances.isEmpty && transactions.isEmpty { return [] }
         let cutoff = range.cutoff(from: now)
 
-        // Per-token current fiat-per-unit map, keyed by the
-        // `(symbol, contract)` tuple. Native coins use `nil`
-        // contract; tokens use the on-chain contract address as
-        // written by the scanner. The map is read-only after build.
-        //
-        // Tokens whose `tokenSymbol` no longer appears in
-        // `currentBalances` (fully cashed-out assets) silently drop
-        // out of the fiat sum — they have no `fiatPerUnit[key]`
-        // entry, so they contribute zero. The honest behavior:
-        // we can't value a quantity we have no current price for.
+        // Chronological, non-failed feed — the truth source. Pending
+        // transactions count (they're real intent, and they flip to
+        // confirmed in place); failed ones never moved a balance.
+        let sorted = transactions
+            .filter { $0.statusRaw != TransactionStatus.failed.rawValue }
+            .sorted { $0.occurredAt < $1.occurredAt }
+
+        // Balance-derived per-unit prices — the LAST valuation rung.
+        // Wallet-wide fiat ÷ wallet-wide quantity per normalized key
+        // (the same token can sit at multiple addresses). Also sum
+        // the cached fiat total for the no-history plateau below.
         var fiatTotals: [TokenKey: Decimal] = [:]
-        var currentQuantity: [TokenKey: Decimal] = [:]
+        var balanceQuantity: [TokenKey: Decimal] = [:]
+        var currentBalanceFiat = Decimal.zero
         for balance in currentBalances {
             let key = TokenKey(
                 symbol: balance.tokenSymbol,
@@ -213,149 +200,107 @@ enum BalanceHistoryReconstructor {
                 decimals: balance.decimals
             )
             guard quantity > 0 else { continue }
-            // Sum across all addresses on the same token. The
-            // wallet may hold the same token at multiple addresses
-            // (e.g. multi-address Bitcoin or Solana SPL across two
-            // ATAs); the chart needs the wallet-wide quantity.
-            currentQuantity[key, default: 0] += quantity
-            // Accumulate fiat per key as well (2026-06-10). The
-            // previous code derived fiat-per-unit from whichever
-            // address row happened to be written last, which skewed
-            // the rate whenever rows were cached at different scan
-            // moments. Aggregating total fiat and total quantity,
-            // then dividing once below, yields the wallet-wide
-            // average per-unit value across every address row.
+            balanceQuantity[key, default: 0] += quantity
             if balance.fiatValueCached > 0 {
                 fiatTotals[key, default: 0] += balance.fiatValueCached
+                currentBalanceFiat += balance.fiatValueCached
             }
         }
-
-        // One division per token: wallet-wide fiat ÷ wallet-wide
-        // quantity. Read-only after this point.
         var fiatPerUnit: [TokenKey: Decimal] = [:]
         fiatPerUnit.reserveCapacity(fiatTotals.count)
         for (key, fiatTotal) in fiatTotals {
-            guard let quantity = currentQuantity[key], quantity > 0 else { continue }
+            guard let quantity = balanceQuantity[key], quantity > 0 else { continue }
             fiatPerUnit[key] = fiatTotal / quantity
         }
 
-        // **2026-06-12 — cashed-out fallback.** For any token that
-        // appears in `transactions` but NOT in `currentBalances`
-        // (the wallet held it at some point, then sent or sold
-        // every unit), fill in `fiatPerUnit` from `priceCache`
-        // looked up by symbol. Without this, the reverse-walk
-        // builds up the historical quantity in `running` correctly,
-        // but `totalFiat()` valued it at zero — flat chart, even
-        // when the user received 747 USDT then sent 747 USDT.
-        //
-        // We touch every transaction's `(symbol, contract)` key
-        // once, skip keys we already priced from the held balance,
-        // and look up by uppercased symbol so the price-cache
-        // call sites' canonical-uppercase storage matches.
-        if !priceCache.isEmpty {
-            for tx in transactions {
-                let key = TokenKey(symbol: tx.tokenSymbol, contract: tx.tokenContract)
-                if fiatPerUnit[key] != nil { continue }
-                if let cached = priceCache[tx.tokenSymbol.uppercased()] {
-                    fiatPerUnit[key] = cached
-                }
+        // **No transactions at all.** Preserved honest behaviors:
+        // a wallet with cached balance fiat gets a flat plateau at
+        // that level (we know WHAT it holds, just not WHEN it
+        // arrived); a wallet with nothing gets the empty state and
+        // the caller renders the zero baseline.
+        if sorted.isEmpty {
+            guard currentBalanceFiat > 0 else { return [] }
+            let leadingAnchor: Date
+            if case .all = range {
+                // No oldest transaction to anchor on — synthesize a
+                // 30-day span so the plateau reads as a line.
+                leadingAnchor = Calendar.current.date(byAdding: .day, value: -30, to: now)
+                    ?? now.addingTimeInterval(-86_400 * 30)
+            } else {
+                leadingAnchor = cutoff
             }
+            return [
+                BalancePoint(timestamp: leadingAnchor, fiat: currentBalanceFiat),
+                BalancePoint(timestamp: now, fiat: currentBalanceFiat),
+            ]
         }
 
-        // The trailing-edge total — the rightmost sample's fiat.
-        // This MUST equal the wallet's current displayed total so
-        // the curve resolves to the hero number above it. Every
-        // other sample's fiat is back-propagated from this anchor.
-        let currentTotal = totalFiat(quantities: currentQuantity, prices: fiatPerUnit)
+        // **Forward cumulative walk.** Quantities start at ZERO and
+        // accumulate every pre-window transaction so the leading
+        // anchor carries the true balance-as-of-window-start.
+        var running: [TokenKey: Decimal] = [:]
+        var index = 0
+        while index < sorted.count, sorted[index].occurredAt < cutoff {
+            apply(sorted[index], to: &running)
+            index += 1
+        }
+        let inWindow = sorted[index...]
 
-        // Walk newest-first. The running quantity map starts at
-        // today's state and reverses each tx's effect.
-        let sorted = transactions
-            .filter { $0.statusRaw != TransactionStatus.failed.rawValue }
-            .sorted { $0.occurredAt > $1.occurredAt }
-
-        var running = currentQuantity
-        var points: [BalancePoint] = [
-            BalancePoint(timestamp: now, fiat: currentTotal)
-        ]
-
-        for tx in sorted {
-            // Stop at the cutoff BEFORE reversing this transaction's
-            // delta. The list is newest-first, so the first
-            // out-of-range transaction ends the walk — and `running`
-            // must remain the holdings as of the cutoff for the
-            // leading-edge anchor below.
-            if tx.occurredAt < cutoff { break }
-
-            let key = TokenKey(symbol: tx.tokenSymbol, contract: tx.tokenContract)
-            guard let amount = Decimal(string: tx.amountRaw) else { continue }
-
-            // **2026-06-12 — step shape per tx.**
-            //
-            // A transaction is an instantaneous change in holdings,
-            // so the curve should STEP at `tx.occurredAt`. We
-            // capture both anchors of that step:
-            //
-            //   1. Point at `tx.occurredAt` itself — the **AFTER-tx
-            //      state** (current `running`, since the loop
-            //      reverses afterwards). For a receive this is "what
-            //      you held just after the receive landed"; for a
-            //      send this is "what you held just after the send
-            //      cleared." Crucially, this captures peak holdings
-            //      for a still-held received asset — the prior
-            //      single-BEFORE-state behavior rendered the receive
-            //      moment at zero, missing the $4000 peak the user
-            //      pointed at on 2026-06-12.
-            //
-            //   2. Point at `tx.occurredAt - 1ms` — the **BEFORE-tx
-            //      state** (running after the reverse), valued at
-            //      the same day's price. This is the value the wallet
-            //      held in the interval between this tx and the
-            //      previous (newer) tx. Together with anchor #1 they
-            //      form a vertical step at tx time.
-            //
-            // Both points use the historical price at `tx.occurredAt`
-            // for valuation — they're a hairline apart in time, so
-            // they share the day-key.
-            let afterFiat = totalFiatAt(
-                quantities: running,
-                timestamp: tx.occurredAt,
-                priceHistory: priceHistory,
-                priceCache: priceCache,
+        // **Zero in-window transactions.** Flat window at the
+        // pre-window cumulative state — "the wallet sat here all
+        // week." Each endpoint values at its own timestamp through
+        // the ladder. (`.all` never reaches this branch: its cutoff
+        // is `.distantPast`, so every transaction is in-window.)
+        if inWindow.isEmpty {
+            let leadingFiat = totalFiatAt(
+                quantities: running, timestamp: cutoff,
+                priceHistory: priceHistory, priceCache: priceCache,
                 fiatPerUnit: fiatPerUnit
             )
-            points.append(BalancePoint(timestamp: tx.occurredAt, fiat: afterFiat))
+            let trailingFiat = totalFiatAt(
+                quantities: running, timestamp: now,
+                priceHistory: priceHistory, priceCache: priceCache,
+                fiatPerUnit: fiatPerUnit
+            )
+            return [
+                BalancePoint(timestamp: cutoff, fiat: leadingFiat),
+                BalancePoint(timestamp: now, fiat: trailingFiat),
+            ]
+        }
 
-            // Apply the reverse. The amount in the transaction
-            // record is already in the token's native units (e.g.
-            // ETH, not wei). It is stored as a decimal string by
-            // the scanner so the chart math doesn't need to know
-            // per-token decimals.
-            switch TransactionDirection(rawValue: tx.directionRaw) ?? .outgoing {
-            case .incoming:
-                // Before this tx, the wallet had `amount` less.
-                running[key, default: 0] -= amount
-            case .outgoing:
-                // Before this tx, the wallet had `amount` more.
-                running[key, default: 0] += amount
-            case .internal:
-                // Between own addresses — no net change to
-                // wallet-wide quantity.
-                break
-            }
-            // Snap negative residue to zero. Round-trip precision
-            // and unrecorded-pre-history activity can leave tiny
-            // negative artifacts; the curve never goes below zero.
-            if running[key, default: 0] < 0 { running[key] = 0 }
+        var points: [BalancePoint] = []
+        points.reserveCapacity(inWindow.count * 2 + 2)
 
-            // BEFORE-tx anchor — value the now-reversed running at
-            // the same day. The 1ms backstep keeps the timestamp
-            // unique so SwiftCharts plots a vertical step.
+        // **Leading anchor.** Finite ranges anchor at the cutoff with
+        // the pre-window state so the line spans the full picked
+        // range. `.all` skips it — the first transaction's
+        // before-step (state zero, 1 ms earlier) IS the leading edge,
+        // which encodes "state zero before the oldest transaction".
+        if range != .all {
+            let leadingFiat = totalFiatAt(
+                quantities: running, timestamp: cutoff,
+                priceHistory: priceHistory, priceCache: priceCache,
+                fiatPerUnit: fiatPerUnit
+            )
+            points.append(BalancePoint(timestamp: cutoff, fiat: leadingFiat))
+        }
+
+        // **One step pair per in-window transaction.** The
+        // before-point captures the holdings in the interval since
+        // the previous transaction; the after-point captures the
+        // instantaneous change. The 1 ms backstep keeps timestamps
+        // unique so the sparkline plots a vertical step. (A
+        // transaction within 1 ms of the cutoff can place its
+        // before-point a hair before the anchor — cosmetically
+        // invisible under the chart's index-spaced x.) Both halves
+        // share the transaction day's price.
+        for tx in inWindow {
+            // An unparseable amount can't change state — skip the
+            // pair entirely rather than emitting a phantom flat step.
+            guard Decimal(string: tx.amountRaw) != nil else { continue }
             let beforeFiat = totalFiatAt(
-                quantities: running,
-                timestamp: tx.occurredAt,
-                priceHistory: priceHistory,
-                priceCache: priceCache,
+                quantities: running, timestamp: tx.occurredAt,
+                priceHistory: priceHistory, priceCache: priceCache,
                 fiatPerUnit: fiatPerUnit
             )
             points.append(
@@ -364,99 +309,73 @@ enum BalanceHistoryReconstructor {
                     fiat: beforeFiat
                 )
             )
+            apply(tx, to: &running)
+            let afterFiat = totalFiatAt(
+                quantities: running, timestamp: tx.occurredAt,
+                priceHistory: priceHistory, priceCache: priceCache,
+                fiatPerUnit: fiatPerUnit
+            )
+            points.append(BalancePoint(timestamp: tx.occurredAt, fiat: afterFiat))
         }
 
-        // **The flat-line case (Rule #2 §A.7).** Exactly one point
-        // means zero in-range transactions. If the wallet does
-        // hold a non-zero balance, the honest shape for the
-        // period is a flat horizontal line at the current value —
-        // "nothing happened in this window." Synthesize a leading
-        // anchor at the appropriate edge so the chart renders a
-        // line, not a point. For `.all` with zero history we fall
-        // back to a 30-day synthetic span — long enough to read
-        // as a plateau rather than collapsing back to a single dot.
-        if points.count == 1, currentTotal > 0 {
-            let leadingAnchor: Date
-            switch range {
-            case .all:
-                leadingAnchor = Calendar.current.date(byAdding: .day, value: -30, to: now) ?? cutoff
-            default:
-                leadingAnchor = cutoff
-            }
-            points.append(BalancePoint(timestamp: leadingAnchor, fiat: currentTotal))
-            return points.reversed()
-        }
-
-        // Anchor the leading edge at the cutoff (or oldest tx for
-        // `.all`) so the line spans the full picked range without
-        // a phantom rising entry segment from the y-axis.
-        let leadingAnchor: Date = {
-            if case .all = range {
-                return points.last?.timestamp ?? now
-            }
-            return cutoff
-        }()
-        // Use the final running quantities (state at the leading
-        // edge) for the anchor's fiat — keeps the line truthful
-        // about what was held at that point in time. (2026-06-10:
-        // computed from `running` — which the loop above guarantees
-        // is the holdings as of the cutoff, since the walk stops
-        // before reversing the first out-of-range transaction —
-        // rather than from `points.last?.fiat`.)
-        let leadingFiat = totalFiatAt(
-            quantities: running,
-            timestamp: leadingAnchor,
-            priceHistory: priceHistory,
-            priceCache: priceCache,
+        // **Trailing anchor at `now`** with the final cumulative
+        // state, valued at current prices (today's dayKey resolves
+        // today's close when present, then spot, then the
+        // balance-derived rung). NOTE the honesty disclosure in the
+        // type doc: this equals the cumulative-TRANSACTION total and
+        // can legitimately differ from the hero balance when some
+        // chain's history is incomplete — the user's explicit
+        // "transactions as the only truth source" trade.
+        let trailingFiat = totalFiatAt(
+            quantities: running, timestamp: now,
+            priceHistory: priceHistory, priceCache: priceCache,
             fiatPerUnit: fiatPerUnit
         )
-        if let lastPoint = points.last,
-           lastPoint.timestamp != leadingAnchor,
-           leadingAnchor < lastPoint.timestamp
-        {
-            points.append(BalancePoint(timestamp: leadingAnchor, fiat: leadingFiat))
-        }
+        points.append(BalancePoint(timestamp: now, fiat: trailingFiat))
 
-        // Reverse so the curve reads left-to-right (oldest to
-        // newest) — what every charting library expects.
-        return points.reversed()
+        return points
     }
 
     // MARK: - Helpers
 
-    /// Sum fiat across the per-token quantity map using the
-    /// per-unit price map. Missing-price tokens contribute zero —
-    /// honest about the gap (a token whose price we don't have
-    /// can't be valued in fiat; saying it's worth zero is closer
-    /// to the truth than guessing).
-    private static func totalFiat(
-        quantities: [TokenKey: Decimal],
-        prices: [TokenKey: Decimal]
-    ) -> Decimal {
-        var sum = Decimal.zero
-        for (key, quantity) in quantities {
-            guard quantity > 0, let price = prices[key] else { continue }
-            sum += quantity * price
+    /// Apply one transaction's effect to the running per-token
+    /// quantities, forward in time: incoming adds, outgoing
+    /// subtracts, internal (own-address shuffle) is a wallet-wide
+    /// no-op. Negative residue clamps to zero — round-trip precision
+    /// and unrecorded pre-history activity can leave tiny negative
+    /// artifacts; the curve never goes below zero.
+    private static func apply(
+        _ tx: TransactionRecord,
+        to running: inout [TokenKey: Decimal]
+    ) {
+        guard let amount = Decimal(string: tx.amountRaw) else { return }
+        let key = TokenKey(symbol: tx.tokenSymbol, contract: tx.tokenContract)
+        switch TransactionDirection(rawValue: tx.directionRaw) ?? .outgoing {
+        case .incoming:
+            running[key, default: 0] += amount
+        case .outgoing:
+            running[key, default: 0] -= amount
+        case .internal:
+            break
         }
-        return sum
+        if running[key, default: 0] < 0 { running[key] = 0 }
     }
 
-    /// Timestamp-aware variant. For each token-quantity, looks up:
-    ///   1. **Historical close** for the date — `priceHistory[symbol][dayKey]`.
-    ///      This is the honest then-price; a 2024 receive of 1000
-    ///      tokens at $4 renders as $4000 here even if today's
-    ///      price is $0.05.
-    ///   2. **Today's spot** — `priceCache[symbol]`. Fallback when
-    ///      the historical fetch hadn't completed when the chart
-    ///      rendered, or when Coinbase doesn't quote a pair we
-    ///      need historical data for.
-    ///   3. **Balance-derived per-unit** — `fiatPerUnit[key]`. The
-    ///      last fallback, derived from the held-balance row's
-    ///      `fiatValueCached / quantity` ratio.
+    /// Timestamp-aware fiat sum. For each token quantity, the price
+    /// resolves through the ladder:
+    ///   1. **Historical close** — `priceHistory[symbol][dayKey]`.
+    ///      The honest then-price; 1000 tokens received at $4 render
+    ///      as $4000 even if today's price is $0.05.
+    ///   2. **Today's spot** — `priceCache[symbol]`.
+    ///   3. **Balance-derived per-unit** — `fiatPerUnit[key]`, from
+    ///      the held-balance row's `fiatValueCached / quantity`.
     ///
-    /// Each missing rung silently degrades to the next; a token
-    /// with no price source at all contributes zero (the same
-    /// honest-about-the-gap behavior as `totalFiat`).
+    /// Each missing rung silently degrades to the next; a token with
+    /// no price source at all contributes zero (honest about the gap
+    /// — saying "we can't value this" via zero beats guessing).
+    /// `key.symbol` is uppercased by `TokenKey`'s construction, so
+    /// the symbol-keyed maps (which the call sites store uppercased)
+    /// hit without re-folding.
     private static func totalFiatAt(
         quantities: [TokenKey: Decimal],
         timestamp: Date,
@@ -468,9 +387,8 @@ enum BalanceHistoryReconstructor {
         var sum = Decimal.zero
         for (key, quantity) in quantities {
             guard quantity > 0 else { continue }
-            let upper = key.symbol.uppercased()
-            let price = priceHistory[upper]?[dayKey]
-                ?? priceCache[upper]
+            let price = priceHistory[key.symbol]?[dayKey]
+                ?? priceCache[key.symbol]
                 ?? fiatPerUnit[key]
             if let price {
                 sum += quantity * price
@@ -479,12 +397,28 @@ enum BalanceHistoryReconstructor {
         return sum
     }
 
-    /// Unique key per token across wallet addresses. Native coins
-    /// share the same `(symbol, nil)` key across every address on
-    /// the same chain; ERC-20 / SPL / etc. use the on-chain
-    /// contract address as written by the scanner.
+    /// Normalized per-token identity. **Symbols fold to uppercase;
+    /// contracts fold to lowercase; empty contracts collapse to
+    /// `nil`** (native coins) — because transaction adapters and the
+    /// balance scanner disagree on casing (explorer-verbatim
+    /// lowercase vs registry EIP-55 checksummed) and a byte-for-byte
+    /// key split the same token into two unpriceable buckets (the
+    /// 2026-06-13 invisible-USDT-receipts bug). Folding is internal
+    /// matching only — stored records keep their verbatim casing.
+    /// Base58/case-sensitive chains (Tron, Solana) fold consistently
+    /// on both sides, and two real contracts differing only by case
+    /// are not a practical concern.
     private struct TokenKey: Hashable {
         let symbol: String
         let contract: String?
+
+        init(symbol: String, contract: String?) {
+            self.symbol = symbol.uppercased()
+            if let contract, !contract.isEmpty {
+                self.contract = contract.lowercased()
+            } else {
+                self.contract = nil
+            }
+        }
     }
 }
