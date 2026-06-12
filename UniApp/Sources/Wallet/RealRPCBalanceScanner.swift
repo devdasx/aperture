@@ -12,10 +12,13 @@ import OSLog
 /// - Stub addresses (every other chain, prefix `[STUB]` or shape-fake)
 ///   are detected and short-circuited to zero / not-used so we never
 ///   pretend a placeholder has on-chain activity.
-/// - Fiat conversion uses `CoinbasePriceService` (no auth, no
-///   third-party SDK). Symbols Coinbase doesn't cover return zero
-///   fiat — the UI must show "Price unavailable" rather than a wrong
-///   number.
+/// - Fiat conversion goes through `TokenPricingEngine` (Coinbase →
+///   per-currency cache → CoinGecko ladder; no auth, no third-party
+///   SDK) and is denominated in the **active currency** end-to-end —
+///   `fiatValueCached` is always written in the currency the user
+///   currently has selected. Symbols no ladder rung can price yield
+///   no fiat — the UI must show "Price unavailable" rather than a
+///   wrong number.
 ///
 /// **Rule #3 compliance.** Pure native plumbing: `RPCClient` actor,
 /// `URLSession`, `JSONSerialization`. No SPM dependency.
@@ -24,17 +27,14 @@ struct RealRPCBalanceScanner: BalanceScanner {
     private static let log = Logger(subsystem: "com.thuglife.aperture", category: "scanner")
 
     let client: RPCClient
-    let priceService: CoinbasePriceService
-    let fxService: FXRateService
+    let pricing: TokenPricingEngine
 
     init(
         client: RPCClient = RPCClient.shared,
-        priceService: CoinbasePriceService = CoinbasePriceService(),
-        fxService: FXRateService = FXRateService()
+        pricing: TokenPricingEngine = .shared
     ) {
         self.client = client
-        self.priceService = priceService
-        self.fxService = fxService
+        self.pricing = pricing
     }
 
     func scan(
@@ -62,28 +62,20 @@ struct RealRPCBalanceScanner: BalanceScanner {
             return collected
         }
 
-        // Phase 2 — resolve fiat per row via the **USD-pivot**
-        // pricing pipeline. Coinbase Spot reliably covers ticker→USD
-        // for nearly every crypto we ship; long-tail fiats like JOD,
-        // EGP, NGN are then resolved via the ECB+open-er FX service.
-        // Both halves run concurrently — the user's wall-clock cost
-        // is roughly the slower of (Coinbase USD round-trip,
-        // FX rates round-trip).
+        // Phase 2 — resolve fiat per row via `TokenPricingEngine`'s
+        // ladder (Coinbase USD×FX → per-currency cache → CoinGecko).
+        // The engine prices directly in the active currency, so the
+        // returned `ChainBalance.fiatBalance` is already denominated
+        // in what the user has selected.
         let uniqueTickers = Array(Set(nativeBalances.map { Self.coinbaseSymbol(for: $0.chain.ticker) }))
-        async let usdPricesTask = priceService.prices(symbols: uniqueTickers, fiat: "USD")
-        async let fxRateTask = fxService.rate(fromUSDTo: currency.code)
-        let usdPrices = await usdPricesTask
-        let fxRate = await fxRateTask ?? 0
+        let prices = await pricing.unitPrices(symbols: uniqueTickers, currencyCode: currency.code)
 
         let now = Date()
         return nativeBalances.map { row in
-            let symbol = Self.coinbaseSymbol(for: row.chain.ticker).uppercased()
-            let usdPrice = usdPrices[symbol]?.amount
+            let symbol = Self.coinbaseSymbol(for: row.chain.ticker)
             let fiat: Decimal? = Self.computeFiat(
                 native: row.nativeBalance,
-                usdPrice: usdPrice,
-                fxRate: fxRate,
-                isUSDTarget: currency.code.uppercased() == "USD"
+                unitPrice: prices[symbol]?.amount
             )
             return ChainBalance(
                 chain: row.chain,
@@ -124,40 +116,33 @@ struct RealRPCBalanceScanner: BalanceScanner {
         customTokens: [SupportedChain: [CustomTokenSnapshot]] = [:]
     ) -> AsyncStream<StreamRow> {
         AsyncStream(StreamRow.self) { continuation in
+            // **One deduplicated price batch per refresh** (2026-06-12)
+            // — every token on every chain reads from this single
+            // shared result instead of firing its own price call
+            // (USDC alone used to be requested ~14× per refresh).
+            // The scan's symbol universe is fully known up front
+            // (chain tickers + per-chain registries + custom tokens).
+            // **Rows are NOT hostage to the batch**: each row yields
+            // with `fiatBalance: nil` the moment its balance lands,
+            // then re-yields with fiat once this task resolves — a
+            // slow or down provider delays prices, never balances.
+            //
+            // The batch resolves through `TokenPricingEngine`'s
+            // ladder (Coinbase USD×FX → per-currency cache →
+            // CoinGecko) in the **active currency**, so every fiat
+            // this stream yields is denominated in what the user has
+            // currently selected (the 2026-06-13 currency-change
+            // contract).
+            let pricesTask = Task { [pricing] in
+                await pricing.unitPrices(
+                    symbols: Self.uniquePriceSymbols(
+                        addresses: addresses,
+                        customTokens: customTokens
+                    ),
+                    currencyCode: currency.code
+                )
+            }
             let task = Task {
-                let fxRateTask = Task { [fxService] in
-                    await fxService.rate(fromUSDTo: currency.code) ?? 0
-                }
-
-                // **2026-06-12 — one deduplicated price fetch per
-                // refresh.** Previously every token on every chain
-                // fired its own `priceService.price(...)` call, all
-                // concurrently — USDC alone was requested ~14× per
-                // refresh (once per EVM chain + Solana + Tron), and
-                // the actor's 60 s TTL cache can't help while all
-                // callers race the SAME cold miss (actor reentrancy:
-                // each checks the cache before the first response
-                // lands). The scan's symbol universe is fully known
-                // up front (chain tickers + per-chain registries +
-                // custom tokens), so we fetch each unique symbol
-                // exactly once via the bounded `prices(symbols:fiat:)`
-                // batch API and let every row task read from the
-                // shared result. **Rows are NOT hostage to the
-                // batch** (2026-06-12): each row yields with
-                // `fiatBalance: nil` the moment its balance lands,
-                // then re-yields with fiat once this task resolves —
-                // a slow or down Coinbase delays prices, never
-                // balances.
-                let usdPricesTask = Task { [priceService] in
-                    await priceService.prices(
-                        symbols: Self.uniquePriceSymbols(
-                            addresses: addresses,
-                            customTokens: customTokens
-                        ),
-                        fiat: "USD"
-                    )
-                }
-
                 await withTaskGroup(of: Void.self) { group in
                     for (chain, address) in addresses {
                         // Native balance task (one per chain).
@@ -199,14 +184,11 @@ struct RealRPCBalanceScanner: BalanceScanner {
                             continuation.yield(nativeRow(fiat: nil))
 
                             let coinbaseSymbol = Self.coinbaseSymbol(for: chain.ticker)
-                            let usdPrice = await usdPricesTask.value[coinbaseSymbol]?.amount
-                            let fxRate = await fxRateTask.value
+                            let unitPrice = await pricesTask.value[coinbaseSymbol]?.amount
 
                             guard let fiat = Self.computeFiat(
                                 native: summary.nativeBalance,
-                                usdPrice: usdPrice,
-                                fxRate: fxRate,
-                                isUSDTarget: currency.code.uppercased() == "USD"
+                                unitPrice: unitPrice
                             ) else { return }
                             continuation.yield(nativeRow(fiat: fiat))
                         }
@@ -223,8 +205,7 @@ struct RealRPCBalanceScanner: BalanceScanner {
                                 chain: chain,
                                 address: address,
                                 client: client,
-                                usdPricesTask: usdPricesTask,
-                                fxRateTask: fxRateTask,
+                                pricesTask: pricesTask,
                                 currency: currency,
                                 customTokens: customForChain,
                                 yield: { row in continuation.yield(row) }
@@ -236,6 +217,7 @@ struct RealRPCBalanceScanner: BalanceScanner {
             }
             continuation.onTermination = { @Sendable _ in
                 task.cancel()
+                pricesTask.cancel()
             }
         }
     }
@@ -253,8 +235,7 @@ struct RealRPCBalanceScanner: BalanceScanner {
         chain: SupportedChain,
         address: String,
         client: RPCClient,
-        usdPricesTask: Task<[String: TokenPrice], Never>,
-        fxRateTask: Task<Decimal, Never>,
+        pricesTask: Task<[String: TokenPricingEngine.ResolvedPrice], Never>,
         currency: SupportedCurrency,
         customTokens: [CustomTokenSnapshot],
         yield: @Sendable @escaping (StreamRow) -> Void
@@ -265,8 +246,7 @@ struct RealRPCBalanceScanner: BalanceScanner {
             chain: chain,
             address: address,
             client: client,
-            usdPricesTask: usdPricesTask,
-            fxRateTask: fxRateTask,
+            pricesTask: pricesTask,
             currency: currency,
             yield: yield
         )
@@ -274,8 +254,7 @@ struct RealRPCBalanceScanner: BalanceScanner {
             chain: chain,
             address: address,
             client: client,
-            usdPricesTask: usdPricesTask,
-            fxRateTask: fxRateTask,
+            pricesTask: pricesTask,
             currency: currency,
             customTokens: customTokens,
             yield: yield
@@ -289,8 +268,7 @@ struct RealRPCBalanceScanner: BalanceScanner {
         chain: SupportedChain,
         address: String,
         client: RPCClient,
-        usdPricesTask: Task<[String: TokenPrice], Never>,
-        fxRateTask: Task<Decimal, Never>,
+        pricesTask: Task<[String: TokenPricingEngine.ResolvedPrice], Never>,
         currency: SupportedCurrency,
         yield: @Sendable @escaping (StreamRow) -> Void
     ) async {
@@ -368,8 +346,7 @@ struct RealRPCBalanceScanner: BalanceScanner {
                 discovered,
                 chain: chain,
                 address: address,
-                usdPricesTask: usdPricesTask,
-                fxRateTask: fxRateTask,
+                pricesTask: pricesTask,
                 currency: currency,
                 yield: yield
             )
@@ -410,8 +387,7 @@ struct RealRPCBalanceScanner: BalanceScanner {
                 discovered,
                 chain: chain,
                 address: address,
-                usdPricesTask: usdPricesTask,
-                fxRateTask: fxRateTask,
+                pricesTask: pricesTask,
                 currency: currency,
                 yield: yield
             )
@@ -442,8 +418,7 @@ struct RealRPCBalanceScanner: BalanceScanner {
                             )],
                             chain: chain,
                             address: address,
-                            usdPricesTask: usdPricesTask,
-                            fxRateTask: fxRateTask,
+                            pricesTask: pricesTask,
                             currency: currency,
                             yield: yield
                         )
@@ -476,8 +451,7 @@ struct RealRPCBalanceScanner: BalanceScanner {
                             )],
                             chain: chain,
                             address: address,
-                            usdPricesTask: usdPricesTask,
-                            fxRateTask: fxRateTask,
+                            pricesTask: pricesTask,
                             currency: currency,
                             yield: yield
                         )
@@ -509,8 +483,7 @@ struct RealRPCBalanceScanner: BalanceScanner {
                             )],
                             chain: chain,
                             address: address,
-                            usdPricesTask: usdPricesTask,
-                            fxRateTask: fxRateTask,
+                            pricesTask: pricesTask,
                             currency: currency,
                             yield: yield
                         )
@@ -540,8 +513,7 @@ struct RealRPCBalanceScanner: BalanceScanner {
                 discovered,
                 chain: chain,
                 address: address,
-                usdPricesTask: usdPricesTask,
-                fxRateTask: fxRateTask,
+                pricesTask: pricesTask,
                 currency: currency,
                 yield: yield
             )
@@ -568,8 +540,7 @@ struct RealRPCBalanceScanner: BalanceScanner {
                 discovered,
                 chain: chain,
                 address: address,
-                usdPricesTask: usdPricesTask,
-                fxRateTask: fxRateTask,
+                pricesTask: pricesTask,
                 currency: currency,
                 yield: yield
             )
@@ -602,8 +573,7 @@ struct RealRPCBalanceScanner: BalanceScanner {
         chain: SupportedChain,
         address: String,
         client: RPCClient,
-        usdPricesTask: Task<[String: TokenPrice], Never>,
-        fxRateTask: Task<Decimal, Never>,
+        pricesTask: Task<[String: TokenPricingEngine.ResolvedPrice], Never>,
         currency: SupportedCurrency,
         customTokens: [CustomTokenSnapshot],
         yield: @Sendable @escaping (StreamRow) -> Void
@@ -665,8 +635,7 @@ struct RealRPCBalanceScanner: BalanceScanner {
                 discovered,
                 chain: chain,
                 address: address,
-                usdPricesTask: usdPricesTask,
-                fxRateTask: fxRateTask,
+                pricesTask: pricesTask,
                 currency: currency,
                 yield: yield
             )
@@ -705,8 +674,7 @@ struct RealRPCBalanceScanner: BalanceScanner {
                 discovered,
                 chain: chain,
                 address: address,
-                usdPricesTask: usdPricesTask,
-                fxRateTask: fxRateTask,
+                pricesTask: pricesTask,
                 currency: currency,
                 yield: yield
             )
@@ -803,9 +771,10 @@ struct RealRPCBalanceScanner: BalanceScanner {
 
     /// Two-phase token yield — the price-batch decoupling. Phase 1
     /// emits every discovered row immediately with `fiatBalance: nil`
-    /// so balances render even when Coinbase is slow or down. Phase 2
-    /// awaits the shared USD-price batch + FX rate and re-yields the
-    /// rows that priced. Consumers upsert idempotently by
+    /// so balances render even when the price providers are slow or
+    /// down. Phase 2 awaits the shared active-currency price batch
+    /// (`TokenPricingEngine` ladder) and re-yields the rows that
+    /// priced. Consumers upsert idempotently by
     /// `(chain, contract)` identity — the coordinator's compound
     /// unique key, the review screens' replace-by-contract — so the
     /// refined row simply replaces the pending one.
@@ -813,8 +782,7 @@ struct RealRPCBalanceScanner: BalanceScanner {
         _ discovered: [DiscoveredToken],
         chain: SupportedChain,
         address: String,
-        usdPricesTask: Task<[String: TokenPrice], Never>,
-        fxRateTask: Task<Decimal, Never>,
+        pricesTask: Task<[String: TokenPricingEngine.ResolvedPrice], Never>,
         currency: SupportedCurrency,
         yield: @Sendable (StreamRow) -> Void
     ) async {
@@ -836,15 +804,11 @@ struct RealRPCBalanceScanner: BalanceScanner {
         for d in discovered {
             yield(tokenRow(d, fiat: nil))
         }
-        let usdPrices = await usdPricesTask.value
-        let fxRate = await fxRateTask.value
-        let isUSDTarget = currency.code.uppercased() == "USD"
+        let prices = await pricesTask.value
         for d in discovered {
             guard let fiat = computeFiat(
                 native: d.amount,
-                usdPrice: usdPrices[d.symbol.uppercased()]?.amount,
-                fxRate: fxRate,
-                isUSDTarget: isUSDTarget
+                unitPrice: prices[d.symbol.uppercased()]?.amount
             ) else { continue }
             yield(tokenRow(d, fiat: fiat))
         }
@@ -1174,21 +1138,17 @@ struct RealRPCBalanceScanner: BalanceScanner {
     }
 
     /// Compute the fiat-balance result honestly. Returns `nil` when
-    /// we truly cannot price the asset (no USD price or no FX rate
-    /// to the user's currency). Returns a real `Decimal` (including
-    /// `0` for an actual zero balance × known price) otherwise.
+    /// no ladder rung could price the asset in the active currency
+    /// (`TokenPricingEngine` omitted the symbol). Returns a real
+    /// `Decimal` (including `0` for an actual zero balance × known
+    /// price) otherwise. The unit price is already denominated in
+    /// the active currency — no FX math here.
     private static func computeFiat(
         native: Decimal,
-        usdPrice: Decimal?,
-        fxRate: Decimal,
-        isUSDTarget: Bool
+        unitPrice: Decimal?
     ) -> Decimal? {
-        guard let usdPrice else { return nil }
-        if isUSDTarget {
-            return native * usdPrice
-        }
-        guard fxRate > 0 else { return nil }
-        return native * usdPrice * fxRate
+        guard let unitPrice else { return nil }
+        return native * unitPrice
     }
 
     /// Some tickers in `SupportedChain.ticker` don't match the symbol
@@ -1203,13 +1163,13 @@ struct RealRPCBalanceScanner: BalanceScanner {
         }
     }
 
-    /// Every Coinbase symbol one `streamScan` could possibly need to
-    /// price — the scanned chains' native tickers, their registry
-    /// tokens, and the user's custom tokens. Known fully up front, so
-    /// the whole scan shares ONE bounded `prices(symbols:fiat:)`
-    /// batch instead of firing a duplicated request per row
-    /// (2026-06-12 — see the comment at the `usdPricesTask` creation
-    /// site in `streamScan`). Mirrors the per-family dispatch in
+    /// Every symbol one `streamScan` could possibly need to price —
+    /// the scanned chains' native tickers, their registry tokens,
+    /// and the user's custom tokens. Known fully up front, so the
+    /// whole scan shares ONE `TokenPricingEngine.unitPrices` batch
+    /// instead of firing a duplicated request per row (2026-06-12 —
+    /// see the comment at the `pricesTask` creation site in
+    /// `streamScan`). Mirrors the per-family dispatch in
     /// `streamRegistryTokens`; families that aren't token-scanned yet
     /// (TON jettons, Polkadot Asset Hub) contribute only their native
     /// ticker.

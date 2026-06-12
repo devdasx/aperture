@@ -17,17 +17,8 @@ import OSLog
 struct WalletRefreshCoordinator: Sendable {
     let container: ModelContainer
 
-    /// Fiat-to-fiat exchange-rate service used for the USD-pivot
-    /// pricing pipeline. Crypto prices are quoted in USD by
-    /// Coinbase (reliable, near-universal coverage); long-tail
-    /// fiats like JOD / EGP / NGN are then converted via this
-    /// service. Shared across all per-address scan tasks so the
-    /// 12-hour rates cache is hit once per session.
-    let fxService: FXRateService
-
-    init(container: ModelContainer, fxService: FXRateService = FXRateService()) {
+    init(container: ModelContainer) {
         self.container = container
-        self.fxService = fxService
     }
 
     private static let log = Logger(subsystem: "com.thuglife.aperture", category: "wallet-refresh")
@@ -499,126 +490,104 @@ struct WalletRefreshCoordinator: Sendable {
         }
     }
 
-    // MARK: - Per-address scan
+    // MARK: - Currency re-price (2026-06-13)
 
-    private func scan(
-        address: AddressSnapshot,
-        txRepo: TransactionRepository,
-        priceRepo: PriceCacheRepository,
-        fiatCurrency: SupportedCurrency
-    ) async {
-        // Phase 1-5 (T-053..T-056): every chain uses the real RPC
-        // path. The stub `BalanceScanner` injection point was removed
-        // 2026-06-10 — the parameter was dead (`_ = scanner`) and had
-        // no remaining callers anywhere in the codebase; a future test
-        // fixture can reintroduce injection at the initializer level
-        // where it belongs.
-        await scanViaRealRPC(
-            address: address,
-            txRepo: txRepo,
-            priceRepo: priceRepo,
-            fiatCurrency: fiatCurrency
-        )
+    /// Fast re-price of the wallet's **persisted** balances into
+    /// `fiatCode` — no on-chain rescan. This is the currency-change
+    /// fast path: the user flips JOD → USD in Settings, every
+    /// existing `TokenBalanceRecord` gets its `fiatValueCached`
+    /// re-valued in the new currency within one price batch, and the
+    /// caller then kicks a normal `refreshWallet` for live balances.
+    ///
+    /// Per-row resolution follows the `TokenPricingEngine` ladder
+    /// (Coinbase → per-currency cache → CoinGecko); rows whose symbol
+    /// no fetch rung can price fall to the **balance-derived** rung:
+    /// the row's own cached fiat re-denominated via the FX cross rate
+    /// (old currency → new currency). Rows that even that cannot
+    /// convert are left untouched — they keep their old
+    /// `fiatCurrencyCode`, so the UI keeps showing the old currency
+    /// symbol next to the old value (honest pairing) instead of a
+    /// wrong number under a new symbol.
+    func repriceWallet(walletId: UUID, fiatCode: String) async {
+        let code = (CurrencyPreference.currency(for: fiatCode)?.code ?? CurrencyPreference.defaultCode).uppercased()
+        let rows = await MainActor.run { fetchBalanceRowSnapshot(walletId: walletId) }
+        guard !rows.isEmpty else { return }
+
+        let engine = TokenPricingEngine.shared
+        let symbols = Array(Set(rows.map { $0.symbol.uppercased() }))
+        let prices = await engine.unitPrices(symbols: symbols, currencyCode: code)
+        guard !Task.isCancelled else { return }
+
+        let txRepo = TransactionRepository(modelContainer: container)
+        var repriced = 0
+        for row in rows {
+            let amount = WalletFormatting.decimalAmount(
+                rawBalance: row.rawBalance,
+                decimals: row.decimals
+            )
+            var newFiat: Decimal?
+            if let price = prices[row.symbol.uppercased()] {
+                newFiat = amount * price.amount
+            } else if row.fiatCurrencyCode.uppercased() != code,
+                      row.fiatValueCached > 0,
+                      let cross = await engine.crossRate(from: row.fiatCurrencyCode, to: code) {
+                // Balance-derived rung: per-unit price implied by the
+                // row's own cached fiat, re-denominated via FX.
+                newFiat = row.fiatValueCached * cross
+            }
+            guard let newFiat else { continue }  // omit — row stays honest in its old currency
+            do {
+                try await txRepo.upsertBalance(
+                    addressId: row.addressId,
+                    tokenSymbol: row.symbol,
+                    tokenContract: row.contract,
+                    decimals: row.decimals,
+                    rawBalance: row.rawBalance,
+                    fiatValueCached: newFiat,
+                    fiatCurrencyCode: code
+                )
+                repriced += 1
+            } catch {
+                Self.log.error("reprice upsert failed for \(row.symbol, privacy: .public): \(String(describing: error), privacy: .public)")
+            }
+        }
+        Self.log.info("Repriced \(repriced, privacy: .public)/\(rows.count, privacy: .public) balance rows into \(code, privacy: .public)")
     }
 
-    // MARK: - Real RPC path (Phase 1 — Ethereum)
+    /// One persisted balance row, flattened for the re-price pass.
+    private struct BalanceRowSnapshot: Sendable {
+        let addressId: UUID
+        let symbol: String
+        let contract: String?
+        let decimals: Int
+        let rawBalance: String
+        let fiatValueCached: Decimal
+        let fiatCurrencyCode: String
+    }
 
-    /// Phase 1 real-RPC scan: dispatches the `EVMChainAdapter` against
-    /// the address, fetches the live native balance + nonce, refreshes
-    /// the price, upserts both into the database. Errors fall back to
-    /// `markScanComplete(isUsed: prior)` so the "Last synced" footer
-    /// stays honest about the attempt even when the read failed.
-    ///
-    /// This is the reference impl per `docs/RPC-ARCHITECTURE.md` §3.1.
-    /// The other 11 EVM chains land in T-053 by adding their
-    /// registry entries; the adapter is already chain-parameterized
-    /// and works for all of them once the endpoints register.
-    private func scanViaRealRPC(
-        address: AddressSnapshot,
-        txRepo: TransactionRepository,
-        priceRepo: PriceCacheRepository,
-        fiatCurrency: SupportedCurrency
-    ) async {
-        // **2026-06-11 — shared RPCClient.** Previously a fresh
-        // `RPCClient()` per address scan: every instance started
-        // with a full token-bucket burst against the same provider
-        // (N × the documented per-endpoint quota) and zeroed
-        // circuit-breaker state, so a dead endpoint was re-probed
-        // (10 s timeout each) by every single scan. The shared
-        // instance is what makes the rate limiter and circuit
-        // breaker actually enforce their contracts.
-        let rpcClient = RPCClient.shared
-
-        // Dispatch to the family-appropriate adapter. Phase 1-5
-        // coverage per `docs/RPC-ARCHITECTURE.md` §3: EVM, Bitcoin,
-        // Solana, XRP, Stellar, NEAR, TON, TRON, Polkadot, Aptos,
-        // Sui, Cosmos (Kava). One unified `ChainAccountSummary`
-        // shape; the adapter does the chain-specific decoding.
-        // Parallel: balance summary + price refresh dispatch
-        // concurrently. The summary read goes to the chain's RPC;
-        // the price read goes to Coinbase. Different hosts, different
-        // rate-limit buckets — no contention, just wall-clock saved.
-        async let summaryTask: ChainAccountSummary? = try? await fetchSummary(
-            chain: address.chain,
-            address: address.address,
-            client: rpcClient
+    @MainActor
+    private func fetchBalanceRowSnapshot(walletId: UUID) -> [BalanceRowSnapshot] {
+        let context = ModelContext(container)
+        var descriptor = FetchDescriptor<WalletRecord>(
+            predicate: #Predicate { $0.id == walletId }
         )
-        async let priceTask: Void = refreshPrice(
-            symbol: address.chain.ticker,
-            fiat: fiatCurrency.code,
-            priceRepo: priceRepo
-        )
-        let maybeSummary = await summaryTask
-        await priceTask
-
-        // Transaction-history fetch runs exactly once per address,
-        // and regardless of whether the balance scan succeeded — an
-        // address can have outgoing transactions on a chain where the
-        // current balance lookup happens to time out, and the user
-        // still deserves to see those rows in their activity feed.
-        // (2026-06-10: a second post-upsert call used to live at the
-        // bottom of this function, doubling every network fetch and
-        // upsert per address; `upsertTransaction` keys on the full leg
-        // identity `(txHash, addressId, tokenContract, tokenSymbol,
-        // directionRaw)` and the address row already exists
-        // before this function runs, so one call here is sufficient.)
-        await scanTransactionHistory(
-            address: address,
-            client: rpcClient,
-            txRepo: txRepo
-        )
-
-        guard let summary = maybeSummary else {
-            Self.log.error("Real RPC scan failed for \(address.address, privacy: .public)")
-            try? await txRepo.markScanComplete(addressId: address.id, isUsed: address.isUsed)
-            return
+        descriptor.fetchLimit = 1
+        guard let wallet = try? context.fetch(descriptor).first else { return [] }
+        var rows: [BalanceRowSnapshot] = []
+        for address in wallet.addresses {
+            for balance in address.balances where !balance.rawBalance.isEmpty {
+                rows.append(BalanceRowSnapshot(
+                    addressId: address.id,
+                    symbol: balance.tokenSymbol,
+                    contract: balance.tokenContract,
+                    decimals: balance.decimals,
+                    rawBalance: balance.rawBalance,
+                    fiatValueCached: balance.fiatValueCached,
+                    fiatCurrencyCode: balance.fiatCurrencyCode
+                ))
+            }
         }
-
-        let fiatValue = await fiatValueFor(
-            symbol: address.chain.ticker,
-            amount: summary.nativeBalance,
-            fiatCode: fiatCurrency.code,
-            priceRepo: priceRepo
-        )
-        do {
-            try await txRepo.upsertBalance(
-                addressId: address.id,
-                tokenSymbol: address.chain.ticker,
-                tokenContract: nil,
-                decimals: 0,
-                rawBalance: Self.decimalString(summary.nativeBalance),
-                fiatValueCached: fiatValue,
-                fiatCurrencyCode: fiatCurrency.code
-            )
-            try await txRepo.markScanComplete(
-                addressId: address.id,
-                isUsed: summary.isUsed
-            )
-            Self.log.info("Real RPC scan for \(address.chain.rawValue, privacy: .public)/\(address.address, privacy: .public): balance=\(String(describing: summary.nativeBalance), privacy: .public) isUsed=\(summary.isUsed, privacy: .public)")
-        } catch {
-            Self.log.error("upsertBalance failed for \(address.address, privacy: .public): \(String(describing: error), privacy: .public)")
-            try? await txRepo.markScanComplete(addressId: address.id, isUsed: summary.isUsed)
-        }
+        return rows
     }
 
     /// Drives the unified `RealRPCTransactionScanner` for one
@@ -671,112 +640,12 @@ struct WalletRefreshCoordinator: Sendable {
         return events.count
     }
 
-    /// Dispatcher: pick the family adapter for the chain and call
-    /// its `fetchAccountSummary(address)`. Every adapter returns
-    /// the same `ChainAccountSummary` shape so the coordinator
-    /// doesn't care about the per-chain JSON shape.
-    private func fetchSummary(
-        chain: SupportedChain,
-        address: String,
-        client: RPCClient
-    ) async throws(RPCError) -> ChainAccountSummary {
-        switch chain {
-        // EVM (12 chains via one adapter)
-        case .ethereum, .arbitrum, .base, .optimism, .scroll, .zkSync,
-             .polygon, .bnbChain, .opBNB, .avalanche, .celo, .kavaEvm:
-            let adapter = EVMChainAdapter(chain: chain, client: client)
-            let s = try await adapter.fetchAccountSummary(address: address)
-            return ChainAccountSummary(nativeBalance: s.nativeBalance, isUsed: s.isUsed)
-        // Bitcoin family (4)
-        case .bitcoin, .bitcoinCash, .litecoin, .dogecoin:
-            let adapter = BitcoinFamilyAdapter(chain: chain, client: client)
-            let s = try await adapter.fetchAccountSummary(address: address)
-            return ChainAccountSummary(nativeBalance: s.nativeBalance, isUsed: s.isUsed)
-        // Solana
-        case .solana:
-            return try await SolanaChainAdapter(client: client).fetchAccountSummary(address: address)
-        // XRP
-        case .ripple:
-            return try await XRPChainAdapter(client: client).fetchAccountSummary(address: address)
-        // Stellar
-        case .stellar:
-            return try await StellarChainAdapter(client: client).fetchAccountSummary(address: address)
-        // NEAR
-        case .near:
-            return try await NEARChainAdapter(client: client).fetchAccountSummary(address: address)
-        // TON
-        case .ton:
-            return try await TONChainAdapter(client: client).fetchAccountSummary(address: address)
-        // TRON
-        case .tron:
-            return try await TRONChainAdapter(client: client).fetchAccountSummary(address: address)
-        // Polkadot (placeholder — SCALE codec pending)
-        case .polkadot:
-            return try await PolkadotChainAdapter(client: client).fetchAccountSummary(address: address)
-        // Aptos
-        case .aptos:
-            return try await AptosChainAdapter(client: client).fetchAccountSummary(address: address)
-        // Sui
-        case .sui:
-            return try await SuiChainAdapter(client: client).fetchAccountSummary(address: address)
-        // Kava (Cosmos)
-        case .kava:
-            return try await CosmosKavaAdapter(client: client).fetchAccountSummary(address: address)
-        }
-    }
-
-    /// Resolve `fiat = amount × price(symbol)` from the price cache.
-    /// Returns `0` if the price isn't cached yet — the UI then shows
-    /// "Price unavailable" rather than a wrong dollar figure.
-    ///
-    /// Uses the **USD-pivot** pipeline: read the cached USD price,
-    /// multiply by the live FX rate (USD → target). Coinbase Spot
-    /// reliably covers ticker→USD; the FX service (open.er-api.com)
-    /// covers USD→long-tail-fiats Coinbase doesn't quote directly
-    /// (JOD, EGP, NGN, KZT, etc.). The persistence layer always
-    /// stores USD so a fiat change in Settings is free.
-    private func fiatValueFor(
-        symbol: String,
-        amount: Decimal,
-        fiatCode: String,
-        priceRepo: PriceCacheRepository
-    ) async -> Decimal {
-        do {
-            // Always read USD from cache — it's the canonical pricing
-            // currency (see `refreshPrice` below for the matching
-            // upsert path).
-            guard let cachedUSD = try await priceRepo.price(symbol: symbol, fiat: "USD") else {
-                return 0
-            }
-            if fiatCode.uppercased() == "USD" {
-                return amount * cachedUSD.price
-            }
-            guard let fxRate = await fxService.rate(fromUSDTo: fiatCode) else {
-                return 0  // honest: no FX rate available
-            }
-            return amount * cachedUSD.price * fxRate
-        } catch {
-            return 0
-        }
-    }
-
-    private func refreshPrice(symbol: String, fiat: String, priceRepo: PriceCacheRepository) async {
-        _ = fiat  // pricing is canonically in USD; per-currency
-                  // conversion happens in `fiatValueFor` via the FX
-                  // service. The parameter is kept for source compat.
-        let coinbase = CoinbasePriceService()
-        guard let live = await coinbase.price(symbol: symbol, fiat: "USD") else { return }
-        do {
-            try await priceRepo.upsert(
-                symbol: symbol,
-                fiat: "USD",
-                price: live.amount,
-                source: "coinbase"
-            )
-        } catch {
-            Self.log.error("price upsert failed for \(symbol, privacy: .public)/USD: \(String(describing: error), privacy: .public)")
-        }
-    }
+    // (2026-06-13 — the dead per-address `scan` / `scanViaRealRPC` /
+    // `fetchSummary` / `fiatValueFor` / `refreshPrice` legacy path
+    // was removed. It had no callers since the 2026-06-09 switch to
+    // `streamScan`, and its contract — "the persistence layer always
+    // stores USD" — contradicted the active-currency pricing ladder
+    // that `TokenPricingEngine` now owns.)
 
     // MARK: - Snapshot helpers
 

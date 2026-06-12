@@ -56,54 +56,92 @@ struct BitcoinFamilyTransactionAdapter: Sendable {
 
     // MARK: - Esplora (BTC, LTC)
 
-    /// Esplora's `/address/{addr}/txs` — pages in batches of 25 by
-    /// default; we ask for one page and slice the result. Each `tx`
-    /// object carries `vin[]` (with `prevout.scriptpubkey_address` /
-    /// `value`) and `vout[]` (with `scriptpubkey_address` / `value`).
+    /// Esplora's `/address/{addr}/txs` returns the mempool txs plus
+    /// the newest 25 confirmed; older history pages through
+    /// `/address/{addr}/txs/chain/{last_seen_txid}` in batches of 25
+    /// (the Esplora-fixed page size). Each `tx` object carries
+    /// `vin[]` (with `prevout.scriptpubkey_address` / `value`) and
+    /// `vout[]` (with `scriptpubkey_address` / `value`).
+    ///
+    /// **Full history (2026-06-13).** Pages run sequentially through
+    /// the rate-limited `RPCClient` until `limit` events (the
+    /// per-chain full-history cap — logged when hit), an empty page
+    /// (history exhausted), or a mid-pagination failure — which
+    /// keeps the pages already fetched (`RPCError.cancelled` still
+    /// propagates immediately).
     private func fetchEsplora(address: String, limit: Int) async throws -> [TransactionEvent] {
-        let data = try await client.callREST(chain: chain, path: "address/\(address)/txs")
-        guard let txs = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] else {
-            Self.log.warning("Esplora response not an array for \(chain.rawValue, privacy: .public)")
-            return []
-        }
+        /// Esplora's fixed confirmed-history page size.
+        let esploraPageSize = 25
         let lower = address.lowercased()
         var events: [TransactionEvent] = []
-        events.reserveCapacity(min(txs.count, limit))
-        for raw in txs.prefix(limit) {
-            guard let txid = raw["txid"] as? String else { continue }
-            let status = raw["status"] as? [String: Any] ?? [:]
-            let confirmed = status["confirmed"] as? Bool ?? false
-            let blockHeight = (status["block_height"] as? Int64)
-            let blockTime = status["block_time"] as? Int64
-            let occurredAt: Date
-            if let blockTime {
-                occurredAt = Date(timeIntervalSince1970: TimeInterval(blockTime))
-            } else {
-                occurredAt = Date()
+        var lastTxid: String?
+        while events.count < limit {
+            let path = lastTxid.map { "address/\(address)/txs/chain/\($0)" }
+                ?? "address/\(address)/txs"
+            let data: Data
+            do {
+                data = try await client.callREST(chain: chain, path: path)
+            } catch {
+                if case .cancelled = error { throw error }
+                if lastTxid == nil { throw error }
+                Self.log.warning("Esplora page after \(lastTxid ?? "-", privacy: .public) failed on \(chain.rawValue, privacy: .public) — keeping \(events.count, privacy: .public) events")
+                break
             }
+            guard let txs = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] else {
+                Self.log.warning("Esplora response not an array for \(chain.rawValue, privacy: .public)")
+                break
+            }
+            if txs.isEmpty { break }
+            for raw in txs {
+                if events.count >= limit { break }
+                guard let txid = raw["txid"] as? String else { continue }
+                let status = raw["status"] as? [String: Any] ?? [:]
+                let confirmed = status["confirmed"] as? Bool ?? false
+                let blockHeight = (status["block_height"] as? Int64)
+                let blockTime = status["block_time"] as? Int64
+                let occurredAt: Date
+                if let blockTime {
+                    occurredAt = Date(timeIntervalSince1970: TimeInterval(blockTime))
+                } else {
+                    occurredAt = Date()
+                }
 
-            var view = LedgerView()
-            for input in raw["vin"] as? [[String: Any]] ?? [] {
-                guard let prev = input["prevout"] as? [String: Any] else { continue }
-                let inputAddr = (prev["scriptpubkey_address"] as? String) ?? ""
-                let value = (prev["value"] as? Int64) ?? 0
-                view.addInput(address: inputAddr, value: value, isUser: inputAddr.lowercased() == lower)
-            }
-            for output in raw["vout"] as? [[String: Any]] ?? [] {
-                let outputAddr = (output["scriptpubkey_address"] as? String) ?? ""
-                let value = (output["value"] as? Int64) ?? 0
-                view.addOutput(address: outputAddr, value: value, isUser: outputAddr.lowercased() == lower)
-            }
+                var view = LedgerView()
+                for input in raw["vin"] as? [[String: Any]] ?? [] {
+                    guard let prev = input["prevout"] as? [String: Any] else { continue }
+                    let inputAddr = (prev["scriptpubkey_address"] as? String) ?? ""
+                    let value = (prev["value"] as? Int64) ?? 0
+                    view.addInput(address: inputAddr, value: value, isUser: inputAddr.lowercased() == lower)
+                }
+                for output in raw["vout"] as? [[String: Any]] ?? [] {
+                    let outputAddr = (output["scriptpubkey_address"] as? String) ?? ""
+                    let value = (output["value"] as? Int64) ?? 0
+                    view.addOutput(address: outputAddr, value: value, isUser: outputAddr.lowercased() == lower)
+                }
 
-            events.append(event(
-                txid: txid,
-                address: address,
-                view: view,
-                blockNumber: blockHeight,
-                occurredAt: occurredAt,
-                confirmed: confirmed,
-                feeSats: raw["fee"] as? Int64
-            ))
+                events.append(event(
+                    txid: txid,
+                    address: address,
+                    view: view,
+                    blockNumber: blockHeight,
+                    occurredAt: occurredAt,
+                    confirmed: confirmed,
+                    feeSats: raw["fee"] as? Int64
+                ))
+            }
+            // Advance the after-txid cursor to the OLDEST tx of this
+            // page. A repeated cursor would loop forever — stop.
+            guard let newLast = txs.last?["txid"] as? String, newLast != lastTxid else { break }
+            lastTxid = newLast
+            // A short page means the confirmed history is exhausted.
+            // (The FIRST page can exceed 25 — mempool txs ride along
+            // — so the short-page check only ends pagination when
+            // fewer than one full confirmed batch came back.)
+            if txs.count < esploraPageSize { break }
+            if events.count >= limit {
+                // Honest bound: RealRPCTransactionScanner.fullHistoryCap.
+                Self.log.info("Esplora history on \(chain.rawValue, privacy: .public) hit the \(limit, privacy: .public)-event full-history cap — older rows not fetched this scan")
+            }
         }
         return events
     }
@@ -118,48 +156,87 @@ struct BitcoinFamilyTransactionAdapter: Sendable {
     /// The registered dogechain fallback exposes no JSON tx list
     /// (Cloudflare-gated — see `RPCRegistry`), so DOGE history is
     /// BlockCypher-only in practice.
+    /// **Full history (2026-06-13).** BlockCypher pages with the
+    /// `before={blockHeight}` cursor (exclusive) and signals more
+    /// data via the root `hasMore` flag; its per-page maximum is 50.
+    /// Pages run sequentially through the rate-limited `RPCClient`
+    /// until `limit` events (the per-chain full-history cap — logged
+    /// when hit), `hasMore == false`, or a mid-pagination failure —
+    /// which keeps the pages already fetched (`RPCError.cancelled`
+    /// still propagates immediately).
     private func fetchBlockCypher(address: String, limit: Int) async throws -> [TransactionEvent] {
-        let data = try await client.callREST(
-            chain: chain,
-            path: "addrs/\(address)/full",
-            query: [URLQueryItem(name: "limit", value: String(min(limit, 50)))]
-        )
-        guard let root = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
-              let txs = root["txs"] as? [[String: Any]] else {
-            Self.log.warning("BlockCypher response not in expected shape for \(chain.rawValue, privacy: .public)")
-            return []
-        }
+        /// BlockCypher's documented per-page maximum for `/full`.
+        let pageSize = 50
         let lower = address.lowercased()
         var events: [TransactionEvent] = []
-        events.reserveCapacity(min(txs.count, limit))
-        for raw in txs.prefix(limit) {
-            guard let txid = raw["hash"] as? String else { continue }
-            let blockHeight = (raw["block_height"] as? NSNumber)?.int64Value ?? -1
-            let confirmedStr = raw["confirmed"] as? String
-            let confirmed = blockHeight > 0 && confirmedStr != nil
-            let occurredAt = confirmedStr.flatMap { Self.iso8601.date(from: $0) } ?? Date()
-
-            var view = LedgerView()
-            for input in raw["inputs"] as? [[String: Any]] ?? [] {
-                let addr = (input["addresses"] as? [String])?.first ?? ""
-                let value = (input["output_value"] as? NSNumber)?.int64Value ?? 0
-                view.addInput(address: addr, value: value, isUser: addr.lowercased() == lower)
+        var before: Int64?
+        while events.count < limit {
+            var query = [URLQueryItem(name: "limit", value: String(pageSize))]
+            if let before {
+                query.append(URLQueryItem(name: "before", value: String(before)))
             }
-            for output in raw["outputs"] as? [[String: Any]] ?? [] {
-                let addr = (output["addresses"] as? [String])?.first ?? ""
-                let value = (output["value"] as? NSNumber)?.int64Value ?? 0
-                view.addOutput(address: addr, value: value, isUser: addr.lowercased() == lower)
+            let data: Data
+            do {
+                data = try await client.callREST(
+                    chain: chain,
+                    path: "addrs/\(address)/full",
+                    query: query
+                )
+            } catch {
+                if case .cancelled = error { throw error }
+                if before == nil { throw error }
+                Self.log.warning("BlockCypher page before \(before ?? 0, privacy: .public) failed on \(chain.rawValue, privacy: .public) — keeping \(events.count, privacy: .public) events")
+                break
             }
+            guard let root = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
+                  let txs = root["txs"] as? [[String: Any]] else {
+                Self.log.warning("BlockCypher response not in expected shape for \(chain.rawValue, privacy: .public)")
+                break
+            }
+            if txs.isEmpty { break }
+            var minHeight: Int64?
+            for raw in txs {
+                guard let txid = raw["hash"] as? String else { continue }
+                let blockHeight = (raw["block_height"] as? NSNumber)?.int64Value ?? -1
+                if blockHeight > 0 {
+                    minHeight = min(minHeight ?? blockHeight, blockHeight)
+                }
+                if events.count >= limit { continue }
+                let confirmedStr = raw["confirmed"] as? String
+                let confirmed = blockHeight > 0 && confirmedStr != nil
+                let occurredAt = confirmedStr.flatMap { Self.iso8601.date(from: $0) } ?? Date()
 
-            events.append(event(
-                txid: txid,
-                address: address,
-                view: view,
-                blockNumber: blockHeight > 0 ? blockHeight : nil,
-                occurredAt: occurredAt,
-                confirmed: confirmed,
-                feeSats: (raw["fees"] as? NSNumber)?.int64Value
-            ))
+                var view = LedgerView()
+                for input in raw["inputs"] as? [[String: Any]] ?? [] {
+                    let addr = (input["addresses"] as? [String])?.first ?? ""
+                    let value = (input["output_value"] as? NSNumber)?.int64Value ?? 0
+                    view.addInput(address: addr, value: value, isUser: addr.lowercased() == lower)
+                }
+                for output in raw["outputs"] as? [[String: Any]] ?? [] {
+                    let addr = (output["addresses"] as? [String])?.first ?? ""
+                    let value = (output["value"] as? NSNumber)?.int64Value ?? 0
+                    view.addOutput(address: addr, value: value, isUser: addr.lowercased() == lower)
+                }
+
+                events.append(event(
+                    txid: txid,
+                    address: address,
+                    view: view,
+                    blockNumber: blockHeight > 0 ? blockHeight : nil,
+                    occurredAt: occurredAt,
+                    confirmed: confirmed,
+                    feeSats: (raw["fees"] as? NSNumber)?.int64Value
+                ))
+            }
+            let hasMore = (root["hasMore"] as? Bool) ?? false
+            // No confirmed boundary height → can't form the next
+            // cursor (an all-mempool page); stop honestly.
+            guard hasMore, let nextBefore = minHeight, nextBefore != before else { break }
+            before = nextBefore
+            if events.count >= limit {
+                // Honest bound: RealRPCTransactionScanner.fullHistoryCap.
+                Self.log.info("BlockCypher history on \(chain.rawValue, privacy: .public) hit the \(limit, privacy: .public)-event full-history cap — older rows not fetched this scan")
+            }
         }
         return events
     }
@@ -174,47 +251,78 @@ struct BitcoinFamilyTransactionAdapter: Sendable {
     /// Haskoin returns cashaddr WITH the `bitcoincash:` prefix; the
     /// wallet may store either form, so both sides are normalized
     /// before comparison.
+    /// **Full history (2026-06-13).** Haskoin pages with
+    /// `limit`/`offset` query params. Pages run sequentially through
+    /// the rate-limited `RPCClient` until `limit` events (the
+    /// per-chain full-history cap — logged when hit), a short page
+    /// (history exhausted), or a mid-pagination failure — which
+    /// keeps the pages already fetched (`RPCError.cancelled` still
+    /// propagates immediately).
     private func fetchHaskoin(address: String, limit: Int) async throws -> [TransactionEvent] {
-        let data = try await client.callREST(
-            chain: chain,
-            path: "bch/address/\(address)/transactions/full",
-            query: [URLQueryItem(name: "limit", value: String(limit))]
-        )
-        guard let txs = (try? JSONSerialization.jsonObject(with: data)) as? [[String: Any]] else {
-            Self.log.warning("Haskoin response not an array for \(chain.rawValue, privacy: .public)")
-            return []
-        }
+        /// Conservative page size — Haskoin serves full transactions
+        /// (every input/output inlined), so big pages are heavy.
+        let pageSize = min(limit, 100)
         let user = Self.normalizedCashAddr(address)
         var events: [TransactionEvent] = []
-        events.reserveCapacity(min(txs.count, limit))
-        for raw in txs.prefix(limit) {
-            guard let txid = raw["txid"] as? String else { continue }
-            let block = raw["block"] as? [String: Any] ?? [:]
-            let blockHeight = (block["height"] as? NSNumber)?.int64Value
-            let time = (raw["time"] as? NSNumber)?.doubleValue
-            let occurredAt = time.map { Date(timeIntervalSince1970: $0) } ?? Date()
-
-            var view = LedgerView()
-            for input in raw["inputs"] as? [[String: Any]] ?? [] {
-                let addr = (input["address"] as? String) ?? ""
-                let value = (input["value"] as? NSNumber)?.int64Value ?? 0
-                view.addInput(address: addr, value: value, isUser: Self.normalizedCashAddr(addr) == user)
+        var offset = 0
+        while events.count < limit {
+            let data: Data
+            do {
+                data = try await client.callREST(
+                    chain: chain,
+                    path: "bch/address/\(address)/transactions/full",
+                    query: [
+                        URLQueryItem(name: "limit", value: String(pageSize)),
+                        URLQueryItem(name: "offset", value: String(offset)),
+                    ]
+                )
+            } catch {
+                if case .cancelled = error { throw error }
+                if offset == 0 { throw error }
+                Self.log.warning("Haskoin page at offset \(offset, privacy: .public) failed on \(chain.rawValue, privacy: .public) — keeping \(events.count, privacy: .public) events")
+                break
             }
-            for output in raw["outputs"] as? [[String: Any]] ?? [] {
-                let addr = (output["address"] as? String) ?? ""
-                let value = (output["value"] as? NSNumber)?.int64Value ?? 0
-                view.addOutput(address: addr, value: value, isUser: Self.normalizedCashAddr(addr) == user)
+            guard let txs = (try? JSONSerialization.jsonObject(with: data)) as? [[String: Any]] else {
+                Self.log.warning("Haskoin response not an array for \(chain.rawValue, privacy: .public)")
+                break
             }
+            if txs.isEmpty { break }
+            for raw in txs {
+                if events.count >= limit { break }
+                guard let txid = raw["txid"] as? String else { continue }
+                let block = raw["block"] as? [String: Any] ?? [:]
+                let blockHeight = (block["height"] as? NSNumber)?.int64Value
+                let time = (raw["time"] as? NSNumber)?.doubleValue
+                let occurredAt = time.map { Date(timeIntervalSince1970: $0) } ?? Date()
 
-            events.append(event(
-                txid: txid,
-                address: address,
-                view: view,
-                blockNumber: blockHeight,
-                occurredAt: occurredAt,
-                confirmed: blockHeight != nil,
-                feeSats: (raw["fee"] as? NSNumber)?.int64Value
-            ))
+                var view = LedgerView()
+                for input in raw["inputs"] as? [[String: Any]] ?? [] {
+                    let addr = (input["address"] as? String) ?? ""
+                    let value = (input["value"] as? NSNumber)?.int64Value ?? 0
+                    view.addInput(address: addr, value: value, isUser: Self.normalizedCashAddr(addr) == user)
+                }
+                for output in raw["outputs"] as? [[String: Any]] ?? [] {
+                    let addr = (output["address"] as? String) ?? ""
+                    let value = (output["value"] as? NSNumber)?.int64Value ?? 0
+                    view.addOutput(address: addr, value: value, isUser: Self.normalizedCashAddr(addr) == user)
+                }
+
+                events.append(event(
+                    txid: txid,
+                    address: address,
+                    view: view,
+                    blockNumber: blockHeight,
+                    occurredAt: occurredAt,
+                    confirmed: blockHeight != nil,
+                    feeSats: (raw["fee"] as? NSNumber)?.int64Value
+                ))
+            }
+            if txs.count < pageSize { break } // history exhausted
+            offset += txs.count
+            if events.count >= limit {
+                // Honest bound: RealRPCTransactionScanner.fullHistoryCap.
+                Self.log.info("Haskoin history on \(chain.rawValue, privacy: .public) hit the \(limit, privacy: .public)-event full-history cap — older rows not fetched this scan")
+            }
         }
         return events
     }

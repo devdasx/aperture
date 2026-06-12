@@ -19,13 +19,15 @@ import OSLog
 /// "received" / "sent" rows in a wallet activity feed, and surfacing
 /// them as noise would be worse than honest omission.
 ///
-/// **Rate limits.** For 25 signatures (the default `limit`) we issue
-/// 26 calls (1 list + 25 detail). The detail calls run through a
+/// **Rate limits.** For N signatures we issue ⌈N/100⌉ sequential
+/// list pages + N detail calls. The detail calls run through a
 /// bounded fan-out window (`maxConcurrentDetailFetches`) so the
 /// endpoint's `RateLimiter` is fed at its sustained rate instead of
 /// being stampeded past its bounded wait; if a specific call still
 /// fails, the adapter swallows the per-signature failure and returns
-/// what landed.
+/// what landed. At the full-history cap (1,000 signatures) the
+/// hydration pass is deliberately slow — wall-clock-bounded by the
+/// endpoint's sustained rate — rather than a parallel storm.
 struct SolanaTransactionAdapter: Sendable {
     let client: RPCClient
 
@@ -38,14 +40,50 @@ struct SolanaTransactionAdapter: Sendable {
     private static let maxConcurrentDetailFetches = 4
 
     func fetch(address: String, limit: Int) async throws -> [TransactionEvent] {
-        let sigOptions: [String: Sendable] = ["limit": min(limit, 25)]
-        let sigData = try await client.callJSONResultData(
-            chain: .solana,
-            method: "getSignaturesForAddress",
-            params: [address, sigOptions]
-        )
-        guard let sigArray = (try? JSONSerialization.jsonObject(with: sigData)) as? [[String: Any]] else {
-            return []
+        // **Full history (2026-06-13).** The signature list pages
+        // with the `before` cursor (newest-first; the cursor is the
+        // last signature of the previous page). Pages run
+        // sequentially through the rate-limited `RPCClient` until
+        // `limit` signatures (the per-chain full-history cap —
+        // logged when hit), a short page (history exhausted), or a
+        // mid-pagination failure — which keeps the signatures
+        // already listed (`RPCError.cancelled` still propagates
+        // immediately). Listing is cheap; the cost lives in the
+        // per-signature detail hydration below, which stays inside
+        // the bounded fan-out window.
+        let pageSize = min(limit, 100)
+        var sigArray: [[String: Any]] = []
+        var before: String?
+        while sigArray.count < limit {
+            if Task.isCancelled { throw RPCError.cancelled }
+            var sigOptions: [String: Sendable] = ["limit": pageSize]
+            if let before { sigOptions["before"] = before }
+            let sigData: Data
+            do {
+                sigData = try await client.callJSONResultData(
+                    chain: .solana,
+                    method: "getSignaturesForAddress",
+                    params: [address, sigOptions]
+                )
+            } catch {
+                if case .cancelled = error { throw error }
+                if before == nil { throw error }
+                Self.log.warning("Signature page after \(before ?? "-", privacy: .private) failed — keeping \(sigArray.count, privacy: .public) signatures")
+                break
+            }
+            guard let page = (try? JSONSerialization.jsonObject(with: sigData)) as? [[String: Any]],
+                  !page.isEmpty else {
+                break
+            }
+            sigArray.append(contentsOf: page)
+            guard let lastSignature = page.last?["signature"] as? String,
+                  lastSignature != before else { break }
+            before = lastSignature
+            if page.count < pageSize { break } // history exhausted
+            if sigArray.count >= limit {
+                // Honest bound: RealRPCTransactionScanner.fullHistoryCap.
+                Self.log.info("Solana signature list hit the \(limit, privacy: .public)-signature full-history cap — older rows not fetched this scan")
+            }
         }
         let signatures = sigArray.prefix(limit).compactMap { entry -> (signature: String, slot: Int64, blockTime: Int64?, err: Bool)? in
             guard let signature = entry["signature"] as? String else { return nil }

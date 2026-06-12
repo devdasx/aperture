@@ -136,8 +136,15 @@ struct EVMTransactionAdapter: Sendable {
         if let nativeFailure, tokenFailure != nil {
             throw nativeFailure
         }
-        // Combine + sort + cap.
+        // Combine + sort + cap. With pagination, native and token
+        // each fetch up to `limit` rows, so the combined set can
+        // exceed the per-chain cap — when it does, the OLDEST rows
+        // are the ones dropped, and the truncation is logged so it
+        // is never silent (Rule #16 honesty).
         let combined = nativeEvents + tokenEvents
+        if combined.count > limit {
+            Self.log.info("Combined native+token history on \(chain.rawValue, privacy: .public) (\(combined.count, privacy: .public) rows) exceeds the \(limit, privacy: .public)-row full-history cap — oldest rows truncated")
+        }
         return combined
             .sorted { $0.occurredAt > $1.occurredAt }
             .prefix(limit)
@@ -189,8 +196,65 @@ struct EVMTransactionAdapter: Sendable {
         return allowed
     }
 
-    /// Run an Etherscan-compatible GET, return the JSON array under
-    /// `"result"`.
+    /// Sequentially page an Etherscan-compatible action until `limit`
+    /// rows (the per-chain full-history cap), a short page (history
+    /// exhausted), or a mid-pagination failure.
+    ///
+    /// **Full history (2026-06-13).** The pre-pagination code asked
+    /// for a single `page=1&offset=limit` slice, so an imported
+    /// wallet's older activity — including its historical balance
+    /// peaks — never reached the database. Pages now run STRICTLY
+    /// sequentially (never in parallel) so the indexer's free-tier
+    /// rate limit is fed at a polite pace, and:
+    ///
+    /// - `RPCError.cancelled` propagates immediately between pages;
+    /// - a failure on page 1 propagates (the caller decides the
+    ///   fallback);
+    /// - a failure on a LATER page keeps the rows already fetched —
+    ///   the caller persists them, so a mid-pagination outage
+    ///   degrades to "deep but incomplete" rather than empty (the
+    ///   repository upsert is idempotent; the next scan resumes).
+    private func runEtherscanQueryAllPages(
+        action: String,
+        address: String,
+        limit: Int
+    ) async throws(RPCError) -> [[String: Any]]? {
+        let pageSize = min(limit, 100)
+        var rows: [[String: Any]] = []
+        var page = 1
+        while rows.count < limit {
+            let pageRows: [[String: Any]]?
+            do {
+                pageRows = try await runEtherscanQuery(
+                    action: action,
+                    address: address,
+                    page: page,
+                    pageSize: pageSize
+                )
+            } catch {
+                if case .cancelled = error { throw error }
+                if page == 1 { throw error }
+                Self.log.warning("Indexer \(action, privacy: .public) page \(page, privacy: .public) failed on \(chain.rawValue, privacy: .public) — keeping \(rows.count, privacy: .public) rows already fetched: \(String(describing: error), privacy: .public)")
+                break
+            }
+            guard let pageRows else {
+                // No Routescan coverage — same answer on every page.
+                return page == 1 ? nil : rows
+            }
+            rows.append(contentsOf: pageRows)
+            if pageRows.count < pageSize { break } // history exhausted
+            if rows.count >= limit {
+                // Honest bound: RealRPCTransactionScanner.fullHistoryCap.
+                Self.log.info("Indexer \(action, privacy: .public) on \(chain.rawValue, privacy: .public) hit the \(limit, privacy: .public)-row full-history cap — older rows not fetched this scan")
+                break
+            }
+            page += 1
+        }
+        return rows
+    }
+
+    /// Run one Etherscan-compatible GET page, return the JSON array
+    /// under `"result"`.
     ///
     /// **Failure ≠ no data (2026-06-11).** Returns `nil` only when
     /// the chain has no Routescan coverage (the caller may use a
@@ -204,7 +268,8 @@ struct EVMTransactionAdapter: Sendable {
     private func runEtherscanQuery(
         action: String,
         address: String,
-        limit: Int
+        page: Int,
+        pageSize: Int
     ) async throws(RPCError) -> [[String: Any]]? {
         guard let base = Self.routescanAPIBase(for: chain) else { return nil }
         var components = URLComponents(url: base, resolvingAgainstBaseURL: false)
@@ -213,8 +278,8 @@ struct EVMTransactionAdapter: Sendable {
             URLQueryItem(name: "action", value: action),
             URLQueryItem(name: "address", value: address),
             URLQueryItem(name: "sort", value: "desc"),
-            URLQueryItem(name: "page", value: "1"),
-            URLQueryItem(name: "offset", value: String(limit))
+            URLQueryItem(name: "page", value: String(page)),
+            URLQueryItem(name: "offset", value: String(pageSize))
         ]
         guard let url = components?.url else { return nil }
 
@@ -303,7 +368,7 @@ struct EVMTransactionAdapter: Sendable {
         // directly; only a thrown indexer error falls back.
         let indexerRows: [[String: Any]]?
         do {
-            indexerRows = try await runEtherscanQuery(action: "txlist", address: address, limit: limit)
+            indexerRows = try await runEtherscanQueryAllPages(action: "txlist", address: address, limit: limit)
         } catch {
             if case RPCError.cancelled = error { throw error }
             Self.log.error("Indexer txlist failed on \(chain.rawValue, privacy: .public): \(String(describing: error), privacy: .public)")
@@ -314,22 +379,48 @@ struct EVMTransactionAdapter: Sendable {
             return parseNativeRows(rows, address: address, limit: limit)
         }
         // Fallback: legacy Blockscout `txlist`. Same shape, same
-        // parser — so a single helper handles both paths.
+        // parser — so a single helper handles both paths. Paged
+        // sequentially (2026-06-13) to the same full-history cap as
+        // the indexer path; a failure after page 1 keeps the rows
+        // already fetched rather than blanking the chain.
         guard let host = Self.blockscoutHost(for: chain) else { return [] }
-        let urlString = "\(host)/api?module=account&action=txlist&address=\(address)&sort=desc&page=1&offset=\(limit)"
-        guard let url = URL(string: urlString) else { return [] }
-        var request = URLRequest(url: url)
-        request.httpMethod = "GET"
-        request.timeoutInterval = 15
-        let (data, response) = try await URLSession.shared.data(for: request)
-        if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
-            return []
+        let pageSize = min(limit, 100)
+        var rows: [[String: Any]] = []
+        var page = 1
+        while rows.count < limit {
+            let urlString = "\(host)/api?module=account&action=txlist&address=\(address)&sort=desc&page=\(page)&offset=\(pageSize)"
+            guard let url = URL(string: urlString) else { break }
+            var request = URLRequest(url: url)
+            request.httpMethod = "GET"
+            request.timeoutInterval = 15
+            let data: Data
+            let response: URLResponse
+            do {
+                (data, response) = try await URLSession.shared.data(for: request)
+            } catch let urlError as URLError where urlError.code == .cancelled {
+                throw RPCError.cancelled
+            } catch {
+                if page == 1 { throw error }
+                Self.log.warning("Blockscout txlist page \(page, privacy: .public) failed on \(chain.rawValue, privacy: .public) — keeping \(rows.count, privacy: .public) rows")
+                break
+            }
+            if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
+                break
+            }
+            guard let root = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
+                  let txs = root["result"] as? [[String: Any]] else {
+                break
+            }
+            rows.append(contentsOf: txs)
+            if txs.count < pageSize { break } // history exhausted
+            if rows.count >= limit {
+                // Honest bound: RealRPCTransactionScanner.fullHistoryCap.
+                Self.log.info("Blockscout txlist on \(chain.rawValue, privacy: .public) hit the \(limit, privacy: .public)-row full-history cap")
+                break
+            }
+            page += 1
         }
-        guard let root = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
-              let txs = root["result"] as? [[String: Any]] else {
-            return []
-        }
-        return parseNativeRows(txs, address: address, limit: limit)
+        return parseNativeRows(rows, address: address, limit: limit)
     }
 
     /// Parse Etherscan-compatible `txlist` rows into
@@ -477,7 +568,7 @@ struct EVMTransactionAdapter: Sendable {
         // RPC quota on a question we already have the answer to. Only
         // the `nil` case (no coverage at all — chain not in
         // Routescan's table) falls back.
-        if let rows = try await runEtherscanQuery(action: "tokentx", address: address, limit: limit) {
+        if let rows = try await runEtherscanQueryAllPages(action: "tokentx", address: address, limit: limit) {
             return parseTokenTxRows(
                 rows,
                 address: address,

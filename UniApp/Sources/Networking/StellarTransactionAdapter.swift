@@ -14,23 +14,73 @@ struct StellarTransactionAdapter: Sendable {
 
     private static let log = Logger(subsystem: "com.thuglife.aperture", category: "xlm-tx-adapter")
 
+    /// **Full history (2026-06-13).** Horizon pages with the
+    /// `cursor` param (the `paging_token` of the last record of the
+    /// previous page); per-page maximum is 200. Pages run
+    /// sequentially through the rate-limited `RPCClient` until
+    /// `limit` events (the per-chain full-history cap — logged when
+    /// hit), a short page (history exhausted), or a mid-pagination
+    /// failure — which keeps the pages already fetched
+    /// (`RPCError.cancelled` still propagates immediately). The
+    /// fetched-record budget is also capped at `limit` so an account
+    /// with endless non-payment operations can't spin the loop.
     func fetch(address: String, limit: Int) async throws -> [TransactionEvent] {
         let path = "/accounts/\(address)/payments"
-        let query: [URLQueryItem] = [
-            URLQueryItem(name: "order", value: "desc"),
-            URLQueryItem(name: "limit", value: String(limit)),
-            URLQueryItem(name: "include_failed", value: "true"),
-        ]
-        let data = try await client.callREST(chain: .stellar, path: path, query: query)
-        guard let root = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
-              let embedded = root["_embedded"] as? [String: Any],
-              let records = embedded["records"] as? [[String: Any]] else {
-            return []
-        }
-
+        /// Horizon's documented per-page maximum.
+        let pageSize = min(limit, 200)
         var events: [TransactionEvent] = []
-        events.reserveCapacity(records.count)
+        var cursor: String?
+        var fetchedRecords = 0
+        while events.count < limit && fetchedRecords < limit {
+            var query: [URLQueryItem] = [
+                URLQueryItem(name: "order", value: "desc"),
+                URLQueryItem(name: "limit", value: String(pageSize)),
+                URLQueryItem(name: "include_failed", value: "true"),
+            ]
+            if let cursor {
+                query.append(URLQueryItem(name: "cursor", value: cursor))
+            }
+            let data: Data
+            do {
+                data = try await client.callREST(chain: .stellar, path: path, query: query)
+            } catch {
+                if case .cancelled = error { throw error }
+                if cursor == nil { throw error }
+                Self.log.warning("Horizon payments page failed — keeping \(events.count, privacy: .public) events")
+                break
+            }
+            guard let root = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
+                  let embedded = root["_embedded"] as? [String: Any],
+                  let records = embedded["records"] as? [[String: Any]] else {
+                break
+            }
+            if records.isEmpty { break }
+            fetchedRecords += records.count
+            appendEvents(from: records, address: address, limit: limit, into: &events)
+            guard let nextCursor = records.last?["paging_token"] as? String,
+                  nextCursor != cursor else { break }
+            cursor = nextCursor
+            if records.count < pageSize { break } // history exhausted
+            if events.count >= limit || fetchedRecords >= limit {
+                // Honest bound: RealRPCTransactionScanner.fullHistoryCap.
+                Self.log.info("Horizon payments hit the \(limit, privacy: .public)-row full-history cap — older rows not fetched this scan")
+            }
+        }
+        return events
+    }
+
+    /// Parse one Horizon page of payment operations into events,
+    /// appending until `limit`. Extracted verbatim from the previous
+    /// single-page `fetch` body so pagination wraps it unchanged.
+    private func appendEvents(
+        from records: [[String: Any]],
+        address: String,
+        limit: Int,
+        into events: inout [TransactionEvent]
+    ) {
+        events.reserveCapacity(min(events.count + records.count, limit))
         for op in records {
+            if events.count >= limit { break }
             guard let opType = op["type"] as? String,
                   opType == "payment" || opType == "path_payment_strict_send" || opType == "path_payment_strict_receive",
                   let txHash = op["transaction_hash"] as? String,
@@ -100,7 +150,6 @@ struct StellarTransactionAdapter: Sendable {
                 fee: nil
             ))
         }
-        return events
     }
 
     /// Stellar assets Aperture recognizes, keyed by the full

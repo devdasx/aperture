@@ -23,13 +23,17 @@ import SwiftUI
 /// via `.textContentType(.newPassword)` rather than `.password` — this is
 /// a wallet passphrase, not a login.
 ///
-/// **Sheet shape (Rule #15).** A `NavigationStack` wraps the content; the
-/// title lives in `.navigationTitle("Optional passphrase")` with
-/// `.navigationBarTitleDisplayMode(.inline)` to match the `.medium`
-/// detent. Cancel sits at `topBarLeading`, Save at `topBarTrailing`, both
-/// as native nav-bar text buttons — the same geometry Apple's Mail compose
-/// uses. No `ScrollView`: the body, the input, and the footnote fit the
-/// medium detent on every device.
+/// **Sheet shape (Rules #15 / #18).** The body is the canonical
+/// `UniSheet` shell (title row + scrollable body + pinned actions),
+/// presented with `.intrinsicHeightSheet()` at EVERY call site so the
+/// sheet sizes to exactly its content — including when the keyboard
+/// rises and compresses the available space, where the modifier's
+/// `.large` fallback plus `UniSheet`'s inner ScrollView keep the input
+/// and CTAs reachable instead of clipping them. Never present this
+/// sheet with a fixed `.medium` / `.large` detent: the 2026-06-13
+/// import-flow bug (field clipped mid-row, Save/Cancel overlapping it)
+/// was exactly that — a stale `.presentationDetents([.medium])` at the
+/// `MnemonicImport` call site.
 ///
 /// **Material.** The sheet's content background is the opaque system
 /// background (`UniColors.Background.primary`) applied via
@@ -81,10 +85,10 @@ struct PassphraseSheet: View {
 
     /// Rule #16 §A.1 — a single quiet `key.viewfinder` glyph in
     /// `UniColors.Brand.mark` (graphite/soft-white). The size is
-    /// restrained for the `.medium` detent — 40pt sits above the body
-    /// without competing with the inline nav title or pushing the
-    /// input below the fold. The symbol carries the meaning of the
-    /// surface (an extra key, scrutinized) without alarm.
+    /// restrained for a content-sized sheet — 40pt sits above the body
+    /// without competing with the `UniSheet` title row or inflating
+    /// the measured intrinsic height. The symbol carries the meaning
+    /// of the surface (an extra key, scrutinized) without alarm.
     private var hero: some View {
         HStack {
             Spacer()
@@ -139,9 +143,8 @@ struct PassphraseSheet: View {
     Color.clear
         .sheet(isPresented: .constant(true)) {
             PassphraseSheet(passphrase: .constant(""), onDismiss: {})
+                .intrinsicHeightSheet()
                 .presentationBackground(UniColors.Background.primary)
-                .presentationDetents([.medium])
-                .presentationDragIndicator(.visible)
         }
         .preferredColorScheme(.light)
 }
@@ -150,9 +153,8 @@ struct PassphraseSheet: View {
     Color.clear
         .sheet(isPresented: .constant(true)) {
             PassphraseSheet(passphrase: .constant(""), onDismiss: {})
+                .intrinsicHeightSheet()
                 .presentationBackground(UniColors.Background.primary)
-                .presentationDetents([.medium])
-                .presentationDragIndicator(.visible)
         }
         .preferredColorScheme(.dark)
 }
