@@ -1,4 +1,5 @@
 import Foundation
+import Observation
 import SwiftData
 import OSLog
 
@@ -44,18 +45,47 @@ struct WalletRefreshCoordinator: Sendable {
     /// SwiftData upserts and doubled every RPC fetch. The first caller
     /// now registers its task in `WalletRefreshRegistry`; every
     /// concurrent caller for the same `walletId` awaits that same task
-    /// instead of starting a second pipeline. Public API unchanged.
-    func refreshWallet(walletId: UUID, fiatCode: String) async {
-        let task = await WalletRefreshRegistry.joinOrStart(walletId: walletId) {
+    /// instead of starting a second pipeline.
+    ///
+    /// **User-initiated escape hatch (2026-06-12).** Joining the
+    /// in-flight task meant a pull-to-refresh against a WEDGED
+    /// pipeline (a stalled RPC read) silently absorbed the pull —
+    /// "refresh did nothing" was guaranteed for the duration of the
+    /// stall. When `userInitiated` is `true` and a pipeline is
+    /// already in flight, the existing task is CANCELLED (the
+    /// cancellation propagates through the scan stream and
+    /// `RPCClient` as `RPCError.cancelled`) and a fresh pipeline
+    /// starts in its place. Background / auto refreshes keep the
+    /// join semantics — they have no user waiting on them.
+    ///
+    /// Returns the set of chains whose balance scan yielded nothing
+    /// even after the bounded retry pass (empty = every chain
+    /// reported). The same outcome is published on
+    /// `WalletRefreshState.shared` for observers that don't own the
+    /// call site.
+    @discardableResult
+    func refreshWallet(
+        walletId: UUID,
+        fiatCode: String,
+        userInitiated: Bool = false
+    ) async -> Set<SupportedChain> {
+        let task = await WalletRefreshRegistry.joinOrStart(
+            walletId: walletId,
+            cancelExisting: userInitiated
+        ) {
             await self.performRefresh(walletId: walletId, fiatCode: fiatCode)
         }
-        await task.value
+        return await task.value
     }
 
     /// The actual refresh pipeline. Only ever entered through the
     /// registry above, so at most one instance runs per wallet at a
-    /// time.
-    private func performRefresh(walletId: UUID, fiatCode: String) async {
+    /// time. Returns the chains whose balance scan yielded nothing
+    /// even after the bounded retry pass below.
+    private func performRefresh(walletId: UUID, fiatCode: String) async -> Set<SupportedChain> {
+        let refreshGeneration = await MainActor.run {
+            WalletRefreshState.shared.beginRefresh()
+        }
         let txRepo = TransactionRepository(modelContainer: container)
 
         // Resolve the user's currency code → struct once, so the
@@ -70,7 +100,32 @@ struct WalletRefreshCoordinator: Sendable {
         // Read the wallet's addresses on the main actor for a one-shot
         // snapshot. We don't hold the context across await points to
         // keep concurrency clean.
-        let snapshot = await MainActor.run { fetchAddressSnapshot(walletId: walletId) }
+        var snapshot = await MainActor.run { fetchAddressSnapshot(walletId: walletId) }
+
+        // **2026-06-12 — empty-snapshot backoff.** A refresh fired in
+        // the import-completion window can land before the freshly
+        // imported wallet's rows are visible to a new context (the
+        // repository actor's save commits a beat before cross-context
+        // visibility is guaranteed). An empty snapshot used to
+        // silently no-op the entire refresh — the wallet then showed
+        // $0.00 until the next manual pull or relaunch. Re-ask the
+        // store a few times before declaring the no-op.
+        if snapshot.isEmpty {
+            for attempt in 1...3 where !Task.isCancelled {
+                Self.log.info("Empty address snapshot for wallet \(walletId.uuidString, privacy: .public) — retry \(attempt, privacy: .public)/3 after backoff")
+                try? await Task.sleep(for: .milliseconds(500))
+                snapshot = await MainActor.run { fetchAddressSnapshot(walletId: walletId) }
+                if !snapshot.isEmpty { break }
+            }
+            if snapshot.isEmpty {
+                Self.log.error("Address snapshot still empty for wallet \(walletId.uuidString, privacy: .public) — balance refresh has nothing to scan")
+            }
+        }
+
+        // Immutable rebind after the backoff loop — `async let` below
+        // sends the value across an isolation region, which Swift 6
+        // (correctly) refuses for a still-mutable `var`.
+        let addressSnapshot = snapshot
 
         // 2026-06-09 — **switched the main-screen refresh to the
         // same `RealRPCBalanceScanner.streamScan` the Import flow
@@ -89,7 +144,7 @@ struct WalletRefreshCoordinator: Sendable {
         // matching the Import flow's contract.
         var chainAddresses: [SupportedChain: String] = [:]
         var chainSnapshots: [SupportedChain: AddressSnapshot] = [:]
-        for snap in snapshot {
+        for snap in addressSnapshot {
             chainAddresses[snap.chain] = snap.address
             chainSnapshots[snap.chain] = snap
         }
@@ -114,7 +169,7 @@ struct WalletRefreshCoordinator: Sendable {
         // adapter's allowlist so EVM token history only includes
         // registry + user-added contracts (no spam airdrops).
         async let txHistoryTask: Void = scanAllTransactionHistory(
-            snapshot: snapshot,
+            snapshot: addressSnapshot,
             customTokensByChain: customTokensByChain,
             txRepo: txRepo
         )
@@ -131,21 +186,102 @@ struct WalletRefreshCoordinator: Sendable {
             customTokens: customTokensByChain
         )
 
-        // Track which chains yielded a native row so we can mark
-        // the rest scan-complete at the end (chains whose RPC
-        // failed entirely still need their "Last synced" stamp
-        // refreshed for honesty).
-        var nativeYieldedChains: Set<SupportedChain> = []
+        // Track which chains yielded a native row so we can (a)
+        // retry the ones that didn't and (b) mark the rest
+        // scan-complete at the end (chains whose RPC failed
+        // entirely still need their "Last synced" stamp refreshed
+        // for honesty). The scanner yields a native row for every
+        // chain it could READ — a genuine zero balance still
+        // yields — so "no row" means the read failed, not that the
+        // wallet is empty.
+        var nativeYieldedChains = await consumeBalanceStream(
+            stream,
+            chainSnapshots: chainSnapshots,
+            txRepo: txRepo
+        )
 
-        // **2026-06-09 — parallel upserts.** Previously each yielded
-        // row blocked the stream consumer on a sequential `await
-        // upsertNativeBalance/upsertTokenBalance(...)` call.
-        // SwiftData's `@ModelActor` serializes writes internally
-        // anyway, but the actor hop overhead per row added up
-        // across dozens of rows per refresh. The `withTaskGroup`
-        // shape lets each upsert run on the actor's queue WITHOUT
-        // blocking the stream consumer — we keep pulling rows from
-        // the network stream while writes happen in parallel.
+        var failedChains = Set(chainAddresses.keys).subtracting(nativeYieldedChains)
+
+        // **2026-06-12 — one bounded coordinator-level retry pass.**
+        // A fresh import has nothing persisted; if a chain's first
+        // read fails, the user would see a silent $0.00 row forever
+        // (honest-failure semantics yield no row, and nothing was
+        // ever stored). Give every failed chain exactly one more
+        // attempt after a short backoff — transient provider blips
+        // (rate-limit bursts, cold circuit breakers) usually clear
+        // within seconds. Chains that fail twice are reported via
+        // the returned set + `WalletRefreshState` so the UI can be
+        // honest instead of rendering all-zeros.
+        if !failedChains.isEmpty, !Task.isCancelled {
+            Self.log.info("Balance scan retry for \(failedChains.count, privacy: .public) failed chain(s) after backoff")
+            try? await Task.sleep(for: .seconds(3))
+            if !Task.isCancelled {
+                let retryAddresses = chainAddresses.filter { failedChains.contains($0.key) }
+                let retryCustomTokens = customTokensByChain.filter { failedChains.contains($0.key) }
+                let retryStream = scanner.streamScan(
+                    addresses: retryAddresses,
+                    currency: currency,
+                    customTokens: retryCustomTokens
+                )
+                let retriedChains = await consumeBalanceStream(
+                    retryStream,
+                    chainSnapshots: chainSnapshots,
+                    txRepo: txRepo
+                )
+                nativeYieldedChains.formUnion(retriedChains)
+                failedChains = Set(chainAddresses.keys).subtracting(nativeYieldedChains)
+            }
+        }
+
+        // Chains whose native row never landed — mark scan
+        // complete with prior `isUsed` so the "Last synced" footer
+        // updates and the UI doesn't lie about a stale read.
+        // Skipped when the pipeline was cancelled (a user-initiated
+        // replacement is running; stamping scans we never finished
+        // would be dishonest).
+        if !Task.isCancelled {
+            for snap in addressSnapshot where !nativeYieldedChains.contains(snap.chain) {
+                try? await txRepo.markScanComplete(addressId: snap.id, isUsed: snap.isUsed)
+            }
+        }
+
+        await txHistoryTask
+
+        // Publish the outcome. The generation guard inside
+        // `endRefresh` discards stale completions — a cancelled
+        // pipeline that limps to this line after its replacement
+        // began cannot clobber the replacement's state.
+        let outcome = failedChains
+        await MainActor.run {
+            WalletRefreshState.shared.endRefresh(
+                walletId: walletId,
+                failedChains: outcome,
+                generation: refreshGeneration
+            )
+        }
+        return outcome
+    }
+
+    /// Consume one balance stream: queue every yielded row's upsert
+    /// onto a task group and return the set of chains whose NATIVE
+    /// row landed. Shared by the first pass and the retry pass of
+    /// `performRefresh`.
+    ///
+    /// **2026-06-09 — parallel upserts.** Previously each yielded
+    /// row blocked the stream consumer on a sequential `await
+    /// upsertNativeBalance/upsertTokenBalance(...)` call.
+    /// SwiftData's `@ModelActor` serializes writes internally
+    /// anyway, but the actor hop overhead per row added up
+    /// across dozens of rows per refresh. The `withTaskGroup`
+    /// shape lets each upsert run on the actor's queue WITHOUT
+    /// blocking the stream consumer — we keep pulling rows from
+    /// the network stream while writes happen in parallel.
+    private func consumeBalanceStream(
+        _ stream: AsyncStream<RealRPCBalanceScanner.StreamRow>,
+        chainSnapshots: [SupportedChain: AddressSnapshot],
+        txRepo: TransactionRepository
+    ) async -> Set<SupportedChain> {
+        var nativeYieldedChains: Set<SupportedChain> = []
         await withTaskGroup(of: Void.self) { upsertGroup in
             for await row in stream {
                 switch row {
@@ -175,15 +311,7 @@ struct WalletRefreshCoordinator: Sendable {
             // (`markScanComplete` for chains that didn't yield).
             await upsertGroup.waitForAll()
         }
-
-        // Chains whose native row never landed — mark scan
-        // complete with prior `isUsed` so the "Last synced" footer
-        // updates and the UI doesn't lie about a stale read.
-        for snap in snapshot where !nativeYieldedChains.contains(snap.chain) {
-            try? await txRepo.markScanComplete(addressId: snap.id, isUsed: snap.isUsed)
-        }
-
-        await txHistoryTask
+        return nativeYieldedChains
     }
 
     /// 2026-06-09 — Upsert a streamScan-yielded native chain
@@ -303,6 +431,17 @@ struct WalletRefreshCoordinator: Sendable {
     /// stream; uses the unified `RealRPCTransactionScanner`'s
     /// per-family adapters. Failures per-chain are swallowed by
     /// the scanner; this function never throws.
+    ///
+    /// **2026-06-12 — bounded retry pass.** The scanner returns an
+    /// empty array for BOTH "the endpoint errored" and "this address
+    /// genuinely has no history" — an empty yield is the only
+    /// failure signal available at this level. Addresses that
+    /// yielded nothing get exactly one more attempt after a short
+    /// backoff (mirroring the balance pipeline's retry). The cost of
+    /// re-asking a genuinely-empty-but-healthy chain is one cheap
+    /// RPC round-trip per refresh; the gain is that a fresh import
+    /// whose history fetch hit a transient blip still gets its
+    /// activity feed this refresh instead of never.
     private func scanAllTransactionHistory(
         snapshot: [AddressSnapshot],
         customTokensByChain: [SupportedChain: [CustomTokenSnapshot]],
@@ -311,11 +450,45 @@ struct WalletRefreshCoordinator: Sendable {
         // Shared client (2026-06-11) — limiter + breaker state must
         // accumulate across the fan-out, not reset per refresh.
         let rpcClient = RPCClient.shared
-        await withTaskGroup(of: Void.self) { group in
+
+        // First pass — collect the addresses that yielded nothing.
+        var pendingRetry: [AddressSnapshot] = []
+        await withTaskGroup(of: AddressSnapshot?.self) { group in
             for snap in snapshot {
                 let customContracts = customTokensByChain[snap.chain]?.map { $0.contract } ?? []
                 group.addTask {
-                    await scanTransactionHistory(
+                    let persisted = await scanTransactionHistory(
+                        address: snap,
+                        client: rpcClient,
+                        txRepo: txRepo,
+                        customContracts: customContracts
+                    )
+                    return persisted == 0 ? snap : nil
+                }
+            }
+            for await emptyYield in group {
+                if let emptyYield { pendingRetry.append(emptyYield) }
+            }
+        }
+
+        // Stub addresses short-circuit inside the scanner — retrying
+        // them is a guaranteed second no-op, so drop them here.
+        pendingRetry.removeAll { $0.address.hasPrefix(StubKeyImportService.stubAddressPrefix) }
+        guard !pendingRetry.isEmpty, !Task.isCancelled else { return }
+
+        Self.log.info("Transaction-history retry for \(pendingRetry.count, privacy: .public) address(es) after backoff")
+        try? await Task.sleep(for: .seconds(3))
+        guard !Task.isCancelled else { return }
+
+        // Second (final) pass — same fetch, same persistence path.
+        // Still-empty results stay empty; the scanner's honesty
+        // contract means we never fabricate rows for a chain that
+        // won't answer.
+        await withTaskGroup(of: Void.self) { group in
+            for snap in pendingRetry {
+                let customContracts = customTokensByChain[snap.chain]?.map { $0.contract } ?? []
+                group.addTask {
+                    _ = await scanTransactionHistory(
                         address: snap,
                         client: rpcClient,
                         txRepo: txRepo,
@@ -454,12 +627,18 @@ struct WalletRefreshCoordinator: Sendable {
     /// `WalletHomeView` test-mode feed; this path is the
     /// production sink that persists history for the user's real
     /// wallet.
+    ///
+    /// Returns the number of events the scanner yielded (0 = either
+    /// the endpoint failed or the address genuinely has no history —
+    /// the scanner swallows the distinction). The retry pass in
+    /// `scanAllTransactionHistory` keys off this count.
+    @discardableResult
     private func scanTransactionHistory(
         address: AddressSnapshot,
         client: RPCClient,
         txRepo: TransactionRepository,
         customContracts: [String] = []
-    ) async {
+    ) async -> Int {
         let scanner = RealRPCTransactionScanner(client: client)
         let events = await scanner.scan(
             addresses: [address.chain: address.address],
@@ -468,7 +647,7 @@ struct WalletRefreshCoordinator: Sendable {
                 ? [:]
                 : [address.chain: customContracts]
         )
-        guard !events.isEmpty else { return }
+        guard !events.isEmpty else { return 0 }
         for event in events {
             do {
                 try await txRepo.upsertTransaction(
@@ -489,6 +668,7 @@ struct WalletRefreshCoordinator: Sendable {
             }
         }
         Self.log.info("Transaction history for \(address.chain.rawValue, privacy: .public)/\(address.address, privacy: .public): persisted \(events.count, privacy: .public) events")
+        return events.count
     }
 
     /// Dispatcher: pick the family adapter for the chain and call
@@ -627,6 +807,62 @@ struct WalletRefreshCoordinator: Sendable {
     }
 }
 
+// MARK: - Observable refresh state
+
+/// Shared observable surface for the most recent refresh outcome.
+/// The coordinator itself is a transient value (one per
+/// `runRefresh()` call in `WalletHomeView`), so the outcome lives
+/// here instead — the wallet home reads `lastRefreshFailedChains`
+/// to decide between the silent all-supported $0.00 list (dishonest
+/// for a fresh import whose every chain failed) and the explicit
+/// "Couldn't reach the network" state.
+@MainActor
+@Observable
+final class WalletRefreshState {
+    static let shared = WalletRefreshState()
+
+    /// `true` while a refresh pipeline is in flight (for any wallet).
+    private(set) var isRefreshing: Bool = false
+    /// Chains whose balance scan yielded nothing in the most recent
+    /// COMPLETED refresh — after the bounded retry pass. Empty when
+    /// every chain reported, or when no refresh has finished yet.
+    private(set) var lastRefreshFailedChains: Set<SupportedChain> = []
+    /// The wallet `lastRefreshFailedChains` belongs to. Readers must
+    /// compare against their active wallet before acting — a stale
+    /// outcome for wallet A says nothing about wallet B.
+    private(set) var lastRefreshWalletId: UUID?
+
+    /// Monotonic run counter. A cancelled pipeline's late completion
+    /// (or its replacement racing it onto the main actor) must never
+    /// clobber the newest run's published state.
+    private var generation: Int = 0
+
+    fileprivate func beginRefresh() -> Int {
+        generation += 1
+        isRefreshing = true
+        return generation
+    }
+
+    /// Invalidate any in-flight run's pending `endRefresh` — called
+    /// by the registry the moment a user-initiated refresh cancels
+    /// an existing pipeline, so the doomed run's completion is
+    /// guaranteed stale regardless of main-actor scheduling order.
+    fileprivate func invalidate() {
+        generation += 1
+    }
+
+    fileprivate func endRefresh(
+        walletId: UUID,
+        failedChains: Set<SupportedChain>,
+        generation: Int
+    ) {
+        guard generation == self.generation else { return }
+        isRefreshing = false
+        lastRefreshFailedChains = failedChains
+        lastRefreshWalletId = walletId
+    }
+}
+
 // MARK: - In-flight refresh registry
 
 /// Per-wallet refresh deduplication (2026-06-10). SwiftData upserts
@@ -636,25 +872,52 @@ struct WalletRefreshCoordinator: Sendable {
 /// in-flight task per `walletId`; concurrent `refreshWallet` calls
 /// join the existing task instead of starting a second pipeline.
 /// `@MainActor` serializes all dictionary access — no lock needed.
+///
+/// **2026-06-12 — user-initiated cancellation.** `cancelExisting`
+/// lets a pull-to-refresh replace a wedged pipeline instead of
+/// joining it. The deregistration is token-guarded so a cancelled
+/// task's late completion can't clobber its replacement's
+/// registration.
 @MainActor
 private enum WalletRefreshRegistry {
-    private static var inFlight: [UUID: Task<Void, Never>] = [:]
+    private struct Entry {
+        let token: UUID
+        let task: Task<Set<SupportedChain>, Never>
+    }
+
+    private static var inFlight: [UUID: Entry] = [:]
 
     /// Returns the already-running refresh task for `walletId` when
-    /// one exists; otherwise starts `operation` as a new task,
-    /// registers it, and deregisters it on completion.
+    /// one exists (and `cancelExisting` is `false`); otherwise starts
+    /// `operation` as a new task, registers it, and deregisters it on
+    /// completion. With `cancelExisting`, any in-flight task is
+    /// cancelled first and a fresh pipeline starts in its place.
     static func joinOrStart(
         walletId: UUID,
-        operation: @escaping @Sendable () async -> Void
-    ) -> Task<Void, Never> {
+        cancelExisting: Bool = false,
+        operation: @escaping @Sendable () async -> Set<SupportedChain>
+    ) -> Task<Set<SupportedChain>, Never> {
         if let existing = inFlight[walletId] {
-            return existing
+            guard cancelExisting else { return existing.task }
+            // User pulled against a (possibly wedged) pipeline —
+            // cancel it (propagates through the scan stream and
+            // RPCClient as `RPCError.cancelled`) and stale-out its
+            // pending state publication before the replacement runs.
+            existing.task.cancel()
+            WalletRefreshState.shared.invalidate()
         }
+        let token = UUID()
         let task = Task {
-            await operation()
-            inFlight[walletId] = nil
+            let failedChains = await operation()
+            // Deregister only if this task is still the registered
+            // one — a cancelled task finishing late must not remove
+            // its replacement's registration.
+            if inFlight[walletId]?.token == token {
+                inFlight[walletId] = nil
+            }
+            return failedChains
         }
-        inFlight[walletId] = task
+        inFlight[walletId] = Entry(token: token, task: task)
         return task
     }
 }

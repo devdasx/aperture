@@ -142,13 +142,30 @@ struct ImportWalletFlow: View {
     /// the commit from the same review screen.
     private func persistThen(_ result: ImportResult) {
         let repository = WalletRepository(modelContainer: modelContext.container)
+        let container = modelContext.container
         Task { @MainActor in
             do {
-                _ = try await state.persist(result: result, into: repository)
+                let walletId = try await state.persist(result: result, into: repository)
                 // Seed / key bytes are now encrypted in Keychain —
                 // the plaintext inputs have no reason to outlive the
                 // flow.
                 state.zeroSensitiveInput()
+                // Fire the imported wallet's FIRST balance + history
+                // refresh here, with the known-good id (2026-06-12).
+                // Belt and braces for the wallet-home's own
+                // `.task(id: activeWalletIdRaw)` auto-refresh: its
+                // `@Query` lags this actor-context insert in the
+                // merge window right after persist, which is how an
+                // imported wallet used to show $0.00 until relaunch.
+                // `WalletRefreshRegistry` single-flights per wallet,
+                // so when the home fires too, both await the same
+                // pipeline — the overlap costs nothing.
+                let fiatCode = UserDefaults.standard.string(forKey: CurrencyPreference.storageKey)
+                    ?? CurrencyPreference.defaultCode
+                Task {
+                    await WalletRefreshCoordinator(container: container)
+                        .refreshWallet(walletId: walletId, fiatCode: fiatCode)
+                }
                 onCompleted(result)
             } catch {
                 Self.log.error(

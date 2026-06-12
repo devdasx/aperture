@@ -141,8 +141,13 @@ struct RealRPCBalanceScanner: BalanceScanner {
                 // up front (chain tickers + per-chain registries +
                 // custom tokens), so we fetch each unique symbol
                 // exactly once via the bounded `prices(symbols:fiat:)`
-                // batch API (max 8 in flight) and let every row task
-                // read from the shared result.
+                // batch API and let every row task read from the
+                // shared result. **Rows are NOT hostage to the
+                // batch** (2026-06-12): each row yields with
+                // `fiatBalance: nil` the moment its balance lands,
+                // then re-yields with fiat once this task resolves —
+                // a slow or down Coinbase delays prices, never
+                // balances.
                 let usdPricesTask = Task { [priceService] in
                     await priceService.prices(
                         symbols: Self.uniquePriceSymbols(
@@ -167,25 +172,43 @@ struct RealRPCBalanceScanner: BalanceScanner {
                             // balance via its markScanComplete path.
                             guard let summary else { return }
 
+                            // **2026-06-12 — balance first, fiat
+                            // second.** The shared price batch covers
+                            // ~49 symbols and can take minutes on a
+                            // degraded network; awaiting it BEFORE
+                            // the first yield held every row hostage
+                            // (a fresh wallet rendered nothing until
+                            // Coinbase answered). Yield the on-chain
+                            // balance the moment it lands with
+                            // `fiatBalance: nil`, then re-yield with
+                            // fiat once the batch + FX rate resolve.
+                            // Every consumer upserts idempotently by
+                            // chain identity, so the refined row
+                            // replaces the pending one.
+                            func nativeRow(fiat: Decimal?) -> StreamRow {
+                                .native(ChainBalance(
+                                    chain: chain,
+                                    address: summary.address,
+                                    nativeBalance: summary.nativeBalance,
+                                    fiatBalance: fiat,
+                                    fiatCurrencyCode: currency.code,
+                                    isUsed: summary.isUsed,
+                                    lastUpdated: Date()
+                                ))
+                            }
+                            continuation.yield(nativeRow(fiat: nil))
+
                             let coinbaseSymbol = Self.coinbaseSymbol(for: chain.ticker)
                             let usdPrice = await usdPricesTask.value[coinbaseSymbol]?.amount
                             let fxRate = await fxRateTask.value
 
-                            let fiat = Self.computeFiat(
+                            guard let fiat = Self.computeFiat(
                                 native: summary.nativeBalance,
                                 usdPrice: usdPrice,
                                 fxRate: fxRate,
                                 isUSDTarget: currency.code.uppercased() == "USD"
-                            )
-                            continuation.yield(.native(ChainBalance(
-                                chain: chain,
-                                address: summary.address,
-                                nativeBalance: summary.nativeBalance,
-                                fiatBalance: fiat,
-                                fiatCurrencyCode: currency.code,
-                                isUsed: summary.isUsed,
-                                lastUpdated: Date()
-                            )))
+                            ) else { return }
+                            continuation.yield(nativeRow(fiat: fiat))
                         }
 
                         // Token scan task (one per chain). Skip stub
@@ -295,13 +318,20 @@ struct RealRPCBalanceScanner: BalanceScanner {
             // user's persisted real values. Per-token `nil` entries
             // (individually-failed tokens) stay treated as 0-and-
             // skipped, which never yields a row either.
+            //
+            // **2026-06-12 — bounded retry.** A transient transport
+            // failure gets up to 2 more attempts (2 s / 5 s backoff,
+            // rate-limit aware) before the chain's token pass gives
+            // up for this refresh. `.cancelled` stops immediately.
             let contracts = registry.map { $0.contract }
             var rawBalances: [Decimal?]
             do {
-                rawBalances = try await adapter.fetchTokenBalancesBatched(
-                    holder: address,
-                    contracts: contracts
-                )
+                rawBalances = try await Self.withRetry { () async throws(RPCError) -> [Decimal?] in
+                    try await adapter.fetchTokenBalancesBatched(
+                        holder: address,
+                        contracts: contracts
+                    )
+                }
             } catch {
                 if case .cancelled = error { return }
                 log.error(
@@ -320,34 +350,29 @@ struct RealRPCBalanceScanner: BalanceScanner {
                     contentsOf: [Decimal?](repeating: nil, count: contracts.count - rawBalances.count)
                 )
             }
-            let usdPrices = await usdPricesTask.value
-            let fxRate = await fxRateTask.value
-            let isUSDTarget = currency.code.uppercased() == "USD"
-
+            var discovered: [DiscoveredToken] = []
             for (i, entry) in registry.enumerated() {
                 let raw = rawBalances[i] ?? 0
                 let amount = raw / Self.pow10(entry.decimals)
                 // Honest: only emit if balance > 0 — see prior comment.
                 guard amount > 0 else { continue }
-                let fiat = Self.computeFiat(
-                    native: amount,
-                    usdPrice: usdPrices[entry.symbol.uppercased()]?.amount,
-                    fxRate: fxRate,
-                    isUSDTarget: isUSDTarget
-                )
-                yield(.token(TokenBalance(
-                    chain: chain,
-                    address: address,
+                discovered.append(DiscoveredToken(
                     contract: entry.contract,
                     symbol: entry.symbol,
                     name: entry.name,
                     decimals: entry.decimals,
-                    amount: amount,
-                    fiatBalance: fiat,
-                    fiatCurrencyCode: currency.code,
-                    lastUpdated: Date()
-                )))
+                    amount: amount
+                ))
             }
+            await Self.yieldTokensWithDeferredFiat(
+                discovered,
+                chain: chain,
+                address: address,
+                usdPricesTask: usdPricesTask,
+                fxRateTask: fxRateTask,
+                currency: currency,
+                yield: yield
+            )
         case .ed25519 where chain == .solana:
             // **2026-06-12 — query BOTH SPL token programs.** The
             // previous single `getTokenAccountsByOwner` call was
@@ -372,30 +397,24 @@ struct RealRPCBalanceScanner: BalanceScanner {
             let supportedAccounts = accounts.filter {
                 SolanaTokenRegistry.mints[$0.mint] != nil
             }
-            let usdPrices = await usdPricesTask.value
-            let fxRate = await fxRateTask.value
-            for account in supportedAccounts {
-                let symbol = SolanaTokenRegistry.symbol(for: account.mint)
-                let name = SolanaTokenRegistry.name(for: account.mint)
-                let fiat = Self.computeFiat(
-                    native: account.amount,
-                    usdPrice: usdPrices[symbol.uppercased()]?.amount,
-                    fxRate: fxRate,
-                    isUSDTarget: currency.code.uppercased() == "USD"
-                )
-                yield(.token(TokenBalance(
-                    chain: chain,
-                    address: address,
+            let discovered = supportedAccounts.map { account in
+                DiscoveredToken(
                     contract: account.mint,
-                    symbol: symbol,
-                    name: name,
+                    symbol: SolanaTokenRegistry.symbol(for: account.mint),
+                    name: SolanaTokenRegistry.name(for: account.mint),
                     decimals: account.decimals,
-                    amount: account.amount,
-                    fiatBalance: fiat,
-                    fiatCurrencyCode: currency.code,
-                    lastUpdated: Date()
-                )))
+                    amount: account.amount
+                )
             }
+            await Self.yieldTokensWithDeferredFiat(
+                discovered,
+                chain: chain,
+                address: address,
+                usdPricesTask: usdPricesTask,
+                fxRateTask: fxRateTask,
+                currency: currency,
+                yield: yield
+            )
         // TRON — TRC-20 balances via TronGrid REST.
         // `POST /wallet/triggerconstantcontract` with the `balanceOf`
         // selector. Same calldata shape as EVM but the call body is
@@ -404,29 +423,30 @@ struct RealRPCBalanceScanner: BalanceScanner {
             await withTaskGroup(of: Void.self) { tokenGroup in
                 for entry in TronTokenRegistry.tokens {
                     tokenGroup.addTask {
-                        let raw = await Self.fetchTronTokenBalance(
-                            holder: address,
-                            contract: entry.contract,
-                            client: client
-                        ) ?? 0
+                        let raw = await Self.withNilRetry {
+                            await Self.fetchTronTokenBalance(
+                                holder: address,
+                                contract: entry.contract,
+                                client: client
+                            )
+                        } ?? 0
                         let amount = raw / Self.pow10(entry.decimals)
                         guard amount > 0 else { return }
-                        let usdPrice = await usdPricesTask.value[entry.symbol.uppercased()]?.amount
-                        let fxRate = await fxRateTask.value
-                        let fiat = Self.computeFiat(
-                            native: amount,
-                            usdPrice: usdPrice,
-                            fxRate: fxRate,
-                            isUSDTarget: currency.code.uppercased() == "USD"
+                        await Self.yieldTokensWithDeferredFiat(
+                            [DiscoveredToken(
+                                contract: entry.contract,
+                                symbol: entry.symbol,
+                                name: entry.name,
+                                decimals: entry.decimals,
+                                amount: amount
+                            )],
+                            chain: chain,
+                            address: address,
+                            usdPricesTask: usdPricesTask,
+                            fxRateTask: fxRateTask,
+                            currency: currency,
+                            yield: yield
                         )
-                        yield(.token(TokenBalance(
-                            chain: chain, address: address,
-                            contract: entry.contract, symbol: entry.symbol,
-                            name: entry.name, decimals: entry.decimals,
-                            amount: amount, fiatBalance: fiat,
-                            fiatCurrencyCode: currency.code,
-                            lastUpdated: Date()
-                        )))
                     }
                 }
             }
@@ -437,28 +457,30 @@ struct RealRPCBalanceScanner: BalanceScanner {
             await withTaskGroup(of: Void.self) { tokenGroup in
                 for entry in NearTokenRegistry.tokens {
                     tokenGroup.addTask {
-                        let raw = await Self.fetchNearTokenBalance(
-                            holder: address,
-                            tokenAccount: entry.tokenAccount,
-                            client: client
-                        ) ?? 0
+                        let raw = await Self.withNilRetry {
+                            await Self.fetchNearTokenBalance(
+                                holder: address,
+                                tokenAccount: entry.tokenAccount,
+                                client: client
+                            )
+                        } ?? 0
                         let amount = raw / Self.pow10(entry.decimals)
                         guard amount > 0 else { return }
-                        let usdPrice = await usdPricesTask.value[entry.symbol.uppercased()]?.amount
-                        let fxRate = await fxRateTask.value
-                        let fiat = Self.computeFiat(
-                            native: amount, usdPrice: usdPrice,
-                            fxRate: fxRate,
-                            isUSDTarget: currency.code.uppercased() == "USD"
+                        await Self.yieldTokensWithDeferredFiat(
+                            [DiscoveredToken(
+                                contract: entry.tokenAccount,
+                                symbol: entry.symbol,
+                                name: entry.name,
+                                decimals: entry.decimals,
+                                amount: amount
+                            )],
+                            chain: chain,
+                            address: address,
+                            usdPricesTask: usdPricesTask,
+                            fxRateTask: fxRateTask,
+                            currency: currency,
+                            yield: yield
                         )
-                        yield(.token(TokenBalance(
-                            chain: chain, address: address,
-                            contract: entry.tokenAccount, symbol: entry.symbol,
-                            name: entry.name, decimals: entry.decimals,
-                            amount: amount, fiatBalance: fiat,
-                            fiatCurrencyCode: currency.code,
-                            lastUpdated: Date()
-                        )))
                     }
                 }
             }
@@ -468,86 +490,89 @@ struct RealRPCBalanceScanner: BalanceScanner {
             await withTaskGroup(of: Void.self) { tokenGroup in
                 for entry in AptosTokenRegistry.tokens {
                     tokenGroup.addTask {
-                        let raw = await Self.fetchAptosTokenBalance(
-                            holder: address,
-                            metadata: entry.contract,
-                            client: client
-                        ) ?? 0
+                        let raw = await Self.withNilRetry {
+                            await Self.fetchAptosTokenBalance(
+                                holder: address,
+                                metadata: entry.contract,
+                                client: client
+                            )
+                        } ?? 0
                         let amount = raw / Self.pow10(entry.decimals)
                         guard amount > 0 else { return }
-                        let usdPrice = await usdPricesTask.value[entry.symbol.uppercased()]?.amount
-                        let fxRate = await fxRateTask.value
-                        let fiat = Self.computeFiat(
-                            native: amount, usdPrice: usdPrice,
-                            fxRate: fxRate,
-                            isUSDTarget: currency.code.uppercased() == "USD"
+                        await Self.yieldTokensWithDeferredFiat(
+                            [DiscoveredToken(
+                                contract: entry.contract,
+                                symbol: entry.symbol,
+                                name: entry.name,
+                                decimals: entry.decimals,
+                                amount: amount
+                            )],
+                            chain: chain,
+                            address: address,
+                            usdPricesTask: usdPricesTask,
+                            fxRateTask: fxRateTask,
+                            currency: currency,
+                            yield: yield
                         )
-                        yield(.token(TokenBalance(
-                            chain: chain, address: address,
-                            contract: entry.contract, symbol: entry.symbol,
-                            name: entry.name, decimals: entry.decimals,
-                            amount: amount, fiatBalance: fiat,
-                            fiatCurrencyCode: currency.code,
-                            lastUpdated: Date()
-                        )))
                     }
                 }
             }
 
         // XRPL — `account_lines` JSON-RPC returns all IOU lines.
+        // One fetch covers every registry token; the per-token work
+        // is a local dictionary lookup, so no task group needed.
         case .ripple:
-            guard let lines = await Self.fetchXRPLTokenLines(holder: address, client: client) else { return }
-            await withTaskGroup(of: Void.self) { tokenGroup in
-                for entry in XRPLTokenRegistry.tokens {
-                    tokenGroup.addTask {
-                        let amount = lines[Self.xrplKey(currency: entry.currency, issuer: entry.issuer)] ?? 0
-                        guard amount > 0 else { return }
-                        let usdPrice = await usdPricesTask.value[entry.symbol.uppercased()]?.amount
-                        let fxRate = await fxRateTask.value
-                        let fiat = Self.computeFiat(
-                            native: amount, usdPrice: usdPrice,
-                            fxRate: fxRate,
-                            isUSDTarget: currency.code.uppercased() == "USD"
-                        )
-                        yield(.token(TokenBalance(
-                            chain: chain, address: address,
-                            contract: "\(entry.currency).\(entry.issuer)",
-                            symbol: entry.symbol, name: entry.name,
-                            decimals: entry.decimals, amount: amount,
-                            fiatBalance: fiat, fiatCurrencyCode: currency.code,
-                            lastUpdated: Date()
-                        )))
-                    }
-                }
+            guard let lines = await Self.withNilRetry({
+                await Self.fetchXRPLTokenLines(holder: address, client: client)
+            }) else { return }
+            let discovered: [DiscoveredToken] = XRPLTokenRegistry.tokens.compactMap { entry in
+                let amount = lines[Self.xrplKey(currency: entry.currency, issuer: entry.issuer)] ?? 0
+                guard amount > 0 else { return nil }
+                return DiscoveredToken(
+                    contract: "\(entry.currency).\(entry.issuer)",
+                    symbol: entry.symbol,
+                    name: entry.name,
+                    decimals: entry.decimals,
+                    amount: amount
+                )
             }
+            await Self.yieldTokensWithDeferredFiat(
+                discovered,
+                chain: chain,
+                address: address,
+                usdPricesTask: usdPricesTask,
+                fxRateTask: fxRateTask,
+                currency: currency,
+                yield: yield
+            )
 
         // Kava (Cosmos) — bank balance filtered by IBC denom.
+        // One fetch covers every registry token; the per-token work
+        // is a local dictionary lookup, so no task group needed.
         case .cosmos where chain == .kava:
-            guard let balances = await Self.fetchKavaCosmosBalances(holder: address, client: client) else { return }
-            await withTaskGroup(of: Void.self) { tokenGroup in
-                for entry in KavaCosmosTokenRegistry.tokens {
-                    tokenGroup.addTask {
-                        let raw = balances[entry.denom] ?? 0
-                        guard raw > 0 else { return }
-                        let amount = raw / Self.pow10(entry.decimals)
-                        let usdPrice = await usdPricesTask.value[entry.symbol.uppercased()]?.amount
-                        let fxRate = await fxRateTask.value
-                        let fiat = Self.computeFiat(
-                            native: amount, usdPrice: usdPrice,
-                            fxRate: fxRate,
-                            isUSDTarget: currency.code.uppercased() == "USD"
-                        )
-                        yield(.token(TokenBalance(
-                            chain: chain, address: address,
-                            contract: entry.denom, symbol: entry.symbol,
-                            name: entry.name, decimals: entry.decimals,
-                            amount: amount, fiatBalance: fiat,
-                            fiatCurrencyCode: currency.code,
-                            lastUpdated: Date()
-                        )))
-                    }
-                }
+            guard let balances = await Self.withNilRetry({
+                await Self.fetchKavaCosmosBalances(holder: address, client: client)
+            }) else { return }
+            let discovered: [DiscoveredToken] = KavaCosmosTokenRegistry.tokens.compactMap { entry in
+                let raw = balances[entry.denom] ?? 0
+                guard raw > 0 else { return nil }
+                return DiscoveredToken(
+                    contract: entry.denom,
+                    symbol: entry.symbol,
+                    name: entry.name,
+                    decimals: entry.decimals,
+                    amount: raw / Self.pow10(entry.decimals)
+                )
             }
+            await Self.yieldTokensWithDeferredFiat(
+                discovered,
+                chain: chain,
+                address: address,
+                usdPricesTask: usdPricesTask,
+                fxRateTask: fxRateTask,
+                currency: currency,
+                yield: yield
+            )
 
         // TON jettons + Polkadot Asset Hub — registries ship in
         // this turn so the Receive screen surfaces the tokens, but
@@ -602,10 +627,12 @@ struct RealRPCBalanceScanner: BalanceScanner {
             let contracts = customTokens.map { $0.contract }
             var rawBalances: [Decimal?]
             do {
-                rawBalances = try await adapter.fetchTokenBalancesBatched(
-                    holder: address,
-                    contracts: contracts
-                )
+                rawBalances = try await Self.withRetry { () async throws(RPCError) -> [Decimal?] in
+                    try await adapter.fetchTokenBalancesBatched(
+                        holder: address,
+                        contracts: contracts
+                    )
+                }
             } catch {
                 if case .cancelled = error { return }
                 log.error(
@@ -621,32 +648,28 @@ struct RealRPCBalanceScanner: BalanceScanner {
                     contentsOf: [Decimal?](repeating: nil, count: contracts.count - rawBalances.count)
                 )
             }
-            let usdPrices = await usdPricesTask.value
-            let fxRate = await fxRateTask.value
-            let isUSDTarget = currency.code.uppercased() == "USD"
+            var discovered: [DiscoveredToken] = []
             for (i, snap) in customTokens.enumerated() {
                 let raw = rawBalances[i] ?? 0
                 let amount = raw / Self.pow10(snap.decimals)
                 guard amount > 0 else { continue }
-                let fiat = Self.computeFiat(
-                    native: amount,
-                    usdPrice: usdPrices[snap.symbol.uppercased()]?.amount,
-                    fxRate: fxRate,
-                    isUSDTarget: isUSDTarget
-                )
-                yield(.token(TokenBalance(
-                    chain: chain,
-                    address: address,
+                discovered.append(DiscoveredToken(
                     contract: snap.contract,
                     symbol: snap.symbol,
                     name: snap.name,
                     decimals: snap.decimals,
-                    amount: amount,
-                    fiatBalance: fiat,
-                    fiatCurrencyCode: currency.code,
-                    lastUpdated: Date()
-                )))
+                    amount: amount
+                ))
             }
+            await Self.yieldTokensWithDeferredFiat(
+                discovered,
+                chain: chain,
+                address: address,
+                usdPricesTask: usdPricesTask,
+                fxRateTask: fxRateTask,
+                currency: currency,
+                yield: yield
+            )
 
         case .ed25519 where chain == .solana:
             // The `getTokenAccountsByOwner` queries already return
@@ -668,35 +691,162 @@ struct RealRPCBalanceScanner: BalanceScanner {
             let mintLookup: [String: CustomTokenSnapshot] = Dictionary(
                 uniqueKeysWithValues: customTokens.map { ($0.contract, $0) }
             )
-            let matchedAccounts = accounts.filter { mintLookup[$0.mint] != nil }
-            let usdPrices = await usdPricesTask.value
-            let fxRate = await fxRateTask.value
-            for account in matchedAccounts {
-                guard let snap = mintLookup[account.mint] else { continue }
-                let fiat = Self.computeFiat(
-                    native: account.amount,
-                    usdPrice: usdPrices[snap.symbol.uppercased()]?.amount,
-                    fxRate: fxRate,
-                    isUSDTarget: currency.code.uppercased() == "USD"
-                )
-                yield(.token(TokenBalance(
-                    chain: chain,
-                    address: address,
+            let discovered: [DiscoveredToken] = accounts.compactMap { account in
+                guard let snap = mintLookup[account.mint] else { return nil }
+                return DiscoveredToken(
                     contract: snap.contract,
                     symbol: snap.symbol,
                     name: snap.name,
                     decimals: snap.decimals,
-                    amount: account.amount,
-                    fiatBalance: fiat,
-                    fiatCurrencyCode: currency.code,
-                    lastUpdated: Date()
-                )))
+                    amount: account.amount
+                )
             }
+            await Self.yieldTokensWithDeferredFiat(
+                discovered,
+                chain: chain,
+                address: address,
+                usdPricesTask: usdPricesTask,
+                fxRateTask: fxRateTask,
+                currency: currency,
+                yield: yield
+            )
 
         default:
             // Custom tokens are EVM + Solana only for this turn —
             // mirrors the AddCustomTokenSheet's chain picker.
             return
+        }
+    }
+
+    // MARK: - Retry policy (2026-06-12)
+
+    /// Retries after the initial attempt — 3 attempts total per
+    /// failed fetch. Bounded so a hard-down chain doesn't pin the
+    /// stream open indefinitely.
+    private static let scanRetryLimit = 2
+
+    /// Sleep before retry `attempt` (1-based): ~2 s before the
+    /// first retry, ~5 s before the second. A `.rateLimited`
+    /// failure honors the provider's `retryAfter` when it's longer
+    /// (floored at 5 s, capped at 30 s so one throttled provider
+    /// can't hold the scan open for minutes). Returns `false` when
+    /// the sleep was cancelled — the caller stops retrying.
+    private static func backoffBeforeRetry(
+        attempt: Int,
+        lastError: RPCError?
+    ) async -> Bool {
+        var delay: TimeInterval = attempt <= 1 ? 2 : 5
+        if case .rateLimited(let retryAfter) = lastError {
+            delay = min(max(delay, retryAfter.timeIntervalSinceNow, 5), 30)
+        }
+        do {
+            try await Task.sleep(for: .seconds(delay))
+            return true
+        } catch {
+            return false // cancelled mid-backoff — stop retrying
+        }
+    }
+
+    /// Bounded retry for a typed-throws RPC fetch (native summaries,
+    /// EVM Multicall3 batches). `.cancelled` propagates immediately
+    /// and is never retried; every other `RPCError` gets up to
+    /// `scanRetryLimit` more attempts with `backoffBeforeRetry`'s
+    /// ladder. Each per-chain task calls this inside its OWN task,
+    /// so one chain's retries never block another chain's rows.
+    private static func withRetry<T>(
+        _ operation: () async throws(RPCError) -> T
+    ) async throws(RPCError) -> T {
+        var attempt = 0
+        while true {
+            do {
+                return try await operation()
+            } catch {
+                if case .cancelled = error { throw error }
+                attempt += 1
+                guard attempt <= scanRetryLimit,
+                      await backoffBeforeRetry(attempt: attempt, lastError: error) else {
+                    throw error
+                }
+            }
+        }
+    }
+
+    /// Bounded retry for the optional-returning per-chain / per-token
+    /// fetch helpers (TRON, NEAR, Aptos, XRPL, Kava, Solana token
+    /// accounts). Those paths swallow their error kind via `try?`,
+    /// so the fixed 2 s / 5 s ladder applies. A cancelled task stops
+    /// retrying immediately — `Task.sleep` throws on cancellation.
+    private static func withNilRetry<T>(
+        _ operation: () async -> T?
+    ) async -> T? {
+        var attempt = 0
+        while true {
+            if let value = await operation() { return value }
+            attempt += 1
+            guard attempt <= scanRetryLimit,
+                  await backoffBeforeRetry(attempt: attempt, lastError: nil) else {
+                return nil
+            }
+        }
+    }
+
+    // MARK: - Deferred-fiat token yield (2026-06-12)
+
+    /// One discovered positive-balance token row, pre-fiat.
+    private struct DiscoveredToken: Sendable {
+        let contract: String
+        let symbol: String
+        let name: String
+        let decimals: Int
+        let amount: Decimal
+    }
+
+    /// Two-phase token yield — the price-batch decoupling. Phase 1
+    /// emits every discovered row immediately with `fiatBalance: nil`
+    /// so balances render even when Coinbase is slow or down. Phase 2
+    /// awaits the shared USD-price batch + FX rate and re-yields the
+    /// rows that priced. Consumers upsert idempotently by
+    /// `(chain, contract)` identity — the coordinator's compound
+    /// unique key, the review screens' replace-by-contract — so the
+    /// refined row simply replaces the pending one.
+    private static func yieldTokensWithDeferredFiat(
+        _ discovered: [DiscoveredToken],
+        chain: SupportedChain,
+        address: String,
+        usdPricesTask: Task<[String: TokenPrice], Never>,
+        fxRateTask: Task<Decimal, Never>,
+        currency: SupportedCurrency,
+        yield: @Sendable (StreamRow) -> Void
+    ) async {
+        guard !discovered.isEmpty else { return }
+        func tokenRow(_ d: DiscoveredToken, fiat: Decimal?) -> StreamRow {
+            .token(TokenBalance(
+                chain: chain,
+                address: address,
+                contract: d.contract,
+                symbol: d.symbol,
+                name: d.name,
+                decimals: d.decimals,
+                amount: d.amount,
+                fiatBalance: fiat,
+                fiatCurrencyCode: currency.code,
+                lastUpdated: Date()
+            ))
+        }
+        for d in discovered {
+            yield(tokenRow(d, fiat: nil))
+        }
+        let usdPrices = await usdPricesTask.value
+        let fxRate = await fxRateTask.value
+        let isUSDTarget = currency.code.uppercased() == "USD"
+        for d in discovered {
+            guard let fiat = computeFiat(
+                native: d.amount,
+                usdPrice: usdPrices[d.symbol.uppercased()]?.amount,
+                fxRate: fxRate,
+                isUSDTarget: isUSDTarget
+            ) else { continue }
+            yield(tokenRow(d, fiat: fiat))
         }
     }
 
@@ -718,6 +868,8 @@ struct RealRPCBalanceScanner: BalanceScanner {
     /// when every program query failed (scan failure — the caller
     /// emits no rows, preserving persisted balances); a partial
     /// result is returned honestly when one program answered.
+    /// Each program's query retries independently (2026-06-12) —
+    /// the failed part is retried, the answered part isn't refetched.
     private static func fetchAllSolanaTokenAccounts(
         address: String,
         client: RPCClient
@@ -725,11 +877,13 @@ struct RealRPCBalanceScanner: BalanceScanner {
         var merged: [SolanaChainAdapter.SPLTokenAccount] = []
         var anyProgramAnswered = false
         for programId in solanaTokenProgramIds {
-            guard let accounts = await fetchSolanaTokenAccounts(
-                address: address,
-                programId: programId,
-                client: client
-            ) else { continue }
+            guard let accounts = await withNilRetry({
+                await fetchSolanaTokenAccounts(
+                    address: address,
+                    programId: programId,
+                    client: client
+                )
+            }) else { continue }
             anyProgramAnswered = true
             merged.append(contentsOf: accounts)
         }
@@ -1139,7 +1293,15 @@ struct RealRPCBalanceScanner: BalanceScanner {
         }
 
         do {
-            let summary = try await dispatch(chain: chain, address: address, client: client)
+            // **2026-06-12 — bounded retry.** A transient per-chain
+            // failure (flaky public RPC, brief throttle) gets up to
+            // 2 more attempts (2 s / 5 s backoff, rate-limit aware)
+            // before the chain gives up for this refresh. Runs
+            // inside the chain's own task, so retries never block
+            // other chains' rows. `.cancelled` stops immediately.
+            let summary = try await withRetry { () async throws(RPCError) -> ChainAccountSummary in
+                try await dispatch(chain: chain, address: address, client: client)
+            }
             return ScanRow(
                 chain: chain,
                 address: address,
