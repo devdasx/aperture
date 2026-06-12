@@ -29,6 +29,20 @@ struct WalletDetailView: View {
 
     @State private var editedName: String = ""
     @State private var isShowingDeleteConfirm: Bool = false
+    /// Passcode-only verify gate presented after the typed-name
+    /// confirmation and before the destructive delete fires. Per
+    /// user direction 2026-06-13, wallet removal asks for the
+    /// passcode — never Face ID — so the gate's `PinCodeView` runs
+    /// with `allowsBiometrics: false`. Armed only when a passcode
+    /// exists: no-passcode users keep the typed-name confirmation
+    /// as the sole gate (PIN is optional per Rule #17).
+    @State private var isShowingDeletePinVerify: Bool = false
+    /// Set by the confirmation sheet's `onConfirm` when a passcode
+    /// gate must follow; consumed in the sheet's `onDismiss` so the
+    /// verify cover presents only after the sheet has fully gone —
+    /// presenting a second surface mid-dismissal races the
+    /// transition and can drop the presentation.
+    @State private var pendingDeletePinVerify: Bool = false
     @State private var isShowingPhrase: Bool = false
     @State private var isShowingKey: Bool = false
     @State private var isShowingBackupFlow: Bool = false
@@ -253,15 +267,71 @@ struct WalletDetailView: View {
         .listStyle(.insetGrouped)
         .scrollContentBackground(.hidden)
         .background(UniColors.Background.primary)
-        .sheet(isPresented: $isShowingDeleteConfirm) {
+        .sheet(
+            isPresented: $isShowingDeleteConfirm,
+            onDismiss: {
+                // Hand off to the passcode gate only after the
+                // confirmation sheet has fully dismissed (see
+                // `pendingDeletePinVerify` doc). Cancel / swipe-down
+                // never sets the flag, so plain dismissals are inert.
+                if pendingDeletePinVerify {
+                    pendingDeletePinVerify = false
+                    isShowingDeletePinVerify = true
+                }
+            }
+        ) {
             DeleteWalletConfirmationSheet(
                 walletName: wallet.name,
                 onConfirm: {
-                    Task { await deleteWallet(wallet) }
+                    // Typed-name semantics are unchanged — this fires
+                    // only once the name matches. With a passcode set,
+                    // the destructive action is deferred behind the
+                    // passcode-only verify gate (user direction
+                    // 2026-06-13); without one, the existing
+                    // confirm-then-delete behavior stays as-is.
+                    if PinCodeStorage.hasPin {
+                        pendingDeletePinVerify = true
+                    } else {
+                        Task { await deleteWallet(wallet) }
+                    }
                 }
             )
             .uniAppEnvironment()
             .intrinsicHeightSheet()
+            .presentationBackground(UniColors.Background.primary)
+        }
+        .fullScreenCover(isPresented: $isShowingDeletePinVerify) {
+            // Same presentation shape as the Security entry gate and
+            // `PinDisableVerifyFlow`: NavigationStack so the close
+            // affordance lives in a native toolbar slot (Rule #15),
+            // canonical `PinCodeView` per Rule #17 — passcode-only,
+            // so no Face ID auto-prompt and no biometric keypad key.
+            NavigationStack {
+                PinCodeView(
+                    mode: .verify,
+                    onComplete: { _ in
+                        isShowingDeletePinVerify = false
+                        Task { await deleteWallet(wallet) }
+                    },
+                    onCancel: {
+                        // Declining to authenticate aborts the
+                        // deletion entirely — back to the detail
+                        // screen, wallet untouched.
+                        isShowingDeletePinVerify = false
+                    },
+                    allowsBiometrics: false
+                )
+                .toolbar {
+                    ToolbarItem(placement: .topBarLeading) {
+                        Button { isShowingDeletePinVerify = false } label: {
+                            Image(systemName: "xmark")
+                                .font(.system(size: 17, weight: .semibold))
+                        }
+                        .accessibilityLabel(Text("Cancel"))
+                    }
+                }
+            }
+            .uniAppEnvironment()
             .presentationBackground(UniColors.Background.primary)
         }
         .sheet(isPresented: $isShowingPhrase) {

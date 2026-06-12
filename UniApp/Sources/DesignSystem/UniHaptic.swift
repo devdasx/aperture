@@ -23,7 +23,9 @@ import SwiftUI
 ///   tactile identity. Six total; new ones require SHIPPED.md
 ///   justification per Rule #10 §I.
 ///
-/// User preference: `@AppStorage("hapticFeedbackEnabled")`. When `false`
+/// User preference: the `hapticFeedbackEnabled` key, read at fire time
+/// via `HapticPreference.isEnabled()` (never via `@AppStorage` inside
+/// the modifiers — see `UniHapticModifier`'s doc for why). When `false`
 /// every path through this enum short-circuits to no-op — `SensoryFeedback`,
 /// `CHHapticEngine`, sequences, signatures, frustration-window state,
 /// everything. One source of truth.
@@ -316,8 +318,7 @@ extension View {
 
 // MARK: - Internal modifiers
 
-/// Single-shot haptic modifier. Hosts the `@AppStorage` read so the
-/// preference check fires fresh on every view update.
+/// Single-shot haptic modifier.
 ///
 /// **No structural branching on the preference.** Both modifiers below
 /// are applied unconditionally and the preference gates the *effect*
@@ -328,6 +329,22 @@ extension View {
 /// `.uniHaptic`-wrapped subtree app-wide, discarding `@State`,
 /// `@FocusState`, and scroll positions.
 ///
+/// **No view-graph subscription on the preference either (2026-06-13).**
+/// The follow-on bug to the structural branch above: this modifier used
+/// to host `@AppStorage(HapticPreference.storageKey)`, which made every
+/// `.uniHaptic`-wrapped node re-evaluate whenever the Settings toggle
+/// flipped. One of those nodes wraps `MainTabView`'s `TabView` — the
+/// ancestor of the Settings tab's `NavigationStack` — and on iOS 26's
+/// UIKit-bridged `TabView` that invalidation churned the hosted tab
+/// content and reset `SettingsView`'s `@State navigationPath`, popping
+/// the user out of Settings → Preferences on every haptic-toggle flip
+/// (observed on Thuglife 2026-06-13). The preference is now read
+/// **imperatively at fire time** via `HapticPreference.isEnabled()` —
+/// a plain `UserDefaults` read, not a `DynamicProperty` — so flipping
+/// the toggle invalidates *zero* `.uniHaptic`-wrapped nodes. Gating is
+/// exactly as fresh (the closure evaluates when the trigger fires),
+/// and the view graph is fully inert to the preference.
+///
 /// **`.error` routes through `UniHapticEngine`** (not the direct
 /// `SensoryFeedback` mapping) so Rule #10 §J frustration silencing
 /// counts and mutes repeated error buzzes — mirroring
@@ -336,21 +353,19 @@ private struct UniHapticModifier<T: Equatable>: ViewModifier {
     let haptic: UniHaptic
     let trigger: T
 
-    @AppStorage(HapticPreference.storageKey)
-    private var isEnabled: Bool = HapticPreference.defaultValue
-
     func body(content: Content) -> some View {
         content
             .sensoryFeedback(trigger: trigger) { _, _ in
-                guard isEnabled else { return nil }
+                guard HapticPreference.isEnabled() else { return nil }
                 // `.error` fires through the engine in `onChange`
                 // below (frustration silencing, Rule #10 §J).
                 guard haptic != .error else { return nil }
                 return haptic.feedback
             }
             .onChange(of: trigger) { _, _ in
-                guard isEnabled else { return }
                 guard haptic.requiresEngine || haptic == .error else { return }
+                // `UniHapticEngine.play` re-checks the preference at
+                // fire time, so no separate gate is needed here.
                 Task { @MainActor in
                     UniHapticEngine.shared.play(haptic)
                 }
@@ -369,17 +384,19 @@ private struct UniHapticModifier<T: Equatable>: ViewModifier {
 /// double-beat `.consequential` (no `SensoryFeedback` mapping), plus
 /// `.error`, which stays on the engine so Rule #10 §J frustration
 /// silencing keeps counting and muting repeated error buzzes.
+///
+/// Same preference discipline as `UniHapticModifier` above: **no
+/// `@AppStorage` subscription** — `HapticPreference.isEnabled()` is
+/// read at fire time so flipping the Settings haptics toggle never
+/// invalidates a wrapped node (2026-06-13 navigation-pop fix).
 private struct UniHapticDirectionalModifier<T: Equatable>: ViewModifier {
     let trigger: T
     let resolve: (T, T) -> UniHaptic?
 
-    @AppStorage(HapticPreference.storageKey)
-    private var isEnabled: Bool = HapticPreference.defaultValue
-
     func body(content: Content) -> some View {
         content
             .sensoryFeedback(trigger: trigger) { old, new in
-                guard isEnabled else { return nil }
+                guard HapticPreference.isEnabled() else { return nil }
                 guard let haptic = resolve(old, new) else { return nil }
                 // `.error` routes through the engine (frustration
                 // silencing); engine-only cases have no mapping anyway.
@@ -387,9 +404,10 @@ private struct UniHapticDirectionalModifier<T: Equatable>: ViewModifier {
                 return haptic.feedback
             }
             .onChange(of: trigger) { old, new in
-                guard isEnabled else { return }
                 guard let haptic = resolve(old, new) else { return }
                 guard haptic.requiresEngine || haptic == .error else { return }
+                // `UniHapticEngine.play` re-checks the preference at
+                // fire time, so no separate gate is needed here.
                 Task { @MainActor in
                     UniHapticEngine.shared.play(haptic)
                 }

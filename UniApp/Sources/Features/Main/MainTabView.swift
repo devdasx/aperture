@@ -69,8 +69,12 @@ import TipKit
 /// reorder the tabs manually based on layout direction.
 struct MainTabView: View {
     /// Persisted across launches so the user lands on whichever tab
-    /// they last had open. Default `.wallet`.
-    @AppStorage("selectedTab") private var selectedTabRaw: String = MainTab.wallet.rawValue
+    /// they last had open. Default `.wallet`. Restoration nuance
+    /// (2026-06-13): `ScreenRestoration.resolveOnLaunch()` resets this
+    /// key to `.wallet` during `UniAppApp.init()` when the user was
+    /// away ≥ 2 minutes — so "lands on the last tab" only holds within
+    /// the 2-minute restoration window.
+    @AppStorage(MainTab.storageKey) private var selectedTabRaw: String = MainTab.wallet.rawValue
 
     /// The active wallet's UUID string. Drives the Wallet tab's
     /// avatar AND the wallet-home `WalletHomeView`. The two surfaces
@@ -474,4 +478,11 @@ enum MainTab: String, Hashable, CaseIterable {
     case swap
     case browser
     case settings
+
+    /// The `@AppStorage` / `UserDefaults` key the selected tab persists
+    /// under. Single source of truth shared by `MainTabView`,
+    /// `WalletHomeView`'s long-press deep link, and
+    /// `ScreenRestoration.resolveOnLaunch()` (which resets the value to
+    /// `.wallet` when the user has been away ≥ 2 minutes).
+    static let storageKey = "selectedTab"
 }

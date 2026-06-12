@@ -77,6 +77,19 @@ final class AutoLockController {
     func handleScenePhaseChange(_ phase: ScenePhase) {
         isSceneActive = (phase == .active)
 
+        // Last-screen restoration stamp (2026-06-13). A real
+        // `.background` entry is the moment the user leaves the app —
+        // including the force-quit path (iOS delivers `.background`
+        // before terminating a foregrounded app killed from the
+        // switcher). Stamped BEFORE the PIN gate below because
+        // restoration is independent of the lock and must work for
+        // users without a PIN. `.inactive` deliberately does not
+        // stamp — same "system prompts aren't departures" reasoning
+        // as the lock contract documented on this type.
+        if phase == .background {
+            ScreenRestoration.stampBackground()
+        }
+
         let pinEnabled = UserDefaults.standard.bool(forKey: "pinEnabled")
         guard pinEnabled else {
             // No PIN configured: never lock.

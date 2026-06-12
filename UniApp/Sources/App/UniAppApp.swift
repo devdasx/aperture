@@ -55,6 +55,18 @@ struct UniAppApp: App {
         //    Keychain on first launch after install.
         FreshInstallGuard.purgeKeychainIfFreshInstall()
 
+        // 0.5) Last-screen restoration resolve (2026-06-13). Reads the
+        //    "user left the app at T" stamp written on every real
+        //    `.background` entry (see `AutoLockController`). Away for
+        //    < 2 minutes → the persisted tab + NavigationStack paths
+        //    are left in place and the restorable views consume them
+        //    at init; ≥ 2 minutes → paths cleared and the selected tab
+        //    reset to the wallet tab, so the user starts at the main
+        //    screen. Must run before `WindowGroup` constructs the
+        //    first view tree — `SettingsView` / `WalletHomeView` read
+        //    the persisted paths in their `init`s.
+        ScreenRestoration.resolveOnLaunch()
+
         // 1) Locale-driven currency seed (Rule #16 — the user's iPhone
         //    configuration is the wallet's first impression).
         CurrencyPreference.bootstrapIfNeeded()
@@ -208,6 +220,11 @@ private struct AppRoot: View {
     /// once the splash's internal animations finish.
     @State private var isShowingSplash: Bool = true
 
+    /// Language code feeding the Rule #12 §G direction-only rebuild
+    /// key — extended on 2026-06-13 from sheet contents to the WHOLE
+    /// content tree. See `rootDirectionKey`.
+    @AppStorage("languagePreference") private var languageCode: String = LanguagePreference.systemCode
+
     @Environment(\.autoLockController) private var lockController
 
     /// The detached overlay window hosting `PrivacyMaskView` +
@@ -224,6 +241,41 @@ private struct AppRoot: View {
     /// pass them through to the content window otherwise.
     private var isLockSurfaceVisible: Bool {
         !isShowingSplash && lockController.isLocked
+    }
+
+    /// Rule #12 §G direction-only rebuild key, applied to the WHOLE
+    /// content tree (2026-06-13). The app root binds
+    /// `\.layoutDirection` live via `.uniAppEnvironment()`, but every
+    /// UIKit-backed host inside (`NavigationStack` bars, `List`s, the
+    /// `TabView`) latches its `semanticContentAttribute` at creation —
+    /// the exact phenomenon Rule #12 §F documents for sheets. Without
+    /// a rebuild, switching Arabic → English left the app MIRRORED
+    /// (English text right-aligned, chevrons on the wrong side) until
+    /// a restart. Keying `RootGate` on the resolved direction tears
+    /// the content tree down and rebuilds it the instant the user
+    /// crosses the LTR ↔ RTL boundary — live, no app restart, per the
+    /// user's 2026-06-13 direction ("it should rebuild the whole app
+    /// in real way"). Same-direction language changes (en → es) keep
+    /// the same key and propagate reactively, preserving navigation
+    /// state — Rule #12 §G's reasoning, applied at the root.
+    ///
+    /// **Why the key sits on `RootGate`, not on `AppRoot` itself.**
+    /// `AppRoot`'s own `@State` must survive the flip: re-keying
+    /// `AppRoot` would replay the splash (`isShowingSplash` resets)
+    /// and orphan + duplicate the detached lock-overlay `UIWindow`
+    /// (its handle lives in `lockOverlayWindow`). The user-visible
+    /// app IS `RootGate`'s subtree; that is what rebuilds.
+    ///
+    /// **Where the user lands after the flip.** The selected tab
+    /// survives (`@AppStorage`), and the wallet-home / Settings
+    /// navigation paths are re-consumed from `ScreenRestoration`'s
+    /// continuous mirror — so the Choose-language screen survives its
+    /// own direction flip and re-renders correctly, instantly, in the
+    /// new direction. Presented sheets and covers are dismissed by
+    /// the rebuild (their presenters die) — acceptable for a
+    /// deliberate global language change.
+    private var rootDirectionKey: String {
+        LanguagePreference.layoutDirection(for: languageCode) == .rightToLeft ? "rtl" : "ltr"
     }
 
     var body: some View {
@@ -277,6 +329,13 @@ private struct AppRoot: View {
             .transition(.opacity)
         } else {
             RootGate(logoNamespace: logoNamespace, phase: .onboarding)
+                // Direction-keyed identity (Rule #12 §G at the root —
+                // see `rootDirectionKey`'s doc). The key only changes
+                // on an LTR ↔ RTL flip, so the rebuild never fires for
+                // theme or same-direction language changes. The swap
+                // is instant: the `.animation` above is keyed on
+                // `isShowingSplash`, which doesn't change here.
+                .id(rootDirectionKey)
                 .transition(.opacity)
         }
     }
@@ -361,6 +420,18 @@ private struct AppRoot: View {
 private struct LockOverlayRoot: View {
     @Environment(\.autoLockController) private var lockController
 
+    /// Rule #12 §G direction key for the overlay window's content.
+    /// The detached `UIHostingController` receives locale + direction
+    /// reactively through the `.uniAppEnvironment()` applied at mount
+    /// (its `@AppStorage` reads invalidate inside the host like
+    /// anywhere else), and the lock surfaces are pure SwiftUI — but
+    /// the host's own `semanticContentAttribute` latches at creation
+    /// like every UIKit host, so the content is re-keyed on an LTR ↔
+    /// RTL flip for the same reason the main tree is (see
+    /// `AppRoot.rootDirectionKey`). Zero UX cost: language can only
+    /// change while unlocked, when this renders nothing.
+    @AppStorage("languagePreference") private var languageCode: String = LanguagePreference.systemCode
+
     /// Live PIN-enabled flag — reactive so enabling / disabling the
     /// PIN in Settings flips the mask gate immediately.
     @AppStorage(PinCodePreference.pinEnabledKey)
@@ -415,6 +486,9 @@ private struct LockOverlayRoot: View {
                     .zIndex(100)
             }
         }
+        // Direction-keyed identity for the overlay content — see the
+        // `languageCode` property doc. Flips only on LTR ↔ RTL.
+        .id(LanguagePreference.layoutDirection(for: languageCode) == .rightToLeft ? "rtl" : "ltr")
         // Unlock fade — same 0.55s smooth spring the splash → content
         // crossfade uses, so the lock's exit reads as one system.
         .animation(.smooth(duration: 0.55), value: lockController.isLocked)

@@ -165,9 +165,13 @@ final class UniHapticEngine {
 
     // MARK: - Preference + accessibility gates
 
+    /// Fire-time preference gate — delegates to the canonical
+    /// `HapticPreference.isEnabled()` (same default-for-absent-key
+    /// semantics as `@AppStorage`) so the engine's read can never
+    /// drift from the view-layer modifiers, which read the same
+    /// function at fire time (2026-06-13 navigation-pop fix).
     private var isHapticsEnabled: Bool {
-        UserDefaults.standard.object(forKey: HapticPreference.storageKey) as? Bool
-            ?? HapticPreference.defaultValue
+        HapticPreference.isEnabled()
     }
 
     private var isReduceMotionEnabled: Bool {

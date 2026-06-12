@@ -19,12 +19,17 @@ struct SecuritySettingsView: View {
     @State private var biometricAvailable: Bool = false
 
     /// Per the user's 2026-06-06 direction: entering Settings →
-    /// Security itself must be gated behind passcode (and Face ID
-    /// when enabled), the same way Apple gates Settings → Touch ID
-    /// & Passcode. `isUnlocked` is `false` on first appear; the
-    /// fullScreenCover below shows `PinCodeView(.verify)` which
-    /// auto-fires biometric (per the `.task` modifier added to
-    /// `PinCodeView`). On successful verify we flip the flag and
+    /// Security itself must be gated behind passcode, the same way
+    /// Apple gates Settings → Touch ID & Passcode.
+    ///
+    /// **Passcode-ONLY since 2026-06-13 (user direction):** the gate
+    /// passes `allowsBiometrics: false`, so `PinCodeView(.verify)`
+    /// neither auto-fires Face ID nor renders the biometric keypad
+    /// key — even when Face ID is enabled. Face ID-first remains the
+    /// policy everywhere else (app unlock, secret reveals, signing,
+    /// dApps). `isUnlocked` is `false` on first appear; the
+    /// fullScreenCover below shows the verify keypad. On successful
+    /// verify we flip the flag and
     /// dismiss the cover, revealing the real settings list. If
     /// the user cancels the verify, the navigation pops back to
     /// the Settings root.
@@ -75,7 +80,12 @@ struct SecuritySettingsView: View {
                         // User declined to authenticate — pop back
                         // to the previous Settings level.
                         dismiss()
-                    }
+                    },
+                    // Passcode-only gate per user direction
+                    // 2026-06-13: no Face ID auto-prompt, no
+                    // biometric keypad key — entering the Security
+                    // screen always asks for the passcode itself.
+                    allowsBiometrics: false
                 )
                 .toolbar {
                     ToolbarItem(placement: .topBarLeading) {

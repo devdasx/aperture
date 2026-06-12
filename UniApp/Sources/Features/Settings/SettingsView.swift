@@ -65,15 +65,42 @@ struct SettingsView: View {
     /// to host this view. A tab root doesn't have that boundary —
     /// rebuilds propagate via SwiftUI's standard environment
     /// channel, so the path stays here.
-    @State private var navigationPath: NavigationPath = NavigationPath()
+    ///
+    /// **Last-screen restoration (2026-06-13).** Seeded from
+    /// `ScreenRestoration`'s mirror in `init` and mirrored back on
+    /// every change via `.onChange` below. On a cold launch within
+    /// the 2-minute window the user lands back on the Settings
+    /// sub-screen they left; `ScreenRestoration.resolveOnLaunch()`
+    /// clears the mirror beforehand for longer absences, so the seed
+    /// is an empty path then. The same seeding makes the stack
+    /// survive the root direction-flip rebuild (`AppRoot.
+    /// rootDirectionKey`) — the Choose-language screen stays put
+    /// when its own selection flips LTR ↔ RTL.
+    @State private var navigationPath: NavigationPath
+
+    init() {
+        // `@State` reads its initial value only when the view's
+        // identity is fresh (cold launch, tab-shell rebuild, root
+        // direction flip) — exactly the moments restoration should
+        // apply. Re-running this on routine `MainTabView` body passes
+        // is a no-op against existing state, and the decode cost is a
+        // few enum cases of JSON.
+        _navigationPath = State(initialValue: ScreenRestoration.restoredSettingsPath())
+    }
 
     @AppStorage("themePreference") private var themeRaw: String = ThemePreference.defaultRaw
     @AppStorage("languagePreference") private var languageCode: String = LanguagePreference.systemCode
-    @AppStorage(HapticPreference.storageKey) private var hapticEnabled: Bool = HapticPreference.defaultValue
-    @AppStorage(PrivacyMaskPreference.storageKey) private var privacyMaskEnabled: Bool = PrivacyMaskPreference.defaultValue
     @AppStorage(CurrencyPreference.storageKey) private var currencyCode: String = CurrencyPreference.defaultCode
-    @AppStorage(HideBalancesPreference.hideBalanceOnHomeKey) private var hideBalanceOnHome: Bool = false
-    @AppStorage(HideBalancesPreference.thresholdKey) private var hideSmallThreshold: Double = HideBalancesPreference.defaultThreshold
+    // NOTE (2026-06-13): the haptic / privacy-mask / hide-balance /
+    // hide-small-threshold `@AppStorage` declarations that used to sit
+    // here were vestigial — the rows moved into `PreferencesView` on
+    // 2026-06-09 and this view's body never read them again. They were
+    // not inert, though: an `@AppStorage` subscribes to its key even
+    // when body never reads it, so every toggle flip on the pushed
+    // Preferences screen invalidated THIS view — the owner of the
+    // `NavigationStack` path. Removed so toggling a preference can
+    // never disturb the stack owner. Do not re-add a preference key
+    // here unless this view's body actually renders it.
     /// Test-mode toggle — same `@AppStorage` key the wallet-home
     /// reads. Flipping here updates the wallet view in place
     /// (2026-06-09 — replaced the toolbar flask).
@@ -343,6 +370,13 @@ struct SettingsView: View {
             }
             .onAppear { consumeDeepLink() }
             .onChange(of: settingsDeepLink) { _, _ in consumeDeepLink() }
+            // Last-screen restoration mirror (2026-06-13). Every push
+            // / pop lands in `ScreenRestoration`'s UserDefaults mirror
+            // so a force-quit needs no last-moment save. Consumed by
+            // `init` above on the next fresh identity.
+            .onChange(of: navigationPath) { _, newPath in
+                ScreenRestoration.saveSettingsPath(newPath)
+            }
         }
     }
 
