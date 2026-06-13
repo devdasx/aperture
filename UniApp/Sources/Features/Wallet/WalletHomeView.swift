@@ -2448,42 +2448,92 @@ struct WalletHomeView: View {
         }
     }
 
-    /// Currency-change pipeline (2026-06-13). Two phases:
+    /// Currency-change re-price (2026-06-13, **deep fix 2026-06-13b**).
     ///
-    /// 1. **Fast re-price** — `WalletRefreshCoordinator.repriceWallet`
-    ///    re-values every persisted balance row into the new currency
-    ///    via the `TokenPricingEngine` ladder (Coinbase → per-currency
-    ///    cache → CoinGecko → balance-derived FX cross). One price
-    ///    batch, no chain rescan — the hero and rows heal in seconds.
-    /// 2. **Full refresh** — the normal coordinator pipeline, which
-    ///    prices in the active currency end-to-end. Called with
-    ///    `userInitiated: true` so an in-flight pipeline still
-    ///    pricing in the PREVIOUS currency is cancelled and replaced
-    ///    — joining it (the registry's default dedupe) would let
-    ///    old-currency rows land on top of the re-price. No settle
-    ///    haptic: the user's gesture was a Settings tap, not a pull.
+    /// **The bug this replaces.** The previous version re-priced via
+    /// `WalletRefreshCoordinator.repriceWallet`, which writes the new
+    /// `fiatValueCached` / `fiatCurrencyCode` through a background
+    /// `@ModelActor` context. SwiftData reliably propagates *inserts*
+    /// from another context into an observing `@Query` (that's why a
+    /// first scan / import shows balances), but it does **not**
+    /// reliably refresh already-materialized to-many CHILD objects
+    /// when another context UPDATES their scalar fields — the main
+    /// view's `activeWallet.addresses[].balances` kept their old JOD
+    /// values until the context was recreated (app relaunch). Because
+    /// `totalFiat` sums **only** rows whose `fiatCurrencyCode` equals
+    /// the active currency, every still-JOD row dropped out → the hero
+    /// read `$0.00`, a refresh "did nothing" (same stale objects), and
+    /// only a cold launch (fresh context, fresh fetch from the store)
+    /// healed it. Exactly the user's report.
+    ///
+    /// **The fix.** Re-price by mutating the LIVE `@Query` objects on
+    /// the MAIN context, then `save()`. The view's own context owns
+    /// these objects, so `totalFiat` and the per-row display see the
+    /// new currency the instant the save returns — zero cross-context
+    /// lag, no relaunch. Prices are fetched off-main through the full
+    /// `TokenPricingEngine` ladder (live Coinbase / CoinGecko →
+    /// per-currency cache → balance-derived FX cross), then applied
+    /// on-main. Quantities don't change when the currency does, so no
+    /// chain rescan is needed; the user can pull-to-refresh for fresh
+    /// on-chain balances. (Dropping the old trailing background refresh
+    /// also removes a hazard: a rate-limited scan firing right after a
+    /// currency switch could write `fiatValueCached: 0` and re-zero the
+    /// hero.)
     private func repriceForCurrencyChange() async {
         guard !isTestMode else { return }
-        guard let walletId = await resolveRefreshWalletId() else { return }
-        let coordinator = WalletRefreshCoordinator(container: modelContext.container)
-        await coordinator.repriceWallet(walletId: walletId, fiatCode: currencyCode)
-        guard !Task.isCancelled else { return }
-        await MainActor.run {
-            // Value-only updates don't move the count proxies —
-            // rebuild the memoized projections explicitly.
-            rebuildDisplayRows()
-        }
-        guard !Task.isCancelled else { return }
-        await coordinator.refreshWallet(
-            walletId: walletId,
-            fiatCode: currencyCode,
-            userInitiated: true
+        let code = (CurrencyPreference.currency(for: currencyCode)?.code
+            ?? CurrencyPreference.defaultCode).uppercased()
+
+        // Snapshot the live balance objects + the symbols to price,
+        // on the main actor (the view is `@MainActor`-isolated).
+        let rows = allHeldRows.map(\.balance)
+        guard !rows.isEmpty else { return }
+        let symbols = Array(Set(rows.map { $0.tokenSymbol.uppercased() }))
+
+        // Fetch unit prices in the new currency (off-main hop).
+        let prices = await TokenPricingEngine.shared.unitPrices(
+            symbols: symbols,
+            currencyCode: code
         )
         guard !Task.isCancelled else { return }
-        await MainActor.run {
-            rebuildDisplayRows()
-            rebuildTransactionRows()
+
+        // For any row the ladder couldn't price directly, fetch one FX
+        // cross per old currency so its existing fiat can be
+        // re-denominated rather than dropped to zero.
+        var crosses: [String: Decimal] = [:]
+        for row in rows where prices[row.tokenSymbol.uppercased()] == nil {
+            let from = row.fiatCurrencyCode.uppercased()
+            guard from != code, row.fiatValueCached > 0, crosses[from] == nil else { continue }
+            crosses[from] = await TokenPricingEngine.shared.crossRate(from: from, to: code)
         }
+        guard !Task.isCancelled else { return }
+
+        // Apply on the MAIN context's own objects, then save once.
+        var changed = 0
+        for row in rows {
+            let amount = WalletFormatting.decimalAmount(
+                rawBalance: row.rawBalance,
+                decimals: row.decimals
+            )
+            var newFiat: Decimal?
+            if let price = prices[row.tokenSymbol.uppercased()] {
+                newFiat = amount * price.amount
+            } else if row.fiatCurrencyCode.uppercased() != code,
+                      row.fiatValueCached > 0,
+                      let cross = crosses[row.fiatCurrencyCode.uppercased()] {
+                newFiat = row.fiatValueCached * cross
+            }
+            guard let newFiat else { continue }  // can't price → leave honest in old currency
+            row.fiatValueCached = newFiat
+            row.fiatCurrencyCode = code
+            changed += 1
+        }
+        if changed > 0 {
+            try? modelContext.save()
+        }
+        // Value-only updates don't move the count proxies — rebuild the
+        // memoized display projections explicitly.
+        rebuildDisplayRows()
     }
 
     /// Resolve the wallet id a refresh should run against. Prefers
