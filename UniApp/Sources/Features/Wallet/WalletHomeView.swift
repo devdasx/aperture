@@ -473,6 +473,7 @@ struct WalletHomeView: View {
                             AssetDetailView(identity: identity)
                         }
                     case .assetActivity(let identity):          AssetActivityView(identity: identity)
+                    case .allActivity:                          WalletActivityView()
                     }
                 }
                 // Canonical Aperture refresh (2026-06-09). Replaces
@@ -1854,6 +1855,44 @@ struct WalletHomeView: View {
                 productionActivityRows
             }
         } header: {
+            activityHeader
+        }
+    }
+
+    /// **Recent-activity section header.** Title leading, a quiet
+    /// "View all" link trailing — the native iOS "See All" geometry
+    /// (Photos, App Store, Wallet). The link routes to
+    /// `WalletActivityView` for the full, uncapped history.
+    ///
+    /// **Restraint (Rule #2 §D.5):** the link is the section's *only*
+    /// extra affordance — no second footer button. It appears ONLY
+    /// when the wallet holds more transactions than the five shown
+    /// (`allTransactions.count > 5`); with five or fewer there is
+    /// nothing more to see, so the header is the plain title alone.
+    ///
+    /// **Not a CTA (Rule #19 §C):** "View all" navigates, it does not
+    /// commit the user to a next state — so it is a plain `Button`
+    /// styled as a quiet text link via `UniColors.Text.link`, not a
+    /// `UniButton`. Test mode has no production history to page into,
+    /// so the link is production-only.
+    @ViewBuilder
+    private var activityHeader: some View {
+        if !isTestMode && allTransactions.count > 5 {
+            HStack(alignment: .firstTextBaseline) {
+                Text("Recent activity")
+                Spacer(minLength: UniSpacing.s)
+                Button {
+                    navigationPath.append(WalletHomeDestination.allActivity)
+                } label: {
+                    Text("View all")
+                        .font(UniTypography.subheadlineEmphasized)
+                        .foregroundStyle(UniColors.Text.link)
+                        .textCase(nil)
+                }
+                .buttonStyle(.plain)
+                .accessibilityHint(Text("Shows the full transaction history"))
+            }
+        } else {
             Text("Recent activity")
         }
     }
@@ -2179,10 +2218,12 @@ struct WalletHomeView: View {
 
     /// Rebuild the memoized transaction projections:
     ///
-    /// - `recentTransactions` — most recent ten transactions across
-    ///   all the wallet's addresses, newest first.
+    /// - `recentTransactions` — most recent five transactions across
+    ///   all the wallet's addresses, newest first. The home surfaces
+    ///   only this short window; the "View all" affordance routes to
+    ///   `WalletActivityView` for the unbounded history.
     /// - `allTransactions` — every transaction, unsorted. Feeds the
-    ///   balance-history chart's reconstructor — the prefix-10 slice
+    ///   balance-history chart's reconstructor — the prefix-5 slice
     ///   the activity section uses isn't enough for
     ///   `BalanceHistoryRange.all`. The reconstructor handles the
     ///   sort + the per-range cutoff itself.
@@ -2199,7 +2240,7 @@ struct WalletHomeView: View {
         let all = wallet.addresses.flatMap { $0.transactions }
         allTransactions = all
         recentTransactions = Array(
-            all.sorted { $0.occurredAt > $1.occurredAt }.prefix(10)
+            all.sorted { $0.occurredAt > $1.occurredAt }.prefix(5)
         )
     }
 
@@ -2777,6 +2818,13 @@ enum WalletHomeDestination: Hashable, Codable {
     /// activity section. Lands on `AssetActivityView` showing every
     /// transaction for the asset (no row cap).
     case assetActivity(AssetIdentity)
+    /// **Wallet-wide "View all" transactions** — pushed when the user
+    /// taps "View all" in the wallet-home "Recent activity" header.
+    /// Lands on `WalletActivityView` showing every transaction across
+    /// every address of the active wallet (no five-row cap). No
+    /// associated value — the destination always means the active
+    /// wallet, resolved the same store-truth way the home does.
+    case allActivity
 }
 
 // MARK: - Wallet-pill customise target (Identifiable shim)
