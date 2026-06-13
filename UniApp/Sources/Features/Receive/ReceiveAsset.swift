@@ -48,7 +48,8 @@ extension ReceiveAsset {
     /// existing row rather than duplicating.
     static func tokens(
         availableChains: Set<SupportedChain>,
-        customTokens: [CustomTokenSnapshot] = []
+        customTokens: [CustomTokenSnapshot] = [],
+        catalogAssets: [CatalogAsset] = AssetCatalog.allAssets
     ) -> [ReceiveAsset] {
         // [symbol: (name, [chain])] — collected then sorted.
         var bucket: [String: (name: String, chains: [SupportedChain])] = [:]
@@ -65,67 +66,15 @@ extension ReceiveAsset {
             }
         }
 
-        // EVM side (12 chains).
-        for chain in availableChains where chain.family == .evm {
-            for entry in EVMTokenRegistry.tokens(for: chain) {
-                add(entry.symbol, entry.name, chain)
-            }
-        }
-
-        // Solana side.
-        if availableChains.contains(.solana) {
-            for entry in SolanaTokenRegistry.mints.values {
-                add(entry.symbol, entry.name, .solana)
-            }
-        }
-
-        // TRON (TRC-20).
-        if availableChains.contains(.tron) {
-            for entry in TronTokenRegistry.tokens {
-                add(entry.symbol, entry.name, .tron)
-            }
-        }
-
-        // NEAR (NEP-141).
-        if availableChains.contains(.near) {
-            for entry in NearTokenRegistry.tokens {
-                add(entry.symbol, entry.name, .near)
-            }
-        }
-
-        // Aptos (fungible asset / Aptos Coin).
-        if availableChains.contains(.aptos) {
-            for entry in AptosTokenRegistry.tokens {
-                add(entry.symbol, entry.name, .aptos)
-            }
-        }
-
-        // Polkadot (Asset Hub).
-        if availableChains.contains(.polkadot) {
-            for entry in PolkadotAssetRegistry.tokens {
-                add(entry.symbol, entry.name, .polkadot)
-            }
-        }
-
-        // XRP Ledger (IOU).
-        if availableChains.contains(.ripple) {
-            for entry in XRPLTokenRegistry.tokens {
-                add(entry.symbol, entry.name, .ripple)
-            }
-        }
-
-        // TON (TIP-3 Jetton).
-        if availableChains.contains(.ton) {
-            for entry in TONJettonRegistry.tokens {
-                add(entry.symbol, entry.name, .ton)
-            }
-        }
-
-        // Kava (Cosmos IBC).
-        if availableChains.contains(.kava) {
-            for entry in KavaCosmosTokenRegistry.tokens {
-                add(entry.symbol, entry.name, .kava)
-            }
+        // **2026-06-13 — local-first (Rule #27 §D).** The token universe
+        // comes from `catalogAssets` (the DB-seeded `AssetRecord` set the
+        // caller passes, mapped to `CatalogAsset`), defaulting to the
+        // static `AssetCatalog`. The nine per-registry loops that used to
+        // live here moved into `AssetCatalog.allAssets` (one source for
+        // the seeder + this fallback), so the list is identical whether
+        // sourced from the store or the static catalog.
+        for asset in catalogAssets where availableChains.contains(asset.chain) {
+            add(asset.symbol, asset.name, asset.chain)
         }
 
         // User-added custom tokens — fold into the same bucket so a

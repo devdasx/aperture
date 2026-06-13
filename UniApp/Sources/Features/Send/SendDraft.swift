@@ -121,15 +121,48 @@ final class SendDraft {
     /// secondary line shows the crypto equivalent.
     var isShowingFiat: Bool = false
 
-    /// MOCK available balance for the selected asset, in chain units.
-    /// `// TODO: (T-061)` real balance read.
-    var availableBalance: Decimal {
-        SendMockData.sampleBalance(for: asset)
+    // MARK: - Held balances (read from the database — Rule #27 §D)
+
+    /// The active wallet's held balances, read from the SwiftData store
+    /// (`TokenBalanceRecord`) by the flow root and threaded in. This is
+    /// the local-first replacement for the old `SendMockData` sample
+    /// balances (T-061): the Send screen now shows what the wallet
+    /// actually holds, sourced from the database, never a fabricated
+    /// number. Empty until the flow root populates it on appear.
+    var heldAssets: [SendHeldAsset] = []
+
+    /// The held row matching the selected asset, if the wallet holds it.
+    /// Native assets match on `(network, nil contract, chain ticker)`;
+    /// tokens match on `(network, symbol)`.
+    private var matchedHeld: SendHeldAsset? {
+        guard let asset else { return nil }
+        let net = asset.network
+        switch asset {
+        case .native(let chain):
+            return heldAssets.first {
+                $0.network == net && $0.contract == nil
+                    && $0.symbol.uppercased() == chain.ticker.uppercased()
+            }
+        case .token(let symbol, _, _, _):
+            return heldAssets.first {
+                $0.network == net && $0.symbol.uppercased() == symbol.uppercased()
+            }
+        }
     }
 
-    /// MOCK unit → fiat rate for the selected asset. `// TODO: (T-061)`.
+    /// Available balance for the selected asset, in chain units — read
+    /// from the DB-sourced `heldAssets` (`TokenBalanceRecord`). `0` when
+    /// the wallet holds none, which is the honest truth: you can't send
+    /// what you don't hold (no mock fallback).
+    var availableBalance: Decimal {
+        matchedHeld?.amount ?? 0
+    }
+
+    /// Unit → fiat rate for the selected asset, derived from the held
+    /// row's persisted fiat value (DB). `0` when unknown — the fiat flip
+    /// and Review total then read `0` rather than a fabricated rate.
     var unitFiatRate: Decimal {
-        SendMockData.sampleFiatRate(for: asset)
+        matchedHeld?.fiatRate ?? 0
     }
 
     /// The typed amount parsed to a `Decimal` (0 when empty / mid-typing
@@ -264,6 +297,20 @@ enum SendFeeSelection: Hashable, Sendable {
 }
 
 // MARK: - Outcome
+
+/// One held balance, flattened to a Sendable value the Send flow reads
+/// (Rule #27 §D). Built from the active wallet's `TokenBalanceRecord`
+/// rows by the flow root. `fiatRate` is the unit → active-currency rate
+/// implied by the row's persisted fiat value (`fiatValueCached / amount`),
+/// so both the balance AND its fiat come from the database.
+struct SendHeldAsset: Sendable, Hashable, Identifiable {
+    let network: SupportedChain
+    let symbol: String
+    let contract: String?
+    let amount: Decimal
+    let fiatRate: Decimal?
+    var id: String { "\(network.rawValue).\(symbol).\(contract ?? "native")" }
+}
 
 /// Terminal state of a send for the design walk-through.
 enum SendOutcome: Hashable, Sendable {

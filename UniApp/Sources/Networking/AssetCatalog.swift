@@ -43,6 +43,17 @@ enum AssetCatalog {
         SupportedChain.allCases.map { CatalogChain(chain: $0) }
     }
 
+    /// DB-sourced assets with a static fallback (Rule #27 §D). Maps the
+    /// seeded `AssetRecord` rows to `CatalogAsset`; falls back to the
+    /// identical static catalog during the pre-seed cold-launch window
+    /// so a list is never empty. The single place every UI surface
+    /// (wallet home, Send, Receive) turns `@Query AssetRecord` results
+    /// into the registry-agnostic shape its builders consume.
+    static func assets(from records: [AssetRecord]) -> [CatalogAsset] {
+        let mapped = records.compactMap { $0.catalogAsset }
+        return mapped.isEmpty ? allAssets : mapped
+    }
+
     /// Every supported token across all 9 registries, normalized. The
     /// `id` + `contract` schemes mirror exactly what
     /// `WalletSupportedRowBuilders.tokenRows` produced inline, so the
