@@ -162,6 +162,8 @@ import SwiftData
                 contract: "0xresettest",
                 decimals: 18
             ))
+        } else if model == AppSettingsRecord.self {
+            context.insert(AppSettingsRecord())
         } else {
             return false
         }
@@ -261,6 +263,7 @@ import SwiftData
             "SyncStatusRecord",
             "ChainRecord",
             "AssetRecord",
+            "AppSettingsRecord",
         ]
         #expect(
             names == expected,

@@ -77,7 +77,9 @@ final class ApertureDatabase {
             // 2026-06-13 — local-first asset universe (Rule #27 §D):
             // supported chains + tokens, seeded from the static registries.
             ChainRecord.self,
-            AssetRecord.self
+            AssetRecord.self,
+            // 2026-06-13 — local-first settings (Rule #27 §D).
+            AppSettingsRecord.self
         ])
         let storeURL = Self.defaultStoreURL()
         let onDiskConfig = ModelConfiguration(
@@ -278,6 +280,12 @@ final class ApertureDatabase {
             } catch {
                 self.log.error("Asset-catalog seed failed: \(String(describing: error), privacy: .public)")
             }
+
+            // 2026-06-13 — start the local-first settings sync
+            // (Rule #27 §D). Seeds the authoritative AppSettingsRecord
+            // from @AppStorage and keeps it live-synced. Main-actor;
+            // ApertureDatabase is @MainActor so this hops correctly.
+            SettingsStore.shared.start(container: self.container)
 
             // 2026-06-09 — backfill avatar defaults onto rows that
             // pre-date the `iconSymbol` / `iconColorHex` schema

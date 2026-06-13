@@ -49,7 +49,11 @@ enum ApertureSchemaV1: VersionedSchema {
             // supported chains + tokens seeded from the static registries
             // so the wallet UI reads the asset list from the DB.
             ChainRecord.self,
-            AssetRecord.self
+            AssetRecord.self,
+            // 2026-06-13 — local-first settings (Rule #27 §D): the
+            // authoritative settings row, kept in sync with @AppStorage
+            // by SettingsStore.
+            AppSettingsRecord.self
         ]
     }
 }
