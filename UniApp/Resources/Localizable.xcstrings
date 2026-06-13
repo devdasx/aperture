@@ -308518,6 +308518,50 @@
           }
         }
       }
+    },
+    "Not synced yet": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Not synced yet"
+          }
+        }
+      }
+    },
+    "Syncing…": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Syncing…"
+          }
+        }
+      }
+    },
+    "Updated %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Updated %@"
+          }
+        }
+      }
+    },
+    "Updated %@ · Offline": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Updated %@ · Offline"
+          }
+        }
+      }
     }
   },
   "version": "1.0"
