@@ -111,11 +111,12 @@ struct AssetDetailView: View {
 
     @State private var isShowingFilter: Bool = false
 
-    /// 2026-06-09 — bound to `BalanceHistoryChart` so the chart can
-    /// publish the scrubbed point's fiat to the hero (animated via
-    /// `.contentTransition(.numericText())`). `nil` when the user
-    /// isn't scrubbing → the hero shows the actual `totalFiat`.
-    @State private var scrubbedFiat: Decimal?
+    /// 2026-06-09 — `BalanceHistoryChart` writes the scrubbed point's
+    /// fiat here so the hero renders it (animated via
+    /// `.contentTransition(.numericText())`). `@Observable` model
+    /// (2026-06-13 perf fix) so scrubbing re-renders only the hero, not
+    /// the whole detail body. `nil` `fiat` → hero shows `totalFiat`.
+    @State private var scrubModel = ChartScrubModel()
 
     /// Cap on the activity section — same convention the wallet home
     /// uses. When the asset has more than 50 transactions, a "View
@@ -255,7 +256,7 @@ struct AssetDetailView: View {
                 priceCache: priceCacheBySymbol(for: derived.resolution.fiatCurrencyCode),
                 priceHistory: priceHistoryBySymbol(for: derived.resolution.fiatCurrencyCode),
                 currencyCode: derived.resolution.fiatCurrencyCode,
-                scrubbedFiat: $scrubbedFiat
+                scrubModel: scrubModel
             )
             .listRowSeparator(.hidden)
             .listRowInsets(EdgeInsets(
@@ -359,7 +360,7 @@ struct AssetDetailView: View {
 
     @ViewBuilder
     private func balanceLabel(_ derived: DerivedState) -> some View {
-        let displayedFiat: Decimal? = scrubbedFiat ?? derived.resolution.totalFiat
+        let displayedFiat: Decimal? = scrubModel.fiat ?? derived.resolution.totalFiat
         let display: String = {
             if hideBalance { return "••••••" }
             if let fiat = displayedFiat {
