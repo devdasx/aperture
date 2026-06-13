@@ -70,7 +70,10 @@ final class ApertureDatabase {
             // append-only price observations (24h change surface) and
             // per-wallet portfolio-value chart snapshots.
             PriceSnapshotRecord.self,
-            WalletChartSnapshotRecord.self
+            WalletChartSnapshotRecord.self,
+            // 2026-06-13 — local-first freshness ledger (Rule #27). Adding
+            // an entity is an additive lightweight migration.
+            SyncStatusRecord.self
         ])
         let storeURL = Self.defaultStoreURL()
         let onDiskConfig = ModelConfiguration(

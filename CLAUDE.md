@@ -3449,6 +3449,104 @@ original bug. Real fix, verified live, every time.
 
 ---
 
+## Rule #27 — Local-first. The SwiftData database is the single source of truth; the UI reads ONLY from it; the network is a writer.
+
+Every value a screen displays — prices, balances, transactions, the
+chart, addresses, UTXOs, tokens, chains/coins, settings, holdings,
+historical closes, gas/fee suggestions, everything — is **read from the
+local SwiftData store**, reactively (`@Query` / `@Observable`), never
+from a network response held in a view. The network (RPC, price/FX APIs,
+explorers) is a **writer**: a sync layer fetches and **persists to the
+DB**, and the UI updates live off the DB (Rule #25). "Live" means the UI
+re-renders the instant the DB changes — not the UI hitting the wire.
+
+The user's direction (verbatim, 2026-06-13): *"the whole app … get its
+data only from the database … never use live data from any rpc. so any
+RPC, price APIs, etc.. should save the result in the database, and we got
+it from database only, Live."*
+
+### Part A — The three layers
+
+1. **SYNC layer — the ONLY code allowed to touch the network.**
+   The adapters + scanners + pricing engine + the `SyncCoordinator`
+   (formalizing `WalletRefreshCoordinator`) fetch from the wire and
+   write through the actor repositories into SwiftData. Every successful
+   fetch **stamps freshness** (`SyncStatusRecord.lastSyncedAt` for its
+   domain). Scheduled (foreground ~10 s poll + `BGTask` + on-appear),
+   de-duplicated, backed off.
+2. **STORE layer — the single source of truth.**
+   SwiftData `@Model` + the actor repositories. Nothing else is
+   authoritative.
+3. **READ layer (UI) — reads only the store.**
+   Views read via `@Query` / `@Observable`. **A view never imports or
+   holds a network type** (`RPCClient`, `*ChainAdapter`,
+   `*TransactionAdapter`, `TokenPricingEngine`, `CoinbasePriceService`,
+   `CoinGeckoPriceService`, `FXRateService`, a raw `URLSession` for
+   domain data). If a screen needs data, it reads the DB and (if stale)
+   asks the SyncCoordinator to refresh — it never fetches inline.
+
+### Part B — Freshness is honest (Rule #16)
+
+Every synced domain carries a `lastSyncedAt`. Surfaces show a quiet,
+honest stamp — "Updated 14:31 · Syncing…" — and offline shows the
+last-known value + the stamp, never a blank and never a fabricated
+number. A cached value must never silently masquerade as real-time.
+
+### Part C — The carve-out: signing & broadcast still route through the DB
+
+Some protocol actions are inherently real-time — a stale nonce / gas /
+fee-rate / UTXO set loses funds or fails a transaction, and a broadcast
+is a network submission, not a "read." These are handled so they STILL
+go through the DB and never become a passive UI network-read:
+
+1. **Just-in-time sync before read.** The signer reads nonce / gas /
+   fee / UTXOs **only from DB rows**; immediately before signing, the
+   SyncCoordinator does a blocking, targeted refresh of exactly those
+   rows so the DB value is current at that instant.
+2. **Outbox for broadcast.** The UI writes a **pending**
+   `TransactionRecord` (+ `OutboxRecord`) to the DB; the SyncCoordinator's
+   outbox broadcasts it and writes the resulting hash/status back. The
+   UI watches the row go `pending → broadcast → confirmed` live.
+
+The dApp browser's `eth_call` / `eth_sendTransaction` are the same: a
+real-time request at the moment of the user's action, whose result is
+persisted. No view holds the response.
+
+### Part D — Settings & registries live in the store
+
+- **Settings** are persisted as an `AppSettingsRecord` in SwiftData
+  (migrated from the legacy `@AppStorage` keys), read via the store.
+- **Chains / coins / tokens definitions** are seeded into the store
+  (`ChainRecord` / `AssetRecord`) from the static registries on launch;
+  the app reads the asset universe from the DB. The static registries
+  become the seed source, not a parallel runtime source.
+
+### Part E — Enforcement
+
+Before any feature view ships, audit that it imports no network type and
+fetches nothing inline. Grep target (expected empty in `Sources/Features`
+read paths, except the documented Send/dApp carve-out sites):
+
+```bash
+grep -rnE 'RPCClient|TokenPricingEngine|Coinbase(Price|Historical)Service|CoinGeckoPriceService|FXRateService|EVMChainAdapter|EVMTransactionAdapter|RealRPC(Balance|Transaction)Scanner' \
+  UniApp/Sources/Features --include=*.swift | grep -v 'WalletRefreshCoordinator\|SyncCoordinator'
+```
+
+Every hit must be either the SyncCoordinator wiring or a Send/dApp
+carve-out site (Part C) that fetches only at action-time and persists
+its result.
+
+### Part F — Why this rule exists
+
+A wallet whose numbers are right only "after you reopen it", or that
+shows a cached value as if it were live, is untrustworthy. Making the DB
+the one source of truth — fed by a writer-only sync layer, read live by
+the UI, stamped with honest freshness — is what makes the app correct,
+fast (no inline blocking fetches), offline-resilient, and honest, all at
+once. It is the structural form of Rules #16, #24, #25, and #26.
+
+---
+
 ## Project context
 
 - iOS native, **Swift 6.2**, **iOS 26+**, SwiftUI, Liquid Glass design system

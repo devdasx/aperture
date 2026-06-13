@@ -79,6 +79,17 @@ struct WalletRefreshCoordinator: Sendable {
         }
         let txRepo = TransactionRepository(modelContainer: container)
 
+        // **Local-first freshness ledger (Rule #27 §B).** Stamp this
+        // wallet's balance + transaction domains as syncing now; mark
+        // synced / failed at the end. The wallet-home footer reads these
+        // `SyncStatusRecord` rows via `@Query` to show an honest
+        // "Updated 14:31 · Syncing…" instead of pretending a cached
+        // value is live. Stamps never block the refresh (try?).
+        let syncRepo = SyncStatusRepository(modelContainer: container)
+        let syncScope = walletId.uuidString
+        try? await syncRepo.markSyncing(domain: .balances, scopeId: syncScope)
+        try? await syncRepo.markSyncing(domain: .transactions, scopeId: syncScope)
+
         // Resolve the user's currency code → struct once, so the
         // per-address tasks share an immutable Sendable value.
         // Falls back to USD if the stored code somehow isn't in our
@@ -237,6 +248,12 @@ struct WalletRefreshCoordinator: Sendable {
         }
 
         await txHistoryTask
+        // Transaction history pass ran to completion — stamp it synced
+        // (the scanner swallows per-chain failures, so completion is the
+        // freshness signal available here). Skipped if cancelled.
+        if !Task.isCancelled {
+            try? await syncRepo.markSynced(domain: .transactions, scopeId: syncScope)
+        }
 
         // 2026-06-13 — persist this wallet's portfolio-value timeline.
         // The repository sums the freshly-upserted balance rows in the
@@ -256,6 +273,28 @@ struct WalletRefreshCoordinator: Sendable {
                 )
             } catch {
                 Self.log.error("chart snapshot capture failed for \(walletId.uuidString, privacy: .public): \(String(describing: error), privacy: .public)")
+            }
+        }
+
+        // Stamp the balance + price freshness ledger (Rule #27 §B).
+        // Balances are "synced" unless EVERY chain failed — a partial
+        // success still means the store holds fresh data for the chains
+        // that answered. The shared price batch ran as part of the
+        // balance stream, so a balance success implies prices synced.
+        // Skipped when cancelled (a replacement pipeline owns the stamp).
+        if !Task.isCancelled {
+            let everyChainFailed = !chainAddresses.isEmpty
+                && failedChains == Set(chainAddresses.keys)
+            if everyChainFailed {
+                try? await syncRepo.markFailed(
+                    domain: .balances,
+                    scopeId: syncScope,
+                    error: "All \(failedChains.count) chains failed to sync"
+                )
+            } else {
+                try? await syncRepo.markSynced(domain: .balances, scopeId: syncScope)
+                try? await syncRepo.markSynced(domain: .prices, scopeId: SyncDomain.globalScope)
+                try? await syncRepo.markSynced(domain: .chart, scopeId: syncScope)
             }
         }
 
@@ -675,6 +714,61 @@ struct WalletRefreshCoordinator: Sendable {
     // `streamScan`, and its contract — "the persistence layer always
     // stores USD" — contradicted the active-currency pricing ladder
     // that `TokenPricingEngine` now owns.)
+
+    // MARK: - Historical daily closes (Rule #27 §A — sync layer owns the wire)
+
+    /// The sync layer's sole owner of historical daily-close fetching.
+    /// Feature views (`WalletHomeView`, `AssetDetailView`) must NOT call
+    /// `CoinbaseHistoricalPriceService` directly (Rule #27 §A.3 / §E) —
+    /// they read `HistoricalPriceRecord` from the store and call this to
+    /// fill gaps. `symbols` is the desired set (from held balances + tx
+    /// history, all DB-derived); `alreadyHave` is the symbols the store
+    /// already covers for `fiat` (also DB-derived) — so the view passes
+    /// only store state, never touches the network. Fetches just the
+    /// missing symbols, writes them to the store, and stamps
+    /// `.historical` freshness. Bounded to 4 concurrent fetches.
+    func syncHistoricalCloses(
+        symbols: [String],
+        fiat: String,
+        alreadyHave: Set<String>
+    ) async {
+        let wanted = Set(symbols.map { $0.uppercased() })
+        let have = Set(alreadyHave.map { $0.uppercased() })
+        let missing = wanted.subtracting(have)
+        guard !missing.isEmpty else { return }
+
+        let syncRepo = SyncStatusRepository(modelContainer: container)
+        try? await syncRepo.markSyncing(domain: .historical, scopeId: SyncDomain.globalScope)
+
+        let service = CoinbaseHistoricalPriceService()
+        let repo = HistoricalPriceRepository(modelContainer: container)
+        let fiatCode = fiat
+
+        await withTaskGroup(of: Void.self) { group in
+            var inFlight = 0
+            for symbol in missing {
+                if inFlight >= 4 {
+                    await group.next()
+                    inFlight -= 1
+                }
+                inFlight += 1
+                group.addTask {
+                    let candles = await service.fetchDailyCloses(symbol: symbol, fiat: fiatCode)
+                    guard !candles.isEmpty else { return }
+                    let entries = candles.map {
+                        (symbol: symbol, fiat: fiatCode, dayKey: $0.dayKey, price: $0.close)
+                    }
+                    do {
+                        try await repo.upsertMany(entries)
+                    } catch {
+                        Self.log.error("historical upsert failed for \(symbol, privacy: .public): \(String(describing: error), privacy: .public)")
+                    }
+                }
+            }
+        }
+
+        try? await syncRepo.markSynced(domain: .historical, scopeId: SyncDomain.globalScope)
+    }
 
     // MARK: - Snapshot helpers
 

@@ -203,20 +203,20 @@ struct AssetDetailView: View {
     /// assets that's `identity.symbol`.
     private func ensureHistoricalPricesLoaded() async {
         let symbol = identity.symbol.uppercased()
-        // Already have history for this (symbol, fiat) pair? Skip.
-        if historicalPrices.contains(where: {
-            $0.symbol.uppercased() == symbol && $0.fiat == currencyCode
-        }) {
-            return
-        }
-        let service = CoinbaseHistoricalPriceService()
-        let candles = await service.fetchDailyCloses(symbol: symbol, fiat: currencyCode)
-        guard !candles.isEmpty else { return }
-        let repo = HistoricalPriceRepository(modelContainer: modelContext.container)
-        let entries = candles.map {
-            (symbol: symbol, fiat: currencyCode, dayKey: $0.dayKey, price: $0.close)
-        }
-        try? await repo.upsertMany(entries)
+        // What the store already covers for this fiat (DB-derived).
+        let existing = Set(historicalPrices
+            .filter { $0.fiat == currencyCode }
+            .map { $0.symbol.uppercased() })
+
+        // Rule #27 §A — the view never calls the network. It asks the
+        // sync layer to fill the gap; the chart re-renders live off the
+        // `historicalPrices` `@Query` once the coordinator writes.
+        let coordinator = WalletRefreshCoordinator(container: modelContext.container)
+        await coordinator.syncHistoricalCloses(
+            symbols: [symbol],
+            fiat: currencyCode,
+            alreadyHave: existing
+        )
     }
 
     // MARK: - Hero card section

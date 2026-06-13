@@ -140,6 +140,12 @@ import SwiftData
                 currencyCode: "USD",
                 fiatValue: 1
             ))
+        } else if model == SyncStatusRecord.self {
+            context.insert(SyncStatusRecord(
+                key: "balances|test",
+                domainRaw: SyncDomain.balances.rawValue,
+                scopeId: "test"
+            ))
         } else {
             return false
         }
@@ -236,6 +242,7 @@ import SwiftData
             "HistoricalPriceRecord",
             "PriceSnapshotRecord",
             "WalletChartSnapshotRecord",
+            "SyncStatusRecord",
         ]
         #expect(
             names == expected,
