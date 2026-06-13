@@ -808,6 +808,7 @@ struct WalletHomeView: View {
     private var listSurface: some View {
         List {
             balanceCardSection
+            freshnessStampSection
             chromeSection
             holdingsBody
             activityListSection
@@ -952,6 +953,43 @@ struct WalletHomeView: View {
                     bottom: 24,
                     trailing: UniSpacing.m
                 ))
+            }
+        }
+    }
+
+    /// The honest freshness whisper (Rule #16 §B / Rule #27 §B): a value
+    /// served from the local store never silently masquerades as live,
+    /// so its as-of time is shown — "Updated 14:31", "Syncing…", or
+    /// "Updated 14:31 · Offline". Reads the active wallet's `.balances`
+    /// `SyncStatusRecord` via its own `@Query` inside `SyncFreshnessLabel`,
+    /// so it ticks over live as the background sync writer stamps
+    /// freshness (no relaunch, no navigate-away — Rule #25).
+    ///
+    /// **Why its own section, not a row in the balance card.** The hero +
+    /// chart are *content* and earn the inset card; the stamp is *ambient
+    /// status*, so it floats over the page color beneath the card — the
+    /// same content-vs-chrome split (Rule #2 §B.3) that keeps the
+    /// Send/Receive/Swap triplet floating. Cleared row background, hidden
+    /// separator, centered, tight insets so it reads as a footnote, not a
+    /// list cell.
+    ///
+    /// **Test mode** has no real sync row (the public test addresses
+    /// aren't a persisted wallet), so the stamp is skipped — the developer
+    /// playground reads as it always did.
+    @ViewBuilder
+    private var freshnessStampSection: some View {
+        if !isTestMode, let activeWalletId = activeWallet?.id.uuidString {
+            Section {
+                SyncFreshnessLabel(domain: .balances, scopeId: activeWalletId)
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
+                    .listRowInsets(EdgeInsets(
+                        top: UniSpacing.xxs,
+                        leading: UniSpacing.m,
+                        bottom: UniSpacing.s,
+                        trailing: UniSpacing.m
+                    ))
             }
         }
     }
