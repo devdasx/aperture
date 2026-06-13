@@ -2405,38 +2405,17 @@ struct WalletHomeView: View {
         let existing = Set(historicalPrices
             .filter { $0.fiat == currencyCode }
             .map { $0.symbol.uppercased() })
-        let missing = symbols.subtracting(existing)
-        guard !missing.isEmpty else { return }
 
-        let service = CoinbaseHistoricalPriceService()
-        let repo = HistoricalPriceRepository(modelContainer: modelContext.container)
-        let fiat = currencyCode
-
-        // Bounded concurrency — 4 simultaneous fetches keeps the
-        // Coinbase Exchange API happy and the device's RPC budget
-        // free for the wallet refresh.
-        await withTaskGroup(of: Void.self) { group in
-            var inFlight = 0
-            for symbol in missing {
-                if inFlight >= 4 {
-                    await group.next()
-                    inFlight -= 1
-                }
-                inFlight += 1
-                group.addTask {
-                    let candles = await service.fetchDailyCloses(symbol: symbol, fiat: fiat)
-                    guard !candles.isEmpty else { return }
-                    let entries = candles.map {
-                        (symbol: symbol, fiat: fiat, dayKey: $0.dayKey, price: $0.close)
-                    }
-                    do {
-                        try await repo.upsertMany(entries)
-                    } catch {
-                        // Best-effort — surface to log, no user UI.
-                    }
-                }
-            }
-        }
+        // Rule #27 §A — the view does NOT touch the network. It hands
+        // the sync layer the desired symbols + what the store already
+        // has (both DB-derived) and lets the coordinator own the fetch,
+        // the store write, and the freshness stamp.
+        let coordinator = WalletRefreshCoordinator(container: modelContext.container)
+        await coordinator.syncHistoricalCloses(
+            symbols: Array(symbols),
+            fiat: currencyCode,
+            alreadyHave: existing
+        )
     }
 
     // MARK: - Refresh
