@@ -112,4 +112,37 @@ actor PriceCacheRepository {
         }
         return out
     }
+
+    /// **Cross-currency fallback (2026-06-13).** For each requested
+    /// symbol, the most recently fetched cached price in ANY currency
+    /// — the price's own `fiat` is returned alongside so the caller can
+    /// FX-convert it to whatever the user is currently displaying.
+    ///
+    /// This is the "never show Price unavailable for a token we've ever
+    /// priced" guarantee: the per-currency cache (`prices(symbols:fiat:)`)
+    /// only answers for the active currency, so a user who priced BTC in
+    /// JOD then switched to USD — with Coinbase + CoinGecko both failing
+    /// — had no BTC/USD cache and saw "Price unavailable". This returns
+    /// the BTC/JOD row so the engine can cross it to USD via FX.
+    ///
+    /// Returns at most one entry per symbol (the newest by `fetchedAt`).
+    func latestPriceAnyCurrency(
+        symbols: [String]
+    ) throws -> [String: (price: Decimal, fiat: String, fetchedAt: Date)] {
+        let wanted = Set(symbols.map { $0.uppercased() })
+        guard !wanted.isEmpty else { return [:] }
+        // Newest first so the first row seen per symbol is the freshest.
+        let descriptor = FetchDescriptor<CachedPriceRecord>(
+            sortBy: [SortDescriptor(\.fetchedAt, order: .reverse)]
+        )
+        let records = try modelContext.fetch(descriptor)
+        var out: [String: (Decimal, String, Date)] = [:]
+        for r in records {
+            let upper = r.symbol.uppercased()
+            guard wanted.contains(upper), out[upper] == nil, r.price > 0 else { continue }
+            out[upper] = (r.price, r.fiat, r.fetchedAt)
+            if out.count == wanted.count { break }
+        }
+        return out
+    }
 }
