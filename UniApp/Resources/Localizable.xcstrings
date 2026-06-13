@@ -308562,6 +308562,17 @@
           }
         }
       }
+    },
+    "Synced, updated %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Synced, updated %@"
+          }
+        }
+      }
     }
   },
   "version": "1.0"
