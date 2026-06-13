@@ -140,6 +140,41 @@ actor TokenPricingEngine {
             }
         }
 
+        // Rung 2.5 — **cross-currency cache fallback (2026-06-13).**
+        // The per-currency cache above only answers in `code`. A token
+        // we priced in a DIFFERENT currency (e.g. BTC/JOD before the
+        // user switched to USD) still has a last-known price on disk —
+        // FX-convert it rather than surfacing "Price unavailable". This
+        // is the user's explicit contract: "in case the API failed we
+        // can use the old price we have in the database." Only the
+        // symbols rung 1+2 missed reach here, and only when we can get
+        // an FX cross from the cached price's own currency to `code`.
+        if !missing.isEmpty, !Task.isCancelled {
+            let repo = await repository()
+            if let anyCurrency = try? await repo.latestPriceAnyCurrency(symbols: Array(missing)) {
+                for (symbol, entry) in anyCurrency {
+                    guard missing.contains(symbol) else { continue }
+                    let from = entry.fiat.uppercased()
+                    let converted: Decimal?
+                    if from == code {
+                        converted = entry.price  // (shouldn't happen — rung 2 caught it — but safe)
+                    } else if let cross = await crossRate(from: from, to: code), cross > 0 {
+                        converted = entry.price * cross
+                    } else {
+                        converted = nil
+                    }
+                    if let converted, converted > 0 {
+                        resolved[symbol] = ResolvedPrice(
+                            amount: converted,
+                            source: "cache-fx",
+                            isStale: true
+                        )
+                        missing.remove(symbol)
+                    }
+                }
+            }
+        }
+
         // Rung 3 — CoinGecko, one batched call for everything still
         // missing (first use of a currency + Coinbase down). Direct
         // vs_currency value preferred; USD value × FX otherwise.
