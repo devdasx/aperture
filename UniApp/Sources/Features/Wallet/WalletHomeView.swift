@@ -474,6 +474,25 @@ struct WalletHomeView: View {
                 // toolbar items are navigation affordances, not
                 // commit CTAs (the rule's documented exception).
                 .toolbar {
+                    // 2026-06-14 — sync indicator MOVED into the app bar
+                    // (user direction). The leading slot carries a single
+                    // mark that morphs, via native iOS 26 Liquid Glass,
+                    // between a gently-rotating "Syncing…" glyph (while
+                    // `SyncStatusRecord.isSyncing`) and the Aperture iris
+                    // brand mark (at rest). It reads `SyncStatusRecord`
+                    // through its own `@Query` (Rule #27), so it flips
+                    // live the instant the background sync writer changes
+                    // state (Rule #25). Skipped in test mode (public test
+                    // addresses are not a persisted wallet, so there is no
+                    // `.balances` sync row to read). The under-card
+                    // "Updated 14:31" footnote was removed in the same
+                    // turn — this mark is now the freshness surface; its
+                    // as-of time survives as the VoiceOver label.
+                    if !isTestMode, let activeWalletId = activeWallet?.id.uuidString {
+                        ToolbarItem(placement: .topBarLeading) {
+                            SyncStatusToolbarMark(domain: .balances, scopeId: activeWalletId)
+                        }
+                    }
                     // 2026-06-09 — Filter & Sort affordance. Bare
                     // `line.3.horizontal.decrease` (iOS-native filter
                     // glyph; the same symbol Mail / Files / Photos
@@ -824,7 +843,12 @@ struct WalletHomeView: View {
     private var listSurface: some View {
         List {
             balanceCardSection
-            freshnessStampSection
+            // 2026-06-14 — the under-card freshness footnote ("Updated
+            // 14:31 · Syncing…") was MOVED into the app bar (user
+            // direction): the toolbar's leading `SyncStatusToolbarMark`
+            // now carries the syncing↔logo surface. The honest as-of time
+            // survives as that mark's VoiceOver label (Rule #16 §B) and on
+            // every per-asset surface that still uses `SyncFreshnessLabel`.
             chromeSection
             holdingsBody
             activityListSection
@@ -973,42 +997,16 @@ struct WalletHomeView: View {
         }
     }
 
-    /// The honest freshness whisper (Rule #16 §B / Rule #27 §B): a value
-    /// served from the local store never silently masquerades as live,
-    /// so its as-of time is shown — "Updated 14:31", "Syncing…", or
-    /// "Updated 14:31 · Offline". Reads the active wallet's `.balances`
-    /// `SyncStatusRecord` via its own `@Query` inside `SyncFreshnessLabel`,
-    /// so it ticks over live as the background sync writer stamps
-    /// freshness (no relaunch, no navigate-away — Rule #25).
-    ///
-    /// **Why its own section, not a row in the balance card.** The hero +
-    /// chart are *content* and earn the inset card; the stamp is *ambient
-    /// status*, so it floats over the page color beneath the card — the
-    /// same content-vs-chrome split (Rule #2 §B.3) that keeps the
-    /// Send/Receive/Swap triplet floating. Cleared row background, hidden
-    /// separator, centered, tight insets so it reads as a footnote, not a
-    /// list cell.
-    ///
-    /// **Test mode** has no real sync row (the public test addresses
-    /// aren't a persisted wallet), so the stamp is skipped — the developer
-    /// playground reads as it always did.
-    @ViewBuilder
-    private var freshnessStampSection: some View {
-        if !isTestMode, let activeWalletId = activeWallet?.id.uuidString {
-            Section {
-                SyncFreshnessLabel(domain: .balances, scopeId: activeWalletId)
-                    .frame(maxWidth: .infinity, alignment: .center)
-                    .listRowBackground(Color.clear)
-                    .listRowSeparator(.hidden)
-                    .listRowInsets(EdgeInsets(
-                        top: UniSpacing.xxs,
-                        leading: UniSpacing.m,
-                        bottom: UniSpacing.s,
-                        trailing: UniSpacing.m
-                    ))
-            }
-        }
-    }
+    // 2026-06-14 — `freshnessStampSection` (the centered "Updated 14:31 ·
+    // Syncing…" footnote that used to float beneath the balance card) was
+    // REMOVED. Per user direction the syncing↔logo surface moved into the
+    // app bar: the toolbar's leading `SyncStatusToolbarMark` now carries
+    // it, morphing (native iOS 26 Liquid Glass) between the rotating sync
+    // glyph and the Aperture iris brand mark. The honest as-of time is not
+    // lost — it survives as that mark's VoiceOver label (Rule #16 §B), and
+    // `SyncFreshnessLabel` still renders the visible stamp on the per-asset
+    // surfaces (`AssetDetailView` et al.) where the footnote still earns
+    // its place.
 
     /// Hero row factored out so both modes (production card, test
     /// mode floating) use the exact same instance — same parameter

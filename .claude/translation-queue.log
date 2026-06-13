@@ -1,0 +1,81 @@
+2026-06-13T18:37:00Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/DesignSystem/Components/SyncStatusToolbarMark.swift	Not synced yet
+2026-06-13T18:37:00Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/DesignSystem/Components/SyncStatusToolbarMark.swift	Synced, updated \(freshnessText(for: syncedAt))
+2026-06-13T18:37:00Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/DesignSystem/Components/SyncStatusToolbarMark.swift	Syncing…
+2026-06-13T18:37:00Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/DesignSystem/Components/SyncStatusToolbarMark.swift	Updated \(freshnessText(for: syncedAt)) · Offline
+2026-06-13T18:37:13Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Add wallet
+2026-06-13T18:37:13Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Coins
+2026-06-13T18:37:13Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Customise wallet
+2026-06-13T18:37:13Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Exit test mode
+2026-06-13T18:37:13Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Filter and sort
+2026-06-13T18:37:13Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Hide balance
+2026-06-13T18:37:13Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Holdings
+2026-06-13T18:37:13Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Lock wallet
+2026-06-13T18:37:13Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Manage wallets
+2026-06-13T18:37:13Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	More options
+2026-06-13T18:37:13Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Pinned
+2026-06-13T18:37:13Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Price unavailable
+2026-06-13T18:37:13Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Recent activity
+2026-06-13T18:37:13Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Show all
+2026-06-13T18:37:13Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Show all supported assets
+2026-06-13T18:37:13Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Shows the full transaction history
+2026-06-13T18:37:13Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Switch between Coins and Tokens
+2026-06-13T18:37:13Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Switch wallet, currently \(activeWallet?.name ?? 
+2026-06-13T18:37:13Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Test mode active
+2026-06-13T18:37:13Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Tokens
+2026-06-13T18:37:13Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	View all
+2026-06-13T18:37:13Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	\(row.chain.displayName) details
+2026-06-13T18:37:13Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	\(row.symbol) details
+2026-06-13T18:37:21Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Add wallet
+2026-06-13T18:37:21Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Coins
+2026-06-13T18:37:21Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Customise wallet
+2026-06-13T18:37:21Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Exit test mode
+2026-06-13T18:37:21Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Filter and sort
+2026-06-13T18:37:21Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Hide balance
+2026-06-13T18:37:21Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Holdings
+2026-06-13T18:37:21Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Lock wallet
+2026-06-13T18:37:21Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Manage wallets
+2026-06-13T18:37:21Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	More options
+2026-06-13T18:37:21Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Pinned
+2026-06-13T18:37:21Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Price unavailable
+2026-06-13T18:37:21Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Recent activity
+2026-06-13T18:37:21Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Show all
+2026-06-13T18:37:21Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Show all supported assets
+2026-06-13T18:37:21Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Shows the full transaction history
+2026-06-13T18:37:21Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Switch between Coins and Tokens
+2026-06-13T18:37:21Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Switch wallet, currently \(activeWallet?.name ?? 
+2026-06-13T18:37:21Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Test mode active
+2026-06-13T18:37:21Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Tokens
+2026-06-13T18:37:21Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	View all
+2026-06-13T18:37:21Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	\(row.chain.displayName) details
+2026-06-13T18:37:21Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	\(row.symbol) details
+2026-06-13T18:37:42Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Add wallet
+2026-06-13T18:37:42Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Coins
+2026-06-13T18:37:42Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Customise wallet
+2026-06-13T18:37:42Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Exit test mode
+2026-06-13T18:37:42Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Filter and sort
+2026-06-13T18:37:42Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Hide balance
+2026-06-13T18:37:42Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Holdings
+2026-06-13T18:37:42Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Lock wallet
+2026-06-13T18:37:42Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Manage wallets
+2026-06-13T18:37:42Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	More options
+2026-06-13T18:37:42Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Pinned
+2026-06-13T18:37:42Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Price unavailable
+2026-06-13T18:37:42Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Recent activity
+2026-06-13T18:37:42Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Show all
+2026-06-13T18:37:42Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Show all supported assets
+2026-06-13T18:37:42Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Shows the full transaction history
+2026-06-13T18:37:42Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Switch between Coins and Tokens
+2026-06-13T18:37:42Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Switch wallet, currently \(activeWallet?.name ?? 
+2026-06-13T18:37:42Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Test mode active
+2026-06-13T18:37:42Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Tokens
+2026-06-13T18:37:42Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	View all
+2026-06-13T18:37:42Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	\(row.chain.displayName) details
+2026-06-13T18:37:42Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	\(row.symbol) details
+2026-06-13T18:39:57Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/DesignSystem/Components/SyncStatusToolbarMark.swift	Not synced yet
+2026-06-13T18:39:57Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/DesignSystem/Components/SyncStatusToolbarMark.swift	Synced, updated \(freshnessText(for: syncedAt))
+2026-06-13T18:39:57Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/DesignSystem/Components/SyncStatusToolbarMark.swift	Syncing…
+2026-06-13T18:39:57Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/DesignSystem/Components/SyncStatusToolbarMark.swift	Updated \(freshnessText(for: syncedAt)) · Offline
+2026-06-13T18:40:07Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/DesignSystem/Components/SyncStatusToolbarMark.swift	Not synced yet
+2026-06-13T18:40:07Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/DesignSystem/Components/SyncStatusToolbarMark.swift	Synced, updated \(freshnessText(for: syncedAt))
+2026-06-13T18:40:07Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/DesignSystem/Components/SyncStatusToolbarMark.swift	Syncing…
+2026-06-13T18:40:07Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/DesignSystem/Components/SyncStatusToolbarMark.swift	Updated \(freshnessText(for: syncedAt)) · Offline
