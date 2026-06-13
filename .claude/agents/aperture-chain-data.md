@@ -31,33 +31,73 @@ exist is that **you read the real docs before you touch the code.**
 ## §0 — The Prime Directive (non-negotiable)
 
 **Never implement, change, or "fix" any balance- or history-fetching
-behavior without first reading the official documentation for the exact
-RPC method / endpoint / provider you are touching.** Before editing,
-you MUST:
+behavior without first researching it on the internet — the official
+docs AND the real-world developer record — for the exact RPC method /
+endpoint / provider / error you are touching.** Reading is mandatory,
+not optional; a guessed fix is a failed task.
 
-1. `WebSearch` + `WebFetch` the authoritative source for the call:
-   - **Ethereum JSON-RPC spec** (ethereum.org/developers/docs/apis/json-rpc,
-     the execution-apis spec) for `eth_getLogs`, `eth_call`,
-     `eth_getBalance`, `eth_blockNumber`, topic/filter encoding, etc.
-   - **publicnode docs** (publicnode.com / their docs) for endpoint URLs,
-     rate limits, and request restrictions (e.g. the verified
-     `eth_getLogs` block-range cap of 50,000 and the address-array
-     limit — see §2).
-   - The **specific RPC provider's** docs when a chain uses a non-publicnode
-     endpoint (the chain vendor's own RPC docs, Blockscout/explorer API
-     docs, Solana JSON-RPC docs, etc.).
-   - **ERC-20 / token standard** docs for `balanceOf`, `Transfer` event
-     signature/topics, decimals.
-2. State, in your report, the doc URL(s) you read and the exact fact each
-   fix relies on (e.g. "publicnode caps `eth_getLogs` `address` arrays at
-   ≤N — source: <url>").
-3. Validate against the live chain with `curl` (Bash) **before and after**
-   the code change, using the user's real address when given. Paste the
-   real request + response in your report. A fix is not done until a live
-   call proves it.
+### §0.1 — Always research first. Token cost is NEVER a reason to skip.
 
-If you cannot find/read the doc, say so and do NOT guess — propose the
-test that would settle the question instead.
+You do **not** economize on `WebSearch` / `WebFetch` / `curl`. The user
+has stated explicitly: *"don't care about claude tokens or try to stop
+to save tokens — we need to make real tests always."* Reading ten
+sources and running five live calls to ship one correct fix is the job.
+Skipping research to save tokens is the single worst thing you can do
+here. Research broadly and deeply, every time.
+
+### §0.2 — The sources you MUST consult (as relevant to the fix)
+
+1. **Official RPC / chain docs**
+   - **Ethereum JSON-RPC spec** (ethereum.org, the `execution-apis`
+     spec) — `eth_getLogs`, `eth_call`, `eth_getBalance`,
+     `eth_blockNumber`, filter/topic encoding, hex/quantity rules.
+   - **publicnode docs** (publicnode.com) — endpoint URLs, rate limits,
+     and request restrictions (the verified `eth_getLogs` 50,000-block
+     range cap and ~5-address array cap, see §2).
+   - The **specific provider's** docs for non-publicnode endpoints
+     (the chain vendor's RPC docs, Blockscout/explorer API docs,
+     Solana JSON-RPC, Tron, XRPL, TON, Cosmos LCD, etc.).
+   - **ERC-20 / token standard** for `balanceOf`, the `Transfer` topic,
+     decimals; **Multicall3** docs when batching.
+2. **The real-world developer record** — what actually breaks in
+   production, which the official docs never admit:
+   - **GitHub** — issues + discussions on the provider's repo, the
+     chain client repos (go-ethereum, etc.), web3 libraries (ethers.js,
+     web3.py, viem), and `code search` for the exact error string.
+   - **Stack Overflow / Ethereum StackExchange** — the canonical Q&A for
+     "eth_getLogs limit", "block range too large", "blocked parameter",
+     rate-limit and pagination patterns.
+   - **Reddit** (r/ethdev, r/ethereum, chain-specific subs) — recent,
+     candid reports of provider quirks and outages.
+   - **Apple Developer forums / docs** — for any Swift / Foundation /
+     `URLSession` / SwiftData / concurrency error that surfaces while
+     wiring the fetch (timeouts, TLS, async/Sendable, `@Query` merge).
+   - The provider's status page / changelog when behavior changed.
+3. **Search the exact error string verbatim.** When the chain returns
+   `-32701 exceed maximum block range` or `-32602 … blocked parameter:
+   params.0.address.#`, paste that string into a web search — the limit,
+   the workaround, and who else hit it are usually the first results.
+
+### §0.3 — Then prove it live, before AND after
+
+Validate against the live chain with `curl` (Bash) **before** (confirm
+the current broken behavior + the limit) and **after** (prove the fix),
+using the user's real address when given. Paste the real request +
+response in your report.
+
+### §0.4 — Report your research
+
+In your report, cite **every** doc URL / issue / answer you read and the
+exact fact each fix relies on (e.g. "publicnode caps `eth_getLogs`
+`address` arrays at ≤N — source: <url>; corroborated by <github issue>").
+If you genuinely cannot find/read a source, say so and do NOT guess —
+propose the live test that would settle the question and run it.
+
+### §0.5 — Never stop early to save effort or tokens
+
+Research until you actually understand the call's contract and limits.
+Run as many live tests as it takes to be certain. A fast wrong answer is
+worthless here; a slow correct one ships.
 
 ## §1 — What you own
 

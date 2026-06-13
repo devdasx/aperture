@@ -3316,6 +3316,82 @@ reasoned about from memory. Binding this domain to one agent that is
 *required* to read the docs and test live turns "plausible guess that
 breaks in production" into "verified fact that ships correct and fast."
 
+### Addendum (2026-06-13) — research is exhaustive and token-cost is irrelevant
+
+Per the user (verbatim): *"it should read real RPCs docs on the internet,
+and publicnode docs on the internet always, read github, developers
+issues on the internet, on reddit, on stack, apple developer errors for
+evm chains, etc.. and always it should read and don't care about claude
+tokens or try to stop to save tokens — we don't need to save tokens, we
+need to make real tests always."* The `aperture-chain-data` agent's §0
+encodes this: it consults the official RPC/publicnode/chain docs **and**
+the real-world developer record (GitHub issues + code search, Stack
+Overflow / Ethereum StackExchange, Reddit ethdev, Apple Developer
+forums for Swift/URLSession/SwiftData errors), searches the exact error
+string verbatim, and runs as many live `curl` tests as it takes. It must
+**never** shorten its research or skip a live test to save tokens —
+correctness from real evidence is the only acceptable output.
+
+---
+
+## Rule #25 — Every change updates the LIVE app state. The user must never relaunch or navigate away to see it.
+
+Anything implemented in Aperture — a balance, a transaction, a price, a
+setting, a wallet add/remove/switch, a currency or language change, a
+design state — **must reflect in the running app the instant it
+happens.** The user must NEVER have to close-and-reopen the app, kill it,
+or navigate to another screen and back to see a change. This binds **the
+orchestrator AND every agent** (jony-ive, aperture-chain-data, the i18n
+agents, and any future agent).
+
+The user's direction (verbatim, 2026-06-13): *"everything implemented in
+the app it should update the app state, so never we need to close the app
+and reopen it to see the changes or move to another screen to see
+changes… everything should always rebuild the app state."*
+
+### What this requires
+
+- **Reactive sources of truth.** UI reads from `@Query` (SwiftData),
+  `@Observable` models, and `@AppStorage` so a write propagates to every
+  observing view automatically. A value the UI shows must be backed by a
+  reactive source — never a one-time snapshot captured in `onAppear` that
+  goes stale.
+- **Cross-context writes must become visible immediately.** When a
+  background `@ModelActor` / actor repository writes, the main-context
+  `@Query` must reflect it without a relaunch. SwiftData propagates
+  *inserts* reliably but is unreliable for *scalar updates to already-
+  materialized to-many children* — the exact trap behind the 2026-06-13
+  "changed currency → \$0.00 until relaunch" bug (fixed by mutating the
+  live `@Query` objects on the main context). When in doubt, write
+  through the main context or force the observing view to re-read.
+- **Memoized projections must be rebuilt on the change that affects
+  them** — via `.task(id:)` / `.onChange` keyed on the real dependency
+  (count, fingerprint, the observable's value), not only on first
+  appear. A memo that only rebuilds in `onAppear` is a stale-until-
+  navigate bug.
+- **Presented surfaces follow Rule #12** (`.uniAppEnvironment()` + the
+  direction `.id` key) so sheets/covers update with preference changes
+  instead of sticking on the state captured at presentation.
+- **App-level state** (the active wallet, the 10 s auto-refresh, the lock
+  overlay) lives at the app root so it updates on every screen, never
+  only the one that happened to spawn it (Rule #24's poller, Rule #17's
+  lock).
+
+### The workflow gate (orchestrator + every agent)
+
+Before declaring any change done, answer: *"If the user is staring at the
+screen when this fires, do they see it update — without touching
+anything?"* If the only way to see the change is relaunch or navigate-
+away-and-back, the change is **not done** — wire the reactive path (or
+rebuild the affected projection) until the live update is automatic.
+
+### Why this rule exists
+
+A wallet whose numbers are right "after you reopen it" reads as broken and
+untrustworthy. Live correctness is a core feature, not a nicety. This rule
+elevates "the running app always tells the truth, right now" to a
+standing requirement on every edit, by every actor.
+
 ---
 
 ## Project context
