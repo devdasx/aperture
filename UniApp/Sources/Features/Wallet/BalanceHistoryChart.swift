@@ -276,53 +276,35 @@ struct BalanceHistoryChart: View {
     /// currency. O(N) scalar scans per body pass — orders of
     /// magnitude cheaper than the reconstruction they gate.
     private var rebuildKey: Int {
+        // **2026-06-13 perf.** `rebuildKey` is read on every chart body
+        // pass (it gates the `.task(id:)` reconstruction). The previous
+        // version summed every `Decimal` in `priceCache` AND in the
+        // whole `priceHistory` nest (thousands of slow Decimal adds) and
+        // scanned every transaction — hundreds of ms per render once the
+        // wallet had deep history, which froze the screen on unlock /
+        // navigation. Now it uses COUNTS only: O(symbols + balances),
+        // all tiny collections. Trade-off: an in-place price-value edit
+        // or a confirmed→failed status flip at an unchanged row count
+        // won't re-trigger the reconstruction until the next count/
+        // balance change — a rare edge the next refresh closes, well
+        // worth a smooth main screen.
         var hasher = Hasher()
         hasher.combine(transactions.count)
-        var latest = Date.distantPast
-        // 2026-06-13 — the reconstructor walks only non-failed
-        // transactions, so a confirmed→failed status flip changes
-        // the series without moving the count or the newest
-        // timestamp. Tallying non-failed rows in the same O(N) scan
-        // closes that gap for free.
-        var nonFailedCount = 0
-        for tx in transactions {
-            if tx.occurredAt > latest { latest = tx.occurredAt }
-            if tx.statusRaw != TransactionStatus.failed.rawValue {
-                nonFailedCount += 1
-            }
-        }
-        hasher.combine(latest)
-        hasher.combine(nonFailedCount)
+        hasher.combine(currentBalances.count)
+        // O(balances) — a handful of held rows, not the tx history.
         var fiatTotal = Decimal.zero
         for balance in currentBalances {
             fiatTotal += balance.fiatValueCached
         }
         hasher.combine(fiatTotal)
-        hasher.combine(currentBalances.count)
         hasher.combine(selectedRangeRaw)
         hasher.combine(currencyCode)
-        // 2026-06-12 — the per-symbol price cache feeds the
-        // cashed-out fallback. Re-hashing on every refresh would
-        // be expensive; we hash the count + sum of prices so
-        // a meaningful change invalidates the memo without paying
-        // O(N) on every body pass.
         hasher.combine(priceCache.count)
-        var priceSum = Decimal.zero
-        for v in priceCache.values { priceSum += v }
-        hasher.combine(priceSum)
-        // 2026-06-12 — historical-price snapshot fingerprint.
-        // Same shape as priceCache: count + sum of all prices.
-        // Sum-over-all is a cheap O(N) scan and changes whenever
-        // a new day's close arrives.
         hasher.combine(priceHistory.count)
-        var histSum = Decimal.zero
+        // O(symbols) — number of day-keys per symbol, no value summing.
         var histDayCount = 0
-        for series in priceHistory.values {
-            histDayCount += series.count
-            for v in series.values { histSum += v }
-        }
+        for series in priceHistory.values { histDayCount += series.count }
         hasher.combine(histDayCount)
-        hasher.combine(histSum)
         return hasher.finalize()
     }
 
