@@ -227,6 +227,29 @@ private struct AppRoot: View {
 
     @Environment(\.autoLockController) private var lockController
 
+    /// **App-level auto-refresh (2026-06-13).** The active wallet's
+    /// balances + transaction history refresh every 10 s, from the app
+    /// root — so it runs on EVERY screen (Wallet / Swap / Browser /
+    /// Settings), not just the wallet home, per the user's direction
+    /// ("it should be on-app-level not only in the main screen … run
+    /// every 10 seconds automatically, doesn't matter which screen").
+    /// The work is the normal `WalletRefreshCoordinator` pipeline —
+    /// fully async/off-main (publicnode `eth_getLogs` + `balanceOf`), and
+    /// the `WalletRefreshRegistry` dedupes so a 10 s tick that lands on
+    /// top of a still-running refresh JOINS it rather than stacking a
+    /// second pipeline. Gated to the foreground + unlocked + past-splash
+    /// state so it never burns battery/network in the background.
+    @Environment(\.scenePhase) private var scenePhase
+    @AppStorage("activeWalletId") private var activeWalletIdRaw: String = ""
+    @AppStorage(CurrencyPreference.storageKey) private var currencyCode: String = CurrencyPreference.defaultCode
+
+    /// Re-keys the auto-refresh `.task` whenever a gating condition
+    /// flips — foreground/background, splash, lock, or the active
+    /// wallet. The loop only runs while `active && !splash && !locked`.
+    private var autoRefreshGate: String {
+        "\(scenePhase)|\(isShowingSplash)|\(lockController.isLocked)|\(activeWalletIdRaw)"
+    }
+
     /// The detached overlay window hosting `PrivacyMaskView` +
     /// `AppLockView` above the main window (see the type doc for why
     /// this is a window, not a ZStack layer). Created once, on first
@@ -300,6 +323,35 @@ private struct AppRoot: View {
         }
         .onChange(of: isLockSurfaceVisible) { _, visible in
             syncLockOverlay(lockVisible: visible)
+        }
+        // App-level 10 s auto-refresh — runs on every screen. Re-keyed
+        // by `autoRefreshGate` so it stops the moment we background,
+        // lock, or hit the splash, and restarts (against the new wallet)
+        // when those clear. See `autoRefreshGate`'s doc.
+        .task(id: autoRefreshGate) { await runAutoRefreshLoop() }
+    }
+
+    /// The 10-second auto-refresh loop. Sleeps first (the active
+    /// screen's own `.task` does the immediate first scan on appear),
+    /// then refreshes every 10 s for as long as the foreground/unlocked
+    /// gate holds. Cancelled automatically when `autoRefreshGate`
+    /// changes (background, lock, splash, wallet switch).
+    private func runAutoRefreshLoop() async {
+        // Gate: foreground, past splash, unlocked, and a real wallet.
+        guard scenePhase == .active,
+              !isShowingSplash,
+              !lockController.isLocked,
+              let walletId = UUID(uuidString: activeWalletIdRaw)
+        else { return }
+
+        let container = ApertureDatabase.shared.container
+        while !Task.isCancelled {
+            try? await Task.sleep(for: .seconds(10))
+            if Task.isCancelled { return }
+            // Non-user-initiated: joins any in-flight refresh via the
+            // registry instead of cancel-and-replacing it.
+            await WalletRefreshCoordinator(container: container)
+                .refreshWallet(walletId: walletId, fiatCode: currencyCode)
         }
     }
 
