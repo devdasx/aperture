@@ -3394,6 +3394,61 @@ standing requirement on every edit, by every actor.
 
 ---
 
+## Rule #26 — Real fixes only. Never stop until the fix is verified working in the running app. (Orchestrator AND every agent.)
+
+When the user reports something broken, the job is **not** to make a
+plausible change and report "should be fixed now." The job is to find the
+**actual root cause**, fix it, and **verify the fix works in the running
+app on Thuglife** before declaring done. This binds the orchestrator AND
+every agent (jony-ive, aperture-chain-data, the i18n agents, and any
+future agent).
+
+The user's direction (verbatim, 2026-06-13): *"always you need to make a
+real fix and don't stop until you make it fully ready."* It follows two
+earlier corrections in the same spirit — "always make a real test, never
+guess a fix" (Rule #24) — and the repeated frustration that "Price
+unavailable" was declared fixed and regressed.
+
+### What "a real fix" requires
+
+1. **Root cause, not symptom.** Trace the failure to the line that
+   produces it. "Added a fallback" is not a fix if the fallback never
+   triggers. When two similar things behave differently (USDT shows a
+   price but BTC doesn't), **the divergence IS the clue** — find why one
+   path works and the other doesn't.
+2. **Verify the mechanism, not the vibe.** Where the domain allows a live
+   test (a price fetch, an RPC call), run it (`curl`) and confirm the
+   real value. Where it's UI/app state, build + install on Thuglife
+   (Rule #22) and confirm the actual on-screen behavior changes. A fix
+   you didn't watch work is a guess.
+3. **Don't stop at the first edit.** If the reported behavior still
+   reproduces after your change, you are NOT done. Re-diagnose, re-fix,
+   re-verify until the user's exact scenario produces the right result.
+4. **A regression of a previously-"fixed" bug is proof the first fix
+   addressed a symptom.** Re-open the root-cause hunt from scratch; never
+   re-apply a variant of a fix that already failed.
+
+### Forbidden
+
+- Declaring a bug fixed without verifying the user's exact reproduction
+  no longer reproduces.
+- "This should fix it" / "try it now" hand-offs that push verification
+  onto the user.
+- Papering over a symptom (a fallback, a default, a retry) when the root
+  cause is reachable.
+- Stopping mid-fix because it's hard. The contract is *"don't stop until
+  fully ready."*
+
+### Why this rule exists
+
+Twice "Price unavailable" was declared fixed; twice it returned, because
+each fix addressed a different code path than the one that produces the
+message for native coins. A wallet that shows wrong/missing numbers — and
+an agent that says "fixed" when it isn't — destroys trust faster than the
+original bug. Real fix, verified live, every time.
+
+---
+
 ## Project context
 
 - iOS native, **Swift 6.2**, **iOS 26+**, SwiftUI, Liquid Glass design system
