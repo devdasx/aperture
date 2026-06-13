@@ -308463,6 +308463,61 @@
           }
         }
       }
+    },
+    "Shows the full transaction history": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Shows the full transaction history"
+          }
+        }
+      }
+    },
+    "This wallet's private key isn't stored on this iPhone. Unless you have it saved elsewhere, removing it here is final — the funds in it can't be recovered.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This wallet's private key isn't stored on this iPhone. Unless you have it saved elsewhere, removing it here is final — the funds in it can't be recovered."
+          }
+        }
+      }
+    },
+    "This wallet's recovery phrase isn't stored on this iPhone. Unless you have it written down elsewhere, removing it here is final — the funds in it can't be recovered.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This wallet's recovery phrase isn't stored on this iPhone. Unless you have it written down elsewhere, removing it here is final — the funds in it can't be recovered."
+          }
+        }
+      }
+    },
+    "Your private key stays yours. You can import this wallet again with it — there is no server, and removing it here loses nothing you've saved.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Your private key stays yours. You can import this wallet again with it — there is no server, and removing it here loses nothing you've saved."
+          }
+        }
+      }
+    },
+    "Your recovery phrase stays yours. You can import this wallet again with it — there is no server, and removing it here loses nothing you've written down.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Your recovery phrase stays yours. You can import this wallet again with it — there is no server, and removing it here loses nothing you've written down."
+          }
+        }
+      }
     }
   },
   "version": "1.0"
