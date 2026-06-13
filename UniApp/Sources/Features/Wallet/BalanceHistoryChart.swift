@@ -266,7 +266,7 @@ struct BalanceHistoryChart: View {
         // No outer vertical padding — caption sits flush against
         // the balance hero above. The List row's bottom inset
         // contributes the gap to the card's bottom edge.
-        .task(id: rebuildKey) { rebuildPoints() }
+        .task(id: rebuildKey) { await rebuildPoints() }
     }
 
     /// Dependency key for the memoized reconstruction. Captures the
@@ -308,20 +308,62 @@ struct BalanceHistoryChart: View {
         return hasher.finalize()
     }
 
-    /// Run the reconstructor once and cache every projection the
-    /// body needs: the points, the `Double` series for the canvas,
-    /// and the min/max band the sparkline normalizes against.
-    private func rebuildPoints() {
-        let reconstructed = BalanceHistoryReconstructor.reconstruct(
-            transactions: transactions,
-            currentBalances: currentBalances,
-            priceCache: priceCache,
-            priceHistory: priceHistory,
-            range: currentRange
-        )
+    /// Run the reconstructor once and cache every projection the body
+    /// needs: the points, the `Double` series for the canvas, and the
+    /// min/max band the sparkline normalizes against.
+    ///
+    /// **2026-06-13 perf.** The reconstruction is heavy `Decimal` math
+    /// over the full (now up to 1,000-tx/chain) history. It used to run
+    /// synchronously on the main actor inside `.task`, freezing the
+    /// wallet home for 1–2s on unlock and when the lazy `List` rebuilt
+    /// this row on back-navigation. Now we copy the few needed fields
+    /// into `Sendable` snapshots on the main actor (cheap — no Decimal
+    /// math, no extra faulting) and run the reconstruction on a detached
+    /// background task; only the small result lands back on the main
+    /// actor. The chart paints a frame later, but the screen never
+    /// freezes.
+    private func rebuildPoints() async {
+        // Snapshot on the main actor (these are main-context @Models).
+        let txSnapshots = transactions.map {
+            BalanceHistoryReconstructor.HistoryTx(
+                occurredAt: $0.occurredAt,
+                statusRaw: $0.statusRaw,
+                tokenSymbol: $0.tokenSymbol,
+                tokenContract: $0.tokenContract,
+                amountRaw: $0.amountRaw,
+                directionRaw: $0.directionRaw
+            )
+        }
+        let balanceSnapshots = currentBalances.map {
+            BalanceHistoryReconstructor.HistoryBalance(
+                tokenSymbol: $0.tokenSymbol,
+                tokenContract: $0.tokenContract,
+                rawBalance: $0.rawBalance,
+                decimals: $0.decimals,
+                fiatValueCached: $0.fiatValueCached
+            )
+        }
+        let cache = priceCache
+        let history = priceHistory
+        let range = currentRange
+
+        // Heavy Decimal reconstruction OFF the main actor.
+        let reconstructed = await Task.detached(priority: .userInitiated) {
+            BalanceHistoryReconstructor.reconstruct(
+                txSnapshots: txSnapshots,
+                balanceSnapshots: balanceSnapshots,
+                priceCache: cache,
+                priceHistory: history,
+                range: range
+            )
+        }.value
+
+        // Back on the main actor — bail if the inputs changed while we
+        // were computing (a newer `.task(id:)` pass superseded us).
+        guard !Task.isCancelled else { return }
         let resolved = reconstructed.count >= 2
             ? reconstructed
-            : Self.zeroBaseline(for: currentRange)
+            : Self.zeroBaseline(for: range)
         chartPoints = resolved
         sparkValues = resolved.map { fiatAsDouble($0.fiat) }
         sparkMin = sparkValues.min() ?? 0
