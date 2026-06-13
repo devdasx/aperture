@@ -3532,9 +3532,19 @@ grep -rnE 'RPCClient|TokenPricingEngine|Coinbase(Price|Historical)Service|CoinGe
   UniApp/Sources/Features --include=*.swift | grep -v 'WalletRefreshCoordinator\|SyncCoordinator'
 ```
 
-Every hit must be either the SyncCoordinator wiring or a Send/dApp
+Every hit must be either the SyncCoordinator wiring, a Send/dApp
 carve-out site (Part C) that fetches only at action-time and persists
-its result.
+its result, OR the **currency-change live re-price**
+(`WalletHomeView.repriceForCurrencyChange`) — a documented exception:
+when the user switches currency, the prices are resolved off-main
+through the pricing ladder (cache/DB-first) and then applied by
+mutating the wallet's LIVE main-context `@Query` balance objects, so the
+hero + rows re-denominate instantly with zero cross-context lag (the
+2026-06-13 "JOD → USD showed \$0.00 until relaunch" fix). The fetch is
+off-main and DB-cache-first; only the write is on-main, on the objects
+the view already owns. Moving it to the background SyncCoordinator would
+regress that live-update fix (Rule #26), so it stays in the view as a
+named exception.
 
 ### Part F — Why this rule exists
 
