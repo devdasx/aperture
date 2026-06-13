@@ -44,7 +44,12 @@ enum ApertureSchemaV1: VersionedSchema {
             // when each domain (balances / tx / prices / historical /
             // chart) last synced, so the UI shows an honest "Updated …"
             // stamp instead of pretending a cached value is live.
-            SyncStatusRecord.self
+            SyncStatusRecord.self,
+            // 2026-06-13 — local-first asset universe (Rule #27 §D):
+            // supported chains + tokens seeded from the static registries
+            // so the wallet UI reads the asset list from the DB.
+            ChainRecord.self,
+            AssetRecord.self
         ]
     }
 }

@@ -146,6 +146,22 @@ import SwiftData
                 domainRaw: SyncDomain.balances.rawValue,
                 scopeId: "test"
             ))
+        } else if model == ChainRecord.self {
+            context.insert(ChainRecord(
+                chainRaw: "ethereum",
+                ticker: "ETH",
+                displayName: "Ethereum",
+                sortIndex: 0
+            ))
+        } else if model == AssetRecord.self {
+            context.insert(AssetRecord(
+                catalogId: "evm.ethereum.0xresettest",
+                chainRaw: "ethereum",
+                symbol: "TST",
+                name: "Reset Test Token",
+                contract: "0xresettest",
+                decimals: 18
+            ))
         } else {
             return false
         }
@@ -243,6 +259,8 @@ import SwiftData
             "PriceSnapshotRecord",
             "WalletChartSnapshotRecord",
             "SyncStatusRecord",
+            "ChainRecord",
+            "AssetRecord",
         ]
         #expect(
             names == expected,

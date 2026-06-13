@@ -64,19 +64,27 @@ enum WalletSupportedRowBuilders {
     /// balance from it.
     static func coinRows(
         heldRows: [(chain: SupportedChain, balance: TokenBalanceRecord)],
-        currencyCode: String
+        currencyCode: String,
+        chains: [CatalogChain] = AssetCatalog.allChains
     ) -> [WalletCoinSupportedRow] {
         // **2026-06-09 perf.** Index native balances by chain ONCE.
         // Previously each chain ran `heldRows.first { ... }` — 26
         // chains × 50 heldRows = 1300 comparisons per body render.
         // Now: one O(N) pass to build, then 26 O(1) lookups.
+        //
+        // **2026-06-13 — local-first (Rule #27 §D).** The chain universe
+        // now comes from `chains` (the DB-seeded `ChainRecord` set,
+        // mapped to `CatalogChain` by the caller) and defaults to the
+        // static `AssetCatalog` so non-DB call sites keep working
+        // unchanged. The two sources are provably identical
+        // (`AssetCatalogTests`), so the rendered list is the same.
         var nativeIndex: [SupportedChain: TokenBalanceRecord] = [:]
-        nativeIndex.reserveCapacity(SupportedChain.allCases.count)
+        nativeIndex.reserveCapacity(chains.count)
         for entry in heldRows where entry.balance.tokenContract == nil
             && entry.balance.tokenSymbol == entry.chain.ticker {
             nativeIndex[entry.chain] = entry.balance
         }
-        return SupportedChain.allCases.map { chain in
+        return chains.map { $0.chain }.map { chain in
             if let record = nativeIndex[chain] {
                 let amount = WalletFormatting.decimalAmount(
                     rawBalance: record.rawBalance,
@@ -106,131 +114,38 @@ enum WalletSupportedRowBuilders {
     /// with the active wallet's current balance (or zero placeholder).
     static func tokenRows(
         heldRows: [(chain: SupportedChain, balance: TokenBalanceRecord)],
-        currencyCode: String
+        currencyCode: String,
+        assets: [CatalogAsset] = AssetCatalog.allAssets
     ) -> [WalletTokenSupportedDisplayRow] {
         // **2026-06-09 perf.** Build the (chain, contract) → balance
-        // index ONCE up front, then every per-registry lookup below
-        // is O(1) instead of O(N). For a wallet with ~50 held rows
-        // and 9 registries totaling ~400 tokens, this trims ~20k
-        // linear-scan comparisons per body render down to ~400 dict
-        // lookups.
+        // index ONCE up front, then every per-asset lookup below is
+        // O(1) instead of O(N).
+        //
+        // **2026-06-13 — local-first (Rule #27 §D).** The token universe
+        // now comes from `assets` (the DB-seeded `AssetRecord` set,
+        // mapped to `CatalogAsset` by the caller) and defaults to the
+        // static `AssetCatalog` so non-DB call sites keep working
+        // unchanged. The per-registry enumeration that used to live here
+        // moved verbatim into `AssetCatalog.allAssets` (one source for
+        // the seeder + this fallback), so the rendered list is identical
+        // whether sourced from the store or the static catalog
+        // (`AssetCatalogTests` pins the equivalence).
         let index = HeldRowIndex(heldRows)
         var rows: [WalletTokenSupportedDisplayRow] = []
-        rows.reserveCapacity(400)
-
-        // EVM tokens.
-        for chain in SupportedChain.allCases where chain.family == .evm {
-            for entry in EVMTokenRegistry.tokens(for: chain) {
-                let balance = index.lookup(chain: chain, contract: entry.contract)
-                let amount = balance.map {
-                    WalletFormatting.decimalAmount(
-                        rawBalance: $0.rawBalance,
-                        decimals: $0.decimals
-                    )
-                } ?? .zero
-                rows.append(WalletTokenSupportedDisplayRow(
-                    id: "evm.\(chain.rawValue).\(entry.contract)",
-                    chain: chain,
-                    symbol: entry.symbol,
-                    name: entry.name,
-                    contract: entry.contract,
-                    amount: amount,
-                    fiatValue: (balance?.fiatValueCached).flatMap { $0 > 0 ? $0 : nil },
-                    fiatCurrencyCode: balance?.fiatCurrencyCode ?? currencyCode
-                ))
-            }
-        }
-
-        // Solana SPL mints.
-        for (mint, entry) in SolanaTokenRegistry.mints {
-            let balance = index.lookup(chain: .solana, contract: mint)
+        rows.reserveCapacity(assets.count)
+        for asset in assets {
+            let balance = index.lookup(chain: asset.chain, contract: asset.contract)
             rows.append(WalletTokenSupportedDisplayRow(
-                id: "sol.\(mint)", chain: .solana,
-                symbol: entry.symbol, name: entry.name, contract: mint, amount: decimalAmount(balance: balance),
+                id: asset.id,
+                chain: asset.chain,
+                symbol: asset.symbol,
+                name: asset.name,
+                contract: asset.contract,
+                amount: decimalAmount(balance: balance),
                 fiatValue: positiveFiat(balance),
                 fiatCurrencyCode: balance?.fiatCurrencyCode ?? currencyCode
             ))
         }
-
-        // TRON (TRC-20).
-        for entry in TronTokenRegistry.tokens {
-            let balance = index.lookup(chain: .tron, contract: entry.contract)
-            rows.append(WalletTokenSupportedDisplayRow(
-                id: "trc.\(entry.contract)", chain: .tron,
-                symbol: entry.symbol, name: entry.name, contract: entry.contract, amount: decimalAmount(balance: balance),
-                fiatValue: positiveFiat(balance),
-                fiatCurrencyCode: balance?.fiatCurrencyCode ?? currencyCode
-            ))
-        }
-
-        // NEAR (NEP-141).
-        for entry in NearTokenRegistry.tokens {
-            let balance = index.lookup(chain: .near, contract: entry.tokenAccount)
-            rows.append(WalletTokenSupportedDisplayRow(
-                id: "nep.\(entry.tokenAccount)", chain: .near,
-                symbol: entry.symbol, name: entry.name, contract: entry.tokenAccount, amount: decimalAmount(balance: balance),
-                fiatValue: positiveFiat(balance),
-                fiatCurrencyCode: balance?.fiatCurrencyCode ?? currencyCode
-            ))
-        }
-
-        // Aptos (fungible asset).
-        for entry in AptosTokenRegistry.tokens {
-            let balance = index.lookup(chain: .aptos, contract: entry.contract)
-            rows.append(WalletTokenSupportedDisplayRow(
-                id: "apt.\(entry.contract)", chain: .aptos,
-                symbol: entry.symbol, name: entry.name, contract: entry.contract, amount: decimalAmount(balance: balance),
-                fiatValue: positiveFiat(balance),
-                fiatCurrencyCode: balance?.fiatCurrencyCode ?? currencyCode
-            ))
-        }
-
-        // Polkadot Asset Hub.
-        for entry in PolkadotAssetRegistry.tokens {
-            let assetIdString = String(entry.assetId)
-            let balance = index.lookup(chain: .polkadot, contract: assetIdString)
-            rows.append(WalletTokenSupportedDisplayRow(
-                id: "dot.\(assetIdString)", chain: .polkadot,
-                symbol: entry.symbol, name: entry.name, contract: assetIdString, amount: decimalAmount(balance: balance),
-                fiatValue: positiveFiat(balance),
-                fiatCurrencyCode: balance?.fiatCurrencyCode ?? currencyCode
-            ))
-        }
-
-        // XRPL IOUs — joined (currency, issuer) is the contract id.
-        for entry in XRPLTokenRegistry.tokens {
-            let contract = "\(entry.currency).\(entry.issuer)"
-            let balance = index.lookup(chain: .ripple, contract: contract)
-            rows.append(WalletTokenSupportedDisplayRow(
-                id: "xrpl.\(contract)", chain: .ripple,
-                symbol: entry.symbol, name: entry.name, contract: contract, amount: decimalAmount(balance: balance),
-                fiatValue: positiveFiat(balance),
-                fiatCurrencyCode: balance?.fiatCurrencyCode ?? currencyCode
-            ))
-        }
-
-        // TON Jettons.
-        for entry in TONJettonRegistry.tokens {
-            let balance = index.lookup(chain: .ton, contract: entry.masterContract)
-            rows.append(WalletTokenSupportedDisplayRow(
-                id: "ton.\(entry.masterContract)", chain: .ton,
-                symbol: entry.symbol, name: entry.name, contract: entry.masterContract, amount: decimalAmount(balance: balance),
-                fiatValue: positiveFiat(balance),
-                fiatCurrencyCode: balance?.fiatCurrencyCode ?? currencyCode
-            ))
-        }
-
-        // Kava (Cosmos IBC).
-        for entry in KavaCosmosTokenRegistry.tokens {
-            let balance = index.lookup(chain: .kava, contract: entry.denom)
-            rows.append(WalletTokenSupportedDisplayRow(
-                id: "kava.\(entry.denom)", chain: .kava,
-                symbol: entry.symbol, name: entry.name, contract: entry.denom, amount: decimalAmount(balance: balance),
-                fiatValue: positiveFiat(balance),
-                fiatCurrencyCode: balance?.fiatCurrencyCode ?? currencyCode
-            ))
-        }
-
         return rows
     }
 
