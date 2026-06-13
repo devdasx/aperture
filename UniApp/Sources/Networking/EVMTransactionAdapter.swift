@@ -49,24 +49,14 @@ struct EVMTransactionAdapter: Sendable {
     /// (address,address,uint256)"); identical across every EVM chain.
     private static let transferTopic = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
 
-    /// How many blocks of history to scan. EVM logs can be heavy;
-    /// we cap at 100k blocks (~14 days on Ethereum, less on faster
-    /// chains). The cap balances "user sees recent activity" against
-    /// "free public RPC doesn't time out."
-    private static let scanBlockRange: Int64 = 100_000
-
-    /// Small recent window scanned by `eth_getLogs` on EVERY refresh and
-    /// MERGED with the indexer's `tokentx` result (2026-06-13). The
-    /// indexer (Routescan) trails the chain by minutes, so a token the
-    /// user JUST received shows up in the direct-RPC balance immediately
-    /// but is absent from `tokentx` until the indexer catches up — the
-    /// "received 11 USDT, not in history" report. `eth_getLogs` hits the
-    /// node directly (no indexer lag), so a contract-scoped scan of the
-    /// last few thousand blocks surfaces the transfer within seconds of
-    /// confirmation. Bounded small (and contract-scoped to the allowlist)
-    /// so it stays one cheap call per direction per chain — most public
-    /// RPCs cap `eth_getLogs` ranges near 10k blocks, so 5k is safe.
-    private static let recentLogBlockWindow: Int64 = 5_000
+    /// How many blocks `eth_getLogs` scans in ONE call. **publicnode
+    /// caps the range at exactly 50,000 blocks** (verified 2026-06-13:
+    /// a 100k request returns `-32701 exceed maximum block range:
+    /// 50000`), so the prior 100k value silently failed against
+    /// publicnode. 50k is ~7 days on Ethereum (less on faster chains) —
+    /// the recent-history window the user sees, fetched in a single
+    /// contract-scoped request per direction.
+    private static let scanBlockRange: Int64 = 50_000
 
     func fetch(
         address: String,
@@ -581,28 +571,17 @@ struct EVMTransactionAdapter: Sendable {
         // RPC quota on a question we already have the answer to. Only
         // the `nil` case (no coverage at all — chain not in
         // Routescan's table) falls back.
-        if let rows = try await runEtherscanQueryAllPages(action: "tokentx", address: address, limit: limit) {
-            let indexerEvents = parseTokenTxRows(
-                rows,
-                address: address,
-                limit: limit,
-                allowedContracts: allowedContracts
-            )
-            // **2026-06-13 — merge a direct-node recent scan.** The
-            // indexer trails the chain; a just-received token is in the
-            // balance but not yet in `tokentx`. A small contract-scoped
-            // `eth_getLogs` window hits the node directly and catches the
-            // transfer immediately. Best-effort: a failed/throttled
-            // recent scan never blanks the indexer's deep history.
-            let recentEvents = (try? await fetchTokenTransfersViaLogs(
-                address: address,
-                limit: limit,
-                allowedContracts: allowedContracts,
-                blockRange: Self.recentLogBlockWindow
-            )) ?? []
-            return Self.mergeTokenEvents(indexer: indexerEvents, recent: recentEvents, limit: limit)
-        }
-        // No indexer coverage at all → full-range logs fallback.
+        // **2026-06-13 — publicnode-direct, indexer-free.** Per the
+        // user's direction we no longer use the Routescan `tokentx`
+        // indexer (which trailed the chain by minutes, so a just-
+        // received token was in the balance but missing from history).
+        // Token history is now a SINGLE `eth_getLogs` request per
+        // direction, scoped by the `address` filter to ONLY the user's
+        // supported token contracts — the fastest contract-scoped query
+        // a JSON-RPC node offers, served straight from publicnode in
+        // ~0.7s. No indexer, no per-block reads. `eth_getLogs` requires
+        // a block window; we use the largest publicnode allows in one
+        // call (50k blocks, see `scanBlockRange`).
         return try await fetchTokenTransfersViaLogs(
             address: address,
             limit: limit,
@@ -610,34 +589,6 @@ struct EVMTransactionAdapter: Sendable {
         )
     }
 
-    /// Merge the indexer's deep history with the direct-node recent
-    /// scan, de-duplicated by `(txHash, contract, direction)` — the
-    /// same identity the repository upserts on, so a transfer present in
-    /// both sources collapses to one event (and isn't double-counted by
-    /// the chart reconstruction). The indexer's copy wins on a tie (it
-    /// carries the canonical block timestamp); recent-only transfers the
-    /// indexer hasn't caught up to are appended. Result is newest-first,
-    /// capped at `limit`.
-    private static func mergeTokenEvents(
-        indexer: [TransactionEvent],
-        recent: [TransactionEvent],
-        limit: Int
-    ) -> [TransactionEvent] {
-        var seen = Set<String>()
-        var merged: [TransactionEvent] = []
-        merged.reserveCapacity(indexer.count + recent.count)
-        for event in indexer + recent {
-            let key = [
-                event.txHash.lowercased(),
-                (event.tokenContract ?? "").lowercased(),
-                event.direction.rawValue
-            ].joined(separator: "|")
-            if seen.insert(key).inserted {
-                merged.append(event)
-            }
-        }
-        return Array(merged.sorted { $0.occurredAt > $1.occurredAt }.prefix(limit))
-    }
 
     /// Parse Etherscan-compatible `tokentx` rows. Each row carries
     /// `tokenSymbol`, `tokenDecimal`, `contractAddress`, `timeStamp`,
