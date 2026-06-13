@@ -108,19 +108,22 @@ extension SendAsset {
     /// design, the list is ordered native-first then tokens by symbol.
     static func sendable(
         availableChains: Set<SupportedChain>,
-        customTokens: [CustomTokenSnapshot] = []
+        customTokens: [CustomTokenSnapshot] = [],
+        catalogAssets: [CatalogAsset] = AssetCatalog.allAssets
     ) -> [SendAsset] {
         var natives: [SendAsset] = []
         for chain in SupportedChain.allCases where availableChains.contains(chain) {
             natives.append(.native(chain))
         }
 
-        // Reuse `ReceiveAsset.tokens(...)` as the canonical registry
-        // union (every chain/token the wallet holds), then expand each
-        // multi-network token into per-network `SendAsset` rows.
+        // Reuse `ReceiveAsset.tokens(...)` as the canonical asset union
+        // — now DB-sourced (Rule #27 §D): `catalogAssets` is the seeded
+        // `AssetRecord` set the caller passes. Expand each multi-network
+        // token into per-network `SendAsset` rows.
         let tokenRows = ReceiveAsset.tokens(
             availableChains: availableChains,
-            customTokens: customTokens
+            customTokens: customTokens,
+            catalogAssets: catalogAssets
         )
 
         var tokens: [SendAsset] = []
@@ -132,7 +135,7 @@ extension SendAsset {
                         symbol: symbol,
                         name: name,
                         network: chain,
-                        contract: contractFor(symbol: symbol, chain: chain)
+                        contract: contractFor(symbol: symbol, chain: chain, catalogAssets: catalogAssets)
                     )
                 )
             }
@@ -141,14 +144,16 @@ extension SendAsset {
         return natives + tokens
     }
 
-    /// Resolve a token's contract on a chain for the Trust Wallet mark.
-    /// EVM registry only for now; other families key differently and
-    /// the mock layer doesn't need their contracts. `// TODO: (T-061)`
-    /// thread non-EVM token identifiers when the real send path lands.
-    private static func contractFor(symbol: String, chain: SupportedChain) -> String? {
-        guard chain.family == .evm else { return nil }
-        return EVMTokenRegistry.tokens(for: chain)
-            .first(where: { $0.symbol == symbol })?
+    /// Resolve a token's contract on a chain (for the Trust Wallet mark
+    /// + the future token-transfer build) from the DB-sourced catalog —
+    /// no static-registry read (Rule #27 §D).
+    private static func contractFor(
+        symbol: String,
+        chain: SupportedChain,
+        catalogAssets: [CatalogAsset]
+    ) -> String? {
+        catalogAssets
+            .first(where: { $0.chain == chain && $0.symbol == symbol })?
             .contract
     }
 }

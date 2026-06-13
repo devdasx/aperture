@@ -112,6 +112,12 @@ struct SendFlowView: View {
         .onAppear {
             // Fresh draft each time the flow is entered.
             if step == .asset && draft.asset == nil { draft.reset() }
+            // Feed the draft the wallet's REAL held balances from the
+            // database (Rule #27 §D — Send reads from the store, not
+            // SendMockData). Snapshotting on entry is right: a balance
+            // doesn't change mid-compose, and the home screen's refresh
+            // has already populated the DB.
+            draft.heldAssets = heldAssets
         }
         // Custom leading back for the in-flow steps (amount / review /
         // authorize) so the user can step back without leaving the flow.
@@ -277,6 +283,35 @@ struct SendFlowView: View {
         }
         let set = Set(chains)
         return SupportedChain.allCases.filter { set.contains($0) }
+    }
+
+    /// The active wallet's held balances, read from the database
+    /// (`TokenBalanceRecord` via the wallet → addresses → balances
+    /// relationship), flattened to the Sendable `SendHeldAsset` the
+    /// draft consumes. Both the amount AND the implied fiat rate come
+    /// from the persisted rows — no `SendMockData` (Rule #27 §D / T-061).
+    private var heldAssets: [SendHeldAsset] {
+        guard let wallet = activeWallet else { return [] }
+        var out: [SendHeldAsset] = []
+        for address in wallet.addresses {
+            guard let chain = SupportedChain(rawValue: address.chainRaw) else { continue }
+            for bal in address.balances where !bal.rawBalance.isEmpty && bal.rawBalance != "0" {
+                let amount = WalletFormatting.decimalAmount(
+                    rawBalance: bal.rawBalance,
+                    decimals: bal.decimals
+                )
+                guard amount > 0 else { continue }
+                let rate: Decimal? = bal.fiatValueCached > 0 ? (bal.fiatValueCached / amount) : nil
+                out.append(SendHeldAsset(
+                    network: chain,
+                    symbol: bal.tokenSymbol,
+                    contract: bal.tokenContract,
+                    amount: amount,
+                    fiatRate: rate
+                ))
+            }
+        }
+        return out
     }
 }
 

@@ -28,12 +28,15 @@ struct SendAssetPickerView: View {
 
     @Query(sort: [SortDescriptor(\CustomTokenRecord.symbol, order: .forward)])
     private var customTokenRecords: [CustomTokenRecord]
+    /// Local-first asset universe (Rule #27 §D) — the seeded `AssetRecord`
+    /// rows, with the static `AssetCatalog` as the cold-launch fallback.
+    @Query private var assetRecords: [AssetRecord]
 
     @State private var searchText: String = ""
     @State private var allAssets: [SendAsset] = []
 
     private var assetsKey: String {
-        "\(availableChains.map(\.rawValue).joined(separator: ","))|\(customTokenRecords.count)"
+        "\(availableChains.map(\.rawValue).joined(separator: ","))|\(customTokenRecords.count)|\(assetRecords.count)"
     }
 
     var body: some View {
@@ -66,7 +69,8 @@ struct SendAssetPickerView: View {
         .task(id: assetsKey) {
             allAssets = SendAsset.sendable(
                 availableChains: Set(availableChains),
-                customTokens: customTokenRecords.map { CustomTokenSnapshot(from: $0) }
+                customTokens: customTokenRecords.map { CustomTokenSnapshot(from: $0) },
+                catalogAssets: AssetCatalog.assets(from: assetRecords)
             )
         }
     }

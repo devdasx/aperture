@@ -31,15 +31,19 @@ struct ReceiveAssetListView: View {
     /// a custom token via the Add sheet / Custom Tokens list.
     @Query(sort: [SortDescriptor(\CustomTokenRecord.symbol, order: .forward)])
     private var customTokenRecords: [CustomTokenRecord]
+    /// Local-first asset universe (Rule #27 §D) — the seeded `AssetRecord`
+    /// rows the list is built from, with the static `AssetCatalog` as the
+    /// cold-launch fallback (`AssetCatalog.assets(from:)`).
+    @Query private var assetRecords: [AssetRecord]
 
-    /// Memoized token rows. `ReceiveAsset.tokens(...)` walks every
-    /// registry — running it per body pass made each re-render pay
-    /// the full enumeration. Rebuilt via `.task(id:)` only when the
-    /// available chains or the custom-token set actually change.
+    /// Memoized token rows. `ReceiveAsset.tokens(...)` folds the asset
+    /// universe — running it per body pass made each re-render pay the
+    /// full enumeration. Rebuilt via `.task(id:)` only when the available
+    /// chains, the custom-token set, or the seeded catalog change.
     @State private var tokenRows: [ReceiveAsset] = []
 
     private var tokenRowsKey: String {
-        "\(availableChains.map(\.rawValue).joined(separator: ","))|\(customTokenRecords.count)"
+        "\(availableChains.map(\.rawValue).joined(separator: ","))|\(customTokenRecords.count)|\(assetRecords.count)"
     }
 
     var body: some View {
@@ -59,7 +63,8 @@ struct ReceiveAssetListView: View {
         .task(id: tokenRowsKey) {
             tokenRows = ReceiveAsset.tokens(
                 availableChains: Set(availableChains),
-                customTokens: customTokenRecords.map { CustomTokenSnapshot(from: $0) }
+                customTokens: customTokenRecords.map { CustomTokenSnapshot(from: $0) },
+                catalogAssets: AssetCatalog.assets(from: assetRecords)
             )
         }
     }
