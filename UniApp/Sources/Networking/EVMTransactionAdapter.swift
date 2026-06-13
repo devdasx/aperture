@@ -55,6 +55,19 @@ struct EVMTransactionAdapter: Sendable {
     /// "free public RPC doesn't time out."
     private static let scanBlockRange: Int64 = 100_000
 
+    /// Small recent window scanned by `eth_getLogs` on EVERY refresh and
+    /// MERGED with the indexer's `tokentx` result (2026-06-13). The
+    /// indexer (Routescan) trails the chain by minutes, so a token the
+    /// user JUST received shows up in the direct-RPC balance immediately
+    /// but is absent from `tokentx` until the indexer catches up — the
+    /// "received 11 USDT, not in history" report. `eth_getLogs` hits the
+    /// node directly (no indexer lag), so a contract-scoped scan of the
+    /// last few thousand blocks surfaces the transfer within seconds of
+    /// confirmation. Bounded small (and contract-scoped to the allowlist)
+    /// so it stays one cheap call per direction per chain — most public
+    /// RPCs cap `eth_getLogs` ranges near 10k blocks, so 5k is safe.
+    private static let recentLogBlockWindow: Int64 = 5_000
+
     func fetch(
         address: String,
         limit: Int,
@@ -569,18 +582,61 @@ struct EVMTransactionAdapter: Sendable {
         // the `nil` case (no coverage at all — chain not in
         // Routescan's table) falls back.
         if let rows = try await runEtherscanQueryAllPages(action: "tokentx", address: address, limit: limit) {
-            return parseTokenTxRows(
+            let indexerEvents = parseTokenTxRows(
                 rows,
                 address: address,
                 limit: limit,
                 allowedContracts: allowedContracts
             )
+            // **2026-06-13 — merge a direct-node recent scan.** The
+            // indexer trails the chain; a just-received token is in the
+            // balance but not yet in `tokentx`. A small contract-scoped
+            // `eth_getLogs` window hits the node directly and catches the
+            // transfer immediately. Best-effort: a failed/throttled
+            // recent scan never blanks the indexer's deep history.
+            let recentEvents = (try? await fetchTokenTransfersViaLogs(
+                address: address,
+                limit: limit,
+                allowedContracts: allowedContracts,
+                blockRange: Self.recentLogBlockWindow
+            )) ?? []
+            return Self.mergeTokenEvents(indexer: indexerEvents, recent: recentEvents, limit: limit)
         }
+        // No indexer coverage at all → full-range logs fallback.
         return try await fetchTokenTransfersViaLogs(
             address: address,
             limit: limit,
             allowedContracts: allowedContracts
         )
+    }
+
+    /// Merge the indexer's deep history with the direct-node recent
+    /// scan, de-duplicated by `(txHash, contract, direction)` — the
+    /// same identity the repository upserts on, so a transfer present in
+    /// both sources collapses to one event (and isn't double-counted by
+    /// the chart reconstruction). The indexer's copy wins on a tie (it
+    /// carries the canonical block timestamp); recent-only transfers the
+    /// indexer hasn't caught up to are appended. Result is newest-first,
+    /// capped at `limit`.
+    private static func mergeTokenEvents(
+        indexer: [TransactionEvent],
+        recent: [TransactionEvent],
+        limit: Int
+    ) -> [TransactionEvent] {
+        var seen = Set<String>()
+        var merged: [TransactionEvent] = []
+        merged.reserveCapacity(indexer.count + recent.count)
+        for event in indexer + recent {
+            let key = [
+                event.txHash.lowercased(),
+                (event.tokenContract ?? "").lowercased(),
+                event.direction.rawValue
+            ].joined(separator: "|")
+            if seen.insert(key).inserted {
+                merged.append(event)
+            }
+        }
+        return Array(merged.sorted { $0.occurredAt > $1.occurredAt }.prefix(limit))
     }
 
     /// Parse Etherscan-compatible `tokentx` rows. Each row carries
@@ -710,10 +766,11 @@ struct EVMTransactionAdapter: Sendable {
     private func fetchTokenTransfersViaLogs(
         address: String,
         limit: Int,
-        allowedContracts: Set<String>
+        allowedContracts: Set<String>,
+        blockRange: Int64 = scanBlockRange
     ) async throws -> [TransactionEvent] {
         let latestBlock = try await fetchLatestBlock()
-        let fromBlock = max(0, latestBlock - Self.scanBlockRange)
+        let fromBlock = max(0, latestBlock - blockRange)
         let fromHex = "0x" + String(fromBlock, radix: 16)
         let toHex = "0x" + String(latestBlock, radix: 16)
 
