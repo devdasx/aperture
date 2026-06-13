@@ -93,6 +93,14 @@ struct WalletHomeView: View {
     /// valuation ($50). Populated by `CoinbaseHistoricalPriceService`
     /// via the `.task` ensure-loop below.
     @Query private var historicalPrices: [HistoricalPriceRecord]
+    /// **Local-first asset universe (Rule #27 §D).** The supported
+    /// chains + tokens, read from the DB (seeded by `AssetCatalogSeeder`
+    /// from the static registries). `catalogChains` / `catalogAssets`
+    /// map these to the registry-agnostic shape the display builders
+    /// consume, falling back to the identical static `AssetCatalog`
+    /// during the pre-seed cold-launch window so the list never blanks.
+    @Query(sort: \ChainRecord.sortIndex) private var chainRecords: [ChainRecord]
+    @Query private var assetRecords: [AssetRecord]
     @AppStorage("activeWalletId") private var activeWalletIdRaw: String = ""
     @AppStorage(CurrencyPreference.storageKey) private var currencyCode: String = CurrencyPreference.defaultCode
     @AppStorage(HideBalancesPreference.hideBalanceOnHomeKey) private var hideBalanceOnHome: Bool = false
@@ -619,6 +627,14 @@ struct WalletHomeView: View {
                     currencyChangeTask = Task { await repriceForCurrencyChange() }
                 }
                 .onChange(of: balanceRowsRevision) { _, _ in
+                    rebuildDisplayRows()
+                }
+                .onChange(of: assetRecords.count) { _, _ in
+                    // The local-first asset seed landed (Rule #27 §D) —
+                    // rebuild so the list is now sourced from the DB
+                    // `AssetRecord` rows instead of the static fallback.
+                    // (Output is identical; this just completes the
+                    // transition to DB-sourced.)
                     rebuildDisplayRows()
                 }
                 .onChange(of: refreshState.isRefreshing) { wasRefreshing, isRefreshing in
@@ -1842,11 +1858,26 @@ struct WalletHomeView: View {
     /// shows the rest. Tokens rows — every supported token across
     /// all registries, held first (fiat desc), then unheld
     /// alphabetically by `(symbol, chain)`.
+    /// Supported chains, read from the DB (`ChainRecord`) and mapped to
+    /// the builder's shape. Falls back to the identical static
+    /// `AssetCatalog` until the seed lands (Rule #27 §D).
+    private var catalogChains: [CatalogChain] {
+        let fromStore = chainRecords.compactMap { $0.catalogChain }
+        return fromStore.isEmpty ? AssetCatalog.allChains : fromStore
+    }
+
+    /// Supported tokens, read from the DB (`AssetRecord`), same fallback.
+    private var catalogAssets: [CatalogAsset] {
+        let fromStore = assetRecords.compactMap { $0.catalogAsset }
+        return fromStore.isEmpty ? AssetCatalog.allAssets : fromStore
+    }
+
     private func rebuildDisplayRows() {
         let held = allHeldRows
         let coinRows = WalletSupportedRowBuilders.coinRows(
             heldRows: held,
-            currencyCode: currencyCode
+            currencyCode: currencyCode,
+            chains: catalogChains
         )
         coinDisplayRows = coinRows.sorted { a, b in
             if a.isHeld != b.isHeld { return a.isHeld }
@@ -1859,7 +1890,8 @@ struct WalletHomeView: View {
         }
         let tokenRows = WalletSupportedRowBuilders.tokenRows(
             heldRows: held,
-            currencyCode: currencyCode
+            currencyCode: currencyCode,
+            assets: catalogAssets
         )
         tokenDisplayRows = tokenRows.sorted { a, b in
             if a.isHeld != b.isHeld { return a.isHeld }

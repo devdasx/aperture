@@ -73,7 +73,11 @@ final class ApertureDatabase {
             WalletChartSnapshotRecord.self,
             // 2026-06-13 — local-first freshness ledger (Rule #27). Adding
             // an entity is an additive lightweight migration.
-            SyncStatusRecord.self
+            SyncStatusRecord.self,
+            // 2026-06-13 — local-first asset universe (Rule #27 §D):
+            // supported chains + tokens, seeded from the static registries.
+            ChainRecord.self,
+            AssetRecord.self
         ])
         let storeURL = Self.defaultStoreURL()
         let onDiskConfig = ModelConfiguration(
@@ -263,6 +267,17 @@ final class ApertureDatabase {
         // (and the first frame's `@Query` snapshot) completes.
         Task(priority: .utility) {
             self.bootstrapSingletonRows()
+
+            // 2026-06-13 — seed the local-first asset universe
+            // (Rule #27 §D). Idempotent upsert from the static
+            // `AssetCatalog`. Deferred is safe: the display builders
+            // fall back to the identical static catalog until these
+            // rows land, so the cold-launch asset list never blanks.
+            do {
+                try AssetCatalogSeeder.seed(into: ModelContext(self.container))
+            } catch {
+                self.log.error("Asset-catalog seed failed: \(String(describing: error), privacy: .public)")
+            }
 
             // 2026-06-09 — backfill avatar defaults onto rows that
             // pre-date the `iconSymbol` / `iconColorHex` schema
