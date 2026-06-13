@@ -3249,6 +3249,75 @@ The `720a910` commit stays in history (rewriting it would be more harm than the 
 
 ---
 
+## Rule #24 — All balance & transaction-history fetching goes through the `aperture-chain-data` agent, which reads the real docs before every fix.
+
+Aperture has a dedicated subagent at
+[`.claude/agents/aperture-chain-data.md`](./.claude/agents/aperture-chain-data.md)
+(Opus, max reasoning, with `WebFetch` + `WebSearch`). It is the **sole
+authority** for how the app fetches on-chain **balances** and
+**transaction history** — for every chain and token Aperture supports.
+
+The user created it on 2026-06-13 (verbatim): *"create a fully new agent
+that works only about all chains we've and tokens … let this agent read
+on the internet all ethereum and EVM chains Docs, and all public node
+docs, and all RPC docs, and he should always fix everything in real way
+and never fix anything without reading docs on the internet for the
+current fix he's doing … so always he will do only real & fast fix."*
+The cause: repeated guessed balance/history fixes (e.g. sending ~40
+contracts to a publicnode `eth_getLogs` call that caps the `address`
+array at ~5, so received tokens showed in the balance but never in
+history).
+
+### When to delegate to `aperture-chain-data`
+
+Delegate ANY work that touches how balances or history are fetched,
+parsed, paginated, cached, scheduled, or sourced:
+
+- The RPC layer: `RPCClient`, `RPCRegistry`, `RPCEndpoint`, `RateLimiter`.
+- The chain adapters: `EVMChainAdapter`, `EVMTransactionAdapter`,
+  `EVMTokenRegistry`, every per-chain `*TransactionAdapter` /
+  `*ChainAdapter` / `*TokenRegistry`.
+- The scanners: `RealRPCBalanceScanner`, `RealRPCTransactionScanner`.
+- The scan pipeline in `WalletRefreshCoordinator` and the **app-level
+  10-second auto-refresh poller** in `UniAppApp.swift`.
+- Any "balance is wrong / missing", "transaction not showing", "history
+  is slow", "fetch froze the app", or "add a chain/token to fetching"
+  task.
+
+### The agent's binding contract
+
+1. **Reads the official docs online BEFORE any fix** — Ethereum JSON-RPC
+   spec, publicnode docs, the specific RPC provider's docs, the chain's
+   own RPC docs, ERC-20/token standard — for the exact call it changes.
+   It cites the doc URL + the fact each fix relies on. **It never guesses
+   an RPC method's behavior, a rate limit, a topic encoding, or a
+   decimals value.**
+2. **Validates live with `curl` before and after** (using the user's real
+   address when given) and pastes the request/response in its report.
+3. **Performance is part of correctness** — balances fan out in parallel
+   (TaskGroup / promise.all), only-changed rows are written (no UI churn),
+   heavy parses run off-main, the app never lags during refresh.
+4. Does NOT run `xcodebuild` (the orchestrator builds + installs on
+   Thuglife per Rule #22) and does NOT touch `Localizable.xcstrings` or
+   `SHIPPED.md`.
+
+### The orchestrator's job after delegation
+
+Verify the diff, run the build + install (Rule #22), commit + push
+(Rule #23), and confirm the agent cited real docs + a live test — never
+accept a balance/history fix that was guessed.
+
+### Why this rule exists
+
+Balance and history are the wallet's most-used, most-trusted numbers, and
+they sit on top of provider-specific RPC quirks (range caps, address-array
+limits, required filters, per-chain endpoint shapes) that cannot be
+reasoned about from memory. Binding this domain to one agent that is
+*required* to read the docs and test live turns "plausible guess that
+breaks in production" into "verified fact that ships correct and fast."
+
+---
+
 ## Project context
 
 - iOS native, **Swift 6.2**, **iOS 26+**, SwiftUI, Liquid Glass design system

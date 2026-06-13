@@ -58,6 +58,14 @@ struct EVMTransactionAdapter: Sendable {
     /// contract-scoped request per direction.
     private static let scanBlockRange: Int64 = 50_000
 
+    /// How many token contracts go into ONE `eth_getLogs` `address`
+    /// array. publicnode blocks arrays above ~5 (verified live
+    /// 2026-06-13: 5 succeeds, 10 → `-32602 … blocked parameter:
+    /// params.0.address.#`). 5 is the safe maximum; the supported-token
+    /// set is chunked into groups of this size and the chunks fire in
+    /// parallel. If publicnode raises the limit, re-verify and bump.
+    private static let getLogsAddressChunk = 5
+
     func fetch(
         address: String,
         limit: Int,
@@ -738,50 +746,62 @@ struct EVMTransactionAdapter: Sendable {
         // on the chain. The same allowlist also gates the parser
         // below — defense in depth in case the node ignores the
         // `address` filter for some reason.
-        let contracts: [String]? = allowedContracts.isEmpty
-            ? nil
-            : Array(allowedContracts)
+        // **2026-06-13 — chunked, parallel, contract-scoped.**
+        // publicnode caps the `eth_getLogs` `address` array at ~5
+        // contracts (verified live against 0x057a…cE10: 5 OK, 10 →
+        // `-32602 Request blocked … blocked parameter: params.0.address.#`).
+        // The prior code passed ALL ~40 supported contracts in one call,
+        // so EVERY token-history request was blocked and a just-received
+        // token (the user's 11.387375 USDT) never appeared in history.
+        // Now the contracts are chunked into groups within the limit and
+        // every chunk × direction fires in PARALLEL via a TaskGroup,
+        // then the logs are merged. A chunk that fails (throttle/block)
+        // returns nil and is skipped; we only throw if EVERY chunk
+        // failed (so we can tell "no logs" from "fetch broke").
+        let contractList = Array(allowedContracts)
+        let chunks: [[String]?] = contractList.isEmpty
+            ? [nil]
+            : stride(from: 0, to: contractList.count, by: Self.getLogsAddressChunk).map {
+                Array(contractList[$0..<min($0 + Self.getLogsAddressChunk, contractList.count)])
+            }
 
-        async let incomingLogs = fetchLogs(
-            from: fromHex, to: toHex,
-            fromTopic: nil, toTopic: padded,
-            contractAddresses: contracts
-        )
-        async let outgoingLogs = fetchLogs(
-            from: fromHex, to: toHex,
-            fromTopic: padded, toTopic: nil,
-            contractAddresses: contracts
-        )
-
-        // Catch each direction independently — one failing log fetch
-        // must not cancel the other. Throw only when BOTH failed,
-        // so the caller can distinguish "no logs" from "fetch broke."
-        let incoming: [[String: Any]]?
-        do {
-            incoming = try await incomingLogs
-        } catch {
-            Self.log.error("Incoming eth_getLogs failed on \(chain.rawValue, privacy: .public) for \(address, privacy: .private): \(String(describing: error), privacy: .public)")
-            incoming = nil
+        var allLogs: [RawLog] = []
+        var anySuccess = false
+        // Each task fetches one (chunk × direction) and extracts the
+        // raw JSON into `[RawLog]` BEFORE returning — `[[String: Any]]`
+        // is not `Sendable` and can't cross a `TaskGroup` boundary, but
+        // the all-String/Int64 `RawLog` can. Extraction is in-task, so
+        // the heavy fan-out stays parallel.
+        await withTaskGroup(of: [RawLog]?.self) { group in
+            for chunk in chunks {
+                group.addTask {
+                    guard let raw = try? await self.fetchLogs(
+                        from: fromHex, to: toHex,
+                        fromTopic: nil, toTopic: padded,
+                        contractAddresses: chunk
+                    ) else { return nil }
+                    return Self.extractRawLogs(raw)
+                }
+                group.addTask {
+                    guard let raw = try? await self.fetchLogs(
+                        from: fromHex, to: toHex,
+                        fromTopic: padded, toTopic: nil,
+                        contractAddresses: chunk
+                    ) else { return nil }
+                    return Self.extractRawLogs(raw)
+                }
+            }
+            for await result in group {
+                if let logs = result {
+                    anySuccess = true
+                    allLogs.append(contentsOf: logs)
+                }
+            }
         }
-        let outgoing: [[String: Any]]?
-        do {
-            outgoing = try await outgoingLogs
-        } catch {
-            Self.log.error("Outgoing eth_getLogs failed on \(chain.rawValue, privacy: .public) for \(address, privacy: .private): \(String(describing: error), privacy: .public)")
-            outgoing = nil
-        }
-        if incoming == nil && outgoing == nil {
+        if !anySuccess {
             throw RPCError.allEndpointsFailed(chain)
         }
-        let allLogs = (incoming ?? []) + (outgoing ?? [])
-        let sorted = allLogs.sorted { (a, b) in
-            let aBlock = a["blockNumber"] as? String ?? "0x0"
-            let bBlock = b["blockNumber"] as? String ?? "0x0"
-            let aInt = Int64(aBlock.replacingOccurrences(of: "0x", with: ""), radix: 16) ?? 0
-            let bInt = Int64(bBlock.replacingOccurrences(of: "0x", with: ""), radix: 16) ?? 0
-            return aInt > bInt
-        }
-        let trimmed = Array(sorted.prefix(limit))
+        let trimmed = Array(allLogs.sorted { $0.blockNumber > $1.blockNumber }.prefix(limit))
 
         // Block-timestamp cache so we don't re-fetch the same block N
         // times when the address has many logs in the same block.
@@ -791,13 +811,12 @@ struct EVMTransactionAdapter: Sendable {
 
         let lower = address.lowercased()
         for log in trimmed {
-            guard let topics = log["topics"] as? [String], topics.count >= 3,
-                  let dataHex = log["data"] as? String,
-                  let txHash = log["transactionHash"] as? String,
-                  let blockHex = log["blockNumber"] as? String,
-                  let contractAddr = log["address"] as? String else {
-                continue
-            }
+            let topics = log.topics
+            guard topics.count >= 3 else { continue }
+            let dataHex = log.dataHex
+            let txHash = log.txHash
+            let contractAddr = log.contract
+            let blockNum = log.blockNumber
             // Allowlist re-check — some providers ignore the
             // JSON-RPC `address` filter and return wildcard logs.
             // Don't ship those rows.
@@ -805,7 +824,6 @@ struct EVMTransactionAdapter: Sendable {
                !allowedContracts.contains(contractAddr.lowercased()) {
                 continue
             }
-            let blockNum = Int64(blockHex.replacingOccurrences(of: "0x", with: ""), radix: 16) ?? 0
             let fromAddr = Self.unpadTopic(topics[1])
             let toAddr = Self.unpadTopic(topics[2])
             let amountRaw = Self.decimalFromHex(dataHex) ?? 0
@@ -869,6 +887,45 @@ struct EVMTransactionAdapter: Sendable {
     }
 
     // MARK: - JSON-RPC plumbing
+
+    /// `Sendable` projection of one `eth_getLogs` entry — the only
+    /// fields the parser needs. Raw logs arrive as `[[String: Any]]`,
+    /// which is NOT `Sendable` and can't be returned from a parallel
+    /// `TaskGroup` task; mapping to this value type inside each task
+    /// lets the chunked getLogs fan-out stay concurrent.
+    private struct RawLog: Sendable {
+        let topics: [String]
+        let dataHex: String
+        let txHash: String
+        let blockNumber: Int64
+        let contract: String
+    }
+
+    /// Project raw JSON-RPC log dicts → `[RawLog]`. Drops malformed
+    /// rows (missing topics/hash/etc.) — the same fields the parser
+    /// would have guarded on.
+    private static func extractRawLogs(_ logs: [[String: Any]]) -> [RawLog] {
+        var out: [RawLog] = []
+        out.reserveCapacity(logs.count)
+        for log in logs {
+            guard let topics = log["topics"] as? [String],
+                  let dataHex = log["data"] as? String,
+                  let txHash = log["transactionHash"] as? String,
+                  let blockHex = log["blockNumber"] as? String,
+                  let contract = log["address"] as? String else {
+                continue
+            }
+            let blockNum = Int64(blockHex.replacingOccurrences(of: "0x", with: ""), radix: 16) ?? 0
+            out.append(RawLog(
+                topics: topics,
+                dataHex: dataHex,
+                txHash: txHash,
+                blockNumber: blockNum,
+                contract: contract
+            ))
+        }
+        return out
+    }
 
     private func fetchLatestBlock() async throws -> Int64 {
         let hexBlock = try await client.callJSONString(
