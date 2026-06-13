@@ -521,6 +521,12 @@ struct WalletHomeView: View {
                     guard !isTestMode else { return }
                     await runRefresh()
                 }
+                .task(id: priceDataFingerprint) {
+                    // Rebuild the chart's price dictionaries off-body
+                    // when the price tables / currency change — never
+                    // per render (2026-06-13 perf fix).
+                    rebuildPriceMemos()
+                }
                 .task(id: historicalEnsureKey) {
                     // Historical-price ensure-loop. Per the
                     // 2026-06-12 fix: the chart values past holdings
@@ -894,8 +900,8 @@ struct WalletHomeView: View {
                 BalanceHistoryChart(
                     transactions: allTransactions,
                     currentBalances: balances.map { $0.balance },
-                    priceCache: priceCacheBySymbol,
-                    priceHistory: priceHistoryBySymbol,
+                    priceCache: priceCacheMemo,
+                    priceHistory: priceHistoryMemo,
                     currencyCode: currencyCode,
                     scrubModel: scrubModel
                 )
@@ -1642,27 +1648,40 @@ struct WalletHomeView: View {
     /// which observes `CachedPriceRecord` rows — the same rows
     /// `CoinbasePriceService` writes through. The cache stays warm
     /// across launches per `PriceCacheRepository`'s no-TTL policy.
-    private var priceCacheBySymbol: [String: Decimal] {
-        var out: [String: Decimal] = [:]
-        for row in cachedPrices where row.fiat == currencyCode {
-            out[row.symbol.uppercased()] = row.price
-        }
-        return out
+    /// **2026-06-13 perf — memoized price dictionaries.** These two
+    /// dicts feed `BalanceHistoryChart`. They were computed properties
+    /// rebuilt INSIDE `body` on every render — `priceHistoryBySymbol`
+    /// iterates the entire `historicalPrices` `@Query` (≈300 closes ×
+    /// every token × every currency). With deep history that's hundreds
+    /// of ms per render, and the unlock / navigation transition renders
+    /// several times in a row → the 2-second freeze the user reported.
+    /// Now they live in `@State`, rebuilt only when the underlying
+    /// price data actually changes (see `priceDataFingerprint` +
+    /// `rebuildPriceMemos()`), so `body` just reads the cached dicts.
+    @State private var priceCacheMemo: [String: Decimal] = [:]
+    @State private var priceHistoryMemo: [String: [Int: Decimal]] = [:]
+
+    /// Cheap (O(1)) fingerprint that flips whenever the price tables or
+    /// the active currency change — gates `rebuildPriceMemos()` via
+    /// `.task(id:)`. Counts only; no per-row iteration here.
+    private var priceDataFingerprint: String {
+        "\(cachedPrices.count)|\(historicalPrices.count)|\(currencyCode)"
     }
 
-    /// `[symbol-uppercased: [yyyymmdd: price]]` snapshot fed to
-    /// `BalanceHistoryChart`'s reconstructor. Filtered to the
-    /// active fiat. Bucketing happens here — the `@Query` returns
-    /// every row regardless of (symbol, fiat), and we partition by
-    /// uppercased symbol. Empty until the ensure-loop's first
-    /// fetch lands, after which it grows incrementally as new
-    /// (symbol, fiat) pairs need historical coverage.
-    private var priceHistoryBySymbol: [String: [Int: Decimal]] {
-        var out: [String: [Int: Decimal]] = [:]
-        for row in historicalPrices where row.fiat == currencyCode {
-            out[row.symbol.uppercased(), default: [:]][row.dayKey] = row.price
+    /// Rebuild the two memoized price dictionaries. The only place that
+    /// pays the O(N) iteration over the price `@Query` results — called
+    /// from `.task(id: priceDataFingerprint)`, not from `body`.
+    private func rebuildPriceMemos() {
+        var cache: [String: Decimal] = [:]
+        for row in cachedPrices where row.fiat == currencyCode {
+            cache[row.symbol.uppercased()] = row.price
         }
-        return out
+        var history: [String: [Int: Decimal]] = [:]
+        for row in historicalPrices where row.fiat == currencyCode {
+            history[row.symbol.uppercased(), default: [:]][row.dayKey] = row.price
+        }
+        priceCacheMemo = cache
+        priceHistoryMemo = history
     }
 
     // MARK: - Filter & Sort derived state (rebuilt off-body)
