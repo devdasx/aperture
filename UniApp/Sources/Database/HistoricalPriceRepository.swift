@@ -130,6 +130,54 @@ actor HistoricalPriceRepository {
         return out
     }
 
+    /// **Latest-close fallback (2026-06-13).** The most recent daily
+    /// close per symbol in `fiat` — the price the chart already values
+    /// holdings at. Used as a pricing-engine rung so a balance row is
+    /// NEVER written "Price unavailable" when we hold a usable close:
+    /// the user reported BTC/ETH showing "Price unavailable" on the
+    /// asset screen while the chart (which reads this table) clearly
+    /// had the price. Returns at most one entry per symbol (highest
+    /// `dayKey`).
+    func latestClose(symbols: [String], fiat: String) throws -> [String: Decimal] {
+        let upperSymbols = Set(symbols.map { $0.uppercased() })
+        let upperFiat = fiat.uppercased()
+        guard !upperSymbols.isEmpty else { return [:] }
+        var descriptor = FetchDescriptor<HistoricalPriceRecord>(
+            predicate: #Predicate { upperSymbols.contains($0.symbol) && $0.fiat == upperFiat },
+            sortBy: [SortDescriptor(\.dayKey, order: .reverse)]
+        )
+        descriptor.fetchLimit = upperSymbols.count * 8  // newest few per symbol; first-seen wins
+        let rows = try modelContext.fetch(descriptor)
+        var out: [String: Decimal] = [:]
+        for r in rows where out[r.symbol] == nil && r.price > 0 {
+            out[r.symbol] = r.price
+        }
+        return out
+    }
+
+    /// Cross-currency variant of `latestClose` — the most recent close
+    /// per symbol in ANY currency, with that close's own `fiat` so the
+    /// caller can FX-convert. The final safety net behind
+    /// `latestClose(symbols:fiat:)` for a user who only ever had
+    /// historical coverage in a different currency.
+    func latestCloseAnyCurrency(
+        symbols: [String]
+    ) throws -> [String: (price: Decimal, fiat: String)] {
+        let upperSymbols = Set(symbols.map { $0.uppercased() })
+        guard !upperSymbols.isEmpty else { return [:] }
+        var descriptor = FetchDescriptor<HistoricalPriceRecord>(
+            predicate: #Predicate { upperSymbols.contains($0.symbol) },
+            sortBy: [SortDescriptor(\.dayKey, order: .reverse)]
+        )
+        descriptor.fetchLimit = upperSymbols.count * 16
+        let rows = try modelContext.fetch(descriptor)
+        var out: [String: (Decimal, String)] = [:]
+        for r in rows where out[r.symbol] == nil && r.price > 0 {
+            out[r.symbol] = (r.price, r.fiat)
+        }
+        return out
+    }
+
     /// Wipe every row. Settings → Advanced → Clear price cache
     /// extends to historical too — the next chart render kicks off
     /// re-fetches from Coinbase as needed.
