@@ -159,8 +159,6 @@ struct BalanceHistoryChart: View {
         BalanceHistoryRange(rawValue: selectedRangeRaw) ?? .all
     }
 
-    @State private var scrubIndex: Int?
-
     // MARK: - Memoized reconstruction (computed off-body)
     //
     // The full history reconstruction used to run inside `body` —
@@ -207,27 +205,15 @@ struct BalanceHistoryChart: View {
 
             // 2026-06-09 — deltaCaption removed entirely per user
             // direction. The hero amount alone carries the displayed
-            // number; the chart provides shape, not a second
-            // numeric readout. The scrub-driven hero animation
-            // wiring stays — we attach the `.onChange(of:
-            // scrubIndex)` to an invisible 0-height anchor so the
-            // chart still publishes scrubbed fiat upward.
-            Color.clear
-                .frame(height: 0)
-                .onChange(of: scrubIndex) { _, newIndex in
-                    let scrubbed: Decimal? = {
-                        guard let idx = newIndex, idx >= 0, idx < points.count else {
-                            return nil
-                        }
-                        return points[idx].fiat
-                    }()
-                    // Write-only into the @Observable model — this does
-                    // NOT invalidate the chart (it never reads `fiat`),
-                    // and invalidates ONLY the hero label that reads it.
-                    withAnimation(.snappy(duration: 0.18)) {
-                        scrubModel?.fiat = scrubbed
-                    }
-                }
+            // number; the chart provides shape, not a second numeric
+            // readout. The scrub publishes its value up through the
+            // `onScrub` closure below (2026-06-13 — replaced the
+            // `@Binding scrubIndex` + `.onChange` anchor, which
+            // re-evaluated THIS body on every drag tick; the closure
+            // writes the hero's `ChartScrubModel` without invalidating
+            // the chart body, so a long scrub never re-runs the
+            // reconstruction-gating `rebuildKey` or re-projects values).
+            //
             // Negative horizontal padding so ONLY the sparkline
             // bleeds out beyond the card's normal inset
             // (`UniSpacing.l`) to land at 5pt from the card
@@ -249,7 +235,20 @@ struct BalanceHistoryChart: View {
                 points: values,
                 minValue: chartPoints.isEmpty ? 0 : sparkMin,
                 maxValue: chartPoints.isEmpty ? 0 : sparkMax,
-                scrubIndex: $scrubIndex
+                onScrub: { index in
+                    // Map the scrubbed index → the touched point's fiat
+                    // and publish it to the hero via the @Observable
+                    // model. Called from the gesture; does NOT
+                    // re-evaluate this body (no `scrubIndex` @State here
+                    // anymore — that was the long-scrub freeze).
+                    let scrubbed: Decimal? = {
+                        guard let idx = index, idx >= 0, idx < points.count else { return nil }
+                        return points[idx].fiat
+                    }()
+                    withAnimation(.snappy(duration: 0.18)) {
+                        scrubModel?.fiat = scrubbed
+                    }
+                }
             )
             .frame(height: 140)
             .padding(.horizontal, -(UniSpacing.l - 5))
@@ -395,51 +394,17 @@ struct BalanceHistoryChart: View {
 
     // MARK: - Delta caption
 
-    /// Caption above the curve. When scrubbing — shows the
-    /// scrubbed-point's fiat value + its relative timestamp. When
-    /// at rest — shows the range's signed delta from leading-edge
-    /// to trailing-edge with a directional color hint on the delta
-    /// only (the line itself stays monochrome). Rule #16 §B.
-    @ViewBuilder
-    private func deltaCaption(points: [BalancePoint]) -> some View {
-        if scrubIndex != nil {
-            // 2026-06-09 — scrubbing readout removed per user
-            // direction. While the user drags, the chart publishes
-            // the touched fiat into `scrubModel.fiat`; the parent's
-            // hero amount animates to it via
-            // `.contentTransition(.numericText())`. The caption row
-            // stays empty during scrub — one source of truth for the
-            // displayed number, the hero itself.
-            EmptyView()
-        } else if let first = points.first, let last = points.last {
-            // Resting mode — signed delta centered under the hero
-            // amount per 2026-06-09 user direction. Arrow glyph and
-            // range-suffix ("today" / "this week" / etc.) removed —
-            // the period pill below already names the active range,
-            // and the colored sign on the delta already conveys
-            // direction. One number, calm.
-            let delta = last.fiat - first.fiat
-            let isUp = delta > 0
-            let isDown = delta < 0
-            Text(deltaText(delta: delta))
-                .font(UniTypography.footnote.weight(.semibold))
-                .foregroundStyle(deltaColor(isUp: isUp, isDown: isDown))
-                .monospacedDigit()
-                .frame(maxWidth: .infinity, alignment: .center)
-        }
-    }
-
+    /// Signed-delta text for the accessibility readout. (The on-screen
+    /// `deltaCaption` was removed per the 2026-06-09 direction — the
+    /// hero amount carries the displayed number; the chart provides
+    /// shape, not a second numeric readout. `2026-06-13`: removed the
+    /// now-dead `deltaCaption` / `deltaColor` that lingered after that
+    /// and referenced the relocated `scrubIndex`.)
     private func deltaText(delta: Decimal) -> String {
         let sign: String
         if delta > 0 { sign = "+" } else if delta < 0 { sign = "−" } else { sign = "" }
         let magnitude = abs(delta)
         return sign + WalletFormatting.fiat(magnitude, currencyCode: currencyCode)
-    }
-
-    private func deltaColor(isUp: Bool, isDown: Bool) -> Color {
-        if isUp { return UniColors.Status.successForeground }
-        if isDown { return UniColors.Status.errorForeground }
-        return UniColors.Text.tertiary
     }
 
     /// Localized "this week" / "this month" / "this year" / "all
@@ -530,60 +495,52 @@ private struct SparklineChart: View {
     let minValue: Double
     let maxValue: Double
 
-    /// Index of the currently-scrubbed sample, or `nil` at rest.
-    /// Bound to the parent so it can swap the delta caption while
-    /// the user explores.
-    @Binding var scrubIndex: Int?
+    /// Published per scrub index change (and `nil` on release). The
+    /// parent writes the scrubbed point's fiat into its `ChartScrubModel`
+    /// in this closure — a closure rather than a `@Binding` so a scrub
+    /// tick never re-evaluates the PARENT's body (the 2026-06-13
+    /// long-scrub freeze: the binding invalidated `BalanceHistoryChart`,
+    /// re-running its reconstruction-gating `rebuildKey` + value
+    /// projection ~60×/s).
+    let onScrub: (Int?) -> Void
+
+    /// The scrubbed index — LOCAL `@State`, so a tick invalidates ONLY
+    /// this view, never the parent.
+    @State private var scrubIndex: Int?
 
     var body: some View {
         GeometryReader { geo in
             let size = geo.size
-            let canvasPoints = normalizedPoints(in: size)
-
             ZStack {
-                // Gradient fill — the same quadratic path, closed
-                // at the baseline, filled with a top-to-bottom
-                // fade from 25% to 0% of the stroke color. This is
-                // what makes the area read as glow rather than as
-                // a hard fill.
-                gradientFill(points: canvasPoints, in: size)
+                // **The static curve.** Its inputs (points / min / max)
+                // are INVARIANT during a scrub — only the cursor moves.
+                // Extracting it into an `Equatable` subview makes SwiftUI
+                // skip recomputing the two O(N) Catmull-Rom paths (stroke
+                // + gradient fill) on every drag tick. THIS is the
+                // long-scrub freeze fix: the reconstructor emits up to
+                // ~2,000 points (two per in-window transaction), and the
+                // old body rebuilt both paths over all of them ~60×/s
+                // while scrubbing, saturating the main thread.
+                SparklineCurve(points: points, minValue: minValue, maxValue: maxValue)
+                    .equatable()
 
-                // The sparkline stroke itself. 2pt, rounded line
-                // caps + joins — same weight as the Stabro pattern
-                // so the curve reads as silky regardless of how
-                // jagged the source data is.
-                sparklinePath(points: canvasPoints)
-                    .stroke(
-                        UniColors.Text.primary,
-                        style: StrokeStyle(lineWidth: 2, lineCap: .round, lineJoin: .round)
-                    )
-
-                // Scrub cursor — surfaces only while the user is
-                // actively dragging. Three layers (guide line +
-                // filled dot + outer ring) compose the affordance.
+                // **Scrub cursor — the only thing that moves per tick.**
+                // Its position is computed O(1) from the index, never by
+                // rescanning / re-projecting all N points.
                 if let index = scrubIndex,
+                   points.count > 1,
                    index >= 0,
-                   index < canvasPoints.count
+                   index < points.count
                 {
-                    let pt = canvasPoints[index]
-                    // Vertical guide line — 1pt, full canvas
-                    // height, tertiary text color at 0.4 opacity.
-                    // Subtle enough to suggest "selected x", not
-                    // to compete with the curve.
+                    let pt = cursorPoint(index: index, in: size)
                     Rectangle()
                         .fill(UniColors.Text.tertiary.opacity(0.4))
                         .frame(width: 1)
                         .position(x: pt.x, y: size.height / 2)
-                    // Outer ring — 18pt circle, 2pt stroke, primary
-                    // text color at 0.3 opacity. The "you are here"
-                    // halo around the filled dot.
                     Circle()
                         .stroke(UniColors.Text.primary.opacity(0.3), lineWidth: 2)
                         .frame(width: 18, height: 18)
                         .position(pt)
-                    // Filled dot — 10pt circle in the primary text
-                    // color. The discrete selection mark on the
-                    // curve.
                     Circle()
                         .fill(UniColors.Text.primary)
                         .frame(width: 10, height: 10)
@@ -597,11 +554,12 @@ private struct SparklineChart: View {
                         let index = indexForX(value.location.x, in: size)
                         guard index != scrubIndex else { return }
                         scrubIndex = index
-                        let intensity = hapticIntensity(at: index)
-                        UniHapticEngine.shared.playScrubTick(intensity: intensity)
+                        onScrub(index)
+                        UniHapticEngine.shared.playScrubTick(intensity: hapticIntensity(at: index))
                     }
                     .onEnded { _ in
                         scrubIndex = nil
+                        onScrub(nil)
                         UniHapticEngine.shared.playScrubRelease()
                     }
             )
@@ -609,6 +567,20 @@ private struct SparklineChart: View {
         // Time order is data, not language — pin the canvas to L→R
         // in every locale (Rule #11 §C carve-out).
         .environment(\.layoutDirection, .leftToRight)
+    }
+
+    /// O(1) cursor point for `index` — x from the index fraction, y from
+    /// the single value's normalization (the same mapping
+    /// `SparklineCurve.normalizedPoints` uses, but for one point so a
+    /// scrub tick never rebuilds the whole projected array).
+    private func cursorPoint(index: Int, in size: CGSize) -> CGPoint {
+        let count = points.count
+        let x = count > 1 ? CGFloat(index) / CGFloat(count - 1) * size.width : 0
+        let range = maxValue - minValue
+        let padding: CGFloat = 0.1
+        let normalized = range > 0 ? (CGFloat(points[index] - minValue) / CGFloat(range)) : 0.5
+        let y = size.height - (normalized * size.height * (1 - 2 * padding) + size.height * padding)
+        return CGPoint(x: x, y: y)
     }
 
     // MARK: - Scrub math
@@ -643,6 +615,53 @@ private struct SparklineChart: View {
         let range = max(maxValue - minValue, 0.0001)
         let normalizedSlope = abs(curr - prev) / range
         return Float(min(0.8, 0.15 + normalizedSlope * 2.2))
+    }
+
+}
+
+// MARK: - SparklineCurve (static, equatable — skips per-scrub recompute)
+
+/// The INVARIANT part of the sparkline: the gradient fill + the
+/// Catmull-Rom stroke. Split out of `SparklineChart` (2026-06-13
+/// long-scrub freeze fix) so that a scrub tick — which moves only the
+/// cursor — does NOT recompute the two O(N) Bézier paths. Conforming to
+/// `Equatable` and applying `.equatable()` at the call site makes
+/// SwiftUI skip this view's body whenever `(points, minValue, maxValue)`
+/// are unchanged — exactly the case on every drag frame, when the curve
+/// is fixed and only `scrubIndex` (which lives in the parent) changed.
+private struct SparklineCurve: View, Equatable {
+
+    let points: [Double]
+    let minValue: Double
+    let maxValue: Double
+
+    // `nonisolated` — SwiftUI `View` structs are `@MainActor`-isolated
+    // under Swift 6, but `Equatable.==` must be callable off-actor by
+    // the `.equatable()` diffing machinery; the compared values are
+    // immutable `let`s, so it's race-free.
+    nonisolated static func == (lhs: SparklineCurve, rhs: SparklineCurve) -> Bool {
+        lhs.minValue == rhs.minValue
+            && lhs.maxValue == rhs.maxValue
+            && lhs.points == rhs.points
+    }
+
+    var body: some View {
+        GeometryReader { geo in
+            let size = geo.size
+            let canvasPoints = normalizedPoints(in: size)
+            ZStack {
+                // Gradient fill — the Catmull-Rom path closed at the
+                // baseline, top-to-bottom 25%→0% fade so the area reads
+                // as glow, not a hard fill.
+                gradientFill(points: canvasPoints, in: size)
+                // The sparkline stroke — 2pt, rounded caps + joins.
+                sparklinePath(points: canvasPoints)
+                    .stroke(
+                        UniColors.Text.primary,
+                        style: StrokeStyle(lineWidth: 2, lineCap: .round, lineJoin: .round)
+                    )
+            }
+        }
     }
 
     // MARK: - Path math
