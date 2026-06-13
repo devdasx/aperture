@@ -1,5 +1,26 @@
 import SwiftUI
 
+/// Carries the chart's currently-scrubbed fiat value to the wallet-home
+/// hero **without** re-rendering the whole screen on every drag frame.
+///
+/// **Why this exists (2026-06-13 perf fix).** The hero shows the
+/// scrubbed point's value while the user drags the sparkline. The
+/// previous design pushed that value into a `@State Decimal?` on
+/// `WalletHomeView`, so each drag frame invalidated the ENTIRE
+/// `WalletHomeView.body` — which rebuilt the price-history /
+/// price-cache dictionaries from the full SwiftData `@Query` and
+/// re-sorted every balance, 60×/sec. Routing the value through an
+/// `@Observable` object instead means SwiftUI's Observation only
+/// invalidates the views that READ `fiat` (the hero balance label) —
+/// the chart writes it, the hero reads it, and nothing else on the
+/// screen re-evaluates while scrubbing.
+@Observable
+final class ChartScrubModel {
+    /// The touched point's fiat value, or `nil` at rest (hero shows the
+    /// wallet's real total).
+    var fiat: Decimal?
+}
+
 /// Custom-drawn sparkline balance-over-time chart for the wallet home.
 ///
 /// **Design intent (one sentence per Rule #2 §D.1):** show the user
@@ -99,15 +120,18 @@ struct BalanceHistoryChart: View {
     let priceHistory: [String: [Int: Decimal]]
     let currencyCode: String
     /// 2026-06-09 — published scrubbed fiat. When the user drags
-    /// across the sparkline, this binding is set to the touched
-    /// point's fiat value so the parent's hero amount can render
-    /// the scrubbed value (animated via `.contentTransition(.numericText())`).
-    /// Set back to `nil` when the user lifts off — the hero returns
-    /// to the wallet's actual total. Per user direction the chart
-    /// no longer renders a separate "JOD X · in N sec" readout;
-    /// the hero is the single source of truth and the chart drives
-    /// it during scrub.
-    var scrubbedFiat: Binding<Decimal?> = .constant(nil)
+    /// across the sparkline, the touched point's fiat value is written
+    /// to this `@Observable` model so the hero amount can render the
+    /// scrubbed value (animated via `.contentTransition(.numericText())`).
+    /// Set back to `nil` when the user lifts off — the hero returns to
+    /// the wallet's actual total. **2026-06-13:** changed from a
+    /// `Binding<Decimal?>` (which re-rendered the whole wallet-home
+    /// body per drag frame) to `ChartScrubModel` so only the hero
+    /// re-renders while scrubbing. The chart WRITES `fiat`; it never
+    /// reads it, so the chart itself is not invalidated by its own
+    /// writes. `nil` (default) → no hero wiring (previews, asset
+    /// detail's own chart).
+    var scrubModel: ChartScrubModel? = nil
 
     /// Persisted range selection. Default `.all` so a first-launch
     /// user sees the full shape of their wallet's history; on
@@ -197,8 +221,11 @@ struct BalanceHistoryChart: View {
                         }
                         return points[idx].fiat
                     }()
+                    // Write-only into the @Observable model — this does
+                    // NOT invalidate the chart (it never reads `fiat`),
+                    // and invalidates ONLY the hero label that reads it.
                     withAnimation(.snappy(duration: 0.18)) {
-                        scrubbedFiat.wrappedValue = scrubbed
+                        scrubModel?.fiat = scrubbed
                     }
                 }
             // Negative horizontal padding so ONLY the sparkline
@@ -354,7 +381,7 @@ struct BalanceHistoryChart: View {
         if scrubIndex != nil {
             // 2026-06-09 — scrubbing readout removed per user
             // direction. While the user drags, the chart publishes
-            // the touched fiat into `scrubbedFiat`; the parent's
+            // the touched fiat into `scrubModel.fiat`; the parent's
             // hero amount animates to it via
             // `.contentTransition(.numericText())`. The caption row
             // stays empty during scrub — one source of truth for the

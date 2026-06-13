@@ -282,13 +282,16 @@ struct WalletHomeView: View {
     /// vocabulary (every chain has one); Tokens is the deeper dive.
     @State private var selectedHoldingsTab: HoldingsTab = .coins
 
-    /// 2026-06-09 — scrubbed fiat from `BalanceHistoryChart`. Bound
-    /// to the chart so the chart can publish the touched point's
-    /// fiat upward during a drag; the hero amount renders this
-    /// value (animated via `.contentTransition(.numericText())`)
-    /// instead of the real total. `nil` when the user isn't
-    /// scrubbing → the hero shows the actual `totalFiat`.
-    @State private var scrubbedFiat: Decimal?
+    /// 2026-06-09 — scrubbed fiat from `BalanceHistoryChart`, now an
+    /// `@Observable` model (2026-06-13 perf fix). The chart WRITES the
+    /// touched point's value to `scrubModel.fiat`; only the hero
+    /// (`WalletHomeHeader`) READS it. Routing the value through an
+    /// observable instead of a `@State Decimal?` means a drag frame no
+    /// longer invalidates the whole `WalletHomeView.body` (which
+    /// rebuilt the price dictionaries + re-sorted balances 60×/sec —
+    /// the scrub-lag the user reported). `nil` `fiat` → hero shows the
+    /// real `totalFiat`.
+    @State private var scrubModel = ChartScrubModel()
 
     // MARK: - Test mode (mirrors MnemonicReviewView's affordance)
     //
@@ -894,7 +897,7 @@ struct WalletHomeView: View {
                     priceCache: priceCacheBySymbol,
                     priceHistory: priceHistoryBySymbol,
                     currencyCode: currencyCode,
-                    scrubbedFiat: $scrubbedFiat
+                    scrubModel: scrubModel
                 )
                 .listRowSeparator(.hidden)
                 // Caption sits flush under the hero (top: 0); 24pt
@@ -928,9 +931,11 @@ struct WalletHomeView: View {
             // source of truth for the displayed number.
             // `.contentTransition(.numericText())` inside
             // `WalletHomeHeader.balanceLabel` animates the digits.
-            totalFiat: isTestMode
-                ? testTotalFiat
-                : (scrubbedFiat ?? totalFiat),
+            // Resting total only — the scrubbed value is resolved
+            // INSIDE WalletHomeHeader via `scrubModel` so a drag frame
+            // re-renders only the header, not this whole body
+            // (2026-06-13 perf fix).
+            totalFiat: isTestMode ? testTotalFiat : totalFiat,
             currencyCode: currencyCode,
             chainCount: isTestMode ? testChainsHeldCount : chainsHeldCount,
             tokenCount: isTestMode ? testTokenRowCount : balances.count,
@@ -944,7 +949,9 @@ struct WalletHomeView: View {
             isRefreshing: isAnyRefreshInFlight,
             lastSyncedAt: mostRecentScanAt,
             hideBalance: hideBalanceOnHome,
-            onSwitchWallet: { isShowingSwitcher = true }
+            onSwitchWallet: { isShowingSwitcher = true },
+            // Scrub channel — nil in test mode (no chart there).
+            scrubModel: isTestMode ? nil : scrubModel
         )
     }
 
