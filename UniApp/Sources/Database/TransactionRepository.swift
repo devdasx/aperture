@@ -304,13 +304,34 @@ actor TransactionRepository {
     /// Upsert a token balance by `(addressId, tokenSymbol, tokenContract)`.
     /// `nil` contract distinguishes the native coin from same-named
     /// tokens (e.g. native ETH vs WETH on Ethereum).
+    ///
+    /// **`fiatValueCached` is `Decimal?` — `nil` means "price unknown
+    /// right now", NOT "zero".** The scanner streams balance-first /
+    /// price-second: the first yield for every row carries `fiat: nil`
+    /// (so the balance renders the instant it lands), and a second,
+    /// corrective yield carries the real fiat once the shared price
+    /// batch resolves. That batch can be CANCELLED mid-flight (a
+    /// pull-to-refresh / wallet-switch / scene-phase change tears down
+    /// the scan stream, which cancels the price task) — so the second
+    /// yield doesn't always arrive. Writing `0` on the `nil` yield used
+    /// to stomp a perfectly good last-known price down to "Price
+    /// unavailable" and leave it there until some later, fully-
+    /// completing batch happened to re-resolve that exact symbol (the
+    /// 2026-06-13 BTC/ETH bug: majors flickered to "Price unavailable"
+    /// while stablecoins kept their price). The contract now: **a `nil`
+    /// fiat NEVER overwrites an existing known-good price** — the row
+    /// keeps the last price we have (Rule #16 honesty + the user's
+    /// explicit "use the old price in the database" direction) until a
+    /// real new quote arrives. A genuine zero balance still arrives as
+    /// a NON-nil `0` (balance 0 × a known unit price), so it writes
+    /// honestly; only "price unknown" is preserved.
     func upsertBalance(
         addressId: UUID,
         tokenSymbol: String,
         tokenContract: String?,
         decimals: Int,
         rawBalance: String,
-        fiatValueCached: Decimal,
+        fiatValueCached: Decimal?,
         fiatCurrencyCode: String
     ) throws {
         try ensureLegacyAddressIdBackfill()
@@ -335,6 +356,15 @@ actor TransactionRepository {
 
         let now = Date()
         if let existing = try modelContext.fetch(balDescriptor).first {
+            // Preserve the last-known price when the incoming fiat is
+            // `nil` ("price unknown right now" — see the doc comment).
+            // Only a non-nil quote updates `fiatValueCached` /
+            // `fiatCurrencyCode`; a nil yield keeps whatever the row
+            // already holds, so a cancelled/partial price batch can
+            // never blank a good price to "Price unavailable".
+            let resolvedFiat = fiatValueCached ?? existing.fiatValueCached
+            let resolvedCurrency = fiatValueCached != nil ? fiatCurrencyCode : existing.fiatCurrencyCode
+
             // **2026-06-13 — skip no-op writes.** The app-level 10s
             // poll re-scans every token on every chain. If a token's
             // balance hasn't changed, re-assigning the same values still
@@ -343,24 +373,28 @@ actor TransactionRepository {
             // for every unchanged token, causing the idle lag the user
             // reported. Only mutate (and save) when something actually
             // changed, so a steady-state poll writes nothing and the UI
-            // does zero work.
+            // does zero work. (Compares against the RESOLVED values so a
+            // nil-fiat re-yield of an unchanged row is correctly a no-op.)
             let unchanged = existing.rawBalance == rawBalance
                 && existing.decimals == decimals
-                && existing.fiatValueCached == fiatValueCached
-                && existing.fiatCurrencyCode == fiatCurrencyCode
+                && existing.fiatValueCached == resolvedFiat
+                && existing.fiatCurrencyCode == resolvedCurrency
             if unchanged { return }
             existing.decimals = decimals
             existing.rawBalance = rawBalance
-            existing.fiatValueCached = fiatValueCached
-            existing.fiatCurrencyCode = fiatCurrencyCode
+            existing.fiatValueCached = resolvedFiat
+            existing.fiatCurrencyCode = resolvedCurrency
             existing.updatedAt = now
         } else {
+            // Brand-new row with no prior price to preserve — an unknown
+            // (nil) fiat lands as 0 and is corrected by the next priced
+            // yield / refresh.
             let record = TokenBalanceRecord(
                 tokenSymbol: tokenSymbol,
                 tokenContract: tokenContract,
                 decimals: decimals,
                 rawBalance: rawBalance,
-                fiatValueCached: fiatValueCached,
+                fiatValueCached: fiatValueCached ?? 0,
                 fiatCurrencyCode: fiatCurrencyCode,
                 updatedAt: now
             )

@@ -329,9 +329,14 @@ struct WalletRefreshCoordinator: Sendable {
     /// 2026-06-09 — Upsert a streamScan-yielded native chain
     /// balance for a specific address snapshot. Honest fiat: the
     /// stream's `ChainBalance.fiatBalance` is `Decimal?` — `nil`
-    /// means the price was unavailable. We store `0` in that case
-    /// (the schema's column is non-optional) and let the UI
-    /// distinguish via the price-unavailable row check.
+    /// means the price is unavailable RIGHT NOW (the shared price
+    /// batch hasn't resolved this symbol yet, or was cancelled). We
+    /// forward that `nil` to `upsertBalance`, which PRESERVES the
+    /// row's last-known price instead of stomping it to 0 (the
+    /// 2026-06-13 BTC/ETH "Price unavailable" fix — see
+    /// `TransactionRepository.upsertBalance`). The first, balance-only
+    /// yield therefore never blanks a good price; the second, priced
+    /// yield updates it for real.
     private func upsertNativeBalance(
         snap: AddressSnapshot,
         chainBalance: ChainBalance,
@@ -344,7 +349,7 @@ struct WalletRefreshCoordinator: Sendable {
                 tokenContract: nil,
                 decimals: 0,
                 rawBalance: Self.decimalString(chainBalance.nativeBalance),
-                fiatValueCached: chainBalance.fiatBalance ?? 0,
+                fiatValueCached: chainBalance.fiatBalance,
                 fiatCurrencyCode: chainBalance.fiatCurrencyCode
             )
             try await txRepo.markScanComplete(
@@ -390,7 +395,10 @@ struct WalletRefreshCoordinator: Sendable {
                 tokenContract: tokenBalance.contract,
                 decimals: tokenBalance.decimals,
                 rawBalance: rawString,
-                fiatValueCached: tokenBalance.fiatBalance ?? 0,
+                // `nil` (price unknown) preserves the row's last-known
+                // price; only a real quote overwrites it — same
+                // 2026-06-13 fix as the native path above.
+                fiatValueCached: tokenBalance.fiatBalance,
                 fiatCurrencyCode: tokenBalance.fiatCurrencyCode
             )
             Self.log.info("Token balance for \(snap.chain.rawValue, privacy: .public)/\(tokenBalance.symbol, privacy: .public): \(String(describing: tokenBalance.amount), privacy: .public) (raw \(rawString, privacy: .public))")
