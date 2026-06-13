@@ -110,10 +110,17 @@ struct RealRPCBalanceScanner: BalanceScanner {
     /// set without a separate code path. Empty / missing entries
     /// are skipped — chains without custom tokens behave exactly
     /// as before.
+    /// `priorityTokenSymbols` (2026-06-13 price-scope) — the token
+    /// symbols the wallet already HOLDS, read from the DB by the caller.
+    /// When non-empty the shared price batch is scoped to just these
+    /// (plus native + custom), instead of the full registry universe —
+    /// faster fiat + lighter provider load. Empty (a fresh wallet's
+    /// first scan) prices the full universe. See `uniquePriceSymbols`.
     func streamScan(
         addresses: [SupportedChain: String],
         currency: SupportedCurrency,
-        customTokens: [SupportedChain: [CustomTokenSnapshot]] = [:]
+        customTokens: [SupportedChain: [CustomTokenSnapshot]] = [:],
+        priorityTokenSymbols: Set<String> = []
     ) -> AsyncStream<StreamRow> {
         AsyncStream(StreamRow.self) { continuation in
             // **One deduplicated price batch per refresh** (2026-06-12)
@@ -137,7 +144,8 @@ struct RealRPCBalanceScanner: BalanceScanner {
                 await pricing.unitPrices(
                     symbols: Self.uniquePriceSymbols(
                         addresses: addresses,
-                        customTokens: customTokens
+                        customTokens: customTokens,
+                        priorityTokenSymbols: priorityTokenSymbols
                     ),
                     currencyCode: currency.code
                 )
@@ -1173,50 +1181,82 @@ struct RealRPCBalanceScanner: BalanceScanner {
     /// `streamRegistryTokens`; families that aren't token-scanned yet
     /// (TON jettons, Polkadot Asset Hub) contribute only their native
     /// ticker.
-    private static func uniquePriceSymbols(
+    /// **2026-06-13 — price-scope optimization (user direction "make
+    /// syncing maximum faster").** The price batch always covers the
+    /// scanned chains' native tickers + the user's custom tokens. For
+    /// the registry TOKEN universe it splits on `priorityTokenSymbols`
+    /// (the symbols the wallet already HOLDS, read from the DB by the
+    /// coordinator):
+    ///
+    /// - **`priorityTokenSymbols` non-empty (steady state):** price ONLY
+    ///   those held tokens — not the full ~49-symbol registry universe.
+    ///   Fewer Coinbase calls per cycle → fiat lands faster AND less
+    ///   provider pressure (fewer "Price unavailable" under the 10 s
+    ///   poll). A token received since the last scan shows its balance
+    ///   immediately and its fiat next cycle (once it's persisted into
+    ///   the held set), never "Price unavailable" for a HELD token.
+    /// - **`priorityTokenSymbols` empty (a fresh wallet's first scan, or
+    ///   a wallet that holds nothing):** price the full registry universe
+    ///   so any token discovered on the very first scan prices the same
+    ///   cycle — no regression for a fresh import.
+    static func uniquePriceSymbols(
         addresses: [SupportedChain: String],
-        customTokens: [SupportedChain: [CustomTokenSnapshot]]
+        customTokens: [SupportedChain: [CustomTokenSnapshot]],
+        priorityTokenSymbols: Set<String> = []
     ) -> [String] {
         var symbols: Set<String> = []
+        // Native tickers — always shown (the coin rows).
         for chain in addresses.keys {
             symbols.insert(coinbaseSymbol(for: chain.ticker))
-            switch chain.family {
-            case .evm:
-                for entry in EVMTokenRegistry.tokens(for: chain) {
-                    symbols.insert(entry.symbol.uppercased())
-                }
-            case .ed25519 where chain == .solana:
-                for entry in SolanaTokenRegistry.mints.values {
-                    symbols.insert(entry.symbol.uppercased())
-                }
-            case .tron:
-                for entry in TronTokenRegistry.tokens {
-                    symbols.insert(entry.symbol.uppercased())
-                }
-            case .near:
-                for entry in NearTokenRegistry.tokens {
-                    symbols.insert(entry.symbol.uppercased())
-                }
-            case .aptos:
-                for entry in AptosTokenRegistry.tokens {
-                    symbols.insert(entry.symbol.uppercased())
-                }
-            case .ripple:
-                for entry in XRPLTokenRegistry.tokens {
-                    symbols.insert(entry.symbol.uppercased())
-                }
-            case .cosmos where chain == .kava:
-                for entry in KavaCosmosTokenRegistry.tokens {
-                    symbols.insert(entry.symbol.uppercased())
-                }
-            default:
-                break
-            }
         }
+        // The user's custom tokens — always priced.
         for snaps in customTokens.values {
             for snap in snaps {
                 symbols.insert(snap.symbol.uppercased())
             }
+        }
+
+        if priorityTokenSymbols.isEmpty {
+            // Fresh / empty wallet — full registry universe so the first
+            // scan prices everything it discovers.
+            for chain in addresses.keys {
+                switch chain.family {
+                case .evm:
+                    for entry in EVMTokenRegistry.tokens(for: chain) {
+                        symbols.insert(entry.symbol.uppercased())
+                    }
+                case .ed25519 where chain == .solana:
+                    for entry in SolanaTokenRegistry.mints.values {
+                        symbols.insert(entry.symbol.uppercased())
+                    }
+                case .tron:
+                    for entry in TronTokenRegistry.tokens {
+                        symbols.insert(entry.symbol.uppercased())
+                    }
+                case .near:
+                    for entry in NearTokenRegistry.tokens {
+                        symbols.insert(entry.symbol.uppercased())
+                    }
+                case .aptos:
+                    for entry in AptosTokenRegistry.tokens {
+                        symbols.insert(entry.symbol.uppercased())
+                    }
+                case .ripple:
+                    for entry in XRPLTokenRegistry.tokens {
+                        symbols.insert(entry.symbol.uppercased())
+                    }
+                case .cosmos where chain == .kava:
+                    for entry in KavaCosmosTokenRegistry.tokens {
+                        symbols.insert(entry.symbol.uppercased())
+                    }
+                default:
+                    break
+                }
+            }
+        } else {
+            // Steady state — price only the held tokens (the DB knows
+            // them). The scoped batch is the speed + reliability win.
+            symbols.formUnion(priorityTokenSymbols.map { $0.uppercased() })
         }
         return Array(symbols)
     }

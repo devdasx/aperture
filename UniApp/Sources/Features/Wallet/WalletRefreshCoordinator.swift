@@ -181,11 +181,23 @@ struct WalletRefreshCoordinator: Sendable {
         // client per scan reset them to zero every time, so neither
         // mechanism ever actually accumulated. `RPCClient.shared`
         // makes both enforce their contracts across the whole app.
+        // **2026-06-13 — price-scope.** Read the symbols the wallet
+        // already HOLDS from the store so the scanner prices only those
+        // (+ native + custom) instead of the full ~49-symbol registry
+        // universe — faster fiat + lighter provider load. Empty on a
+        // fresh wallet, which makes the scanner price the full universe
+        // for the first scan (no regression). See
+        // `RealRPCBalanceScanner.uniquePriceSymbols`.
+        let heldSymbols: Set<String> = await MainActor.run {
+            Set(fetchBalanceRowSnapshot(walletId: walletId).map { $0.symbol.uppercased() })
+        }
+
         let scanner = RealRPCBalanceScanner(client: RPCClient.shared)
         let stream = scanner.streamScan(
             addresses: chainAddresses,
             currency: currency,
-            customTokens: customTokensByChain
+            customTokens: customTokensByChain,
+            priorityTokenSymbols: heldSymbols
         )
 
         // Track which chains yielded a native row so we can (a)
@@ -223,7 +235,8 @@ struct WalletRefreshCoordinator: Sendable {
                 let retryStream = scanner.streamScan(
                     addresses: retryAddresses,
                     currency: currency,
-                    customTokens: retryCustomTokens
+                    customTokens: retryCustomTokens,
+                    priorityTokenSymbols: heldSymbols
                 )
                 let retriedChains = await consumeBalanceStream(
                     retryStream,
