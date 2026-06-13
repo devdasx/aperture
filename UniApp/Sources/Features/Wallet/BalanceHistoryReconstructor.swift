@@ -166,6 +166,35 @@ enum BalanceHistoryReconstructor {
     ///   **uppercased symbol** (the call sites' canonical storage).
     /// - `priceHistory`: `[symbol-uppercased: [yyyymmdd: close]]`
     ///   historical closes; the first valuation rung.
+    /// `Sendable` snapshot of the transaction fields the reconstruction
+    /// reads — lets the heavy reconstruction run OFF the main actor
+    /// (2026-06-13 perf fix). `TransactionRecord` is a main-context
+    /// `@Model` and isn't `Sendable`; the caller copies the few needed
+    /// fields on the main actor (cheap, no Decimal math) then hands
+    /// these value types to a detached task.
+    struct HistoryTx: Sendable {
+        let occurredAt: Date
+        let statusRaw: String
+        let tokenSymbol: String
+        let tokenContract: String?
+        let amountRaw: String
+        let directionRaw: String
+    }
+
+    /// `Sendable` snapshot of the balance fields the reconstruction
+    /// reads — see `HistoryTx`.
+    struct HistoryBalance: Sendable {
+        let tokenSymbol: String
+        let tokenContract: String?
+        let rawBalance: String
+        let decimals: Int
+        let fiatValueCached: Decimal
+    }
+
+    /// `@Model` convenience overload — maps the SwiftData records to
+    /// `Sendable` snapshots and calls the core. Kept so existing call
+    /// sites (and the test suite) compile unchanged. Off-main callers
+    /// use the snapshot overload directly.
     static func reconstruct(
         transactions: [TransactionRecord],
         currentBalances: [TokenBalanceRecord],
@@ -174,6 +203,50 @@ enum BalanceHistoryReconstructor {
         range: BalanceHistoryRange,
         now: Date = Date()
     ) -> [BalancePoint] {
+        reconstruct(
+            txSnapshots: transactions.map {
+                HistoryTx(
+                    occurredAt: $0.occurredAt,
+                    statusRaw: $0.statusRaw,
+                    tokenSymbol: $0.tokenSymbol,
+                    tokenContract: $0.tokenContract,
+                    amountRaw: $0.amountRaw,
+                    directionRaw: $0.directionRaw
+                )
+            },
+            balanceSnapshots: currentBalances.map {
+                HistoryBalance(
+                    tokenSymbol: $0.tokenSymbol,
+                    tokenContract: $0.tokenContract,
+                    rawBalance: $0.rawBalance,
+                    decimals: $0.decimals,
+                    fiatValueCached: $0.fiatValueCached
+                )
+            },
+            priceCache: priceCache,
+            priceHistory: priceHistory,
+            range: range,
+            now: now
+        )
+    }
+
+    /// Core reconstruction over `Sendable` snapshots — `nonisolated` so
+    /// it can run on a detached background task without touching the
+    /// main actor (2026-06-13 perf fix; the Decimal math over a deep
+    /// history was freezing the wallet home on unlock / navigation).
+    /// Distinct argument labels (`txSnapshots:`/`balanceSnapshots:`)
+    /// keep it unambiguous against the `@Model` overload above.
+    nonisolated static func reconstruct(
+        txSnapshots: [HistoryTx],
+        balanceSnapshots: [HistoryBalance],
+        priceCache: [String: Decimal] = [:],
+        priceHistory: [String: [Int: Decimal]] = [:],
+        range: BalanceHistoryRange,
+        now: Date = Date()
+    ) -> [BalancePoint] {
+        // Local aliases so the original body reads unchanged.
+        let transactions = txSnapshots
+        let currentBalances = balanceSnapshots
         let cutoff = range.cutoff(from: now)
 
         // Chronological, non-failed feed — the truth source. Pending
@@ -345,7 +418,7 @@ enum BalanceHistoryReconstructor {
     /// and unrecorded pre-history activity can leave tiny negative
     /// artifacts; the curve never goes below zero.
     private static func apply(
-        _ tx: TransactionRecord,
+        _ tx: HistoryTx,
         to running: inout [TokenKey: Decimal]
     ) {
         guard let amount = Decimal(string: tx.amountRaw) else { return }

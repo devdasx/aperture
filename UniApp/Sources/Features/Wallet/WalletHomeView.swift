@@ -2265,9 +2265,25 @@ struct WalletHomeView: View {
         }
         let all = wallet.addresses.flatMap { $0.transactions }
         allTransactions = all
-        recentTransactions = Array(
-            all.sorted { $0.occurredAt > $1.occurredAt }.prefix(5)
-        )
+        // `recentTransactions` only needs the 5 newest. Sorting the
+        // ENTIRE history (now up to 1,000 tx/chain) to take a prefix-5
+        // was O(n log n) on the main actor for every rebuild — an
+        // O(n) top-5 scan with a 5-element insertion does the same in a
+        // fraction of the work (2026-06-13 perf). `allTransactions`
+        // stays unsorted; the chart's reconstructor sorts its own
+        // Sendable snapshots off the main actor.
+        var top: [TransactionRecord] = []
+        top.reserveCapacity(5)
+        for tx in all {
+            if top.count < 5 {
+                top.append(tx)
+                top.sort { $0.occurredAt > $1.occurredAt }
+            } else if let last = top.last, tx.occurredAt > last.occurredAt {
+                top[4] = tx
+                top.sort { $0.occurredAt > $1.occurredAt }
+            }
+        }
+        recentTransactions = top
     }
 
     /// Resolves the chain a `TransactionRecord` belongs to via its
