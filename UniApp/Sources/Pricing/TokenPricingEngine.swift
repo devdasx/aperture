@@ -73,6 +73,7 @@ actor TokenPricingEngine {
     private let injectedContainer: ModelContainer?
     private var cachedRepository: PriceCacheRepository?
     private var cachedSnapshotRepository: PriceSnapshotRepository?
+    private var cachedHistoricalRepository: HistoricalPriceRepository?
 
     init(
         container: ModelContainer? = nil,
@@ -204,6 +205,49 @@ actor TokenPricingEngine {
             }
         }
 
+        // Rung 4 — **historical daily-close fallback (2026-06-13).**
+        // The final net behind every live + cache + CoinGecko rung. The
+        // chart values holdings from `HistoricalPriceRecord` (daily
+        // closes), so if a close exists, the user can SEE a price — and
+        // a balance row must therefore never read "Price unavailable"
+        // for that token. The user reported exactly this: BTC/ETH rows
+        // said "Price unavailable" while the chart showed US$92.95 /
+        // US$50.16. We take the latest close in `code` (or any currency
+        // × FX) for anything still missing. Marked stale (it's
+        // yesterday's close, not a live quote) and NOT re-persisted to
+        // the spot cache — it already lives in the historical table.
+        if !missing.isEmpty, !Task.isCancelled {
+            let histRepo = await historicalRepository()
+            // Same-currency closes first.
+            if let closes = try? await histRepo.latestClose(symbols: Array(missing), fiat: code) {
+                for (symbol, price) in closes where price > 0 {
+                    guard missing.contains(symbol) else { continue }
+                    resolved[symbol] = ResolvedPrice(amount: price, source: "history", isStale: true)
+                    missing.remove(symbol)
+                }
+            }
+            // Cross-currency closes (FX-converted) for whatever remains.
+            if !missing.isEmpty,
+               let crossCloses = try? await histRepo.latestCloseAnyCurrency(symbols: Array(missing)) {
+                for (symbol, entry) in crossCloses {
+                    guard missing.contains(symbol) else { continue }
+                    let from = entry.fiat.uppercased()
+                    let converted: Decimal?
+                    if from == code {
+                        converted = entry.price
+                    } else if let cross = await crossRate(from: from, to: code), cross > 0 {
+                        converted = entry.price * cross
+                    } else {
+                        converted = nil
+                    }
+                    if let converted, converted > 0 {
+                        resolved[symbol] = ResolvedPrice(amount: converted, source: "history-fx", isStale: true)
+                        missing.remove(symbol)
+                    }
+                }
+            }
+        }
+
         // Persist every LIVE quote under (symbol, currency) so rung 2
         // answers for this currency on the next failure — this is the
         // "preset price for this token for the current currency"
@@ -287,7 +331,18 @@ actor TokenPricingEngine {
         return repo
     }
 
-    /// Shared container resolution for both lazy repositories.
+    /// `HistoricalPriceRepository` bound to the same container — the
+    /// daily-close table the chart values holdings from. The pricing
+    /// ladder's final fallback reads its latest close so a row is never
+    /// "Price unavailable" when the chart can show a price.
+    private func historicalRepository() async -> HistoricalPriceRepository {
+        if let cachedHistoricalRepository { return cachedHistoricalRepository }
+        let repo = HistoricalPriceRepository(modelContainer: await resolvedContainer())
+        cachedHistoricalRepository = repo
+        return repo
+    }
+
+    /// Shared container resolution for the lazy repositories.
     private func resolvedContainer() async -> ModelContainer {
         if let injectedContainer { return injectedContainer }
         return await MainActor.run { ApertureDatabase.shared.container }
