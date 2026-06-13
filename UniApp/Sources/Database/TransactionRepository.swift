@@ -115,6 +115,20 @@ actor TransactionRepository {
         let resolvedKind = kind ?? TransactionKind.defaultKind(for: direction)
 
         if let existing {
+            // **2026-06-13 — skip no-op writes.** The 10s poll re-finds
+            // the same confirmed transactions every cycle. Re-assigning
+            // identical values still dirties the row → `@Query` churn →
+            // UI re-render every 10s. Mutate only when status / block /
+            // fee / kind actually changed (a pending tx confirming, a
+            // backfill). Everything else is immutable once on-chain.
+            let kindWouldChange = kind != nil
+                ? existing.kindRaw != kind!.rawValue
+                : existing.kindRaw == nil
+            let unchanged = existing.statusRaw == status.rawValue
+                && existing.blockNumber == blockNumber
+                && existing.feeRaw == feeRaw
+                && !kindWouldChange
+            if unchanged { return }
             existing.statusRaw = status.rawValue
             existing.blockNumber = blockNumber
             existing.feeRaw = feeRaw
@@ -321,6 +335,20 @@ actor TransactionRepository {
 
         let now = Date()
         if let existing = try modelContext.fetch(balDescriptor).first {
+            // **2026-06-13 — skip no-op writes.** The app-level 10s
+            // poll re-scans every token on every chain. If a token's
+            // balance hasn't changed, re-assigning the same values still
+            // marks the SwiftData object dirty → fires a `@Query`
+            // notification → re-renders the wallet home — every 10s,
+            // for every unchanged token, causing the idle lag the user
+            // reported. Only mutate (and save) when something actually
+            // changed, so a steady-state poll writes nothing and the UI
+            // does zero work.
+            let unchanged = existing.rawBalance == rawBalance
+                && existing.decimals == decimals
+                && existing.fiatValueCached == fiatValueCached
+                && existing.fiatCurrencyCode == fiatCurrencyCode
+            if unchanged { return }
             existing.decimals = decimals
             existing.rawBalance = rawBalance
             existing.fiatValueCached = fiatValueCached
