@@ -381,8 +381,47 @@ struct WalletHomeView: View {
     @State private var filteredCoinRows: [WalletCoinSupportedRow] = []
     @State private var filteredTokenRows: [WalletTokenSupportedDisplayRow] = []
     @State private var combinedFilteredRows: [CombinedHoldingRow] = []
-    @State private var recentTransactions: [TransactionRecord] = []
-    @State private var allTransactions: [TransactionRecord] = []
+    /// **Live transaction feed (2026-06-13).** A TOP-LEVEL `@Query`,
+    /// NOT a `wallet.addresses[].transactions` relationship traversal.
+    /// SwiftData merges scalar UPDATES to already-materialized rows
+    /// (which is why balances refresh live) but does NOT append newly-
+    /// INSERTED children to an already-materialized to-many array — so a
+    /// transaction the background scanner inserted on pull-to-refresh
+    /// never appeared until an app relaunch re-fetched the relationship
+    /// (the Rule #25 live-state violation the user reported: "received
+    /// 11 USDT, had to close & reopen to see it in activity"). A
+    /// top-level `@Query` re-runs its fetch whenever ANY context on the
+    /// shared container inserts a `TransactionRecord`, so new activity
+    /// shows the instant it's persisted — no relaunch, no navigate-away.
+    @Query(sort: \TransactionRecord.occurredAt, order: .reverse)
+    private var allTransactionRecords: [TransactionRecord]
+
+    /// The active wallet's transactions, newest first — the live
+    /// top-level `@Query` filtered to the active wallet's address ids.
+    /// Address ids are stable (addresses aren't inserted during normal
+    /// use), so reading them off the `@Query`-backed `activeWallet` is
+    /// safe; only per-tx membership changes, and the top-level query
+    /// sees those inserts live. The in-memory filter is O(total tx) —
+    /// a few thousand rows at most (the scanner caps history per chain),
+    /// well under a millisecond per render, and there is no per-render
+    /// SORT (the `@Query` sorts at the store level).
+    private var allTransactions: [TransactionRecord] {
+        guard let wallet = activeWallet else { return [] }
+        let ids = Set(wallet.addresses.map { $0.id })
+        guard !ids.isEmpty else { return [] }
+        return allTransactionRecords.filter { tx in
+            guard let aid = tx.addressId else { return false }
+            return ids.contains(aid)
+        }
+    }
+
+    /// The five newest transactions for the home's Recent activity
+    /// window. `allTransactions` is already newest-first, so this is a
+    /// cheap prefix — the "View all" affordance routes to the unbounded
+    /// `WalletActivityView`.
+    private var recentTransactions: [TransactionRecord] {
+        Array(allTransactions.prefix(5))
+    }
 
     /// Follow-up action staged by the wallet-switcher sheet's
     /// create/import rows. Consumed in the sheet's `onDismiss` so
@@ -493,13 +532,13 @@ struct WalletHomeView: View {
                 .refreshable { await runRefresh(userInitiated: true) }
                 .task(id: activeWalletIdRaw) {
                     ensureActiveWalletSet()
-                    // Seed the memoized projections before the first
-                    // refresh lands so the home renders the persisted
-                    // state immediately (the `@State` defaults are
-                    // empty arrays).
+                    // Seed the memoized DISPLAY projections (balances /
+                    // coin / token rows) before the first refresh lands
+                    // so the home renders the persisted state
+                    // immediately. Transactions need no seeding — they
+                    // read live from the top-level `@Query`.
                     rebuildFilterInputs()
                     rebuildDisplayRows()
-                    rebuildTransactionRows()
                     // Auto-refresh on appear AND on active-wallet
                     // change so the wallet shows live balances +
                     // transaction history without forcing the user
@@ -556,7 +595,6 @@ struct WalletHomeView: View {
                 }
                 .onChange(of: activeWalletIdRaw) { _, _ in
                     rebuildDisplayRows()
-                    rebuildTransactionRows()
                 }
                 // Last-screen restoration mirror (2026-06-13). Every
                 // push / pop lands in `ScreenRestoration`'s
@@ -583,9 +621,6 @@ struct WalletHomeView: View {
                 .onChange(of: balanceRowsRevision) { _, _ in
                     rebuildDisplayRows()
                 }
-                .onChange(of: transactionRowsRevision) { _, _ in
-                    rebuildTransactionRows()
-                }
                 .onChange(of: refreshState.isRefreshing) { wasRefreshing, isRefreshing in
                     // A refresh pipeline this view did NOT await just
                     // completed — the import flow's post-persist
@@ -602,7 +637,6 @@ struct WalletHomeView: View {
                     let activeId = UUID(uuidString: activeWalletIdRaw) ?? activeWallet?.id
                     if completedId == activeId {
                         rebuildDisplayRows()
-                        rebuildTransactionRows()
                     }
                 }
         }
@@ -1708,20 +1742,20 @@ struct WalletHomeView: View {
         ].joined(separator: "\u{1F}")
     }
 
-    /// Cheap SwiftData change proxies — row counts across the active
-    /// wallet's addresses. Counting is O(addresses) per body pass;
-    /// the expensive registry enumeration + flatMap + sort only runs
-    /// when a count actually changes. Value-only updates (a refresh
-    /// re-pricing existing rows) are caught by the explicit rebuild
-    /// at the end of `runRefresh()`.
+    /// Cheap SwiftData change proxy — balance-row count across the
+    /// active wallet's addresses. Counting is O(addresses) per body
+    /// pass; the expensive registry enumeration + flatMap + sort only
+    /// runs when the count actually changes. Value-only updates (a
+    /// refresh re-pricing existing rows) are caught by the explicit
+    /// rebuild at the end of `runRefresh()` and the refresh-completion
+    /// observer. (Transactions used to have a parallel proxy here, but
+    /// they now read live from a top-level `@Query` — see
+    /// `allTransactionRecords` — so no relationship-count proxy is
+    /// needed, and the relationship-count proxy never saw cross-context
+    /// inserts anyway, which was the live-tx bug.)
     private var balanceRowsRevision: Int {
         guard let wallet = activeWallet else { return 0 }
         return wallet.addresses.reduce(0) { $0 + $1.balances.count }
-    }
-
-    private var transactionRowsRevision: Int {
-        guard let wallet = activeWallet else { return 0 }
-        return wallet.addresses.reduce(0) { $0 + $1.transactions.count }
     }
 
     /// Decode the `@AppStorage`-bound preference values into the
@@ -2242,49 +2276,14 @@ struct WalletHomeView: View {
         Set(balances.map { $0.chain }).count
     }
 
-    /// Rebuild the memoized transaction projections:
-    ///
-    /// - `recentTransactions` — most recent five transactions across
-    ///   all the wallet's addresses, newest first. The home surfaces
-    ///   only this short window; the "View all" affordance routes to
-    ///   `WalletActivityView` for the unbounded history.
-    /// - `allTransactions` — every transaction, unsorted. Feeds the
-    ///   balance-history chart's reconstructor — the prefix-5 slice
-    ///   the activity section uses isn't enough for
-    ///   `BalanceHistoryRange.all`. The reconstructor handles the
-    ///   sort + the per-range cutoff itself.
-    ///
-    /// Called from `.task`, the wallet-switch / count-proxy
-    /// observers, and refresh completion — never from the body, so
-    /// the flatMap + sort no longer runs per render.
-    private func rebuildTransactionRows() {
-        guard let wallet = activeWallet else {
-            recentTransactions = []
-            allTransactions = []
-            return
-        }
-        let all = wallet.addresses.flatMap { $0.transactions }
-        allTransactions = all
-        // `recentTransactions` only needs the 5 newest. Sorting the
-        // ENTIRE history (now up to 1,000 tx/chain) to take a prefix-5
-        // was O(n log n) on the main actor for every rebuild — an
-        // O(n) top-5 scan with a 5-element insertion does the same in a
-        // fraction of the work (2026-06-13 perf). `allTransactions`
-        // stays unsorted; the chart's reconstructor sorts its own
-        // Sendable snapshots off the main actor.
-        var top: [TransactionRecord] = []
-        top.reserveCapacity(5)
-        for tx in all {
-            if top.count < 5 {
-                top.append(tx)
-                top.sort { $0.occurredAt > $1.occurredAt }
-            } else if let last = top.last, tx.occurredAt > last.occurredAt {
-                top[4] = tx
-                top.sort { $0.occurredAt > $1.occurredAt }
-            }
-        }
-        recentTransactions = top
-    }
+    // `recentTransactions` / `allTransactions` are now LIVE computed
+    // properties over the top-level `@Query` (`allTransactionRecords`)
+    // — see their declarations near the top of the view. The old
+    // `rebuildTransactionRows()` snapshot builder was removed
+    // (2026-06-13): it read `wallet.addresses.flatMap { $0.transactions }`,
+    // a relationship traversal that never reflected cross-context
+    // inserts, so newly-scanned transactions only appeared after an
+    // app relaunch. The live `@Query` fixes that with no rebuild calls.
 
     /// Resolves the chain a `TransactionRecord` belongs to via its
     /// back-pointer to `WalletAddressRecord.chainRaw`. The schema
@@ -2461,12 +2460,13 @@ struct WalletHomeView: View {
         )
         await MainActor.run {
             isRefreshing = false
-            // A refresh can re-price existing rows without changing
-            // row counts, which the count-based change proxies can't
-            // see — rebuild the memoized projections explicitly now
-            // that the coordinator has finished writing.
+            // A refresh can re-price existing balance rows without
+            // changing row counts, which the count-based change proxy
+            // can't see — rebuild the memoized DISPLAY projections
+            // explicitly now that the coordinator has finished writing.
+            // Transactions need no rebuild — they read live from the
+            // top-level `@Query`.
             rebuildDisplayRows()
-            rebuildTransactionRows()
             // **2026-06-10 handoff signature.** Pull-to-refresh
             // complete fires the iris-settle pattern (soft tick →
             // medium tap). Per Rule #10 §I, signatures are gated
