@@ -91,9 +91,12 @@ enum WalletCustomSvgRenderer {
     /// every cache read/write. If iOS evicts the directory mid-run the
     /// next `writeCache` throws and the caller's error path handles it.
     private static let cacheDirectory: URL = {
+        // `.cachesDirectory` is guaranteed in the iOS sandbox, but fall
+        // back to the temp dir rather than force-unwrap — a crash here
+        // would take down a cold launch (2026-06-14 audit hardening).
         let base = FileManager.default
             .urls(for: .cachesDirectory, in: .userDomainMask)
-            .first!
+            .first ?? FileManager.default.temporaryDirectory
         let dir = base.appendingPathComponent("ApertureCustomAvatars", isDirectory: true)
         if !FileManager.default.fileExists(atPath: dir.path) {
             do {
