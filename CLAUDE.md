@@ -3557,6 +3557,113 @@ once. It is the structural form of Rules #16, #24, #25, and #26.
 
 ---
 
+## Rule #28 — Never block the main thread. Every action runs off-main, batches its writes, and parallelizes independent work.
+
+The app must NEVER freeze, stutter, or drop a frame because of any
+function or action. Scrolling, navigation, taps, and animations stay
+responsive at all times — work happens in the background and the UI only
+reacts to the result. Added 2026-06-14 after the user's direction
+(verbatim): *"we'll update the whole app to use actions … in the
+background so never the app will be slow because of any function or
+action … and all actions should use promise.all and parallel actions so
+it will be speeded up."* This generalizes the refresh-pipeline fix that
+ended the pull-to-refresh freeze (off-main snapshot fetches + batched
+writes) to **every** action in the app.
+
+### Part A — The three obligations of any action
+
+Every action (a refresh, a send, a scan, an import, a price/FX fetch, a
+balance/history read, a search, an export, a QR/SVG/image decode, a
+crypto/derivation step, a SwiftData read or write, a JSON parse, a file
+read) MUST satisfy all three:
+
+1. **Off the main thread.** Heavy work runs on a background executor —
+   an `actor` / `@ModelActor` repository, a `nonisolated` async function,
+   or `Task.detached` — NOT on `@MainActor`. The main actor is reserved
+   for reading already-computed state and applying small UI updates.
+   - SwiftData reads that build a snapshot create their OWN
+     `ModelContext` and run off-main, returning `Sendable` values
+     (the `WalletRefreshCoordinator.fetchAddressSnapshot` /
+     `fetchBalanceRowSnapshot` pattern — 2026-06-14).
+   - Repositories are `@ModelActor actor`s; the UI never holds a
+     `ModelContext` for mutation.
+   - **Forbidden:** `await MainActor.run { <heavy work> }`, a
+     `@MainActor` helper that does a fetch/parse/format loop, heavy
+     synchronous work in a `View` `body` / computed property / `onAppear`
+     / `.task` before the first `await`.
+
+2. **Writes are batched.** A logical operation commits to SwiftData
+   ONCE (or a small bounded number of times), never once per record. Per
+   `@ModelActor` save propagates to the main context and invalidates
+   every observing `@Query` → a main-thread re-render PER SAVE; a loop of
+   per-record saves is a UI-freezing storm (the 2026-06-14 pull-to-refresh
+   bug). The pattern: mutation methods take a `save: Bool = true` flag
+   (default preserves single-call callers); batch callers pass
+   `save: false` and call a single `flush()` (guarded on
+   `modelContext.hasChanges`) at the end of the operation.
+
+3. **Independent work runs in parallel.** Operations that don't depend on
+   each other run concurrently — `async let` for a fixed set, or
+   `withTaskGroup` for a dynamic set ("promise.all"), never `await`ed one
+   after another in a sequential loop. Dependent steps stay ordered;
+   independent ones fan out. (E.g. the refresh runs the balance stream
+   and the transaction-history scan as `async let` in parallel; the
+   balance scanner fans out per-chain RPC via a TaskGroup.)
+
+### Part B — The live-update contract still holds (Rules #25, #27)
+
+Off-main + batched does NOT mean "stale." After the background work
+flushes to the store, the UI updates LIVE off `@Query` / `@Observable`
+(Rule #25) — the user never relaunches or navigates to see a result. The
+DB stays the single source of truth (Rule #27); background actions are
+writers, the UI is a reader. "Background" means *non-blocking*, not
+*deferred-until-reopen*.
+
+### Part C — The render path stays cheap (complements Rule #28)
+
+Even off-main work surfaces through a main-thread re-render. So the body /
+row render path must be cheap too:
+- No per-call allocation of `RelativeDateTimeFormatter` / `NumberFormatter`
+  / `DateFormatter` in hot paths — cache them (`static let` /
+  `nonisolated(unsafe) static let`); `FormatStyle` values are `Sendable`,
+  reuse a base style. (2026-06-14 Activity-list fix.)
+- Expensive collection work (filter / sort / map / reduce / hash over
+  balances, transactions, registries) is memoized into `@State`, rebuilt
+  only on a real change trigger — never recomputed every body pass, and
+  never inside a `.task(id:)` / `.onChange` KEY (the
+  `WalletDataFingerprint`-per-body trap — 2026-06-14).
+- Lists are lazy (`List` / `LazyVStack`); rows render from pre-resolved
+  values, not live formatting during scroll.
+
+### Part D — Workflow gate (every action, every PR)
+
+Before any function that does work ships, answer:
+1. Does any heavy step run on `@MainActor` (a fetch, parse, format loop,
+   crypto, image decode, large reduce)? → move it off-main.
+2. Does it `save()` more than once per logical operation? → batch +
+   `flush()`.
+3. Are there independent awaits run sequentially? → `async let` /
+   TaskGroup them.
+4. After it completes, does the UI update live off the store (Rule #25)?
+5. Is the resulting main-thread re-render cheap (Part C)?
+
+If any answer is wrong, it doesn't ship. When in doubt about whether work
+is heavy enough to matter, move it off-main anyway — the main thread is
+sacred.
+
+### Part E — Why this rule exists
+
+A wallet that stutters when it refreshes, scrolls, or computes feels
+broken and untrustworthy regardless of how correct its numbers are. The
+2026-06-14 investigation proved the cause is almost always main-thread
+work: per-record SwiftData saves storming the UI, `@MainActor` fetches
+blocking scroll, per-row formatter allocation, and per-body recomputation.
+Fixing them one screen at a time is whack-a-mole; Rule #28 makes
+"off-main, batched, parallel, cheap render" the default contract for every
+action so the class of bug cannot return.
+
+---
+
 ## Project context
 
 - iOS native, **Swift 6.2**, **iOS 26+**, SwiftUI, Liquid Glass design system

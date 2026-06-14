@@ -1,6 +1,7 @@
 # Xcode
 build/
 build-device/
+build-release/
 DerivedData/
 *.xcuserstate
 *.xcuserdatad/
