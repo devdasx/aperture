@@ -188,13 +188,27 @@ enum NearSendService {
             let data = try await RPCClient.shared.callJSONResultData(
                 chain: chain, method: "broadcast_tx_commit", params: [base64Tx]
             )
+            // `broadcast_tx_commit` returns a 200/`result` (no JSON-RPC
+            // `error` envelope) even when the tx is INCLUDED but REVERTS
+            // during execution — the normal failure for an NEP-141
+            // `ft_transfer` that runs out of token balance, panics, or whose
+            // `storage_deposit` is rejected. The revert lives in
+            // `result.status.Failure` (recipe `broadcast`; mirrors Stabro
+            // NEARService). Without this check a reverted token send is
+            // reported as success while the tokens never moved — surface the
+            // honest reason instead (Rule #16 / #26).
+            if let failure = parseBroadcastFailure(from: data) {
+                throw ChainSendError.broadcastRejected(failure)
+            }
             let returnedHash = parseBroadcastHash(from: data)
             let txHash = (returnedHash?.isEmpty == false) ? returnedHash! : localHash
             return ChainSignedTransaction(broadcastPayload: base64Tx, txHash: txHash)
         } catch let e as ChainSendError {
             throw e
+        } catch let e as RPCError {
+            throw .broadcastRejected(broadcastMessage(for: e))
         } catch {
-            throw .broadcastRejected(broadcastMessage(for: error))
+            throw .broadcastRejected("The network rejected the transaction. Try again.")
         }
     }
 
@@ -290,6 +304,42 @@ enum NearSendService {
             return id
         }
         return nil
+    }
+
+    /// Detect an execution-level revert in a `broadcast_tx_commit` result —
+    /// `result.status.Failure` (or a receipt outcome that is a Failure).
+    /// Returns a user-facing reason when the tx was included but reverted,
+    /// else nil. (recipe `broadcast`; mirrors Stabro NEARService.)
+    private static func parseBroadcastFailure(from data: Data) -> String? {
+        guard let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            return nil
+        }
+        if let status = obj["status"] as? [String: Any], status["Failure"] != nil {
+            return failureReason(from: status["Failure"])
+        }
+        // Defensive: some nodes surface the panic on the receipt outcome.
+        if let outcome = obj["transaction_outcome"] as? [String: Any],
+           let outcomeStatus = outcome["outcome"] as? [String: Any],
+           let inner = outcomeStatus["status"] as? [String: Any],
+           inner["Failure"] != nil {
+            return failureReason(from: inner["Failure"])
+        }
+        return nil
+    }
+
+    /// Map a NEAR Failure object to an honest, user-facing reason (Rule #16).
+    private static func failureReason(from failure: Any?) -> String {
+        let raw = String(describing: failure ?? "").lowercased()
+        if raw.contains("notenoughbalance") || raw.contains("not enough") || raw.contains("exceeds balance") {
+            return "The token balance is less than the amount you tried to send."
+        }
+        if raw.contains("storage") {
+            return "The recipient couldn't be registered to receive this token. Try again."
+        }
+        if raw.contains("panic") {
+            return "The token contract rejected the transfer."
+        }
+        return "The transfer was included on-chain but failed during execution."
     }
 
     // MARK: - NEAR u128 encoding (ported from Stabro lines 1340–1367)

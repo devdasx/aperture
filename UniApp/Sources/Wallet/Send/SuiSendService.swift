@@ -174,34 +174,59 @@ enum SuiSendService {
         owner: String,
         atLeast needed: Decimal
     ) async throws(ChainSendError) -> [String] {
-        let data: Data
-        do {
-            // suix_getCoins [owner, coinType, cursor, limit]
-            data = try await RPCClient.shared.callJSONResultData(
-                chain: chain,
-                method: "suix_getCoins",
-                params: [owner, suiCoinType, NSNull(), 50]
-            )
-        } catch {
-            throw .missingContext("suix_getCoins")
-        }
+        // Walk the `suix_getCoins` pages (cursor / hasNextPage) until the
+        // collected coins cover `needed` or the wallet is exhausted. A
+        // single page (the prior behaviour) would false-fail a fundable
+        // wallet whose SUI is fragmented across >50 coin objects where the
+        // first page's coins don't sum to amount+gas (faucet/airdrop dust,
+        // prior gas-coin splitting). 40-page cap (>2000 coins) bounds the
+        // loop. (recipe gotcha #1.)
+        var all: [(id: String, balance: Decimal)] = []
+        var cursor: Sendable = NSNull()
+        var pages = 0
+        repeat {
+            let data: Data
+            do {
+                // suix_getCoins [owner, coinType, cursor, limit]
+                data = try await RPCClient.shared.callJSONResultData(
+                    chain: chain,
+                    method: "suix_getCoins",
+                    params: [owner, suiCoinType, cursor, 50]
+                )
+            } catch {
+                throw .missingContext("suix_getCoins")
+            }
 
-        guard let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let entries = obj["data"] as? [[String: Any]], !entries.isEmpty else {
-            throw .missingContext("No SUI coins to spend.")
-        }
+            guard let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let entries = obj["data"] as? [[String: Any]] else {
+                throw .missingContext("No SUI coins to spend.")
+            }
+            for entry in entries {
+                guard let id = entry["coinObjectId"] as? String else { continue }
+                // `balance` is a MIST string in the JSON response (some nodes
+                // return it as a number — handle both).
+                let balStr = (entry["balance"] as? String)
+                    ?? (entry["balance"] as? NSNumber).map { $0.stringValue }
+                    ?? "0"
+                all.append((id, Decimal(string: balStr) ?? 0))
+            }
 
-        // Largest-first selection minimizes the number of input coins.
-        let coins: [(id: String, balance: Decimal)] = entries.compactMap { entry in
-            guard let id = entry["coinObjectId"] as? String else { return nil }
-            // `balance` is a MIST string in the JSON response (some nodes
-            // return it as a number — handle both).
-            let balStr = (entry["balance"] as? String)
-                ?? (entry["balance"] as? NSNumber).map { $0.stringValue }
-                ?? "0"
-            return (id, Decimal(string: balStr) ?? 0)
-        }.sorted { $0.balance > $1.balance }
+            // Stop early once the collected total can cover the need.
+            let total = all.reduce(Decimal(0)) { $0 + $1.balance }
+            if total >= needed { break }
 
+            // Sui's nextCursor is the last coin's object id (a String) when
+            // another page exists, or null at the end.
+            let hasNext = (obj["hasNextPage"] as? Bool) ?? false
+            guard hasNext, let next = obj["nextCursor"] as? String, !next.isEmpty else { break }
+            cursor = next
+            pages += 1
+        } while pages < 40
+
+        guard !all.isEmpty else { throw .missingContext("No SUI coins to spend.") }
+
+        // Largest-first selection across the full set minimizes input coins.
+        let coins = all.sorted { $0.balance > $1.balance }
         var selected: [String] = []
         var running = Decimal(0)
         for coin in coins {

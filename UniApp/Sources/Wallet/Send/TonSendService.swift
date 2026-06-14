@@ -319,27 +319,46 @@ enum TonSendService {
 
     // MARK: - RPC: Jetton wallet address
 
-    /// Resolve the sender's Jetton wallet contract via toncenter v3
+    /// Resolve the sender's Jetton wallet contract via toncenter
     /// `/jetton/wallets?owner_address=&jetton_address=&limit=1`
     /// (recipe §preSignContext step 3). The transfer must target THIS
     /// address, not the master (recipe §gotchas).
+    ///
+    /// **Why a direct v3 fetch and not `RPCClient.callREST`.** The
+    /// `/jetton/wallets` resolver is a toncenter **v3** endpoint. Our
+    /// registered `.ton` REST base is **v2** (it serves the genuine v2
+    /// `runGetMethod` / `sendBoc` paths this service uses for seqno + the
+    /// native broadcast). Routing this path through `callREST` composes
+    /// `…/api/v2/jetton/wallets`, which 404s on every node — so the prior
+    /// implementation blocked 100% of token sends. Adding a v3 base to the
+    /// shared `.ton` registry would in turn mis-route the v2 `sendBoc` /
+    /// `runGetMethod` calls (and the balance/fetch domain). So this single
+    /// action-time lookup hits the canonical v3 resolver directly with a
+    /// native `URLSession` GET — no third party (Rule #3), no registry churn.
     private nonisolated static func fetchJettonWalletAddress(
         owner: String, master: String
     ) async throws(ChainSendError) -> String {
-        // tonapi.io / toncenter v3 live under the same `.ton` REST
-        // endpoints; the v3 jetton path is served by toncenter.
-        let query = [
+        var components = URLComponents(string: "https://toncenter.com/api/v3/jetton/wallets")
+        components?.queryItems = [
             URLQueryItem(name: "owner_address", value: owner),
             URLQueryItem(name: "jetton_address", value: master),
             URLQueryItem(name: "limit", value: "1"),
         ]
+        guard let url = components?.url else { throw .missingContext("jettonWallet") }
+        var request = URLRequest(url: url)
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+
         let data: Data
         do {
-            data = try await RPCClient.shared.callREST(
-                chain: .ton, path: "jetton/wallets", query: query
-            )
+            let (responseData, response) = try await URLSession.shared.data(for: request)
+            if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
+                throw ChainSendError.missingContext("jettonWallet")
+            }
+            data = responseData
+        } catch let e as ChainSendError {
+            throw e
         } catch {
-            throw mapRPC(error, context: "jettonWallet")
+            throw .missingContext("jettonWallet")
         }
 
         guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
