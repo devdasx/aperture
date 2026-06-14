@@ -71,6 +71,11 @@ enum UniColors {
         static let secondary = Color(uiColor: .secondaryLabel)
         /// Tertiary content (metadata, timestamps, helper text).
         static let tertiary = Color(uiColor: .tertiaryLabel)
+        /// Disabled / inactive label tone. Matches the UIControl disabled
+        /// title color. Use for a label whose owning control is in a
+        /// `.disabled` state — semantically distinct from `tertiary`
+        /// (which is low-emphasis-but-active metadata).
+        static let disabled = Color(uiColor: .tertiaryLabel)
         /// Quaternary content (very low emphasis).
         static let quaternary = Color(uiColor: .quaternaryLabel)
         /// Placeholder text inside input fields.
@@ -106,6 +111,10 @@ enum UniColors {
         static let primary = Color(uiColor: .label)
         static let secondary = Color(uiColor: .secondaryLabel)
         static let tertiary = Color(uiColor: .tertiaryLabel)
+        /// Disabled / inactive icon tone — same tone as `Text.disabled`.
+        /// Use for a glyph whose owning control is `.disabled`, distinct
+        /// from `tertiary` (low-emphasis-but-active).
+        static let disabled = Color(uiColor: .tertiaryLabel)
         static let quaternary = Color(uiColor: .quaternaryLabel)
         static let accent = Color.accentColor
         /// Icon drawn on an accent-tinted surface. Adapts like
@@ -195,6 +204,15 @@ enum UniColors {
         /// Disabled state (any variant).
         static let disabledLabel = Color(uiColor: .tertiaryLabel)
         static let disabledTint = Color(uiColor: .quaternarySystemFill)
+        /// Disabled fill for PROMINENT CTAs (`.primary` / `.destructive`
+        /// / `.actionCircle` → `.glassProminent`). One step heavier than
+        /// `disabledFill` so a disabled prominent button still reads as a
+        /// solid (but inert) surface rather than a faint outline.
+        static let disabledProminentFill = Color(uiColor: .tertiarySystemFill)
+        /// Disabled fill for NEUTRAL / glass CTAs (`.secondary` /
+        /// `.toolbarPill` / `.walletPill` → `.glass`). The lightest fill
+        /// — the glass surface goes quiet when its action is unavailable.
+        static let disabledFill = Color(uiColor: .quaternarySystemFill)
     }
 
     // MARK: - Status (success, warning, error, info, neutral)

@@ -87,6 +87,12 @@ struct BrowserURLEditSheet: View {
     }
 
     private func submit() {
+        // Enter dismisses the keyboard, never inserts a newline. This is a
+        // single-line `TextField`, so Return fires `.onSubmit` (no `"\n"`
+        // ever lands in `text`); resigning focus here guarantees the
+        // keyboard hides even on the `.empty` path where the sheet stays
+        // open. The `.go` cases dismiss the sheet via `onSubmit(url)`.
+        isFocused = false
         let resolution = BrowserURLNormalizer.resolve(text)
         switch resolution {
         case .url(let url), .search(let url, _):

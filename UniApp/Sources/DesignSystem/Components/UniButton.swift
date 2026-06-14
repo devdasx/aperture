@@ -204,6 +204,10 @@ struct UniButton: View {
             .modifier(HapticBinding(variant: variant, trigger: tapCount))
     }
 
+    /// The effective interactive state. A loading button IS disabled
+    /// (taps suppressed), so it shares the disabled visual register.
+    private var isActive: Bool { isEnabled && !isLoading }
+
     @ViewBuilder
     private var buttonBody: some View {
         Button {
@@ -212,13 +216,8 @@ struct UniButton: View {
         } label: {
             label
         }
-        .modifier(VariantStyle(variant: variant))
+        .modifier(VariantStyle(variant: variant, isActive: isActive))
         .disabled(!isEnabled || isLoading)
-        // Loading shares the disabled visual: the button IS disabled
-        // while loading (taps are suppressed above), so it must read
-        // as such — full opacity + spinner alone made the surface
-        // feel frozen rather than busy-and-locked.
-        .opacity((isEnabled && !isLoading) ? 1 : 0.5)
     }
 
     /// Single source of truth for rendering the label string — picks
@@ -344,46 +343,78 @@ struct UniButton: View {
             .contentShape(Circle())
     }
 
+    /// Resolves the variant's glass tint + label tone. When the button is
+    /// inactive (disabled or loading) it swaps in the disabled ROLES
+    /// (Rule #4 — never a raw opacity literal): `disabledProminentFill`
+    /// for `.glassProminent` variants, `disabledFill` for `.glass`
+    /// variants, paired with the `disabledLabel` tone so the text / glyph
+    /// reads as inert. The ACTIVE path is left byte-identical to the
+    /// pre-token implementation — the glass styles supply their own
+    /// automatic contrasting label color when active, so no
+    /// `.foregroundStyle` is imposed on the active glass variants.
     private struct VariantStyle: ViewModifier {
         let variant: Variant
+        let isActive: Bool
 
         @ViewBuilder
         func body(content: Content) -> some View {
             switch variant {
             case .primary:
-                content
-                    .buttonStyle(.glassProminent)
-                    .tint(UniColors.Button.primaryTint)
+                applyGlassProminent(content, activeTint: UniColors.Button.primaryTint)
             case .secondary:
-                content
-                    .buttonStyle(.glass)
-                    .tint(UniColors.Button.secondaryTint)
+                applyGlass(content, activeTint: UniColors.Button.secondaryTint)
             case .destructive:
-                content
-                    .buttonStyle(.glassProminent)
-                    .tint(UniColors.Button.destructiveTint)
+                applyGlassProminent(content, activeTint: UniColors.Button.destructiveTint)
             case .tertiary:
                 content
                     .buttonStyle(.plain)
-                    .foregroundStyle(UniColors.Button.tertiaryLabel)
+                    .foregroundStyle(isActive ? UniColors.Button.tertiaryLabel : UniColors.Button.disabledLabel)
             case .toolbarPill:
-                content
-                    .buttonStyle(.glass)
-                    // `.controlSize(.large)` lifts the pill's capsule into
-                    // the same vertical envelope as the toolbar's
-                    // auto-glass icon backgrounds — the WWDC25 "Glassifying
-                    // toolbars in SwiftUI" guidance.
+                // `.controlSize(.large)` lifts the pill's capsule into the
+                // same vertical envelope as the toolbar's auto-glass icon
+                // backgrounds — the WWDC25 "Glassifying toolbars in
+                // SwiftUI" guidance.
+                applyGlass(content, activeTint: UniColors.Button.secondaryTint)
                     .controlSize(.large)
             case .walletPill:
-                content
-                    .buttonStyle(.glass)
-                    // Same glass envelope as `.toolbarPill` — the only
-                    // difference is the leading avatar in the label.
+                // Same glass envelope as `.toolbarPill` — the only
+                // difference is the leading avatar in the label.
+                applyGlass(content, activeTint: UniColors.Button.secondaryTint)
                     .controlSize(.large)
             case .actionCircle:
+                applyGlassProminent(content, activeTint: UniColors.Button.primaryTint)
+            }
+        }
+
+        /// `.glassProminent` variants. Active: original tint, system label.
+        /// Inactive: prominent disabled fill + disabled label tone.
+        @ViewBuilder
+        private func applyGlassProminent(_ content: Content, activeTint: Color) -> some View {
+            if isActive {
                 content
                     .buttonStyle(.glassProminent)
-                    .tint(UniColors.Button.primaryTint)
+                    .tint(activeTint)
+            } else {
+                content
+                    .buttonStyle(.glassProminent)
+                    .tint(UniColors.Button.disabledProminentFill)
+                    .foregroundStyle(UniColors.Button.disabledLabel)
+            }
+        }
+
+        /// `.glass` variants. Active: original tint, system label.
+        /// Inactive: neutral disabled fill + disabled label tone.
+        @ViewBuilder
+        private func applyGlass(_ content: Content, activeTint: Color) -> some View {
+            if isActive {
+                content
+                    .buttonStyle(.glass)
+                    .tint(activeTint)
+            } else {
+                content
+                    .buttonStyle(.glass)
+                    .tint(UniColors.Button.disabledFill)
+                    .foregroundStyle(UniColors.Button.disabledLabel)
             }
         }
     }

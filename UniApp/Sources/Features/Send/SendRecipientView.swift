@@ -50,6 +50,11 @@ struct SendRecipientView: View {
     }
 
     @State private var entries: [DraftEntry] = [DraftEntry()]
+    /// Identity of the currently-focused recipient field, reported up from
+    /// each `RecipientRow`'s `UniTextField` via its external focus
+    /// passthrough. Drives `pruneEmptyUnfocused()` on focus change so an
+    /// earlier field the user empties (and then leaves) is removed.
+    @FocusState private var focusedEntry: UUID?
     @State private var isScanning: Bool = false
     /// Tap counter for the ambient affordances' selection haptic — the
     /// action chips (Paste / Scan / Add) and the recents rows aren't
@@ -85,9 +90,14 @@ struct SendRecipientView: View {
         }
     }
 
+    /// "Add recipient" is enabled only when the LAST field holds a fully
+    /// RESOLVED address — so it stays disabled while that field is empty,
+    /// `.resolving`, `.invalid`, or `.nameNotFound`. Mirrors `canContinue`'s
+    /// `if case .resolved` gate so the user can't stack empty / broken rows.
     private var canAddMore: Bool {
-        isMulti && entries.count < maxRecipients
-            && !(entries.last?.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true)
+        guard isMulti, entries.count < maxRecipients, let last = entries.last else { return false }
+        if case .resolved = last.resolution { return true }
+        return false
     }
 
     var body: some View {
@@ -104,6 +114,10 @@ struct SendRecipientView: View {
             // under the glass.
             .padding(.bottom, UniSpacing.xxxl + UniSpacing.xl)
         }
+        // When focus moves between recipient fields, prune any earlier
+        // field the user emptied and left. Keyed on focus-change (not
+        // mid-keystroke) so it never deletes the field being edited.
+        .onChange(of: focusedEntry) { _, _ in pruneEmptyUnfocused() }
         .scrollIndicators(.hidden)
         .scrollDismissesKeyboard(.interactively)
         .background(UniColors.Background.primary)
@@ -150,6 +164,7 @@ struct SendRecipientView: View {
                         nameHint: nameHint,
                         canRemove: entries.count > 1,
                         isDuplicate: isDuplicateAddress(entry),
+                        focusBinding: $focusedEntry,
                         sendCount: { recents.sendCount(to: $0, chain: chain) },
                         onRemove: { remove(entry.id) }
                     )
@@ -168,8 +183,8 @@ struct SendRecipientView: View {
         ScrollView(.horizontal, showsIndicators: false) {
             GlassEffectContainer(spacing: UniSpacing.s) {
                 HStack(spacing: UniSpacing.s) {
-                    glassChip("Paste", systemImage: "doc.on.clipboard") { pasteFromClipboard() }
-                    glassChip("Scan", systemImage: "qrcode.viewfinder") { isScanning = true }
+                    glassChip("Paste") { pasteFromClipboard() }
+                    glassChip("Scan") { isScanning = true }
                     if isMulti {
                         glassChip("Add recipient", systemImage: "plus", isEnabled: canAddMore) { addEntry() }
                     }
@@ -182,7 +197,7 @@ struct SendRecipientView: View {
 
     private func glassChip(
         _ title: LocalizedStringKey,
-        systemImage: String,
+        systemImage: String? = nil,
         isEnabled: Bool = true,
         action: @escaping () -> Void
     ) -> some View {
@@ -191,10 +206,14 @@ struct SendRecipientView: View {
             action()
         } label: {
             HStack(spacing: UniSpacing.xxs) {
-                Image(systemName: systemImage)
-                    .font(.system(size: 14, weight: .semibold))
+                if let systemImage {
+                    Image(systemName: systemImage)
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(isEnabled ? UniColors.Icon.primary : UniColors.Icon.disabled)
+                }
                 Text(title)
                     .font(UniTypography.footnote.weight(.semibold))
+                    .foregroundStyle(isEnabled ? UniColors.Text.primary : UniColors.Text.disabled)
             }
             .padding(.horizontal, UniSpacing.s)
             .frame(height: 36)
@@ -203,9 +222,12 @@ struct SendRecipientView: View {
             .contentShape(Capsule())
         }
         .buttonStyle(.glass)
-        .tint(UniColors.Button.secondaryTint)
+        // Disabled goes through the named disabled roles (Rule #4) — the
+        // glass tint quiets to `Button.disabledFill` and the label / icon
+        // to the disabled tone, replacing the prior `.opacity(0.4)` magic
+        // literal.
+        .tint(isEnabled ? UniColors.Button.secondaryTint : UniColors.Button.disabledFill)
         .disabled(!isEnabled)
-        .opacity(isEnabled ? 1 : 0.4)
     }
 
     // MARK: - Recents (content layer)
@@ -291,6 +313,24 @@ struct SendRecipientView: View {
         withAnimation(.snappy(duration: 0.25)) {
             entries.append(DraftEntry())
         }
+        // Land the user in the freshly-added field.
+        focusedEntry = entries.last?.id
+    }
+
+    /// Remove any field the user emptied and then left — but NEVER the
+    /// field currently focused, NEVER the last/trailing field, and only
+    /// when there's more than one field. Fired on focus change (not
+    /// mid-keystroke), so it never deletes the field being edited.
+    private func pruneEmptyUnfocused() {
+        guard isMulti, entries.count > 1 else { return }
+        let lastId = entries.last?.id
+        withAnimation(.snappy(duration: 0.25)) {
+            entries.removeAll { e in
+                e.id != focusedEntry && e.id != lastId
+                    && e.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            }
+            if entries.isEmpty { entries = [DraftEntry()] }
+        }
     }
 
     private func remove(_ id: UUID) {
@@ -367,6 +407,10 @@ private struct RecipientRow: View {
     /// earlier row — suppresses the first-send warning so it fires once
     /// per distinct address, not once per duplicate field.
     let isDuplicate: Bool
+    /// External focus passthrough from the parent — the field reports its
+    /// identity (`entry.id`) so the parent can prune an emptied, unfocused
+    /// earlier field on focus change.
+    let focusBinding: FocusState<UUID?>.Binding
     let sendCount: (String) -> Int
     let onRemove: () -> Void
 
@@ -387,7 +431,14 @@ private struct RecipientRow: View {
                     axis: .vertical,
                     lineLimit: nil,
                     cornerRadius: UniRadius.xxxl,
-                    autocapitalization: .never
+                    // Tighter vertical padding so the EMPTY single-line
+                    // state reads compact in the soft 36-pt pill; the
+                    // `axis: .vertical` growth still expands it to show a
+                    // full pasted address (Change 2).
+                    verticalPadding: UniSpacing.xs,
+                    autocapitalization: .never,
+                    focusBinding: focusBinding,
+                    focusValue: entry.id
                 )
 
                 if canRemove {

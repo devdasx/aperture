@@ -36,7 +36,10 @@ struct CoinTitleBar: View {
     private var contract: String? { catalogEntry?.contract }
 
     var body: some View {
-        HStack(spacing: UniSpacing.xs) {
+        // `UniSpacing.s` (12pt) reads as a clear two-space gap between the
+        // verb, the coin mark, the full name, and the trailing "to" —
+        // `UniSpacing.xs` (8pt) read as one tight space.
+        HStack(spacing: UniSpacing.s) {
             Text(verb)
                 .font(UniTypography.bodyEmphasized)
                 .foregroundStyle(UniColors.Text.primary)
