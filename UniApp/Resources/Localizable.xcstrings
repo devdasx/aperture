@@ -309497,6 +309497,17 @@
           }
         }
       }
+    },
+    "to": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "to"
+          }
+        }
+      }
     }
   },
   "version": "1.0"
