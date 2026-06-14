@@ -99,10 +99,13 @@ struct WalletRefreshCoordinator: Sendable {
             ?? CurrencyPreference.currency(for: "USD")
             ?? CurrencyPreference.all[0]
 
-        // Read the wallet's addresses on the main actor for a one-shot
-        // snapshot. We don't hold the context across await points to
-        // keep concurrency clean.
-        var snapshot = await MainActor.run { fetchAddressSnapshot(walletId: walletId) }
+        // Read the wallet's addresses into a one-shot Sendable snapshot
+        // OFF the main thread (2026-06-14): this runs on the coordinator's
+        // background executor via its OWN `ModelContext`, so a refresh
+        // (incl. pull-to-refresh) never blocks scrolling/navigation. We
+        // don't hold the context across await points — concurrency stays
+        // clean and the snapshot is `Sendable`.
+        var snapshot = fetchAddressSnapshot(walletId: walletId)
 
         // **2026-06-12 — empty-snapshot backoff.** A refresh fired in
         // the import-completion window can land before the freshly
@@ -116,7 +119,7 @@ struct WalletRefreshCoordinator: Sendable {
             for attempt in 1...3 where !Task.isCancelled {
                 Self.log.info("Empty address snapshot for wallet \(walletId.uuidString, privacy: .public) — retry \(attempt, privacy: .public)/3 after backoff")
                 try? await Task.sleep(for: .milliseconds(500))
-                snapshot = await MainActor.run { fetchAddressSnapshot(walletId: walletId) }
+                snapshot = fetchAddressSnapshot(walletId: walletId)
                 if !snapshot.isEmpty { break }
             }
             if snapshot.isEmpty {
@@ -188,9 +191,8 @@ struct WalletRefreshCoordinator: Sendable {
         // fresh wallet, which makes the scanner price the full universe
         // for the first scan (no regression). See
         // `RealRPCBalanceScanner.uniquePriceSymbols`.
-        let heldSymbols: Set<String> = await MainActor.run {
+        let heldSymbols: Set<String> =
             Set(fetchBalanceRowSnapshot(walletId: walletId).map { $0.symbol.uppercased() })
-        }
 
         let scanner = RealRPCBalanceScanner(client: RPCClient.shared)
         let stream = scanner.streamScan(
@@ -591,7 +593,7 @@ struct WalletRefreshCoordinator: Sendable {
     /// wrong number under a new symbol.
     func repriceWallet(walletId: UUID, fiatCode: String) async {
         let code = (CurrencyPreference.currency(for: fiatCode)?.code ?? CurrencyPreference.defaultCode).uppercased()
-        let rows = await MainActor.run { fetchBalanceRowSnapshot(walletId: walletId) }
+        let rows = fetchBalanceRowSnapshot(walletId: walletId)
         guard !rows.isEmpty else { return }
 
         let engine = TokenPricingEngine.shared
@@ -646,7 +648,9 @@ struct WalletRefreshCoordinator: Sendable {
         let fiatCurrencyCode: String
     }
 
-    @MainActor
+    /// Off-main (2026-06-14): creates its OWN `ModelContext` and returns
+    /// a `Sendable` snapshot, so it runs on the coordinator's background
+    /// executor without blocking the UI. No `@MainActor`.
     private func fetchBalanceRowSnapshot(walletId: UUID) -> [BalanceRowSnapshot] {
         let context = ModelContext(container)
         var descriptor = FetchDescriptor<WalletRecord>(
@@ -792,7 +796,9 @@ struct WalletRefreshCoordinator: Sendable {
         let isUsed: Bool
     }
 
-    @MainActor
+    /// Off-main (2026-06-14): own `ModelContext`, `Sendable` output —
+    /// runs on the coordinator's background executor, never the main
+    /// thread, so a refresh never blocks scrolling/navigation.
     private func fetchAddressSnapshot(walletId: UUID) -> [AddressSnapshot] {
         let context = ModelContext(container)
         var descriptor = FetchDescriptor<WalletRecord>(
