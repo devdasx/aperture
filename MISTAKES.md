@@ -21,6 +21,56 @@
 
 ---
 
+## M-018 · Committed 1,620 `build-release/` build-artifact files into git via `git add -A` because the new build dir wasn't in `.gitignore`
+
+- **Date:** 2026-06-14
+- **Severity:** MEDIUM
+- **Status:** CORRECTED
+- **Domain:** git / build / tooling
+
+### What I did
+During the 2026-06-14 perf work I introduced a `build-release/` derived-data
+directory (for the Release-build heat test) and then used `git add -A` in
+several commits. `.gitignore` covered `build-device/` and `build-sim/` but
+NOT `build-release/`, so `git add -A` silently staged + committed ~1,620
+Xcode build-artifact files (compilation cache, module cache, logs,
+SourcePackages) across commits `80d5994`→`b5045a1`, which were pushed to
+origin.
+
+### Why it was wrong
+Build artifacts are machine-specific, huge, and churn every build — they
+pollute history, bloat the repo, and create noisy diffs. They must never
+be tracked.
+
+### Root cause
+Assumed `git add -A` was safe because the OTHER build dirs were gitignored
+— didn't verify the NEW dir (`build-release/`) was covered before staging
+everything. Same shape as several prior entries: acting on an assumption
+without verifying the specific case.
+
+### Lesson learned
+A new build/output directory must be added to `.gitignore` BEFORE the first
+`git add -A`, or staging must be targeted (`git add <specific paths>`),
+never `-A`, when an un-ignored generated dir might exist.
+
+### Prevention (concrete)
+- When creating any new `-derivedDataPath` / output directory, add it to
+  `.gitignore` in the SAME step.
+- Before `git add -A`, glance at `git status --short` for unexpected bulk
+  paths (hundreds of files under one dir = a generated dir leaked).
+- Prefer targeted `git add <paths>` for edits to known source files.
+
+### Detection (for future readers)
+If `git status` shows many tracked files under a `build-*/` or
+`DerivedData/`-like path, or a commit diff is dominated by
+`*.modulevalidation` / `*.xcactivitylog` / `CompilationCache.noindex`,
+you are repeating M-018 — gitignore the dir and `git rm -r --cached` it.
+
+Corrected same turn: added `build-release/` to `.gitignore` and
+`git rm -r --cached build-release` (files kept on disk).
+
+---
+
 ## M-017 · "Fixed" the Solana Token-2022 program ID to the 44-char `…EbZ` form during the 2026-06-12 fetching audit, replacing the canonical 43-char `…Eb` form — broke every Token-2022 mint scan (PYUSD/AUSD/DUSD/USDG) the very fix was supposed to enable
 
 - **Date:** 2026-06-12
