@@ -196,9 +196,27 @@ final class CameraPreviewUIView: UIView {
     private var previewLayer: AVCaptureVideoPreviewLayer?
     private var onDecode: ((String) -> Void)?
     private let delegate = MetadataDelegate()
+    /// The active capture device — retained so the torch can be toggled
+    /// after the session is running (the Send v2 scanner's Light chip).
+    private var captureDevice: AVCaptureDevice?
 
     override class var layerClass: AnyClass {
         AVCaptureVideoPreviewLayer.self
+    }
+
+    /// Toggle the device torch on/off. No-op on devices without a torch
+    /// (front camera, simulator). Locks the device for configuration per
+    /// the `AVCaptureDevice` torch contract.
+    func setTorch(_ on: Bool) {
+        guard let device = captureDevice, device.hasTorch, device.isTorchAvailable else { return }
+        do {
+            try device.lockForConfiguration()
+            device.torchMode = on ? .on : .off
+            device.unlockForConfiguration()
+        } catch {
+            // Torch lock can fail transiently; ignore — the chip just
+            // doesn't toggle, which is the honest fallback.
+        }
     }
 
     func start(onDecode: @escaping (String) -> Void) {
@@ -209,6 +227,7 @@ final class CameraPreviewUIView: UIView {
               let input = try? AVCaptureDeviceInput(device: device) else {
             return
         }
+        self.captureDevice = device
         if session.canAddInput(input) {
             session.addInput(input)
         }

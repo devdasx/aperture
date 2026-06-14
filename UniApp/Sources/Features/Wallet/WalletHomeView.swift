@@ -568,7 +568,7 @@ struct WalletHomeView: View {
                 }
                 .navigationDestination(for: WalletHomeDestination.self) { destination in
                     switch destination {
-                    case .send:                                 SendFlowView()
+                    case .send:                                 SendV2FlowView()
                     case .swap:                                 SwapPlaceholderView()
                     case .transaction(let id):                  TransactionDetailView(transactionId: id)
                     case .allSupported:                         AllSupportedAssetsView()

@@ -263,7 +263,10 @@ final class SendDraft {
     }
 
     /// Truncate an address to `prefix…suffix` form for chrome labels.
-    static func shorten(_ value: String, prefix: Int = 6, suffix: Int = 4) -> String {
+    /// `nonisolated` — pure string math (delegates to the nonisolated
+    /// `WalletFormatting.shortAddress`), so value types like the v2
+    /// model's `ResolvedRecipient` can call it from a nonisolated context.
+    nonisolated static func shorten(_ value: String, prefix: Int = 6, suffix: Int = 4) -> String {
         WalletFormatting.shortAddress(value, prefix: prefix, suffix: suffix)
     }
 

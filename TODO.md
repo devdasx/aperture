@@ -806,11 +806,20 @@ forget them when we get there.
 - **Honesty checks:** the "Forgot PIN?" sheet must clearly state the trade-off — recovery via mnemonic re-imports the wallet, it does not "reset the PIN."
 - **Depends on:** T-018 (wallet home destination), T-012's seed-encryption half (so the unlock has something meaningful to unlock).
 
+> **Send v2 note (2026-06-14):** the Send flow was rebuilt as v2 from
+> `design_handoff_send_v2`. The v1 spine screens (`SendFlowView`,
+> `SendRecipientView`, `SendAmountView`, `SendReviewView`, `SendingView`,
+> `SendSwipeToCommit`, `SendAmountKeypad`) were removed; the seams below
+> now live in `SendV2Model.swift` (the new `@Observable` view model with
+> named `async` seams) + the new `SendV2*` screens. `SendDraft` /
+> `SendAsset` / `SendMockData` / the advanced power-sheets are retained.
+> T-068 (simulation) and T-069 (speed-up/cancel) are new v2 seams.
+
 ### T-061 · Send — real balance + price reads (replace `SendMockData` balances/rates)
 - **Status:** OPEN
 - **Priority:** P0
 - **Area:** Send · Wallet data
-- **File:** `UniApp/Sources/Features/Send/SendMockData.swift` (`sampleBalance`, `sampleFiatRate`); consumed by `SendDraft.availableBalance`, `SendDraft.unitFiatRate`, `SendAsset.decimals`.
+- **File:** `UniApp/Sources/Features/Send/SendMockData.swift` (`sampleBalance`, `sampleFiatRate`); consumed by `SendDraft.availableBalance`, `SendDraft.unitFiatRate`, `SendAsset.decimals`. (Send v2 reads `SendDraft.heldAssets` from the DB already; the remaining mock is the per-ticker fallback + token decimals.)
 - **Inline comment:** `// TODO: (T-061)` markers in `SendDraft.swift` (availableBalance/unitFiatRate/applyMax), `SendAsset.swift` (decimals/contractFor).
 - **Context:** The Send design ships with a fixed mock balance per ticker and a fixed fiat rate so the amount screen, MAX, and review total compute against believable numbers. Real balances come from the wallet's `TokenBalanceRecord` rows (the same source the wallet-home roll-up reads); real prices from `CoinbasePriceService` in the active currency.
 - **What "done" looks like:**
@@ -826,8 +835,8 @@ forget them when we get there.
 - **Status:** OPEN
 - **Priority:** P0
 - **Area:** Send · Recipient · Security
-- **File:** `UniApp/Sources/Features/Send/SendDraft.swift` (`resolvedName`/`resolvedAddress`/`isRecipientValid`/`isFirstSend`); `SendRecipientView.swift` (`paste`); mock data in `SendMockData.swift` (`isResolvableName`/`sampleResolvedAddress`/`recents`).
-- **Inline comment:** `// TODO: (T-062)` markers in `SendDraft.swift` + `SendRecipientView.swift`.
+- **File (Send v2):** `UniApp/Sources/Features/Send/SendV2Model.swift` (`resolveRecipient(_:)`, `detectPoisoning(_:)`, `validatePaste(_:)` seams); `SendV2MockData.swift` (`contacts`/`recents`/`crossNetworkSuggestion`); consumed by `SendV2RecipientView` / `SendV2ResolvedView` / `SendV2PoisoningView`.
+- **Inline comment:** `// TODO: (T-062)` marker in `SendV2Model.resolveRecipient(_:)`.
 - **Context:** The design mocks ENS resolution for the single sample input `vitalik.eth`, a placeholder validity flag (length floor), and a sample recents list. Real: ENS/SNS/name resolution with the resolved address always visible before send; per-chain address checksum/format validation (EIP-55 for EVM, bech32 for BTC, base58 for SOL, …); network-match guard (don't let an EVM address send on the wrong chain; warn on exchange-deposit mismatches); first-send detection from the wallet's tx history; address-book labels + "known address" badge; paste-from-clipboard malicious-swap guard.
 - **What "done" looks like:**
   1. `resolvedName`/`resolvedAddress` resolve real names per the asset's chain (ENS on EVM, SNS on Solana, etc.), with the resolved address shown before Continue is enabled.
@@ -842,8 +851,8 @@ forget them when we get there.
 - **Status:** OPEN
 - **Priority:** P0
 - **Area:** Send · Fees
-- **File:** `UniApp/Sources/Features/Send/SendMockData.swift` (`sampleFeeFiat`/`sampleFeeNative`/`sampleUTXOs`); consumed by `SendDraft` (networkFeeFiat/networkFeeNative/totalFiat) + every Advanced sheet's preset rows/slider read-outs.
-- **Inline comment:** `// TODO: (T-063)` markers in `SendDraft.swift`, `SendAdvancedParams.swift`, the four Advanced sheets, and the coin-control sheet.
+- **File (Send v2):** `UniApp/Sources/Features/Send/SendV2Model.swift` (`estimateFees()` seam → tiers); `SendV2MockData.feeTiers(_:)` + `maxFeeNote(_:)`; consumed by `SendV2FeeSpeedSheet` + `SendV2ReviewView`. `SendMockData.sampleFeeFiat`/`sampleFeeNative`/`sampleUTXOs` still feed the advanced power-sheets + the simple-fee chains.
+- **Inline comment:** `// TODO: (T-063)` markers in `SendV2Model.estimateFees()`, `SendAdvancedParams.swift`, the Advanced sheets.
 - **Context:** The design ships sample fee figures per family + a sample UTXO set so the Advanced sheets and the Review total are realistic. Real fee estimation is per-family: Bitcoin sat/vB → confirm-time + fiat from a mempool fee estimator; EVM EIP-1559 base/priority from the node; Solana compute-unit price from recent-prioritization-fees; long-tail chains from their native fee endpoints.
 - **What "done" looks like:**
   1. Each family's preset rows + custom slider show real estimated rates, confirm-times, and fiat.
@@ -886,8 +895,8 @@ forget them when we get there.
 - **Status:** OPEN
 - **Priority:** P0
 - **Area:** Send · Broadcast
-- **File:** `UniApp/Sources/Features/Send/SendFlowView.swift` (the `.sending` step's `.task`); `SendingView.swift`; `SendDraft.transactionHash`/`outcome`; `SendMockData.sampleTransactionHash`.
-- **Inline comment:** `// TODO: (T-066)` markers in `SendFlowView.swift`, `SendingView.swift`, `SendDraft.swift`.
+- **File (Send v2):** `UniApp/Sources/Features/Send/SendV2Model.swift` (`send()` seam + the `lifecycle` state machine + `confirmations`); `SendV2FlowView` (the `.sending` step's `.task`); `SendV2ResultViews.swift` (C1/C2); `SendV2ReceiptSheets.swift` (explorer link); `SendMockData.sampleTransactionHash`.
+- **Inline comment:** `// TODO: (T-066)` marker in `SendV2Model.send()`.
 - **Context:** The design's Sending screen advances to Sent on a timer (mock). Real: sign + broadcast to the chain's RPC, set `SendDraft.outcome` from the result (`.sent` / `.failed`), thread the real transaction hash, and open the chain's explorer from the Sent screen's "View on explorer" via `Link(_:destination:)`. Per the handoff: "failures never show the success state" — the Failed screen must be reached on any broadcast error, never the Sent screen.
 - **What "done" looks like:**
   1. The `.sending` step submits the signed tx to the network and awaits acceptance.
@@ -897,6 +906,34 @@ forget them when we get there.
   5. Delete `SendMockData.sampleTransactionHash`.
 - **Honesty checks:** the Failed screen states "nothing left your wallet" only when that's true; if a tx was broadcast-then-failed-on-chain the copy must reflect the real state.
 - **Depends on:** per-chain RPC broadcast (networking layer), T-064, T-065.
+
+### T-068 · Send v2 — real pre-flight simulation ("After this send" balance deltas)
+- **Status:** OPEN
+- **Priority:** P0
+- **Area:** Send · Simulation · Security
+- **File:** `UniApp/Sources/Features/Send/SendV2Model.swift` (`simulate()` seam → `[BalanceChange]`); consumed by `SendV2ReviewView`'s "After this send" card.
+- **Inline comment:** `// TODO: (T-068)` marker in `SendV2Model.simulate()`.
+- **Context:** The Send v2 Review screen (handoff B2) shows an "After this send" card — one row per balance change — that the handoff requires come from a **real pre-flight simulation, not arithmetic alone** (so it catches reverts and token taxes). The design produces the rows arithmetically (amount as a negative delta + the fee on the native asset) and never reports a revert. Real: `eth_call` / `debug_traceCall` (EVM), `simulateTransaction` (Solana), and the equivalents per family, decoding the actual balance deltas and the revert reason when the tx would fail.
+- **What "done" looks like:**
+  1. `simulate()` runs the real per-chain simulation and returns the actual deltas (including token-tax / rebasing effects, not just the typed amount).
+  2. `simulationRevert` is set with the decoded selector/reason when the simulation reverts; `SendV2ReviewView` already blocks the slide-to-send + surfaces the H4 revert notice when it's non-nil.
+  3. The fee row reflects the simulated gas used, not just the estimate.
+- **Honesty checks:** the card must show what the chain will actually do — if a token taxes 2% on transfer, the recipient-receives figure must reflect it; never broadcast a tx the simulation says will revert (Rule #16).
+- **Depends on:** per-chain simulation RPC (networking layer), T-063.
+
+### T-069 · Send v2 — real speed-up (RBF / replacement) + cancel
+- **Status:** OPEN
+- **Priority:** P1
+- **Area:** Send · Lifecycle · Broadcast
+- **File:** `UniApp/Sources/Features/Send/SendV2Model.swift` (`speedUp(_:)` + `cancel()` seams); consumed by `SendV2SpeedUpSheet` + `SendV2CancelConfirmSheet`.
+- **Inline comment:** `// TODO: (T-069)` markers in `SendV2Model.speedUp(_:)` + `cancel()`.
+- **Context:** The Send v2 unified Speed-up / Cancel sheet (handoff C3 + F3) lets the user replace a pending tx's fee (three presets) or cancel it. The design is the full UI (presets, new-fee card, method copy, cancel-is-a-race confirmation) with no-op seams. Real: EVM same-nonce replacement at a higher fee for speed-up; EVM 0-value self-transfer at a higher fee for cancel; Bitcoin RBF bump for speed-up and double-spend-to-self for cancel. The replacement bid must be ≥10% over the original (the `replacement transaction underpriced` guard in the handoff's error taxonomy).
+- **What "done" looks like:**
+  1. `speedUp(_:)` broadcasts the replacement at the chosen preset's fee (same nonce on EVM / RBF on Bitcoin) and re-points the lifecycle watcher to the new hash.
+  2. `cancel()` broadcasts the cancel replacement; the F3 sheet's "chance of success" reflects real mempool state.
+  3. The Speed-up affordance disappears once the tx reaches a confirming/in-block state (handoff G2).
+- **Honesty checks:** the cancel copy must stay honest — it's a race, and the cancel fee is paid even if the original confirms first (Rule #16); never imply a guaranteed cancel.
+- **Depends on:** per-chain RPC broadcast + the lifecycle watcher (T-066).
 
 ---
 
