@@ -130,17 +130,10 @@ struct ReceiveQRCard: View {
         }
     }
 
-    @ViewBuilder
+    /// The QR center mark — the network's coin, resolved Trust-Wallet-only
+    /// through `CoinMark` (Rule #7 §B amendment 2026-06-15). `CoinMark`
+    /// carries its own honest initials fallback.
     private var chainLogo: some View {
-        if let assetName = chain.logoAssetName {
-            Image(assetName)
-                .resizable()
-                .aspectRatio(contentMode: .fit)
-                .clipShape(Circle())
-        } else {
-            Image(systemName: "circle.dashed")
-                .font(.system(size: 14, weight: .regular))
-                .foregroundStyle(UniColors.Icon.tertiary)
-        }
+        CoinMark(chain: chain, tokenSymbol: chain.ticker)
     }
 }
