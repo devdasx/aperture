@@ -84,7 +84,8 @@ actor TransactionRepository {
         occurredAt: Date,
         status: TransactionStatus,
         counterparty: String,
-        feeRaw: String?
+        feeRaw: String?,
+        save: Bool = true
     ) throws {
         try ensureLegacyAddressIdBackfill()
 
@@ -161,7 +162,13 @@ actor TransactionRepository {
             record.addressId = addressId
             modelContext.insert(record)
         }
-        try modelContext.save()
+        // Batched-write support (2026-06-14): the refresh pipeline passes
+        // `save: false` and flushes ONCE at the end, so a pull-to-refresh
+        // writing dozens of rows fires ONE main-context merge / @Query
+        // invalidation instead of dozens (the per-record save storm that
+        // froze the UI). Default `true` keeps every other caller's
+        // save-per-call semantics unchanged.
+        if save { try modelContext.save() }
     }
 
     // MARK: - Transaction queries (2026-06-13 taxonomy surface)
@@ -332,7 +339,8 @@ actor TransactionRepository {
         decimals: Int,
         rawBalance: String,
         fiatValueCached: Decimal?,
-        fiatCurrencyCode: String
+        fiatCurrencyCode: String,
+        save: Bool = true
     ) throws {
         try ensureLegacyAddressIdBackfill()
 
@@ -407,13 +415,13 @@ actor TransactionRepository {
         // "last synced" footer accurately.
         address.lastScannedAt = now
 
-        try modelContext.save()
+        if save { try modelContext.save() }
     }
 
     /// Mark a scan-attempted address as "fresh" — the scan succeeded but
     /// returned zero balances (no tokens held). Updates `lastScannedAt`
     /// without inserting balance rows.
-    func markScanComplete(addressId: UUID, isUsed: Bool) throws {
+    func markScanComplete(addressId: UUID, isUsed: Bool, save: Bool = true) throws {
         var descriptor = FetchDescriptor<WalletAddressRecord>(
             predicate: #Predicate { $0.id == addressId }
         )
@@ -421,6 +429,14 @@ actor TransactionRepository {
         guard let address = try modelContext.fetch(descriptor).first else { return }
         address.isUsed = isUsed
         address.lastScannedAt = Date()
-        try modelContext.save()
+        if save { try modelContext.save() }
+    }
+
+    /// Commit any pending batched writes accumulated with `save: false`.
+    /// Called once at the end of a refresh so the whole pipeline's
+    /// inserts/updates land in a SINGLE main-context merge (one @Query
+    /// invalidation, one UI re-render) instead of one per record.
+    func flush() throws {
+        if modelContext.hasChanges { try modelContext.save() }
     }
 }

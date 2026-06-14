@@ -258,14 +258,23 @@ struct WalletRefreshCoordinator: Sendable {
         // would be dishonest).
         if !Task.isCancelled {
             for snap in addressSnapshot where !nativeYieldedChains.contains(snap.chain) {
-                try? await txRepo.markScanComplete(addressId: snap.id, isUsed: snap.isUsed)
+                try? await txRepo.markScanComplete(addressId: snap.id, isUsed: snap.isUsed, save: false)
             }
         }
+
+        // Commit the WHOLE balance pass in ONE main-context merge
+        // (2026-06-14): every upsert above ran with `save: false`, so this
+        // single flush replaces the dozens of per-record saves that fired a
+        // @Query invalidation + main-thread body re-render each — the storm
+        // that froze the UI during pull-to-refresh.
+        try? await txRepo.flush()
 
         await txHistoryTask
         // Transaction history pass ran to completion — stamp it synced
         // (the scanner swallows per-chain failures, so completion is the
         // freshness signal available here). Skipped if cancelled.
+        // Flush the batched transaction writes in one merge (same fix).
+        try? await txRepo.flush()
         if !Task.isCancelled {
             try? await syncRepo.markSynced(domain: .transactions, scopeId: syncScope)
         }
@@ -404,11 +413,13 @@ struct WalletRefreshCoordinator: Sendable {
                 decimals: 0,
                 rawBalance: Self.decimalString(chainBalance.nativeBalance),
                 fiatValueCached: chainBalance.fiatBalance,
-                fiatCurrencyCode: chainBalance.fiatCurrencyCode
+                fiatCurrencyCode: chainBalance.fiatCurrencyCode,
+                save: false
             )
             try await txRepo.markScanComplete(
                 addressId: snap.id,
-                isUsed: chainBalance.isUsed
+                isUsed: chainBalance.isUsed,
+                save: false
             )
             Self.log.info("Native balance for \(snap.chain.rawValue, privacy: .public)/\(snap.address, privacy: .public): \(String(describing: chainBalance.nativeBalance), privacy: .public)")
         } catch {
@@ -453,7 +464,8 @@ struct WalletRefreshCoordinator: Sendable {
                 // price; only a real quote overwrites it — same
                 // 2026-06-13 fix as the native path above.
                 fiatValueCached: tokenBalance.fiatBalance,
-                fiatCurrencyCode: tokenBalance.fiatCurrencyCode
+                fiatCurrencyCode: tokenBalance.fiatCurrencyCode,
+                save: false
             )
             Self.log.info("Token balance for \(snap.chain.rawValue, privacy: .public)/\(tokenBalance.symbol, privacy: .public): \(String(describing: tokenBalance.amount), privacy: .public) (raw \(rawString, privacy: .public))")
         } catch {
@@ -627,13 +639,16 @@ struct WalletRefreshCoordinator: Sendable {
                     decimals: row.decimals,
                     rawBalance: row.rawBalance,
                     fiatValueCached: newFiat,
-                    fiatCurrencyCode: code
+                    fiatCurrencyCode: code,
+                    save: false
                 )
                 repriced += 1
             } catch {
                 Self.log.error("reprice upsert failed for \(row.symbol, privacy: .public): \(String(describing: error), privacy: .public)")
             }
         }
+        // One merge for the whole re-price pass (2026-06-14 batch fix).
+        try? await txRepo.flush()
         Self.log.info("Repriced \(repriced, privacy: .public)/\(rows.count, privacy: .public) balance rows into \(code, privacy: .public)")
     }
 
@@ -715,7 +730,8 @@ struct WalletRefreshCoordinator: Sendable {
                     occurredAt: event.occurredAt,
                     status: event.status,
                     counterparty: event.counterparty,
-                    feeRaw: event.fee.map { Self.decimalString($0) }
+                    feeRaw: event.fee.map { Self.decimalString($0) },
+                    save: false
                 )
             } catch {
                 Self.log.error("upsertTransaction failed for \(event.txHash, privacy: .public) on \(address.chain.rawValue, privacy: .public): \(String(describing: error), privacy: .public)")
