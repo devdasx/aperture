@@ -1,50 +1,72 @@
 import SwiftUI
 
-/// Send · Step 3 — the recipient. Real per-chain address validation
-/// (wallet-core), real name resolution (ENS `.eth` on EVM, SNS `.sol` on
-/// Solana), real recent-recipients from the wallet's outgoing history, and
-/// a real first-send warning / send-count badge.
+/// Send · Step 3 — the recipient(s). Real per-chain address validation
+/// (wallet-core), real name resolution (ENS `.eth` / SNS `.sol`), real
+/// recents from the wallet's outgoing history, and a real first-send
+/// warning / send count per recipient.
 ///
-/// **Honesty (Rule #16).** A first send to an address is flagged plainly
-/// ("double-check — can't be reversed"); a repeat send is reassured with
-/// the real count. Nothing is faked: validation accepts only what the
-/// chain's format rules accept, and a name only resolves if the on-chain
+/// **Multi-recipient (2026-06-15).** Chains whose protocol can pay many
+/// recipients in one transaction (UTXO, Solana, Stellar, TON, Cosmos,
+/// Sui, Polkadot, Aptos — see `ChainSendCapability`) get a native
+/// add-more-addresses list, each row independently validated/resolved.
+/// Single-recipient chains (EVM, TRON, XRPL, NEAR) keep one field.
+///
+/// **Honesty (Rule #16).** A first send to an address is flagged plainly;
+/// a repeat send shows the real count. Validation accepts only what the
+/// chain's format rules accept; a name resolves only if the on-chain
 /// registry returns an address.
 struct SendRecipientView: View {
     let chain: SupportedChain
     let tokenSymbol: String?
     let fromAddress: String
     let recents: RecentRecipientsIndex
-    /// Proceed to the amount step with the resolved on-chain address and
-    /// the name it was resolved from (nil when an address was typed).
-    let onContinue: (_ address: String, _ name: String?) -> Void
+    /// Proceed to the amount step with the resolved recipient list.
+    let onContinue: (_ recipients: [SendRecipientEntry]) -> Void
 
-    @State private var input: String = ""
-    @State private var resolution: RecipientResolution = .empty
+    struct DraftEntry: Identifiable {
+        let id = UUID()
+        var text: String = ""
+        var resolution: RecipientResolution = .empty
+    }
+
+    @State private var entries: [DraftEntry] = [DraftEntry()]
     @State private var isScanning: Bool = false
 
-    private var assetLabel: String { tokenSymbol ?? chain.ticker }
+    private var maxRecipients: Int { ChainSendCapability.maxRecipients(for: chain) }
+    private var isMulti: Bool { maxRecipients > 1 }
     private var recentList: [RecentRecipient] { recents.recents(for: chain) }
 
-    /// The supported-name hint for this chain (only EVM/Solana have one).
     private var nameHint: String? {
         if chain.family == .evm { return ".eth name" }
         if chain == .solana { return ".sol name" }
         return nil
     }
 
-    private var resolvedAddress: String? {
-        if case let .resolved(address, _) = resolution { return address }
-        return nil
+    /// Every non-empty entry must be resolved, and there must be ≥1.
+    private var canContinue: Bool {
+        let nonEmpty = entries.filter { !$0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+        guard !nonEmpty.isEmpty else { return false }
+        return nonEmpty.allSatisfy { if case .resolved = $0.resolution { return true } else { return false } }
+    }
+
+    private var resolvedRecipients: [SendRecipientEntry] {
+        entries.compactMap { entry in
+            if case let .resolved(address, name) = entry.resolution {
+                return SendRecipientEntry(address: address, name: name)
+            }
+            return nil
+        }
+    }
+
+    private var canAddMore: Bool {
+        isMulti && entries.count < maxRecipients
+            && !(entries.last?.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true)
     }
 
     var body: some View {
         VStack(spacing: 0) {
             List {
-                inputSection
-                if let address = resolvedAddress {
-                    firstSendSection(address)
-                }
+                recipientsSection
                 if !recentList.isEmpty {
                     recentsSection
                 }
@@ -62,131 +84,64 @@ struct SendRecipientView: View {
                 CoinTitleBar(chain: chain, tokenSymbol: tokenSymbol, verb: "Send", trailing: "to")
             }
         }
-        .task(id: input) { await resolveInput() }
         .sheet(isPresented: $isScanning) {
             BrowserQRScanSheet(onScan: { scanned in
-                input = cleanScanned(scanned)
+                fill(cleanScanned(scanned))
                 isScanning = false
             })
             .uniAppEnvironment()
         }
     }
 
-    // MARK: - Input
+    // MARK: - Recipients
 
     @ViewBuilder
-    private var inputSection: some View {
+    private var recipientsSection: some View {
         Section {
-            UniTextField(
-                placeholder: nameHint == nil ? "Recipient address" : "Address or \(nameHint!)",
-                text: $input,
-                directionPolicy: .forceLTR,
-                axis: .vertical,
-                lineLimit: nil,
-                cornerRadius: UniRadius.xxxl,
-                autocapitalization: .never
-            )
-            .listRowBackground(Color.clear)
-            .listRowSeparator(.hidden)
-            .listRowInsets(EdgeInsets(top: UniSpacing.xs, leading: 0, bottom: UniSpacing.xs, trailing: 0))
-
-            HStack(spacing: UniSpacing.s) {
-                actionChip("Paste", systemImage: "doc.on.clipboard") { pasteFromClipboard() }
-                actionChip("Scan", systemImage: "qrcode.viewfinder") { isScanning = true }
-                Spacer(minLength: 0)
+            ForEach($entries) { $entry in
+                RecipientFieldRow(
+                    entry: $entry,
+                    chain: chain,
+                    nameHint: nameHint,
+                    canRemove: entries.count > 1,
+                    sendCount: { recents.sendCount(to: $0, chain: chain) },
+                    onRemove: { remove(entry.id) }
+                )
+                .listRowBackground(Color.clear)
+                .listRowSeparator(.hidden)
+                .listRowInsets(EdgeInsets(top: UniSpacing.xs, leading: 0, bottom: UniSpacing.xs, trailing: 0))
             }
-            .listRowBackground(Color.clear)
-            .listRowSeparator(.hidden)
-            .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: UniSpacing.xs, trailing: 0))
+
+            actionRow
+                .listRowBackground(Color.clear)
+                .listRowSeparator(.hidden)
+                .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: UniSpacing.xs, trailing: 0))
+        } header: {
+            if isMulti {
+                UniCaption(
+                    text: entries.count > 1 ? "Recipients (\(entries.count))" : "Recipients",
+                    color: UniColors.Text.tertiary
+                )
+            }
         } footer: {
-            resolutionFeedback
+            if isMulti {
+                Text("\(chain.displayName) can pay up to \(maxRecipients) recipients in one transaction.")
+                    .font(UniTypography.footnote)
+                    .foregroundStyle(UniColors.Text.tertiary)
+            }
         }
     }
 
-    @ViewBuilder
-    private var resolutionFeedback: some View {
-        switch resolution {
-        case .empty:
-            if let hint = nameHint {
-                Text("Enter a \(chain.displayName) address or a \(hint).")
-                    .font(UniTypography.footnote)
-                    .foregroundStyle(UniColors.Text.tertiary)
-            } else {
-                Text("Enter a \(chain.displayName) address.")
-                    .font(UniTypography.footnote)
-                    .foregroundStyle(UniColors.Text.tertiary)
+    private var actionRow: some View {
+        HStack(spacing: UniSpacing.s) {
+            actionChip("Paste", systemImage: "doc.on.clipboard") { pasteFromClipboard() }
+            actionChip("Scan", systemImage: "qrcode.viewfinder") { isScanning = true }
+            if isMulti {
+                actionChip("Add recipient", systemImage: "plus") { addEntry() }
+                    .opacity(canAddMore ? 1 : 0.4)
+                    .disabled(!canAddMore)
             }
-        case .resolving:
-            HStack(spacing: UniSpacing.xs) {
-                ProgressView().controlSize(.mini)
-                Text("Resolving…")
-                    .font(UniTypography.footnote)
-                    .foregroundStyle(UniColors.Text.tertiary)
-            }
-            .padding(.top, UniSpacing.xxs)
-        case let .resolved(address, name):
-            if let name {
-                HStack(spacing: UniSpacing.xxs) {
-                    Image(systemName: "checkmark.circle.fill")
-                        .foregroundStyle(UniColors.Status.successForeground)
-                    Text(verbatim: "\(name) → \(SendRecipientView.shorten(address))")
-                        .font(UniTypography.footnote.monospaced())
-                        .foregroundStyle(UniColors.Text.secondary)
-                        .environment(\.layoutDirection, .leftToRight)
-                }
-                .padding(.top, UniSpacing.xxs)
-            } else {
-                EmptyView()
-            }
-        case let .nameNotFound(name):
-            Text("Couldn't find \(name). Check the spelling, or paste the address directly.")
-                .font(UniTypography.footnote)
-                .foregroundStyle(UniColors.Status.warningForeground)
-                .padding(.top, UniSpacing.xxs)
-        case .invalid:
-            Text("That's not a valid \(chain.displayName) address.")
-                .font(UniTypography.footnote)
-                .foregroundStyle(UniColors.Status.errorForeground)
-                .padding(.top, UniSpacing.xxs)
-        }
-    }
-
-    // MARK: - First-send / count
-
-    @ViewBuilder
-    private func firstSendSection(_ address: String) -> some View {
-        let count = recents.sendCount(to: address, chain: chain)
-        Section {
-            if count == 0 {
-                HStack(alignment: .top, spacing: UniSpacing.s) {
-                    Image(systemName: "exclamationmark.triangle.fill")
-                        .foregroundStyle(UniColors.Status.warningForeground)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("First time sending here")
-                            .font(UniTypography.subheadlineEmphasized)
-                            .foregroundStyle(UniColors.Text.primary)
-                        Text("You've never sent to this address before. Double-check every character — crypto transactions can't be reversed.")
-                            .font(UniTypography.footnote)
-                            .foregroundStyle(UniColors.Text.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                }
-                .listRowBackground(UniColors.Background.secondary)
-            } else {
-                HStack(alignment: .top, spacing: UniSpacing.s) {
-                    Image(systemName: "checkmark.shield.fill")
-                        .foregroundStyle(UniColors.Status.successForeground)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(count == 1 ? "Sent here once before" : "Sent here \(count) times before")
-                            .font(UniTypography.subheadlineEmphasized)
-                            .foregroundStyle(UniColors.Text.primary)
-                        Text("This is an address you've used before.")
-                            .font(UniTypography.footnote)
-                            .foregroundStyle(UniColors.Text.secondary)
-                    }
-                }
-                .listRowBackground(UniColors.Background.secondary)
-            }
+            Spacer(minLength: 0)
         }
     }
 
@@ -197,7 +152,7 @@ struct SendRecipientView: View {
         Section {
             ForEach(recentList) { recipient in
                 Button {
-                    input = recipient.address
+                    fill(recipient.address)
                 } label: {
                     recentRow(recipient)
                 }
@@ -235,53 +190,57 @@ struct SendRecipientView: View {
         UniButton(
             title: "Continue",
             variant: .primary,
-            isEnabled: resolvedAddress != nil,
-            action: {
-                if case let .resolved(address, name) = resolution {
-                    onContinue(address, name)
-                }
-            }
+            isEnabled: canContinue,
+            action: { onContinue(resolvedRecipients) }
         )
         .padding(.horizontal, UniSpacing.l)
         .padding(.top, UniSpacing.s)
         .padding(.bottom, UniSpacing.xs)
     }
 
-    // MARK: - Behavior
+    // MARK: - Mutations
 
-    private func resolveInput() async {
-        let trimmed = input.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { resolution = .empty; return }
+    private func addEntry() {
+        guard canAddMore else { return }
+        entries.append(DraftEntry())
+    }
 
-        // Debounce only the name path (it hits the network); a raw
-        // address validates instantly.
-        if RecipientResolver.looksLikeName(trimmed, for: chain) {
-            resolution = .resolving
-            try? await Task.sleep(for: .milliseconds(350))
-            if Task.isCancelled { return }
+    private func remove(_ id: UUID) {
+        entries.removeAll { $0.id == id }
+        if entries.isEmpty { entries = [DraftEntry()] }
+    }
+
+    /// Place a pasted / scanned / recent address into the last empty entry,
+    /// else append a new entry (when the chain allows more).
+    private func fill(_ value: String) {
+        let clean = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !clean.isEmpty else { return }
+        if let lastIndex = entries.indices.last,
+           entries[lastIndex].text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            entries[lastIndex].text = clean
+        } else if isMulti, entries.count < maxRecipients {
+            entries.append(DraftEntry(text: clean))
+        } else if let lastIndex = entries.indices.last {
+            entries[lastIndex].text = clean
         }
-        let result = await RecipientResolver.resolve(trimmed, chain: chain)
-        if Task.isCancelled { return }
-        resolution = result
     }
 
     private func pasteFromClipboard() {
         if let pasted = UIPasteboard.general.string {
-            input = cleanScanned(pasted)
+            fill(cleanScanned(pasted))
         }
     }
 
-    /// Strip a URI scheme (`ethereum:`, `solana:`, …) and any query the
-    /// QR / pasteboard may carry, leaving the bare address.
+    /// Strip a URI scheme (`ethereum:`, `solana:`, …) and any query the QR
+    /// / pasteboard may carry, leaving the bare address.
     private func cleanScanned(_ raw: String) -> String {
         var s = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         if let schemeRange = s.range(of: ":"), s.range(of: "://") == nil {
-            // "ethereum:0x.." → drop "ethereum:" (but keep "https://..").
             let after = String(s[schemeRange.upperBound...])
             if !after.isEmpty { s = after }
         }
         if let q = s.firstIndex(of: "?") { s = String(s[..<q]) }
-        if let at = s.firstIndex(of: "@") { s = String(s[..<at]) } // "addr@chainId"
+        if let at = s.firstIndex(of: "@") { s = String(s[..<at]) }
         return s.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
@@ -312,4 +271,114 @@ struct SendRecipientView: View {
         f.unitsStyle = .abbreviated
         return f
     }()
+}
+
+// MARK: - One recipient row (owns its resolution)
+
+private struct RecipientFieldRow: View {
+    @Binding var entry: SendRecipientView.DraftEntry
+    let chain: SupportedChain
+    let nameHint: String?
+    let canRemove: Bool
+    let sendCount: (String) -> Int
+    let onRemove: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: UniSpacing.xs) {
+            HStack(alignment: .top, spacing: UniSpacing.s) {
+                UniTextField(
+                    placeholder: nameHint == nil ? "Recipient address" : "Address or \(nameHint!)",
+                    text: $entry.text,
+                    directionPolicy: .forceLTR,
+                    axis: .vertical,
+                    lineLimit: nil,
+                    cornerRadius: UniRadius.xxxl,
+                    autocapitalization: .never
+                )
+                if canRemove {
+                    Button(action: onRemove) {
+                        Image(systemName: "minus.circle.fill")
+                            .font(.system(size: 22))
+                            .foregroundStyle(UniColors.Icon.tertiary)
+                            .padding(.top, UniSpacing.xs)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(Text("Remove recipient"))
+                }
+            }
+            feedback
+        }
+        .task(id: entry.text) { await resolve() }
+    }
+
+    @ViewBuilder
+    private var feedback: some View {
+        switch entry.resolution {
+        case .empty:
+            EmptyView()
+        case .resolving:
+            HStack(spacing: UniSpacing.xs) {
+                ProgressView().controlSize(.mini)
+                Text("Resolving…")
+                    .font(UniTypography.footnote)
+                    .foregroundStyle(UniColors.Text.tertiary)
+            }
+        case let .resolved(address, name):
+            VStack(alignment: .leading, spacing: 2) {
+                if let name {
+                    Text(verbatim: "\(name) → \(SendRecipientView.shorten(address))")
+                        .font(UniTypography.footnote.monospaced())
+                        .foregroundStyle(UniColors.Text.secondary)
+                        .environment(\.layoutDirection, .leftToRight)
+                }
+                firstSendBadge(address)
+            }
+        case let .nameNotFound(name):
+            Text("Couldn't find \(name). Check the spelling, or paste the address.")
+                .font(UniTypography.footnote)
+                .foregroundStyle(UniColors.Status.warningForeground)
+        case .invalid:
+            Text("That's not a valid \(chain.displayName) address.")
+                .font(UniTypography.footnote)
+                .foregroundStyle(UniColors.Status.errorForeground)
+        }
+    }
+
+    @ViewBuilder
+    private func firstSendBadge(_ address: String) -> some View {
+        let count = sendCount(address)
+        if count == 0 {
+            HStack(alignment: .top, spacing: UniSpacing.xs) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.system(size: 13))
+                    .foregroundStyle(UniColors.Status.warningForeground)
+                Text("First time sending here — double-check it, transactions can't be reversed.")
+                    .font(UniTypography.footnote)
+                    .foregroundStyle(UniColors.Text.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        } else {
+            HStack(spacing: UniSpacing.xs) {
+                Image(systemName: "checkmark.shield.fill")
+                    .font(.system(size: 13))
+                    .foregroundStyle(UniColors.Status.successForeground)
+                Text(count == 1 ? "Sent here once before" : "Sent here \(count) times before")
+                    .font(UniTypography.footnote)
+                    .foregroundStyle(UniColors.Text.secondary)
+            }
+        }
+    }
+
+    private func resolve() async {
+        let trimmed = entry.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { entry.resolution = .empty; return }
+        if RecipientResolver.looksLikeName(trimmed, for: chain) {
+            entry.resolution = .resolving
+            try? await Task.sleep(for: .milliseconds(350))
+            if Task.isCancelled { return }
+        }
+        let result = await RecipientResolver.resolve(trimmed, chain: chain)
+        if Task.isCancelled { return }
+        entry.resolution = result
+    }
 }
