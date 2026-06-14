@@ -227,10 +227,6 @@ struct TestScreenView: View {
 
             WalletActionRegion(
                 canSend: true,
-                onSend: {
-                    // Inert. Same component as the real wallet so the
-                    // haptic + glass material read identically.
-                },
                 onReceive: {
                     // Inert.
                 },
