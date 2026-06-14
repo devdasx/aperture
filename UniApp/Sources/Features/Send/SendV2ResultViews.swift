@@ -207,3 +207,81 @@ struct SendV2SentView: View {
         UserDefaults.standard.string(forKey: CurrencyPreference.storageKey) ?? CurrencyPreference.defaultCode
     }
 }
+
+// MARK: - C3 Failed
+//
+/// **Send v2 · C3 — Failed (terminal).** The honest failure surface the
+/// handoff reserved for a rejected send (the "terminal Failed state"). The
+/// flow reaches this ONLY when the broadcast never landed — `performSend`
+/// threw before the node accepted the raw transaction — so **no funds left
+/// the wallet** and the user can safely retry. Shows the real reason from
+/// the signer / node (Rule #16 — never a vague "something went wrong"), the
+/// reassurance that nothing moved, and two ways out: try again (back to
+/// Review with the draft intact) or close.
+struct SendV2FailedView: View {
+    @Bindable var model: SendV2Model
+    let amountText: String
+    let recipientDisplay: String
+    let onRetry: () -> Void
+    let onDone: () -> Void
+
+    @State private var tick: Int = 0
+
+    private var reason: String {
+        let msg = model.sendFailureMessage ?? ""
+        return msg.isEmpty
+            ? "The transaction couldn't be sent. Please try again."
+            : msg
+    }
+
+    var body: some View {
+        ZStack {
+            SendBloomBackground()
+
+            VStack(spacing: 0) {
+                ScrollView {
+                    VStack(spacing: UniSpacing.s) {
+                        Spacer(minLength: UniSpacing.xl)
+                        Image(systemName: "xmark.octagon.fill")
+                            .font(.system(size: 64, weight: .regular))
+                            .symbolRenderingMode(.hierarchical)
+                            .foregroundStyle(UniColors.Send.negative)
+                            .symbolEffect(.bounce, options: .nonRepeating)
+                            .accessibilityHidden(true)
+                            .padding(.bottom, UniSpacing.xs)
+                        Text("Send failed")
+                            .font(.system(size: 30, weight: .bold))
+                            .tracking(-0.6)
+                            .foregroundStyle(UniColors.Text.primary)
+                        Text(verbatim: reason)
+                            .font(UniTypography.subheadline)
+                            .foregroundStyle(UniColors.Text.secondary)
+                            .multilineTextAlignment(.center)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Text("No funds left your wallet — you can try again.")
+                            .font(UniTypography.footnote)
+                            .foregroundStyle(UniColors.Text.tertiary)
+                            .multilineTextAlignment(.center)
+                            .padding(.top, UniSpacing.xxs)
+                    }
+                    .padding(.horizontal, UniSpacing.l)
+                    .padding(.bottom, UniSpacing.xl)
+                }
+                .scrollIndicators(.hidden)
+
+                VStack(spacing: UniSpacing.s) {
+                    UniButton(title: "Try again", variant: .primary, action: onRetry)
+                    UniButton(title: "Close", variant: .tertiary, action: onDone)
+                }
+                .padding(.horizontal, UniSpacing.l)
+                .padding(.top, UniSpacing.s)
+                .padding(.bottom, UniSpacing.xs)
+            }
+        }
+        .navigationBarBackButtonHidden(true)
+        .uniHaptic(.error, trigger: tick)
+        .onAppear { tick += 1 }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(Text(verbatim: "Send failed. \(reason)"))
+    }
+}

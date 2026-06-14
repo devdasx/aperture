@@ -119,9 +119,19 @@ struct SendV2FlowView: View {
                 SendV2SendingView(model: model)
                     .task {
                         await model.send()
-                        if model.lifecycle == .confirmed {
+                        // Navigate on EVERY terminal outcome — never strand
+                        // the user on the static "Sending…" screen. A
+                        // broadcast that landed (.unconfirmed/.confirming/
+                        // .confirmed) goes to Sent (which shows live
+                        // confirmation); a send that never broadcast
+                        // (.failed/.dropped) goes to the honest Failed screen.
+                        switch model.lifecycle {
+                        case .confirmed, .unconfirmed, .confirming:
                             draft.outcome = .sent
                             advance(to: .sent)
+                        case .failed, .dropped, .idle, .broadcasting:
+                            draft.outcome = .failed
+                            advance(to: .failed)
                         }
                     }
             case .sent:
@@ -132,6 +142,14 @@ struct SendV2FlowView: View {
                     onDone: { dismiss() },
                     onShareReceipt: { activeSheet = .shareReceipt },
                     onViewExplorer: { activeSheet = .explorer }
+                )
+            case .failed:
+                SendV2FailedView(
+                    model: model,
+                    amountText: amountText,
+                    recipientDisplay: draft.recipientDisplay,
+                    onRetry: { advance(to: .review) },
+                    onDone: { dismiss() }
                 )
             }
         }
@@ -385,7 +403,7 @@ struct SendV2FlowView: View {
 
 extension SendV2FlowView {
     enum Step: Hashable {
-        case asset, recipient, poisoning, resolved, amount, review, whale, authorize, sending, sent
+        case asset, recipient, poisoning, resolved, amount, review, whale, authorize, sending, sent, failed
 
         var previous: Step? {
             switch self {
@@ -394,7 +412,7 @@ extension SendV2FlowView {
             case .review:    return .amount
             case .whale:     return .review
             case .authorize: return .review
-            case .sending, .sent: return nil
+            case .sending, .sent, .failed: return nil
             }
         }
 
@@ -407,7 +425,7 @@ extension SendV2FlowView {
 
         var hidesNavBar: Bool {
             switch self {
-            case .recipient, .poisoning, .resolved, .amount, .sending, .sent: return true
+            case .recipient, .poisoning, .resolved, .amount, .sending, .sent, .failed: return true
             default: return false
             }
         }

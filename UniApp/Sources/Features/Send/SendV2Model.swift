@@ -408,7 +408,13 @@ final class SendV2Model {
             )
             sentTxHash = signed.txHash
             lifecycle = .unconfirmed
-            await pollStatus(chain: chain, txHash: signed.txHash)
+            // Broadcast landed — the tx is on its way. Don't block the
+            // Sending screen for the full confirmation window ("you can
+            // leave — we'll notify you"): return now so the flow advances to
+            // the Sent screen, and confirm in the background. `pollStatus`
+            // keeps updating `confirmations` / `lifecycle`, which the Sent
+            // screen reflects live (Rule #25).
+            Task { await pollStatus(chain: chain, txHash: signed.txHash) }
         } catch let error as ChainSendError {
             sendFailureMessage = error.userMessage
             lifecycle = .failed

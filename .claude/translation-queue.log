@@ -14,3 +14,9 @@
 2026-06-14T14:31:05Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendV2AmountView.swift	Review
 2026-06-14T14:31:05Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendV2AmountView.swift	\(WalletFormatting.native(draft.availableBalance, decimals: draft.asset?.decimals ?? 8)) \(draft.unitTicker)
 2026-06-14T14:31:05Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendV2AmountView.swift	\(draft.unitTicker) on \(draft.network?.displayName ?? 
+2026-06-14T19:25:45Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendV2ResultViews.swift	Broadcasting to \(networkName). You can leave — we'll notify you.
+2026-06-14T19:25:45Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendV2ResultViews.swift	No funds left your wallet — you can try again.
+2026-06-14T19:25:45Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendV2ResultViews.swift	Send failed. \(reason)
+2026-06-14T19:25:45Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendV2ResultViews.swift	\(amountText) sent
+2026-06-14T19:25:45Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendV2ResultViews.swift	\(amountText) sent to \(recipientDisplay)
+2026-06-14T19:25:45Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendV2ResultViews.swift	to \(recipientDisplay) · confirming on-chain now
