@@ -309706,6 +309706,39 @@
           }
         }
       }
+    },
+    "First time sending here — double-check it. Transactions can't be reversed.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "First time sending here — double-check it. Transactions can't be reversed."
+          }
+        }
+      }
+    },
+    "Recipient \\(index)": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Recipient \\(index)"
+          }
+        }
+      }
+    },
+    "Use this recipient": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Use this recipient"
+          }
+        }
+      }
     }
   },
   "version": "1.0"
