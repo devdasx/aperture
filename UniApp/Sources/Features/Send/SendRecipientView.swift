@@ -138,15 +138,18 @@ struct SendRecipientView: View {
                 )
             }
 
-            VStack(spacing: UniSpacing.s) {
+            // Connected: the address fields stack tightly as one group
+            // (no per-field cards), each a soft 36-pt-radius pill.
+            VStack(spacing: UniSpacing.xs) {
                 ForEach($entries) { $entry in
-                    RecipientCard(
+                    RecipientRow(
                         entry: $entry,
                         chain: chain,
                         index: entryIndex(entry.id),
                         showsIndex: isMulti && entries.count > 1,
                         nameHint: nameHint,
                         canRemove: entries.count > 1,
+                        isDuplicate: isDuplicateAddress(entry),
                         sendCount: { recents.sendCount(to: $0, chain: chain) },
                         onRemove: { remove(entry.id) }
                     )
@@ -162,16 +165,19 @@ struct SendRecipientView: View {
     /// in a `GlassEffectContainer` so the system can morph them as a set —
     /// the canonical place for `.buttonStyle(.glass)` (chrome, not content).
     private var actionChips: some View {
-        GlassEffectContainer(spacing: UniSpacing.s) {
-            HStack(spacing: UniSpacing.s) {
-                glassChip("Paste", systemImage: "doc.on.clipboard") { pasteFromClipboard() }
-                glassChip("Scan", systemImage: "qrcode.viewfinder") { isScanning = true }
-                if isMulti {
-                    glassChip("Add", systemImage: "plus", isEnabled: canAddMore) { addEntry() }
+        ScrollView(.horizontal, showsIndicators: false) {
+            GlassEffectContainer(spacing: UniSpacing.s) {
+                HStack(spacing: UniSpacing.s) {
+                    glassChip("Paste", systemImage: "doc.on.clipboard") { pasteFromClipboard() }
+                    glassChip("Scan", systemImage: "qrcode.viewfinder") { isScanning = true }
+                    if isMulti {
+                        glassChip("Add recipient", systemImage: "plus", isEnabled: canAddMore) { addEntry() }
+                    }
                 }
-                Spacer(minLength: 0)
+                .padding(.vertical, 2)
             }
         }
+        .scrollClipDisabled()
     }
 
     private func glassChip(
@@ -260,6 +266,26 @@ struct SendRecipientView: View {
         (entries.firstIndex { $0.id == id } ?? 0) + 1
     }
 
+    private func normalizedAddress(_ address: String) -> String {
+        chain.family == .evm ? address.lowercased() : address
+    }
+
+    /// Whether this entry's resolved address already appears in an EARLIER
+    /// entry — so the first-send warning fires once per distinct address,
+    /// not once per duplicate field. The first occurrence "owns" the
+    /// warning; later duplicates show a quiet "same address" note instead.
+    private func isDuplicateAddress(_ entry: DraftEntry) -> Bool {
+        guard case let .resolved(address, _) = entry.resolution else { return false }
+        let norm = normalizedAddress(address)
+        let firstOwner = entries.first { candidate in
+            if case let .resolved(candidateAddress, _) = candidate.resolution {
+                return normalizedAddress(candidateAddress) == norm
+            }
+            return false
+        }
+        return firstOwner?.id != entry.id
+    }
+
     private func addEntry() {
         guard canAddMore else { return }
         withAnimation(.snappy(duration: 0.25)) {
@@ -322,13 +348,14 @@ struct SendRecipientView: View {
     }()
 }
 
-// MARK: - One recipient card (owns its resolution)
+// MARK: - One recipient row (owns its resolution)
 
-/// A self-contained recipient: a status-bearing identity disc, the full
-/// address field (expanding, LTR-locked, softened corners), and inline
-/// resolution feedback — all on one opaque card. The disc and feedback
-/// communicate state through the field's own register, never decoration.
-private struct RecipientCard: View {
+/// A single recipient in the connected group: an optional index label, the
+/// full address field (expanding, LTR-locked, 36-pt-radius pill), a red
+/// remove control, and inline resolution feedback. No leading disc — the
+/// person is identified by their address, which the field shows in full
+/// (Rule #7). The rows stack tightly so they read as one connected set.
+private struct RecipientRow: View {
     @Binding var entry: SendRecipientView.DraftEntry
     let chain: SupportedChain
     /// 1-based position, shown only when more than one recipient exists.
@@ -336,47 +363,48 @@ private struct RecipientCard: View {
     let showsIndex: Bool
     let nameHint: String?
     let canRemove: Bool
+    /// True when this entry's resolved address already appears in an
+    /// earlier row — suppresses the first-send warning so it fires once
+    /// per distinct address, not once per duplicate field.
+    let isDuplicate: Bool
     let sendCount: (String) -> Int
     let onRemove: () -> Void
 
     var body: some View {
-        UniCard {
-            VStack(alignment: .leading, spacing: UniSpacing.s) {
-                HStack(alignment: .top, spacing: UniSpacing.s) {
-                    RecipientIdentityDisc(resolution: entry.resolution)
-
-                    VStack(alignment: .leading, spacing: UniSpacing.xxs) {
-                        if showsIndex {
-                            Text("Recipient \(index)")
-                                .font(UniTypography.caption1)
-                                .foregroundStyle(UniColors.Text.tertiary)
-                        }
-                        UniTextField(
-                            placeholder: nameHint == nil ? "Recipient address" : "Address or \(nameHint!)",
-                            text: $entry.text,
-                            directionPolicy: .forceLTR,
-                            axis: .vertical,
-                            lineLimit: nil,
-                            cornerRadius: UniRadius.xxxl,
-                            autocapitalization: .never
-                        )
-                    }
-
-                    if canRemove {
-                        Button(action: onRemove) {
-                            Image(systemName: "minus.circle.fill")
-                                .font(.system(size: 22))
-                                .foregroundStyle(UniColors.Icon.tertiary)
-                                .padding(.top, UniSpacing.xxs)
-                                .contentShape(Circle())
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel(Text("Remove recipient"))
-                    }
-                }
-
-                feedback
+        VStack(alignment: .leading, spacing: UniSpacing.xs) {
+            if showsIndex {
+                Text("Recipient \(index)")
+                    .font(UniTypography.caption1)
+                    .foregroundStyle(UniColors.Text.tertiary)
+                    .padding(.leading, UniSpacing.xs)
             }
+
+            HStack(alignment: .top, spacing: UniSpacing.s) {
+                UniTextField(
+                    placeholder: nameHint == nil ? "Recipient address" : "Address or \(nameHint!)",
+                    text: $entry.text,
+                    directionPolicy: .forceLTR,
+                    axis: .vertical,
+                    lineLimit: nil,
+                    cornerRadius: UniRadius.xxxl,
+                    autocapitalization: .never
+                )
+
+                if canRemove {
+                    Button(action: onRemove) {
+                        Image(systemName: "minus.circle.fill")
+                            .font(.system(size: 24))
+                            .foregroundStyle(UniColors.Status.errorForeground)
+                            .padding(.top, UniSpacing.xs)
+                            .contentShape(Circle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(Text("Remove recipient"))
+                }
+            }
+
+            feedback
+                .padding(.leading, UniSpacing.xs)
         }
         .task(id: entry.text) { await resolve() }
     }
@@ -410,7 +438,20 @@ private struct RecipientCard: View {
                             .truncationMode(.middle)
                     }
                 }
-                firstSendNote(address)
+                if isDuplicate {
+                    // Same address as an earlier row — quiet, non-warning
+                    // note (the warning already fired on the first row).
+                    HStack(spacing: UniSpacing.xs) {
+                        Image(systemName: "arrow.triangle.merge")
+                            .font(.system(size: 13))
+                            .foregroundStyle(UniColors.Text.tertiary)
+                        Text("Same as an earlier recipient")
+                            .font(UniTypography.footnote)
+                            .foregroundStyle(UniColors.Text.tertiary)
+                    }
+                } else {
+                    firstSendNote(address)
+                }
             }
             .transition(.opacity)
         case let .nameNotFound(name):
@@ -480,46 +521,6 @@ private struct RecipientCard: View {
         let result = await RecipientResolver.resolve(trimmed, chain: chain)
         if Task.isCancelled { return }
         withAnimation(.easeOut(duration: 0.2)) { entry.resolution = result }
-    }
-}
-
-// MARK: - Recipient identity disc (status, not iconography)
-
-/// A small leading disc that reflects the *resolution state* of a
-/// recipient — neutral when empty/typing, accent-tinted when resolved,
-/// orange on not-found, red on invalid. It carries STATUS, not brand
-/// meaning, so an SF Symbol is the honest source (Rule #7): there is no
-/// "recipient logo" — the person is identified by their address, which
-/// the field shows in full.
-private struct RecipientIdentityDisc: View {
-    let resolution: RecipientResolution
-
-    private var symbol: String {
-        switch resolution {
-        case .empty, .resolving: return "person.crop.circle"
-        case .resolved:          return "person.crop.circle.fill.badge.checkmark"
-        case .nameNotFound:      return "person.crop.circle.badge.questionmark"
-        case .invalid:           return "person.crop.circle.badge.exclamationmark"
-        }
-    }
-
-    private var tint: Color {
-        switch resolution {
-        case .empty, .resolving: return UniColors.Icon.tertiary
-        case .resolved:          return UniColors.Status.successForeground
-        case .nameNotFound:      return UniColors.Status.warningForeground
-        case .invalid:           return UniColors.Status.errorForeground
-        }
-    }
-
-    var body: some View {
-        Image(systemName: symbol)
-            .font(.system(size: 26))
-            .foregroundStyle(tint)
-            .frame(width: 36, height: 36)
-            .symbolRenderingMode(.hierarchical)
-            .contentTransition(.symbolEffect(.replace))
-            .accessibilityHidden(true)
     }
 }
 
