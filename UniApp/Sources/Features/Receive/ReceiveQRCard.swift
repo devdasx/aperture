@@ -23,6 +23,14 @@ struct ReceiveQRCard: View {
     /// point-size for this window (not `UIScreen.main`'s).
     @Environment(\.displayScale) private var displayScale
 
+    /// Off-main QR generation (Rule #28): cache hits render synchronously
+    /// (no flash); a cache miss generates off the main thread via the
+    /// `.task` below and lands here. `qrFailed` distinguishes "still
+    /// generating" (neutral placeholder) from the extremely-rare
+    /// generation failure ("QR unavailable").
+    @State private var resolvedQR: UIImage?
+    @State private var qrFailed = false
+
     private var captionText: String {
         if let tokenSymbol {
             return "\(tokenSymbol) on \(chain.displayName)"
@@ -69,25 +77,43 @@ struct ReceiveQRCard: View {
 
     @ViewBuilder
     private var qrImage: some View {
-        if let image = QRCodeGenerator.shared.image(for: address, displayScale: displayScale) {
-            Image(uiImage: image)
-                .resizable()
-                .interpolation(.none) // crisp modules — no smoothing
-                .aspectRatio(1, contentMode: .fit)
-        } else {
-            // Defensive fallback — only reached if the payload string
-            // somehow defeats CIFilter (extremely unlikely for a
-            // standard address). We never want a blank square here.
-            RoundedRectangle(cornerRadius: UniRadius.m, style: .continuous)
-                .fill(UniColors.Background.secondary)
-                .aspectRatio(1, contentMode: .fit)
-                .overlay {
-                    UniFootnote(
-                        text: "QR unavailable",
-                        alignment: .center,
-                        color: UniColors.Text.secondary
-                    )
-                }
+        Group {
+            if let image = QRCodeGenerator.shared.cachedImage(for: address) ?? resolvedQR {
+                Image(uiImage: image)
+                    .resizable()
+                    .interpolation(.none) // crisp modules — no smoothing
+                    .aspectRatio(1, contentMode: .fit)
+            } else if qrFailed {
+                // Defensive fallback — only reached if the payload string
+                // somehow defeats CIFilter (extremely unlikely for a
+                // standard address). We never want a blank square here.
+                RoundedRectangle(cornerRadius: UniRadius.m, style: .continuous)
+                    .fill(UniColors.Background.secondary)
+                    .aspectRatio(1, contentMode: .fit)
+                    .overlay {
+                        UniFootnote(
+                            text: "QR unavailable",
+                            alignment: .center,
+                            color: UniColors.Text.secondary
+                        )
+                    }
+            } else {
+                // Generating off-main — neutral placeholder for the brief
+                // first-render before the cached image lands (no UI block).
+                RoundedRectangle(cornerRadius: UniRadius.m, style: .continuous)
+                    .fill(UniColors.Background.secondary)
+                    .aspectRatio(1, contentMode: .fit)
+            }
+        }
+        .task(id: address) {
+            qrFailed = false
+            resolvedQR = nil
+            if QRCodeGenerator.shared.cachedImage(for: address) != nil { return }
+            if let image = await QRCodeGenerator.shared.image(for: address, displayScale: displayScale) {
+                resolvedQR = image
+            } else {
+                qrFailed = true
+            }
         }
     }
 
