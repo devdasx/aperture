@@ -309398,6 +309398,105 @@
           }
         }
       }
+    },
+    "Amount entry is the next step we'll build.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Amount entry is the next step we'll build."
+          }
+        }
+      }
+    },
+    "Couldn't find \\(name). Check the spelling, or paste the address directly.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Couldn't find \\(name). Check the spelling, or paste the address directly."
+          }
+        }
+      }
+    },
+    "Enter a \\(chain.displayName) address or a \\(hint).": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Enter a \\(chain.displayName) address or a \\(hint)."
+          }
+        }
+      }
+    },
+    "Enter a \\(chain.displayName) address.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Enter a \\(chain.displayName) address."
+          }
+        }
+      }
+    },
+    "Resolving…": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Resolving…"
+          }
+        }
+      }
+    },
+    "Send \\(assetLabel) to": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Send \\(assetLabel) to"
+          }
+        }
+      }
+    },
+    "That's not a valid \\(chain.displayName) address.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "That's not a valid \\(chain.displayName) address."
+          }
+        }
+      }
+    },
+    "This is an address you've used before.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This is an address you've used before."
+          }
+        }
+      }
+    },
+    "You've never sent to this address before. Double-check every character — crypto transactions can't be reversed.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "You've never sent to this address before. Double-check every character — crypto transactions can't be reversed."
+          }
+        }
+      }
     }
   },
   "version": "1.0"
