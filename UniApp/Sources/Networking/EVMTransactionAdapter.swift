@@ -207,59 +207,140 @@ struct EVMTransactionAdapter: Sendable {
         return allowed
     }
 
-    /// Sequentially page an Etherscan-compatible action until `limit`
-    /// rows (the per-chain full-history cap), a short page (history
-    /// exhausted), or a mid-pagination failure.
+    /// How many indexer pages are prefetched concurrently per wave.
+    /// **Rule #28 — bounded parallelism (2026-06-14).** Etherscan-
+    /// compatible pagination (`page`/`offset`) returns self-contained
+    /// slices — page N is independent of page N±1 (verified live
+    /// against Routescan: page 1 and page 2 return distinct,
+    /// non-overlapping rows), so a fixed prefetch window can fetch
+    /// several pages at once and still reassemble them in strict page
+    /// order. The window is kept small (3) because the indexer GETs go
+    /// through `URLSession.shared`, NOT the `RPCClient` token bucket —
+    /// the indexer free tier tolerates ~5 req/s
+    /// (docs.etherscan.io/resources/rate-limits), and with
+    /// `fullHistoryCap = 1000` / pageSize ≤ 100 the whole history is at
+    /// most ~10 pages, so 3-at-a-time never approaches the limit while
+    /// roughly tripling pagination throughput. The 429 / "Max rate
+    /// limit reached" handling in `runEtherscanQuery` still applies
+    /// per page.
+    private static let indexerPrefetchWindow = 3
+
+    /// Page an Etherscan-compatible action until `limit` rows (the
+    /// per-chain full-history cap), a short page (history exhausted),
+    /// or a mid-pagination failure.
     ///
-    /// **Full history (2026-06-13).** The pre-pagination code asked
-    /// for a single `page=1&offset=limit` slice, so an imported
-    /// wallet's older activity — including its historical balance
-    /// peaks — never reached the database. Pages now run STRICTLY
-    /// sequentially (never in parallel) so the indexer's free-tier
-    /// rate limit is fed at a polite pace, and:
+    /// **Full history (2026-06-13) + bounded prefetch (2026-06-14).**
+    /// The pre-pagination code asked for a single `page=1&offset=limit`
+    /// slice, so an imported wallet's older activity — including its
+    /// historical balance peaks — never reached the database. Pages now
+    /// fetch in WAVES of up to `indexerPrefetchWindow` concurrent
+    /// requests, with results processed strictly in page order so the
+    /// returned array is identical to the old sequential output. The
+    /// existing contract is preserved exactly:
     ///
-    /// - `RPCError.cancelled` propagates immediately between pages;
+    /// - `RPCError.cancelled` propagates immediately (a cancelled page,
+    ///   in any wave, aborts the whole scan);
     /// - a failure on page 1 propagates (the caller decides the
     ///   fallback);
-    /// - a failure on a LATER page keeps the rows already fetched —
-    ///   the caller persists them, so a mid-pagination outage
-    ///   degrades to "deep but incomplete" rather than empty (the
-    ///   repository upsert is idempotent; the next scan resumes).
+    /// - a failure on a LATER page keeps the rows already fetched in
+    ///   page order — the caller persists them, so a mid-pagination
+    ///   outage degrades to "deep but incomplete" rather than empty
+    ///   (the repository upsert is idempotent; the next scan resumes);
+    /// - the FIRST short/empty page ends pagination (history
+    ///   exhausted), and any later pages fetched speculatively in the
+    ///   same wave are discarded — never appended out of order;
+    /// - the `nil` (no-coverage) result is honored: page 1 `nil` →
+    ///   `nil`; a later `nil` → the rows already gathered.
     private func runEtherscanQueryAllPages(
         action: String,
         address: String,
         limit: Int
     ) async throws(RPCError) -> [[String: Any]]? {
         let pageSize = min(limit, 100)
+        // Per-page outcome — `Sendable` so it crosses the TaskGroup
+        // boundary. `[[String: Any]]` is NOT Sendable; the indexer
+        // rows are projected to `IndexerRows` (a Sendable wrapper over
+        // the JSON array) inside each task before returning.
+        enum PageOutcome: Sendable {
+            case rows(IndexerRows)   // a real page (possibly short/empty)
+            case noCoverage          // runEtherscanQuery returned nil
+            case failure(RPCError)   // transport / throttle / decode error
+        }
+
         var rows: [[String: Any]] = []
-        var page = 1
+        var nextPage = 1
+        // Walk waves until a stop condition fires inside the wave loop.
         while rows.count < limit {
-            let pageRows: [[String: Any]]?
-            do {
-                pageRows = try await runEtherscanQuery(
-                    action: action,
-                    address: address,
-                    page: page,
-                    pageSize: pageSize
-                )
-            } catch {
-                if case .cancelled = error { throw error }
-                if page == 1 { throw error }
-                Self.log.warning("Indexer \(action, privacy: .public) page \(page, privacy: .public) failed on \(chain.rawValue, privacy: .public) — keeping \(rows.count, privacy: .public) rows already fetched: \(String(describing: error), privacy: .public)")
-                break
+            // Build this wave's contiguous page numbers, capped so we
+            // never fetch past the full-history cap.
+            let remainingRows = limit - rows.count
+            let maxPagesForRemaining = max(1, (remainingRows + pageSize - 1) / pageSize)
+            let waveSize = min(Self.indexerPrefetchWindow, maxPagesForRemaining)
+            let wavePages = Array(nextPage..<(nextPage + waveSize))
+
+            // Fetch the wave concurrently; collect by page so we can
+            // process strictly in order regardless of completion order.
+            var byPage: [Int: PageOutcome] = [:]
+            await withTaskGroup(of: (Int, PageOutcome).self) { group in
+                for page in wavePages {
+                    group.addTask {
+                        do {
+                            let result = try await self.runEtherscanQuery(
+                                action: action,
+                                address: address,
+                                page: page,
+                                pageSize: pageSize
+                            )
+                            if let result {
+                                return (page, .rows(IndexerRows(result)))
+                            }
+                            return (page, .noCoverage)
+                        } catch {
+                            // `withTaskGroup` re-types the child's error
+                            // as `any Error`; `runEtherscanQuery` only
+                            // ever throws `RPCError`, so the cast always
+                            // succeeds — the `??` is a typed-throws
+                            // bridge, not a real fallback.
+                            return (page, .failure((error as? RPCError) ?? .allEndpointsFailed(self.chain)))
+                        }
+                    }
+                }
+                for await (page, outcome) in group {
+                    byPage[page] = outcome
+                }
             }
-            guard let pageRows else {
-                // No Routescan coverage — same answer on every page.
-                return page == 1 ? nil : rows
+
+            // Process the wave in strict page order. The first stop
+            // condition ends pagination and discards any later
+            // speculatively-fetched pages in this wave.
+            var stop = false
+            for page in wavePages {
+                guard let outcome = byPage[page] else { continue }
+                switch outcome {
+                case .failure(let error):
+                    if case .cancelled = error { throw error }
+                    if page == 1 { throw error }
+                    Self.log.warning("Indexer \(action, privacy: .public) page \(page, privacy: .public) failed on \(chain.rawValue, privacy: .public) — keeping \(rows.count, privacy: .public) rows already fetched: \(String(describing: error), privacy: .public)")
+                    stop = true
+                case .noCoverage:
+                    // No Routescan coverage — same answer on every page.
+                    if page == 1 { return nil }
+                    return rows
+                case .rows(let wrapped):
+                    let pageRows = wrapped.value
+                    rows.append(contentsOf: pageRows)
+                    if pageRows.count < pageSize {
+                        stop = true // history exhausted
+                    } else if rows.count >= limit {
+                        // Honest bound: RealRPCTransactionScanner.fullHistoryCap.
+                        Self.log.info("Indexer \(action, privacy: .public) on \(chain.rawValue, privacy: .public) hit the \(limit, privacy: .public)-row full-history cap — older rows not fetched this scan")
+                        stop = true
+                    }
+                }
+                if stop { break }
             }
-            rows.append(contentsOf: pageRows)
-            if pageRows.count < pageSize { break } // history exhausted
-            if rows.count >= limit {
-                // Honest bound: RealRPCTransactionScanner.fullHistoryCap.
-                Self.log.info("Indexer \(action, privacy: .public) on \(chain.rawValue, privacy: .public) hit the \(limit, privacy: .public)-row full-history cap — older rows not fetched this scan")
-                break
-            }
-            page += 1
+            if stop { break }
+            nextPage += waveSize
         }
         return rows
     }
@@ -887,6 +968,24 @@ struct EVMTransactionAdapter: Sendable {
     }
 
     // MARK: - JSON-RPC plumbing
+
+    /// `Sendable` wrapper carrying one indexer page's JSON rows across
+    /// a `TaskGroup` boundary. `[[String: Any]]` is not `Sendable`
+    /// under Swift 6 strict concurrency, but the array crosses the
+    /// boundary only as opaque, already-parsed JSON that the caller
+    /// hands straight to the (main-isolation-free) row parsers — it is
+    /// never mutated after construction. `@unchecked Sendable` is the
+    /// minimal, audited escape hatch: the value is immutable once
+    /// built and the JSON elements are plain `NSString`/`NSNumber`/
+    /// `NSArray`/`NSDictionary` value graphs with no reference back to
+    /// shared mutable state. (Mirrors the `RawLog` projection used by
+    /// the chunked `eth_getLogs` fan-out below — same Sendable-boundary
+    /// problem, here solved by an immutable wrapper because the parser
+    /// needs the full row dictionaries, not a fixed field subset.)
+    private struct IndexerRows: @unchecked Sendable {
+        let value: [[String: Any]]
+        init(_ value: [[String: Any]]) { self.value = value }
+    }
 
     /// `Sendable` projection of one `eth_getLogs` entry — the only
     /// fields the parser needs. Raw logs arrive as `[[String: Any]]`,

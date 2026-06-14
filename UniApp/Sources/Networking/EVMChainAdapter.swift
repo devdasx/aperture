@@ -127,28 +127,88 @@ struct EVMChainAdapter: Sendable {
 
     /// Fallback path used when Multicall3 isn't deployed on the chain
     /// (the batched `eth_call` returned empty bytes or a deterministic
-    /// JSON-RPC error). Sequential per-token fetch — slower but
-    /// correct.
+    /// JSON-RPC error). Per-token `balanceOf` fetch.
     ///
-    /// **Honest failure (2026-06-11).** A token whose individual
-    /// fetch throws yields `nil` (balance unknown), never a
+    /// **Rule #28 — parallel fan-out (2026-06-14).** The per-token
+    /// `eth_call balanceOf` reads are fully independent — `eth_call`
+    /// is a read-only state query with no inherent ordering between
+    /// reads of different contracts at the same block
+    /// (ethereum.org JSON-RPC spec), so a sequential loop needlessly
+    /// serialized N round trips. They now fan out through a
+    /// `withTaskGroup`; results are written back into a
+    /// pre-sized array at each token's INPUT INDEX so the returned
+    /// order matches `contracts` exactly (the caller pairs result[i]
+    /// with contracts[i]). Every call still goes through the same
+    /// `client` (→ `RPCClient.shared`), so the per-endpoint
+    /// `RateLimiter` token bucket bounds total in-flight requests —
+    /// concurrent `acquire`s serialize at the bucket actor and each
+    /// consumes one token, identical throttling to the old loop, just
+    /// without the artificial wait between tokens.
+    ///
+    /// **Honest failure (2026-06-11, preserved).** A token whose
+    /// individual fetch throws yields `nil` (balance unknown), never a
     /// fabricated `0`. If EVERY token failed, the last error is
     /// rethrown — an outage must surface as an error the caller can
     /// render, not as a wallet that suddenly holds nothing.
-    /// Cancellation aborts the loop immediately.
+    /// Cancellation propagates: a cancelled child surfaces as
+    /// `.cancelled` and aborts the whole fan-out.
     private func fetchTokenBalancesSequentialFallback(
         holder: String,
         contracts: [String]
     ) async throws(RPCError) -> [Decimal?] {
+        guard !contracts.isEmpty else { return [] }
+
+        // One slot per input contract; tasks write by index so the
+        // returned array preserves `contracts` order regardless of
+        // completion order. `.failure` carries the error so the
+        // "all failed → rethrow" / cancellation contracts survive.
+        enum Outcome: Sendable {
+            case success(Decimal)
+            case failure(RPCError)
+        }
+
+        var slots: [Outcome?] = Array(repeating: nil, count: contracts.count)
+
+        await withTaskGroup(of: (Int, Outcome).self) { group in
+            for (index, contract) in contracts.enumerated() {
+                group.addTask {
+                    do {
+                        let balance = try await self.fetchTokenBalance(
+                            holder: holder,
+                            contract: contract
+                        )
+                        return (index, .success(balance))
+                    } catch {
+                        // `withTaskGroup` re-types the child's error as
+                        // `any Error`; `fetchTokenBalance` only ever
+                        // throws `RPCError`, so the cast always
+                        // succeeds — the `??` is a typed-throws bridge,
+                        // not a real fallback.
+                        return (index, .failure((error as? RPCError) ?? .allEndpointsFailed(self.chain)))
+                    }
+                }
+            }
+            for await (index, outcome) in group {
+                slots[index] = outcome
+            }
+        }
+
         var results: [Decimal?] = []
         results.reserveCapacity(contracts.count)
         var lastError: RPCError?
-        for contract in contracts {
-            do {
-                results.append(try await fetchTokenBalance(holder: holder, contract: contract))
-            } catch {
+        for slot in slots {
+            switch slot {
+            case .success(let value):
+                results.append(value)
+            case .failure(let error):
+                // Cancellation aborts the whole fan-out — surface it
+                // as cancellation, never as a partial all-nil result.
                 if case .cancelled = error { throw error }
                 lastError = error
+                results.append(nil)
+            case .none:
+                // Unreachable: every index gets exactly one outcome
+                // from the group. Treated as "unknown" defensively.
                 results.append(nil)
             }
         }

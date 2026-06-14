@@ -51,11 +51,47 @@ struct SolanaChainAdapter: Sendable {
         // `getTokenAccountsByOwner` filtered by `programId` returns
         // ONLY that program's accounts, and token accounts live under
         // one of TWO owner programs — legacy SPL Token and Token-2022.
-        // Both must be queried and merged, otherwise Token-2022
+        // The Solana JSON-RPC `getTokenAccountsByOwner` filter accepts
+        // EITHER `programId` OR `mint`, exactly ONE per call (verified
+        // against solana.com/docs/rpc/http/gettokenaccountsbyowner),
+        // so enumerating both standards is inherently two requests —
+        // both must be queried and merged, otherwise Token-2022
         // holdings (PYUSD, AUSD, DUSD, USDG) are invisible.
-        let legacy = try await fetchTokenAccounts(address: address, programId: Self.splTokenProgramId)
-        let token2022 = try await fetchTokenAccounts(address: address, programId: Self.splToken2022ProgramId)
-        return legacy + token2022
+        //
+        // **Rule #28 — independent calls run in PARALLEL.** The two
+        // requests share nothing: different `programId` filter, no
+        // ordering dependency, and the merge (`legacy + token2022`)
+        // is order-independent for display. Running them with
+        // `async let` halves the wall-clock of the SPL token-discovery
+        // step. Both still dispatch through the shared `client`
+        // (→ `RPCClient.shared`), so the per-endpoint `RateLimiter`
+        // token bucket bounds total in-flight requests exactly as
+        // before — two concurrent acquires are serialized at the
+        // bucket actor and each still consumes one token. Verified
+        // live against `api.mainnet-beta.solana.com`: a known holder
+        // returns 3,796 legacy + 393 Token-2022 accounts — both
+        // standards carry real holdings that must merge.
+        //
+        // **Typed-throws bridge.** Awaiting an `async let` re-types the
+        // child's error as `any Error` (Swift 6 does not yet propagate
+        // the child task's concrete `throws(RPCError)` through the
+        // binding), so the merge is wrapped in a `do/catch` that
+        // re-throws the real `RPCError` and maps the impossible
+        // non-`RPCError` case to a typed value — keeping this
+        // function's `throws(RPCError)` contract. A failure in either
+        // standard surfaces as "balances unknown", never a partial
+        // silent merge. M-017: the Token-2022 id is the 43-char `…Eb`
+        // form; do not regress to the bogus 44-char `…EbZ`.
+        async let legacy = fetchTokenAccounts(address: address, programId: Self.splTokenProgramId)
+        async let token2022 = fetchTokenAccounts(address: address, programId: Self.splToken2022ProgramId)
+        do {
+            return try await legacy + token2022
+        } catch let error as RPCError {
+            throw error
+        } catch {
+            // Unreachable: both children only throw `RPCError`.
+            throw RPCError.decodingFailed("SPL token discovery failed: \(error.localizedDescription)")
+        }
     }
 
     private func fetchTokenAccounts(address: String, programId: String) async throws(RPCError) -> [SPLTokenAccount] {
