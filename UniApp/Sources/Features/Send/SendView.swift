@@ -35,6 +35,11 @@ struct SendView: View {
     /// the balance display + the high→low sort in both pickers.
     @State private var holdings: AssetPickerHoldings = .empty
 
+    /// Real recent-recipients snapshot (outgoing-tx counterparties + send
+    /// counts), rebuilt off the render path alongside holdings. Drives the
+    /// recipient step's recent list + first-send check.
+    @State private var recents: RecentRecipientsIndex = .empty
+
     private var currencyCode: String {
         UserDefaults.standard.string(forKey: CurrencyPreference.storageKey) ?? CurrencyPreference.defaultCode
     }
@@ -65,9 +70,9 @@ struct SendView: View {
                         return
                     }
                     // Native coin: the network IS the chain — skip the
-                    // network picker and go straight to compose.
+                    // network picker and go straight to the recipient step.
                     navigationPath.append(
-                        SendDestination.compose(chain: chain, tokenSymbol: nil, fromAddress: address)
+                        SendDestination.recipient(chain: chain, tokenSymbol: nil, fromAddress: address)
                     )
                 },
                 onSelectToken: { asset in
@@ -93,15 +98,32 @@ struct SendView: View {
                                 return nil
                             }()
                             navigationPath.append(
-                                SendDestination.compose(chain: chain, tokenSymbol: symbol, fromAddress: address)
+                                SendDestination.recipient(chain: chain, tokenSymbol: symbol, fromAddress: address)
                             )
                         }
                     )
-                case let .compose(chain, tokenSymbol, fromAddress):
-                    SendComposePlaceholderView(
+                case let .recipient(chain, tokenSymbol, fromAddress):
+                    SendRecipientView(
                         chain: chain,
                         tokenSymbol: tokenSymbol,
-                        fromAddress: fromAddress
+                        fromAddress: fromAddress,
+                        recents: recents,
+                        onContinue: { toAddress, toName in
+                            navigationPath.append(
+                                SendDestination.amount(
+                                    chain: chain, tokenSymbol: tokenSymbol, fromAddress: fromAddress,
+                                    toAddress: toAddress, toName: toName
+                                )
+                            )
+                        }
+                    )
+                case let .amount(chain, tokenSymbol, fromAddress, toAddress, toName):
+                    SendAmountPlaceholderView(
+                        chain: chain,
+                        tokenSymbol: tokenSymbol,
+                        fromAddress: fromAddress,
+                        toAddress: toAddress,
+                        toName: toName
                     )
                 }
             }
@@ -116,6 +138,7 @@ struct SendView: View {
         }
         .task(id: holdingsKey) {
             holdings = AssetPickerHoldings(wallet: activeWallet)
+            recents = RecentRecipientsIndex(wallet: activeWallet)
         }
         .alert(
             Text("No address for this network"),
@@ -182,19 +205,22 @@ struct SendView: View {
 /// NavigationPath persists across Rule #12 §G direction-flip rebuilds.
 enum SendDestination: Hashable, Codable {
     case networkPicker(SendAsset)
-    case compose(chain: SupportedChain, tokenSymbol: String?, fromAddress: String)
+    case recipient(chain: SupportedChain, tokenSymbol: String?, fromAddress: String)
+    case amount(chain: SupportedChain, tokenSymbol: String?, fromAddress: String, toAddress: String, toName: String?)
 }
 
-// MARK: - Compose seam (next increment)
+// MARK: - Amount seam (next increment)
 
-/// Step 3 seam — where amount entry + recipient will land next. Shows the
-/// real selection (asset, network, the wallet's real sending address) so
-/// the two real picker steps are navigable end to end. Honest about being
-/// the next step (Rule #16): it never implies a send is possible yet.
-private struct SendComposePlaceholderView: View {
+/// Step 4 seam — where amount entry will land next. Shows the now-real
+/// selection: asset, network, the wallet's sending address, and the
+/// validated/resolved recipient from Step 3. Honest about being the next
+/// step (Rule #16): it never implies a send is possible yet.
+private struct SendAmountPlaceholderView: View {
     let chain: SupportedChain
     let tokenSymbol: String?
     let fromAddress: String
+    let toAddress: String
+    let toName: String?
 
     private var assetLabel: String { tokenSymbol ?? chain.ticker }
 
@@ -203,6 +229,8 @@ private struct SendComposePlaceholderView: View {
             Section {
                 row("Asset", assetLabel)
                 row("Network", chain.displayName)
+                row("To", toName ?? shortened(toAddress))
+                if toName != nil { row("Address", shortened(toAddress)) }
                 row("From", shortened(fromAddress))
             } header: {
                 UniCaption(text: "You're sending", color: UniColors.Text.tertiary)
@@ -214,7 +242,7 @@ private struct SendComposePlaceholderView: View {
                         .font(.system(size: 32, weight: .light))
                         .foregroundStyle(UniColors.Icon.tertiary)
                     UniBody(
-                        text: "Amount and recipient are the next step we'll build.",
+                        text: "Amount entry is the next step we'll build.",
                         alignment: .center,
                         color: UniColors.Text.secondary
                     )
