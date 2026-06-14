@@ -30,10 +30,35 @@ struct SendView: View {
     @State private var missingAddressChain: SupportedChain?
     @State private var isShowingMissingAddressAlert: Bool = false
 
+    /// Real holdings snapshot (balances + per-(chain,symbol) tx counts),
+    /// rebuilt off the render path when balances change (Rule #28). Drives
+    /// the balance display + the high→low sort in both pickers.
+    @State private var holdings: AssetPickerHoldings = .empty
+
+    private var currencyCode: String {
+        UserDefaults.standard.string(forKey: CurrencyPreference.storageKey) ?? CurrencyPreference.defaultCode
+    }
+
+    /// Cheap change-detector for the holdings rebuild — wallet id + the
+    /// balance-row count + the newest balance timestamp (so a value
+    /// refresh re-sorts).
+    private var holdingsKey: String {
+        guard let wallet = activeWallet else { return "none" }
+        var rows = 0
+        var newest = Date.distantPast
+        for address in wallet.addresses {
+            rows += address.balances.count
+            for bal in address.balances where bal.updatedAt > newest { newest = bal.updatedAt }
+        }
+        return "\(wallet.id.uuidString)|\(rows)|\(newest.timeIntervalSince1970)"
+    }
+
     var body: some View {
         NavigationStack(path: $navigationPath) {
             SendAssetListView(
                 availableChains: availableChains,
+                holdings: holdings,
+                currencyCode: currencyCode,
                 onSelectNative: { chain in
                     guard let address = address(for: chain) else {
                         presentMissingAddress(chain)
@@ -56,6 +81,8 @@ struct SendView: View {
                 case let .networkPicker(asset):
                     SendNetworkPickerView(
                         token: asset,
+                        holdings: holdings,
+                        currencyCode: currencyCode,
                         onSelectNetwork: { chain in
                             guard let address = address(for: chain) else {
                                 presentMissingAddress(chain)
@@ -86,6 +113,9 @@ struct SendView: View {
         }
         .task(id: activeWalletHealKey) {
             healActiveWalletIdIfNeeded()
+        }
+        .task(id: holdingsKey) {
+            holdings = AssetPickerHoldings(wallet: activeWallet)
         }
         .alert(
             Text("No address for this network"),

@@ -1,22 +1,17 @@
 import SwiftUI
 import SwiftData
 
-/// Step 1 of the Send sheet — the asset list. The twin of
-/// `ReceiveAssetListView` (same two sections, same rows, same data
-/// source), asking "what are you sending?" first:
-///
-/// - **Native assets** — one row per `SupportedChain` the active wallet
-///   has a derived address for. Tapping skips the network picker (the
-///   network IS the chain) and goes to the compose step.
-/// - **Tokens** — one row per unique token symbol across the local-first
-///   asset universe, filtered to symbols whose chains the wallet has
-///   addresses for. Tapping routes to the network picker (Step 2).
-///
-/// **Layers (Rule #2 §B.3):** content layer — opaque list rows on a
-/// `UniColors.Background.primary` surface. Functional layer — the system
-/// nav bar (rendered by the parent `NavigationStack` in the sheet root).
+/// Step 1 of the Send sheet — the asset list (twin of
+/// `ReceiveAssetListView`). Native coins + tokens, each row showing the
+/// full name (prominent), the ticker (gray), and the real balance when
+/// held. Sorted balance high→low, then transaction-count high→low. A
+/// native search bar (`.searchable`, bottom-floating on iPhone per
+/// Rule #14) filters by name + ticker. Logos go through the cached
+/// `CoinMark`.
 struct SendAssetListView: View {
     let availableChains: [SupportedChain]
+    let holdings: AssetPickerHoldings
+    let currencyCode: String
     let onSelectNative: (SupportedChain) -> Void
     let onSelectToken: (SendAsset) -> Void
 
@@ -24,13 +19,14 @@ struct SendAssetListView: View {
     private var customTokenRecords: [CustomTokenRecord]
     @Query private var assetRecords: [AssetRecord]
 
-    /// Memoized token rows — rebuilt via `.task(id:)` only when the
-    /// available chains, the custom-token set, or the seeded catalog
-    /// change (never per body pass).
-    @State private var tokenRows: [SendAsset] = []
+    /// Memoized, balance-sorted rows — rebuilt only when the chains, the
+    /// custom-token set, the seeded catalog, or the holdings change.
+    @State private var sortedNatives: [SupportedChain] = []
+    @State private var sortedTokens: [SendAsset] = []
+    @State private var searchText: String = ""
 
-    private var tokenRowsKey: String {
-        "\(availableChains.map(\.rawValue).joined(separator: ","))|\(customTokenRecords.count)|\(assetRecords.count)"
+    private var rowsKey: String {
+        "\(availableChains.map(\.rawValue).joined(separator: ","))|\(customTokenRecords.count)|\(assetRecords.count)|\(holdings.fingerprint)"
     }
 
     var body: some View {
@@ -38,38 +34,70 @@ struct SendAssetListView: View {
             if availableChains.isEmpty {
                 emptySection
             } else {
-                nativeSection
-                if !tokenRows.isEmpty {
-                    tokenSection
+                let natives = filteredNatives
+                let tokens = filteredTokens
+                if natives.isEmpty && tokens.isEmpty {
+                    noResultsSection
+                } else {
+                    if !natives.isEmpty { nativeSection(natives) }
+                    if !tokens.isEmpty { tokenSection(tokens) }
                 }
             }
         }
         .listStyle(.insetGrouped)
         .scrollContentBackground(.hidden)
         .background(UniColors.Background.primary)
-        .task(id: tokenRowsKey) {
-            tokenRows = SendAsset.tokens(
+        .searchable(text: $searchText, prompt: Text("Search"))
+        .task(id: rowsKey) {
+            let tokens = SendAsset.tokens(
                 availableChains: Set(availableChains),
                 customTokens: customTokenRecords.map { CustomTokenSnapshot(from: $0) },
                 catalogAssets: AssetCatalog.assets(from: assetRecords)
             )
+            sortedTokens = AssetPickerSort.tokens(tokens, holdings: holdings)
+            sortedNatives = AssetPickerSort.natives(availableChains, holdings: holdings)
+        }
+    }
+
+    // MARK: - Filtering
+
+    private var filteredNatives: [SupportedChain] {
+        let q = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !q.isEmpty else { return sortedNatives }
+        return sortedNatives.filter {
+            $0.displayName.localizedStandardContains(q) || $0.ticker.localizedStandardContains(q)
+        }
+    }
+
+    private var filteredTokens: [SendAsset] {
+        let q = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !q.isEmpty else { return sortedTokens }
+        return sortedTokens.filter { asset in
+            guard case let .token(symbol, name, _) = asset else { return false }
+            return name.localizedStandardContains(q) || symbol.localizedStandardContains(q)
         }
     }
 
     // MARK: - Sections
 
     @ViewBuilder
-    private var nativeSection: some View {
+    private func nativeSection(_ chains: [SupportedChain]) -> some View {
         Section {
-            ForEach(availableChains, id: \.self) { chain in
+            ForEach(chains, id: \.self) { chain in
                 Button {
                     onSelectNative(chain)
                 } label: {
-                    SendNativeAssetRow(chain: chain)
+                    AssetPickerAssetRow(
+                        fullName: chain.displayName,
+                        ticker: chain.ticker,
+                        logoChain: chain,
+                        logoContract: nil,
+                        totals: holdings.nativeTotals(chain: chain),
+                        currencyCode: currencyCode
+                    )
                 }
                 .buttonStyle(.plain)
                 .listRowBackground(UniColors.Background.secondary)
-                .accessibilityLabel(Text(verbatim: "\(chain.displayName) — \(chain.ticker)"))
             }
         } header: {
             UniCaption(text: "Native assets", color: UniColors.Text.tertiary)
@@ -77,19 +105,42 @@ struct SendAssetListView: View {
     }
 
     @ViewBuilder
-    private var tokenSection: some View {
+    private func tokenSection(_ tokens: [SendAsset]) -> some View {
         Section {
-            ForEach(tokenRows) { asset in
-                Button {
-                    onSelectToken(asset)
-                } label: {
-                    SendTokenAssetRow(asset: asset)
+            ForEach(tokens) { asset in
+                if case let .token(symbol, name, chains) = asset {
+                    Button {
+                        onSelectToken(asset)
+                    } label: {
+                        AssetPickerAssetRow(
+                            fullName: name,
+                            ticker: symbol,
+                            logoChain: asset.canonicalChainForLogo ?? chains.first ?? .ethereum,
+                            logoContract: asset.canonicalContract,
+                            totals: holdings.aggregate(symbol: symbol),
+                            currencyCode: currencyCode
+                        )
+                    }
+                    .buttonStyle(.plain)
+                    .listRowBackground(UniColors.Background.secondary)
                 }
-                .buttonStyle(.plain)
-                .listRowBackground(UniColors.Background.secondary)
             }
         } header: {
             UniCaption(text: "Tokens", color: UniColors.Text.tertiary)
+        }
+    }
+
+    @ViewBuilder
+    private var noResultsSection: some View {
+        Section {
+            UniBody(
+                text: "No assets match your search.",
+                alignment: .center,
+                color: UniColors.Text.secondary
+            )
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, UniSpacing.xl)
+            .listRowBackground(Color.clear)
         }
     }
 
@@ -117,135 +168,5 @@ struct SendAssetListView: View {
             .padding(.vertical, UniSpacing.xxl)
             .listRowBackground(Color.clear)
         }
-    }
-}
-
-// MARK: - Native row
-
-private struct SendNativeAssetRow: View {
-    let chain: SupportedChain
-
-    var body: some View {
-        HStack(spacing: UniSpacing.s) {
-            chainLogo
-                .frame(width: 36, height: 36)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(verbatim: chain.displayName)
-                    .font(UniTypography.body)
-                    .foregroundStyle(UniColors.Text.primary)
-                Text(verbatim: chain.ticker)
-                    .font(UniTypography.footnote)
-                    .foregroundStyle(UniColors.Text.tertiary)
-            }
-            Spacer(minLength: 0)
-            Image(systemName: "chevron.right")
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(UniColors.Icon.tertiary)
-        }
-        .padding(.vertical, 4)
-        .contentShape(Rectangle())
-    }
-
-    @ViewBuilder
-    private var chainLogo: some View {
-        if let assetName = chain.logoAssetName {
-            Image(assetName)
-                .resizable()
-                .aspectRatio(contentMode: .fit)
-                .clipShape(Circle())
-        } else {
-            Circle()
-                .fill(UniColors.Background.tertiary)
-                .overlay {
-                    Text(verbatim: String(chain.ticker.prefix(1)))
-                        .font(UniTypography.footnote.weight(.semibold))
-                        .foregroundStyle(UniColors.Text.secondary)
-                }
-        }
-    }
-}
-
-// MARK: - Token row
-
-private struct SendTokenAssetRow: View {
-    let asset: SendAsset
-
-    private var symbol: String {
-        if case let .token(symbol, _, _) = asset { return symbol }
-        return ""
-    }
-
-    private var name: String {
-        if case let .token(_, name, _) = asset { return name }
-        return ""
-    }
-
-    private var networkCount: Int {
-        if case let .token(_, _, chains) = asset { return chains.count }
-        return 0
-    }
-
-    var body: some View {
-        HStack(spacing: UniSpacing.s) {
-            tokenLogo
-                .frame(width: 36, height: 36)
-                .clipShape(Circle())
-            VStack(alignment: .leading, spacing: 2) {
-                Text(verbatim: symbol)
-                    .font(UniTypography.body)
-                    .foregroundStyle(UniColors.Text.primary)
-                if networkCount == 1 {
-                    Text("On 1 network")
-                        .font(UniTypography.footnote)
-                        .foregroundStyle(UniColors.Text.tertiary)
-                } else {
-                    Text("On \(networkCount) networks")
-                        .font(UniTypography.footnote)
-                        .foregroundStyle(UniColors.Text.tertiary)
-                }
-            }
-            Spacer(minLength: 0)
-            Image(systemName: "chevron.right")
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(UniColors.Icon.tertiary)
-        }
-        .padding(.vertical, 4)
-        .contentShape(Rectangle())
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel(Text(verbatim: "\(symbol), \(name)"))
-        .accessibilityHint(Text("Choose a network to send on"))
-    }
-
-    @ViewBuilder
-    private var tokenLogo: some View {
-        if let chain = asset.canonicalChainForLogo,
-           let contract = asset.canonicalContract,
-           let url = TrustWalletAssetURL.tokenLogoURL(chain: chain, contract: contract) {
-            AsyncImage(url: url, transaction: Transaction(animation: .easeInOut(duration: 0.2))) { phase in
-                switch phase {
-                case .success(let image):
-                    image
-                        .resizable()
-                        .aspectRatio(contentMode: .fit)
-                case .empty, .failure:
-                    monogramFallback
-                @unknown default:
-                    monogramFallback
-                }
-            }
-        } else {
-            monogramFallback
-        }
-    }
-
-    @ViewBuilder
-    private var monogramFallback: some View {
-        Circle()
-            .fill(UniColors.Background.tertiary)
-            .overlay {
-                Text(verbatim: String(symbol.prefix(1)))
-                    .font(UniTypography.footnote.weight(.semibold))
-                    .foregroundStyle(UniColors.Text.secondary)
-            }
     }
 }
