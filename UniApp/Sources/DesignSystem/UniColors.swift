@@ -553,6 +553,73 @@ enum UniColors {
         static let negative = Color(hex: "#E0483D") ?? Color.red
         /// A wash of `negative` for the failed-state hero background.
         static let negativeWash = (Color(hex: "#E0483D") ?? Color.red).opacity(0.1)
+
+        // MARK: - V2 bloom + glass surface (design_handoff_send_v2)
+
+        /// **Send v2 bloom background.** The handoff specifies a quiet
+        /// bloom — *"never pure white"* — `#F2F3F6 → #E8EAEE` base with two
+        /// faint radial tints (blue-gray top-left, violet bottom-right).
+        /// Per Rule #2 (honesty) the surface is appearance-adaptive: a
+        /// soft light bloom in light mode, a quiet near-black bloom in dark
+        /// mode so the whole Send flow respects the user's theme — unlike
+        /// the terminal Sending/Sent screens, which are deliberately
+        /// brand-fixed dark (a held-breath moment). The two bloom-tint
+        /// roles are themselves fixed-hue (cool / warm) at low opacity so
+        /// they read as a faint lift over either base. Rule #4 §B — hex →
+        /// Color only inside this file.
+        ///
+        /// Base stops (resolved via Assets so they adapt):
+        /// - `bloomBaseTop`    → `SendBloomBaseTop`    (`#F2F3F6` / `#0C0D11`)
+        /// - `bloomBaseBottom` → `SendBloomBaseBottom` (`#E8EAEE` / `#070809`)
+        static let bloomBaseTop = Color("SendBloomBaseTop")
+        static let bloomBaseBottom = Color("SendBloomBaseBottom")
+        /// Cool blue-gray radial tint, top-left. `rgba(150,165,200,.32)`.
+        static let bloomCool = Color(.sRGB, red: 150/255, green: 165/255, blue: 200/255, opacity: 0.30)
+        /// Warm violet radial tint, bottom-right. `rgba(170,150,200,.26)`.
+        static let bloomWarm = Color(.sRGB, red: 170/255, green: 150/255, blue: 200/255, opacity: 0.24)
+        /// The red attention tint for the poisoning interstitial's top
+        /// bloom. `rgba(224,72,61,.16)` — the brand red at a wash.
+        static let bloomDanger = (Color(hex: "#E0483D") ?? Color.red).opacity(0.16)
+
+        /// **Glass cards on the bloom (v2).** The handoff's default glass
+        /// is `rgba(255,255,255,.58)` + blur + a top specular edge. The
+        /// honest native expression is iOS 26's `.regularMaterial` — which
+        /// supplies translucency + specular + motion for free (Rule #3) —
+        /// but for the *strong* sheet glass and the Reduce-Transparency
+        /// solid fallback we need explicit roles. These two adapt:
+        /// - `cardSpecular` — the top-edge specular highlight stroke on a
+        ///   glass card. White at low opacity in light, soft white in dark.
+        /// - `cardSolidFallback` — the opaque card fill under Reduce
+        ///   Transparency (`#F7F8FA` light / `#16181D` dark per the handoff
+        ///   "fall back to solid cards").
+        static let cardSpecular = Color("SendGlassSpecular")
+        static let cardSolidFallback = Color("SendGlassSolid")
+        /// Hairline border on the Reduce-Transparency solid card.
+        static let cardHairline = Color(uiColor: .separator)
+
+        /// **Dark glass.** Primary buttons / selected chips / the swipe
+        /// knob use `rgba(16,18,24,.82)` — a near-opaque brand-ink glass
+        /// that reads on the bloom in both modes. We already have
+        /// `track` (#0A0C10) for the slide; this is the lighter dark-glass
+        /// for selected chip / preset fills.
+        static let darkGlass = Color(hex: "#101218")?.opacity(0.92) ?? Color.black.opacity(0.92)
+        /// Label drawn on a dark-glass surface — always near-white.
+        static let onDarkGlass = Color.white
+
+        /// Scrim over the camera feed (QR scanner). A black wash for chip /
+        /// button pills floating over the guaranteed-dark camera surface
+        /// (the From-photos / Light chips, the close button). Fixed
+        /// black-over-media — the camera feed is dark in any appearance, so
+        /// a black scrim is honest here (mirrors `Text.onMedia`). Defined
+        /// as a role so feature code never writes `Color.black` at the call
+        /// site (Rule #4).
+        static let cameraScrim = Color.black.opacity(0.45)
+        /// A lighter camera scrim for the small close-button disc.
+        static let cameraScrimLight = Color.black.opacity(0.40)
+        /// The opaque base behind the camera feed (QR scanner full-screen
+        /// surface). Solid black — the camera is dark in any appearance, so
+        /// this is the honest base while the feed warms up / when denied.
+        static let cameraBase = Color.black
     }
 
     // MARK: - Illustration (onboarding native scenes)
