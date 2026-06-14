@@ -309739,6 +309739,17 @@
           }
         }
       }
+    },
+    "Same as an earlier recipient": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Same as an earlier recipient"
+          }
+        }
+      }
     }
   },
   "version": "1.0"
