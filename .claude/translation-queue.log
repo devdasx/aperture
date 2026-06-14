@@ -1,0 +1,90 @@
+2026-06-14T21:46:36Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	Couldn't find \(name). Check the spelling, or paste the address.
+2026-06-14T21:46:36Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	First time sending here — double-check it. Transactions can't be reversed.
+2026-06-14T21:46:36Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	Recipient \(index)
+2026-06-14T21:46:36Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	Remove recipient
+2026-06-14T21:46:36Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	Resolving…
+2026-06-14T21:46:36Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	Sent here once before
+2026-06-14T21:46:36Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	Sent once
+2026-06-14T21:46:36Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	That's not a valid \(chain.displayName) address.
+2026-06-14T21:46:36Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	Use this recipient
+2026-06-14T21:46:36Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	\(name)  →  \(SendRecipientView.shorten(address))
+2026-06-14T21:47:02Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	Couldn't find \(name). Check the spelling, or paste the address.
+2026-06-14T21:47:02Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	First time sending here — double-check it. Transactions can't be reversed.
+2026-06-14T21:47:02Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	Recipient \(index)
+2026-06-14T21:47:02Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	Remove recipient
+2026-06-14T21:47:02Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	Resolving…
+2026-06-14T21:47:02Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	Sent here once before
+2026-06-14T21:47:02Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	Sent once
+2026-06-14T21:47:02Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	That's not a valid \(chain.displayName) address.
+2026-06-14T21:47:02Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	Use this recipient
+2026-06-14T21:47:02Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	\(name)  →  \(SendRecipientView.shorten(address))
+2026-06-14T21:47:17Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	Couldn't find \(name). Check the spelling, or paste the address.
+2026-06-14T21:47:17Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	First time sending here — double-check it. Transactions can't be reversed.
+2026-06-14T21:47:17Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	Recipient \(index)
+2026-06-14T21:47:17Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	Remove recipient
+2026-06-14T21:47:17Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	Resolving…
+2026-06-14T21:47:17Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	Sent here once before
+2026-06-14T21:47:17Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	Sent once
+2026-06-14T21:47:17Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	That's not a valid \(chain.displayName) address.
+2026-06-14T21:47:17Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	Use this recipient
+2026-06-14T21:47:17Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	\(name)  →  \(SendRecipientView.shorten(address))
+2026-06-14T21:47:22Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	Couldn't find \(name). Check the spelling, or paste the address.
+2026-06-14T21:47:22Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	First time sending here — double-check it. Transactions can't be reversed.
+2026-06-14T21:47:22Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	Recipient \(index)
+2026-06-14T21:47:22Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	Remove recipient
+2026-06-14T21:47:22Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	Resolving…
+2026-06-14T21:47:22Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	Sent here once before
+2026-06-14T21:47:22Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	Sent once
+2026-06-14T21:47:22Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	That's not a valid \(chain.displayName) address.
+2026-06-14T21:47:22Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	Use this recipient
+2026-06-14T21:47:22Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	\(name)  →  \(SendRecipientView.shorten(address))
+2026-06-14T21:47:55Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	Couldn't find \(name). Check the spelling, or paste the address.
+2026-06-14T21:47:55Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	First time sending here — double-check it. Transactions can't be reversed.
+2026-06-14T21:47:55Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	Recipient \(index)
+2026-06-14T21:47:55Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	Remove recipient
+2026-06-14T21:47:55Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	Resolving…
+2026-06-14T21:47:55Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	Sent here once before
+2026-06-14T21:47:55Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	Sent once
+2026-06-14T21:47:55Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	That's not a valid \(chain.displayName) address.
+2026-06-14T21:47:55Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	Use this recipient
+2026-06-14T21:47:55Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	\(name)  →  \(SendRecipientView.shorten(address))
+2026-06-14T21:48:00Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	Couldn't find \(name). Check the spelling, or paste the address.
+2026-06-14T21:48:00Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	First time sending here — double-check it. Transactions can't be reversed.
+2026-06-14T21:48:00Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	Recipient \(index)
+2026-06-14T21:48:00Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	Remove recipient
+2026-06-14T21:48:00Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	Resolving…
+2026-06-14T21:48:00Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	Sent here once before
+2026-06-14T21:48:00Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	Sent once
+2026-06-14T21:48:00Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	That's not a valid \(chain.displayName) address.
+2026-06-14T21:48:00Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	Use this recipient
+2026-06-14T21:48:00Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	\(name)  →  \(SendRecipientView.shorten(address))
+2026-06-14T21:48:08Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	Couldn't find \(name). Check the spelling, or paste the address.
+2026-06-14T21:48:08Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	First time sending here — double-check it. Transactions can't be reversed.
+2026-06-14T21:48:08Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	Recipient \(index)
+2026-06-14T21:48:08Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	Remove recipient
+2026-06-14T21:48:08Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	Resolving…
+2026-06-14T21:48:08Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	Sent here once before
+2026-06-14T21:48:08Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	Sent once
+2026-06-14T21:48:08Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	That's not a valid \(chain.displayName) address.
+2026-06-14T21:48:08Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	Use this recipient
+2026-06-14T21:48:08Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	\(name)  →  \(SendRecipientView.shorten(address))
+2026-06-14T21:48:16Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	Couldn't find \(name). Check the spelling, or paste the address.
+2026-06-14T21:48:16Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	First time sending here — double-check it. Transactions can't be reversed.
+2026-06-14T21:48:16Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	Recipient \(index)
+2026-06-14T21:48:16Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	Remove recipient
+2026-06-14T21:48:16Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	Resolving…
+2026-06-14T21:48:16Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	Sent here once before
+2026-06-14T21:48:16Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	Sent once
+2026-06-14T21:48:16Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	That's not a valid \(chain.displayName) address.
+2026-06-14T21:48:16Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	Use this recipient
+2026-06-14T21:48:16Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	\(name)  →  \(SendRecipientView.shorten(address))
+2026-06-14T21:48:22Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	Couldn't find \(name). Check the spelling, or paste the address.
+2026-06-14T21:48:22Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	First time sending here — double-check it. Transactions can't be reversed.
+2026-06-14T21:48:22Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	Recipient \(index)
+2026-06-14T21:48:22Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	Remove recipient
+2026-06-14T21:48:22Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	Resolving…
+2026-06-14T21:48:22Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	Sent here once before
+2026-06-14T21:48:22Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	Sent once
+2026-06-14T21:48:22Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	That's not a valid \(chain.displayName) address.
+2026-06-14T21:48:22Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	Use this recipient
+2026-06-14T21:48:22Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	\(name)  →  \(SendRecipientView.shorten(address))
