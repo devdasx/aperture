@@ -402,6 +402,32 @@ struct WalletHomeView: View {
     @State private var filteredCoinRows: [WalletCoinSupportedRow] = []
     @State private var filteredTokenRows: [WalletTokenSupportedDisplayRow] = []
     @State private var combinedFilteredRows: [CombinedHoldingRow] = []
+
+    // MARK: - Base-collection memos (2026-06-14 perf — idle-CPU/heat fix)
+    //
+    // `balances`, `allHeldRows`, and `allTransactions` were plain
+    // computed properties that each rebuilt from scratch on EVERY body
+    // pass — `balances` alone did a nested loop over addresses × balances
+    // plus an O(n log n) sort, and it was read ~5× per render (chart,
+    // hero total, coin/token holdings, counts). With the body re-evaluating
+    // in bursts on every 10 s refresh write, that became sustained CPU
+    // (constant lag + device heat, even idle). These caches hold the
+    // built collections; the computed properties below read the cache and
+    // fall back to a live compute ONLY when unseeded (`nil`) — so the very
+    // first paint (before `.onAppear` seeds them) is still correct, with no
+    // empty-flash, and every render afterward is an O(1) cache read.
+    //
+    // Freshness: the caches are rebuilt by `rebuildBalanceMemos()` /
+    // `rebuildTransactionMemos()`, folded into `rebuildDisplayRows()` —
+    // which already fires on the COMPLETE set of change triggers (wallet
+    // switch, currency change, balance-count change, asset seed, refresh
+    // completion incl. the 10 s auto-refresh, and the currency re-price).
+    // The stored rows are SwiftData references, so their scalar values
+    // stay live between rebuilds; a rebuild re-applies the non-zero filter
+    // + fiat sort whenever a refresh/re-price changes those values.
+    @State private var balancesMemo: [(chain: SupportedChain, balance: TokenBalanceRecord)]? = nil
+    @State private var allHeldRowsMemo: [(chain: SupportedChain, balance: TokenBalanceRecord)]? = nil
+    @State private var allTransactionsMemo: [TransactionRecord]? = nil
     /// **Live transaction feed (2026-06-13).** A TOP-LEVEL `@Query`,
     /// NOT a `wallet.addresses[].transactions` relationship traversal.
     /// SwiftData merges scalar UPDATES to already-materialized rows
@@ -426,7 +452,19 @@ struct WalletHomeView: View {
     /// a few thousand rows at most (the scanner caps history per chain),
     /// well under a millisecond per render, and there is no per-render
     /// SORT (the `@Query` sorts at the store level).
+    /// Cached (`allTransactionsMemo`); falls back to a live compute only
+    /// when unseeded. Rebuilt by `rebuildTransactionMemos()` on wallet
+    /// switch, refresh completion, and `allTransactionRecords` count
+    /// changes — see the memo block near the `@State` declarations.
     private var allTransactions: [TransactionRecord] {
+        allTransactionsMemo ?? computeAllTransactions()
+    }
+
+    /// The live filter: top-level `@Query` narrowed to the active
+    /// wallet's address ids, newest-first (the `@Query` sorts at the
+    /// store level). O(total tx) — moved out of the render path by the
+    /// memo above; this runs only on a rebuild trigger.
+    private func computeAllTransactions() -> [TransactionRecord] {
         guard let wallet = activeWallet else { return [] }
         let ids = Set(wallet.addresses.map { $0.id })
         guard !ids.isEmpty else { return [] }
@@ -650,6 +688,13 @@ struct WalletHomeView: View {
                 }
                 .onChange(of: balanceRowsRevision) { _, _ in
                     rebuildDisplayRows()
+                }
+                // New transactions landed in the top-level @Query (live
+                // cross-context inserts, Rule #25) — refresh the cached
+                // `allTransactions` so the Recent activity list + chart
+                // reflect them immediately, not only after a refresh ends.
+                .onChange(of: allTransactionRecords.count) { _, _ in
+                    rebuildTransactionMemos()
                 }
                 .onChange(of: assetRecords.count) { _, _ in
                     // The local-first asset seed landed (Rule #27 §D) —
@@ -1713,6 +1758,10 @@ struct WalletHomeView: View {
     /// `balances` property filters to non-zero, so we re-compute here
     /// without that filter.
     private var allHeldRows: [(chain: SupportedChain, balance: TokenBalanceRecord)] {
+        allHeldRowsMemo ?? computeAllHeldRows()
+    }
+
+    private func computeAllHeldRows() -> [(chain: SupportedChain, balance: TokenBalanceRecord)] {
         guard let wallet = activeWallet else { return [] }
         var result: [(SupportedChain, TokenBalanceRecord)] = []
         for address in wallet.addresses {
@@ -1867,7 +1916,26 @@ struct WalletHomeView: View {
         return fromStore.isEmpty ? AssetCatalog.allAssets : fromStore
     }
 
+    /// Rebuild the base-collection caches (`balancesMemo`,
+    /// `allHeldRowsMemo`). Cheap to run on every change trigger; the
+    /// point is that the expensive build+sort happens HERE, on change,
+    /// instead of on every body pass. See the memo block near the
+    /// `@State` declarations.
+    private func rebuildBalanceMemos() {
+        allHeldRowsMemo = computeAllHeldRows()
+        balancesMemo = computeBalances()
+    }
+
+    /// Rebuild the transaction cache (`allTransactionsMemo`). Folded
+    /// into `rebuildDisplayRows()` (refresh completion / wallet switch)
+    /// and triggered directly on `allTransactionRecords` count changes.
+    private func rebuildTransactionMemos() {
+        allTransactionsMemo = computeAllTransactions()
+    }
+
     private func rebuildDisplayRows() {
+        rebuildBalanceMemos()
+        rebuildTransactionMemos()
         let held = allHeldRows
         let coinRows = WalletSupportedRowBuilders.coinRows(
             heldRows: held,
@@ -2304,6 +2372,10 @@ struct WalletHomeView: View {
     /// `fiatValueCached` is below the user's threshold are filtered
     /// out (returns showAll → 0 threshold → everything visible).
     private var balances: [(chain: SupportedChain, balance: TokenBalanceRecord)] {
+        balancesMemo ?? computeBalances()
+    }
+
+    private func computeBalances() -> [(chain: SupportedChain, balance: TokenBalanceRecord)] {
         guard let wallet = activeWallet else { return [] }
         let threshold = Decimal(hideSmallThreshold)
         var result: [(SupportedChain, TokenBalanceRecord)] = []
