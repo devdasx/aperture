@@ -62,6 +62,13 @@ struct AssetDetailView: View {
     let identity: AssetIdentity
 
     @Query(sort: \WalletRecord.sortOrder) private var allWallets: [WalletRecord]
+    /// Top-level transaction feed (store-sorted). Filtered in-memory by
+    /// the active wallet's address ids — no relationship faulting — and
+    /// its `.count` is the cheap tx-change signal that replaces the
+    /// O(all-tx) `WalletDataFingerprint.make` in `derivedKey`
+    /// (2026-06-14 Rule #28 fix).
+    @Query(sort: \TransactionRecord.occurredAt, order: .reverse)
+    private var allTransactionRecords: [TransactionRecord]
     /// On-disk price cache so `BalanceHistoryChart`'s reconstructor
     /// can value past holdings of fully cashed-out tokens. Same
     /// pattern as the wallet home (2026-06-12 — see
@@ -563,8 +570,26 @@ struct AssetDetailView: View {
             filterSelectedNetworksJSON,
             filterTimeRangeRaw,
             String(filterHideZeroNetworks),
-            WalletDataFingerprint.make(for: activeWallet)
+            walletDataSignal
         ].joined(separator: "|")
+    }
+
+    /// Cheap data-change signal replacing `WalletDataFingerprint.make`
+    /// (which faulted every address's transaction relationship every body
+    /// pass). Tx changes come from the top-level `@Query` count (no
+    /// faulting); balance value changes from a small O(balances) scan of
+    /// `updatedAt` (balances are dozens, not thousands). 2026-06-14.
+    private var walletDataSignal: String {
+        guard let wallet = activeWallet else { return "no-wallet" }
+        var balanceCount = 0
+        var latestBalance: TimeInterval = 0
+        for address in wallet.addresses {
+            balanceCount += address.balances.count
+            for balance in address.balances {
+                latestBalance = max(latestBalance, balance.updatedAt.timeIntervalSinceReferenceDate)
+            }
+        }
+        return "\(wallet.id.uuidString)|\(balanceCount)|\(latestBalance)|\(allTransactionRecords.count)"
     }
 
     private func computeDerived() -> DerivedState {
@@ -690,11 +715,19 @@ struct AssetDetailView: View {
         return result
     }
 
-    /// All transactions across the active wallet's addresses. The
-    /// asset-scoping happens via the filter applier, not here.
+    /// All transactions across the active wallet's addresses, via the
+    /// top-level `@Query` filtered on the stored `addressId` column (no
+    /// relationship faulting). Asset-scoping happens in the filter
+    /// applier, not here. Read only inside `computeDerived()`, which runs
+    /// on a `derivedKey` change — not per body pass.
     private var allTransactions: [TransactionRecord] {
         guard let wallet = activeWallet else { return [] }
-        return wallet.addresses.flatMap { $0.transactions }
+        let ids = Set(wallet.addresses.map { $0.id })
+        guard !ids.isEmpty else { return [] }
+        return allTransactionRecords.filter { tx in
+            guard let aid = tx.addressId else { return false }
+            return ids.contains(aid)
+        }
     }
 
     /// Resolves the chain a `TransactionRecord` belongs to. Returns
