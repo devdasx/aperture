@@ -109,10 +109,22 @@ enum SolanaSendService {
             guard let recipientAddr = SolanaAddress(string: toAddress) else {
                 throw .signingFailed("Invalid Solana recipient address.")
             }
-            // Deterministic ATA derivation via wallet-core (standard SPL
-            // Token program). No RPC call — PDA math (recipe preSign #3).
-            let senderATA = senderAddr.defaultTokenAddress(tokenMintAddress: mint) ?? ""
-            let recipientATA = recipientAddr.defaultTokenAddress(tokenMintAddress: mint) ?? ""
+            // Token-2022 mints (AUSD / DUSD / PYUSD / USDG) live under the
+            // Token-2022 program, so their ATA is a DIFFERENT PDA than the
+            // legacy SPL Token derivation AND the transfer must name the
+            // Token-2022 program — otherwise the signed tx references an
+            // empty/legacy sender account and the node rejects it (or the
+            // create path strands a recipient account under the wrong
+            // program). Resolve the standard from the registry and branch
+            // both the ATA derivation and the program id (recipe preSign #3;
+            // mirrors Stabro signSolanaTransaction Token-2022 path).
+            let isToken2022 = SolanaTokenRegistry.mints[mint]?.standard == .splToken2022
+            let senderATA = (isToken2022
+                ? senderAddr.token2022Address(tokenMintAddress: mint)
+                : senderAddr.defaultTokenAddress(tokenMintAddress: mint)) ?? ""
+            let recipientATA = (isToken2022
+                ? recipientAddr.token2022Address(tokenMintAddress: mint)
+                : recipientAddr.defaultTokenAddress(tokenMintAddress: mint)) ?? ""
             guard !senderATA.isEmpty, !recipientATA.isEmpty else {
                 throw .signingFailed("Could not derive the token account address.")
             }
@@ -129,6 +141,7 @@ enum SolanaSendService {
                 tokenTransfer.recipientTokenAddress = recipientATA
                 tokenTransfer.amount = transferAmount
                 tokenTransfer.decimals = tokenDecimals
+                tokenTransfer.tokenProgramID = isToken2022 ? .token2022Program : .tokenProgram
                 input.tokenTransferTransaction = tokenTransfer
             } else {
                 // Transfer to another wallet: create the recipient ATA if
@@ -140,6 +153,7 @@ enum SolanaSendService {
                 createTransfer.senderTokenAddress = senderATA
                 createTransfer.amount = transferAmount
                 createTransfer.decimals = tokenDecimals
+                createTransfer.tokenProgramID = isToken2022 ? .token2022Program : .tokenProgram
                 input.createAndTransferTokenTransaction = createTransfer
             }
         }
