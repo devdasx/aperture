@@ -18,6 +18,12 @@ struct AssetActivityView: View {
     let identity: AssetIdentity
 
     @Query(sort: \WalletRecord.sortOrder) private var allWallets: [WalletRecord]
+    /// Top-level transaction feed (store-sorted newest-first). Filtered
+    /// in-memory by the active wallet's address ids — no relationship
+    /// faulting, and a cheap `.count` replaces the O(all-tx)
+    /// `WalletDataFingerprint` in `derivedKey` (2026-06-14 Activity-lag fix).
+    @Query(sort: \TransactionRecord.occurredAt, order: .reverse)
+    private var allTransactionRecords: [TransactionRecord]
     @AppStorage("activeWalletId") private var activeWalletIdRaw: String = ""
     @AppStorage(CurrencyPreference.storageKey) private var currencyCode: String = CurrencyPreference.defaultCode
 
@@ -167,7 +173,10 @@ struct AssetActivityView: View {
             filterSelectedNetworksJSON,
             filterTimeRangeRaw,
             String(filterHideZeroNetworks),
-            WalletDataFingerprint.make(for: activeWallet)
+            // Cheap data-change signal — O(1) — replacing the O(all-tx)
+            // WalletDataFingerprint.make that ran on every body pass.
+            activeWalletIdRaw,
+            String(allTransactionRecords.count)
         ].joined(separator: "|")
     }
 
@@ -223,7 +232,15 @@ struct AssetActivityView: View {
 
     private var allTransactions: [TransactionRecord] {
         guard let wallet = activeWallet else { return [] }
-        return wallet.addresses.flatMap { $0.transactions }
+        let ids = Set(wallet.addresses.map { $0.id })
+        guard !ids.isEmpty else { return [] }
+        // In-memory filter on the stored `addressId` column (no
+        // relationship faulting). Only read inside `computeDerived()`,
+        // which runs on a `derivedKey` change — not per body pass.
+        return allTransactionRecords.filter { tx in
+            guard let aid = tx.addressId else { return false }
+            return ids.contains(aid)
+        }
     }
 
     /// Resolves the chain a `TransactionRecord` belongs to. Returns

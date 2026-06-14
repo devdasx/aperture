@@ -39,13 +39,31 @@ struct WalletActivityView: View {
     @Environment(\.modelContext) private var modelContext
 
     @Query(sort: \WalletRecord.sortOrder) private var allWallets: [WalletRecord]
+    /// Top-level transaction feed, newest-first at the STORE level (no
+    /// per-render sort). The same hardened pattern `WalletHomeView` uses:
+    /// filter this by the active wallet's address-id set in ONE in-memory
+    /// pass (`addressId` is a stored column — no relationship faulting),
+    /// instead of `wallet.addresses.flatMap { $0.transactions }` (which
+    /// faults every address's transaction relationship) gated by the
+    /// O(all-tx) `WalletDataFingerprint.make` key recomputed every body
+    /// pass (2026-06-14 Activity-lag fix).
+    @Query(sort: \TransactionRecord.occurredAt, order: .reverse)
+    private var allTransactionRecords: [TransactionRecord]
     @AppStorage("activeWalletId") private var activeWalletIdRaw: String = ""
 
-    /// Memoized newest-first feed. Rebuilt only when the wallet's data
-    /// fingerprint changes (a confirmed tx, a new import, a switch) —
-    /// not per body pass — so the `flatMap` + `sort` over a 1,000-tx
-    /// per-chain history doesn't run on every render.
+    /// Memoized newest-first feed. Rebuilt only when the feed key
+    /// changes (wallet switch or a tx count change) — not per body pass.
     @State private var sortedTransactions: [TransactionRecord] = []
+
+    /// Cheap rebuild key — O(1). Replaces the O(all-tx) data fingerprint.
+    /// Wallet switch changes `activeWalletIdRaw`; a new/removed tx changes
+    /// the @Query count. A status change (pending→confirmed, same count)
+    /// doesn't re-key, but the rows read `tx.statusRaw` live off the
+    /// shared SwiftData reference, so status still updates without a
+    /// feed rebuild.
+    private var feedKey: String {
+        "\(activeWalletIdRaw)|\(allTransactionRecords.count)"
+    }
 
     var body: some View {
         List {
@@ -84,7 +102,7 @@ struct WalletActivityView: View {
         .background(UniColors.Background.primary.ignoresSafeArea())
         .navigationTitle("Activity")
         .navigationBarTitleDisplayMode(.inline)
-        .task(id: WalletDataFingerprint.make(for: activeWallet)) {
+        .task(id: feedKey) {
             rebuild()
         }
     }
@@ -124,9 +142,18 @@ struct WalletActivityView: View {
             sortedTransactions = []
             return
         }
-        sortedTransactions = wallet.addresses
-            .flatMap { $0.transactions }
-            .sorted { $0.occurredAt > $1.occurredAt }
+        let ids = Set(wallet.addresses.map { $0.id })
+        guard !ids.isEmpty else {
+            sortedTransactions = []
+            return
+        }
+        // One in-memory pass over the store-sorted feed (newest-first
+        // already), filtering on the stored `addressId` column — no
+        // relationship faulting, no per-render sort.
+        sortedTransactions = allTransactionRecords.filter { tx in
+            guard let aid = tx.addressId else { return false }
+            return ids.contains(aid)
+        }
     }
 
     // MARK: - Wallet plumbing (store-truth, matches WalletHomeView)
