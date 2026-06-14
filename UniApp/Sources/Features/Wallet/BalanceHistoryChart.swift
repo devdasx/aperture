@@ -523,6 +523,19 @@ private struct SparklineChart: View {
                 // while scrubbing, saturating the main thread.
                 SparklineCurve(points: points, minValue: minValue, maxValue: maxValue)
                     .equatable()
+                    // **2026-06-14 scroll-lag fix.** Flatten the curve into a
+                    // cached Metal-backed bitmap. The reconstructor emits up
+                    // to ~2,000 points (two per in-window transaction), so the
+                    // stroke + gradient-fill are heavy vector paths; without
+                    // this, the GPU re-rasterized them on EVERY scroll frame
+                    // while the chart row was on screen → the "laggy while
+                    // scrolling the list" the user reported. `.drawingGroup()`
+                    // rasterizes once (and only re-rasterizes when `.equatable()`
+                    // lets the data-driven body actually change), so scrolling
+                    // just composites a flat texture. The scrub cursor is a
+                    // SIBLING in the ZStack (not inside this), so it stays live
+                    // vector and is unaffected.
+                    .drawingGroup()
 
                 // **Scrub cursor — the only thing that moves per tick.**
                 // Its position is computed O(1) from the index, never by
