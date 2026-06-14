@@ -165,11 +165,60 @@ final class SendV2Model {
     /// Solana priority fee). DESIGN placeholder: three tiers shaped by the
     /// network family with believable times + fiat figures.
     func estimateFees() -> [FeeTier] {
-        // TODO: (T-063) Real per-chain fee tiers — EVM gas oracle, Bitcoin mempool feerate,
-        // Solana priority fee. Replace the placeholder tiers below.
+        // Synchronous seed for first render; `loadFeeTiers()` replaces these
+        // with REAL on-chain fees the moment the screen's `.task` runs.
         let tiers = SendV2MockData.feeTiers(for: draft.network, fiatPerNative: draft.unitFiatRate)
-        feeTiers = tiers
-        return tiers
+        if feeTiers.isEmpty { feeTiers = tiers }
+        return feeTiers
+    }
+
+    /// Load REAL fee tiers for the active chain. EVM uses the live gas
+    /// oracle (`EVMSendService.loadFees`); families not yet wired keep the
+    /// placeholder tiers. Off-main (Rule #28); call from the screen's
+    /// `.task`. Honest fee display (Rule #16): the slider charges what's
+    /// shown.
+    func loadFeeTiers() async {
+        guard let asset = draft.asset, let chain = draft.network, chain.family == .evm,
+              let to = draft.resolvedAddress, !to.isEmpty else {
+            if feeTiers.isEmpty {
+                feeTiers = SendV2MockData.feeTiers(for: draft.network, fiatPerNative: draft.unitFiatRate)
+            }
+            return
+        }
+        let isNative: Bool = { if case .native = asset { return true } else { return false } }()
+        let raw = ChainAmount.rawInteger(from: draft.cryptoAmount, decimals: asset.decimals)
+        do {
+            let options = try await EVMSendService.loadFees(
+                chain: chain, toAddress: to, rawAmount: raw == "0" ? "1" : raw,
+                isNative: isNative, contract: asset.contract, decimals: asset.decimals,
+                container: ApertureDatabase.shared.container
+            )
+            // Fee is paid in the native coin; for a native send that's the
+            // sent asset (its fiat rate applies). Token-send fee fiat is a
+            // later refinement (needs the native coin's rate).
+            let nativeRate: Decimal = isNative ? draft.unitFiatRate : 0
+            feeTiers = options.map { opt in
+                FeeTier(
+                    speed: FeeTier.Speed(rawValue: opt.speed.rawValue) ?? .normal,
+                    title: Self.feeTierTitle(opt.speed),
+                    etaSeconds: opt.estimatedSeconds,
+                    feeNative: opt.feeNative,
+                    feeFiat: opt.feeNative * nativeRate
+                )
+            }
+        } catch {
+            if feeTiers.isEmpty {
+                feeTiers = SendV2MockData.feeTiers(for: draft.network, fiatPerNative: draft.unitFiatRate)
+            }
+        }
+    }
+
+    private static func feeTierTitle(_ speed: ChainFeeOption.Speed) -> LocalizedStringKey {
+        switch speed {
+        case .slow:   return "Slow"
+        case .normal: return "Normal"
+        case .fast:   return "Fast"
+        }
     }
 
     /// The currently-selected tier (falls back to the first estimated).
@@ -330,15 +379,77 @@ final class SendV2Model {
     /// rules" table). DESIGN: a scripted walk so the result screens are
     /// fully navigable.
     func send() async {
-        // TODO: (T-066) Real sign + broadcast + lifecycle watcher (receipt poll /
-        // signatureSubscribe / mempool poll per the handoff's per-chain Watching table).
+        sendFailureMessage = nil
+        guard let asset = draft.asset, let chain = draft.network,
+              let to = draft.resolvedAddress, !to.isEmpty else {
+            sendFailureMessage = "Missing recipient or asset."
+            lifecycle = .failed
+            return
+        }
+        // EVM family — REAL sign + broadcast + receipt poll (all off-main
+        // in EVMSendService). Other families fall back to the design walk
+        // until their service lands (built next from the saved recipes).
+        guard chain.family == .evm else {
+            await scriptedSendWalk()
+            return
+        }
+        let isNative: Bool = { if case .native = asset { return true } else { return false } }()
+        let rawAmount = ChainAmount.rawInteger(from: draft.cryptoAmount, decimals: asset.decimals)
+        let speed = ChainFeeOption.Speed(rawValue: selectedFeeTierId.rawValue) ?? .normal
+        lifecycle = .broadcasting
+        do {
+            let signed = try await EVMSendService.performSend(
+                chain: chain, toAddress: to, rawAmount: rawAmount,
+                isNative: isNative, contract: asset.contract, decimals: asset.decimals,
+                speed: speed,
+                container: ApertureDatabase.shared.container
+            )
+            sentTxHash = signed.txHash
+            lifecycle = .unconfirmed
+            await pollStatus(chain: chain, txHash: signed.txHash)
+        } catch let error as ChainSendError {
+            sendFailureMessage = error.userMessage
+            lifecycle = .failed
+        } catch {
+            sendFailureMessage = "Send failed."
+            lifecycle = .failed
+        }
+    }
+
+    /// Poll the receipt until confirmed/failed (Rule #28 — the RPC runs
+    /// off-main inside `EVMSendService`; only the lifecycle update is here).
+    private func pollStatus(chain: SupportedChain, txHash: String) async {
+        lifecycle = .confirming
+        confirmations = 0
+        let target = requiredConfirmations
+        for _ in 0..<60 {   // ~60 × 3s ≈ 3 min ceiling, then leave unconfirmed
+            if lifecycle != .confirming { return }
+            try? await Task.sleep(for: .seconds(3))
+            let status = (try? await EVMSendService.status(chain: chain, txHash: txHash)) ?? .pending
+            switch status {
+            case .pending:
+                if confirmations < max(1, target - 1) { confirmations += 1 }
+            case .confirmed:
+                confirmations = target
+                lifecycle = .confirmed
+                return
+            case .failed(let reason):
+                sendFailureMessage = reason
+                lifecycle = .failed
+                return
+            }
+        }
+        if lifecycle == .confirming { lifecycle = .unconfirmed }
+    }
+
+    /// Design-time walk for families whose real service isn't wired yet.
+    private func scriptedSendWalk() async {
         lifecycle = .broadcasting
         try? await Task.sleep(for: .milliseconds(1400))
         lifecycle = .unconfirmed
         try? await Task.sleep(for: .milliseconds(1400))
         lifecycle = .confirming
         confirmations = 1
-        // Tick a few confirmations so the ring animates.
         let target = min(requiredConfirmations, 4)
         while confirmations < target, lifecycle == .confirming {
             try? await Task.sleep(for: .milliseconds(700))
@@ -361,8 +472,12 @@ final class SendV2Model {
         // `// TODO: (T-069)` real cancel / replacement broadcast.
     }
 
-    /// MOCK transaction hash for the receipt + explorer (T-066).
-    var transactionHash: String { SendMockData.sampleTransactionHash }
+    /// The real broadcast hash once the send lands; the sample hash is the
+    /// design-preview / not-yet-sent fallback (T-066).
+    var sentTxHash: String?
+    /// Honest failure reason surfaced when `lifecycle == .failed` (Rule #16).
+    var sendFailureMessage: String?
+    var transactionHash: String { sentTxHash ?? SendMockData.sampleTransactionHash }
 }
 
 // MARK: - Recipient state

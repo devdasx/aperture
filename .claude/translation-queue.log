@@ -1,0 +1,16 @@
+2026-06-14T14:30:23Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendV2ReviewView.swift	After this send
+2026-06-14T14:30:23Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendV2ReviewView.swift	Checking what this send will do…
+2026-06-14T14:30:23Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendV2ReviewView.swift	Edit network fee
+2026-06-14T14:30:23Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendV2ReviewView.swift	Fee
+2026-06-14T14:30:23Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendV2ReviewView.swift	This send would fail
+2026-06-14T14:30:23Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendV2ReviewView.swift	What's a network fee?
+2026-06-14T14:30:23Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendV2ReviewView.swift	You haven't paid anything — we never broadcast a transaction that will fail.
+2026-06-14T14:30:23Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendV2ReviewView.swift	\(WalletFormatting.native(draft.cryptoAmount, decimals: draft.asset?.decimals ?? 8)) \(draft.unitTicker)
+2026-06-14T14:30:23Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendV2ReviewView.swift	first send
+2026-06-14T14:30:23Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendV2ReviewView.swift	· \(WalletFormatting.fiat(model.networkFeeFiat, currencyCode: activeCurrencyCode))
+2026-06-14T14:30:23Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendV2ReviewView.swift	≈ \(WalletFormatting.fiat(draft.fiatAmount, currencyCode: activeCurrencyCode))
+2026-06-14T14:31:05Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendV2AmountView.swift	Available
+2026-06-14T14:31:05Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendV2AmountView.swift	Change asset or network
+2026-06-14T14:31:05Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendV2AmountView.swift	Review
+2026-06-14T14:31:05Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendV2AmountView.swift	\(WalletFormatting.native(draft.availableBalance, decimals: draft.asset?.decimals ?? 8)) \(draft.unitTicker)
+2026-06-14T14:31:05Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendV2AmountView.swift	\(draft.unitTicker) on \(draft.network?.displayName ?? 
