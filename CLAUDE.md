@@ -3664,6 +3664,64 @@ action so the class of bug cannot return.
 
 ---
 
+## Rule #29 — Drive to completion autonomously. Never stop to ask "go / continue / should I proceed".
+
+When the user has given a task, **finish it** — do not pause mid-job to ask
+for permission to keep going. Added 2026-06-14 on the user's direction
+(verbatim): *"don't ask me to tell you go or continue again, always you
+should go and continue your job till the end."* This is a standing,
+durable instruction. It strengthens and generalizes Rule #21
+(finish-without-stopping) and the global autonomous-execution principle.
+
+### Part A — What is forbidden
+- Ending a turn with "say **go** / **continue** / **yes** and I'll…",
+  "want me to proceed?", "should I keep building?", or any equivalent
+  permission-to-continue gate when the work the user asked for is not yet
+  done.
+- Checkpointing a large feature "here" and waiting for the user to
+  re-authorize the obvious next step. The next step IS the job — take it.
+- Using `AskUserQuestion` to ask whether to proceed/continue. (That tool
+  is for genuine *branching product decisions* whose answer changes WHAT
+  you build — never for "may I continue doing what you already asked".)
+
+### Part B — What to do instead
+- Keep working through every step until the task is genuinely complete —
+  across as many internal steps, commits, builds, and installs as it takes.
+- When one logical chunk lands, immediately start the next; commit + push
+  per chunk (Rule #23) so progress is durable, and keep going.
+- If you hit a context/turn limit mid-job, leave the work committed in a
+  compiling state and CONTINUE in the next turn — do not convert the limit
+  into a "tell me to continue" prompt.
+- Report progress as you go (what landed, what's next), but as a STATEMENT
+  of continued work, not a request for permission.
+
+### Part C — The only legitimate reasons to pause
+Pause ONLY for a true blocker the user alone can resolve, and when you do,
+name it precisely and keep doing everything else that is NOT blocked:
+1. A genuine branching product decision where the user's answer changes
+   the deliverable (use `AskUserQuestion`, briefly, then proceed on the
+   answer).
+2. An irreversible / outward-facing action needing authorization that
+   isn't already standing (e.g. `git push --force`, releases — per
+   Rule #23 Part-A class).
+3. A hard external blocker (a required device offline, a credential
+   missing, a paid signup). State it; do all unblocked work meanwhile;
+   resume the blocked part the instant it clears — without being asked.
+
+Funds-safety note: "build it" still means build it — keep going. Where a
+step can't be *verified* yet (e.g. a real test send needs the device),
+build it, mark it honestly as unverified, and continue with the rest;
+never stop the whole job for a verification gate.
+
+### Part D — Why this rule exists
+The user repeatedly had to type "go" / "continue" to resume work they had
+already clearly authorized — friction that wastes their time and stalls
+momentum. The job, once given, is the mandate to finish. Autonomy to
+completion is the default; asking-to-continue is the exception that now
+requires the Part-C justification.
+
+---
+
 ## Project context
 
 - iOS native, **Swift 6.2**, **iOS 26+**, SwiftUI, Liquid Glass design system
