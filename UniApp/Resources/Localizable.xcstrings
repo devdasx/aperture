@@ -162240,6 +162240,9 @@
         }
       }
     },
+    "No funds left your wallet — you can try again." : {
+
+    },
     "No history yet." : {
       "extractionState" : "manual",
       "localizations" : {

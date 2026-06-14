@@ -1,16 +1,15 @@
 import SwiftUI
 
-/// Send / Receive / Swap action triplet for the wallet-home screen.
-/// Three circular Liquid Glass buttons centered with labels beneath —
-/// the iOS Wallet / Apple-app pattern. `GlassEffectContainer` wraps
-/// them so the material reads as one cohesive surface.
+/// Receive / Swap action pair for the wallet-home screen. Circular
+/// Liquid Glass buttons centered with labels beneath — the iOS Wallet /
+/// Apple-app pattern. `GlassEffectContainer` wraps them so the material
+/// reads as one cohesive surface.
 ///
-/// **Disabled state.** Watch-only wallets cannot send or swap (no
-/// signing key). Receive remains available because receiving doesn't
-/// require a key. `canSend` gates Send + Swap; Receive is always on.
+/// **Disabled state.** Watch-only wallets cannot swap (no signing key);
+/// `canSend` gates Swap. Receive is always on because receiving doesn't
+/// require a key.
 struct WalletActionRegion: View {
     let canSend: Bool
-    let onSend: () -> Void
     let onReceive: () -> Void
     let onSwap: () -> Void
 
@@ -28,12 +27,6 @@ struct WalletActionRegion: View {
             // List placement requires the explicit centering.
             HStack(spacing: UniSpacing.xl) {
                 Spacer(minLength: 0)
-                actionButton(
-                    icon: "arrow.up.right",
-                    label: "Send",
-                    isEnabled: canSend,
-                    action: onSend
-                )
                 actionButton(
                     icon: "arrow.down.left",
                     label: "Receive",

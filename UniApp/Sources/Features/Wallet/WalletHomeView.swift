@@ -568,7 +568,6 @@ struct WalletHomeView: View {
                 }
                 .navigationDestination(for: WalletHomeDestination.self) { destination in
                     switch destination {
-                    case .send:                                 SendV2FlowView()
                     case .swap:                                 SwapPlaceholderView()
                     case .transaction(let id):                  TransactionDetailView(transactionId: id)
                     case .allSupported:                         AllSupportedAssetsView()
@@ -1146,7 +1145,6 @@ struct WalletHomeView: View {
 
             WalletActionRegion(
                 canSend: !isTestMode && activeWallet?.kind != .watchOnly,
-                onSend: { navigationPath.append(WalletHomeDestination.send) },
                 onReceive: { isShowingReceive = true },
                 onSwap: { navigationPath.append(WalletHomeDestination.swap) }
             )
@@ -3007,7 +3005,6 @@ enum CombinedHoldingRow: Identifiable {
 // MARK: - Destinations
 
 enum WalletHomeDestination: Hashable, Codable {
-    case send
     case swap
     case transaction(UUID)
     /// "All supported assets" destination — pushed when the user
@@ -3059,7 +3056,7 @@ enum WalletHomeDestination: Hashable, Codable {
     /// app lands on home (or the asset the user was reading) instead.
     var isColdLaunchRestorable: Bool {
         switch self {
-        case .send, .swap, .allActivity, .assetActivity:
+        case .swap, .allActivity, .assetActivity:
             return false
         case .transaction, .allSupported, .assetDetail, .assetNetworkDetail:
             return true

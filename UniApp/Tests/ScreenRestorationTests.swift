@@ -26,7 +26,6 @@ import Foundation
     func restorabilityPolicy() {
         // Transient: list browse + in-progress action flows.
         #expect(WalletHomeDestination.allActivity.isColdLaunchRestorable == false)
-        #expect(WalletHomeDestination.send.isColdLaunchRestorable == false)
         #expect(WalletHomeDestination.swap.isColdLaunchRestorable == false)
         // Reading: genuine "where I was" content.
         #expect(WalletHomeDestination.allSupported.isColdLaunchRestorable == true)

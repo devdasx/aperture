@@ -8,7 +8,7 @@ import SwiftUI
 /// what it does today.
 ///
 /// **Visual register (Rule #2 + Rule #16 §E).** Identical to
-/// `SwapPlaceholderView` and `SendPlaceholderView` — same
+/// `SwapPlaceholderView` — same
 /// `ComingNextSurface` primitive, same hero SF Symbol size, same calm
 /// secondary-tone body paragraph. Restraint over decoration.
 /// Browser will eventually be custody-adjacent (signing dApp

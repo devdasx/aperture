@@ -74,8 +74,8 @@ import SwiftData
         #expect(coinsStatic.map { $0.chain } == coinsDB.map { $0.chain }) // order preserved
     }
 
-    @Test("Send + Receive asset lists are identical from DB vs static catalog")
-    func sendReceiveAssetListsIdenticalAcrossSources() throws {
+    @Test("Receive asset list is identical from DB vs static catalog")
+    func receiveAssetListIdenticalAcrossSources() throws {
         let container = try makeContainer()
         let context = ModelContext(container)
         try AssetCatalogSeeder.seed(into: context)
@@ -87,12 +87,5 @@ import SwiftData
         let recvDB = ReceiveAsset.tokens(availableChains: chains, catalogAssets: dbAssets)
         #expect(recvStatic.count == recvDB.count)
         #expect(Set(recvStatic.map { $0.id }) == Set(recvDB.map { $0.id }))
-
-        // Send: per-network expanded rows (the user's "send screen reads
-        // from the DB" path).
-        let sendStatic = SendAsset.sendable(availableChains: chains)
-        let sendDB = SendAsset.sendable(availableChains: chains, catalogAssets: dbAssets)
-        #expect(sendStatic.count == sendDB.count)
-        #expect(Set(sendStatic.map { $0.id }) == Set(sendDB.map { $0.id }))
     }
 }
