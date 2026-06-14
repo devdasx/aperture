@@ -32,3 +32,21 @@
 2026-06-14T19:56:43Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Switch wallet, currently \(activeWallet?.name ?? 
 2026-06-14T19:56:43Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	\(row.chain.displayName) details
 2026-06-14T19:56:43Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	\(row.symbol) details
+2026-06-14T20:09:04Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendAssetListView.swift	Choose a network to send on
+2026-06-14T20:09:04Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendAssetListView.swift	On \(networkCount) networks
+2026-06-14T20:09:04Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendAssetListView.swift	\(chain.displayName) — \(chain.ticker)
+2026-06-14T20:09:04Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendAssetListView.swift	\(symbol), \(name)
+2026-06-14T20:09:24Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendNetworkPickerView.swift	Choose network for \(symbol)
+2026-06-14T20:09:24Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendNetworkPickerView.swift	Send \(symbol) on this network
+2026-06-14T20:09:24Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendNetworkPickerView.swift	Send on this network
+2026-06-14T20:10:12Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendView.swift	Send \(assetLabel)
+2026-06-14T20:10:12Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendView.swift	This wallet has no \(chain.displayName) address yet, so there's nothing to send from on this network. Aperture may still be deriving your accounts — try again in a moment.
+2026-06-14T20:11:02Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Switch wallet, currently \(activeWallet?.name ?? 
+2026-06-14T20:11:02Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	\(row.chain.displayName) details
+2026-06-14T20:11:02Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	\(row.symbol) details
+2026-06-14T20:11:23Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Switch wallet, currently \(activeWallet?.name ?? 
+2026-06-14T20:11:23Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	\(row.chain.displayName) details
+2026-06-14T20:11:23Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	\(row.symbol) details
+2026-06-14T20:11:30Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Switch wallet, currently \(activeWallet?.name ?? 
+2026-06-14T20:11:30Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	\(row.chain.displayName) details
+2026-06-14T20:11:30Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	\(row.symbol) details

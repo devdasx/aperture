@@ -185,6 +185,10 @@ struct WalletHomeView: View {
     /// a push. Owned here on the parent so its path can be reset on
     /// dismiss per Rule #12 §G.
     @State private var isShowingReceive: Bool = false
+    /// Drives the Send sheet (the Receive twin). Its own NavigationPath
+    /// lives here so the sheet survives Rule #12 §G direction rebuilds.
+    @State private var isShowingSend: Bool = false
+    @State private var sendPath: NavigationPath = NavigationPath()
     /// **Filter & Sort sheet (2026-06-09).** Drives the
     /// `.sheet(isPresented: $isShowingFilter)` block below. The sheet
     /// reads + writes preferences through `@AppStorage` against
@@ -751,6 +755,18 @@ struct WalletHomeView: View {
                 .presentationDragIndicator(.visible)
                 .presentationBackground(UniColors.Background.primary)
         }
+        // Send — asset-first bottom sheet, the twin of Receive. Same
+        // `.large`-only detent, same Rule #12 §G direction rebuild key +
+        // `.uniAppEnvironment()` so theme + locale propagate into the
+        // sheet's own scope.
+        .sheet(isPresented: $isShowingSend, onDismiss: { sendPath = NavigationPath() }) {
+            SendView(navigationPath: $sendPath)
+                .id(sheetDirectionKey)
+                .uniAppEnvironment()
+                .presentationDetents([.large])
+                .presentationDragIndicator(.visible)
+                .presentationBackground(UniColors.Background.primary)
+        }
         // Filter & Sort sheet (2026-06-09). `.large` detent only per
         // M-008's nav-shaped-sheet rule. Rule #12 §G direction key +
         // `.uniAppEnvironment()` so theme + locale propagate into the
@@ -1145,6 +1161,7 @@ struct WalletHomeView: View {
 
             WalletActionRegion(
                 canSend: !isTestMode && activeWallet?.kind != .watchOnly,
+                onSend: { isShowingSend = true },
                 onReceive: { isShowingReceive = true },
                 onSwap: { navigationPath.append(WalletHomeDestination.swap) }
             )
