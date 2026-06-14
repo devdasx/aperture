@@ -7,6 +7,39 @@ import SwiftData
 /// callable from background actors.
 enum WalletFormatting {
 
+    // MARK: - Cached formatters / styles (2026-06-14 perf)
+    //
+    // Allocating a `RelativeDateTimeFormatter` (a heavy Foundation class)
+    // on every call was a confirmed Activity-list scroll-lag source — one
+    // allocation per transaction row per render (~12x the cost of reuse).
+    // `FormatStyle` values are lightweight structs but were also rebuilt
+    // per call across 20+ amount labels. These cached instances move that
+    // cost out of the render hot path.
+    //
+    // **Concurrency.** `RelativeDateTimeFormatter`'s formatting call, like
+    // `DateFormatter`/`ISO8601DateFormatter`, is safe to invoke from
+    // multiple threads (Foundation formatters are thread-safe for read
+    // formatting since iOS 7); `nonisolated(unsafe)` matches the existing
+    // `static let iso8601` pattern in the network adapters. `FormatStyle`
+    // values are `Sendable`.
+
+    /// Reused relative-date formatter. Configured once; never mutated
+    /// after init, so concurrent `localizedString(for:relativeTo:)` calls
+    /// are safe.
+    nonisolated(unsafe) private static let relativeFormatter: RelativeDateTimeFormatter = {
+        let formatter = RelativeDateTimeFormatter()
+        formatter.unitsStyle = .abbreviated
+        formatter.dateTimeStyle = .numeric
+        return formatter
+    }()
+
+    /// Absolute fallback date style (>1 week ago). Value type, reused.
+    private static let absoluteDateStyle = Date.FormatStyle.dateTime.month(.abbreviated).day()
+
+    /// Base native-amount style; `.precision(...)` is applied per call
+    /// (a cheap value-type copy) for the requested decimal count.
+    private static let nativeBaseStyle = Decimal.FormatStyle().grouping(.automatic)
+
     // MARK: - Fiat
 
     /// Format a fiat amount with the supplied currency code, in the
@@ -26,10 +59,7 @@ enum WalletFormatting {
     /// digits. Trims trailing zeroes (`0.10000000` → `0.1`) so the
     /// number reads cleanly. Locale-aware decimal separator.
     static func native(_ amount: Decimal, decimals: Int) -> String {
-        let style = Decimal.FormatStyle()
-            .precision(.fractionLength(0...decimals))
-            .grouping(.automatic)
-        return amount.formatted(style)
+        amount.formatted(nativeBaseStyle.precision(.fractionLength(0...decimals)))
     }
 
     /// Convert a raw integer balance (as stored in `TokenBalanceRecord.rawBalance`)
@@ -61,13 +91,9 @@ enum WalletFormatting {
         if elapsed > 60 * 60 * 24 * 7 {
             // More than a week — show absolute date in the user's
             // locale. Honest about how long ago.
-            let style = Date.FormatStyle.dateTime.month(.abbreviated).day()
-            return date.formatted(style)
+            return date.formatted(absoluteDateStyle)
         }
-        let formatter = RelativeDateTimeFormatter()
-        formatter.unitsStyle = .abbreviated
-        formatter.dateTimeStyle = .numeric
-        return formatter.localizedString(for: date, relativeTo: reference)
+        return relativeFormatter.localizedString(for: date, relativeTo: reference)
     }
 
     // MARK: - Address
