@@ -3,36 +3,24 @@ import SwiftUI
 /// Resolves a `(chain, tokenSymbol, contract)` triple to a coin
 /// mark and renders it at the caller's frame.
 ///
-/// **Resolution order (honest, fast, offline-first).**
-/// 1. **Native sends** — `tokenSymbol` matches the chain's own
-///    ticker → use `chain.logoAssetName` (bundled mark, instant).
-/// 2. **Bundled stablecoins** — USDC and USDT have bundled marks
-///    in `Assets.xcassets/Crypto/`. Most-seen tokens; bundling
-///    keeps the first frame instant.
-/// 3. **Trust Wallet** — for tokens the registry knows but
-///    Aperture doesn't bundle, fetch the mark from
-///    `trustwallet/assets` (MIT, Rule #7 §B priority 1) via
-///    `CoinMarkCache.shared`. Cached to disk on first download;
-///    second-launch + every subsequent render reads from cache
-///    with no network call. Shows the initials chip during
-///    fetch (graceful degradation).
-/// 4. **Initials chip** — final honest fallback when no bundled
-///    asset exists AND Trust Wallet's repo returns nothing
-///    reachable. The user sees a neutral chip — Rule #2 §A.7
-///    "don't lie about a missing asset."
+/// **Trust Wallet ONLY (2026-06-15 user direction).**
+/// > *"we'll use only trust wallet icons, we'll never use any other
+/// > icons for coins & tokens."*
+/// Every coin and token mark resolves from the `trustwallet/assets`
+/// repo (MIT, Rule #7 §B priority 1) via `CoinMarkCache.shared` —
+/// native coins from `…/blockchains/<slug>/info/logo.png`, tokens
+/// from `…/blockchains/<slug>/assets/<contract>/logo.png`. There is
+/// no bundled-asset path anymore (the old tiers 1+2 — `chain.logoAssetName`
+/// and the bundled USDC/USDT marks — were removed so the source is a
+/// single, consistent one). Marks are cached to disk on first download;
+/// every subsequent render reads from cache with no network call, so the
+/// network is hit at most ONCE per mark across the device's lifetime.
 ///
-/// **Why this 4-tier ordering** (M-019 corrects M-020-class drift).
-/// The user's 2026-06-09 direction:
-/// > *"why some tokens has no icon? we need to fix this by use
-/// > trust wallet icons, and also it should be cached and saved
-/// > on device once user download the icons and always icons
-/// > should be cached, fix this and add it as a mistake."*
-/// Prior to 2026-06-09 this view shipped only tiers 1+2+4 — most
-/// tokens fell through to the initials chip. Adding tier 3 via
-/// the `CoinMarkCache` actor brings the home Tokens list and the
-/// `AllSupportedAssetsView` to the same brand fidelity as the
-/// bundled assets, with persistent caching so the network is
-/// only ever hit ONCE per token across the device's lifetime.
+/// **Honest fallback.** When Trust Wallet hosts nothing for the
+/// triple (a contract-less long-tail token, or a chain/contract the
+/// repo doesn't carry), the view shows a neutral initials chip —
+/// Rule #2 §A.7 "don't lie about a missing asset." Never a different
+/// icon source.
 ///
 /// **Layout.** Sizes itself to the caller's `.frame(...)`
 /// modifier. Internally circle-clipped so brand-rectangular
@@ -73,12 +61,7 @@ struct CoinMark: View {
         // target, so the derivation never runs twice for one render.
         let url = resolvedURL
         Group {
-            if let assetName = bundledAssetName {
-                Image(assetName)
-                    .resizable()
-                    .scaledToFit()
-                    .clipShape(Circle())
-            } else if let image = prepared {
+            if let image = prepared {
                 Image(uiImage: image)
                     .resizable()
                     .scaledToFit()
@@ -92,38 +75,35 @@ struct CoinMark: View {
         }
     }
 
-    // MARK: - Tier 1 + 2: bundled assets
+    // MARK: - Trust Wallet mark URL
 
-    private var bundledAssetName: String? {
-        if tokenSymbol.uppercased() == chain.ticker.uppercased() {
-            return chain.logoAssetName
-        }
-        switch tokenSymbol.uppercased() {
-        case "USDC": return "Crypto/usdc"
-        case "USDT": return "Crypto/usdt"
-        default:     return nil
-        }
+    /// Whether this triple is a native coin (its own ticker, no
+    /// contract) — resolved from Trust Wallet's `info/logo.png`.
+    private var isNativeCoin: Bool {
+        contract == nil && tokenSymbol.uppercased() == chain.ticker.uppercased()
     }
 
-    // MARK: - Tier 3: Trust Wallet via CoinMarkCache
-
     /// Resolved mark URL — computed once in `body` and reused as both
-    /// the `.task(id:)` rebuild key and the fetch target.
-    /// Priority: `customIconURL` (custom-token rows) → Trust Wallet
-    /// derived from `(chain, contract)` (registry tokens). When both
-    /// are nil the view skips the network path and shows the
-    /// initials chip.
+    /// the `.task(id:)` rebuild key and the fetch target. Trust Wallet
+    /// only: `customIconURL` (custom-token rows, itself a Trust Wallet
+    /// probe result) → native `info/logo.png` → token
+    /// `assets/<contract>/logo.png`. A token with no contract has no
+    /// addressable Trust Wallet mark, so the view shows the initials
+    /// chip rather than mis-resolving to the chain's native logo.
     private var resolvedURL: URL? {
         if let custom = customIconURL, !custom.isEmpty {
             return URL(string: custom)
         }
-        return CoinMarkCache.trustWalletURL(chain: chain, contract: contract)
+        if isNativeCoin {
+            return CoinMarkCache.trustWalletURL(chain: chain, contract: nil)
+        }
+        if let contract, !contract.isEmpty {
+            return CoinMarkCache.trustWalletURL(chain: chain, contract: contract)
+        }
+        return nil
     }
 
     private func loadFromCache(url: URL?) async {
-        // Skip the network path entirely when a bundled asset
-        // already wins — no point fetching what we'd ignore.
-        if bundledAssetName != nil { return }
         guard let url else { return }
         guard let data = await CoinMarkCache.shared.data(for: url) else { return }
         // **2026-06-09 perf.** Decode + pre-prepare the image off

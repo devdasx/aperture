@@ -840,6 +840,25 @@ cannot ship in UniApp.
 
 ### Part B — Authoritative sources (priority order)
 
+> **Amendment 2026-06-15 (user direction) — coin & token MARKS are
+> Trust-Wallet-only.** *"we'll use only trust wallet icons, we'll never
+> use any other icons for coins & tokens."* Every coin (native) and
+> token mark now resolves EXCLUSIVELY from `trustwallet/assets` via the
+> shared `CoinMark` view / `CoinMarkCache` (native →
+> `blockchains/<slug>/info/logo.png`, token →
+> `blockchains/<slug>/assets/<contract>/logo.png`), cached to disk so
+> the network is hit at most once per mark. The previously-bundled coin
+> marks (`Assets.xcassets/Crypto/*` via `SupportedChain.logoAssetName`,
+> and the bundled USDC/USDT marks) are **retired as a mark source** —
+> `CoinMark` no longer reads them. The honest **initials chip** remains
+> the only fallback when Trust Wallet hosts nothing for the triple
+> (Rule #2 §A.7); never substitute a different icon source. SF Symbols
+> (item 1 below) still apply to *system UI* iconography — they are not a
+> coin/token mark and are unaffected. Any surface that still renders a
+> coin/token mark via a non-`CoinMark` path (e.g. a direct
+> `Image(chain.logoAssetName)`) must be migrated to `CoinMark` when
+> touched.
+
 1. **SF Symbols** — Apple's official symbol library. Use for system
    iconography (toolbar items, action symbols, list-row leading icons,
    navigation back glyphs). These are real Apple designs and are the

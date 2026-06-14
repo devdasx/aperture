@@ -119,12 +119,18 @@ extension ReceiveAsset {
     /// when no registry entry exists.
     var canonicalContract: String? {
         guard case let .token(symbol, _, _) = self,
-              let chain = canonicalChainForLogo,
-              chain.family == .evm else {
+              let chain = canonicalChainForLogo else {
             return nil
         }
-        return EVMTokenRegistry.tokens(for: chain)
-            .first(where: { $0.symbol == symbol })?
-            .contract
+        if chain.family == .evm {
+            return EVMTokenRegistry.tokens(for: chain)
+                .first(where: { $0.symbol == symbol })?
+                .contract
+        }
+        if chain == .solana {
+            // Solana token logos resolve from the mint address.
+            return SolanaTokenRegistry.mints.first(where: { $0.value.symbol == symbol })?.key
+        }
+        return nil
     }
 }
