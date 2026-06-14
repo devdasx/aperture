@@ -178,7 +178,7 @@ final class SendV2Model {
     /// `.task`. Honest fee display (Rule #16): the slider charges what's
     /// shown.
     func loadFeeTiers() async {
-        guard let asset = draft.asset, let chain = draft.network, chain.family == .evm,
+        guard let asset = draft.asset, let chain = draft.network,
               let to = draft.resolvedAddress, !to.isEmpty else {
             if feeTiers.isEmpty {
                 feeTiers = SendV2MockData.feeTiers(for: draft.network, fiatPerNative: draft.unitFiatRate)
@@ -188,7 +188,7 @@ final class SendV2Model {
         let isNative: Bool = { if case .native = asset { return true } else { return false } }()
         let raw = ChainAmount.rawInteger(from: draft.cryptoAmount, decimals: asset.decimals)
         do {
-            let options = try await EVMSendService.loadFees(
+            let options = try await ChainSendRouter.loadFees(
                 chain: chain, toAddress: to, rawAmount: raw == "0" ? "1" : raw,
                 isNative: isNative, contract: asset.contract, decimals: asset.decimals,
                 container: ApertureDatabase.shared.container
@@ -386,22 +386,24 @@ final class SendV2Model {
             lifecycle = .failed
             return
         }
-        // EVM family — REAL sign + broadcast + receipt poll (all off-main
-        // in EVMSendService). Other families fall back to the design walk
-        // until their service lands (built next from the saved recipes).
-        guard chain.family == .evm else {
-            await scriptedSendWalk()
-            return
-        }
+        // REAL sign + broadcast + status poll for every supported chain,
+        // dispatched by family through ChainSendRouter (all off-main —
+        // Rule #28). No scripted fallback: a chain whose service isn't
+        // wired yet throws `.unsupportedChain` and the UI says so honestly.
         let isNative: Bool = { if case .native = asset { return true } else { return false } }()
         let rawAmount = ChainAmount.rawInteger(from: draft.cryptoAmount, decimals: asset.decimals)
         let speed = ChainFeeOption.Speed(rawValue: selectedFeeTierId.rawValue) ?? .normal
+        // Memo / destination-tag (XRPL, Stellar, Cosmos, TON) — the V2
+        // handoff doesn't surface a memo field yet, so nil for now. The
+        // router + services already accept it for when that field lands.
+        // TODO: (T-067) capture an optional memo/destination-tag in the UI.
+        let memo: String? = nil
         lifecycle = .broadcasting
         do {
-            let signed = try await EVMSendService.performSend(
+            let signed = try await ChainSendRouter.performSend(
                 chain: chain, toAddress: to, rawAmount: rawAmount,
                 isNative: isNative, contract: asset.contract, decimals: asset.decimals,
-                speed: speed,
+                memo: memo, speed: speed,
                 container: ApertureDatabase.shared.container
             )
             sentTxHash = signed.txHash
@@ -425,7 +427,7 @@ final class SendV2Model {
         for _ in 0..<60 {   // ~60 × 3s ≈ 3 min ceiling, then leave unconfirmed
             if lifecycle != .confirming { return }
             try? await Task.sleep(for: .seconds(3))
-            let status = (try? await EVMSendService.status(chain: chain, txHash: txHash)) ?? .pending
+            let status = (try? await ChainSendRouter.status(chain: chain, txHash: txHash)) ?? .pending
             switch status {
             case .pending:
                 if confirmations < max(1, target - 1) { confirmations += 1 }
@@ -440,23 +442,6 @@ final class SendV2Model {
             }
         }
         if lifecycle == .confirming { lifecycle = .unconfirmed }
-    }
-
-    /// Design-time walk for families whose real service isn't wired yet.
-    private func scriptedSendWalk() async {
-        lifecycle = .broadcasting
-        try? await Task.sleep(for: .milliseconds(1400))
-        lifecycle = .unconfirmed
-        try? await Task.sleep(for: .milliseconds(1400))
-        lifecycle = .confirming
-        confirmations = 1
-        let target = min(requiredConfirmations, 4)
-        while confirmations < target, lifecycle == .confirming {
-            try? await Task.sleep(for: .milliseconds(700))
-            confirmations += 1
-        }
-        try? await Task.sleep(for: .milliseconds(600))
-        lifecycle = .confirmed
     }
 
     /// **SEAM (T-069).** Replace a pending tx with a higher fee (EVM
