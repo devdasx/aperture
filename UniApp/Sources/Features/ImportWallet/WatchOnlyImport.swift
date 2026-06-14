@@ -161,20 +161,21 @@ struct WatchOnlyEntryView: View {
                 )
                 .environment(\.layoutDirection, .leftToRight)
                 .multilineTextAlignment(.leading)
-                // Enter = dismiss keyboard, never newline. Detect the
-                // single-trailing-newline-on-prior-buffer signal (the
-                // user pressed Enter, not pasted multi-line content)
-                // and dismiss focus. Multi-line address pastes (where
-                // many characters land at once) pass through untouched
-                // — the parser already splits on `\n` further down, so
-                // those newlines remain meaningful as line separators.
-                // Aligns with the `UniTextField` contract; see
-                // `CLAUDE.md` Rule #19 §D.
+                // Enter = dismiss keyboard, never a typed line break. A
+                // keypress adds exactly ONE character — if that one added
+                // character is a newline (ANYWHERE in the buffer, not only
+                // at the end, so a mid-buffer Return and `\r`/`\r\n` are
+                // caught too), the user pressed Return: revert to the prior
+                // buffer and resign focus. A multi-address PASTE lands many
+                // characters at once, so it never matches this single-char
+                // diff and its interior newlines survive — the parser below
+                // splits on them as line separators. Aligns with the
+                // `UniTextField` Enter-dismiss contract; see CLAUDE.md Rule
+                // #19 §D.
                 .onChange(of: state.watchOnlyRaw) { oldValue, newValue in
                     if newValue.count == oldValue.count + 1,
-                       newValue.last == "\n",
-                       newValue.dropLast() == oldValue {
-                        state.watchOnlyRaw = String(newValue.dropLast())
+                       newValue.filter(\.isNewline).count == oldValue.filter(\.isNewline).count + 1 {
+                        state.watchOnlyRaw = oldValue
                         isFieldFocused = false
                     }
                 }

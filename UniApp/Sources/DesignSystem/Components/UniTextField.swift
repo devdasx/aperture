@@ -114,18 +114,17 @@ enum TextDirection {
 /// **Submit contract (Enter = dismiss keyboard, never newline).** The
 /// Return / Enter key dismisses the keyboard on every variant of this
 /// primitive — single-line and multi-line. Single-line uses the native
-/// `.onSubmit { ... }` path. Multi-line (`axis: .vertical`) detects a
-/// trailing newline arriving in `.onChange(of: text)` — iOS treats Enter
-/// as a literal `"\n"` insertion on `TextField(axis: .vertical)` and
-/// `TextEditor`, so `.onSubmit` never fires and the only honest signal
-/// is the text diff. The intercept is defensive: it strips the newline
-/// AND dismisses focus only when the user's keystroke added one
-/// trailing `"\n"` to the prior buffer — multi-line paste (where many
-/// characters land at once, possibly including newlines) passes through
-/// untouched because the downstream parser (mnemonic tokeniser,
-/// watch-only line splitter, etc.) treats newlines as separators
-/// anyway. See `CLAUDE.md` Rule #19 §D for the canonical-primitive
-/// extension protocol this contract follows.
+/// `.onSubmit { ... }` path. Multi-line (`axis: .vertical`) cannot use
+/// `.onSubmit` — iOS treats Enter as a literal newline insertion on
+/// `TextField(axis: .vertical)` / `TextEditor`, so `.onSubmit` never
+/// fires. Instead `.onChange(of: text)` strips EVERY newline character
+/// (`\n`, `\r`, `\r\n`, Unicode separators) the instant one appears and
+/// resigns focus. This is exhaustive (not a fragile trailing-diff match)
+/// and safe because the multi-line `UniTextField` only ever holds
+/// newline-free content — a recipient address, a contract / mint
+/// address, a revealed private key, an extended public key. See
+/// `CLAUDE.md` Rule #19 §D for the canonical-primitive extension
+/// protocol this contract follows.
 struct UniTextField: View {
     let placeholder: LocalizedStringKey
     @Binding var text: String
@@ -139,12 +138,32 @@ struct UniTextField: View {
     /// radius; callers can soften it (e.g. the Send recipient field uses
     /// `UniRadius.xxxl`).
     var cornerRadius: CGFloat = UniRadius.m
+    /// Vertical padding inside the field's fill. Defaults to `UniSpacing.s`
+    /// (the standard input height). Callers can tighten it for a more
+    /// compact field — the Send recipient field passes `UniSpacing.xs` so
+    /// its EMPTY single-line state reads compact, while still growing to
+    /// show a full pasted address (the `axis: .vertical` growth is
+    /// unaffected). Token-typed; never a raw literal (Rule #4).
+    var verticalPadding: CGFloat = UniSpacing.s
     var reservesSpace: Bool = false
     var contentType: UITextContentType? = nil
     var keyboardType: UIKeyboardType = .default
     var minHeight: CGFloat? = nil
     var autocapitalization: TextInputAutocapitalization = .never
     var disablesAutocorrection: Bool = true
+
+    /// Optional EXTERNAL focus passthrough so a parent can track which
+    /// field (by identity) is currently focused — used by the Send
+    /// recipient list to prune an emptied, unfocused field on focus
+    /// change. When both `focusBinding` and `focusValue` are provided,
+    /// the field also reports its focus identity up to the parent's
+    /// `@FocusState`. This coexists with the private `isFieldFocused`
+    /// (which drives the Enter-dismiss contract) — the two focus
+    /// modifiers are independent and both observe the same first
+    /// responder. Nil for the 6 call sites that don't need identity
+    /// tracking, so they're untouched.
+    var focusBinding: FocusState<UUID?>.Binding? = nil
+    var focusValue: UUID? = nil
 
     @State private var isRevealed: Bool = false
     @FocusState private var isFieldFocused: Bool
@@ -163,6 +182,7 @@ struct UniTextField: View {
         ZStack(alignment: .trailing) {
             inputControl
                 .focused($isFieldFocused)
+                .modifier(ExternalFocusModifier(binding: focusBinding, value: focusValue))
                 .textInputAutocapitalization(autocapitalization)
                 .autocorrectionDisabled(disablesAutocorrection)
                 .keyboardType(keyboardType)
@@ -170,7 +190,7 @@ struct UniTextField: View {
                 .font(UniTypography.body)
                 .modifier(LineLimitModifier(limit: lineLimit, reservesSpace: reservesSpace))
                 .padding(.horizontal, UniSpacing.m)
-                .padding(.vertical, UniSpacing.s)
+                .padding(.vertical, verticalPadding)
                 .padding(.trailing, (showsRevealToggle && isSecure) ? 40 : 0)
                 .frame(minHeight: minHeight)
                 .background(
@@ -186,22 +206,31 @@ struct UniTextField: View {
                 .onSubmit {
                     isFieldFocused = false
                 }
-                // Multi-line: iOS inserts `"\n"` on Enter and does NOT
-                // fire `.onSubmit`. Detect a *single trailing newline
-                // appended to the prior buffer* (= the user pressed
-                // Enter) and dismiss; anything else (paste, deletion,
-                // mid-buffer mutation) passes through unchanged.
+                // Multi-line: iOS inserts a newline char on Enter and
+                // does NOT fire `.onSubmit`. The Return key (or a pasted
+                // newline) must dismiss the keyboard, never insert a line
+                // break. The multi-line `UniTextField` only ever holds
+                // content that legitimately contains NO newlines — a
+                // recipient address, a contract / mint address, a revealed
+                // private key, an extended public key — so the robust,
+                // correct behavior is to strip EVERY newline character
+                // (`\n`, `\r`, `\r\n`, Unicode line/paragraph separators)
+                // the instant one appears and resign focus.
                 //
-                // The comparison is the explicit string diff
-                // `newValue == oldValue + "\n"` — NOT a grapheme-count
-                // check. Counting graphemes breaks on compound
-                // clusters: appending `"\n"` after a trailing `"\r"`
-                // merges into one `"\r\n"` cluster and the count
-                // doesn't change, so a count-based check misses (or
-                // mis-fires on) such edits.
-                .onChange(of: text) { oldValue, newValue in
-                    if axis == .vertical, newValue == oldValue + "\n" {
-                        text = oldValue
+                // The prior implementation matched only the exact diff
+                // `newValue == oldValue + "\n"` — a single `\n` appended
+                // at the very END of the buffer. A mid-buffer Enter, a
+                // `\r` / `\r\n`, or any inexact diff slipped through and
+                // left a visible line break (the user-reported bug).
+                // Stripping via `\.isNewline` (which covers the whole
+                // Unicode newline set) is exhaustive and safe here.
+                //
+                // Single-line fields never receive a newline in `text`
+                // (Return fires `.onSubmit` instead), so this branch only
+                // ever affects the multi-line (`axis: .vertical`) controls.
+                .onChange(of: text) { _, newValue in
+                    if newValue.contains(where: \.isNewline) {
+                        text = newValue.filter { !$0.isNewline }
                         isFieldFocused = false
                         return
                     }
@@ -290,6 +319,26 @@ private struct DirectionOverride: ViewModifier {
     func body(content: Content) -> some View {
         if let direction {
             content.environment(\.layoutDirection, direction)
+        } else {
+            content
+        }
+    }
+}
+
+/// Applies the OPTIONAL external `.focused(_:equals:)` only when a parent
+/// supplied both a binding and an identity value. This is additive — the
+/// private `.focused($isFieldFocused)` (which drives the Enter-dismiss
+/// contract) is always applied; this second modifier reports the field's
+/// focus identity up to the parent's `@FocusState<UUID?>`. SwiftUI
+/// supports multiple independent `.focused` modifiers on one view, each
+/// tracking a different FocusState — both observe the same first responder.
+private struct ExternalFocusModifier: ViewModifier {
+    let binding: FocusState<UUID?>.Binding?
+    let value: UUID?
+
+    func body(content: Content) -> some View {
+        if let binding, let value {
+            content.focused(binding, equals: value)
         } else {
             content
         }

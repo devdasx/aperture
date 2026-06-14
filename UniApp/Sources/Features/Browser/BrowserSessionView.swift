@@ -371,7 +371,7 @@ struct BrowserSessionView: View {
         Button(action: action) {
             Image(systemName: symbol)
                 .font(.system(size: 18, weight: .semibold))
-                .foregroundStyle(enabled ? UniColors.Icon.primary : UniColors.Icon.tertiary)
+                .foregroundStyle(enabled ? UniColors.Icon.primary : UniColors.Icon.disabled)
                 .frame(width: 48, height: 44)
                 .contentShape(Rectangle())
         }

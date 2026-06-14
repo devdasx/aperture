@@ -198,19 +198,21 @@ struct MnemonicEntryView: View {
             .padding(.horizontal, UniSpacing.l)
             .padding(.bottom, UniSpacing.l)
         }
-        .onChange(of: editorText) { oldValue, newValue in
-            // Enter = dismiss keyboard, never newline. Detect the
-            // single-trailing-newline-on-prior-buffer signal that means
-            // the user pressed Enter (vs pasted multi-line content, vs
-            // deleted mid-buffer). On detection: strip the `"\n"`,
-            // dismiss focus, and stop here — the normalization below
-            // would otherwise filter the `"\n"` out as whitespace and
-            // mask the signal. Aligns with the `UniTextField` contract;
-            // see `CLAUDE.md` Rule #19 §D.
-            if newValue.count == oldValue.count + 1,
-               newValue.last == "\n",
-               newValue.dropLast() == oldValue {
-                editorText = String(newValue.dropLast())
+        .onChange(of: editorText) { _, newValue in
+            // Enter = dismiss keyboard, never newline. The Return key (or
+            // a pasted newline) must dismiss, never insert a line break.
+            // A mnemonic is space-separated words and never legitimately
+            // contains a newline, so the robust behavior is to strip
+            // EVERY newline char (`\n`, `\r`, `\r\n`, Unicode separators)
+            // the instant one appears and resign focus — multi-word paste
+            // is preserved because spaces are kept. Aligns with the
+            // `UniTextField` contract; see `CLAUDE.md` Rule #19 §D.
+            //
+            // The prior check matched only an exact single-`\n`-appended-
+            // to-prior-buffer diff, so a mid-buffer Enter or `\r\n` left a
+            // visible break. `\.isNewline` is the exhaustive fix.
+            if newValue.contains(where: \.isNewline) {
+                editorText = newValue.filter { !$0.isNewline }
                 isEditorFocused = false
                 return
             }

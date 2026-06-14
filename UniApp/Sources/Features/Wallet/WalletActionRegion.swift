@@ -80,7 +80,7 @@ struct WalletActionRegion: View {
 
             Text(label)
                 .font(UniTypography.caption1)
-                .foregroundStyle(isEnabled ? UniColors.Text.secondary : UniColors.Text.tertiary)
+                .foregroundStyle(isEnabled ? UniColors.Text.secondary : UniColors.Text.disabled)
         }
     }
 }

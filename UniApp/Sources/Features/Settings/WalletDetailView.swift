@@ -416,11 +416,11 @@ struct WalletDetailView: View {
             HStack(spacing: UniSpacing.s) {
                 Image(systemName: "text.book.closed")
                     .font(.system(size: 17, weight: .regular))
-                    .foregroundStyle(hasMnemonic ? UniColors.Icon.accent : UniColors.Icon.tertiary)
+                    .foregroundStyle(hasMnemonic ? UniColors.Icon.accent : UniColors.Icon.disabled)
                     .frame(width: 28)
                 Text("View recovery phrase")
                     .font(UniTypography.body)
-                    .foregroundStyle(hasMnemonic ? UniColors.Text.primary : UniColors.Text.tertiary)
+                    .foregroundStyle(hasMnemonic ? UniColors.Text.primary : UniColors.Text.disabled)
                 Spacer()
                 if hasMnemonic {
                     Image(systemName: "chevron.right")
@@ -462,11 +462,11 @@ struct WalletDetailView: View {
             HStack(spacing: UniSpacing.s) {
                 Image(systemName: "key.horizontal")
                     .font(.system(size: 17, weight: .regular))
-                    .foregroundStyle(hasKey ? UniColors.Icon.accent : UniColors.Icon.tertiary)
+                    .foregroundStyle(hasKey ? UniColors.Icon.accent : UniColors.Icon.disabled)
                     .frame(width: 28)
                 Text("View private key")
                     .font(UniTypography.body)
-                    .foregroundStyle(hasKey ? UniColors.Text.primary : UniColors.Text.tertiary)
+                    .foregroundStyle(hasKey ? UniColors.Text.primary : UniColors.Text.disabled)
                 Spacer()
                 if hasKey {
                     Image(systemName: "chevron.right")
