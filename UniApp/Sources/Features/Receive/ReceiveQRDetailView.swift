@@ -61,9 +61,13 @@ struct ReceiveQRDetailView: View {
         }
         .scrollIndicators(.hidden)
         .background(UniColors.Background.primary)
-        .navigationTitle(Text(verbatim: navigationTitleText))
         .navigationBarTitleDisplayMode(.inline)
         .toolbar { toolbarContent }
+        .toolbar {
+            ToolbarItem(placement: .principal) {
+                CoinTitleBar(chain: chain, tokenSymbol: tokenSymbol, verb: "Receive")
+            }
+        }
         .sheet(isPresented: $isShowingGuide) {
             ReceiveGuideSheet(
                 chain: chain,

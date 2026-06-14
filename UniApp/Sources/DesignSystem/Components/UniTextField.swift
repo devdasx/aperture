@@ -135,6 +135,10 @@ struct UniTextField: View {
     var showsRevealToggle: Bool = false
     var axis: Axis = .horizontal
     var lineLimit: Int? = nil
+    /// Corner radius of the field's fill. Defaults to the standard input
+    /// radius; callers can soften it (e.g. the Send recipient field uses
+    /// `UniRadius.xxxl`).
+    var cornerRadius: CGFloat = UniRadius.m
     var reservesSpace: Bool = false
     var contentType: UITextContentType? = nil
     var keyboardType: UIKeyboardType = .default
@@ -170,7 +174,7 @@ struct UniTextField: View {
                 .padding(.trailing, (showsRevealToggle && isSecure) ? 40 : 0)
                 .frame(minHeight: minHeight)
                 .background(
-                    RoundedRectangle(cornerRadius: UniRadius.m, style: .continuous)
+                    RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                         .fill(UniColors.Background.secondary)
                 )
                 .multilineTextAlignment(.leading)

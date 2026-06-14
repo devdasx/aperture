@@ -83,6 +83,8 @@ enum UniRadius {
     static let xl: CGFloat = 22
     /// 28 pt — full-screen feature surfaces.
     static let xxl: CGFloat = 28
+    /// 36 pt — soft, near-pill inputs (the Send recipient field).
+    static let xxxl: CGFloat = 36
 
     // MARK: - Semantic roles (the preferred public surface)
 
