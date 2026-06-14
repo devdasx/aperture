@@ -106,17 +106,11 @@ struct ReviewTokenRow: View {
         }
     }
 
-    /// "1,234.56 USDC" — 4-decimal floor, locale-aware grouping,
-    /// trailing zeros trimmed at the high end (Bitcoin-style native
-    /// amounts get more precision; stablecoin amounts get less).
+    /// "1,234.56 USDC" — up-to-6-fraction-digit, locale-aware grouping,
+    /// trailing zeros trimmed. Uses the shared `WalletFormatting.native`
+    /// (cached base `FormatStyle`) instead of allocating a
+    /// `NumberFormatter` per row render (Rule #28 Part C — 2026-06-14).
     private var nativeAmountText: String {
-        let formatter = NumberFormatter()
-        formatter.numberStyle = .decimal
-        formatter.usesGroupingSeparator = true
-        formatter.maximumFractionDigits = 6
-        formatter.minimumFractionDigits = 0
-        let value = NSDecimalNumber(decimal: token.amount)
-        let formatted = formatter.string(from: value) ?? "0"
-        return "\(formatted) \(token.symbol)"
+        "\(WalletFormatting.native(token.amount, decimals: 6)) \(token.symbol)"
     }
 }
