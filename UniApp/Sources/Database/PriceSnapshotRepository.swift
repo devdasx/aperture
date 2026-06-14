@@ -75,8 +75,10 @@ actor PriceSnapshotRepository {
                 source: entry.source
             ))
         }
+        // Rule #28: stage the inserts AND the prune deletions, then commit
+        // in ONE save (was two — insert-save + prune-save).
+        try prune(now: now, save: false)
         try modelContext.save()
-        try prune(now: now)
     }
 
     // MARK: - Latest
@@ -212,7 +214,7 @@ actor PriceSnapshotRepository {
     /// the LAST observation of the day (the `HistoricalPriceRecord`
     /// daily-close convention). Idempotent; runs after every
     /// `record(_:at:)` batch.
-    func prune(now: Date = Date()) throws {
+    func prune(now: Date = Date(), save: Bool = true) throws {
         let cutoff = now.addingTimeInterval(-Self.rawRetentionWindow)
         let descriptor = FetchDescriptor<PriceSnapshotRecord>(
             predicate: #Predicate { $0.fetchedAt < cutoff },
@@ -238,7 +240,7 @@ actor PriceSnapshotRepository {
                 keeperByGroup[groupKey] = row
             }
         }
-        if modelContext.hasChanges {
+        if save && modelContext.hasChanges {
             try modelContext.save()
         }
     }

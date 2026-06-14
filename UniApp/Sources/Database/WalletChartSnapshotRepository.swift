@@ -72,8 +72,11 @@ actor WalletChartSnapshotRepository {
            now.timeIntervalSince(newest.capturedAt) < Self.captureThrottle {
             return false
         }
-        try record(walletId: walletId, currencyCode: code, fiatValue: fiatValue, capturedAt: now)
-        try prune(walletId: walletId, currencyCode: code, now: now)
+        // Rule #28: stage the insert + both prune stages, then ONE save
+        // (was up to three: record-save + prune stage-1 + prune stage-3).
+        try record(walletId: walletId, currencyCode: code, fiatValue: fiatValue, capturedAt: now, save: false)
+        try prune(walletId: walletId, currencyCode: code, now: now, save: false)
+        if modelContext.hasChanges { try modelContext.save() }
         return true
     }
 
@@ -84,7 +87,8 @@ actor WalletChartSnapshotRepository {
         walletId: UUID,
         currencyCode: String,
         fiatValue: Decimal,
-        capturedAt: Date
+        capturedAt: Date,
+        save: Bool = true
     ) throws {
         modelContext.insert(WalletChartSnapshotRecord(
             walletId: walletId,
@@ -92,7 +96,9 @@ actor WalletChartSnapshotRepository {
             fiatValue: fiatValue,
             capturedAt: capturedAt
         ))
-        try modelContext.save()
+        // Rule #28 batch flag — `capture` stages record + prune then saves
+        // once; default `true` keeps standalone callers single-save.
+        if save { try modelContext.save() }
     }
 
     /// Convenience used by `WalletRefreshCoordinator`: value the
@@ -197,7 +203,8 @@ actor WalletChartSnapshotRepository {
     func prune(
         walletId: UUID,
         currencyCode: String,
-        now: Date = Date()
+        now: Date = Date(),
+        save: Bool = true
     ) throws {
         let code = currencyCode.uppercased()
         let cutoff = now.addingTimeInterval(-Self.rawRetentionWindow)
@@ -225,7 +232,9 @@ actor WalletChartSnapshotRepository {
                 keeperByDay[row.dayKey] = row
             }
         }
-        if modelContext.hasChanges {
+        // Stage-3's fetch below reflects these pending deletes in-context,
+        // so we can defer the save when batching (Rule #28).
+        if save && modelContext.hasChanges {
             try modelContext.save()
         }
 
@@ -240,6 +249,6 @@ actor WalletChartSnapshotRepository {
         for row in allRows.prefix(overflow) {
             modelContext.delete(row)
         }
-        try modelContext.save()
+        if save { try modelContext.save() }
     }
 }
