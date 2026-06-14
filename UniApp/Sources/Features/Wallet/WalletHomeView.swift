@@ -192,14 +192,27 @@ struct WalletHomeView: View {
     /// this view's body the moment the sheet writes them.
     @State private var isShowingFilter: Bool = false
     @State private var receivePath: NavigationPath = NavigationPath()
-    /// **Last-screen restoration (2026-06-13).** Seeded from
-    /// `ScreenRestoration`'s mirror in `init` (below) and mirrored
-    /// back on every change — cold launches within the 2-minute
-    /// window land the user back on the asset / transaction screen
-    /// they left; `ScreenRestoration.resolveOnLaunch()` clears the
-    /// mirror for longer absences. Every `WalletHomeDestination`
-    /// case is Codable, so the whole stack round-trips.
-    @State private var navigationPath: NavigationPath
+    /// **Last-screen restoration (2026-06-13, hardened 2026-06-14).**
+    /// Seeded from `ScreenRestoration`'s mirror in `init` (below) and
+    /// mirrored back on every change — cold launches within the
+    /// 2-minute window land the user back on the screen they left;
+    /// `ScreenRestoration.resolveOnLaunch()` clears the mirror for
+    /// longer absences.
+    ///
+    /// **Why a typed `[WalletHomeDestination]`, not `NavigationPath`.**
+    /// An opaque `NavigationPath` can't be inspected, so restoration
+    /// had to take whatever was mirrored — including a deep path whose
+    /// top was the full Activity list (reachable when the user taps
+    /// "View all", then leaves the Wallet tab via the tab bar, or iOS
+    /// kills the app while that tab still has Activity pushed). A cold
+    /// launch then dropped the user onto Activity even though, to them,
+    /// they "weren't there" (2026-06-14 bug report). A typed stack is
+    /// inspectable: `ScreenRestoration.restoredWalletHomeStack()`
+    /// truncates at the first non-`isColdLaunchRestorable` destination,
+    /// so the app never auto-opens onto a list/action screen — only
+    /// genuine "where I was reading" screens (asset detail, etc.)
+    /// resume. The whole stack is `Codable`, so it round-trips.
+    @State private var navigationPath: [WalletHomeDestination]
     @State private var createPath: NavigationPath = NavigationPath()
     @State private var importPath: NavigationPath = NavigationPath()
     // Settings is now a top-level tab in `MainTabView` (2026-06-09);
@@ -454,7 +467,7 @@ struct WalletHomeView: View {
         // cold launch and the root direction-flip rebuild — which are
         // exactly the restoration moments. All other properties keep
         // their declaration defaults.
-        _navigationPath = State(initialValue: ScreenRestoration.restoredWalletHomePath())
+        _navigationPath = State(initialValue: ScreenRestoration.restoredWalletHomeStack())
     }
 
     var body: some View {
@@ -474,25 +487,15 @@ struct WalletHomeView: View {
                 // toolbar items are navigation affordances, not
                 // commit CTAs (the rule's documented exception).
                 .toolbar {
-                    // 2026-06-14 — sync indicator MOVED into the app bar
-                    // (user direction). The leading slot carries a single
-                    // mark that morphs, via native iOS 26 Liquid Glass,
-                    // between a gently-rotating "Syncing…" glyph (while
-                    // `SyncStatusRecord.isSyncing`) and the Aperture iris
-                    // brand mark (at rest). It reads `SyncStatusRecord`
-                    // through its own `@Query` (Rule #27), so it flips
-                    // live the instant the background sync writer changes
-                    // state (Rule #25). Skipped in test mode (public test
-                    // addresses are not a persisted wallet, so there is no
-                    // `.balances` sync row to read). The under-card
-                    // "Updated 14:31" footnote was removed in the same
-                    // turn — this mark is now the freshness surface; its
-                    // as-of time survives as the VoiceOver label.
-                    if !isTestMode, let activeWalletId = activeWallet?.id.uuidString {
-                        ToolbarItem(placement: .topBarLeading) {
-                            SyncStatusToolbarMark(domain: .balances, scopeId: activeWalletId)
-                        }
-                    }
+                    // 2026-06-14 — sync has NO UI surface (user
+                    // direction: "from app bar we need to remove the
+                    // syncing at all we don't need it in the UI, just
+                    // run in the background"). The leading app-bar mark
+                    // that morphed Syncing… ⟷ iris was removed; the
+                    // background sync writer (`WalletRefreshCoordinator`)
+                    // still stamps `SyncStatusRecord` for freshness, but
+                    // nothing renders it. The leading slot is now empty,
+                    // exactly as it was before the mark was introduced.
                     // 2026-06-09 — Filter & Sort affordance. Bare
                     // `line.3.horizontal.decrease` (iOS-native filter
                     // glyph; the same symbol Mail / Files / Photos
@@ -629,7 +632,7 @@ struct WalletHomeView: View {
                 // last-moment save. Consumed by `init` on the next
                 // fresh identity.
                 .onChange(of: navigationPath) { _, newPath in
-                    ScreenRestoration.saveWalletHomePath(newPath)
+                    ScreenRestoration.saveWalletHomeStack(newPath)
                 }
                 .onChange(of: currencyCode) { _, _ in
                     // Labels react immediately (the hero + unheld rows
@@ -843,12 +846,10 @@ struct WalletHomeView: View {
     private var listSurface: some View {
         List {
             balanceCardSection
-            // 2026-06-14 — the under-card freshness footnote ("Updated
-            // 14:31 · Syncing…") was MOVED into the app bar (user
-            // direction): the toolbar's leading `SyncStatusToolbarMark`
-            // now carries the syncing↔logo surface. The honest as-of time
-            // survives as that mark's VoiceOver label (Rule #16 §B) and on
-            // every per-asset surface that still uses `SyncFreshnessLabel`.
+            // 2026-06-14 — sync is background-only: it has no on-screen
+            // surface at all (no under-card footnote, no app-bar mark).
+            // The user removed every sync indicator from the UI; the
+            // background writer keeps `SyncStatusRecord` fresh silently.
             chromeSection
             holdingsBody
             activityListSection
@@ -997,16 +998,12 @@ struct WalletHomeView: View {
         }
     }
 
-    // 2026-06-14 — `freshnessStampSection` (the centered "Updated 14:31 ·
-    // Syncing…" footnote that used to float beneath the balance card) was
-    // REMOVED. Per user direction the syncing↔logo surface moved into the
-    // app bar: the toolbar's leading `SyncStatusToolbarMark` now carries
-    // it, morphing (native iOS 26 Liquid Glass) between the rotating sync
-    // glyph and the Aperture iris brand mark. The honest as-of time is not
-    // lost — it survives as that mark's VoiceOver label (Rule #16 §B), and
-    // `SyncFreshnessLabel` still renders the visible stamp on the per-asset
-    // surfaces (`AssetDetailView` et al.) where the footnote still earns
-    // its place.
+    // 2026-06-14 — sync is background-only and has NO UI surface. The
+    // under-card `freshnessStampSection` footnote AND the app-bar
+    // syncing↔iris mark were both removed per user direction ("we don't
+    // need it in the UI, just run in the background"). The background
+    // writer still stamps `SyncStatusRecord` so freshness is tracked;
+    // nothing renders it.
 
     /// Hero row factored out so both modes (production card, test
     /// mode floating) use the exact same instance — same parameter
@@ -2964,6 +2961,28 @@ enum WalletHomeDestination: Hashable, Codable {
     /// associated value — the destination always means the active
     /// wallet, resolved the same store-truth way the home does.
     case allActivity
+
+    /// **Cold-launch restoration policy (2026-06-14).** Whether this
+    /// destination should be re-opened when the app restores the
+    /// wallet-home stack on a fresh launch (within the 2-minute
+    /// window). Restoring INTO the full Activity list, or a
+    /// half-started Send / Swap flow, is surprising — the user
+    /// reported the app "opening the activity screen automatically"
+    /// even when they had not deliberately left it there. Those are
+    /// transient browse/action screens, not "where I was reading".
+    /// Content-reading destinations (asset detail, per-network detail,
+    /// the all-supported list, a specific transaction) ARE genuine
+    /// resume points. `ScreenRestoration.restoredWalletHomeStack()`
+    /// truncates the restored stack at the first `false` here, so the
+    /// app lands on home (or the asset the user was reading) instead.
+    var isColdLaunchRestorable: Bool {
+        switch self {
+        case .send, .swap, .allActivity, .assetActivity:
+            return false
+        case .transaction, .allSupported, .assetDetail, .assetNetworkDetail:
+            return true
+        }
+    }
 }
 
 // MARK: - Wallet-pill customise target (Identifiable shim)

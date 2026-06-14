@@ -119,8 +119,19 @@ enum ScreenRestoration {
         save(path, forKey: Key.settingsPath)
     }
 
-    static func saveWalletHomePath(_ path: NavigationPath) {
-        save(path, forKey: Key.walletHomePath)
+    /// Mirror the wallet-home stack. Stored as a typed
+    /// `[WalletHomeDestination]` (not the opaque `NavigationPath`) so
+    /// `restoredWalletHomeStack()` can inspect it and refuse to
+    /// re-open transient screens — see that method and
+    /// `WalletHomeDestination.isColdLaunchRestorable`.
+    static func saveWalletHomeStack(_ stack: [WalletHomeDestination]) {
+        guard let data = try? JSONEncoder().encode(stack) else {
+            // Shouldn't happen (every case is Codable), but if it does,
+            // clear rather than restore a stale snapshot.
+            UserDefaults.standard.removeObject(forKey: Key.walletHomePath)
+            return
+        }
+        UserDefaults.standard.set(data, forKey: Key.walletHomePath)
     }
 
     // MARK: - Path consumption (called from the owning views' `init`s)
@@ -129,8 +140,19 @@ enum ScreenRestoration {
         restore(forKey: Key.settingsPath)
     }
 
-    static func restoredWalletHomePath() -> NavigationPath {
-        restore(forKey: Key.walletHomePath)
+    /// The wallet-home stack to seed on a fresh launch, **truncated at
+    /// the first non-`isColdLaunchRestorable` destination** (2026-06-14
+    /// bug fix). This guarantees the app never auto-opens onto the
+    /// Activity list or a Send/Swap flow that lingered in the mirror —
+    /// it lands on home, or on the asset the user was actually reading.
+    /// A decode failure (e.g. the pre-2026-06-14 `NavigationPath`-format
+    /// blob still in `UserDefaults` on the first launch after the
+    /// update) degrades safely to "start at root".
+    static func restoredWalletHomeStack() -> [WalletHomeDestination] {
+        guard let data = UserDefaults.standard.data(forKey: Key.walletHomePath),
+              let stack = try? JSONDecoder().decode([WalletHomeDestination].self, from: data)
+        else { return [] }
+        return Array(stack.prefix(while: { $0.isColdLaunchRestorable }))
     }
 
     // MARK: - Codec
