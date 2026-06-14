@@ -47,26 +47,39 @@ actor HistoricalPriceRepository {
     /// `CoinbaseHistoricalPriceService` to write ~300 daily candles in
     /// one shot after a single network round-trip.
     func upsertMany(_ entries: [(symbol: String, fiat: String, dayKey: Int, price: Decimal)]) throws {
-        for entry in entries {
+        guard !entries.isEmpty else { return }
+        // Rule #28 batch-fetch (2026-06-14): fetch ALL matching records in
+        // ONE query keyed on the entry keys, instead of a FetchDescriptor
+        // per entry (~300 queries for a full candle set). Off-main on the
+        // actor, but the per-entry fetch loop was real CPU during every
+        // chart/refresh historical write.
+        let now = Date()
+        let keyed = entries.map { entry -> (key: String, symbol: String, fiat: String, dayKey: Int, price: Decimal) in
             let upperSymbol = entry.symbol.uppercased()
             let upperFiat = entry.fiat.uppercased()
-            let key = "\(upperSymbol)-\(upperFiat)-\(entry.dayKey)"
-            var descriptor = FetchDescriptor<HistoricalPriceRecord>(
-                predicate: #Predicate { $0.key == key }
-            )
-            descriptor.fetchLimit = 1
-
-            if let existing = try modelContext.fetch(descriptor).first {
+            return ("\(upperSymbol)-\(upperFiat)-\(entry.dayKey)", upperSymbol, upperFiat, entry.dayKey, entry.price)
+        }
+        let allKeys = Array(Set(keyed.map { $0.key }))
+        let descriptor = FetchDescriptor<HistoricalPriceRecord>(
+            predicate: #Predicate { allKeys.contains($0.key) }
+        )
+        var byKey = Dictionary(
+            try modelContext.fetch(descriptor).map { ($0.key, $0) },
+            uniquingKeysWith: { first, _ in first }
+        )
+        for entry in keyed {
+            if let existing = byKey[entry.key] {
                 existing.price = entry.price
-                existing.fetchedAt = Date()
+                existing.fetchedAt = now
             } else {
                 let record = HistoricalPriceRecord(
-                    symbol: upperSymbol,
-                    fiat: upperFiat,
+                    symbol: entry.symbol,
+                    fiat: entry.fiat,
                     dayKey: entry.dayKey,
                     price: entry.price
                 )
                 modelContext.insert(record)
+                byKey[entry.key] = record  // a later duplicate key updates this row
             }
         }
         try modelContext.save()
