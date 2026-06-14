@@ -1,0 +1,223 @@
+import SwiftUI
+import SwiftData
+
+/// **Send screen — asset-first bottom sheet.** The twin of `ReceiveView`,
+/// rebuilt step by step from our own Receive design (no external handoff):
+/// "what are you sending?" first, "on which network?" second (for
+/// tokens), then compose (amount + recipient — the next increment).
+///
+/// **Navigation contract (mirrors Receive):**
+/// - Step 1 (asset list) → close sheet (swipe-down + system close).
+/// - Step 2 (network picker, tokens only) → back chevron pops to Step 1.
+/// - Step 3 (compose) → back chevron pops to Step 2 (token) or Step 1
+///   (native, which skips the network picker).
+///
+/// Steps 1 and 2 are fully real: the asset list is the live local-first
+/// asset universe filtered to the wallet's chains, and the network picker
+/// lists the real networks the wallet can sign from. Step 3 (compose) is
+/// the seam where the next increment — amount entry + recipient — lands.
+struct SendView: View {
+    @Query(sort: \WalletRecord.sortOrder) private var allWallets: [WalletRecord]
+    @AppStorage("activeWalletId") private var activeWalletIdRaw: String = ""
+
+    /// The sheet's own NavigationPath — lives on the sheet root so it can
+    /// rebuild via `.id(sheetDirectionKey)` (Rule #12 §G) without losing
+    /// the user's position.
+    @Binding var navigationPath: NavigationPath
+
+    /// The chain the user tapped that has no derived address on the active
+    /// wallet — drives the honest "no address" alert instead of a dead tap.
+    @State private var missingAddressChain: SupportedChain?
+    @State private var isShowingMissingAddressAlert: Bool = false
+
+    var body: some View {
+        NavigationStack(path: $navigationPath) {
+            SendAssetListView(
+                availableChains: availableChains,
+                onSelectNative: { chain in
+                    guard let address = address(for: chain) else {
+                        presentMissingAddress(chain)
+                        return
+                    }
+                    // Native coin: the network IS the chain — skip the
+                    // network picker and go straight to compose.
+                    navigationPath.append(
+                        SendDestination.compose(chain: chain, tokenSymbol: nil, fromAddress: address)
+                    )
+                },
+                onSelectToken: { asset in
+                    navigationPath.append(SendDestination.networkPicker(asset))
+                }
+            )
+            .navigationTitle("Send")
+            .navigationBarTitleDisplayMode(.inline)
+            .navigationDestination(for: SendDestination.self) { destination in
+                switch destination {
+                case let .networkPicker(asset):
+                    SendNetworkPickerView(
+                        token: asset,
+                        onSelectNetwork: { chain in
+                            guard let address = address(for: chain) else {
+                                presentMissingAddress(chain)
+                                return
+                            }
+                            let symbol: String? = {
+                                if case let .token(symbol, _, _) = asset { return symbol }
+                                return nil
+                            }()
+                            navigationPath.append(
+                                SendDestination.compose(chain: chain, tokenSymbol: symbol, fromAddress: address)
+                            )
+                        }
+                    )
+                case let .compose(chain, tokenSymbol, fromAddress):
+                    SendComposePlaceholderView(
+                        chain: chain,
+                        tokenSymbol: tokenSymbol,
+                        fromAddress: fromAddress
+                    )
+                }
+            }
+        }
+        .onChange(of: activeWalletIdRaw) { _, _ in
+            // Wallet switched under us — reset to step 1 so we never carry
+            // a from-address from the prior wallet.
+            navigationPath = NavigationPath()
+        }
+        .task(id: activeWalletHealKey) {
+            healActiveWalletIdIfNeeded()
+        }
+        .alert(
+            Text("No address for this network"),
+            isPresented: $isShowingMissingAddressAlert,
+            presenting: missingAddressChain
+        ) { _ in
+            Button("OK", role: .cancel) {}
+        } message: { chain in
+            Text("This wallet has no \(chain.displayName) address yet, so there's nothing to send from on this network. Aperture may still be deriving your accounts — try again in a moment.")
+        }
+    }
+
+    private func presentMissingAddress(_ chain: SupportedChain) {
+        missingAddressChain = chain
+        isShowingMissingAddressAlert = true
+    }
+
+    // MARK: - Derived (mirrors ReceiveView)
+
+    private var activeWallet: WalletRecord? {
+        if let uuid = UUID(uuidString: activeWalletIdRaw),
+           let match = allWallets.first(where: { $0.id == uuid }) {
+            return match
+        }
+        return allWallets.first
+    }
+
+    private var activeWalletHealKey: String {
+        "\(activeWalletIdRaw)|\(allWallets.count)"
+    }
+
+    private func healActiveWalletIdIfNeeded() {
+        guard let first = allWallets.first else { return }
+        let resolves = UUID(uuidString: activeWalletIdRaw)
+            .map { id in allWallets.contains(where: { $0.id == id }) } ?? false
+        if !resolves {
+            activeWalletIdRaw = first.id.uuidString
+        }
+    }
+
+    /// All chains the active wallet has a derived (non-empty) address for,
+    /// in canonical `SupportedChain` order.
+    private var availableChains: [SupportedChain] {
+        guard let wallet = activeWallet else { return [] }
+        let chains: [SupportedChain] = wallet.addresses.compactMap { record in
+            guard !record.address.isEmpty else { return nil }
+            return SupportedChain(rawValue: record.chainRaw)
+        }
+        let set = Set(chains)
+        return SupportedChain.allCases.filter { set.contains($0) }
+    }
+
+    private func address(for chain: SupportedChain) -> String? {
+        guard let wallet = activeWallet else { return nil }
+        return wallet.addresses.first(where: {
+            $0.chainRaw == chain.rawValue && !$0.address.isEmpty
+        })?.address
+    }
+}
+
+// MARK: - Destinations
+
+/// Step transitions inside the Send sheet. Hashable + Codable so the
+/// NavigationPath persists across Rule #12 §G direction-flip rebuilds.
+enum SendDestination: Hashable, Codable {
+    case networkPicker(SendAsset)
+    case compose(chain: SupportedChain, tokenSymbol: String?, fromAddress: String)
+}
+
+// MARK: - Compose seam (next increment)
+
+/// Step 3 seam — where amount entry + recipient will land next. Shows the
+/// real selection (asset, network, the wallet's real sending address) so
+/// the two real picker steps are navigable end to end. Honest about being
+/// the next step (Rule #16): it never implies a send is possible yet.
+private struct SendComposePlaceholderView: View {
+    let chain: SupportedChain
+    let tokenSymbol: String?
+    let fromAddress: String
+
+    private var assetLabel: String { tokenSymbol ?? chain.ticker }
+
+    var body: some View {
+        List {
+            Section {
+                row("Asset", assetLabel)
+                row("Network", chain.displayName)
+                row("From", shortened(fromAddress))
+            } header: {
+                UniCaption(text: "You're sending", color: UniColors.Text.tertiary)
+            }
+
+            Section {
+                VStack(spacing: UniSpacing.s) {
+                    Image(systemName: "wrench.and.screwdriver")
+                        .font(.system(size: 32, weight: .light))
+                        .foregroundStyle(UniColors.Icon.tertiary)
+                    UniBody(
+                        text: "Amount and recipient are the next step we'll build.",
+                        alignment: .center,
+                        color: UniColors.Text.secondary
+                    )
+                    .fixedSize(horizontal: false, vertical: true)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, UniSpacing.l)
+                .listRowBackground(Color.clear)
+            }
+        }
+        .listStyle(.insetGrouped)
+        .scrollContentBackground(.hidden)
+        .background(UniColors.Background.primary)
+        .navigationTitle(Text("Send \(assetLabel)"))
+        .navigationBarTitleDisplayMode(.inline)
+    }
+
+    private func row(_ key: LocalizedStringKey, _ value: String) -> some View {
+        HStack(spacing: UniSpacing.s) {
+            Text(key)
+                .font(UniTypography.body)
+                .foregroundStyle(UniColors.Text.secondary)
+            Spacer(minLength: UniSpacing.s)
+            Text(verbatim: value)
+                .font(UniTypography.body)
+                .foregroundStyle(UniColors.Text.primary)
+                .environment(\.layoutDirection, .leftToRight)
+        }
+        .listRowBackground(UniColors.Background.secondary)
+    }
+
+    private func shortened(_ address: String) -> String {
+        guard address.count > 16 else { return address }
+        return "\(address.prefix(8))…\(address.suffix(6))"
+    }
+}
