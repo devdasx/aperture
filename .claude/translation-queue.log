@@ -1,17 +1,32 @@
-2026-06-14T20:28:52Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/AssetPickerRows.swift	\(fullName), \(ticker)
-2026-06-14T20:30:38Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendNetworkPickerView.swift	Choose network for \(symbol)
-2026-06-14T20:30:38Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendNetworkPickerView.swift	Send \(symbol) on this network
-2026-06-14T20:31:01Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendView.swift	Send \(assetLabel)
-2026-06-14T20:31:01Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendView.swift	This wallet has no \(chain.displayName) address yet, so there's nothing to send from on this network. Aperture may still be deriving your accounts — try again in a moment.
-2026-06-14T20:31:08Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendView.swift	Send \(assetLabel)
-2026-06-14T20:31:08Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendView.swift	This wallet has no \(chain.displayName) address yet, so there's nothing to send from on this network. Aperture may still be deriving your accounts — try again in a moment.
-2026-06-14T20:31:14Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendView.swift	Send \(assetLabel)
-2026-06-14T20:31:14Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendView.swift	This wallet has no \(chain.displayName) address yet, so there's nothing to send from on this network. Aperture may still be deriving your accounts — try again in a moment.
-2026-06-14T20:31:22Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendView.swift	Send \(assetLabel)
-2026-06-14T20:31:22Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendView.swift	This wallet has no \(chain.displayName) address yet, so there's nothing to send from on this network. Aperture may still be deriving your accounts — try again in a moment.
-2026-06-14T20:32:08Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Receive/ReceiveNetworkPickerView.swift	Choose network for \(symbol)
-2026-06-14T20:32:08Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Receive/ReceiveNetworkPickerView.swift	Receive \(symbol) on this network
-2026-06-14T20:32:20Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Receive/ReceiveView.swift	This wallet has no \(chain.displayName) address yet, so there's nothing to receive to on this network. Aperture may still be deriving your accounts — try again in a moment.
-2026-06-14T20:32:28Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Receive/ReceiveView.swift	This wallet has no \(chain.displayName) address yet, so there's nothing to receive to on this network. Aperture may still be deriving your accounts — try again in a moment.
-2026-06-14T20:32:34Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Receive/ReceiveView.swift	This wallet has no \(chain.displayName) address yet, so there's nothing to receive to on this network. Aperture may still be deriving your accounts — try again in a moment.
-2026-06-14T20:32:41Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Receive/ReceiveView.swift	This wallet has no \(chain.displayName) address yet, so there's nothing to receive to on this network. Aperture may still be deriving your accounts — try again in a moment.
+2026-06-14T20:52:47Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	Couldn't find \(name). Check the spelling, or paste the address directly.
+2026-06-14T20:52:47Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	Enter a \(chain.displayName) address or a \(hint).
+2026-06-14T20:52:47Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	Enter a \(chain.displayName) address.
+2026-06-14T20:52:47Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	First time sending here
+2026-06-14T20:52:47Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	Resolving…
+2026-06-14T20:52:47Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	Send \(assetLabel) to
+2026-06-14T20:52:47Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	Sent here once before
+2026-06-14T20:52:47Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	Sent once
+2026-06-14T20:52:47Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	That's not a valid \(chain.displayName) address.
+2026-06-14T20:52:47Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	This is an address you've used before.
+2026-06-14T20:52:47Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	You've never sent to this address before. Double-check every character — crypto transactions can't be reversed.
+2026-06-14T20:52:47Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	\(name) → \(SendRecipientView.shorten(address))
+2026-06-14T20:53:21Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendView.swift	No address for this network
+2026-06-14T20:53:21Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendView.swift	OK
+2026-06-14T20:53:21Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendView.swift	Send \(assetLabel)
+2026-06-14T20:53:21Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendView.swift	This wallet has no \(chain.displayName) address yet, so there's nothing to send from on this network. Aperture may still be deriving your accounts — try again in a moment.
+2026-06-14T20:53:33Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendView.swift	No address for this network
+2026-06-14T20:53:33Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendView.swift	OK
+2026-06-14T20:53:33Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendView.swift	Send \(assetLabel)
+2026-06-14T20:53:33Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendView.swift	This wallet has no \(chain.displayName) address yet, so there's nothing to send from on this network. Aperture may still be deriving your accounts — try again in a moment.
+2026-06-14T20:54:02Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendView.swift	No address for this network
+2026-06-14T20:54:02Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendView.swift	OK
+2026-06-14T20:54:02Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendView.swift	Send \(assetLabel)
+2026-06-14T20:54:02Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendView.swift	This wallet has no \(chain.displayName) address yet, so there's nothing to send from on this network. Aperture may still be deriving your accounts — try again in a moment.
+2026-06-14T20:54:11Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendView.swift	No address for this network
+2026-06-14T20:54:11Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendView.swift	OK
+2026-06-14T20:54:11Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendView.swift	Send \(assetLabel)
+2026-06-14T20:54:11Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendView.swift	This wallet has no \(chain.displayName) address yet, so there's nothing to send from on this network. Aperture may still be deriving your accounts — try again in a moment.
+2026-06-14T20:54:16Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendView.swift	No address for this network
+2026-06-14T20:54:16Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendView.swift	OK
+2026-06-14T20:54:16Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendView.swift	Send \(assetLabel)
+2026-06-14T20:54:16Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendView.swift	This wallet has no \(chain.displayName) address yet, so there's nothing to send from on this network. Aperture may still be deriving your accounts — try again in a moment.
