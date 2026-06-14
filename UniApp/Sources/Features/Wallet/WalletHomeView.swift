@@ -689,6 +689,16 @@ struct WalletHomeView: View {
                 .onChange(of: balanceRowsRevision) { _, _ in
                     rebuildDisplayRows()
                 }
+                // "Hide small balances" threshold (a Settings preference,
+                // a DIFFERENT @AppStorage key than the filter sheet's
+                // `filterMinFiatThreshold`) is read inside `computeBalances()`.
+                // The pre-memo `balances` re-read it every body pass, so
+                // changing it updated the home live; the cache must rebuild
+                // explicitly or the hero/holdings/chart stay on the old
+                // threshold until the next refresh (Rule #25). 2026-06-14.
+                .onChange(of: hideSmallThreshold) { _, _ in
+                    rebuildDisplayRows()
+                }
                 // New transactions landed in the top-level @Query (live
                 // cross-context inserts, Rule #25) — refresh the cached
                 // `allTransactions` so the Recent activity list + chart
