@@ -396,7 +396,7 @@ final class SendV2Model {
         // Memo / destination-tag (XRPL, Stellar, Cosmos, TON) — the V2
         // handoff doesn't surface a memo field yet, so nil for now. The
         // router + services already accept it for when that field lands.
-        // TODO: (T-067) capture an optional memo/destination-tag in the UI.
+        // TODO: (T-070) capture an optional memo/destination-tag in the UI.
         let memo: String? = nil
         lifecycle = .broadcasting
         do {
