@@ -43,7 +43,10 @@ struct SendV2ReviewView: View {
                 footer
             }
         }
-        .task { _ = await model.simulate() }
+        .task {
+            await model.loadFeeTiers()
+            _ = await model.simulate()
+        }
         .navigationTitle("Review")
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(.hidden, for: .navigationBar)

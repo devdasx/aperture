@@ -81,6 +81,9 @@ struct SendV2AmountView: View {
             // the highlight. Cheap heuristic: any manual edit clears it.
             if model.selectedPercent != nil { model.selectedPercent = nil }
         }
+        // Load REAL fee tiers (EVM gas oracle) so the fee note + fee-aware
+        // Max reflect the live network fee, not a placeholder.
+        .task { await model.loadFeeTiers() }
     }
 
     // MARK: - Token pill

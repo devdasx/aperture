@@ -1,4 +1,5 @@
 import Foundation
+import SwiftData
 import WalletCore
 
 /// Real EVM send for all 12 EVM chains (Ethereum, Arbitrum, Base,
@@ -52,6 +53,44 @@ enum EVMSendService {
         case .arbitrum, .optimism, .scroll: return 130
         default:                            return 110
         }
+    }
+
+    // MARK: - Off-main orchestration (called from the @MainActor view-model)
+
+    /// Build a request from Sendable scalars (deriving the sender address
+    /// off-main) and return the real fee tiers. Runs entirely off the main
+    /// actor — the view-model `await`s it.
+    nonisolated static func loadFees(
+        chain: SupportedChain, toAddress: String, rawAmount: String,
+        isNative: Bool, contract: String?, decimals: Int, container: ModelContainer
+    ) async throws(ChainSendError) -> [ChainFeeOption] {
+        let from = try ChainKeyProvider.senderAddress(for: chain, container: container)
+        let request = ChainSendRequest(
+            chain: chain, fromAddress: from, toAddress: toAddress,
+            rawAmount: rawAmount, tokenContract: contract, decimals: decimals,
+            isNative: isNative, memo: nil
+        )
+        return try await feeOptions(for: request)
+    }
+
+    /// Full send: derive context off-main, pick the chosen speed's real
+    /// fee, sign, and broadcast. Returns the broadcast result.
+    nonisolated static func performSend(
+        chain: SupportedChain, toAddress: String, rawAmount: String,
+        isNative: Bool, contract: String?, decimals: Int, speed: ChainFeeOption.Speed,
+        container: ModelContainer
+    ) async throws(ChainSendError) -> ChainSignedTransaction {
+        let from = try ChainKeyProvider.senderAddress(for: chain, container: container)
+        let request = ChainSendRequest(
+            chain: chain, fromAddress: from, toAddress: toAddress,
+            rawAmount: rawAmount, tokenContract: contract, decimals: decimals,
+            isNative: isNative, memo: nil
+        )
+        let fees = try await feeOptions(for: request)
+        guard let fee = fees.first(where: { $0.speed == speed }) ?? fees.first else {
+            throw .feeUnavailable
+        }
+        return try await signAndBroadcast(request: request, fee: fee, container: container)
     }
 
     // MARK: - Fee estimation
@@ -145,7 +184,8 @@ enum EVMSendService {
 
     static func signAndBroadcast(
         request: ChainSendRequest,
-        fee: ChainFeeOption
+        fee: ChainFeeOption,
+        container: ModelContainer
     ) async throws(ChainSendError) -> ChainSignedTransaction {
         let chain = request.chain
         guard chainId(for: chain) != 0 else { throw .unsupportedChain(chain) }
@@ -156,7 +196,7 @@ enum EVMSendService {
             params: [request.fromAddress, "pending"]
         )
 
-        let (key, _) = try ChainKeyProvider.signingMaterial(for: chain)
+        let (key, _) = try ChainKeyProvider.signingMaterial(for: chain, container: container)
 
         var input = EthereumSigningInput()
         input.chainID = bigEndianData(UInt64(chainId(for: chain)))
@@ -202,10 +242,8 @@ enum EVMSendService {
                 chain: chain, method: "eth_sendRawTransaction", params: [rawHex]
             )
             return ChainSignedTransaction(broadcastPayload: rawHex, txHash: returnedHash.isEmpty ? localHash : returnedHash)
-        } catch let rpcError as RPCError {
-            throw .broadcastRejected(broadcastMessage(for: rpcError))
         } catch {
-            throw .broadcastRejected("The network rejected the transaction.")
+            throw .broadcastRejected(broadcastMessage(for: error))
         }
     }
 
@@ -224,12 +262,10 @@ enum EVMSendService {
                 return s == 1 ? .confirmed(blockNumber: blockNumber) : .failed(reason: "The transaction reverted on-chain.")
             }
             return .confirmed(blockNumber: blockNumber)
-        } catch let e as RPCError {
+        } catch {
             // A null receipt (not yet mined) decodes as `.decodingFailed`
             // here — treat any not-yet-available receipt as still pending.
-            if case .decodingFailed = e { return .pending }
-            throw .rpcUnavailable
-        } catch {
+            if case .decodingFailed = error { return .pending }
             throw .rpcUnavailable
         }
     }

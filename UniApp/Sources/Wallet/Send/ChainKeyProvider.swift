@@ -46,9 +46,10 @@ enum ChainKeyProvider {
     /// Derive the signing key + sender address for `chain` from the active
     /// wallet's on-device mnemonic. Runs off the main actor.
     nonisolated static func signingMaterial(
-        for chain: SupportedChain
+        for chain: SupportedChain,
+        container: ModelContainer
     ) throws(ChainSendError) -> (key: PrivateKey, address: String) {
-        let words = try activeSigningWords()
+        let words = try activeSigningWords(container: container)
         guard let wallet = HDWallet(mnemonic: words.joined(separator: " "), passphrase: "") else {
             throw .signingFailed("Could not reconstruct the wallet key.")
         }
@@ -61,10 +62,25 @@ enum ChainKeyProvider {
         return (key, address)
     }
 
+    /// Derive ONLY the sender address for `chain` (the signing key is
+    /// derived + dropped within this call). Used to populate a send
+    /// request's `fromAddress` for nonce / gas estimation before signing.
+    nonisolated static func senderAddress(for chain: SupportedChain, container: ModelContainer) throws(ChainSendError) -> String {
+        let words = try activeSigningWords(container: container)
+        guard let wallet = HDWallet(mnemonic: words.joined(separator: " "), passphrase: "") else {
+            throw .signingFailed("Could not reconstruct the wallet key.")
+        }
+        let address = wallet.getAddressForCoin(coin: coinType(for: chain))
+        guard !address.isEmpty else {
+            throw .signingFailed("Could not derive the \(chain.displayName) address.")
+        }
+        return address
+    }
+
     // MARK: - Active wallet mnemonic (custody-checked, off-main)
 
-    private nonisolated static func activeSigningWords() throws(ChainSendError) -> [String] {
-        guard let record = activeWallet() else { throw .walletCannotSign }
+    private nonisolated static func activeSigningWords(container: ModelContainer) throws(ChainSendError) -> [String] {
+        guard let record = activeWallet(container: container) else { throw .walletCannotSign }
         switch record.kind {
         case .created, .importedMnemonic:
             break
@@ -85,9 +101,9 @@ enum ChainKeyProvider {
     /// Same active-wallet contract as `EVMDAppSigner` / `ActiveWalletReader`
     /// (shared `activeWalletId` default, first wallet as fallback), via a
     /// background `ModelContext` so it's safe off the main actor.
-    private nonisolated static func activeWallet() -> WalletRecord? {
+    private nonisolated static func activeWallet(container: ModelContainer) -> WalletRecord? {
         let activeId = UserDefaults.standard.string(forKey: "activeWalletId") ?? ""
-        let context = ModelContext(ApertureDatabase.shared.container)
+        let context = ModelContext(container)
         if let activeUUID = UUID(uuidString: activeId) {
             var descriptor = FetchDescriptor<WalletRecord>(
                 predicate: #Predicate { $0.id == activeUUID }
