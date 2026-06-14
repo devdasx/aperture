@@ -138,6 +138,14 @@ struct UniTextField: View {
     /// radius; callers can soften it (e.g. the Send recipient field uses
     /// `UniRadius.xxxl`).
     var cornerRadius: CGFloat = UniRadius.m
+    /// The field's fill surface. Defaults to `UniColors.Background.secondary`
+    /// (the standard rounded-input look). Pass `Color.clear` when the field
+    /// lives inside a container that already owns the surface — e.g. the
+    /// Send recipient list's inset-grouped `UniCard`, where each field is a
+    /// PLAIN row inside one connected container (no per-field pill). The
+    /// fill is a `UniColors` role at the call site, never a literal except
+    /// `Color.clear` (Rule #4 permits `.clear` everywhere). Token-typed.
+    var fill: Color = UniColors.Background.secondary
     /// Vertical padding inside the field's fill. Defaults to `UniSpacing.s`
     /// (the standard input height). Callers can tighten it for a more
     /// compact field — the Send recipient field passes `UniSpacing.xs` so
@@ -195,7 +203,7 @@ struct UniTextField: View {
                 .frame(minHeight: minHeight)
                 .background(
                     RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                        .fill(UniColors.Background.secondary)
+                        .fill(fill)
                 )
                 .multilineTextAlignment(.leading)
                 // Single-line: Return key reads as "Done" and fires

@@ -309750,6 +309750,28 @@
           }
         }
       }
+    },
+    "Scan address": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Scan address"
+          }
+        }
+      }
+    },
+    "Turn on camera access in Settings to scan with the camera. You can still pick a QR code from your photos or paste one.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Turn on camera access in Settings to scan with the camera. You can still pick a QR code from your photos or paste one."
+          }
+        }
+      }
     }
   },
   "version": "1.0"

@@ -5,17 +5,19 @@ import SwiftUI
 /// recents from the wallet's outgoing history, and a real first-send
 /// warning / send count per recipient.
 ///
-/// **Redesign (2026-06-15 — Apple iOS 26 / Jony Ive).** The screen moved
-/// from an inset-grouped `List` of cramped rows to a calm `ScrollView` of
-/// opaque content cards on the grouped page, with the functional chrome
-/// (the action chips and the Continue CTA) expressed in Liquid Glass and
-/// floating *above* the scrolling content. The address — the load-bearing
-/// artifact of this step — gets a full-width card to breathe in, expanding
+/// **Redesign (2026-06-15 — Apple iOS 26 / Jony Ive).** The recipient
+/// fields are CONNECTED the Apple-native way: one inset-grouped container
+/// (a single rounded `UniCard` surface) holds every recipient as a ROW,
+/// rows separated by inset hairline dividers — the way iOS Contacts "new
+/// contact" fields and Settings grouped forms read. It is one continuous
+/// control, not separate floating pills. Because the container owns the
+/// surface, each row's address field is PLAIN (no per-field fill / radius).
+/// The address — the load-bearing artifact of this step — still expands
 /// vertically as the user types or pastes, never truncated. Restraint:
 /// every element is content the user reads/acts on or chrome they touch;
 /// nothing decorative survives.
 ///
-/// **Layers (Rule #2 §B.3).** Content layer: the recipient card(s) + the
+/// **Layers (Rule #2 §B.3).** Content layer: the recipient container + the
 /// recents card + all copy — opaque `UniCard` on `Background.primary`.
 /// Functional layer (Liquid Glass via system APIs only): the parent
 /// nav bar, the Paste / Scan / Add chips (`.buttonStyle(.glass)` inside a
@@ -133,10 +135,14 @@ struct SendRecipientView: View {
             }
         }
         .sheet(isPresented: $isScanning) {
-            BrowserQRScanSheet(onScan: { scanned in
-                fill(cleanScanned(scanned))
-                isScanning = false
-            })
+            UniQRScannerSheet(
+                title: "Scan address",
+                prompt: "Point your camera at a \(chain.displayName) address QR code.",
+                onScan: { scanned in
+                    fill(cleanScanned(scanned))
+                    isScanning = false
+                }
+            )
             .uniAppEnvironment()
         }
     }
@@ -152,22 +158,35 @@ struct SendRecipientView: View {
                 )
             }
 
-            // Connected: the address fields stack tightly as one group
-            // (no per-field cards), each a soft 36-pt-radius pill.
-            VStack(spacing: UniSpacing.xs) {
-                ForEach($entries) { $entry in
-                    RecipientRow(
-                        entry: $entry,
-                        chain: chain,
-                        index: entryIndex(entry.id),
-                        showsIndex: isMulti && entries.count > 1,
-                        nameHint: nameHint,
-                        canRemove: entries.count > 1,
-                        isDuplicate: isDuplicateAddress(entry),
-                        focusBinding: $focusedEntry,
-                        sendCount: { recents.sendCount(to: $0, chain: chain) },
-                        onRemove: { remove(entry.id) }
-                    )
+            // CONNECTED, the Apple-native way: one inset-grouped container
+            // (a single rounded `UniCard` surface) holding every recipient
+            // as a ROW, rows separated by inset hairline dividers — the way
+            // iOS Contacts "new contact" fields and Settings grouped forms
+            // read. One continuous control, not separate floating pills.
+            // The card owns the radius + the surface, so each row's field is
+            // PLAIN (no per-field fill / radius).
+            UniCard(padding: 0) {
+                VStack(spacing: 0) {
+                    ForEach(Array($entries.enumerated()), id: \.element.id) { offset, $entry in
+                        RecipientRow(
+                            entry: $entry,
+                            chain: chain,
+                            index: offset + 1,
+                            showsIndex: isMulti && entries.count > 1,
+                            nameHint: nameHint,
+                            canRemove: entries.count > 1,
+                            isDuplicate: isDuplicateAddress(entry),
+                            focusBinding: $focusedEntry,
+                            sendCount: { recents.sendCount(to: $0, chain: chain) },
+                            onRemove: { remove(entry.id) }
+                        )
+                        if offset < entries.count - 1 {
+                            // Inset hairline aligned under the field's text,
+                            // not full-bleed — the native grouped-form look.
+                            UniDivider()
+                                .padding(.leading, UniSpacing.m)
+                        }
+                    }
                 }
             }
 
@@ -390,11 +409,18 @@ struct SendRecipientView: View {
 
 // MARK: - One recipient row (owns its resolution)
 
-/// A single recipient in the connected group: an optional index label, the
-/// full address field (expanding, LTR-locked, 36-pt-radius pill), a red
-/// remove control, and inline resolution feedback. No leading disc — the
-/// person is identified by their address, which the field shows in full
-/// (Rule #7). The rows stack tightly so they read as one connected set.
+/// A single recipient ROW inside the connected, inset-grouped container.
+/// The parent `UniCard` owns the surface + radius; this row is PLAIN — a
+/// transparent (`Color.clear`-filled) address field, so the rows read as
+/// one continuous control separated by inset hairlines (the iOS Contacts /
+/// Settings grouped-form pattern), not as separate floating pills.
+///
+/// Row anatomy (top to bottom): an optional index label (when more than one
+/// recipient), the full address field (expanding, LTR-locked) on a line with
+/// the trailing red remove control, and inline resolution feedback beneath.
+/// No leading disc — the person is identified by their address, which the
+/// field shows in full (Rule #7). Standard grouped-cell padding gives each
+/// row its own breathing room within the shared container.
 private struct RecipientRow: View {
     @Binding var entry: SendRecipientView.DraftEntry
     let chain: SupportedChain
@@ -420,22 +446,29 @@ private struct RecipientRow: View {
                 Text("Recipient \(index)")
                     .font(UniTypography.caption1)
                     .foregroundStyle(UniColors.Text.tertiary)
-                    .padding(.leading, UniSpacing.xs)
+                    // Align with the field's internal leading text inset
+                    // (`UniTextField` pads `UniSpacing.m` horizontally).
+                    .padding(.leading, UniSpacing.m)
+                    .padding(.top, UniSpacing.s)
             }
 
-            HStack(alignment: .top, spacing: UniSpacing.s) {
+            HStack(alignment: .top, spacing: 0) {
+                // PLAIN field: the container (`UniCard`) owns the surface,
+                // so the field's own fill is cleared. It keeps the
+                // Enter-dismiss contract, LTR lock, `axis: .vertical`
+                // growth, and the external focus passthrough — only its
+                // pill is removed so the rows read as one connected set.
                 UniTextField(
                     placeholder: nameHint == nil ? "Recipient address" : "Address or \(nameHint!)",
                     text: $entry.text,
                     directionPolicy: .forceLTR,
                     axis: .vertical,
                     lineLimit: nil,
-                    cornerRadius: UniRadius.xxxl,
-                    // Tighter vertical padding so the EMPTY single-line
-                    // state reads compact in the soft 36-pt pill; the
-                    // `axis: .vertical` growth still expands it to show a
-                    // full pasted address (Change 2).
-                    verticalPadding: UniSpacing.xs,
+                    fill: Color.clear,
+                    // Standard input vertical padding now that the row's
+                    // own padding sets the grouped-cell height; the field
+                    // still grows vertically to show a full pasted address.
+                    verticalPadding: UniSpacing.s,
                     autocapitalization: .never,
                     focusBinding: focusBinding,
                     focusValue: entry.id
@@ -444,9 +477,10 @@ private struct RecipientRow: View {
                 if canRemove {
                     Button(action: onRemove) {
                         Image(systemName: "minus.circle.fill")
-                            .font(.system(size: 24))
+                            .font(.system(size: 22))
                             .foregroundStyle(UniColors.Status.errorForeground)
-                            .padding(.top, UniSpacing.xs)
+                            .padding(.trailing, UniSpacing.m)
+                            .padding(.top, UniSpacing.s)
                             .contentShape(Circle())
                     }
                     .buttonStyle(.plain)
@@ -455,7 +489,10 @@ private struct RecipientRow: View {
             }
 
             feedback
-                .padding(.leading, UniSpacing.xs)
+                // Align feedback with the field's internal leading text inset.
+                .padding(.leading, UniSpacing.m)
+                .padding(.trailing, UniSpacing.m)
+                .padding(.bottom, UniSpacing.s)
         }
         .task(id: entry.text) { await resolve() }
     }

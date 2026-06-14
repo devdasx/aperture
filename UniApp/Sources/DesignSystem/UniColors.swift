@@ -638,6 +638,15 @@ enum UniColors {
         /// surface). Solid black — the camera is dark in any appearance, so
         /// this is the honest base while the feed warms up / when denied.
         static let cameraBase = Color.black
+        /// On-camera icon, dimmed — the denied-camera surface glyph over
+        /// the dark feed. Opacity lives here, not at the call site (Rule #4).
+        static let cameraOnMediaDimIcon = Color.white.opacity(0.7)
+        /// On-camera body copy, dimmed — secondary text over the dark feed
+        /// on the denied surface. Opacity lives here (Rule #4).
+        static let cameraOnMediaDimBody = Color.white.opacity(0.8)
+        /// On-camera transient note, near-full — the gallery / paste status
+        /// line above the action bar. Opacity lives here (Rule #4).
+        static let cameraOnMediaNote = Color.white.opacity(0.9)
     }
 
     // MARK: - Illustration (onboarding native scenes)

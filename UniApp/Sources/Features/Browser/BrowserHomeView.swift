@@ -110,7 +110,10 @@ struct BrowserHomeView: View {
                 )
             }
             .sheet(isPresented: $isShowingQRScanner) {
-                BrowserQRScanSheet(
+                UniQRScannerSheet(
+                    title: "Scan WalletConnect QR",
+                    prompt: "Point your camera at a WalletConnect QR code from any dApp.",
+                    accepts: { $0.hasPrefix("wc:") },
                     onScan: { uri in
                         Task { await router.handleWalletConnectURI(uri) }
                         isShowingQRScanner = false
