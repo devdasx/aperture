@@ -8,6 +8,15 @@ import WalletCore
 /// resolution (ENS for EVM `.eth`, SNS for Solana `.sol`) hits the real
 /// on-chain registries via `ENSResolver` / `SNSResolver`.
 
+/// A finalized recipient the user chose: the on-chain `address` to send
+/// to, plus the `name` it was resolved from (nil when typed directly).
+/// Codable + Hashable so it rides the NavigationPath into the amount step.
+struct SendRecipientEntry: Codable, Hashable, Identifiable {
+    let address: String
+    let name: String?
+    var id: String { address }
+}
+
 /// The outcome of resolving the recipient field.
 enum RecipientResolution: Sendable, Equatable {
     /// Field is empty — nothing to validate yet.

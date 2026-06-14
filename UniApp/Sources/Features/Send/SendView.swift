@@ -108,22 +108,21 @@ struct SendView: View {
                         tokenSymbol: tokenSymbol,
                         fromAddress: fromAddress,
                         recents: recents,
-                        onContinue: { toAddress, toName in
+                        onContinue: { recipients in
                             navigationPath.append(
                                 SendDestination.amount(
                                     chain: chain, tokenSymbol: tokenSymbol, fromAddress: fromAddress,
-                                    toAddress: toAddress, toName: toName
+                                    recipients: recipients
                                 )
                             )
                         }
                     )
-                case let .amount(chain, tokenSymbol, fromAddress, toAddress, toName):
+                case let .amount(chain, tokenSymbol, fromAddress, recipients):
                     SendAmountPlaceholderView(
                         chain: chain,
                         tokenSymbol: tokenSymbol,
                         fromAddress: fromAddress,
-                        toAddress: toAddress,
-                        toName: toName
+                        recipients: recipients
                     )
                 }
             }
@@ -206,7 +205,7 @@ struct SendView: View {
 enum SendDestination: Hashable, Codable {
     case networkPicker(SendAsset)
     case recipient(chain: SupportedChain, tokenSymbol: String?, fromAddress: String)
-    case amount(chain: SupportedChain, tokenSymbol: String?, fromAddress: String, toAddress: String, toName: String?)
+    case amount(chain: SupportedChain, tokenSymbol: String?, fromAddress: String, recipients: [SendRecipientEntry])
 }
 
 // MARK: - Amount seam (next increment)
@@ -219,8 +218,7 @@ private struct SendAmountPlaceholderView: View {
     let chain: SupportedChain
     let tokenSymbol: String?
     let fromAddress: String
-    let toAddress: String
-    let toName: String?
+    let recipients: [SendRecipientEntry]
 
     private var assetLabel: String { tokenSymbol ?? chain.ticker }
 
@@ -229,11 +227,20 @@ private struct SendAmountPlaceholderView: View {
             Section {
                 row("Asset", assetLabel)
                 row("Network", chain.displayName)
-                row("To", toName ?? shortened(toAddress))
-                if toName != nil { row("Address", shortened(toAddress)) }
                 row("From", shortened(fromAddress))
             } header: {
                 UniCaption(text: "You're sending", color: UniColors.Text.tertiary)
+            }
+
+            Section {
+                ForEach(recipients) { recipient in
+                    row("To", recipient.name ?? shortened(recipient.address))
+                }
+            } header: {
+                UniCaption(
+                    text: recipients.count > 1 ? "\(recipients.count) recipients" : "Recipient",
+                    color: UniColors.Text.tertiary
+                )
             }
 
             Section {
