@@ -1,0 +1,37 @@
+2026-06-14T21:08:47Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	Couldn't find \(name). Check the spelling, or paste the address directly.
+2026-06-14T21:08:47Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	Enter a \(chain.displayName) address or a \(hint).
+2026-06-14T21:08:47Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	Enter a \(chain.displayName) address.
+2026-06-14T21:08:47Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	First time sending here
+2026-06-14T21:08:47Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	Resolving…
+2026-06-14T21:08:47Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	Send \(assetLabel) to
+2026-06-14T21:08:47Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	Sent here once before
+2026-06-14T21:08:47Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	Sent once
+2026-06-14T21:08:47Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	That's not a valid \(chain.displayName) address.
+2026-06-14T21:08:47Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	This is an address you've used before.
+2026-06-14T21:08:47Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	You've never sent to this address before. Double-check every character — crypto transactions can't be reversed.
+2026-06-14T21:08:47Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	\(name) → \(SendRecipientView.shorten(address))
+2026-06-14T21:08:56Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	Couldn't find \(name). Check the spelling, or paste the address directly.
+2026-06-14T21:08:56Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	Enter a \(chain.displayName) address or a \(hint).
+2026-06-14T21:08:56Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	Enter a \(chain.displayName) address.
+2026-06-14T21:08:56Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	First time sending here
+2026-06-14T21:08:56Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	Resolving…
+2026-06-14T21:08:56Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	Sent here once before
+2026-06-14T21:08:56Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	Sent once
+2026-06-14T21:08:56Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	That's not a valid \(chain.displayName) address.
+2026-06-14T21:08:56Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	This is an address you've used before.
+2026-06-14T21:08:56Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	You've never sent to this address before. Double-check every character — crypto transactions can't be reversed.
+2026-06-14T21:08:56Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	\(name) → \(SendRecipientView.shorten(address))
+2026-06-14T21:09:28Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Receive/ReceiveQRDetailView.swift	Share
+2026-06-14T21:09:28Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Receive/ReceiveQRDetailView.swift	Share address
+2026-06-14T21:09:28Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Receive/ReceiveQRDetailView.swift	What's a receive address?
+2026-06-14T21:10:03Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	Couldn't find \(name). Check the spelling, or paste the address directly.
+2026-06-14T21:10:03Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	Enter a \(chain.displayName) address or a \(hint).
+2026-06-14T21:10:03Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	Enter a \(chain.displayName) address.
+2026-06-14T21:10:03Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	First time sending here
+2026-06-14T21:10:03Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	Resolving…
+2026-06-14T21:10:03Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	Sent here once before
+2026-06-14T21:10:03Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	Sent once
+2026-06-14T21:10:03Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	That's not a valid \(chain.displayName) address.
+2026-06-14T21:10:03Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	This is an address you've used before.
+2026-06-14T21:10:03Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	You've never sent to this address before. Double-check every character — crypto transactions can't be reversed.
+2026-06-14T21:10:03Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	\(name) → \(SendRecipientView.shorten(address))

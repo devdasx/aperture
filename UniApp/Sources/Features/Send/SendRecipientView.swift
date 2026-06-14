@@ -56,8 +56,12 @@ struct SendRecipientView: View {
             footer
         }
         .background(UniColors.Background.primary)
-        .navigationTitle(Text("Send \(assetLabel) to"))
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .principal) {
+                CoinTitleBar(chain: chain, tokenSymbol: tokenSymbol, verb: "Send", trailing: "to")
+            }
+        }
         .task(id: input) { await resolveInput() }
         .sheet(isPresented: $isScanning) {
             BrowserQRScanSheet(onScan: { scanned in
@@ -77,10 +81,13 @@ struct SendRecipientView: View {
                 placeholder: nameHint == nil ? "Recipient address" : "Address or \(nameHint!)",
                 text: $input,
                 directionPolicy: .forceLTR,
-                lineLimit: 2,
+                axis: .vertical,
+                lineLimit: nil,
+                cornerRadius: UniRadius.xxxl,
                 autocapitalization: .never
             )
             .listRowBackground(Color.clear)
+            .listRowSeparator(.hidden)
             .listRowInsets(EdgeInsets(top: UniSpacing.xs, leading: 0, bottom: UniSpacing.xs, trailing: 0))
 
             HStack(spacing: UniSpacing.s) {
@@ -89,6 +96,7 @@ struct SendRecipientView: View {
                 Spacer(minLength: 0)
             }
             .listRowBackground(Color.clear)
+            .listRowSeparator(.hidden)
             .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: UniSpacing.xs, trailing: 0))
         } footer: {
             resolutionFeedback
