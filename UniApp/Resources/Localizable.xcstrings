@@ -309508,6 +309508,204 @@
           }
         }
       }
+    },
+    "Add recipient": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Add recipient"
+          }
+        }
+      }
+    },
+    "Address or \\(nameHint!)": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Address or \\(nameHint!)"
+          }
+        }
+      }
+    },
+    "Couldn't find \\(name). Check the spelling, or paste the address.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Couldn't find \\(name). Check the spelling, or paste the address."
+          }
+        }
+      }
+    },
+    "Fallback \\(index)": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fallback \\(index)"
+          }
+        }
+      }
+    },
+    "First time sending here — double-check it, transactions can't be reversed.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "First time sending here — double-check it, transactions can't be reversed."
+          }
+        }
+      }
+    },
+    "No activity on \\(chain.displayName).": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No activity on \\(chain.displayName)."
+          }
+        }
+      }
+    },
+    "Recipient address": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Recipient address"
+          }
+        }
+      }
+    },
+    "Recipients": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Recipients"
+          }
+        }
+      }
+    },
+    "Recipients (\\(entries.count))": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Recipients (\\(entries.count))"
+          }
+        }
+      }
+    },
+    "Remove recipient": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Remove recipient"
+          }
+        }
+      }
+    },
+    "Sent \\(recipient.sendCount) times": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sent \\(recipient.sendCount) times"
+          }
+        }
+      }
+    },
+    "Sent here \\(count) times before": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sent here \\(count) times before"
+          }
+        }
+      }
+    },
+    "Sent here once before": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sent here once before"
+          }
+        }
+      }
+    },
+    "Sent once": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sent once"
+          }
+        }
+      }
+    },
+    "Transactions involving \\(identity.symbol) on \\(chain.displayName) appear here as they confirm on-chain.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Transactions involving \\(identity.symbol) on \\(chain.displayName) appear here as they confirm on-chain."
+          }
+        }
+      }
+    },
+    "\\(chain.displayName) can pay up to \\(maxRecipients) recipients in one transaction.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "\\(chain.displayName) can pay up to \\(maxRecipients) recipients in one transaction."
+          }
+        }
+      }
+    },
+    "\\(history.count) dApps in your recent list.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "\\(history.count) dApps in your recent list."
+          }
+        }
+      }
+    },
+    "\\(recipients.count) recipients": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "\\(recipients.count) recipients"
+          }
+        }
+      }
     }
   },
   "version": "1.0"
