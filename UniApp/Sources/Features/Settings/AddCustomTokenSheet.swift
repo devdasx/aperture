@@ -402,11 +402,17 @@ struct AddCustomTokenSheet: View {
             // Solana
             let adapter = SolanaChainAdapter(client: RPCClient.shared)
             do {
-                let mintInfo = try await adapter.fetchMintInfo(mint: contract)
-                guard !Task.isCancelled else { return }
-                let metaplex = await adapter.fetchMetaplexMetadata(mint: contract)
-                guard !Task.isCancelled else { return }
-                let iconURL = await probeTrustWalletIcon(contract: contract)
+                // Rule #28: the mint info, Metaplex metadata, and icon
+                // probe are independent — run them concurrently instead of
+                // one-after-another so the preview resolves ~3x faster. If
+                // `fetchMintInfo` throws, structured concurrency cancels
+                // the other two automatically.
+                async let mintInfoTask = adapter.fetchMintInfo(mint: contract)
+                async let metaplexTask = adapter.fetchMetaplexMetadata(mint: contract)
+                async let iconTask = probeTrustWalletIcon(contract: contract)
+                let mintInfo = try await mintInfoTask
+                let metaplex = await metaplexTask
+                let iconURL = await iconTask
                 guard !Task.isCancelled else { return }
                 let metadataFromChain = metaplex != nil
                 let name = metaplex?.name ?? ""

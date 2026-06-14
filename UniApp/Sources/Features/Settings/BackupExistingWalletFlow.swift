@@ -105,7 +105,7 @@ struct BackupExistingWalletFlow: View {
                 }
             }
         }
-        .onAppear(perform: load)
+        .task { await load() }
         .alert(
             Text("Couldn't record the backup"),
             isPresented: $isShowingCompleteError
@@ -164,13 +164,19 @@ struct BackupExistingWalletFlow: View {
     /// Defensive: if no mnemonic is stored for this wallet (edge case
     /// for legacy or non-mnemonic wallets), surface a calm
     /// explanation rather than crashing.
-    private func load() {
+    private func load() async {
         // Already loaded — preserve the existing state across
         // body re-renders (e.g. layout direction flip).
         guard state == nil, loadError == nil else { return }
+        let id = walletId
         do {
-            guard let words = try MnemonicVault.loadMnemonic(for: walletId),
-                  !words.isEmpty else {
+            // Off-main Keychain decrypt (Rule #28) so presenting the
+            // backup flow never blocks the UI; state is built back on the
+            // main actor after the await.
+            let words = try await Task.detached(priority: .userInitiated) {
+                try MnemonicVault.loadMnemonic(for: id)
+            }.value
+            guard let words, !words.isEmpty else {
                 loadError = "There's no encrypted phrase stored for this wallet. If you saved it elsewhere, you're already its only copy."
                 return
             }

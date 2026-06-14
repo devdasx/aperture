@@ -32,7 +32,15 @@ import OSLog
 /// (`FreshInstallGuard`). Per Rule #16 §A.7, this transparency is the
 /// difference between "wallet that helps the user" and "wallet that
 /// pretends not to know the phrase while having it."
-@MainActor
+/// **Concurrency (2026-06-14, Rule #28).** No longer `@MainActor`: every
+/// method is pure, thread-safe Keychain I/O (`SecItem*`) + AES-GCM
+/// (CryptoKit value types) + logging, with zero main-actor state. The
+/// annotation was an over-restriction that forced the decrypt onto the
+/// main thread (blocking the reveal/backup sheets on present). Now
+/// `nonisolated`, so callers can run it off-main via `Task.detached`;
+/// existing synchronous main-actor callers are unaffected (nonisolated
+/// static funcs are callable from any isolation). Actor isolation is not
+/// a security boundary — the Keychain ACLs (`kSecAttr…`) are.
 enum MnemonicVault {
     private static let cipherService = "com.thuglife.aperture.mnemonic.cipher"
     private static let keyService = "com.thuglife.aperture.mnemonic.key"

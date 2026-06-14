@@ -61,7 +61,7 @@ struct RecoveryPhraseRevealSheet: View {
                 }
             }
         }
-        .onAppear { load() }
+        .task { await load() }
         // Drop the plaintext words from view state the moment the
         // sheet goes away — no reason to keep the phrase resident in
         // memory longer than the reveal itself.
@@ -151,9 +151,16 @@ struct RecoveryPhraseRevealSheet: View {
         )
     }
 
-    private func load() {
+    /// Off-main Keychain read (Rule #28): the decrypt happens on a
+    /// background task so presenting the sheet never blocks the UI; the
+    /// `@State` assignments land back on the main actor after the await.
+    private func load() async {
+        let id = walletId
         do {
-            words = try MnemonicVault.loadMnemonic(for: walletId) ?? []
+            let loaded = try await Task.detached(priority: .userInitiated) {
+                try MnemonicVault.loadMnemonic(for: id) ?? []
+            }.value
+            words = loaded
             if words.isEmpty {
                 loadError = String.apertureLocalized("No phrase is stored for this wallet.")
             }
@@ -217,7 +224,7 @@ struct PrivateKeyRevealSheet: View {
                 }
             }
         }
-        .onAppear { load() }
+        .task { await load() }
         // Drop the plaintext key from view state the moment the sheet
         // goes away — no reason to keep it resident in memory longer
         // than the reveal itself (mirrors the phrase sheet).
@@ -289,9 +296,14 @@ struct PrivateKeyRevealSheet: View {
         )
     }
 
-    private func load() {
+    /// Off-main Keychain read (Rule #28) — see the mnemonic sheet's load().
+    private func load() async {
+        let id = walletId
         do {
-            keyString = try MnemonicVault.loadPrivateKey(for: walletId) ?? ""
+            let loaded = try await Task.detached(priority: .userInitiated) {
+                try MnemonicVault.loadPrivateKey(for: id) ?? ""
+            }.value
+            keyString = loaded
             if keyString.isEmpty {
                 loadError = String.apertureLocalized("No key is stored for this wallet.")
             }
