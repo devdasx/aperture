@@ -677,6 +677,23 @@
 
 ---
 
+### T-070 · Send V2 — capture an optional memo / destination-tag in the UI
+- **Status:** OPEN
+- **Priority:** P2
+- **Area:** Features · Send V2
+- **File:** `UniApp/Sources/Features/Send/SendV2Model.swift` (the `send()` method passes `memo: nil`); `UniApp/Sources/Features/Send/SendAdvancedParams.swift` (where a memo field would live).
+- **Inline comment:** `// TODO: (T-070) capture an optional memo/destination-tag in the UI.`
+- **Context:** The real Send V2 domain (`ChainSendRouter` + the per-family services) already accepts and threads an optional `memo: String?` end to end. XRPL uses it as the **destination tag** (required by most exchanges), Stellar as the **memo** (text or numeric ID), Cosmos and TON as the **memo / comment**. But the Send V2 handoff design doesn't surface a memo input yet, so `SendV2Model.send()` passes `nil`. A user sending to an exchange deposit address on those chains today cannot attach the tag the exchange requires.
+- **What "done" looks like:**
+  1. A memo / destination-tag field appears in the Send flow **only** for chains that support it (XRPL, Stellar, Cosmos/Kava, TON) — never surfaced for chains that don't (honesty: no control a chain lacks).
+  2. The field validates per chain (XRPL destination tag = UInt32; Stellar memo = text ≤28 bytes OR a numeric ID; Cosmos/TON = free text).
+  3. `SendV2Model.send()` passes the captured value as `memo:` instead of `nil`.
+  4. The Review screen shows the memo/tag so the user can confirm it before signing (a wrong/missing tag loses funds at an exchange — surface it deliberately, Rule #16).
+- **Honesty checks:** when sending to an address that looks like an exchange deposit and no tag is entered, consider a soft warning — a missing destination tag is one of the most common ways users lose funds on XRPL/Stellar.
+- **Depends on:** the Send V2 real domain (shipped this session: router + 12 family services). The wiring is ready; only the UI capture + per-chain validation remain.
+
+---
+
 ## Backlog (anticipated TODOs not yet placed inline)
 
 These are known gaps that will become inline TODOs as soon as the relevant
