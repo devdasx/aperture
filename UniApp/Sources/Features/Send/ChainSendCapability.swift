@@ -73,4 +73,14 @@ enum ChainSendCapability {
     static func supportsMultiRecipient(_ chain: SupportedChain) -> Bool {
         maxRecipients(for: chain) > 1
     }
+
+    /// The full doc-grounded compose capability (fee model, UTXO,
+    /// OP_RETURN, memo/tag, reserve rule) for the amount/compose screen.
+    /// `ChainSendCapability` owns the recipient-step multi-address cap;
+    /// `ChainComposeCapability` owns the amount-step fee/UTXO/reserve
+    /// surface. This accessor is the bridge between the two so callers
+    /// reach the compose capability from the same namespace.
+    static func compose(for chain: SupportedChain) -> ChainComposeCapability {
+        ChainComposeCapability.capability(for: chain)
+    }
 }

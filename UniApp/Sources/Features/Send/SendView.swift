@@ -25,6 +25,10 @@ struct SendView: View {
     /// the user's position.
     @Binding var navigationPath: NavigationPath
 
+    /// Dismisses the whole Send sheet — the honest Review "Done" action
+    /// while signing/broadcast is the next increment.
+    @Environment(\.dismiss) private var dismiss
+
     /// The chain the user tapped that has no derived address on the active
     /// wallet — drives the honest "no address" alert instead of a dead tap.
     @State private var missingAddressChain: SupportedChain?
@@ -118,12 +122,17 @@ struct SendView: View {
                         }
                     )
                 case let .amount(chain, tokenSymbol, fromAddress, recipients):
-                    SendAmountPlaceholderView(
+                    SendAmountView(
                         chain: chain,
                         tokenSymbol: tokenSymbol,
                         fromAddress: fromAddress,
-                        recipients: recipients
+                        recipients: recipients,
+                        onReview: { draft in
+                            navigationPath.append(SendDestination.review(draft))
+                        }
                     )
+                case let .review(draft):
+                    SendReviewLoader(draft: draft, onClose: closeFlow)
                 }
             }
         }
@@ -153,6 +162,13 @@ struct SendView: View {
     private func presentMissingAddress(_ chain: SupportedChain) {
         missingAddressChain = chain
         isShowingMissingAddressAlert = true
+    }
+
+    /// Close the entire Send flow (dismiss the sheet). The Send sheet's
+    /// `onDismiss` resets the path, so the next presentation starts at
+    /// Step 1.
+    private func closeFlow() {
+        dismiss()
     }
 
     // MARK: - Derived (mirrors ReceiveView)
@@ -206,83 +222,49 @@ enum SendDestination: Hashable, Codable {
     case networkPicker(SendAsset)
     case recipient(chain: SupportedChain, tokenSymbol: String?, fromAddress: String)
     case amount(chain: SupportedChain, tokenSymbol: String?, fromAddress: String, recipients: [SendRecipientEntry])
+    /// Step 5 — review the assembled, validated draft (`SendDraft` is
+    /// Codable + Hashable, so it rides the path across Rule #12 §G rebuilds).
+    case review(SendDraft)
 }
 
-// MARK: - Amount seam (next increment)
+// MARK: - Review loader
 
-/// Step 4 seam — where amount entry will land next. Shows the now-real
-/// selection: asset, network, the wallet's sending address, and the
-/// validated/resolved recipient from Step 3. Honest about being the next
-/// step (Rule #16): it never implies a send is possible yet.
-private struct SendAmountPlaceholderView: View {
-    let chain: SupportedChain
-    let tokenSymbol: String?
-    let fromAddress: String
-    let recipients: [SendRecipientEntry]
+/// Resolves the asset + native unit prices (off-main, cache-first through
+/// the shared pricing ladder, Rule #27) so the Review screen can show the
+/// fiat values of the amount and the fee, then renders `SendReviewView`.
+/// Prices aren't carried on the draft (they're display-only), so they're
+/// resolved fresh here.
+private struct SendReviewLoader: View {
+    let draft: SendDraft
+    let onClose: () -> Void
 
-    private var assetLabel: String { tokenSymbol ?? chain.ticker }
+    @State private var assetPrice: Decimal?
+    @State private var nativePrice: Decimal?
+
+    private var currencyCode: String {
+        UserDefaults.standard.string(forKey: CurrencyPreference.storageKey) ?? CurrencyPreference.defaultCode
+    }
 
     var body: some View {
-        List {
-            Section {
-                row("Asset", assetLabel)
-                row("Network", chain.displayName)
-                row("From", shortened(fromAddress))
-            } header: {
-                UniCaption(text: "You're sending", color: UniColors.Text.tertiary)
-            }
-
-            Section {
-                ForEach(recipients) { recipient in
-                    row("To", recipient.name ?? shortened(recipient.address))
-                }
-            } header: {
-                UniCaption(
-                    text: recipients.count > 1 ? "\(recipients.count) recipients" : "Recipient",
-                    color: UniColors.Text.tertiary
-                )
-            }
-
-            Section {
-                VStack(spacing: UniSpacing.s) {
-                    Image(systemName: "wrench.and.screwdriver")
-                        .font(.system(size: 32, weight: .light))
-                        .foregroundStyle(UniColors.Icon.tertiary)
-                    UniBody(
-                        text: "Amount entry is the next step we'll build.",
-                        alignment: .center,
-                        color: UniColors.Text.secondary
-                    )
-                    .fixedSize(horizontal: false, vertical: true)
-                }
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, UniSpacing.l)
-                .listRowBackground(Color.clear)
-            }
-        }
-        .listStyle(.insetGrouped)
-        .scrollContentBackground(.hidden)
-        .background(UniColors.Background.primary)
-        .navigationTitle(Text("Send \(assetLabel)"))
-        .navigationBarTitleDisplayMode(.inline)
+        SendReviewView(
+            draft: draft,
+            currencyCode: currencyCode,
+            assetUnitPrice: assetPrice,
+            nativeUnitPrice: nativePrice,
+            onClose: onClose
+        )
+        .task { await resolvePrices() }
     }
 
-    private func row(_ key: LocalizedStringKey, _ value: String) -> some View {
-        HStack(spacing: UniSpacing.s) {
-            Text(key)
-                .font(UniTypography.body)
-                .foregroundStyle(UniColors.Text.secondary)
-            Spacer(minLength: UniSpacing.s)
-            Text(verbatim: value)
-                .font(UniTypography.body)
-                .foregroundStyle(UniColors.Text.primary)
-                .environment(\.layoutDirection, .leftToRight)
-        }
-        .listRowBackground(UniColors.Background.secondary)
-    }
-
-    private func shortened(_ address: String) -> String {
-        guard address.count > 16 else { return address }
-        return "\(address.prefix(8))…\(address.suffix(6))"
+    private func resolvePrices() async {
+        let assetSym = (draft.tokenSymbol ?? draft.chain.ticker).uppercased()
+        let nativeSym = draft.chain.ticker.uppercased()
+        let symbols = Array(Set([assetSym, nativeSym]))
+        let prices = await TokenPricingEngine.shared.unitPrices(
+            symbols: symbols, currencyCode: currencyCode.uppercased()
+        )
+        guard !Task.isCancelled else { return }
+        assetPrice = prices[assetSym]?.amount
+        nativePrice = prices[nativeSym]?.amount
     }
 }
