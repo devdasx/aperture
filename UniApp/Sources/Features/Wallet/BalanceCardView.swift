@@ -140,64 +140,59 @@ struct BalanceCardView: View {
 
     private var boostContrast: Bool { legibilityWeight == .bold }
 
+    /// The pill's baseline — the FIRST point the wallet actually HELD a
+    /// balance at: the first `points` element with `fiat > 0`, falling
+    /// back to `points.first` only when every point is 0 (the degenerate
+    /// "only an outgoing first tx" curve). **2026-06-16 user direction:**
+    /// the percent + amount read from the first balance the wallet held in
+    /// the window — so 1M/1Y/All show a REAL percent like the shorter
+    /// ranges, never a "—". The reconstructor already drops the leading $0
+    /// before-step, so `points.first` is normally the first held balance
+    /// and this fold is just defensive against any residual $0 lead.
+    private var baselineFiat: Decimal {
+        points.first(where: { $0.fiat > 0 })?.fiat ?? points.first?.fiat ?? 0
+    }
+
     /// Gain / loss / flat — measured from the SAME reconstructed `points`
-    /// array the chart draws: `points.first` (the range-start value) vs
-    /// `points.last` (the trailing edge). **2026-06-16:** re-united with
-    /// the chart so the pill and the line cannot disagree — the change,
-    /// percent, and sign all read from `points`, the single transaction-
-    /// derived truth source. The reconstructor already anchors
+    /// array the chart draws: `baselineFiat` (the first HELD balance in the
+    /// window) vs `points.last` (the trailing edge). **2026-06-16:**
+    /// re-united with the chart so the pill and the line cannot disagree —
+    /// the change, percent, and sign all read from `points`, the single
+    /// transaction-derived truth source. The reconstructor anchors
     /// `points.last` to the wallet's real current balance (the hero
-    /// figure), so the pill stays honest AND consistent with the curve.
-    ///
-    /// **2026-06-16 — genuine 0-baseline.** The reconstructor now clamps
-    /// the window start to the wallet's first transaction (no flat-0
-    /// lead), so on 1M/1Y/All the first point is the first real
-    /// transaction's value — usually > 0, so the pill shows the real
-    /// change. But when the wallet's first-ever event is a receive, that
-    /// first point is legitimately **0** (the pre-history before-step):
-    /// the wallet truly started from nothing in-window. We DON'T fall
-    /// back to "no change" then — we read the REAL gain (`last − first`,
-    /// i.e. the full current value as a positive change) and an honest
-    /// "since start" percent treatment (see `changePercent`). Flat only
-    /// when `last == first` (no net movement across the window).
+    /// figure) AND starts the curve at the first held balance, so the pill
+    /// stays honest AND consistent with the curve. Flat when
+    /// `last == baseline` (no net movement across the window).
     private var sign: UniColors.BalanceCard.Sign {
-        guard let first = points.first, let last = points.last else { return .flat }
-        if last.fiat > first.fiat { return .up }
-        if last.fiat < first.fiat { return .down }
+        guard let last = points.last else { return .flat }
+        let baseline = baselineFiat
+        if last.fiat > baseline { return .up }
+        if last.fiat < baseline { return .down }
         return .flat
     }
 
     /// The signed change over the selected range — `points.last −
-    /// points.first`, the same endpoints the chart draws. Works for the
-    /// genuine 0-baseline (`first == 0`) case too: the change is then the
-    /// full current value as a positive gain, never suppressed to 0.
+    /// baselineFiat`, off the chart's own endpoints (first HELD balance →
+    /// trailing edge).
     private var change: Decimal {
-        guard let first = points.first, let last = points.last else { return 0 }
-        return last.fiat - first.fiat
+        guard let last = points.last else { return 0 }
+        return last.fiat - baselineFiat
     }
 
-    /// `true` when the window's baseline is a genuine zero — the wallet
-    /// started from nothing in this range (its first-ever transaction is
-    /// the in-window receive). Drives the "since start" pill treatment so
-    /// we never divide by zero to fabricate a percent.
-    private var isSinceStartBaseline: Bool {
-        guard let first = points.first else { return false }
-        return first.fiat <= 0 && change != 0
-    }
-
-    /// The percent change over the range — `(last − first) / first × 100`,
-    /// off the chart's own endpoints. `0` when the baseline is a genuine
-    /// zero (a percent off a zero base is undefined — the pill shows the
-    /// absolute gain with a "since start" label instead via
-    /// `isSinceStartBaseline`; never a divide-by-zero, never a fabricated
-    /// percent).
+    /// The percent change over the range — `(last − baseline) / baseline ×
+    /// 100`, off the chart's own endpoints. `0` when the baseline is a
+    /// genuine zero (the degenerate all-zero curve — e.g. only an outgoing
+    /// first tx): a percent off a zero base is undefined, so the pill falls
+    /// back to "0.00% / No change" rather than dividing by zero or
+    /// fabricating a percent.
     private var changePercent: Double {
-        guard let first = points.first, let last = points.last,
-              first.fiat > 0 else { return 0 }
-        let firstD = NSDecimalNumber(decimal: first.fiat).doubleValue
+        guard let last = points.last else { return 0 }
+        let baseline = baselineFiat
+        guard baseline > 0 else { return 0 }
+        let baselineD = NSDecimalNumber(decimal: baseline).doubleValue
         let lastD = NSDecimalNumber(decimal: last.fiat).doubleValue
-        guard firstD != 0 else { return 0 }
-        return (lastD - firstD) / abs(firstD) * 100
+        guard baselineD != 0 else { return 0 }
+        return (lastD - baselineD) / abs(baselineD) * 100
     }
 
     /// Which of the five states the card renders.
@@ -525,22 +520,21 @@ struct BalanceCardView: View {
     }
 
     /// `2.41%` — always with two decimals, no sign (the arrow carries it).
-    /// **2026-06-16:** for the genuine 0-baseline (the wallet started from
-    /// nothing in-window) a percent is undefined — show an em-dash so the
-    /// pill never displays a fabricated `0.00%` or divides by zero. The
-    /// real magnitude of the gain rides on the `amountText` line instead.
+    /// **2026-06-16:** the pill always reads a REAL percent (off the first
+    /// HELD balance — see `baselineFiat`), the same as the shorter ranges.
+    /// In the degenerate all-zero curve `changePercent` is `0`, so this
+    /// reads `0.00%` (paired with "No change") — never an em-dash, never a
+    /// divide-by-zero.
     private var percentText: String {
-        if isSinceStartBaseline { return "\u{2014}" } // — (no percent off a zero base)
         let pct = abs(changePercent)
         return String(format: "%.2f%%", pct)
     }
 
-    /// `+293.10 today` / `−391.20 today` / `+12.41 since start` /
-    /// `No change today`. The minus is a true U+2212 (handoff §States:
-    /// "not a hyphen"). **2026-06-16:** the genuine 0-baseline case shows
-    /// the REAL gain (`last − first`) with a "since start" suffix — an
-    /// honest "you're up this much since your wallet's first transaction
-    /// in this window", never a false "No change".
+    /// `+293.10 today` / `−391.20 today` / `No change today`. The minus is
+    /// a true U+2212 (handoff §States: "not a hyphen"). **2026-06-16:** the
+    /// amount reads `last − baselineFiat` (the first held balance), so
+    /// 1M/1Y/All show the real signed amount consistent with the line and
+    /// the percent. `No change today` only when the net delta is exactly 0.
     private var amountText: String {
         if change == 0 {
             return String.apertureLocalized("No change today")
@@ -548,10 +542,6 @@ struct BalanceCardView: View {
         let magnitude = abs(change)
         let formatted = WalletFormatting.fiat(magnitude, currencyCode: currencyCode)
         let signGlyph = sign == .up ? "+" : "\u{2212}"
-        if isSinceStartBaseline {
-            let sinceStart = String.apertureLocalized("since start")
-            return "\(signGlyph)\(formatted) \(sinceStart)"
-        }
         let today = String.apertureLocalized("today")
         return "\(signGlyph)\(formatted) \(today)"
     }

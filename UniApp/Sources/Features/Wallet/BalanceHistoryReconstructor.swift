@@ -98,11 +98,20 @@ enum BalanceHistoryRange: String, CaseIterable, Hashable, Sendable {
 ///    so the line starts at the true balance-as-of-window-start, never
 ///    at a padded zero. Emitted only when `effectiveCutoff` is strictly
 ///    before the first in-window transaction (an older wallet's 1M/1Y,
-///    where the raw cutoff wins). When the window start clamps to the
-///    first transaction itself (a young wallet's 1M/1Y, and EVERY `.all`),
-///    no separate leading anchor is emitted — that first transaction's
-///    own before-step (its pre-history state, 1 ms earlier) IS the
-///    leading edge, exactly the original `.all` semantics.
+///    where the raw cutoff wins, so the anchor carries a genuine
+///    non-zero one-period-ago balance). When the window start clamps to
+///    the first transaction itself (a young wallet's 1M/1Y, and EVERY
+///    `.all`), no separate leading anchor is emitted — and the wallet's
+///    first-ever in-window transaction's leading **$0** before-step (its
+///    pre-history state) is DROPPED, so the curve begins at that
+///    transaction's AFTER value: the first real balance the wallet held
+///    (2026-06-16 user direction — "start the line at the first balance
+///    the wallet actually held"). The result is that `points.first` is a
+///    non-zero held balance on every range, so the visible line and the
+///    change-pill percent agree (a line starting at $0 with a negative
+///    percent pill would be a contradiction). The drop is surgical (first
+///    in-window tx, no leading anchor, before-value 0); the degenerate
+///    case of a first tx that's an OUTGOING send keeps its $0 start.
 /// 2. **A before/after step pair for EVERY in-window transaction** at
 ///    its exact timestamp. The before-point sits 1 ms earlier so the
 ///    chart plots a vertical step; both halves are valued at the same
@@ -449,13 +458,10 @@ enum BalanceHistoryReconstructor {
         //     anchor at the genuine one-period-ago balance.
         //   • Young wallet's 1M/1Y AND every `.all`: `effectiveCutoff` ==
         //     `firstTxDate` == the first in-window tx's timestamp, so the
-        //     guard is false and we DON'T emit a duplicate — the first
-        //     transaction's own before-step (its pre-history state, 1 ms
-        //     earlier) becomes the leading edge. This preserves the
-        //     original `.all` semantics ("state zero before the oldest
-        //     transaction") while extending the same start-at-first-tx
-        //     behavior to finite ranges, killing the flat-0 lead.
-        if effectiveCutoff < inWindow[inWindow.startIndex].occurredAt {
+        //     guard is false and we DON'T emit a separate anchor — see the
+        //     start-at-first-HELD-balance rule in the loop below.
+        let emittedLeadingAnchor = effectiveCutoff < inWindow[inWindow.startIndex].occurredAt
+        if emittedLeadingAnchor {
             let leadingFiat = totalFiatAt(
                 quantities: running, timestamp: effectiveCutoff,
                 priceHistory: priceHistory, priceCache: priceCache,
@@ -473,6 +479,22 @@ enum BalanceHistoryReconstructor {
         // before-point a hair before the anchor — cosmetically
         // invisible under the chart's index-spaced x.) Both halves
         // share the transaction day's price.
+        //
+        // **Start at the first HELD balance, not at $0 (2026-06-16 user
+        // direction).** For a wallet whose first-ever in-window event is a
+        // receive — no leading anchor emitted AND the running state is
+        // empty so the first before-step computes to 0 — that leading $0
+        // before-step is DROPPED, so the curve begins at the transaction's
+        // AFTER value (the first real balance the wallet held). This makes
+        // `points.first` a non-zero held balance on every range (young
+        // wallet 1M/1Y AND every `.all`), so the visible line and the pill
+        // percent agree — a line starting at $0 with a "−37.95%" pill would
+        // be a contradiction. The skip is surgical: ONLY the first
+        // in-window transaction, ONLY when no leading anchor exists, ONLY
+        // when its before-value is 0 (genuine pre-history). Older wallets
+        // (a non-zero leading anchor) and any first tx with a non-zero
+        // before-value keep their step pair unchanged.
+        var isFirstInWindow = true
         for tx in inWindow {
             // An unparseable amount can't change state — skip the
             // pair entirely rather than emitting a phantom flat step.
@@ -482,12 +504,18 @@ enum BalanceHistoryReconstructor {
                 priceHistory: priceHistory, priceCache: priceCache,
                 fiatPerUnit: fiatPerUnit
             )
-            points.append(
-                BalancePoint(
-                    timestamp: tx.occurredAt.addingTimeInterval(-0.001),
-                    fiat: beforeFiat
+            // Drop the leading $0 pre-history before-step for the wallet's
+            // first-ever in-window transaction (see the comment above).
+            let skipLeadingZeroBefore =
+                isFirstInWindow && !emittedLeadingAnchor && beforeFiat == 0
+            if !skipLeadingZeroBefore {
+                points.append(
+                    BalancePoint(
+                        timestamp: tx.occurredAt.addingTimeInterval(-0.001),
+                        fiat: beforeFiat
+                    )
                 )
-            )
+            }
             apply(tx, to: &running)
             let afterFiat = totalFiatAt(
                 quantities: running, timestamp: tx.occurredAt,
@@ -495,6 +523,7 @@ enum BalanceHistoryReconstructor {
                 fiatPerUnit: fiatPerUnit
             )
             points.append(BalancePoint(timestamp: tx.occurredAt, fiat: afterFiat))
+            isFirstInWindow = false
         }
 
         // **Trailing anchor at `now`** — reconciled to the wallet's
