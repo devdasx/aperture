@@ -311157,6 +311157,17 @@
           }
         }
       }
+    },
+    "The most the price can move before your swap is cancelled. Lower is safer; higher fills more often.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The most the price can move before your swap is cancelled. Lower is safer; higher fills more often."
+          }
+        }
+      }
     }
   },
   "version": "1.0"
