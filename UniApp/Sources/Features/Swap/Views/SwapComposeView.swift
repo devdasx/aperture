@@ -34,10 +34,21 @@ struct SwapComposeView: View {
     /// Proceed to the honest Review summary.
     let onReview: (SwapReviewSummary) -> Void
 
+    @AppStorage("languagePreference") private var languageCode: String = LanguagePreference.systemCode
+
     @FocusState private var amountFocused: Bool
     /// One polite `.selection` beat for the flip / MAX / slippage affordances
     /// that aren't `UniButton`s (Rule #10 §B).
     @State private var selectionTapCount = 0
+    /// Drives the Custom-slippage input sheet + the value the user types into it.
+    @State private var isShowingCustomSlippage = false
+    @State private var customSlippageText = ""
+
+    /// Rule #12 §G direction-only key for the custom-slippage sheet's content
+    /// rebuild. `"ltr"` or `"rtl"`.
+    private var sheetDirectionKey: String {
+        LanguagePreference.layoutDirection(for: languageCode) == .rightToLeft ? "rtl" : "ltr"
+    }
 
     var body: some View {
         ScrollView {
@@ -369,7 +380,9 @@ struct SwapComposeView: View {
         } else {
             switch model.phase {
             case .idle:
-                idlePanel
+                // No idle instructional panel — the panel area simply
+                // collapses while idle (the TO card already shows "0").
+                EmptyView()
             case .loading:
                 loadingPanel
             case .quoted(let quote):
@@ -386,27 +399,6 @@ struct SwapComposeView: View {
     private var needsLiFi: Bool {
         guard let to = model.toToken else { return false }
         return !(model.fromToken.chain == .solana && to.chain == .solana)
-    }
-
-    private var idlePanel: some View {
-        panelCard {
-            HStack(spacing: UniSpacing.s) {
-                Image(systemName: "arrow.left.arrow.right")
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundStyle(UniColors.Icon.secondary)
-                Text(idleMessage)
-                    .font(UniTypography.footnote)
-                    .foregroundStyle(UniColors.Text.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-                Spacer(minLength: 0)
-            }
-        }
-    }
-
-    private var idleMessage: LocalizedStringKey {
-        if model.toToken == nil { return "Pick a token to receive, then enter an amount to get a live quote." }
-        if !model.hasFromAddress { return "This wallet has no address on the from-network yet, so there's nothing to swap from." }
-        return "Enter an amount to get a live quote."
     }
 
     private var loadingPanel: some View {
@@ -488,12 +480,44 @@ struct SwapComposeView: View {
                 ForEach(slippagePresets, id: \.self) { bps in
                     slippageChip(bps)
                 }
+                customSlippageChip
+            }
+
+            // Honesty (Rule #16) — a quiet, restrained caution when the
+            // tolerance is high. No alarm, no exclamation; just the
+            // consequence stated plainly so the user understands the trade.
+            if isHighSlippage {
+                Text("Higher slippage can mean you receive noticeably less.")
+                    .font(UniTypography.footnote)
+                    .foregroundStyle(UniColors.Status.warningForeground)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
         .padding(.horizontal, UniSpacing.xs)
+        .sheet(isPresented: $isShowingCustomSlippage) {
+            CustomSlippageSheet(
+                text: $customSlippageText,
+                onCommit: commitCustomSlippage
+            )
+            .id(sheetDirectionKey)
+            .uniAppEnvironment()
+            .presentationDetents([.medium])
+            .presentationDragIndicator(.visible)
+            .presentationBackground(UniColors.Background.primary)
+        }
     }
 
     private let slippagePresets: [Int] = [10, 50, 100]
+
+    /// Slippage at or above 1% (100 bps) reads as high enough to warrant the
+    /// honest caution line (Rule #16).
+    private static let highSlippageThresholdBps = 100
+    private var isHighSlippage: Bool { model.slippageBps >= Self.highSlippageThresholdBps }
+
+    /// Sane bounds the model itself never enforced: floor 0.01% (1 bps),
+    /// ceiling 50% (5000 bps). Both ends are clamped on commit.
+    private static let minSlippageBps = 1
+    private static let maxSlippageBps = 5000
 
     /// One slippage preset chip. Selected → glass-prominent + accent tint;
     /// unselected → quiet glass. Both are native iOS 26 styles (Rule #3);
@@ -520,9 +544,63 @@ struct SwapComposeView: View {
         }
     }
 
+    /// The "Custom" chip. Selected whenever the current value isn't one of
+    /// the presets — so a typed value lights this chip while none of the
+    /// preset chips do. When selected it shows the custom value itself so
+    /// the user sees their setting at a glance; otherwise it reads "Custom".
+    @ViewBuilder
+    private var customSlippageChip: some View {
+        let isSelected = !slippagePresets.contains(model.slippageBps)
+        let title = isSelected
+            ? Text(verbatim: SwapComposeModel.slippageLabel(bps: model.slippageBps))
+            : Text("Custom")
+        let chipLabel = title
+            .font(UniTypography.footnote.weight(.semibold).monospacedDigit())
+            .foregroundStyle(isSelected ? UniColors.Button.primaryLabel : UniColors.Text.primary)
+            .lineLimit(1)
+            .minimumScaleFactor(0.7)
+            .frame(maxWidth: .infinity)
+            .frame(height: 36)
+            .contentShape(Capsule())
+            .environment(\.layoutDirection, .leftToRight)
+
+        if isSelected {
+            Button { openCustomSlippage() } label: { chipLabel }
+                .buttonStyle(.glassProminent)
+                .tint(UniColors.Button.primaryTint)
+        } else {
+            Button { openCustomSlippage() } label: { chipLabel }
+                .buttonStyle(.glass)
+                .tint(UniColors.Button.secondaryTint)
+        }
+    }
+
     private func selectSlippage(_ bps: Int) {
         model.slippageBps = bps
         selectionTapCount &+= 1
+    }
+
+    /// Open the custom-input sheet, seeding the field with the current value
+    /// when it's already a custom (non-preset) tolerance.
+    private func openCustomSlippage() {
+        customSlippageText = slippagePresets.contains(model.slippageBps)
+            ? ""
+            : SwapComposeModel.customPercentString(bps: model.slippageBps)
+        isShowingCustomSlippage = true
+        selectionTapCount &+= 1
+    }
+
+    /// Parse the typed percent → bps, clamp to sane bounds, apply (the model's
+    /// `didSet` re-quotes for free), and fire the shared selection haptic.
+    private func commitCustomSlippage() {
+        guard let bps = SwapComposeModel.parseSlippagePercent(customSlippageText) else {
+            isShowingCustomSlippage = false
+            return
+        }
+        let clamped = min(max(bps, Self.minSlippageBps), Self.maxSlippageBps)
+        model.slippageBps = clamped
+        selectionTapCount &+= 1
+        isShowingCustomSlippage = false
     }
 
     // MARK: - Review CTA (functional layer)
@@ -575,5 +653,61 @@ private struct SwapAmountField: View {
             .frame(maxWidth: .infinity)
             .animation(.snappy(duration: 0.2), value: isOverBalance)
             .environment(\.layoutDirection, .leftToRight)
+    }
+}
+
+// MARK: - Custom slippage sheet
+
+/// A compact native sheet (Rule #15: NavigationStack + navigationTitle +
+/// toolbar actions) for typing a custom slippage percentage. Uses the
+/// canonical `UniTextField` (Rule #3) with the decimal pad; Enter dismisses
+/// the keyboard (the field's app-wide submit contract). "Set" applies the
+/// value and dismisses; "Cancel" leaves the current tolerance untouched.
+private struct CustomSlippageSheet: View {
+    @Binding var text: String
+    let onCommit: () -> Void
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            VStack(alignment: .leading, spacing: UniSpacing.m) {
+                UniBody(
+                    text: "Enter the maximum price movement you'll accept. Lower is safer; higher fills more often.",
+                    color: UniColors.Text.secondary
+                )
+
+                HStack(spacing: UniSpacing.xs) {
+                    UniTextField(
+                        placeholder: "0.5",
+                        text: $text,
+                        directionPolicy: .forceLTR,
+                        keyboardType: .decimalPad
+                    )
+                    Text(verbatim: "%")
+                        .font(UniTypography.title3)
+                        .foregroundStyle(UniColors.Text.secondary)
+                        .environment(\.layoutDirection, .leftToRight)
+                }
+
+                Spacer()
+            }
+            .padding(.horizontal, UniSpacing.l)
+            .padding(.top, UniSpacing.m)
+            .navigationTitle(Text("Custom slippage"))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    // Disabled until the field holds one clean, parseable
+                    // decimal — so an empty or malformed value can't be
+                    // "Set" (no silent dismiss, no silently-wrong commit).
+                    Button("Set") { onCommit() }
+                        .fontWeight(.semibold)
+                        .disabled(SwapComposeModel.parseSlippagePercent(text) == nil)
+                }
+            }
+        }
     }
 }

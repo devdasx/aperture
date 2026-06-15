@@ -146,10 +146,16 @@ actor LiFiClient {
         var fees: [SwapFee] = []
         for gas in dto.estimate.gasCosts ?? [] {
             let usd = Decimal(string: gas.amountUSD ?? "") ?? 0
+            // Decimalise the raw base-unit fee with the fee token's own
+            // decimals (Li.Fi gives them) so the UI never shows raw wei.
+            let human: Decimal? = {
+                guard let raw = gas.amount, let d = gas.token?.decimals else { return nil }
+                return Self.humanAmount(raw, decimals: d)
+            }()
             fees.append(SwapFee(
                 kind: .gas,
                 name: "Network fee",
-                amount: gas.amount ?? "",
+                amountDecimal: human,
                 tokenSymbol: gas.token?.symbol ?? request.fromToken.chain.ticker,
                 amountUSD: usd
             ))
@@ -158,10 +164,14 @@ actor LiFiClient {
             let usd = Decimal(string: fee.amountUSD ?? "") ?? 0
             let lower = (fee.name ?? "").lowercased()
             let kind: SwapFee.Kind = (lower.contains("relayer") || lower.contains("bridge")) ? .bridge : .protocolFee
+            let human: Decimal? = {
+                guard let raw = fee.amount, let d = fee.token?.decimals else { return nil }
+                return Self.humanAmount(raw, decimals: d)
+            }()
             fees.append(SwapFee(
                 kind: kind,
                 name: fee.name ?? "Fee",
-                amount: fee.amount ?? "",
+                amountDecimal: human,
                 tokenSymbol: fee.token?.symbol ?? "",
                 amountUSD: usd
             ))

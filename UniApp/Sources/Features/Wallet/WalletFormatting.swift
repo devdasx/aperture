@@ -40,6 +40,14 @@ enum WalletFormatting {
     /// (a cheap value-type copy) for the requested decimal count.
     private static let nativeBaseStyle = Decimal.FormatStyle().grouping(.automatic)
 
+    /// The display cap for token amounts, app-wide. Eight fractional
+    /// digits is enough precision for every supported asset on screen
+    /// (Bitcoin's satoshi precision is exactly 8); rendering an 18-decimal
+    /// ERC-20 balance in full is noise. This cap applies to DISPLAY only —
+    /// the editable amount fields and the signing/MAX math keep the token's
+    /// full precision. See `native(_:decimals:)`.
+    static let maxDisplayFractionDigits = 8
+
     // MARK: - Fiat
 
     /// Format a fiat amount with the supplied currency code, in the
@@ -55,11 +63,24 @@ enum WalletFormatting {
         amount.formatted(.currency(code: currencyCode))
     }
 
-    /// Format a native chain amount with up to `decimals` fractional
-    /// digits. Trims trailing zeroes (`0.10000000` → `0.1`) so the
-    /// number reads cleanly. Locale-aware decimal separator.
+    /// Format a native chain (token/coin) amount for DISPLAY. Capped at
+    /// `maxDisplayFractionDigits` (8) fractional digits and **truncated
+    /// toward zero** — never rounded up — so a balance is never overstated
+    /// (`0.032642421940371101` → `0.03264242`, not `…03`). Trims trailing
+    /// zeroes (`0.10000000` → `0.1`). Locale-aware decimal separator.
+    ///
+    /// The `decimals:` argument is the caller's *requested* precision (often
+    /// the token's own `decimals`, up to 18/24); it is clamped down to the
+    /// 8-digit display cap here so every screen shows the same, readable
+    /// amount. Truncation, not rounding, satisfies the honesty rule: the
+    /// shown value is always ≤ the true value.
     static func native(_ amount: Decimal, decimals: Int) -> String {
-        amount.formatted(nativeBaseStyle.precision(.fractionLength(0...decimals)))
+        let cap = min(max(decimals, 0), maxDisplayFractionDigits)
+        return amount.formatted(
+            nativeBaseStyle
+                .precision(.fractionLength(0...cap))
+                .rounded(rule: .towardZero)
+        )
     }
 
     /// Convert a raw integer balance (as stored in `TokenBalanceRecord.rawBalance`)

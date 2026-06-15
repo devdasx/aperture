@@ -455,7 +455,10 @@ final class SendComposeModel {
         case .exhausted:
             return String(localized: "The earlier recipients use your whole balance — nothing is left for this one.")
         case .belowMinimum:
-            let floor = "\(Self.plainString(minimumOutput, decimals: effectiveDecimals)) \(assetSymbol)"
+            // DISPLAY string → go through the central 8-decimal-truncated
+            // helper (not plainString, which would render the chain's full
+            // 18/24-decimal precision for this user-facing sentence).
+            let floor = "\(WalletFormatting.native(minimumOutput, decimals: WalletFormatting.maxDisplayFractionDigits)) \(assetSymbol)"
             return String(localized: "Less than the network minimum (\(floor)) remains, so this recipient can't be paid.")
         }
     }
