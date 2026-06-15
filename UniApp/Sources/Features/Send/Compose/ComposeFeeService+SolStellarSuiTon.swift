@@ -42,6 +42,35 @@ extension ComposeFeeService {
                         isCustomAllowed: true, hasSpeedTiers: true, note: note)
     }
 
+    /// Recompute a Solana `FeeChoice`'s native total from its compute-unit
+    /// fields after the user sets a custom priority price (BUG 3 · custom
+    /// lever). total lamports = baseFee + ceil(cuPrice × cuLimit / 1e6).
+    /// The data layer owns the math (Rule: money math never in the UI).
+    /// Doc: https://solana.com/docs/core/fees (priority = price × limit /1e6).
+    static func recomputeSolanaTotals(_ c: FeeChoice, decimals: Int) -> FeeChoice {
+        var copy = c
+        let base = c.solanaBaseFeeLamports ?? 5000
+        let price = c.computeUnitPrice ?? 0
+        let limit = c.computeUnitLimit ?? 0
+        let priority = ComposeDecimal.ceilMulDiv(price, limit, dividedBy: 1_000_000)
+        let native = ComposeDecimal.toDisplay(base + priority, decimals: decimals)
+        copy.setTotals(estimated: native, worst: native)
+        return copy
+    }
+
+    /// Recompute a Stellar `FeeChoice`'s native total after the user sets a
+    /// custom per-operation base-fee bid (BUG 3 · custom lever). total
+    /// stroops = perOpBid × opCount. Doc: per-op inclusion fee
+    /// (developers.stellar.org … fee-stats; min 100 stroops/op).
+    static func recomputeStellarTotals(_ c: FeeChoice, decimals: Int) -> FeeChoice {
+        var copy = c
+        let bid = c.stellarPerOpStroops ?? 100
+        let ops = Decimal(c.stellarOpCount ?? 1)
+        let native = ComposeDecimal.toDisplay(bid * ops, decimals: decimals)
+        copy.setTotals(estimated: native, worst: native)
+        return copy
+    }
+
     private func fetchSolanaPriorityPercentiles() async throws -> (p25: Decimal, p50: Decimal, p75: Decimal) {
         let data = try await client.callJSONResultData(
             chain: .solana, method: "getRecentPrioritizationFees", params: [[Sendable]()])
@@ -129,8 +158,16 @@ extension ComposeFeeService {
             .normal: choice(.normal, priceMult: 1),
             .fast:   choice(.fast,   priceMult: Decimal(string: "1.2")!),
         ]
+        // BUG 3 · isCustomAllowed = FALSE for Sui. The protocol HAS a price
+        // lever (gasPrice ≥ RGP, the excess is a priority tip — Sui docs
+        // tokenomics/gas-in-sui), but the net fee is dominated by storage and
+        // is auto-sized by a dry run before signing, and the compose UI
+        // exposes no Sui numeric field. Surfacing a "Custom" radio with no
+        // editable lever would be dishonest (Rule #16). The slow/normal/fast
+        // tiers (RGP → 1.2×RGP price) ARE the user-facing priority lever; a
+        // bespoke MIST budget is not. Doc: https://docs.sui.io/concepts/tokenomics/gas-in-sui
         return FeeQuote(chain: ctx.chain, feeModel: .suiGasBudget, tiers: tiers,
-                        isCustomAllowed: true, hasSpeedTiers: true,
+                        isCustomAllowed: false, hasSpeedTiers: true,
                         note: "Final fee is refined by a dry run before signing")
     }
 

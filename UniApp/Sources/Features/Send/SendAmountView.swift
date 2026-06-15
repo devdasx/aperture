@@ -102,16 +102,15 @@ struct SendAmountView: View {
                     )
                 }
 
-                // FIX 5 — single-recipient keeps the full fee card; multi
-                // mode drops the standalone card (the fee lives in the dots'
-                // "Edit network fee") and shows a compact, tappable fee line
-                // instead, so the user still SEES the fee, just not as the
-                // big card.
-                if model.isMultiRecipient {
-                    compactFeeSummary
-                } else {
-                    feeRow
-                }
+                // The network fee is intentionally NOT shown in the compose
+                // body (per user direction). It lives ONLY in the options
+                // menu (dots → "Edit network fee", which opens the fee
+                // sheet), and is restated at confirmation on the Review
+                // screen. The fee is still FETCHED below (`loadFee` /
+                // `feeRefreshKey` / `recomputeUTXOFee`) so the sheet,
+                // validation, and Review have it — it's just not rendered
+                // here. Honest (Rule #16): discoverable in the menu, shown
+                // at the moment of commitment in Review.
 
                 if let reserve = reserveNote {
                     reserveBanner(reserve)
@@ -182,132 +181,6 @@ struct SendAmountView: View {
             isShowingCommentSheet: $isShowingCommentSheet,
             isShowingGasSheet: $isShowingGasSheet
         )
-    }
-
-    // MARK: - Fee row (content layer; tap opens the fee sheet)
-
-    private var feeRow: some View {
-        Button { isShowingFeeSheet = true } label: {
-            UniCard {
-                HStack(spacing: UniSpacing.s) {
-                    Image(systemName: "fuelpump.fill")
-                        .font(.system(size: 16, weight: .regular))
-                        .foregroundStyle(UniColors.Icon.secondary)
-                        .frame(width: 28)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Network fee")
-                            .font(UniTypography.body)
-                            .foregroundStyle(UniColors.Text.primary)
-                        feeSubtitle
-                    }
-                    Spacer(minLength: UniSpacing.s)
-                    feeValue
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(UniColors.Icon.tertiary)
-                }
-                .contentShape(Rectangle())
-            }
-        }
-        .buttonStyle(.plain)
-    }
-
-    // MARK: - Compact fee summary (multi mode — FIX 5)
-
-    /// A quiet one-line fee summary shown in multi-recipient mode in place
-    /// of the big fee card. Tapping opens the same fee sheet the card's
-    /// chevron and the dots' "Edit network fee" open, so the fee stays
-    /// reachable and visible (honesty) without dominating the screen.
-    private var compactFeeSummary: some View {
-        Button { isShowingFeeSheet = true } label: {
-            HStack(spacing: UniSpacing.xxs) {
-                Image(systemName: "fuelpump.fill")
-                    .font(.system(size: 11, weight: .regular))
-                    .foregroundStyle(UniColors.Icon.tertiary)
-                Text("Network fee")
-                    .font(UniTypography.footnote)
-                    .foregroundStyle(UniColors.Text.tertiary)
-                Spacer(minLength: UniSpacing.s)
-                switch model.feeState {
-                case .idle, .loading:
-                    ProgressView().controlSize(.mini)
-                case .failed:
-                    Text("Tap to retry")
-                        .font(UniTypography.footnote)
-                        .foregroundStyle(UniColors.Status.warningForeground)
-                case .loaded:
-                    if let fee = model.resolvedFee {
-                        Text(verbatim: compactFeeText(fee))
-                            .font(UniTypography.footnote.monospacedDigit())
-                            .foregroundStyle(UniColors.Text.secondary)
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.7)
-                            .environment(\.layoutDirection, .leftToRight)
-                    }
-                }
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(UniColors.Icon.tertiary)
-            }
-            .padding(.horizontal, UniSpacing.xs)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-    }
-
-    /// "≈ 0.00012 BTC · $7.40" — the worst-case native fee plus its fiat
-    /// value when priced.
-    private func compactFeeText(_ fee: FeeChoice) -> String {
-        let native = "≈ \(WalletFormatting.native(fee.estimatedTotalNative, decimals: 8)) \(chain.ticker)"
-        if let fiat = model.feeFiat {
-            return "\(native) · \(WalletFormatting.fiat(fiat, currencyCode: currencyCode))"
-        }
-        return native
-    }
-
-    @ViewBuilder
-    private var feeSubtitle: some View {
-        switch model.feeState {
-        case .idle, .loading:
-            Text("Fetching the current rate…")
-                .font(UniTypography.footnote)
-                .foregroundStyle(UniColors.Text.tertiary)
-        case .failed(let message):
-            Text(verbatim: message)
-                .font(UniTypography.footnote)
-                .foregroundStyle(UniColors.Status.warningForeground)
-        case .loaded:
-            if let note = model.feeQuote?.note {
-                Text(verbatim: note)
-                    .font(UniTypography.footnote)
-                    .foregroundStyle(UniColors.Text.tertiary)
-                    .lineLimit(2)
-            } else {
-                Text(verbatim: model.selectedTier.label)
-                    .font(UniTypography.footnote)
-                    .foregroundStyle(UniColors.Text.tertiary)
-            }
-        }
-    }
-
-    @ViewBuilder
-    private var feeValue: some View {
-        if model.feeState == .loading || model.feeState == .idle {
-            ProgressView().controlSize(.small)
-        } else if let fee = model.resolvedFee {
-            VStack(alignment: .trailing, spacing: 2) {
-                Text(verbatim: "\(WalletFormatting.native(fee.estimatedTotalNative, decimals: 8)) \(chain.ticker)")
-                    .font(UniTypography.callout.monospacedDigit())
-                    .foregroundStyle(UniColors.Text.primary)
-                    .environment(\.layoutDirection, .leftToRight)
-                if let fiat = model.feeFiat {
-                    Text(verbatim: WalletFormatting.fiat(fiat, currencyCode: currencyCode))
-                        .font(UniTypography.caption1.monospacedDigit())
-                        .foregroundStyle(UniColors.Text.tertiary)
-                        .environment(\.layoutDirection, .leftToRight)
-                }
-            }
-        }
     }
 
     // MARK: - Reserve / activation banner (honest)
@@ -488,15 +361,17 @@ struct SendAmountView: View {
     /// Re-fetch / re-derive the fee when a material input changes. For
     /// account-model chains it's just the recipient count (amount doesn't
     /// change the fee). For UTXO chains the vsize-dependent fee + MAX also
-    /// depend on the SELECTED COINS and the AMOUNT (FIX 3) — fold both in
-    /// so changing coins/amount re-derives the fee via `selectCoins`.
+    /// depend on the SELECTED COINS, the AMOUNT, the BYTE-FEE RATE and the
+    /// TIER (FIX 3 + BUG 1 · fix #2) — fold all four in so changing coins /
+    /// amount / TIER / the CUSTOM sat-vB re-derives the fee via
+    /// `selectCoins`. The model's `utxoFeeKey` already fingerprints exactly
+    /// these (cycle-free via `rawTotalCrypto`), so reuse it instead of a
+    /// narrower key that omitted the rate — the old key never re-ran
+    /// `recomputeUTXOFee` when the user changed only the custom rate, so the
+    /// custom rate never drove the resolved vsize fee.
     private var feeRefreshKey: String {
         if model.capability.supportsUTXO {
-            let coins = (model.selectedUTXOs ?? model.availableUTXOs)
-                .map(\.id).sorted().joined(separator: ",")
-            let amount = SendComposeModel.plainString(
-                model.totalCrypto, decimals: model.effectiveDecimals)
-            return "\(model.amounts.count)|\(coins)|\(amount)"
+            return "\(model.amounts.count)|\(model.utxoFeeKey)"
         }
         return "\(model.amounts.count)"
     }
