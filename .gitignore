@@ -52,3 +52,6 @@ Secrets.xcconfig
 .claude/i18n-missing.json
 .claude/rule-audit.log
 build-sim/
+
+build-ipad-sim/
+build-mac-dfi/

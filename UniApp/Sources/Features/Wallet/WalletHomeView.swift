@@ -114,6 +114,17 @@ struct WalletHomeView: View {
     @Environment(\.autoLockController) private var lockController
     @AppStorage(HideBalancesPreference.thresholdKey) private var hideSmallThreshold: Double = HideBalancesPreference.defaultThreshold
 
+    /// **iPad / Mac adaptation (2026-06-16).** Two regular-width-only
+    /// changes hang off this: (1) the content column is capped to a
+    /// centered 640pt so the hero + rows read as a column, not a
+    /// stretched iPhone; (2) the native SwiftUI wallet-switch `Menu`
+    /// is exposed on the wallet pill (at compact width the iPhone
+    /// bottom-tab-bar long-press installer owns that gesture instead —
+    /// the UITabBar it reaches through only exists at compact width).
+    /// At `.compact` BOTH are inert, so the iPhone experience is
+    /// byte-for-byte unchanged.
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+
     // MARK: - Filter & Sort preferences (Rule #14-class declarative reads)
     //
     // The wallet home reads every Filter & Sort preference reactively
@@ -944,6 +955,19 @@ struct WalletHomeView: View {
         }
         .listStyle(.insetGrouped)
         .scrollContentBackground(.hidden)
+        // **Regular-width content cap (2026-06-16).** This single cap
+        // is what kills the "blown-up iPhone" feel on iPad landscape /
+        // wide Mac: the inset-grouped list — hero balance, action
+        // triplet, holdings, activity — is capped to a centered 640pt
+        // column instead of stretching to a ~1300pt-wide page. At
+        // `.compact` (iPhone, iPad portrait) the frame falls through to
+        // full width via `.infinity`, so the layout is byte-for-byte
+        // unchanged. The `maxWidth: .infinity` wrapper centers the
+        // capped column within the wider detail pane; the page-color
+        // background fills the full width behind it so the column reads
+        // as a centered card on the page, not a left-pinned strip.
+        .frame(maxWidth: horizontalSizeClass == .regular ? 640 : .infinity)
+        .frame(maxWidth: .infinity)
         .background(UniColors.Background.primary.ignoresSafeArea())
         // **Rule #14 search** — `.searchable(text:prompt:)` with NO
         // `placement:` argument. iOS 26 owns the placement: a
@@ -2263,13 +2287,32 @@ struct WalletHomeView: View {
                     isShowingSwitcher = true
                 }
                 .accessibilityLabel(Text("Switch wallet, currently \(activeWallet?.name ?? "")"))
-                // .contextMenu removed 2026-06-09 per user direction
-                // — the long-press wallet switcher lives ONLY on
-                // the bottom tab bar's Wallet button (via
-                // TabBarLongPressInstaller). Tap on this toolbar
-                // pill still opens the switcher sheet — that's the
-                // quick affordance; the tab-bar long-press is the
-                // Telegram/Instagram-style switcher.
+                // **Long-press switcher — split by size class
+                // (2026-06-16).**
+                //
+                // COMPACT (iPhone): no `.contextMenu` here. The
+                // long-press wallet switcher lives on the bottom
+                // tab bar's Wallet button (via
+                // `TabBarLongPressInstaller`). Tap on this toolbar
+                // pill opens the switcher SHEET; the tab-bar
+                // long-press is the Telegram/Instagram-style fast
+                // switcher. This path is unchanged from 2026-06-09.
+                //
+                // REGULAR (iPad landscape / wide Mac): in sidebar
+                // mode there is no UITabBar, so the installer can't
+                // attach — the switcher would silently die. We
+                // attach the native SwiftUI `walletPillContextMenu`
+                // here instead (Switch wallet / Customise / Add /
+                // Manage — the SAME actions). `.contextMenu` is a
+                // pure-SwiftUI modifier, so it works on the toolbar
+                // pill at any width; gating to `.regular` keeps the
+                // iPhone gesture exactly as it was.
+                .modifier(
+                    WalletPillRegularWidthMenu(
+                        isRegularWidth: horizontalSizeClass == .regular,
+                        menu: { walletPillContextMenu }
+                    )
+                )
             }
         }
     }
@@ -3108,4 +3151,31 @@ enum WalletHomeDestination: Hashable, Codable {
 private struct WalletPillCustomiseTarget: Identifiable {
     let walletId: UUID
     var id: UUID { walletId }
+}
+
+// MARK: - Wallet-pill regular-width menu modifier
+
+/// **iPad / Mac wallet switcher (2026-06-16).** Attaches the native
+/// SwiftUI `walletPillContextMenu` to the wallet-home toolbar pill —
+/// but ONLY at regular width. At compact width (iPhone) the bottom
+/// tab bar's `TabBarLongPressInstaller` owns the long-press switch
+/// gesture, so this modifier passes the content straight through
+/// unchanged; the iPhone surface is byte-for-byte identical.
+///
+/// At regular width (iPad landscape / wide Mac) the TabView is in
+/// sidebar mode — there is no UITabBar for the installer to reach,
+/// so the long-press switcher would silently die. `.contextMenu`
+/// is pure SwiftUI and works on the toolbar pill at any width, so we
+/// surface the SAME Switch/Customise/Add/Manage actions here instead.
+private struct WalletPillRegularWidthMenu<Menu: View>: ViewModifier {
+    let isRegularWidth: Bool
+    @ViewBuilder let menu: () -> Menu
+
+    func body(content: Content) -> some View {
+        if isRegularWidth {
+            content.contextMenu { menu() }
+        } else {
+            content
+        }
+    }
 }
