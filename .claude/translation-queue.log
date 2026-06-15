@@ -96,3 +96,49 @@
 2026-06-15T16:28:05Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Swap/Views/SwapReviewView.swift	View on explorer
 2026-06-15T16:28:05Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Swap/Views/SwapReviewView.swift	\(receivedAmount) \(receivedSymbol)
 2026-06-15T16:28:05Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Swap/Views/SwapReviewView.swift	\(receivedSymbol) was added to your tokens.
+2026-06-15T16:36:30Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Swap/Views/SwapReviewView.swift	Authenticate to sign this \(isBridge ? 
+2026-06-15T16:36:30Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Swap/Views/SwapReviewView.swift	Cancel
+2026-06-15T16:36:30Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Swap/Views/SwapReviewView.swift	Close
+2026-06-15T16:36:30Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Swap/Views/SwapReviewView.swift	Confirm on your iPhone
+2026-06-15T16:36:30Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Swap/Views/SwapReviewView.swift	Confirm to swap.
+2026-06-15T16:36:30Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Swap/Views/SwapReviewView.swift	Copy transaction hash
+2026-06-15T16:36:30Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Swap/Views/SwapReviewView.swift	Done
+2026-06-15T16:36:30Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Swap/Views/SwapReviewView.swift	Nothing was swapped — your funds didn't move.
+2026-06-15T16:36:30Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Swap/Views/SwapReviewView.swift	Sign
+2026-06-15T16:36:30Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Swap/Views/SwapReviewView.swift	Transaction
+2026-06-15T16:36:30Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Swap/Views/SwapReviewView.swift	Try again
+2026-06-15T16:36:30Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Swap/Views/SwapReviewView.swift	View on explorer
+2026-06-15T16:36:30Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Swap/Views/SwapReviewView.swift	\(receivedAmount) \(receivedSymbol)
+2026-06-15T16:36:30Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Swap/Views/SwapReviewView.swift	\(receivedSymbol) was added to your tokens.
+2026-06-15T16:37:48Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Swap/Views/SwapReviewView.swift	+\(WalletFormatting.native(quote.toAmount, decimals: quote.toToken.decimals)) \(quote.toToken.symbol)
+2026-06-15T16:37:48Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Swap/Views/SwapReviewView.swift	Authenticate to sign this \(isBridge ? 
+2026-06-15T16:37:48Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Swap/Views/SwapReviewView.swift	Cancel
+2026-06-15T16:37:48Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Swap/Views/SwapReviewView.swift	Close
+2026-06-15T16:37:48Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Swap/Views/SwapReviewView.swift	Confirm on your iPhone
+2026-06-15T16:37:48Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Swap/Views/SwapReviewView.swift	Confirm to swap.
+2026-06-15T16:37:48Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Swap/Views/SwapReviewView.swift	Copy transaction hash
+2026-06-15T16:37:48Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Swap/Views/SwapReviewView.swift	Done
+2026-06-15T16:37:48Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Swap/Views/SwapReviewView.swift	Hash
+2026-06-15T16:37:48Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Swap/Views/SwapReviewView.swift	Nothing was swapped — your funds didn't move.
+2026-06-15T16:37:48Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Swap/Views/SwapReviewView.swift	Sign
+2026-06-15T16:37:48Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Swap/Views/SwapReviewView.swift	Transaction
+2026-06-15T16:37:48Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Swap/Views/SwapReviewView.swift	Try again
+2026-06-15T16:37:48Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Swap/Views/SwapReviewView.swift	View on explorer
+2026-06-15T16:37:48Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Swap/Views/SwapReviewView.swift	\(quote.toToken.symbol) was added to your tokens.
+2026-06-15T16:37:48Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Swap/Views/SwapReviewView.swift	\(signPrefix)\(WalletFormatting.native(amount, decimals: token.decimals))
+2026-06-15T16:38:01Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Swap/Views/SwapReviewView.swift	+\(WalletFormatting.native(quote.toAmount, decimals: quote.toToken.decimals)) \(quote.toToken.symbol)
+2026-06-15T16:38:01Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Swap/Views/SwapReviewView.swift	Authenticate to sign this \(isBridge ? 
+2026-06-15T16:38:01Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Swap/Views/SwapReviewView.swift	Cancel
+2026-06-15T16:38:01Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Swap/Views/SwapReviewView.swift	Close
+2026-06-15T16:38:01Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Swap/Views/SwapReviewView.swift	Confirm on your iPhone
+2026-06-15T16:38:01Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Swap/Views/SwapReviewView.swift	Confirm to swap.
+2026-06-15T16:38:01Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Swap/Views/SwapReviewView.swift	Copy transaction hash
+2026-06-15T16:38:01Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Swap/Views/SwapReviewView.swift	Done
+2026-06-15T16:38:01Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Swap/Views/SwapReviewView.swift	Hash
+2026-06-15T16:38:01Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Swap/Views/SwapReviewView.swift	Nothing was swapped — your funds didn't move.
+2026-06-15T16:38:01Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Swap/Views/SwapReviewView.swift	Sign
+2026-06-15T16:38:01Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Swap/Views/SwapReviewView.swift	Transaction
+2026-06-15T16:38:01Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Swap/Views/SwapReviewView.swift	Try again
+2026-06-15T16:38:01Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Swap/Views/SwapReviewView.swift	View on explorer
+2026-06-15T16:38:01Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Swap/Views/SwapReviewView.swift	\(quote.toToken.symbol) was added to your tokens.
+2026-06-15T16:38:01Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Swap/Views/SwapReviewView.swift	\(signPrefix)\(WalletFormatting.native(amount, decimals: token.decimals))
