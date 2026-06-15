@@ -310365,6 +310365,61 @@
           }
         }
       }
+    },
+    "0.5": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "0.5"
+          }
+        }
+      }
+    },
+    "Custom slippage": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Custom slippage"
+          }
+        }
+      }
+    },
+    "Enter the maximum price movement you'll accept. Lower is safer; higher fills more often.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Enter the maximum price movement you'll accept. Lower is safer; higher fills more often."
+          }
+        }
+      }
+    },
+    "Higher slippage can mean you receive noticeably less.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Higher slippage can mean you receive noticeably less."
+          }
+        }
+      }
+    },
+    "Set": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Set"
+          }
+        }
+      }
     }
   },
   "version": "1.0"
