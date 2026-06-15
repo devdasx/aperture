@@ -20,12 +20,19 @@ struct AssetPickerAssetRow: View {
     /// contract (nil for native coins → bundled chain mark).
     let logoChain: SupportedChain
     let logoContract: String?
+    /// Optional provider-supplied logo URL (Li.Fi `logoURI` / Jupiter
+    /// `icon`). Used for tokens NOT in Trust Wallet's repo (e.g. a token
+    /// found via the swap provider search), so they show a real mark
+    /// instead of falling back to the initials chip. `CoinMark` prefers
+    /// this when present; otherwise it resolves via Trust Wallet by
+    /// chain+contract.
+    var logoURL: String? = nil
     let totals: AssetPickerHoldings.Totals
     let currencyCode: String
 
     var body: some View {
         HStack(spacing: UniSpacing.s) {
-            CoinMark(chain: logoChain, tokenSymbol: ticker, contract: logoContract)
+            CoinMark(chain: logoChain, tokenSymbol: ticker, contract: logoContract, customIconURL: logoURL)
                 .frame(width: 36, height: 36)
             VStack(alignment: .leading, spacing: 2) {
                 Text(verbatim: fullName)

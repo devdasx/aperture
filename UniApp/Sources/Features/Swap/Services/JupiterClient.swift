@@ -102,8 +102,14 @@ actor JupiterClient {
               let url = URL(string: "\(tokenBase)/search?query=\(encoded)") else { return [] }
         do {
             let list = try await http.getJSON([JupiterTokenDTO].self, url: url)
-            let mapped = list.map { token -> (token: SwapToken, verified: Bool) in
-                (SwapToken(
+            // Preserve Jupiter's own relevance order — it ranks the canonical
+            // token first (live-verified 2026-06-15: query "Chainlink" →
+            // "Chainlink Token"/LINK first). `isVerified` is absent on
+            // `/search` results, so a verified-first re-sort would be a no-op;
+            // the final cross-provider ranking happens in
+            // `SwapAsset.fromProviderTokens`.
+            return list.map { token in
+                SwapToken(
                     chain: .solana,
                     kind: .solana,
                     address: token.id,
@@ -111,10 +117,8 @@ actor JupiterClient {
                     name: token.name ?? token.symbol,
                     decimals: token.decimals,
                     logoURI: token.icon
-                ), token.isVerified ?? false)
+                )
             }
-            // Verified first, preserving Jupiter's relevance within each group.
-            return mapped.filter(\.verified).map(\.token) + mapped.filter { !$0.verified }.map(\.token)
         } catch {
             return []
         }

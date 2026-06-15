@@ -142,15 +142,30 @@ extension SwapAsset {
     }
 
     /// Fold a flat list of provider-found `SwapToken`s (from
-    /// `SwapQuoteService.searchTokens`) into `SwapAsset` rows, so provider
-    /// search results render exactly like curated rows (one symbol row,
-    /// networks merged). Native sentinels collapse to `.native`.
-    static func fromProviderTokens(_ tokens: [SwapToken]) -> [SwapAsset] {
-        var natives: [SupportedChain: Bool] = [:]
+    /// `SwapQuoteService.searchTokens`) into `SwapAsset` rows — one row per
+    /// symbol, networks merged across providers (so a token found on several
+    /// EVM chains + Solana is a single row carrying all of them). Native
+    /// sentinels collapse to `.native`.
+    ///
+    /// **Ranking (the fix for "real Chainlink is buried").** Rows are ranked
+    /// by, in order: how exactly they MATCH the query (exact > prefix >
+    /// contains), then how many NETWORKS the token spans — a canonical
+    /// multi-chain token (LINK on 10+ chains) beats a single-chain scam
+    /// look-alike ("ChainlinkOnSol"). Ties keep the providers' own relevance
+    /// order (which already ranks the real token first). It does NOT sort
+    /// alphabetically by symbol — that bug pushed "$LINK"/"CHA" above "LINK".
+    static func fromProviderTokens(_ tokens: [SwapToken], query: String = "") -> [SwapAsset] {
+        var nativeOrder: [SupportedChain] = []
+        var nativeSeen = Set<SupportedChain>()
         var bucket: [String: (name: String, networks: [Network])] = [:]
+        var symbolOrder: [String] = []   // first-seen order = provider relevance
+
         for token in tokens {
             if token.isNative {
-                natives[token.chain] = true
+                if !nativeSeen.contains(token.chain) {
+                    nativeSeen.insert(token.chain)
+                    nativeOrder.append(token.chain)
+                }
                 continue
             }
             // A non-native token with an empty contract can't be swapped (it
@@ -159,21 +174,50 @@ extension SwapAsset {
             guard !contract.isEmpty else { continue }
             let network = Network(chain: token.chain, contract: contract,
                                   decimals: token.decimals, logoURI: token.logoURI)
-            if let existing = bucket[token.symbol] {
+            if var existing = bucket[token.symbol] {
                 guard !existing.networks.contains(where: { $0.chain == token.chain }) else { continue }
-                bucket[token.symbol] = (existing.name, existing.networks + [network])
+                existing.networks.append(network)
+                bucket[token.symbol] = existing
             } else {
                 bucket[token.symbol] = (token.name, [network])
+                symbolOrder.append(token.symbol)
             }
         }
-        let nativeRows = SupportedChain.allCases.filter { natives[$0] == true }.map { SwapAsset.native($0) }
-        let tokenRows = bucket.map { symbol, value in
-            SwapAsset.token(symbol: symbol, name: value.name, networks: value.networks)
-        }.sorted { a, b in
-            guard case let .token(symA, _, _) = a, case let .token(symB, _, _) = b else { return false }
-            return symA < symB
-        }
+
+        let nativeRows = nativeOrder.map { SwapAsset.native($0) }
+
+        let q = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let tokenRows = symbolOrder.enumerated()
+            .map { index, symbol -> (asset: SwapAsset, score: Int, networks: Int, order: Int) in
+                let value = bucket[symbol]!
+                return (
+                    .token(symbol: symbol, name: value.name, networks: value.networks),
+                    Self.matchScore(query: q, symbol: symbol, name: value.name),
+                    value.networks.count,
+                    index
+                )
+            }
+            .sorted { a, b in
+                if a.score != b.score { return a.score > b.score }
+                if a.networks != b.networks { return a.networks > b.networks }
+                return a.order < b.order
+            }
+            .map(\.asset)
+
         return nativeRows + tokenRows
+    }
+
+    /// Textual relevance of a (symbol, name) to a lowercased query: 3 =
+    /// exact, 2 = prefix, 1 = contains, 0 = no textual match (still shown —
+    /// the provider returned it). Ordering only.
+    private static func matchScore(query q: String, symbol: String, name: String) -> Int {
+        guard !q.isEmpty else { return 0 }
+        let s = symbol.lowercased()
+        let n = name.lowercased()
+        if s == q || n == q { return 3 }
+        if s.hasPrefix(q) || n.hasPrefix(q) { return 2 }
+        if s.contains(q) || n.contains(q) { return 1 }
+        return 0
     }
 }
 

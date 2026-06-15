@@ -36,15 +36,25 @@ struct SwapTokenPickerSheet: View {
 
     @Environment(\.dismiss) private var dismiss
 
+    /// Value-based navigation path (mirrors `ReceiveView`/`ReceiveAssetListView`
+    /// — see `ReceiveDestination`). Hoisted to the `NavigationStack` owner so
+    /// token rows push the network step via `.navigationDestination(for:)`
+    /// rather than a `NavigationLink` label — a `NavigationLink` inside a
+    /// `List` paints its OWN system disclosure chevron ON TOP of the row's
+    /// `chevron.right`, giving the double-chevron the user reported. A `Button`
+    /// that appends a route shows only the row's single chevron.
+    @State private var path = NavigationPath()
+
     private var currencyCode: String {
         UserDefaults.standard.string(forKey: CurrencyPreference.storageKey) ?? CurrencyPreference.defaultCode
     }
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $path) {
             SwapAssetListStep(
                 holdings: holdings,
                 currencyCode: currencyCode,
+                path: $path,
                 onPick: { token in
                     onPick(token)
                     dismiss()
@@ -52,6 +62,17 @@ struct SwapTokenPickerSheet: View {
             )
             .navigationTitle(side == .from ? "Swap from" : "Swap to")
             .navigationBarTitleDisplayMode(.inline)
+            .navigationDestination(for: SwapPickerRoute.self) { route in
+                SwapNetworkPickerStep(
+                    asset: route.asset,
+                    holdings: holdings,
+                    currencyCode: currencyCode,
+                    onPick: { token in
+                        onPick(token)
+                        dismiss()
+                    }
+                )
+            }
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button("Cancel") { dismiss() }
@@ -59,6 +80,16 @@ struct SwapTokenPickerSheet: View {
             }
         }
     }
+}
+
+// MARK: - Navigation route (value-based, mirrors ReceiveDestination)
+
+/// The token → network-step route. Value-based so the token rows push via
+/// a `Button` appending to the hoisted `NavigationPath` + a single
+/// `.navigationDestination(for:)`, never a `NavigationLink` (which would add
+/// a second, system disclosure chevron inside the `List`).
+private struct SwapPickerRoute: Hashable {
+    let asset: SwapAsset
 }
 
 // MARK: - Step 1 — asset list (mirrors ReceiveAssetListView)
@@ -70,6 +101,9 @@ struct SwapTokenPickerSheet: View {
 private struct SwapAssetListStep: View {
     let holdings: AssetPickerHoldings
     let currencyCode: String
+    /// Bound to the sheet root's `NavigationStack` path so token rows push the
+    /// network step by value (single chevron) instead of a `NavigationLink`.
+    @Binding var path: NavigationPath
     let onPick: (SwapToken) -> Void
 
     @Query(sort: \WalletRecord.sortOrder) private var allWallets: [WalletRecord]
@@ -112,7 +146,7 @@ private struct SwapAssetListStep: View {
         .listStyle(.insetGrouped)
         .scrollContentBackground(.hidden)
         .background(UniColors.Background.primary)
-        .searchable(text: $searchText, prompt: Text("Search"))
+        .searchable(text: $searchText, prompt: Text("Search name or contract"))
         .task(id: rowsKey) {
             let tokens = SwapAsset.tokens(
                 availableChains: Set(availableChains),
@@ -156,7 +190,10 @@ private struct SwapAssetListStep: View {
         let chains = availableChains
         let found = await SwapQuoteService.shared.searchTokens(query: query, chains: chains)
         guard !Task.isCancelled else { return }
-        providerResults = SwapAsset.fromProviderTokens(found)
+        // Pass the query so an exact/prefix + multi-network match ranks above
+        // single-chain look-alikes — lifts the real "Chainlink/LINK" above
+        // "ChainlinkOnSol" etc.
+        providerResults = SwapAsset.fromProviderTokens(found, query: query)
         isSearchingProvider = false
     }
 
@@ -265,6 +302,15 @@ private struct SwapAssetListStep: View {
                     ProgressView().controlSize(.mini)
                 }
             }
+        } footer: {
+            // Honest, restrained guidance (Rule #16): a contract address is the
+            // precise way to land the exact token among same-named look-alikes.
+            UniFootnote(
+                text: "Tip: paste a contract address for an exact match.",
+                color: UniColors.Text.tertiary
+            )
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(.top, UniSpacing.xs)
         }
     }
 
@@ -291,23 +337,28 @@ private struct SwapAssetListStep: View {
     @ViewBuilder
     private func tokenRow(_ asset: SwapAsset) -> some View {
         if case let .token(symbol, name, _) = asset {
-            NavigationLink {
-                SwapNetworkPickerStep(
-                    asset: asset,
-                    holdings: holdings,
-                    currencyCode: currencyCode,
-                    onPick: onPick
-                )
+            // Value-based push (mirrors ReceiveAssetListView): a `Button`
+            // appends the route to the hoisted path, so the row shows ONLY its
+            // own `chevron.right` — never the second system disclosure chevron
+            // a `NavigationLink`-in-`List` would paint. `logoURL` is the
+            // provider/custom icon URL for the canonical network: curated rows
+            // pass nil (CoinMark resolves via Trust Wallet); provider-search
+            // rows pass a real URL so a token with no Trust Wallet mark still
+            // shows its real icon instead of the initials chip.
+            Button {
+                path.append(SwapPickerRoute(asset: asset))
             } label: {
                 AssetPickerAssetRow(
                     fullName: name,
                     ticker: symbol,
                     logoChain: asset.canonicalChainForLogo,
                     logoContract: asset.canonicalContract,
+                    logoURL: asset.canonicalLogoURI,
                     totals: holdings.aggregate(symbol: symbol),
                     currencyCode: currencyCode
                 )
             }
+            .buttonStyle(.plain)
             .listRowBackground(UniColors.Background.secondary)
         }
     }
@@ -332,6 +383,14 @@ private struct SwapAssetListStep: View {
                         alignment: .center,
                         color: UniColors.Text.secondary
                     )
+                    if !q.isEmpty {
+                        UniFootnote(
+                            text: "Tip: paste a contract address for an exact match.",
+                            alignment: .center,
+                            color: UniColors.Text.tertiary
+                        )
+                        .fixedSize(horizontal: false, vertical: true)
+                    }
                 }
             }
             .frame(maxWidth: .infinity)

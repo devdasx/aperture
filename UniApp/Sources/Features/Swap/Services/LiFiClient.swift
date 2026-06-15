@@ -110,41 +110,61 @@ actor LiFiClient {
 
     // MARK: - Search (provider fallback for tokens not in our list)
 
-    /// Look a single token up on `chain` by symbol OR contract
-    /// (`GET /token?chain=<id>&token=<query>`). Returns the matched token
-    /// as a `SwapToken`, or `nil` when nothing matches (Li.Fi 404) or on
-    /// any error. Drives the picker's provider fallback so a user can find
-    /// an EVM token Aperture doesn't curate. Never throws.
-    func searchToken(query: String, on chain: SupportedChain) async -> SwapToken? {
+    /// Fuzzy-search the swappable EVM chains for tokens matching `query`
+    /// (name, symbol, OR contract address) in ONE call:
+    /// `GET /tokens?chains=<comma-sep ids>&search=<query>`. Returns each
+    /// matching chain's hits as `SwapToken`s; `[]` (never throws) on failure.
+    ///
+    /// **Why `/tokens?search=` and not `/token`.** The `/token` endpoint is
+    /// an EXACT lookup — it matches a symbol or a contract address only, and
+    /// 404s on a NAME (live-verified 2026-06-15: `token=Chainlink` → 404
+    /// "Could not find token", `token=LINK` / the contract → the real LINK).
+    /// `/tokens?search=` is the server-side fuzzy search by name+symbol+
+    /// address (verified: `search=chainlink` returns LINK on chains 1/42161/
+    /// 8453, 21 hits not the 4768-token full list) — so a user searching
+    /// "Chainlink" finds LINK on every EVM chain it ships on, with icons.
+    func searchTokens(query: String, chains: [SupportedChain]) async -> [SwapToken] {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard Secrets.hasLifiKey, !trimmed.isEmpty,
-              let chainID = SwapChainMap.lifiChainID(for: chain),
-              let kind = SwapChainMap.kind(for: chain) else { return nil }
+        guard Secrets.hasLifiKey, !trimmed.isEmpty else { return [] }
+        // Resolve to the swappable EVM chains' Li.Fi ids (Solana routes
+        // through Jupiter, so it's excluded here).
+        let mappable: [(id: Int, chain: SupportedChain)] = chains.compactMap { chain in
+            guard SwapChainMap.kind(for: chain) == .evm,
+                  let id = SwapChainMap.lifiChainID(for: chain) else { return nil }
+            return (id, chain)
+        }
+        guard !mappable.isEmpty else { return [] }
 
-        var components = URLComponents(string: "\(baseURL)/token")
+        var components = URLComponents(string: "\(baseURL)/tokens")
         components?.queryItems = [
-            URLQueryItem(name: "chain", value: String(chainID)),
-            URLQueryItem(name: "token", value: trimmed),
+            URLQueryItem(name: "chains", value: mappable.map { String($0.id) }.joined(separator: ",")),
+            URLQueryItem(name: "search", value: trimmed),
         ]
-        guard let url = components?.url else { return nil }
+        guard let url = components?.url else { return [] }
 
         do {
-            let info = try await http.getJSON(
-                LiFiQuoteDTO.TokenInfo.self,
+            let dto = try await http.getJSON(
+                LiFiTokensDTO.self,
                 url: url,
                 headers: ["x-lifi-api-key": Secrets.lifiAPIKey]
             )
-            return SwapToken(
-                chain: chain,
-                kind: kind,
-                address: info.address,
-                symbol: info.symbol,
-                name: info.name ?? info.symbol,
-                decimals: info.decimals,
-                logoURI: info.logoURI
-            )
+            var out: [SwapToken] = []
+            for entry in mappable {
+                for info in dto.tokens[String(entry.id)] ?? [] {
+                    out.append(SwapToken(
+                        chain: entry.chain,
+                        kind: .evm,
+                        address: info.address,
+                        symbol: info.symbol,
+                        name: info.name ?? info.symbol,
+                        decimals: info.decimals,
+                        logoURI: info.logoURI
+                    ))
+                }
+            }
+            return out
         } catch {
-            return nil
+            return []
         }
     }
 
