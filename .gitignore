@@ -2,6 +2,7 @@
 build/
 build-device/
 build-release/
+build-verify/
 DerivedData/
 *.xcuserstate
 *.xcuserdatad/

@@ -185,6 +185,50 @@ final class SwapComposeModel {
         return "\(text)%"
     }
 
+    /// An editable, plain-decimal percent string for a bps value (no `%`
+    /// suffix, no grouping) — used to seed the custom-slippage input field
+    /// from the current tolerance. `"0.5"` for 50 bps, `"2.5"` for 250 bps.
+    static func customPercentString(bps: Int) -> String {
+        let pct = (Decimal(bps) / 100) as NSDecimalNumber
+        let formatter = NumberFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.usesGroupingSeparator = false
+        formatter.minimumFractionDigits = 0
+        formatter.maximumFractionDigits = 2
+        return formatter.string(from: pct) ?? pct.stringValue
+    }
+
+    /// Parse a typed custom-slippage percent string → basis points
+    /// (`bps = round(percent * 100)`). Accepts `.` or `,` as the decimal
+    /// separator (the value is small — 0.01–50% — so a grouping separator is
+    /// never legitimate). Returns `nil` for empty input AND for anything that
+    /// isn't ONE clean decimal: a second separator, a grouped number, spaces,
+    /// or stray characters are REJECTED — not silently truncated to a
+    /// wrong-but-plausible value (`"1.2.3"`, a German/French `"12,345.6"`, and
+    /// `"1 000,5"` all return nil rather than committing 1.2% / 12.35% / 10%).
+    /// Does NOT clamp — the caller applies the sane bounds so the bound policy
+    /// lives at one site.
+    static func parseSlippagePercent(_ text: String) -> Int? {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        // Comma → dot (comma-locale keyboards), then tolerate a lone leading or
+        // trailing dot the decimal pad can leave (".5" → "0.5", "1." → "1").
+        var normalized = trimmed.replacingOccurrences(of: ",", with: ".")
+        if normalized.hasPrefix(".") { normalized = "0" + normalized }
+        if normalized.hasSuffix(".") { normalized.removeLast() }
+        // Require exactly one clean decimal — no second separator, no spaces,
+        // no other characters — so a grouped/garbled string is rejected
+        // instead of `Decimal(string:)` keeping only its leading prefix.
+        guard normalized.range(of: #"^[0-9]+(\.[0-9]+)?$"#, options: .regularExpression) != nil,
+              let percent = Decimal(string: normalized) else { return nil }
+        let bps = (percent * 100) as NSDecimalNumber
+        let rounded = bps.rounding(accordingToBehavior:
+            NSDecimalNumberHandler(roundingMode: .plain, scale: 0,
+                                   raiseOnExactness: false, raiseOnOverflow: false,
+                                   raiseOnUnderflow: false, raiseOnDivideByZero: false))
+        return rounded.intValue
+    }
+
     // MARK: - Actions
 
     /// Swap the FROM and TO sides (the flip button). When the to-side is

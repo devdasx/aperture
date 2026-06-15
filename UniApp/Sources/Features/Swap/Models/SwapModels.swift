@@ -158,9 +158,12 @@ struct SwapFee: Sendable, Hashable, Codable, Identifiable {
     let kind: Kind
     /// Human-readable label, e.g. "Relayer fee", "LIFI Fixed Fee", "Gas".
     let name: String
-    /// Raw fee amount in the fee token's smallest unit (verbatim from
-    /// the provider). May be empty for gas if the provider only gave USD.
-    let amount: String
+    /// Human fee amount in the fee token's OWN units (already divided by the
+    /// token's decimals at construction). `nil` when the provider didn't give
+    /// us the fee token's decimals (e.g. Jupiter per-hop LP fees in an
+    /// unknown-decimals mint) — the UI then shows "—" rather than a raw
+    /// base-unit number, which would be a wrong-magnitude lie (Rule #16).
+    let amountDecimal: Decimal?
     /// Fee token symbol (e.g. "ETH", "USDC").
     let tokenSymbol: String
     /// Fee value in USD (`Decimal`). `0` when the provider didn't price it.

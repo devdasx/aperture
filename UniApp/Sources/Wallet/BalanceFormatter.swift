@@ -5,21 +5,14 @@ import Foundation
 /// (e.g. "≈ $312.45"). Locale-aware via `Decimal.FormatStyle`.
 enum BalanceFormatter {
 
-    /// Native amount + ticker. Precision adapts to the chain family:
-    /// Bitcoin family uses 8 fractional digits, EVM uses 6, others
-    /// pick 4 by default. Trimmed of trailing zeros so "0.00412 BTC"
-    /// reads cleaner than "0.00412000 BTC".
+    /// Native amount + ticker. Routes through `WalletFormatting.native` so
+    /// the app has ONE token-amount display rule: capped at 8 fractional
+    /// digits and truncated toward zero (never rounded up), trailing zeros
+    /// trimmed. (Previously this capped per-family — bitcoin 8 / evm 6 /
+    /// other 4 — and rounded; unified here so the same token reads the same
+    /// on every screen.)
     static func native(_ amount: Decimal, chain: SupportedChain) -> String {
-        let maxFraction: Int
-        switch chain.family {
-        case .bitcoin:  maxFraction = 8
-        case .evm:      maxFraction = 6
-        default:        maxFraction = 4
-        }
-        let style = Decimal.FormatStyle.number
-            .precision(.fractionLength(0...maxFraction))
-            .grouping(.never)
-        return "\(amount.formatted(style)) \(chain.ticker)"
+        "\(WalletFormatting.native(amount, decimals: WalletFormatting.maxDisplayFractionDigits)) \(chain.ticker)"
     }
 
     /// Fiat equivalent with the canonical `≈` approximation mark per

@@ -151,10 +151,15 @@ actor JupiterClient {
         for hop in dto.routePlan ?? [] {
             guard let info = hop.swapInfo,
                   let feeAmount = info.feeAmount, feeAmount != "0" else { continue }
+            // Jupiter's per-hop LP fee is in the fee MINT's base units and
+            // the quote doesn't give us that mint's decimals, so we can't
+            // honestly denominate it — surface the fee line with no amount
+            // (the UI shows "—") rather than a raw base-unit number. The
+            // `feeAmount != "0"` guard above still gates the row's presence.
             fees.append(SwapFee(
                 kind: .protocolFee,
                 name: "\(info.label ?? "DEX") fee",
-                amount: feeAmount,
+                amountDecimal: nil,
                 tokenSymbol: "",
                 amountUSD: 0
             ))

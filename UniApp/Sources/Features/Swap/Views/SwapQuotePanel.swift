@@ -129,8 +129,13 @@ struct SwapQuotePanel: View {
         if fee.amountUSD > 0 {
             return "≈ \(WalletFormatting.fiat(fee.amountUSD, currencyCode: currencyCode))"
         }
-        if !fee.amount.isEmpty {
-            return "\(fee.amount) \(fee.tokenSymbol)"
+        // Token-denominated fallback (no USD): show the decimalised amount
+        // through the central 8-decimal-truncated helper. When the provider
+        // didn't give us the fee token's decimals (amountDecimal == nil),
+        // show "—" rather than a raw base-unit number (Rule #16).
+        if let human = fee.amountDecimal, human > 0 {
+            let suffix = fee.tokenSymbol.isEmpty ? "" : " \(fee.tokenSymbol)"
+            return "\(WalletFormatting.native(human, decimals: WalletFormatting.maxDisplayFractionDigits))\(suffix)"
         }
         return "—"
     }
