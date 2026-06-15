@@ -14,3 +14,19 @@
 2026-06-15T18:35:00Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/TransactionDetailView.swift	lines
 2026-06-15T18:35:00Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/TransactionDetailView.swift	·
 2026-06-15T18:35:00Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/TransactionDetailView.swift	≈ \(WalletFormatting.fiat(fiatValue, currencyCode: currencyCode))
+2026-06-15T18:41:26Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/TransactionDetailView.swift	Copy
+2026-06-15T18:41:26Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/TransactionDetailView.swift	Copy \(accessibilityName)
+2026-06-15T18:41:26Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/TransactionDetailView.swift	Copy \(field.label)
+2026-06-15T18:41:26Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/TransactionDetailView.swift	Copy \(name)
+2026-06-15T18:41:26Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/TransactionDetailView.swift	Copy account
+2026-06-15T18:41:26Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/TransactionDetailView.swift	Copy address
+2026-06-15T18:41:26Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/TransactionDetailView.swift	Copy token contract
+2026-06-15T18:41:26Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/TransactionDetailView.swift	Show
+2026-06-15T18:41:26Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/TransactionDetailView.swift	Unknown
+2026-06-15T18:41:26Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/TransactionDetailView.swift	View on block explorer
+2026-06-15T18:41:26Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/TransactionDetailView.swift	View on explorer
+2026-06-15T18:41:26Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/TransactionDetailView.swift	\n
+2026-06-15T18:41:26Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/TransactionDetailView.swift	characters
+2026-06-15T18:41:26Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/TransactionDetailView.swift	lines
+2026-06-15T18:41:26Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/TransactionDetailView.swift	·
+2026-06-15T18:41:26Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/TransactionDetailView.swift	≈ \(WalletFormatting.fiat(fiatValue, currencyCode: currencyCode))

@@ -377,14 +377,29 @@ struct TransactionDetailView: View {
         sectionCard(title: title) {
             ForEach(0..<rowCount, id: \.self) { index in
                 if index > 0 { divider }
-                keyValueRow(
-                    label: LocalizedStringKey(skeletonLabel),
-                    value: monospaced ? skeletonMono : skeletonValue,
-                    monospaced: monospaced
-                )
+                skeletonRow(monospaced: monospaced)
             }
         }
         .redacted(reason: .placeholder)
+    }
+
+    /// One redacted dummy row. BOTH label and value are `Text(verbatim:)` —
+    /// these placeholders are shimmer-only (redacted, never visibly rendered
+    /// and never localized), so they must NOT enter the string catalog
+    /// (Rule #20). Mirrors `keyValueRow`'s layout exactly.
+    private func skeletonRow(monospaced: Bool) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: UniSpacing.s) {
+            Text(verbatim: skeletonLabel)
+                .font(UniTypography.footnote)
+                .foregroundStyle(UniColors.Text.secondary)
+            Spacer(minLength: UniSpacing.s)
+            keyValueText(
+                monospaced ? skeletonMono : skeletonValue,
+                monospaced: monospaced,
+                valueColor: UniColors.Text.primary
+            )
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     // Fixed-width dummy strings — clearly placeholders under the native
