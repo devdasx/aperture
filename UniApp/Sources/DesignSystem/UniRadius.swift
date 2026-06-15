@@ -108,6 +108,27 @@ enum UniRadius {
     /// Smallest pill / tag. Resolves to `xs` (6).
     static let chip: CGFloat = xs
 
+    /// **Balance card — the flagship wallet-home surface.** 30 pt,
+    /// specified by the balance-card design handoff
+    /// (`design_handoff_balance_card 2/README.md`: "Corner radius 30").
+    /// Larger than `hero` (22) because the card is the single most
+    /// important surface in the app — its generous curvature reads as
+    /// the calm, premium centerpiece the rest of the home orbits.
+    /// Distinct named role (not a raw `30`) so the card's anatomy is
+    /// auditable and the concentric children (eye disc, pill, segment)
+    /// can derive from it.
+    static let balanceCard: CGFloat = 30
+
+    /// 14 pt — the segmented time-selector track radius inside the
+    /// balance card (`design_handoff_balance_card 2`: segment track
+    /// `border-radius:12px` outer / `9px` inner pills). The track is
+    /// `m` (14 ≈ 12+padding) and each active pill is `s` (10 ≈ 9);
+    /// named here so the card composes from roles, not literals.
+    static let segmentTrack: CGFloat = 12
+    /// 9 pt — the active-segment pill radius (the inner concentric of
+    /// the 12pt track at 4pt inset → 8; rounded to the handoff's 9).
+    static let segmentPill: CGFloat = 9
+
     // MARK: - Concentric helpers
 
     /// Legacy concentric-corner math. Preserved for surfaces that have not

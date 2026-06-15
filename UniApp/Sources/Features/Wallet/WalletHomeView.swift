@@ -1069,40 +1069,42 @@ struct WalletHomeView: View {
                     .listRowInsets(EdgeInsets())
             }
         } else {
-            // Production — one inset-grouped Section, default row
-            // background. iOS draws the unified card.
+            // Production — the flagship `BalanceCardView` as ONE
+            // full-bleed row. The card owns its own gradient surface,
+            // 30pt radius, watermark, header, balance, change pill,
+            // chart, and segmented selector (the design handoff
+            // `design_handoff_balance_card 2/`), so the list row is
+            // chrome-free: a `Color.clear` background, hidden
+            // separators, and a 16pt horizontal inset (the handoff's
+            // "screen − 2×16pt margins") with zero vertical inset (the
+            // card draws its own internal padding). This replaces the
+            // prior two-row hero + sparkline split.
             Section {
-                walletHomeHeaderRow
-                    .listRowSeparator(.hidden)
-                    // 24pt above the balance hero, flush below
-                    // against the delta caption (zero bottom inset
-                    // — the chart row owns the gap to the pill).
-                    .listRowInsets(EdgeInsets(
-                        top: 24,
-                        leading: UniSpacing.m,
-                        bottom: 0,
-                        trailing: UniSpacing.m
-                    ))
-
-                BalanceHistoryChart(
+                BalanceCardView(
+                    walletId: activeWallet?.id,
+                    walletName: activeWallet?.name ?? String.apertureLocalized("Wallet"),
+                    totalFiat: totalFiat,
+                    currencyCode: currencyCode,
                     transactions: allTransactions,
                     currentBalances: balances.map { $0.balance },
                     priceCache: priceCacheMemo,
                     priceHistory: priceHistoryMemo,
-                    currencyCode: currencyCode,
-                    scrubModel: scrubModel
+                    scrubModel: scrubModel,
+                    onSwitchWallet: { isShowingSwitcher = true },
+                    onCopyAddress: { isShowingReceive = true },
+                    onAddFunds: { isShowingReceive = true }
                 )
+                // Re-key on the active wallet so the per-wallet hidden
+                // flag's `@AppStorage` key (which embeds the id) is
+                // re-resolved when the user switches wallets — the new
+                // wallet shows its own remembered hidden state.
+                .id(activeWallet?.id)
+                .listRowBackground(Color.clear)
                 .listRowSeparator(.hidden)
-                // Caption sits flush under the hero (top: 0); 24pt
-                // of breathing room at the bottom of the card
-                // beneath the period pill. The sparkline curve
-                // itself bleeds out horizontally to 5pt from the
-                // card edge via the chart's internal negative
-                // horizontal padding.
                 .listRowInsets(EdgeInsets(
                     top: 0,
                     leading: UniSpacing.m,
-                    bottom: 24,
+                    bottom: 0,
                     trailing: UniSpacing.m
                 ))
             }
