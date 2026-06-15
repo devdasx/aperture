@@ -124,18 +124,17 @@ struct UniAppApp: App {
                     )
                 }
         }
-        // **Mac / iPad window sizing (2026-06-16).** On a "Designed for
-        // iPad" Mac app (and on iPad in a resizable scene) the window
-        // otherwise opens stretched like a full-screen iPhone blown up.
-        // `.defaultSize` opens it at a comfortable phone-shaped wallet
-        // column, and `.windowResizability(.contentSize)` lets the user
-        // resize within the content's own bounds rather than to
-        // arbitrary giant dimensions. Both are no-ops on iPhone (single
-        // full-screen scene), so the iPhone experience is untouched.
-        // `UIApplicationSupportsMultipleScenes` stays `false` — the
-        // detached lock-overlay `UIWindow` assumes a single scene.
-        .windowResizability(.contentSize)
-        .defaultSize(width: 440, height: 920)
+        // The app fills the screen natively on iPad (full-screen) and the
+        // Mac "Designed for iPad" window resizes freely — we do NOT pin a
+        // content size or a phone-shaped default size: `.windowResizability
+        // (.contentSize)` + a 440-wide `.defaultSize` locked the iPad/Mac
+        // window to a blown-up-iPhone column instead of the full canvas
+        // (2026-06-16 fix). The "real iPad app" sizing is handled in the
+        // content layer instead — `.sidebarAdaptable` nav at regular width
+        // and a centered max-width column cap on the wallet surface — so the
+        // window itself is free to fill the display. `UIApplicationSupports
+        // MultipleScenes` stays `false` (the lock-overlay UIWindow assumes a
+        // single scene).
     }
 }
 
