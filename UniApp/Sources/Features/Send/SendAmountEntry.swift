@@ -55,13 +55,16 @@ struct SendAmountHero: View {
                     }
                     TextField("0", text: $model.primaryAmountText)
                         .font(.system(size: size, weight: .semibold, design: .rounded).monospacedDigit())
-                        .foregroundStyle(UniColors.Text.primary)
+                        // Over-balance → red, so the user sees WHICH value is
+                        // the problem (FIX 3), not just the banner below.
+                        .foregroundStyle(model.isOverBalance ? UniColors.Status.errorForeground : UniColors.Text.primary)
                         .keyboardType(.decimalPad)
                         .multilineTextAlignment(.center)
                         .focused(amountFocused)
                         .lineLimit(1)
                         .minimumScaleFactor(minSize / idealSize)
                         .layoutPriority(1)
+                        .animation(.snappy(duration: 0.2), value: model.isOverBalance)
                         .environment(\.layoutDirection, .leftToRight)
                     if model.entryUnit == .crypto {
                         Text(verbatim: model.assetSymbol)
@@ -241,22 +244,27 @@ struct SendAmountMultiList: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: UniSpacing.s) {
-            Text("Amounts (\(model.amounts.count))")
-                .font(UniTypography.footnote.weight(.semibold))
-                .foregroundStyle(UniColors.Text.secondary)
-                .textCase(.uppercase)
-                .padding(.leading, UniSpacing.xs)
+            // Header: the row count on the left, the crypto⇄fiat unit toggle
+            // on the right — offered only when the asset is priced (FIX 1).
+            HStack(alignment: .firstTextBaseline) {
+                Text("Amounts (\(model.amounts.count))")
+                    .font(UniTypography.footnote.weight(.semibold))
+                    .foregroundStyle(UniColors.Text.secondary)
+                    .textCase(.uppercase)
+                Spacer(minLength: UniSpacing.s)
+                if model.assetUnitPrice != nil {
+                    unitToggle
+                }
+            }
+            .padding(.horizontal, UniSpacing.xs)
 
             UniCard(padding: 0) {
                 VStack(spacing: 0) {
                     ForEach(Array($model.amounts.enumerated()), id: \.element.id) { offset, $entry in
                         SendAmountRow(
+                            model: model,
                             entry: $entry,
-                            index: offset + 1,
-                            assetSymbol: model.assetSymbol,
-                            decimals: model.effectiveDecimals,
-                            fiat: { model.fiatValue(ofCrypto: model.cryptoAmount(for: entry)) },
-                            currencyCode: model.currencyCode
+                            index: offset
                         )
                         if offset < model.amounts.count - 1 {
                             UniDivider().padding(.leading, UniSpacing.m)
@@ -277,60 +285,191 @@ struct SendAmountMultiList: View {
             .padding(.leading, UniSpacing.xs)
         }
     }
+
+    /// Quiet glass pill that flips every row between crypto and fiat entry
+    /// (selection-class affordance, not a CTA — Rule #19 §C). It fires the
+    /// shared `.selection` beat via `selectionTapCount` (Rule #10 §B, no
+    /// double-fire).
+    private var unitToggle: some View {
+        Button {
+            model.toggleEntryUnit()
+            selectionTapCount &+= 1
+        } label: {
+            HStack(spacing: UniSpacing.xxs) {
+                Image(systemName: "arrow.up.arrow.down")
+                    .font(.system(size: 11, weight: .semibold))
+                Text(unitToggleLabel)
+                    .font(UniTypography.caption1.weight(.semibold))
+            }
+            .foregroundStyle(UniColors.Text.primary)
+            .padding(.horizontal, UniSpacing.s)
+            .frame(height: 28)
+            .contentShape(Capsule())
+        }
+        .buttonStyle(.glass)
+        .tint(UniColors.Button.secondaryTint)
+    }
+
+    private var unitToggleLabel: LocalizedStringKey {
+        model.entryUnit == .crypto
+            ? "Enter in \(model.currencyCode.uppercased())"
+            : "Enter in \(model.assetSymbol)"
+    }
 }
 
-/// One recipient row in the multi-recipient amount list.
+/// One recipient row in the multi-recipient amount list. Reads its funding
+/// status + active unit straight off the model so the row reacts live to
+/// the cascade (FIX 4), the active unit (FIX 1), and over-allocation
+/// (FIX 3). Cheap by construction — the status is plain arithmetic.
 private struct SendAmountRow: View {
+    @Bindable var model: SendComposeModel
     @Binding var entry: SendComposeModel.AmountEntry
+    /// Zero-based position in `model.amounts`.
     let index: Int
-    let assetSymbol: String
-    let decimals: Int
-    let fiat: () -> Decimal?
-    let currencyCode: String
+
+    private var status: SendComposeModel.RecipientFundingStatus {
+        model.recipientFundingStatus(at: index)
+    }
+    private var isBlocked: Bool {
+        if case .blocked = status { return true }
+        return false
+    }
+    private var isOver: Bool { status == .overBalance }
 
     var body: some View {
         VStack(alignment: .leading, spacing: UniSpacing.xxs) {
-            Text(verbatim: recipientLabel)
-                .font(UniTypography.caption1)
-                .foregroundStyle(UniColors.Text.tertiary)
-                .lineLimit(1)
-                .truncationMode(.middle)
-                .environment(\.layoutDirection, .leftToRight)
+            // FIX 2 — the FULL recipient address, LTR-locked + monospaced
+            // (Rule #11). When the recipient has a name, show "i. Name" then
+            // the full address beneath in a quiet mono line so the user can
+            // always read exactly where the funds go.
+            recipientHeader
 
             HStack(alignment: .firstTextBaseline, spacing: UniSpacing.xs) {
-                // Constrained row context: the amount field shrinks to fit
-                // rather than pushing the ticker / fiat value off the row
-                // (the no-overflow safety net, Rule #2 honesty — the value
-                // stays visible, never clipped).
+                // Fiat entry shows the currency symbol as a leading flank;
+                // crypto entry shows the asset ticker as a trailing flank
+                // (FIX 1). The amount field shrinks to fit rather than
+                // pushing the flank / conversion off the row (no-overflow).
+                if model.entryUnit == .fiat {
+                    Text(verbatim: currencySymbol)
+                        .font(UniTypography.callout)
+                        .foregroundStyle(amountColor)
+                        .lineLimit(1)
+                }
                 TextField("0", text: $entry.amountText)
                     .font(UniTypography.title3.monospacedDigit())
-                    .foregroundStyle(UniColors.Text.primary)
+                    .foregroundStyle(amountColor)
                     .keyboardType(.decimalPad)
                     .lineLimit(1)
                     .minimumScaleFactor(0.5)
                     .layoutPriority(1)
+                    .disabled(isBlocked)
+                    .animation(.snappy(duration: 0.2), value: amountColor)
                     .environment(\.layoutDirection, .leftToRight)
-                Text(verbatim: assetSymbol)
-                    .font(UniTypography.callout)
-                    .foregroundStyle(UniColors.Text.secondary)
-                    .lineLimit(1)
-                Spacer(minLength: UniSpacing.s)
-                if let f = fiat() {
-                    Text(verbatim: WalletFormatting.fiat(f, currencyCode: currencyCode))
-                        .font(UniTypography.caption1.monospacedDigit())
-                        .foregroundStyle(UniColors.Text.tertiary)
+                if model.entryUnit == .crypto {
+                    Text(verbatim: model.assetSymbol)
+                        .font(UniTypography.callout)
+                        .foregroundStyle(isBlocked ? UniColors.Text.disabled : UniColors.Text.secondary)
                         .lineLimit(1)
-                        .minimumScaleFactor(0.6)
-                        .environment(\.layoutDirection, .leftToRight)
                 }
+                Spacer(minLength: UniSpacing.s)
+                conversionValue
+            }
+
+            // FIX 4 — blocked rows carry an inline, honest explanation of
+            // why they can't be paid; FIX 3 — over-balance rows carry a
+            // short warning so the user sees which row is the problem.
+            if case .blocked(let reason) = status {
+                rowNote(reason, color: UniColors.Text.tertiary, icon: "nosign")
+            } else if isOver {
+                rowNote(String(localized: "More than your remaining balance."),
+                        color: UniColors.Status.errorForeground,
+                        icon: "exclamationmark.triangle.fill")
             }
         }
         .padding(.horizontal, UniSpacing.m)
         .padding(.vertical, UniSpacing.s)
+        .opacity(isBlocked ? 0.55 : 1)
     }
 
-    private var recipientLabel: String {
-        if let name = entry.name { return "\(index). \(name)" }
-        return "\(index). \(SendRecipientView.shorten(entry.address))"
+    @ViewBuilder
+    private var recipientHeader: some View {
+        if let name = entry.name {
+            Text(verbatim: "\(index + 1). \(name)")
+                .font(UniTypography.caption1.weight(.medium))
+                .foregroundStyle(isBlocked ? UniColors.Text.disabled : UniColors.Text.secondary)
+                .lineLimit(1)
+                .truncationMode(.tail)
+            Text(verbatim: entry.address)
+                .font(UniTypography.caption2.monospaced())
+                .foregroundStyle(UniColors.Text.tertiary)
+                .lineLimit(2)
+                .truncationMode(.middle)
+                .environment(\.layoutDirection, .leftToRight)
+        } else {
+            HStack(alignment: .firstTextBaseline, spacing: UniSpacing.xxs) {
+                Text(verbatim: "\(index + 1).")
+                    .font(UniTypography.caption1.weight(.medium))
+                    .foregroundStyle(isBlocked ? UniColors.Text.disabled : UniColors.Text.secondary)
+                Text(verbatim: entry.address)
+                    .font(UniTypography.caption2.monospaced())
+                    .foregroundStyle(UniColors.Text.tertiary)
+                    .lineLimit(2)
+                    .truncationMode(.middle)
+                    .environment(\.layoutDirection, .leftToRight)
+            }
+        }
+    }
+
+    /// The inactive-unit conversion, mirroring the hero's conversion line:
+    /// in crypto mode show the fiat value; in fiat mode show the crypto
+    /// value (FIX 1). Hidden for blocked rows (nothing to convert).
+    @ViewBuilder
+    private var conversionValue: some View {
+        if !isBlocked {
+            let crypto = model.cryptoAmount(for: entry)
+            switch model.entryUnit {
+            case .crypto:
+                if let f = model.fiatValue(ofCrypto: crypto) {
+                    conversionText(WalletFormatting.fiat(f, currencyCode: model.currencyCode))
+                }
+            case .fiat:
+                conversionText("\(WalletFormatting.native(crypto, decimals: model.effectiveDecimals)) \(model.assetSymbol)")
+            }
+        }
+    }
+
+    private func conversionText(_ value: String) -> some View {
+        Text(verbatim: "≈ \(value)")
+            .font(UniTypography.caption1.monospacedDigit())
+            .foregroundStyle(UniColors.Text.tertiary)
+            .lineLimit(1)
+            .minimumScaleFactor(0.6)
+            .environment(\.layoutDirection, .leftToRight)
+    }
+
+    private func rowNote(_ text: String, color: Color, icon: String) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: UniSpacing.xxs) {
+            Image(systemName: icon)
+                .font(.system(size: 10, weight: .semibold))
+            Text(verbatim: text)
+                .font(UniTypography.caption2)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .foregroundStyle(color)
+    }
+
+    /// Red on over-balance (FIX 3), dimmed on blocked (FIX 4), primary
+    /// otherwise.
+    private var amountColor: Color {
+        if isBlocked { return UniColors.Text.disabled }
+        if isOver { return UniColors.Status.errorForeground }
+        return UniColors.Text.primary
+    }
+
+    private var currencySymbol: String {
+        let formatted = Decimal(0).formatted(.currency(code: model.currencyCode))
+        return formatted.filter {
+            !$0.isNumber && $0 != "." && $0 != "," && !$0.isWhitespace && $0 != "0"
+        }.ifEmpty(model.currencyCode.uppercased())
     }
 }

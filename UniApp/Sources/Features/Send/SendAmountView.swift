@@ -102,7 +102,16 @@ struct SendAmountView: View {
                     )
                 }
 
-                feeRow
+                // FIX 5 — single-recipient keeps the full fee card; multi
+                // mode drops the standalone card (the fee lives in the dots'
+                // "Edit network fee") and shows a compact, tappable fee line
+                // instead, so the user still SEES the fee, just not as the
+                // big card.
+                if model.isMultiRecipient {
+                    compactFeeSummary
+                } else {
+                    feeRow
+                }
 
                 if let reserve = reserveNote {
                     reserveBanner(reserve)
@@ -201,6 +210,59 @@ struct SendAmountView: View {
             }
         }
         .buttonStyle(.plain)
+    }
+
+    // MARK: - Compact fee summary (multi mode — FIX 5)
+
+    /// A quiet one-line fee summary shown in multi-recipient mode in place
+    /// of the big fee card. Tapping opens the same fee sheet the card's
+    /// chevron and the dots' "Edit network fee" open, so the fee stays
+    /// reachable and visible (honesty) without dominating the screen.
+    private var compactFeeSummary: some View {
+        Button { isShowingFeeSheet = true } label: {
+            HStack(spacing: UniSpacing.xxs) {
+                Image(systemName: "fuelpump.fill")
+                    .font(.system(size: 11, weight: .regular))
+                    .foregroundStyle(UniColors.Icon.tertiary)
+                Text("Network fee")
+                    .font(UniTypography.footnote)
+                    .foregroundStyle(UniColors.Text.tertiary)
+                Spacer(minLength: UniSpacing.s)
+                switch model.feeState {
+                case .idle, .loading:
+                    ProgressView().controlSize(.mini)
+                case .failed:
+                    Text("Tap to retry")
+                        .font(UniTypography.footnote)
+                        .foregroundStyle(UniColors.Status.warningForeground)
+                case .loaded:
+                    if let fee = model.resolvedFee {
+                        Text(verbatim: compactFeeText(fee))
+                            .font(UniTypography.footnote.monospacedDigit())
+                            .foregroundStyle(UniColors.Text.secondary)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.7)
+                            .environment(\.layoutDirection, .leftToRight)
+                    }
+                }
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(UniColors.Icon.tertiary)
+            }
+            .padding(.horizontal, UniSpacing.xs)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    /// "≈ 0.00012 BTC · $7.40" — the worst-case native fee plus its fiat
+    /// value when priced.
+    private func compactFeeText(_ fee: FeeChoice) -> String {
+        let native = "≈ \(WalletFormatting.native(fee.estimatedTotalNative, decimals: 8)) \(chain.ticker)"
+        if let fiat = model.feeFiat {
+            return "\(native) · \(WalletFormatting.fiat(fiat, currencyCode: currencyCode))"
+        }
+        return native
     }
 
     @ViewBuilder
@@ -343,8 +405,10 @@ struct SendAmountView: View {
                 }
             }
         } label: {
-            Image(systemName: "ellipsis.circle")
-                .font(.system(size: 17, weight: .regular))
+            // Three dots only — no ring (FIX 6). Weight/size balanced with
+            // the nav back chevron.
+            Image(systemName: "ellipsis")
+                .font(.system(size: 17, weight: .semibold))
         }
         .accessibilityLabel(Text("More options"))
     }

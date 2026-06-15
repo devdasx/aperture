@@ -294,13 +294,20 @@ final class SendComposeModel {
     }
 
     /// The resolved recipient+amount list (always in crypto display units).
+    /// Excludes BLOCKED recipients (FIX 4): a recipient there isn't enough
+    /// balance left to pay is intentionally unpaid — it contributes nothing
+    /// to the draft and nothing to the total. Over-balance recipients DO
+    /// contribute (so the validator's insufficient-funds gate still fires
+    /// and Review stays honest).
     var recipientAmounts: [SendRecipientAmount] {
-        amounts.map {
-            SendRecipientAmount(address: $0.address, amount: cryptoAmount(for: $0), name: $0.name)
+        let statuses = recipientFundingStatuses
+        return amounts.enumerated().compactMap { offset, entry in
+            if case .blocked = statuses[offset] { return nil }
+            return SendRecipientAmount(address: entry.address, amount: cryptoAmount(for: entry), name: entry.name)
         }
     }
 
-    /// Total crypto amount across all recipients.
+    /// Total crypto amount across all PAYABLE recipients (blocked excluded).
     var totalCrypto: Decimal {
         recipientAmounts.reduce(Decimal.zero) { $0 + $1.amount }
     }
@@ -337,6 +344,128 @@ final class SendComposeModel {
         )
     }
 
+    // MARK: - Per-recipient funding status (FIX 3 / FIX 4)
+
+    /// The funding verdict for one recipient row.
+    enum RecipientFundingStatus: Equatable {
+        /// Funded and within what's left.
+        case ok
+        /// Editable, but the typed amount exceeds what's left to allocate
+        /// (its amount renders red + a warning shows). Still contributes to
+        /// the draft so the validator's insufficient-funds gate fires.
+        case overBalance
+        /// Not payable: too little balance remains to fund even the chain's
+        /// minimum output. The row is dimmed + non-editable, with `reason`
+        /// explaining why. Excluded from the total and the draft.
+        case blocked(reason: String)
+    }
+
+    /// The chain's minimum payable output in display units. UTXO chains use
+    /// the real per-output dust floor (BTC ≈546/294, DOGE hard dust) from
+    /// the data layer (`SendAmountMath.dustMinimum`). Account-model chains
+    /// have no protocol dust, so any positive amount above zero is payable
+    /// — we treat "nothing left at all" as the block condition there.
+    var minimumOutput: Decimal {
+        SendAmountMath.dustMinimum(chain: chain)
+    }
+
+    /// The native balance available for allocation across recipients =
+    /// spendable (already net of standing reserves) − worst-case fee. For a
+    /// token send the fee is paid in native, so the full token balance is
+    /// allocatable (the native-fee shortfall is the validator's job).
+    var allocatableTotal: Decimal {
+        if isToken { return max(tokenBalance ?? 0, 0) }
+        let fee = resolvedFee?.worstCaseTotalNative ?? 0
+        return max(spendableNative - fee, 0)
+    }
+
+    /// The cascade verdict for EVERY recipient, computed in ONE forward
+    /// linear pass (Rule #28). Allocates in row order with a running
+    /// accumulator: available for recipient `i` =
+    /// `allocatableTotal − Σ(crypto of earlier, NON-blocked recipients)`.
+    ///
+    /// - Below the chain's minimum output (or nothing left) → `.blocked`
+    ///   with an honest reason; a blocked row consumes nothing.
+    /// - Typed amount exceeds the running available → `.overBalance` (red +
+    ///   warning); it still consumes + contributes so the validator's
+    ///   insufficient-funds gate fires and Review stays honest.
+    /// - Else `.ok`.
+    ///
+    /// Single-recipient sends never block (no cascade). This is the single
+    /// source of truth all consumers read (the old per-index recursive
+    /// method was Θ(2ⁿ) — this is Θ(n), one pass over `Decimal` arithmetic).
+    var recipientFundingStatuses: [RecipientFundingStatus] {
+        guard resolvedFee != nil else {
+            // No fee yet → can't honestly judge funding; calm `.ok` until
+            // the quote lands.
+            return Array(repeating: .ok, count: amounts.count)
+        }
+        let floor = max(minimumOutput, 0)
+        let total = allocatableTotal
+        var consumed: Decimal = .zero
+        var result: [RecipientFundingStatus] = []
+        result.reserveCapacity(amounts.count)
+        for index in amounts.indices {
+            let runningAvailable = total - consumed
+            if isMultiRecipient {
+                if runningAvailable <= 0 {
+                    result.append(.blocked(reason: blockReason(.exhausted, index: index)))
+                    continue // blocked rows consume nothing
+                }
+                if runningAvailable < floor {
+                    result.append(.blocked(reason: blockReason(.belowMinimum, index: index)))
+                    continue
+                }
+            }
+            let typed = cryptoAmount(for: amounts[index])
+            result.append(typed > runningAvailable ? .overBalance : .ok)
+            consumed += typed // both .ok and .overBalance consume
+        }
+        return result
+    }
+
+    /// The cascade verdict for one row — indexes the single-pass array.
+    func recipientFundingStatus(at index: Int) -> RecipientFundingStatus {
+        let statuses = recipientFundingStatuses
+        return statuses.indices.contains(index) ? statuses[index] : .ok
+    }
+
+    private enum BlockKind { case exhausted, belowMinimum }
+
+    private func blockReason(_ kind: BlockKind, index: Int) -> String {
+        switch kind {
+        case .exhausted:
+            return String(localized: "The earlier recipients use your whole balance — nothing is left for this one.")
+        case .belowMinimum:
+            let floor = "\(Self.plainString(minimumOutput, decimals: effectiveDecimals)) \(assetSymbol)"
+            return String(localized: "Less than the network minimum (\(floor)) remains, so this recipient can't be paid.")
+        }
+    }
+
+    /// Whether ANY recipient row is over its running available (drives the
+    /// single/multi over-balance red treatment + warning).
+    var hasOverBalanceRecipient: Bool {
+        recipientFundingStatuses.contains(.overBalance)
+    }
+
+    /// Single-recipient over-balance (FIX 3): the typed amount exceeds what
+    /// can be sent. Drives the hero amount's red color.
+    var isOverBalance: Bool {
+        recipientFundingStatuses.first == .overBalance
+    }
+
+    /// A recipient with a POSITIVE typed amount that resolved to `.blocked`
+    /// — the earlier rows consume the balance so this one can't be paid.
+    /// Excluding it from the draft silently would drop a typed amount, so
+    /// this hard-gates Review with an honest reason (Rule #16).
+    var hasBlockedFundedRecipient: Bool {
+        let statuses = recipientFundingStatuses
+        return amounts.indices.contains { i in
+            if case .blocked = statuses[i] { return cryptoAmount(for: amounts[i]) > 0 }
+            return false
+        }
+    }
+
     // MARK: - Validation
 
     var validationErrors: [SendValidationError] {
@@ -358,7 +487,11 @@ final class SendComposeModel {
             recipientRequiresMemo: recipientRequiresMemo,
             recipientIsNew: recipientNeedsActivation
         )
-        return SendDraftValidator().validate(inputs)
+        var errors = SendDraftValidator().validate(inputs)
+        // A blocked row that still holds a positive amount would be dropped
+        // from the draft silently — hard-gate Review instead (Rule #16).
+        if hasBlockedFundedRecipient { errors.append(.recipientUnfunded) }
+        return errors
     }
 
     /// The single blocking reason to surface beneath the CTA (the first
@@ -429,30 +562,30 @@ final class SendComposeModel {
         }
     }
 
-    /// Toggle crypto⇄fiat, converting the typed value so the displayed
-    /// amount represents the same money in the new unit.
+    /// Toggle crypto⇄fiat, converting EVERY recipient's typed value so each
+    /// displayed amount represents the same money in the new unit (FIX 1 —
+    /// multi-aware). Capturing each row's crypto value BEFORE flipping the
+    /// unit is essential: `cryptoAmount(for:)` reads `entryUnit`, so the
+    /// conversions must be resolved against the OLD unit first, then written
+    /// back as the NEW unit's text. `isMaxSend` is preserved (the raw
+    /// writer doesn't clear it).
     func toggleEntryUnit() {
-        guard assetUnitPrice != nil else { return }
-        let crypto = cryptoAmount(for: amounts.first ?? AmountEntry(address: "", name: nil))
+        guard let price = assetUnitPrice, price > 0 else { return }
+        // Resolve each row's crypto value under the CURRENT unit first.
+        let cryptoValues = amounts.map { cryptoAmount(for: $0) }
         switch entryUnit {
         case .crypto:
             entryUnit = .fiat
-            if let fiat = fiatValue(ofCrypto: crypto), crypto > 0 {
-                primaryAmountTextRaw = Self.plainString(fiat, decimals: 2)
+            for i in amounts.indices where cryptoValues[i] > 0 {
+                let fiat = cryptoValues[i] * price
+                amounts[i].amountText = Self.plainString(fiat, decimals: 2)
             }
         case .fiat:
             entryUnit = .crypto
-            if crypto > 0 {
-                primaryAmountTextRaw = Self.plainString(crypto, decimals: effectiveDecimals)
+            for i in amounts.indices where cryptoValues[i] > 0 {
+                amounts[i].amountText = Self.plainString(cryptoValues[i], decimals: effectiveDecimals)
             }
         }
-    }
-
-    /// Like `primaryAmountText` but WITHOUT clearing `isMaxSend` (used by
-    /// the unit toggle, which preserves the max intent).
-    private var primaryAmountTextRaw: String {
-        get { amounts.first?.amountText ?? "" }
-        set { if !amounts.isEmpty { amounts[0].amountText = newValue } }
     }
 
     /// Plain decimal string (no grouping, trimmed trailing zeros) for
