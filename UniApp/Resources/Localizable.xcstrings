@@ -311344,6 +311344,204 @@
           }
         }
       }
+    },
+    "Approve": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Approve"
+          }
+        }
+      }
+    },
+    "Broadcasting to \\(chainName)": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Broadcasting to \\(chainName)"
+          }
+        }
+      }
+    },
+    "Checkpoint": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Checkpoint"
+          }
+        }
+      }
+    },
+    "Confirming…": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Confirming…"
+          }
+        }
+      }
+    },
+    "Couldn\\u{2019}t read that file.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Couldn\\u{2019}t read that file."
+          }
+        }
+      }
+    },
+    "File too large \\u{2014} max 50 KB.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "File too large \\u{2014} max 50 KB."
+          }
+        }
+      }
+    },
+    "Its addresses on \\(networkCount) networks": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Its addresses on \\(networkCount) networks"
+          }
+        }
+      }
+    },
+    "Letting the router move your \\(fromSymbol)": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Letting the router move your \\(fromSymbol)"
+          }
+        }
+      }
+    },
+    "On \\(chain.displayName)": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "On \\(chain.displayName)"
+          }
+        }
+      }
+    },
+    "Signing on your iPhone": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Signing on your iPhone"
+          }
+        }
+      }
+    },
+    "Submit": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Submit"
+          }
+        }
+      }
+    },
+    "Submitted": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Submitted"
+          }
+        }
+      }
+    },
+    "Submitted to the \\(executed.chain.displayName) network. Confirming may take a moment — check the explorer for the final result.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Submitted to the \\(executed.chain.displayName) network. Confirming may take a moment — check the explorer for the final result."
+          }
+        }
+      }
+    },
+    "The transaction was submitted but reverted on-chain. Nothing was swapped — your funds didn't move.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The transaction was submitted but reverted on-chain. Nothing was swapped — your funds didn't move."
+          }
+        }
+      }
+    },
+    "This isn\\u{2019}t a valid SVG.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This isn\\u{2019}t a valid SVG."
+          }
+        }
+      }
+    },
+    "\\(chain.ticker) activity": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "\\(chain.ticker) activity"
+          }
+        }
+      }
+    },
+    "\\(identity.symbol) activity": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "\\(identity.symbol) activity"
+          }
+        }
+      }
+    },
+    "this hour": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "this hour"
+          }
+        }
+      }
     }
   },
   "version": "1.0"
