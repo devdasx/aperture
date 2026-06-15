@@ -78,7 +78,15 @@ struct SwapView: View {
                         currencyCode: currencyCode,
                         walletId: activeWallet?.id ?? UUID(),
                         walletHasPassphrase: activeWallet?.hasPassphrase ?? false,
-                        onClose: { dismiss() }
+                        // "Done" / "Close" returns to the swap compose by
+                        // clearing the nav path — which works in BOTH
+                        // contexts. In the Swap TAB there is no sheet to
+                        // dismiss (a tab root), so `dismiss()` no-op'd and
+                        // the button did nothing; popping the path lands the
+                        // user back on compose. In the wallet-home SHEET the
+                        // same pop returns to compose-inside-the-sheet, and
+                        // the sheet's own leading "Close" still dismisses it.
+                        onClose: { navigationPath = NavigationPath() }
                     )
                 }
             }

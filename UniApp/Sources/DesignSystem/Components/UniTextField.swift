@@ -173,6 +173,18 @@ struct UniTextField: View {
     var focusBinding: FocusState<UUID?>.Binding? = nil
     var focusValue: UUID? = nil
 
+    /// Optional BOOLEAN focus passthrough so a parent can both observe and
+    /// drive the field's focus with a simple `@FocusState<Bool>`. Used by
+    /// numeric (`.decimalPad`) sites that need to attach the
+    /// `.numericDoneToolbar(_:)` accessory — the decimal pad has no Return
+    /// key, so the parent owns a `Bool` focus state, binds it here, and the
+    /// toolbar's Done button flips it false to dismiss. Independent of the
+    /// private `isFieldFocused` and the optional `focusBinding<UUID?>`;
+    /// SwiftUI permits multiple `.focused` modifiers tracking distinct
+    /// states against the same first responder. Nil for every existing call
+    /// site, so they're untouched.
+    var boolFocusBinding: FocusState<Bool>.Binding? = nil
+
     @State private var isRevealed: Bool = false
     @FocusState private var isFieldFocused: Bool
     @Environment(\.layoutDirection) private var ambientDirection
@@ -191,6 +203,7 @@ struct UniTextField: View {
             inputControl
                 .focused($isFieldFocused)
                 .modifier(ExternalFocusModifier(binding: focusBinding, value: focusValue))
+                .modifier(ExternalBoolFocusModifier(binding: boolFocusBinding))
                 .textInputAutocapitalization(autocapitalization)
                 .autocorrectionDisabled(disablesAutocorrection)
                 .keyboardType(keyboardType)
@@ -353,6 +366,22 @@ private struct ExternalFocusModifier: ViewModifier {
     }
 }
 
+/// Applies the OPTIONAL external `.focused(_:)` Bool binding only when a
+/// parent supplied one — used by `.decimalPad` numeric sites that drive a
+/// `@FocusState<Bool>` to attach `.numericDoneToolbar(_:)`. Additive and
+/// independent of the always-applied private `.focused($isFieldFocused)`.
+private struct ExternalBoolFocusModifier: ViewModifier {
+    let binding: FocusState<Bool>.Binding?
+
+    func body(content: Content) -> some View {
+        if let binding {
+            content.focused(binding)
+        } else {
+            content
+        }
+    }
+}
+
 private struct LineLimitModifier: ViewModifier {
     let limit: Int?
     let reservesSpace: Bool
@@ -362,6 +391,38 @@ private struct LineLimitModifier: ViewModifier {
             content.lineLimit(limit, reservesSpace: reservesSpace)
         } else {
             content
+        }
+    }
+}
+
+// MARK: - Numeric keyboard "Done" toolbar
+
+/// The standard native dismiss affordance for `.decimalPad` / `.numberPad`
+/// keyboards, which carry no Return key. Adds a keyboard accessory bar with
+/// a trailing **Done** button that resigns the field's focus.
+///
+/// **Rule #3 — native-only.** This is the system `ToolbarItemGroup(placement:
+/// .keyboard)` accessory, the canonical iOS pattern for dismissing a
+/// number-pad. It is the single shared home so every decimal field (Swap
+/// amount, custom slippage, Send hero + per-recipient) gets the identical
+/// affordance rather than each re-rolling its own bar.
+///
+/// **Usage.** Apply to the view that owns the `@FocusState` driving the
+/// field, passing the same binding the field's `.focused(_:)` uses:
+/// ```swift
+/// SomeNumericField(text: $text, focused: $amountFocused)
+///     .numericDoneToolbar($amountFocused)
+/// ```
+/// The bar is only visible while the bound field holds focus — iOS shows the
+/// `.keyboard` toolbar with the keyboard and hides it on dismissal.
+extension View {
+    func numericDoneToolbar(_ focus: FocusState<Bool>.Binding) -> some View {
+        toolbar {
+            ToolbarItemGroup(placement: .keyboard) {
+                Spacer()
+                Button("Done") { focus.wrappedValue = false }
+                    .fontWeight(.semibold)
+            }
         }
     }
 }

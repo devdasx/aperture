@@ -22,13 +22,17 @@ import UniformTypeIdentifiers
 /// only for real status; red is reserved for a genuinely failed tx, never
 /// decoration.
 ///
-/// **Composition (Rules #2/#3/#4/#7/#19).** A `ScrollView` of opaque
-/// `UniCard` sections on the grouped page (content cards are opaque; no
-/// card-on-card). Copy affordances mirror the receive-row pattern (inline
-/// "Copied" tick + `.uniHaptic(.success)`). Long blocks (hex / input data /
-/// logs / instructions) live behind native `DisclosureGroup`s so the screen
-/// stays calm by default. Hashes / addresses / hex are LTR-locked (Rule #11)
-/// and monospaced. SF Symbols only; every color is a `UniColors` role.
+/// **Composition (Rules #2/#3/#4/#7/#19).** A centered status hero (coin
+/// mark → signed amount → fiat → status badge) ABOVE a native
+/// inset-grouped `List` of grouped sections (Rule #3 — system List is the
+/// on-system content pattern; content rows are opaque, B.3). Copy
+/// affordances mirror the receive-row pattern (inline "Copied" tick +
+/// `.uniHaptic(.success)`). Long blocks (hex / input data / logs /
+/// instructions) live behind native `DisclosureGroup`s so the screen stays
+/// calm by default. The fiat line under the amount is resolved off-main
+/// (Rule #28) and omitted honestly when no price is available (Rule #16).
+/// Hashes / addresses / hex are LTR-locked (Rule #11) and monospaced. SF
+/// Symbols + Trust Wallet coin marks; every color is a `UniColors` role.
 struct TransactionDetailView: View {
     let transactionId: UUID
     @Query private var matches: [TransactionRecord]
@@ -48,6 +52,17 @@ struct TransactionDetailView: View {
     /// One timestamp for the whole screen — every copy affordance writes it.
     @State private var lastCopiedAt: Date?
 
+    /// The user's display currency — drives the hero's fiat conversion.
+    @AppStorage(CurrencyPreference.storageKey)
+    private var currencyCode: String = CurrencyPreference.defaultCode
+
+    /// The fetched fiat value of this transaction's amount, resolved
+    /// off-main (Rule #28) from the unit price × amount. `nil` until it
+    /// lands — and stays `nil` honestly (Rule #16) when no price is
+    /// available, so the hero omits the "≈ <fiat>" line rather than
+    /// fabricating a value.
+    @State private var fiatValue: Decimal?
+
     init(transactionId: UUID) {
         self.transactionId = transactionId
         _matches = Query(
@@ -57,19 +72,21 @@ struct TransactionDetailView: View {
     }
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: UniSpacing.l) {
-                if let tx = matches.first {
-                    summary(tx)
-                    loadingOrFailureBanner
-                    commonCard(tx)
-                    payloadSections
-                } else {
-                    missing
+        Group {
+            if let tx = matches.first {
+                // The centered status hero sits ABOVE a native inset-grouped
+                // List (the Settings.app register), giving the receipt a
+                // true on-system surface (Rule #3 — system List). The hero
+                // is opaque content; no glass on long-form content (B.3).
+                VStack(spacing: 0) {
+                    hero(tx)
+                        .padding(.horizontal, UniSpacing.l)
+                        .padding(.top, UniSpacing.l)
+                    detailList(tx)
                 }
+            } else {
+                missing
             }
-            .padding(UniSpacing.l)
-            .frame(maxWidth: .infinity, alignment: .leading)
         }
         .background(UniColors.Background.primary.ignoresSafeArea())
         .navigationTitle("Transaction")
@@ -79,12 +96,47 @@ struct TransactionDetailView: View {
         .task(id: transactionId) {
             await loadDetail()
         }
+        // Resolve the hero's fiat conversion off-main (Rule #28), re-running
+        // when the tx or the display currency changes (Rule #25 — live).
+        .task(id: fiatKey) {
+            await loadFiat()
+        }
     }
 
-    // MARK: - Stage 1 — summary (instant first paint, stored record)
+    /// The native grouped-list register — every detail section, scrolling
+    /// under the nav bar. Content cards are opaque (B.3); the List itself
+    /// owns the grouped background.
+    private func detailList(_ tx: TransactionRecord) -> some View {
+        List {
+            loadingOrFailureSection
+            commonSection(tx)
+            payloadSections
+        }
+        .listStyle(.insetGrouped)
+        .scrollContentBackground(.hidden)
+        .background(UniColors.Background.primary)
+        .frame(maxWidth: .infinity)
+    }
 
-    private func summary(_ tx: TransactionRecord) -> some View {
-        VStack(alignment: .leading, spacing: UniSpacing.s) {
+    // MARK: - Stage 1 — centered status hero (instant first paint)
+
+    /// The centered hero: coin mark → signed amount (centered, large) →
+    /// status badge + direction eyebrow → the fiat equivalent. The fiat
+    /// line is omitted honestly when no price resolved (Rule #16).
+    private func hero(_ tx: TransactionRecord) -> some View {
+        VStack(spacing: UniSpacing.xs) {
+            // Show the coin mark only when the chain resolves — never a
+            // misleading default mark for an unresolvable chain (Rule #16).
+            if let chain = resolvedChain {
+                CoinMark(
+                    chain: chain,
+                    tokenSymbol: tx.tokenSymbol,
+                    contract: tx.tokenContract
+                )
+                .frame(width: 56, height: 56)
+                .padding(.bottom, UniSpacing.xxs)
+            }
+
             Text(directionLabel(tx))
                 .font(UniTypography.footnote)
                 .foregroundStyle(UniColors.Text.tertiary)
@@ -96,16 +148,22 @@ struct TransactionDetailView: View {
                 .foregroundStyle(amountTint(tx))
                 .lineLimit(1)
                 .minimumScaleFactor(0.5)
+                .multilineTextAlignment(.center)
                 .environment(\.layoutDirection, .leftToRight)
 
-            HStack(spacing: UniSpacing.s) {
-                statusBadge(statusForDisplay(tx))
-                if let chain = resolvedChain {
-                    UniFootnote(text: LocalizedStringKey(chain.displayName))
-                }
+            if let fiatValue {
+                Text(verbatim: "≈ \(WalletFormatting.fiat(fiatValue, currencyCode: currencyCode))")
+                    .font(UniTypography.callout.monospacedDigit())
+                    .foregroundStyle(UniColors.Text.secondary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.5)
+                    .environment(\.layoutDirection, .leftToRight)
             }
+
+            statusBadge(statusForDisplay(tx))
+                .padding(.top, UniSpacing.xxs)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(maxWidth: .infinity)
     }
 
     @ViewBuilder
@@ -121,35 +179,39 @@ struct TransactionDetailView: View {
         }
     }
 
-    // MARK: - Stage 2 — loading / failure banner
+    // MARK: - Stage 2 — loading / failure banner (list section)
 
     @ViewBuilder
-    private var loadingOrFailureBanner: some View {
+    private var loadingOrFailureSection: some View {
         if isLoading {
-            HStack(spacing: UniSpacing.s) {
-                ProgressView()
-                    .controlSize(.small)
-                    .tint(UniColors.Icon.secondary)
-                UniFootnote(text: "Loading details…", color: UniColors.Text.secondary)
+            Section {
+                HStack(spacing: UniSpacing.s) {
+                    ProgressView()
+                        .controlSize(.small)
+                        .tint(UniColors.Icon.secondary)
+                    UniFootnote(text: "Loading details…", color: UniColors.Text.secondary)
+                }
+                .listRowBackground(UniColors.Background.secondary)
             }
-            .transition(.opacity)
         } else if didAttempt, detail == nil {
-            HStack(alignment: .top, spacing: UniSpacing.s) {
-                Image(systemName: "wifi.exclamationmark")
-                    .font(.system(size: 16, weight: .regular))
-                    .foregroundStyle(UniColors.Icon.tertiary)
-                UniFootnote(
-                    text: "Couldn't load the full details right now. The summary above is from your device.",
-                    color: UniColors.Text.secondary
-                )
+            Section {
+                HStack(alignment: .top, spacing: UniSpacing.s) {
+                    Image(systemName: "wifi.exclamationmark")
+                        .font(.system(size: 16, weight: .regular))
+                        .foregroundStyle(UniColors.Icon.tertiary)
+                    UniFootnote(
+                        text: "Couldn't load the full details right now. The summary above is from your device.",
+                        color: UniColors.Text.secondary
+                    )
+                }
+                .listRowBackground(UniColors.Background.secondary)
             }
-            .transition(.opacity)
         }
     }
 
-    // MARK: - Common receipt card (every chain)
+    // MARK: - Common receipt section (every chain)
 
-    private func commonCard(_ tx: TransactionRecord) -> some View {
+    private func commonSection(_ tx: TransactionRecord) -> some View {
         sectionCard(title: "Details") {
             // Status — prefer the live, authoritative status when fetched.
             keyValueRow(label: "Status", value: statusText(statusForDisplay(tx)))
@@ -590,14 +652,24 @@ struct TransactionDetailView: View {
 
     // MARK: - Reusable section / row primitives
 
-    /// An opaque content card with a leading section header (Rule #2 §B.3).
-    /// Optional trailing count chip (Inputs · 3).
+    /// A native inset-grouped `List` `Section` with a leading section header
+    /// (Rule #3 — system List; Rule #2 §B.3 — opaque content). Optional
+    /// trailing count chip (Inputs · 3) sits in the section header. The
+    /// section's rows are composed as one list cell so the existing
+    /// row + `divider` + `ForEach` content inside each section is preserved
+    /// verbatim — the surface is native, the content unchanged.
     private func sectionCard<C: View>(
         title: LocalizedStringKey,
         trailing: String? = nil,
         @ViewBuilder content: @escaping () -> C
     ) -> some View {
-        VStack(alignment: .leading, spacing: UniSpacing.s) {
+        Section {
+            VStack(alignment: .leading, spacing: UniSpacing.s) {
+                content()
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .listRowBackground(UniColors.Background.secondary)
+        } header: {
             HStack(alignment: .firstTextBaseline) {
                 Text(title)
                     .font(UniTypography.footnote)
@@ -611,15 +683,7 @@ struct TransactionDetailView: View {
                         .foregroundStyle(UniColors.Text.tertiary)
                 }
             }
-            .padding(.horizontal, UniSpacing.xxs)
-
-            UniCard {
-                VStack(alignment: .leading, spacing: UniSpacing.s) {
-                    content()
-                }
-            }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var divider: some View { UniDivider() }
@@ -851,6 +915,37 @@ struct TransactionDetailView: View {
             detail = fetched
             isLoading = false
             didAttempt = true
+        }
+    }
+
+    // MARK: - Fiat conversion (off-main, Rule #28; honest, Rule #16)
+
+    /// Re-fetch the fiat value when the tx OR the display currency changes
+    /// (Rule #25 — live re-denomination). Empty when there's no tx yet.
+    private var fiatKey: String {
+        guard let tx = matches.first else { return "none" }
+        return "\(tx.tokenSymbol)|\(tx.amountRaw)|\(currencyCode)"
+    }
+
+    /// Resolve the transaction amount's fiat value through the shared
+    /// pricing engine (unit price × amount), off the main thread. Leaves
+    /// `fiatValue` nil — and the hero's "≈ <fiat>" line omitted — when no
+    /// price resolves, never fabricating one (Rule #16).
+    private func loadFiat() async {
+        guard let tx = matches.first else { return }
+        let amount = Decimal(string: tx.amountRaw) ?? .zero
+        guard amount > 0 else { return }
+        let symbol = tx.tokenSymbol.uppercased()
+        let prices = await TokenPricingEngine.shared.unitPrices(
+            symbols: [symbol], currencyCode: currencyCode.uppercased()
+        )
+        guard !Task.isCancelled else { return }
+        if let unit = prices[symbol]?.amount, unit > 0 {
+            withAnimation(.easeInOut(duration: 0.2)) {
+                fiatValue = amount * unit
+            }
+        } else {
+            fiatValue = nil
         }
     }
 
