@@ -106,15 +106,21 @@ struct TransactionDetailView: View {
     private func detailList(_ tx: TransactionRecord) -> some View {
         List {
             heroSection(tx)
-            loadingOrFailureSection
+            failureSection
             commonSection(tx)
-            payloadSections
+            payloadSections(tx)
         }
         .listStyle(.insetGrouped)
         .scrollContentBackground(.hidden)
         .background(UniColors.Background.primary)
         .frame(maxWidth: .infinity)
     }
+
+    /// `true` while the off-main fetch is still in flight AND nothing has
+    /// landed yet. Drives the inline `.redacted` skeletons — the structure
+    /// is present from frame one, the placeholder shimmer is the loading
+    /// affordance (no separate "Loading details…" banner, no pop-in).
+    private var isSkeleton: Bool { detail == nil && isLoading }
 
     /// The centered status hero, folded into the List as its first row so it
     /// scrolls with the detail sections (one scroll surface). A cleared,
@@ -197,21 +203,17 @@ struct TransactionDetailView: View {
         }
     }
 
-    // MARK: - Stage 2 — loading / failure banner (list section)
+    // MARK: - Stage 2 — honest failure line (list section)
 
+    /// The honest failure line — shown ONLY after a fetch has completed and
+    /// returned nothing (`didAttempt && detail == nil`). While the fetch is
+    /// in flight the inline `.redacted` skeletons carry the loading state, so
+    /// there is no separate "Loading details…" banner to compete with them.
+    /// The stored summary + explorer link always survive either way (Rule
+    /// #16).
     @ViewBuilder
-    private var loadingOrFailureSection: some View {
-        if isLoading {
-            Section {
-                HStack(spacing: UniSpacing.s) {
-                    ProgressView()
-                        .controlSize(.small)
-                        .tint(UniColors.Icon.secondary)
-                    UniFootnote(text: "Loading details…", color: UniColors.Text.secondary)
-                }
-                .listRowBackground(UniColors.Background.secondary)
-            }
-        } else if didAttempt, detail == nil {
+    private var failureSection: some View {
+        if didAttempt, detail == nil {
             Section {
                 HStack(alignment: .top, spacing: UniSpacing.s) {
                     Image(systemName: "wifi.exclamationmark")
@@ -243,22 +245,39 @@ struct TransactionDetailView: View {
                 )
             }
 
+            // Confirmations is a genuinely fetch-only row — there is no
+            // stored value. Show a redacted placeholder while the fetch is
+            // in flight so the row's slot is present from frame one and the
+            // real count just replaces the shimmer (no pop-in); drop it
+            // honestly if the fetch returns without one.
             if let confirmations = detail?.confirmations {
                 divider
-                keyValueRow(
-                    label: "Confirmations",
-                    value: confirmations.formatted()
-                )
+                keyValueRow(label: "Confirmations", value: confirmations.formatted())
+            } else if isSkeleton {
+                divider
+                keyValueRow(label: "Confirmations", value: skeletonNumber)
+                    .redacted(reason: .placeholder)
             }
 
             if let block = detail?.blockNumber ?? tx.blockNumber {
                 divider
                 keyValueRow(label: blockLabel, value: block.formatted())
+            } else if isSkeleton {
+                divider
+                keyValueRow(label: blockLabel, value: skeletonNumber)
+                    .redacted(reason: .placeholder)
             }
 
+            // Network fee: show the stored fee instantly when present;
+            // otherwise hold the row's place with a redacted placeholder
+            // until the live fee lands.
             if let feeText = feeDisplay(tx) {
                 divider
                 keyValueRow(label: "Network fee", value: feeText, monospaced: true)
+            } else if isSkeleton {
+                divider
+                keyValueRow(label: "Network fee", value: skeletonFee, monospaced: true)
+                    .redacted(reason: .placeholder)
             }
 
             divider
@@ -296,16 +315,85 @@ struct TransactionDetailView: View {
 
     // MARK: - Stage 3 — chain-specific sections
 
+    /// The chain-specific sections. Once the fetch lands, the real payload
+    /// renders. While it's in flight (`isSkeleton`), the FULL section
+    /// scaffolding for the stored chain's family is rendered with
+    /// `.redacted(reason: .placeholder)` — so the complete screen layout is
+    /// present from frame one and the real values just replace the
+    /// placeholders in one smooth pass (no two-phase reveal, no layout jump).
     @ViewBuilder
-    private var payloadSections: some View {
+    private func payloadSections(_ tx: TransactionRecord) -> some View {
         switch detail?.payload {
         case .bitcoin(let btc):  bitcoinSections(btc)
         case .evm(let evm):      evmSections(evm)
         case .solana(let sol):   solanaSections(sol)
         case .generic(let rows): genericSection(rows)
-        case nil:                EmptyView()
+        case nil:
+            if isSkeleton {
+                skeletonSections
+            } else {
+                EmptyView()
+            }
         }
     }
+
+    // MARK: Skeleton scaffolding (in-place placeholders while fetching)
+
+    /// Picks which skeleton sections to show from the STORED chain's family
+    /// (already resolved via `resolvedChain`), so the structure the user is
+    /// about to see is present immediately. EVM → Transaction + Gas & fee;
+    /// Bitcoin family → Transaction + Inputs + Outputs; Solana → Transaction
+    /// + Balance changes; everything else (XRPL / TRON / TON / NEAR / Aptos /
+    /// Cosmos / Polkadot / Stellar / Sui) → a single generic "On-chain
+    /// detail" section. If the chain can't be resolved at all, the generic
+    /// scaffold is the safe minimum.
+    @ViewBuilder
+    private var skeletonSections: some View {
+        switch resolvedChain?.family {
+        case .evm:
+            skeletonSection(title: "Transaction", rowCount: 5)
+            skeletonSection(title: "Gas & fee", rowCount: 5, monospaced: true)
+        case .bitcoin:
+            skeletonSection(title: "Transaction", rowCount: 5, monospaced: true)
+            skeletonSection(title: "Inputs", rowCount: 2)
+            skeletonSection(title: "Outputs", rowCount: 2)
+        case .ed25519 where resolvedChain == .solana:
+            skeletonSection(title: "Transaction", rowCount: 4, monospaced: true)
+            skeletonSection(title: "Balance changes", rowCount: 2)
+        default:
+            skeletonSection(title: "On-chain detail", rowCount: 5)
+        }
+    }
+
+    /// One redacted section: a real `sectionCard` with `rowCount`
+    /// key/value rows of fixed-width dummy strings, blurred by the native
+    /// `.redacted(reason: .placeholder)` so the shimmer reads as an honest
+    /// placeholder — never a fabricated real value (Rule #16).
+    private func skeletonSection(
+        title: LocalizedStringKey,
+        rowCount: Int,
+        monospaced: Bool = false
+    ) -> some View {
+        sectionCard(title: title) {
+            ForEach(0..<rowCount, id: \.self) { index in
+                if index > 0 { divider }
+                keyValueRow(
+                    label: LocalizedStringKey(skeletonLabel),
+                    value: monospaced ? skeletonMono : skeletonValue,
+                    monospaced: monospaced
+                )
+            }
+        }
+        .redacted(reason: .placeholder)
+    }
+
+    // Fixed-width dummy strings — clearly placeholders under the native
+    // redaction blur; never read as real chain data (Rule #16).
+    private var skeletonLabel: String { "Placeholder" }
+    private var skeletonValue: String { "Placeholder value" }
+    private var skeletonMono: String { "0x00000000000000" }
+    private var skeletonNumber: String { "000000" }
+    private var skeletonFee: String { "0.00000000 —" }
 
     // MARK: Bitcoin
 
