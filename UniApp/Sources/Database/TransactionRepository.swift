@@ -109,13 +109,59 @@ actor TransactionRepository {
         let isEVM = SupportedChain(rawValue: address.chainRaw)?.family == .evm
         let normalizedContract = isEVM ? tokenContract?.lowercased() : tokenContract
 
+        // **Self-transfer reclassification (2026-06-16, Rule #24).** A
+        // genuine self-transfer is classified `.internal` for BOTH legs by
+        // the scanner (the spend AND the receive). But `directionRaw` is
+        // part of the leg identity (a swap is `.outgoing` in asset A +
+        // `.incoming` in asset B for the same hash) — so a row written by
+        // the PRE-2026-06-12 code as `.outgoing`/`.incoming` for a
+        // self-send has a DIFFERENT identity than the now-correct
+        // `.internal` event, and a naive upsert would insert a duplicate
+        // `.internal` row while the stale row lingered (exactly the
+        // user's BTC repro: one stored `.outgoing` leg + one `.internal`
+        // leg, same hash `d258f57fba…`). For a SINGLE asset at a SINGLE
+        // address in a SINGLE tx there is only ever ONE correct direction,
+        // so when the incoming classification is `.internal` we first
+        // relabel any same-asset, same-(hash,address) row that is NOT yet
+        // `.internal` — in place — instead of inserting a second row. This
+        // overwrites the stale `directionRaw` (the existing-record
+        // correction the user requires) and clears its counterparty.
+        if direction == .internal {
+            let internalRaw = TransactionDirection.internal.rawValue
+            let staleDescriptor = FetchDescriptor<TransactionRecord>(
+                predicate: #Predicate {
+                    $0.txHash == txHash
+                        && $0.addressId == addressId
+                        && $0.tokenContract == normalizedContract
+                        && $0.tokenSymbol == tokenSymbol
+                        && $0.directionRaw != internalRaw
+                }
+            )
+            for stale in try modelContext.fetch(staleDescriptor) {
+                // Relabel the stale leg fully to the now-correct
+                // self-transfer shape: direction, the corrected amount the
+                // scanner just computed (the stale `.outgoing` leg carried
+                // a different amount — the user saw −0.00145708 vs the
+                // correct 0.00145755), an empty counterparty, the
+                // self-transfer kind, and the fee. After this, the stale
+                // row IS the canonical `.internal` row; the exact-identity
+                // fetch below finds it and the dedupe guard removes any
+                // second one.
+                stale.directionRaw = internalRaw
+                stale.amountRaw = amountRaw
+                stale.counterparty = ""
+                stale.kindRaw = TransactionKind.selfTransfer.rawValue
+                stale.feeRaw = feeRaw
+            }
+        }
+
         // Predicate on the stored `addressId` primitive — the legacy
         // backfill above guarantees every reachable row has it set, so
         // no relationship-traversal fallback is needed. The full leg
         // identity (hash + address + asset + direction) keeps distinct
         // legs of one transaction as distinct rows.
         let directionValue = direction.rawValue
-        var txDescriptor = FetchDescriptor<TransactionRecord>(
+        let txDescriptor = FetchDescriptor<TransactionRecord>(
             predicate: #Predicate {
                 $0.txHash == txHash
                     && $0.addressId == addressId
@@ -124,8 +170,18 @@ actor TransactionRepository {
                     && $0.directionRaw == directionValue
             }
         )
-        txDescriptor.fetchLimit = 1
-        let existing = try modelContext.fetch(txDescriptor).first
+        // Fetch ALL matching legs (not just the first): the self-transfer
+        // relabel above can collapse two stale rows (a `.outgoing` + an
+        // `.incoming` of the same self-send) onto the same `.internal`
+        // identity. Keep the first as the canonical row; delete the rest
+        // so no duplicate `.internal` leg lingers (2026-06-16).
+        let matches = try modelContext.fetch(txDescriptor)
+        let existing = matches.first
+        if matches.count > 1 {
+            for duplicate in matches.dropFirst() {
+                modelContext.delete(duplicate)
+            }
+        }
 
         let resolvedKind = kind ?? TransactionKind.defaultKind(for: direction)
 
@@ -143,7 +199,15 @@ actor TransactionRepository {
                 && existing.blockNumber == blockNumber
                 && existing.feeRaw == feeRaw
                 && !kindWouldChange
-            if unchanged { return }
+            // Early-out only when this row is unchanged AND the
+            // self-transfer relabel/dedupe above didn't already dirty the
+            // context. Returning early after a relabel would drop those
+            // pending mutations on a `save: true` caller (2026-06-16).
+            if unchanged, !modelContext.hasChanges { return }
+            if unchanged, modelContext.hasChanges {
+                if save { try modelContext.save() }
+                return
+            }
             existing.statusRaw = status.rawValue
             existing.blockNumber = blockNumber
             existing.feeRaw = feeRaw

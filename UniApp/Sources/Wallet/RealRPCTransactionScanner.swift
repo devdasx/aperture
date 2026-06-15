@@ -56,7 +56,25 @@ struct RealRPCTransactionScanner: TransactionScanner {
         addresses: [SupportedChain: String],
         limit: Int
     ) async -> [TransactionEvent] {
-        await scan(addresses: addresses, limit: limit, customContractsByChain: [:])
+        await scan(
+            addresses: addresses,
+            limit: limit,
+            customContractsByChain: [:],
+            ownAddressesByChain: [:]
+        )
+    }
+
+    func scan(
+        addresses: [SupportedChain: String],
+        limit: Int,
+        customContractsByChain: [SupportedChain: [String]]
+    ) async -> [TransactionEvent] {
+        await scan(
+            addresses: addresses,
+            limit: limit,
+            customContractsByChain: customContractsByChain,
+            ownAddressesByChain: [:]
+        )
     }
 
     /// **Full-depth contract (2026-06-13).** The bulk scan is the
@@ -70,23 +88,40 @@ struct RealRPCTransactionScanner: TransactionScanner {
     /// is `max(limit, fullHistoryCap)`. `streamScan` (the
     /// test-mode live feed) keeps the caller's literal limit — a
     /// preview feed doesn't need a thousand rows.
+    /// **Self-transfer rule (2026-06-16, Rule #24).** `ownAddressesByChain`
+    /// is the wallet's FULL set of its own addresses per chain (every
+    /// derived / change / receive address on that chain). A transfer whose
+    /// COUNTERPARTY is one of the wallet's own addresses is a self-transfer
+    /// → both legs are reclassified `.internal` here, at the single
+    /// per-chain chokepoint, regardless of which adapter produced the
+    /// event. This catches the multi-address case the per-address adapters
+    /// cannot see on their own (each adapter only knows the ONE address it
+    /// was asked to scan, so an A→B move between two of the wallet's own
+    /// addresses lands as `.outgoing` to B from A's scan and `.incoming`
+    /// from A in B's scan; the reclassification flips both to `.internal`).
+    /// A single-address self-send (input addr == output addr, the
+    /// 2026-06-13 BTC repro `d258f57fba…77cdee0e`) is already `.internal`
+    /// from the BTC adapter and passes through unchanged.
     func scan(
         addresses: [SupportedChain: String],
         limit: Int,
-        customContractsByChain: [SupportedChain: [String]]
+        customContractsByChain: [SupportedChain: [String]],
+        ownAddressesByChain: [SupportedChain: Set<String>]
     ) async -> [TransactionEvent] {
         let depth = max(limit, Self.fullHistoryCap)
         return await withTaskGroup(of: [TransactionEvent].self) { group in
             for (chain, address) in addresses {
                 let custom = customContractsByChain[chain] ?? []
+                let own = ownAddressesByChain[chain] ?? [address]
                 group.addTask { [client] in
-                    await Self.fetch(
+                    let events = await Self.fetch(
                         chain: chain,
                         address: address,
                         limit: depth,
                         client: client,
                         customContracts: custom
                     )
+                    return events.map { Self.reclassifySelfTransfer($0, ownAddresses: own) }
                 }
             }
             var events: [TransactionEvent] = []
@@ -96,6 +131,55 @@ struct RealRPCTransactionScanner: TransactionScanner {
             }
             return events
         }
+    }
+
+    // MARK: - Uniform self-transfer reclassification
+
+    /// Normalize an address for own-set membership. EVM / Bitcoin-family
+    /// addresses are case-insensitive at this comparison boundary
+    /// (checksum casing on EVM; the adapters already lowercased BTC), so
+    /// we fold to lowercase. Case-sensitive chains (Solana base58, XRPL,
+    /// Tron, Stellar, Cosmos bech32, Aptos/Sui/NEAR/TON) compare verbatim —
+    /// lowercasing them would never *create* a false positive (a lowercase
+    /// fold of two distinct base58 strings stays distinct in practice for
+    /// real wallet addresses), and it keeps one uniform rule. The own-set
+    /// is built with the same fold, so both sides match.
+    private static func normalizeForOwnSet(_ address: String) -> String {
+        address.lowercased()
+    }
+
+    /// Reclassify one event to `.internal` when its counterparty is one of
+    /// the wallet's own addresses. Idempotent and safe: an event already
+    /// `.internal` (single-address self-send) is returned unchanged; an
+    /// event whose counterparty is empty (no single counterparty — multi-
+    /// input BTC, contract call) or genuinely foreign is returned
+    /// unchanged. When reclassifying, the counterparty is cleared (an
+    /// `.internal` leg has no external counterparty, matching every
+    /// adapter's own `.internal` shape) but the amount + fee + status are
+    /// preserved exactly as the adapter computed them.
+    private static func reclassifySelfTransfer(
+        _ event: TransactionEvent,
+        ownAddresses: Set<String>
+    ) -> TransactionEvent {
+        guard event.direction != .internal else { return event }
+        let counterparty = event.counterparty
+        guard !counterparty.isEmpty else { return event }
+        let normalizedOwn = Set(ownAddresses.map(normalizeForOwnSet))
+        guard normalizedOwn.contains(normalizeForOwnSet(counterparty)) else { return event }
+        return TransactionEvent(
+            chain: event.chain,
+            address: event.address,
+            txHash: event.txHash,
+            direction: .internal,
+            amount: event.amount,
+            tokenSymbol: event.tokenSymbol,
+            tokenContract: event.tokenContract,
+            blockNumber: event.blockNumber,
+            occurredAt: event.occurredAt,
+            status: event.status,
+            counterparty: "",
+            fee: event.fee
+        )
     }
 
     // MARK: - Streaming
