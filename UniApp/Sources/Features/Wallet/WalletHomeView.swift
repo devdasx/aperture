@@ -189,6 +189,11 @@ struct WalletHomeView: View {
     /// lives here so the sheet survives Rule #12 §G direction rebuilds.
     @State private var isShowingSend: Bool = false
     @State private var sendPath: NavigationPath = NavigationPath()
+    /// Drives the Swap sheet (the compose + live-quote surface). Its own
+    /// NavigationPath lives here so the sheet survives Rule #12 §G
+    /// direction rebuilds, reset on dismiss.
+    @State private var isShowingSwap: Bool = false
+    @State private var swapPath: NavigationPath = NavigationPath()
     /// **Filter & Sort sheet (2026-06-09).** Drives the
     /// `.sheet(isPresented: $isShowingFilter)` block below. The sheet
     /// reads + writes preferences through `@AppStorage` against
@@ -572,7 +577,6 @@ struct WalletHomeView: View {
                 }
                 .navigationDestination(for: WalletHomeDestination.self) { destination in
                     switch destination {
-                    case .swap:                                 SwapPlaceholderView()
                     case .transaction(let id):                  TransactionDetailView(transactionId: id)
                     case .allSupported:                         AllSupportedAssetsView()
                     case .assetDetail(let identity):            AssetDetailView(identity: identity)
@@ -761,6 +765,19 @@ struct WalletHomeView: View {
         // sheet's own scope.
         .sheet(isPresented: $isShowingSend, onDismiss: { sendPath = NavigationPath() }) {
             SendView(navigationPath: $sendPath)
+                .id(sheetDirectionKey)
+                .uniAppEnvironment()
+                .presentationDetents([.large])
+                .presentationDragIndicator(.visible)
+                .presentationBackground(UniColors.Background.primary)
+        }
+        // Swap / Bridge — compose + live-quote sheet. Same `.large`-only
+        // detent + Rule #12 §G direction rebuild key + `.uniAppEnvironment()`
+        // as Send / Receive so theme + locale propagate into the sheet's
+        // own scope. Execution (sign + broadcast) is the next increment;
+        // the sheet's Review is an honest summary, not a fabricated swap.
+        .sheet(isPresented: $isShowingSwap, onDismiss: { swapPath = NavigationPath() }) {
+            SwapView(navigationPath: $swapPath)
                 .id(sheetDirectionKey)
                 .uniAppEnvironment()
                 .presentationDetents([.large])
@@ -1163,7 +1180,7 @@ struct WalletHomeView: View {
                 canSend: !isTestMode && activeWallet?.kind != .watchOnly,
                 onSend: { isShowingSend = true },
                 onReceive: { isShowingReceive = true },
-                onSwap: { navigationPath.append(WalletHomeDestination.swap) }
+                onSwap: { isShowingSwap = true }
             )
             .disabled(isTestMode)
             .listRowBackground(Color.clear)
@@ -3023,7 +3040,6 @@ enum CombinedHoldingRow: Identifiable {
 // MARK: - Destinations
 
 enum WalletHomeDestination: Hashable, Codable {
-    case swap
     case transaction(UUID)
     /// "All supported assets" destination — pushed when the user
     /// taps a "Show all" row in the Coins or Tokens section.
@@ -3074,7 +3090,7 @@ enum WalletHomeDestination: Hashable, Codable {
     /// app lands on home (or the asset the user was reading) instead.
     var isColdLaunchRestorable: Bool {
         switch self {
-        case .swap, .allActivity, .assetActivity:
+        case .allActivity, .assetActivity:
             return false
         case .transaction, .allSupported, .assetDetail, .assetNetworkDetail:
             return true
