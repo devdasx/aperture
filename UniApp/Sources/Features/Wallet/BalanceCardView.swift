@@ -140,38 +140,40 @@ struct BalanceCardView: View {
 
     private var boostContrast: Bool { legibilityWeight == .bold }
 
-    /// The chart-state sign — gain / loss / flat — from the selected
-    /// range's first-vs-last reconstructed point (handoff §State selection
-    /// logic). `balance === 0` is the Zero state (handled separately) and
-    /// never reaches here.
-    /// Gain / loss / flat — measured from the reconstructed range-START value
-    /// to the user's REAL current balance (`totalFiat`, the exact figure the
-    /// hero shows), NOT the reconstructed trailing point (which can drift from
-    /// the real balance when a chain's history is incomplete — the reason the
-    /// pill could read non-real before). Flat when there's no positive
-    /// baseline to compare against.
+    /// Gain / loss / flat — measured from the SAME reconstructed `points`
+    /// array the chart draws: `points.first` (the range-start value) vs
+    /// `points.last` (the trailing edge). **2026-06-16:** re-united with
+    /// the chart so the pill and the line cannot disagree — the change,
+    /// percent, and sign all read from `points`, the single transaction-
+    /// derived truth source. The reconstructor already anchors
+    /// `points.last` to the wallet's real current balance (the hero
+    /// figure), so the pill stays honest AND consistent with the curve.
+    /// Flat when there's no positive baseline to compare against.
     private var sign: UniColors.BalanceCard.Sign {
-        guard let first = points.first, first.fiat > 0 else { return .flat }
-        if totalFiat > first.fiat { return .up }
-        if totalFiat < first.fiat { return .down }
+        guard let first = points.first, let last = points.last,
+              first.fiat > 0 else { return .flat }
+        if last.fiat > first.fiat { return .up }
+        if last.fiat < first.fiat { return .down }
         return .flat
     }
 
-    /// The signed change over the selected range: the user's REAL current
-    /// balance − the reconstructed range-start value. `0` when there's no
-    /// positive baseline (nothing real to measure against).
+    /// The signed change over the selected range — `points.last −
+    /// points.first`, the same endpoints the chart draws. `0` when there's
+    /// no positive baseline (nothing real to measure against).
     private var change: Decimal {
-        guard let first = points.first, first.fiat > 0 else { return 0 }
-        return totalFiat - first.fiat
+        guard let first = points.first, let last = points.last,
+              first.fiat > 0 else { return 0 }
+        return last.fiat - first.fiat
     }
 
-    /// The percent change over the range — `(current − start) / start × 100`,
-    /// off the user's real current balance. `0` when the baseline isn't
-    /// positive (never a divide-by-zero or a fabricated percent).
+    /// The percent change over the range — `(last − first) / first × 100`,
+    /// off the chart's own endpoints. `0` when the baseline isn't positive
+    /// (never a divide-by-zero or a fabricated percent).
     private var changePercent: Double {
-        guard let first = points.first, first.fiat > 0 else { return 0 }
+        guard let first = points.first, let last = points.last,
+              first.fiat > 0 else { return 0 }
         let firstD = NSDecimalNumber(decimal: first.fiat).doubleValue
-        let lastD = NSDecimalNumber(decimal: totalFiat).doubleValue
+        let lastD = NSDecimalNumber(decimal: last.fiat).doubleValue
         guard firstD != 0 else { return 0 }
         return (lastD - firstD) / abs(firstD) * 100
     }
@@ -679,6 +681,7 @@ struct BalanceCardView: View {
         let now = Date()
         let span: TimeInterval
         switch range {
+        case .hour:  span = 3_600
         case .day:   span = 86_400
         case .week:  span = 86_400 * 7
         case .month: span = 86_400 * 30
@@ -699,13 +702,14 @@ struct BalanceCardView: View {
 /// fill + (light-mode) soft shadow; the rest render muted text. Ported to
 /// the handoff's exact track / pill geometry.
 ///
-/// **1H added** (the card handoff offers it where the prior wallet-home
-/// chart did not). The reconstructor's `BalanceHistoryRange` doesn't model
-/// a 1-hour window — wallet balance history is transaction-driven and
-/// rarely intraday — so 1H maps to the same `.day` reconstruction; it's
-/// kept in the selector for handoff fidelity and resolves to `.day`
-/// points. The selector persists the chosen *visual* tab; `.day` is what
-/// reconstructs.
+/// **1H is a REAL 1-hour window (2026-06-16).** Each tab is one
+/// `BalanceHistoryRange` case 1:1 — `.hour` reconstructs a true trailing
+/// 3600 s window (no longer folded to `.day`). The selected case persists
+/// across launches via the shared `walletHomeBalanceHistoryRange`
+/// `@AppStorage` key, so 1H survives relaunch like every other range. The
+/// common 1H case (no transactions in the last hour) draws an honest flat
+/// line at the current balance with 0% change — see the reconstructor's
+/// "zero in-window transactions" branch.
 ///
 /// **Rule #19 §C carve-out:** these are selection chips inside a picker,
 /// not CTAs — plain `Button` + `.buttonStyle(.plain)` is correct (a
@@ -714,73 +718,33 @@ private struct TimeRangeSelector: View {
     @Binding var selectedRaw: String
     let colorScheme: ColorScheme
 
-    /// The visual tabs, in order. Each maps to a `BalanceHistoryRange`.
-    private enum Tab: String, CaseIterable {
-        case hour, day, week, month, year, all
-
-        var label: String {
-            switch self {
-            case .hour:  return "1H"
-            case .day:   return "1D"
-            case .week:  return "1W"
-            case .month: return "1M"
-            case .year:  return "1Y"
-            case .all:   return "All"
-            }
-        }
-        /// The reconstruction range this tab drives. 1H folds to `.day`
-        /// (see the type doc).
-        var range: BalanceHistoryRange {
-            switch self {
-            case .hour, .day: return .day
-            case .week:       return .week
-            case .month:      return .month
-            case .year:       return .year
-            case .all:        return .all
-            }
-        }
+    /// The currently-selected range, read from the persisted raw value.
+    /// Each picker pill IS one `BalanceHistoryRange` case (1:1) — no
+    /// visual-vs-reconstruction split anymore, so the persisted value is
+    /// exactly what reconstructs and what the pill highlights.
+    private var activeRange: BalanceHistoryRange {
+        BalanceHistoryRange(rawValue: selectedRaw) ?? .all
     }
-
-    /// The currently-selected visual tab. The persisted value is the
-    /// reconstruction range; we map it back to the most specific tab
-    /// (`.day` → `1D`, never `1H` — `1H` only sticks for the session it's
-    /// tapped, then reads as `1D` on relaunch, an acceptable simplification
-    /// given the data isn't intraday).
-    private var selectedTab: Tab {
-        let range = BalanceHistoryRange(rawValue: selectedRaw) ?? .all
-        switch range {
-        case .day:   return .day
-        case .week:  return .week
-        case .month: return .month
-        case .year:  return .year
-        case .all:   return .all
-        }
-    }
-
-    @State private var sessionTab: Tab?
-
-    private var activeTab: Tab { sessionTab ?? selectedTab }
 
     var body: some View {
         HStack(spacing: 4) {
-            ForEach(Tab.allCases, id: \.self) { tab in
+            ForEach(BalanceHistoryRange.allCases, id: \.self) { range in
                 Button {
                     withAnimation(.snappy(duration: 0.2)) {
-                        sessionTab = tab
-                        selectedRaw = tab.range.rawValue
+                        selectedRaw = range.rawValue
                     }
                 } label: {
-                    Text(verbatim: tab.label)
+                    Text(verbatim: range.shortLabel)
                         .font(UniTypography.BalanceCard.segment)
                         .foregroundStyle(
-                            activeTab == tab
+                            activeRange == range
                                 ? UniColors.BalanceCard.segmentActiveText(colorScheme)
                                 : UniColors.BalanceCard.textMuted(colorScheme)
                         )
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 7)
                         .background {
-                            if activeTab == tab {
+                            if activeRange == range {
                                 RoundedRectangle(cornerRadius: UniRadius.segmentPill, style: .continuous)
                                     .fill(UniColors.BalanceCard.segmentActiveFill(colorScheme))
                                     .shadow(
@@ -793,8 +757,8 @@ private struct TimeRangeSelector: View {
                 }
                 .buttonStyle(.plain)
                 .frame(maxWidth: .infinity)
-                .accessibilityLabel(Text(verbatim: tab.label))
-                .accessibilityAddTraits(activeTab == tab ? [.isSelected] : [])
+                .accessibilityLabel(Text(verbatim: range.shortLabel))
+                .accessibilityAddTraits(activeRange == range ? [.isSelected] : [])
             }
         }
         .padding(4)
@@ -803,7 +767,7 @@ private struct TimeRangeSelector: View {
                 .fill(UniColors.BalanceCard.segmentTrack(colorScheme))
         )
         .environment(\.layoutDirection, .leftToRight) // 1H→All never mirrors
-        .uniHaptic(.selection, trigger: activeTab) // `select` on touch-up
+        .uniHaptic(.selection, trigger: activeRange) // `select` on touch-up
         .accessibilityElement(children: .contain)
         .accessibilityLabel(Text("Balance history range"))
     }
