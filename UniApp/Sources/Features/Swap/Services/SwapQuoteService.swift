@@ -100,6 +100,39 @@ actor SwapQuoteService {
         return fetched
     }
 
+    // MARK: - Search (provider fallback for tokens we don't curate)
+
+    /// Search the providers for a token NOT in Aperture's curated list,
+    /// across the given swappable `chains` in PARALLEL (Rule #28). EVM
+    /// chains → Li.Fi `GET /token` (one match each, by symbol or contract);
+    /// Solana → Jupiter `GET /tokens/v2/search` (verified-first). Returns
+    /// the flat union of matches — the picker folds them into `SwapAsset`
+    /// rows so provider hits render exactly like curated rows. Empty query
+    /// or no swappable chains → `[]`. Never throws (best-effort search).
+    func searchTokens(query: String, chains: [SupportedChain]) async -> [SwapToken] {
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return [] }
+        let swappable = chains.filter { SwapChainMap.isSwappable($0) }
+        guard !swappable.isEmpty else { return [] }
+
+        return await withTaskGroup(of: [SwapToken].self) { group in
+            for chain in swappable {
+                group.addTask { [lifi, jupiter] in
+                    if chain == .solana {
+                        return await jupiter.searchTokens(query: trimmed)
+                    }
+                    if let token = await lifi.searchToken(query: trimmed, on: chain) {
+                        return [token]
+                    }
+                    return []
+                }
+            }
+            var all: [SwapToken] = []
+            for await result in group { all.append(contentsOf: result) }
+            return all
+        }
+    }
+
     /// `true` when EVM/cross-chain quotes are available (Li.Fi key set).
     /// Solana→Solana (Jupiter) is always available regardless.
     nonisolated var isLiFiConfigured: Bool { Secrets.hasLifiKey }

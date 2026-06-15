@@ -108,6 +108,46 @@ actor LiFiClient {
         }
     }
 
+    // MARK: - Search (provider fallback for tokens not in our list)
+
+    /// Look a single token up on `chain` by symbol OR contract
+    /// (`GET /token?chain=<id>&token=<query>`). Returns the matched token
+    /// as a `SwapToken`, or `nil` when nothing matches (Li.Fi 404) or on
+    /// any error. Drives the picker's provider fallback so a user can find
+    /// an EVM token Aperture doesn't curate. Never throws.
+    func searchToken(query: String, on chain: SupportedChain) async -> SwapToken? {
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard Secrets.hasLifiKey, !trimmed.isEmpty,
+              let chainID = SwapChainMap.lifiChainID(for: chain),
+              let kind = SwapChainMap.kind(for: chain) else { return nil }
+
+        var components = URLComponents(string: "\(baseURL)/token")
+        components?.queryItems = [
+            URLQueryItem(name: "chain", value: String(chainID)),
+            URLQueryItem(name: "token", value: trimmed),
+        ]
+        guard let url = components?.url else { return nil }
+
+        do {
+            let info = try await http.getJSON(
+                LiFiQuoteDTO.TokenInfo.self,
+                url: url,
+                headers: ["x-lifi-api-key": Secrets.lifiAPIKey]
+            )
+            return SwapToken(
+                chain: chain,
+                kind: kind,
+                address: info.address,
+                symbol: info.symbol,
+                name: info.name ?? info.symbol,
+                decimals: info.decimals,
+                logoURI: info.logoURI
+            )
+        } catch {
+            return nil
+        }
+    }
+
     // MARK: - Quote builder
 
     private func buildQuote(

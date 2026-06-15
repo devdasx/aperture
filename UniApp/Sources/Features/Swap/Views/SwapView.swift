@@ -12,10 +12,11 @@ import SwiftData
 /// (sign + broadcast) is the NEXT increment — Review is an honest summary,
 /// never a fabricated swap (mirrors how Send was staged before signing).
 ///
-/// **Defaults to what the user can actually swap.** The FROM side seeds to
-/// the wallet's highest-value swappable holding; the TO side opens empty,
-/// inviting the pick. If the wallet has no swappable holdings, FROM falls
-/// back to the native coin of the first swappable chain it has an address on.
+/// **Defaults to a sensible FROM.** The FROM side seeds to the native coin
+/// of the swappable chain the wallet holds the most native value on (falling
+/// back to the first swappable chain it has an address on); the TO side opens
+/// empty, inviting the pick. The user can re-pick any held token from the
+/// asset-first picker.
 struct SwapView: View {
     @Query(sort: \WalletRecord.sortOrder) private var allWallets: [WalletRecord]
     @AppStorage("activeWalletId") private var activeWalletIdRaw: String = ""
@@ -97,7 +98,6 @@ struct SwapView: View {
         .sheet(item: $activePicker) { side in
             SwapTokenPickerSheet(
                 side: side,
-                swappableChains: swappableChains,
                 holdings: holdings,
                 onPick: { token in applyPick(side: side, token: token) }
             )
@@ -192,11 +192,13 @@ struct SwapView: View {
         return total
     }
 
-    // MARK: - Default FROM token (highest-value swappable holding)
+    // MARK: - Default FROM token (native coin of the top-value swappable chain)
 
-    /// The wallet's highest-value swappable holding, as a `SwapToken`. Falls
-    /// back to the native coin of the first swappable chain the wallet has an
-    /// address on. `nil` when the wallet can't swap anything.
+    /// The native coin of the swappable chain the wallet holds the most
+    /// native value on, as a `SwapToken`. Falls back to the native coin of
+    /// the first swappable chain the wallet has an address on. `nil` when the
+    /// wallet can't swap anything. (A held *token* isn't auto-seeded — the
+    /// user picks it from the asset-first picker; this is the calm default.)
     private var defaultFromToken: SwapToken? {
         // Prefer a held swappable asset by fiat value, native first as the
         // common case. We only have symbol/chain in holdings, so we map the

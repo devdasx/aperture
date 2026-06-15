@@ -39,13 +39,16 @@ struct JupiterQuoteDTO: Codable, Sendable {
 
 // MARK: - Jupiter token (v2 tag list)
 
-/// One token from Jupiter's Token API v2 (`/tokens/v2/tag?query=verified`).
-/// Live-verified 2026-06-15 — fields `id` (the mint), `symbol`, `name`,
-/// `decimals`, `icon`.
+/// One token from Jupiter's Token API v2 (`/tokens/v2/tag?query=verified`
+/// and `/tokens/v2/search?query=…`). Live-verified 2026-06-15 — fields
+/// `id` (the mint), `symbol`, `name`, `decimals`, `icon`. `isVerified`
+/// is present on search results so the picker can surface verified
+/// matches ahead of unvetted ones (scam-symbol safety, Rule #16).
 struct JupiterTokenDTO: Decodable, Sendable {
     let id: String
     let symbol: String
     let name: String?
     let decimals: Int
     let icon: String?
+    let isVerified: Bool?
 }
