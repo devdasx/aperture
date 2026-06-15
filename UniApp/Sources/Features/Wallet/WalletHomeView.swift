@@ -1091,7 +1091,6 @@ struct WalletHomeView: View {
                     priceHistory: priceHistoryMemo,
                     scrubModel: scrubModel,
                     onSwitchWallet: { isShowingSwitcher = true },
-                    onCopyAddress: { isShowingReceive = true },
                     onAddFunds: { isShowingReceive = true }
                 )
                 // Re-key on the active wallet so the per-wallet hidden
