@@ -311179,6 +311179,171 @@
           }
         }
       }
+    },
+    "Add crypto to get started — receive or transfer it from another wallet.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Add crypto to get started — receive or transfer it from another wallet."
+          }
+        }
+      }
+    },
+    "Add funds": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Add funds"
+          }
+        }
+      }
+    },
+    "Add funds, opens Receive": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Add funds, opens Receive"
+          }
+        }
+      }
+    },
+    "No change today": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No change today"
+          }
+        }
+      }
+    },
+    "Opens Receive to pick an address": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Opens Receive to pick an address"
+          }
+        }
+      }
+    },
+    "Show balance": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Show balance"
+          }
+        }
+      }
+    },
+    "Total balance": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Total balance"
+          }
+        }
+      }
+    },
+    "Total balance \\(value), \\(dir) \\(percentText) today": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Total balance \\(value), \\(dir) \\(percentText) today"
+          }
+        }
+      }
+    },
+    "Total balance \\(value), no change today": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Total balance \\(value), no change today"
+          }
+        }
+      }
+    },
+    "Total balance \\(value). Add crypto to get started.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Total balance \\(value). Add crypto to get started."
+          }
+        }
+      }
+    },
+    "Total balance hidden, double tap the eye button to reveal": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Total balance hidden, double tap the eye button to reveal"
+          }
+        }
+      }
+    },
+    "down": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "down"
+          }
+        }
+      }
+    },
+    "up": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "up"
+          }
+        }
+      }
+    },
+    "••••": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "••••"
+          }
+        }
+      }
+    },
+    "••••••": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "••••••"
+          }
+        }
+      }
     }
   },
   "version": "1.0"
