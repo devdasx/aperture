@@ -68,9 +68,6 @@ struct BalanceCardView: View {
 
     /// Opens the existing wallet switcher (handoff: tap name → switcher).
     let onSwitchWallet: () -> Void
-    /// Opens the existing Receive sheet (handoff: Copy address → Receive,
-    /// never copies a bare string — one wallet holds many addresses).
-    let onCopyAddress: () -> Void
     /// Opens Receive from the zero-state Add funds button.
     let onAddFunds: () -> Void
 
@@ -110,7 +107,6 @@ struct BalanceCardView: View {
         priceHistory: [String: [Int: Decimal]],
         scrubModel: ChartScrubModel,
         onSwitchWallet: @escaping () -> Void,
-        onCopyAddress: @escaping () -> Void,
         onAddFunds: @escaping () -> Void
     ) {
         self.walletId = walletId
@@ -123,7 +119,6 @@ struct BalanceCardView: View {
         self.priceHistory = priceHistory
         self.scrubModel = scrubModel
         self.onSwitchWallet = onSwitchWallet
-        self.onCopyAddress = onCopyAddress
         self.onAddFunds = onAddFunds
         // Per-wallet visibility key; a nil id (no active wallet) shares a
         // single fallback key — harmless because there's nothing to mask.
@@ -311,20 +306,6 @@ struct BalanceCardView: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(Text("Switch wallet, currently \(walletName)"))
-
-                // Copy address → Receive sheet.
-                Button(action: copyAddress) {
-                    HStack(spacing: 5) {
-                        Image(systemName: "doc.on.doc")
-                            .font(.system(size: 11, weight: .regular))
-                        Text("Copy address")
-                            .font(UniTypography.BalanceCard.address)
-                    }
-                    .foregroundStyle(UniColors.BalanceCard.copyAction(colorScheme))
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .accessibilityHint(Text("Opens Receive to pick an address"))
             }
             // Both header tap targets clear the 44pt floor via the row's
             // intrinsic height + the chevron's vertical reach.
@@ -568,11 +549,6 @@ struct BalanceCardView: View {
     private func switchWallet() {
         UniHapticEngine.shared.play(.contextualImpact(.tap)) // `tap` on press
         onSwitchWallet()
-    }
-
-    private func copyAddress() {
-        UniHapticEngine.shared.play(.contextualImpact(.tap)) // `tap` on touch-up
-        onCopyAddress()
     }
 
     private func addFunds() {
