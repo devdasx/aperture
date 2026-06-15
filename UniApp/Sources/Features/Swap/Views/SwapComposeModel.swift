@@ -284,11 +284,13 @@ final class SwapComposeModel {
             phase = .idle
             return
         }
-        // Same token, same chain → nothing to swap; stay idle (the picker
-        // prevents this, but guard anyway).
+        // Same token, same chain → nothing to swap. Surface an honest
+        // message instead of a silent idle dead-end, so the user sees WHY no
+        // quote appears when both sides are the identical token (Rule #16).
         if fromToken.chain == toToken.chain,
            fromToken.address.lowercased() == toToken.address.lowercased() {
-            phase = .idle
+            quoteTask?.cancel(); refreshTask?.cancel(); refreshTask = nil
+            phase = .failed(.unsupportedPair("choose two different tokens"))
             return
         }
         // Fund-safety: a cross-chain bridge with no receiving address on the

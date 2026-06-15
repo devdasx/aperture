@@ -88,6 +88,38 @@ actor JupiterClient {
         }
     }
 
+    // MARK: - Search (provider fallback for tokens not in our list)
+
+    /// Search the Jupiter token universe by symbol / name / mint
+    /// (`GET /tokens/v2/search?query=…`, keyless). Returns matches as
+    /// `SwapToken`s with **verified tokens first** (then Jupiter's own
+    /// relevance order), `[]` on failure. Drives the picker's provider
+    /// fallback when a token isn't in Aperture's curated Solana list.
+    func searchTokens(query: String) async -> [SwapToken] {
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty,
+              let encoded = trimmed.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
+              let url = URL(string: "\(tokenBase)/search?query=\(encoded)") else { return [] }
+        do {
+            let list = try await http.getJSON([JupiterTokenDTO].self, url: url)
+            let mapped = list.map { token -> (token: SwapToken, verified: Bool) in
+                (SwapToken(
+                    chain: .solana,
+                    kind: .solana,
+                    address: token.id,
+                    symbol: token.symbol,
+                    name: token.name ?? token.symbol,
+                    decimals: token.decimals,
+                    logoURI: token.icon
+                ), token.isVerified ?? false)
+            }
+            // Verified first, preserving Jupiter's relevance within each group.
+            return mapped.filter(\.verified).map(\.token) + mapped.filter { !$0.verified }.map(\.token)
+        } catch {
+            return []
+        }
+    }
+
     // MARK: - Raw fetch (keep JSON for execute seam)
 
     private func fetchQuote(url: URL) async throws(SwapError) -> (JupiterQuoteDTO, String) {
