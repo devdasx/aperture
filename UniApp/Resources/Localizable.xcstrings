@@ -311168,6 +311168,17 @@
           }
         }
       }
+    },
+    "KyberSwap error \\(code)": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "KyberSwap error \\(code)"
+          }
+        }
+      }
     }
   },
   "version": "1.0"
