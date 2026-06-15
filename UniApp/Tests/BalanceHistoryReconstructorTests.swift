@@ -83,7 +83,7 @@ struct BalanceHistoryReconstructorTests {
 
     // MARK: - (a) The user's exact repro: four USDT receives step up
 
-    @Test("Four USDT receives (12, 10, 500, 300) step the series 0→12→22→522→822 with a before/after pair per tx")
+    @Test("Four USDT receives (12, 10, 500, 300) start at the first HELD balance and step 12→22→522→822")
     @MainActor
     func fourReceivesProduceCumulativeSteps() throws {
         let now = Date(timeIntervalSinceReferenceDate: 800_000_000)
@@ -117,24 +117,30 @@ struct BalanceHistoryReconstructorTests {
             now: now
         )
 
-        // .all: before/after pair per tx (8) + trailing anchor (1).
-        #expect(points.count == 9, "Expected 9 points, got \(points.count): \(points)")
+        // .all: the first-ever in-window receive's leading $0 before-step is
+        // DROPPED (2026-06-16 start-at-first-held-balance), so the series is
+        // the first after-value ($12), then a before/after pair per
+        // subsequent tx (6), then the trailing anchor (1) = 8 points.
+        #expect(points.count == 8, "Expected 8 points, got \(points.count): \(points)")
 
         let fiats = points.map(\.fiat)
-        let expected: [Decimal] = [0, 12, 12, 22, 22, 522, 522, 822, 822]
+        let expected: [Decimal] = [12, 12, 22, 22, 522, 522, 822, 822]
         #expect(
             fiats == expected,
-            "Series must step 0→12→22→522→822 with before/after pairs. Got \(fiats)"
+            "Series must start at the first held balance ($12) and step to $822. Got \(fiats)"
         )
 
-        // The step pairs sit at (t − 1 ms, t) per transaction.
-        #expect(points[0].timestamp == t1.addingTimeInterval(-0.001))
-        #expect(points[1].timestamp == t1)
-        #expect(points[7].timestamp == t4)
+        // The first point is the first receive's AFTER value at its exact
+        // timestamp (no 1 ms backstep — the $0 before-step was dropped).
+        #expect(points[0].timestamp == t1)
+        #expect(points[0].fiat == Decimal(12))
+        // Subsequent step pairs sit at (t − 1 ms, t).
+        #expect(points[1].timestamp == t2.addingTimeInterval(-0.001))
+        #expect(points[6].timestamp == t4)
         // Trailing anchor at now — reconciled to the real current balance
         // ($822), which here equals the cumulative-transaction total ($822).
-        #expect(points[8].timestamp == now)
-        #expect(points[8].fiat == Decimal(822))
+        #expect(points[7].timestamp == now)
+        #expect(points[7].fiat == Decimal(822))
     }
 
     // MARK: - (b) Range windowing
@@ -154,8 +160,9 @@ struct BalanceHistoryReconstructorTests {
         // transaction, so the effective window start clamps to the tx
         // (2026-06-16 flat-0-lead fix). NO leading anchor at the 7-day
         // cutoff (that would be a 4-day flat-0 run before the receive —
-        // the exact bug). The series is the first tx's before-step at
-        // state zero, then the 0→100 up-step, then the trailing anchor.
+        // the exact bug). The leading $0 before-step is ALSO dropped
+        // (2026-06-16 start-at-first-held-balance), so the series begins
+        // at the receive's AFTER value (100), then the trailing anchor.
         let week = BalanceHistoryReconstructor.reconstruct(
             transactions: txs,
             currentBalances: [],
@@ -163,11 +170,13 @@ struct BalanceHistoryReconstructorTests {
             range: .week,
             now: now
         )
-        #expect(week.count == 3, "1W: step pair + trailing, no flat-0 lead. Got \(week)")
-        #expect(week.map(\.fiat) == [0, 100, 100], "1W must start at the first tx, not a padded zero. Got \(week.map(\.fiat))")
-        // The curve starts at the first transaction's before-step (1 ms
-        // earlier), NOT at the 7-day-ago cutoff.
-        #expect(week.first?.timestamp == threeDaysAgo.addingTimeInterval(-0.001))
+        #expect(week.count == 2, "1W: first held value + trailing, no flat-0 lead, no $0 before-step. Got \(week)")
+        #expect(week.map(\.fiat) == [100, 100], "1W must start at the first HELD balance (100), not a padded zero. Got \(week.map(\.fiat))")
+        // The curve starts at the first transaction's AFTER value at its
+        // exact timestamp (the $0 before-step was dropped), NOT at the
+        // 7-day-ago cutoff and NOT 1 ms earlier.
+        #expect(week.first?.timestamp == threeDaysAgo)
+        #expect(week.first?.fiat == Decimal(100))
 
         // 1D — the receive is BEFORE the window (no in-window tx): flat
         // line at the pre-window cumulative value (100) across the whole
@@ -220,7 +229,10 @@ struct BalanceHistoryReconstructorTests {
         ]
         let priceCache: [String: Decimal] = ["USDT": Decimal(1)]
 
-        let expectedShape: [Decimal] = [0, 20, 20, 10, 10, 510, 510]
+        // Start at the first HELD balance (20), not a $0 pre-history step
+        // (2026-06-16): the leading $0 before-step is dropped, so the
+        // series begins at the first receive's AFTER value.
+        let expectedShape: [Decimal] = [20, 20, 10, 10, 510, 510]
 
         for range in [BalanceHistoryRange.month, .year, .all] {
             let points = BalanceHistoryReconstructor.reconstruct(
@@ -230,17 +242,23 @@ struct BalanceHistoryReconstructorTests {
                 range: range,
                 now: now
             )
-            // No flat-0 lead: the FIRST point is the first tx's before-step
-            // at state zero (the genuine pre-history value), immediately
-            // followed by the up-step — not a long run of zeros.
+            // No flat-0 lead AND no leading $0 before-step: the FIRST point
+            // is the first receive's AFTER value (the first balance held),
+            // so the visible line and the change pill agree (both start at
+            // the first held balance, never at $0).
             #expect(
                 points.map(\.fiat) == expectedShape,
-                "\(range): must converge to the real shape with no flat-0 lead. Got \(points.map(\.fiat))"
+                "\(range): must start at the first held balance (20) with no flat-0 lead and no $0 before-step. Got \(points.map(\.fiat))"
             )
-            // The curve STARTS at the first transaction, never at the raw
-            // (now − 1mo / now − 1yr / distantPast) cutoff.
             #expect(
-                points.first?.timestamp == d8.addingTimeInterval(-0.001),
+                points.first?.fiat == Decimal(20),
+                "\(range): first point must be the first held balance (20). Got \(String(describing: points.first?.fiat))"
+            )
+            // The curve STARTS at the first transaction's exact timestamp
+            // (the $0 before-step was dropped — no 1 ms backstep), never at
+            // the raw (now − 1mo / now − 1yr / distantPast) cutoff.
+            #expect(
+                points.first?.timestamp == d8,
                 "\(range): curve must start at the first transaction. Got \(String(describing: points.first?.timestamp))"
             )
             // Right edge == the real current balance (the hero).
@@ -312,9 +330,11 @@ struct BalanceHistoryReconstructorTests {
         )
 
         let fiats = points.map(\.fiat)
+        // Start at the first held balance (100) — the leading $0 before-step
+        // of the first receive is dropped (2026-06-16).
         #expect(
-            fiats == [0, 100, 100, 60, 60],
-            "Send of 40 must step 100 down to 60. Got \(fiats)"
+            fiats == [100, 100, 60, 60],
+            "Start at the first held balance (100); send of 40 steps it down to 60. Got \(fiats)"
         )
     }
 
@@ -352,9 +372,12 @@ struct BalanceHistoryReconstructorTests {
         )
 
         let fiats = points.map(\.fiat)
+        // Start at the first held balance (100) — leading $0 before-step
+        // dropped (2026-06-16); the step is still priced via the
+        // casing-normalized balance-derived rung (the invisible-USDT bug).
         #expect(
-            fiats == [0, 100, 100],
-            "Casing-mismatched keys must still price the step (the invisible-USDT bug). Got \(fiats)"
+            fiats == [100, 100],
+            "Casing-mismatched keys must still price the first held balance step. Got \(fiats)"
         )
     }
 
@@ -420,9 +443,11 @@ struct BalanceHistoryReconstructorTests {
             range: .all,
             now: now
         )
+        // Start at the first held balance (100); the failed 999 receive
+        // never appears (leading $0 before-step dropped, 2026-06-16).
         #expect(
-            points.map(\.fiat) == [0, 100, 100],
-            "The failed 999 receive must not appear. Got \(points.map(\.fiat))"
+            points.map(\.fiat) == [100, 100],
+            "The failed 999 receive must not appear; series starts at the held 100. Got \(points.map(\.fiat))"
         )
     }
 
@@ -482,9 +507,11 @@ struct BalanceHistoryReconstructorTests {
             range: .all,
             now: now
         )
+        // Start at the first held balance (50); the over-send clamps to
+        // zero (leading $0 before-step of the receive dropped, 2026-06-16).
         #expect(
-            points.map(\.fiat) == [0, 50, 50, 0, 0],
-            "Over-send must clamp to zero, never negative. Got \(points.map(\.fiat))"
+            points.map(\.fiat) == [50, 50, 0, 0],
+            "Start at the held 50; over-send must clamp to zero, never negative. Got \(points.map(\.fiat))"
         )
         #expect(points.allSatisfy { $0.fiat >= 0 })
     }
@@ -509,9 +536,11 @@ struct BalanceHistoryReconstructorTests {
             range: .all,
             now: now
         )
+        // Start at the first held balance (100); the internal shuffle is a
+        // wallet-wide no-op (leading $0 before-step dropped, 2026-06-16).
         #expect(
-            points.map(\.fiat) == [0, 100, 100, 100, 100],
-            "Internal shuffle is a wallet-wide no-op. Got \(points.map(\.fiat))"
+            points.map(\.fiat) == [100, 100, 100, 100],
+            "Start at the held 100; internal shuffle is a wallet-wide no-op. Got \(points.map(\.fiat))"
         )
     }
 
@@ -588,9 +617,11 @@ struct BalanceHistoryReconstructorTests {
             range: .all,
             now: now
         )
+        // Start at the first held balance (60,000); the .internal self-send
+        // is a no-op (leading $0 before-step dropped, 2026-06-16).
         #expect(
-            points.map(\.fiat) == [0, 60_000, 60_000, 60_000, 60_000],
-            "The .internal self-send must not dip or spike the curve. Got \(points.map(\.fiat))"
+            points.map(\.fiat) == [60_000, 60_000, 60_000, 60_000],
+            "Start at the held 60,000; the .internal self-send must not dip or spike the curve. Got \(points.map(\.fiat))"
         )
     }
 
