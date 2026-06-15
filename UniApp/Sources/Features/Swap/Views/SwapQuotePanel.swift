@@ -9,10 +9,22 @@ import SwiftUI
 /// **Restraint (Rule #2).** A single quiet card of label/value rows; no
 /// decorative chrome. The one moment of color is the price-impact warning,
 /// in `Status.warningForeground`, only when the impact is genuinely high.
+///
+/// **Compact mode (compose vs Review).** The compose screen passes
+/// `compact: true` to keep itself scannable — just the three rows a user
+/// reads while tuning the trade: rate, price impact, minimum received. The
+/// FULL breakdown (route/bridge, time, every fee line, the network-fee
+/// summary) stays on the Review screen, which is where the user actually
+/// signs — so nothing is hidden before commitment (Rule #16). Review is the
+/// default (`compact == false`), so the Review caller inherits the full
+/// panel without passing anything.
 struct SwapQuotePanel: View {
     let quote: SwapQuote
     let isCrossChain: Bool
     let currencyCode: String
+    /// When `true`, show only rate · price impact · minimum received. The
+    /// compose screen opts in; Review (default) shows everything.
+    var compact: Bool = false
 
     /// Price impact above this fraction reads as a real warning (1%).
     private let highImpactThreshold = Decimal(0.01)
@@ -20,22 +32,26 @@ struct SwapQuotePanel: View {
     var body: some View {
         VStack(spacing: 0) {
             rate
-            UniDivider()
-            route
+            if !compact {
+                UniDivider()
+                route
+            }
             if let impact = quote.priceImpact {
                 UniDivider()
                 priceImpactRow(impact)
             }
-            UniDivider()
-            timeRow
-            ForEach(quote.fees) { fee in
+            if !compact {
                 UniDivider()
-                feeRow(fee)
-            }
-            if quote.gasCostUSD > 0 && !hasExplicitGasFee {
-                UniDivider()
-                row(label: Text("Network fee"),
-                    value: Text(verbatim: "≈ \(WalletFormatting.fiat(quote.gasCostUSD, currencyCode: currencyCode))"))
+                timeRow
+                ForEach(quote.fees) { fee in
+                    UniDivider()
+                    feeRow(fee)
+                }
+                if quote.gasCostUSD > 0 && !hasExplicitGasFee {
+                    UniDivider()
+                    row(label: Text("Network fee"),
+                        value: Text(verbatim: "≈ \(WalletFormatting.fiat(quote.gasCostUSD, currencyCode: currencyCode))"))
+                }
             }
             UniDivider()
             minReceivedRow

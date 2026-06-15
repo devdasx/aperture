@@ -3,8 +3,10 @@ import SwiftUI
 /// Swap · compose + quote — the classic two-card swap layout. A FROM card
 /// (asset + amount + MAX + balance) and a TO card (asset picker + the
 /// estimated received amount), with a circular flip button between them.
-/// Below the cards: the live quote panel (rate, route, fees, time, min
-/// received, price impact), a slippage control, and the Review CTA.
+/// Below the cards: the compact live quote panel (rate · price impact ·
+/// minimum received) and the Review CTA. Max slippage lives behind a
+/// top-bar `slider.horizontal.3` icon (its own sheet) so the main UI stays
+/// quiet — the full fee/route/time breakdown waits for Review (Rule #16).
 ///
 /// **Layers (Rule #2 §B.3).** Content layer: the cards + quote panel, opaque
 /// on `Background.primary`. Functional layer (Liquid Glass via system APIs
@@ -40,9 +42,9 @@ struct SwapComposeView: View {
     /// One polite `.selection` beat for the flip / MAX / slippage affordances
     /// that aren't `UniButton`s (Rule #10 §B).
     @State private var selectionTapCount = 0
-    /// Drives the Custom-slippage input sheet + the value the user types into it.
-    @State private var isShowingCustomSlippage = false
-    @State private var customSlippageText = ""
+    /// Drives the Max-slippage sheet behind the top-bar `slider.horizontal.3`
+    /// icon (presets · custom · the high-slippage caution).
+    @State private var isShowingSlippage = false
 
     /// Rule #12 §G direction-only key for the custom-slippage sheet's content
     /// rebuild. `"ltr"` or `"rtl"`.
@@ -55,7 +57,6 @@ struct SwapComposeView: View {
             VStack(spacing: UniSpacing.m) {
                 swapCards
                 quotePanel
-                slippageControl
             }
             .padding(.horizontal, UniSpacing.l)
             .padding(.top, UniSpacing.m)
@@ -73,7 +74,39 @@ struct SwapComposeView: View {
                     .font(UniTypography.bodyEmphasized)
                     .foregroundStyle(UniColors.Text.primary)
             }
+            ToolbarItem(placement: .topBarTrailing) {
+                slippageToolbarButton
+            }
         }
+        .sheet(isPresented: $isShowingSlippage) {
+            MaxSlippageSheet(model: model)
+                .id(sheetDirectionKey)
+                .uniAppEnvironment()
+                .presentationDetents([.medium])
+                .presentationDragIndicator(.visible)
+                .presentationBackground(UniColors.Background.primary)
+        }
+    }
+
+    /// Top-bar entry to Max slippage. Native nav-bar text/glyph styling
+    /// (Rule #3 / M-002 — no `.buttonStyle(.glass)` on a toolbar item); the
+    /// current tolerance rides beside the glyph so the bar stays honest
+    /// about the setting without the user opening the sheet. Fires the
+    /// shared `.selection` beat (Rule #10) on tap.
+    private var slippageToolbarButton: some View {
+        Button {
+            isShowingSlippage = true
+            selectionTapCount &+= 1
+        } label: {
+            HStack(spacing: UniSpacing.xxs) {
+                Text(verbatim: SwapComposeModel.slippageLabel(bps: model.slippageBps))
+                    .font(UniTypography.footnote.monospacedDigit())
+                    .environment(\.layoutDirection, .leftToRight)
+                Image(systemName: "slider.horizontal.3")
+            }
+            .foregroundStyle(isHighSlippage ? UniColors.Status.warningForeground : UniColors.Text.primary)
+        }
+        .accessibilityLabel(Text("Max slippage"))
     }
 
     // MARK: - The two cards + flip button
@@ -386,7 +419,7 @@ struct SwapComposeView: View {
             case .loading:
                 loadingPanel
             case .quoted(let quote):
-                SwapQuotePanel(quote: quote, isCrossChain: model.isCrossChain, currencyCode: model.currencyCode)
+                SwapQuotePanel(quote: quote, isCrossChain: model.isCrossChain, currencyCode: model.currencyCode, compact: true)
             case .failed(let error):
                 errorPanel(error)
             }
@@ -458,59 +491,99 @@ struct SwapComposeView: View {
             )
     }
 
-    // MARK: - Slippage control
+    // MARK: - Slippage (now behind the top-bar icon)
 
-    private var slippageControl: some View {
-        VStack(alignment: .leading, spacing: UniSpacing.xs) {
-            HStack(spacing: UniSpacing.xxs) {
-                Image(systemName: "slider.horizontal.3")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(UniColors.Icon.secondary)
-                Text("Max slippage")
-                    .font(UniTypography.footnote.weight(.semibold))
-                    .foregroundStyle(UniColors.Text.secondary)
-                Spacer()
-                Text(verbatim: SwapComposeModel.slippageLabel(bps: model.slippageBps))
-                    .font(UniTypography.footnote.monospacedDigit())
-                    .foregroundStyle(UniColors.Text.primary)
-                    .environment(\.layoutDirection, .leftToRight)
-            }
+    /// Slippage at or above 1% (100 bps) reads as high enough to warrant the
+    /// honest caution line (Rule #16) and the warning-tinted toolbar glyph.
+    private static let highSlippageThresholdBps = 100
+    private var isHighSlippage: Bool { model.slippageBps >= Self.highSlippageThresholdBps }
 
-            HStack(spacing: UniSpacing.xs) {
-                ForEach(slippagePresets, id: \.self) { bps in
-                    slippageChip(bps)
+    // MARK: - Review CTA (functional layer)
+
+    private var reviewBar: some View {
+        GlassEffectContainer(spacing: UniSpacing.s) {
+            UniButton(
+                title: "Review",
+                variant: .primary,
+                isEnabled: model.canReview,
+                action: {
+                    guard let summary = model.makeReview() else { return }
+                    onReview(summary)
                 }
-                customSlippageChip
-            }
-
-            // Honesty (Rule #16) — a quiet, restrained caution when the
-            // tolerance is high. No alarm, no exclamation; just the
-            // consequence stated plainly so the user understands the trade.
-            if isHighSlippage {
-                Text("Higher slippage can mean you receive noticeably less.")
-                    .font(UniTypography.footnote)
-                    .foregroundStyle(UniColors.Status.warningForeground)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-        }
-        .padding(.horizontal, UniSpacing.xs)
-        .sheet(isPresented: $isShowingCustomSlippage) {
-            CustomSlippageSheet(
-                text: $customSlippageText,
-                onCommit: commitCustomSlippage
             )
-            .id(sheetDirectionKey)
-            .uniAppEnvironment()
-            .presentationDetents([.medium])
-            .presentationDragIndicator(.visible)
-            .presentationBackground(UniColors.Background.primary)
+            .padding(.horizontal, UniSpacing.l)
+            .padding(.top, UniSpacing.s)
+            .padding(.bottom, UniSpacing.xs)
         }
+    }
+
+    // MARK: - Derived display
+
+    /// The fiat value of the typed from-amount (when priced). Display-only.
+    private var fromFiatValue: Decimal? {
+        guard let price = model.fromUnitPrice, model.amount > 0 else { return nil }
+        return model.amount * price
+    }
+}
+
+// MARK: - Amount field (LTR-locked, auto-shrinking)
+
+/// The FROM amount entry — a calm, monospaced-digit field that auto-shrinks
+/// to fit one line (the Send hero's never-overflow behavior, scaled to the
+/// card). LTR-locked (Rule #11) because it's a transcribable value.
+private struct SwapAmountField: View {
+    @Binding var text: String
+    let isOverBalance: Bool
+    var focused: FocusState<Bool>.Binding
+
+    var body: some View {
+        TextField("0", text: $text)
+            .font(.system(.title, design: .rounded, weight: .semibold).monospacedDigit())
+            .foregroundStyle(isOverBalance ? UniColors.Status.errorForeground : UniColors.Text.primary)
+            .keyboardType(.decimalPad)
+            .multilineTextAlignment(.trailing)
+            .focused(focused)
+            // The decimal pad has no Return key — add the native dismiss
+            // accessory bar (Rule #3) keyed to this field's focus.
+            .numericDoneToolbar(focused)
+            .lineLimit(1)
+            .minimumScaleFactor(0.4)
+            .frame(maxWidth: .infinity)
+            .animation(.snappy(duration: 0.2), value: isOverBalance)
+            .environment(\.layoutDirection, .leftToRight)
+    }
+}
+
+// MARK: - Max slippage sheet (top-bar icon → presets · custom · caution)
+
+/// The Max-slippage editor, presented from the compose top bar's
+/// `slider.horizontal.3` icon. A native sheet (Rule #15: NavigationStack +
+/// `navigationTitle`) holding the three preset chips (0.1% / 0.5% / 1%), a
+/// Custom chip, and the honest high-slippage caution. Selecting a preset
+/// commits and dismisses; Custom presents the existing `CustomSlippageSheet`
+/// as a second step. All slippage logic — presets, clamp bounds, the model
+/// write that re-quotes on `didSet` — lives here, intact from the old inline
+/// control (Rule #19: glass chips; Rule #10: the shared selection beat).
+private struct MaxSlippageSheet: View {
+    @Bindable var model: SwapComposeModel
+    @Environment(\.dismiss) private var dismiss
+
+    @AppStorage("languagePreference") private var languageCode: String = LanguagePreference.systemCode
+
+    /// One polite `.selection` beat for the glass chips (not `UniButton`s).
+    @State private var selectionTapCount = 0
+    /// Drives the nested Custom-slippage input sheet + its typed value.
+    @State private var isShowingCustomSlippage = false
+    @State private var customSlippageText = ""
+
+    /// Rule #12 §G direction-only key for the nested custom sheet's rebuild.
+    private var sheetDirectionKey: String {
+        LanguagePreference.layoutDirection(for: languageCode) == .rightToLeft ? "rtl" : "ltr"
     }
 
     private let slippagePresets: [Int] = [10, 50, 100]
 
-    /// Slippage at or above 1% (100 bps) reads as high enough to warrant the
-    /// honest caution line (Rule #16).
+    /// Slippage at or above 1% (100 bps) warrants the honest caution line.
     private static let highSlippageThresholdBps = 100
     private var isHighSlippage: Bool { model.slippageBps >= Self.highSlippageThresholdBps }
 
@@ -518,6 +591,59 @@ struct SwapComposeView: View {
     /// ceiling 50% (5000 bps). Both ends are clamped on commit.
     private static let minSlippageBps = 1
     private static let maxSlippageBps = 5000
+
+    var body: some View {
+        NavigationStack {
+            // Short content — a plain VStack, no ScrollView (Rule #15).
+            VStack(alignment: .leading, spacing: UniSpacing.m) {
+                UniBody(
+                    text: "The most the price can move before your swap is cancelled. Lower is safer; higher fills more often.",
+                    color: UniColors.Text.secondary
+                )
+
+                HStack(spacing: UniSpacing.xs) {
+                    ForEach(slippagePresets, id: \.self) { bps in
+                        slippageChip(bps)
+                    }
+                    customSlippageChip
+                }
+
+                // Honesty (Rule #16) — a quiet, restrained caution when the
+                // tolerance is high. No alarm, no exclamation; just the
+                // consequence stated plainly so the user understands the trade.
+                if isHighSlippage {
+                    Text("Higher slippage can mean you receive noticeably less.")
+                        .font(UniTypography.footnote)
+                        .foregroundStyle(UniColors.Status.warningForeground)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Spacer()
+            }
+            .padding(.horizontal, UniSpacing.l)
+            .padding(.top, UniSpacing.m)
+            .uniHaptic(.selection, trigger: selectionTapCount)
+            .navigationTitle(Text("Max slippage"))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Done") { dismiss() }
+                        .fontWeight(.semibold)
+                }
+            }
+            .sheet(isPresented: $isShowingCustomSlippage) {
+                CustomSlippageSheet(
+                    text: $customSlippageText,
+                    onCommit: commitCustomSlippage
+                )
+                .id(sheetDirectionKey)
+                .uniAppEnvironment()
+                .presentationDetents([.medium])
+                .presentationDragIndicator(.visible)
+                .presentationBackground(UniColors.Background.primary)
+            }
+        }
+    }
 
     /// One slippage preset chip. Selected → glass-prominent + accent tint;
     /// unselected → quiet glass. Both are native iOS 26 styles (Rule #3);
@@ -575,9 +701,12 @@ struct SwapComposeView: View {
         }
     }
 
+    /// Pick a preset, fire the beat, and dismiss back to compose — the value
+    /// is now set; there's nothing more to do in the sheet.
     private func selectSlippage(_ bps: Int) {
         model.slippageBps = bps
         selectionTapCount &+= 1
+        dismiss()
     }
 
     /// Open the custom-input sheet, seeding the field with the current value
@@ -591,7 +720,8 @@ struct SwapComposeView: View {
     }
 
     /// Parse the typed percent → bps, clamp to sane bounds, apply (the model's
-    /// `didSet` re-quotes for free), and fire the shared selection haptic.
+    /// `didSet` re-quotes for free), fire the shared selection haptic, then
+    /// dismiss both the custom sheet and the slippage sheet — the value is set.
     private func commitCustomSlippage() {
         guard let bps = SwapComposeModel.parseSlippagePercent(customSlippageText) else {
             isShowingCustomSlippage = false
@@ -601,61 +731,7 @@ struct SwapComposeView: View {
         model.slippageBps = clamped
         selectionTapCount &+= 1
         isShowingCustomSlippage = false
-    }
-
-    // MARK: - Review CTA (functional layer)
-
-    private var reviewBar: some View {
-        GlassEffectContainer(spacing: UniSpacing.s) {
-            UniButton(
-                title: "Review",
-                variant: .primary,
-                isEnabled: model.canReview,
-                action: {
-                    guard let summary = model.makeReview() else { return }
-                    onReview(summary)
-                }
-            )
-            .padding(.horizontal, UniSpacing.l)
-            .padding(.top, UniSpacing.s)
-            .padding(.bottom, UniSpacing.xs)
-        }
-    }
-
-    // MARK: - Derived display
-
-    /// The fiat value of the typed from-amount (when priced). Display-only.
-    private var fromFiatValue: Decimal? {
-        guard let price = model.fromUnitPrice, model.amount > 0 else { return nil }
-        return model.amount * price
-    }
-}
-
-// MARK: - Amount field (LTR-locked, auto-shrinking)
-
-/// The FROM amount entry — a calm, monospaced-digit field that auto-shrinks
-/// to fit one line (the Send hero's never-overflow behavior, scaled to the
-/// card). LTR-locked (Rule #11) because it's a transcribable value.
-private struct SwapAmountField: View {
-    @Binding var text: String
-    let isOverBalance: Bool
-    var focused: FocusState<Bool>.Binding
-
-    var body: some View {
-        TextField("0", text: $text)
-            .font(.system(.title, design: .rounded, weight: .semibold).monospacedDigit())
-            .foregroundStyle(isOverBalance ? UniColors.Status.errorForeground : UniColors.Text.primary)
-            .keyboardType(.decimalPad)
-            .multilineTextAlignment(.trailing)
-            .focused(focused)
-            // The decimal pad has no Return key — add the native dismiss
-            // accessory bar (Rule #3) keyed to this field's focus.
-            .numericDoneToolbar(focused)
-            .lineLimit(1)
-            .minimumScaleFactor(0.4)
-            .frame(maxWidth: .infinity)
-            .animation(.snappy(duration: 0.2), value: isOverBalance)
-            .environment(\.layoutDirection, .leftToRight)
+        dismiss()
     }
 }
 
