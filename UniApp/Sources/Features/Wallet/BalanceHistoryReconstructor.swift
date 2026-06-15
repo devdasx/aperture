@@ -20,6 +20,9 @@ struct BalancePoint: Hashable, Sendable {
 /// Apple's own Stocks app — fewer characters, more density at the
 /// rare interaction surface.
 enum BalanceHistoryRange: String, CaseIterable, Hashable, Sendable {
+    // `CaseIterable` order is the picker order: `.hour` FIRST so the
+    // segmented selector reads `1H · 1D · 1W · 1M · 1Y · All` left→right.
+    case hour
     case day
     case week
     case month
@@ -29,6 +32,7 @@ enum BalanceHistoryRange: String, CaseIterable, Hashable, Sendable {
     /// Localized one-letter symbol shown on the segmented picker.
     var shortLabel: String {
         switch self {
+        case .hour:  return "1H"
         case .day:   return "1D"
         case .week:  return "1W"
         case .month: return "1M"
@@ -39,9 +43,17 @@ enum BalanceHistoryRange: String, CaseIterable, Hashable, Sendable {
 
     /// Cut-off measured from `reference`. `.all` returns
     /// `.distantPast` so the reconstructor consumes every event.
+    /// `.hour` is a true trailing 1-hour window (3600 s) — the user
+    /// lists 1H as a real range (2026-06-16), so it is NOT folded to
+    /// `.day`. The common case (no transactions in the last hour)
+    /// reconstructs an honest flat line at the current balance with 0%
+    /// change — see `reconstruct`'s "zero in-window transactions"
+    /// branch.
     func cutoff(from reference: Date) -> Date {
         let calendar = Calendar.current
         switch self {
+        case .hour:
+            return reference.addingTimeInterval(-3_600)
         case .day:
             return calendar.date(byAdding: .day, value: -1, to: reference) ?? .distantPast
         case .week:
@@ -86,19 +98,30 @@ enum BalanceHistoryRange: String, CaseIterable, Hashable, Sendable {
 ///    chart plots a vertical step; both halves are valued at the same
 ///    day's price. Every receive is a visible up-step, every send a
 ///    visible down-step — no transaction is ever smoothed away.
-/// 3. **Trailing anchor at `now`** with the final cumulative state,
-///    valued at current prices.
+/// 3. **Trailing anchor at `now`** — anchored to the wallet's REAL
+///    current balance fiat (`Σ currentBalances.fiatValueCached`, the
+///    exact figure the hero shows) when that is available, so the
+///    chart's RIGHT EDGE equals the hero number and the change pill
+///    (which reads `points.last − points.first`) measures from the
+///    transaction-driven range-start to the real current balance. When
+///    no real balance fiat exists yet (offline before the first scan),
+///    it falls back to the cumulative-transaction state valued at
+///    current prices. The SHAPE before `now` is still 100%
+///    transaction-driven; only this final endpoint is reconciled to
+///    the hero (2026-06-16 user direction: "the hero balance and the
+///    chart's right edge must agree").
 ///
 /// **Valuation ladder (unchanged from the 2026-06-12 design).** Each
-/// point's fiat is `Σ quantity × price` where price resolves, per
-/// token, through:
+/// HISTORICAL point's fiat is `Σ quantity × price` where price
+/// resolves, per token, through:
 ///
 ///   `priceHistory[symbol][dayKey(t)]` (the honest then-price)
 ///   → `priceCache[symbol]` (today's spot)
 ///   → `fiatPerUnit[key]` (balance-derived per-unit fallback).
 ///
-/// `currentBalances` feeds ONLY that last valuation rung (fiat ÷
-/// quantity per held token) — it never shapes the curve.
+/// `currentBalances` feeds the last valuation rung (fiat ÷ quantity
+/// per held token) AND the trailing-edge anchor above — it never
+/// shapes the curve's interior, only the final point's level.
 ///
 /// **Key normalization (2026-06-13 — the invisible-transactions
 /// fix).** Transaction rows and balance rows are written by DIFFERENT
@@ -119,15 +142,17 @@ enum BalanceHistoryRange: String, CaseIterable, Hashable, Sendable {
 /// are case-sensitive on some chains and are never rewritten);
 /// normalization is internal matching only.
 ///
-/// **Honesty disclosure (Rule #2 §A.7).** With transactions as the
-/// only truth source, the trailing edge equals the
-/// **cumulative-transaction total**, which can differ from the hero
-/// balance above the chart when history is incomplete for some chain
-/// (an explorer that returns balances but not transfers, pagination
-/// gaps, pre-import activity). That divergence is the user's explicit
-/// choice — the chart tells the story the transactions tell, and the
-/// hero tells the story the balance scan tells. We do not silently
-/// re-anchor one to the other.
+/// **Honesty disclosure (Rule #2 §A.7).** Transactions are the only
+/// truth source for the curve's SHAPE — every receive is a visible
+/// up-step, every send a down-step, self-transfers move nothing. The
+/// trailing edge is reconciled to the real current balance (above) so
+/// the card stays honest (chart end == hero). When transaction history
+/// is incomplete (an explorer that returns balances but not transfers,
+/// pagination gaps, pre-import activity), the reconciliation means the
+/// final step from the last in-window transaction to `now` absorbs the
+/// difference — an honest "the wallet ended here" edge rather than a
+/// fabricated interior movement. The interior is never re-anchored;
+/// only the endpoint meets the hero.
 ///
 /// **Preserved edge-case behaviors.**
 ///
@@ -344,18 +369,20 @@ enum BalanceHistoryReconstructor {
         // the ladder. (`.all` never reaches this branch: its cutoff
         // is `.distantPast`, so every transaction is in-window.)
         if inWindow.isEmpty {
-            let leadingFiat = totalFiatAt(
-                quantities: running, timestamp: cutoff,
+            // The wallet sat still across the whole window — so the line
+            // is flat at the REAL current balance (the hero figure), with
+            // 0% change. This is the common 1H case: no transaction in the
+            // last hour ⇒ a flat curve at the hero number, NOT a fold to a
+            // different range and NOT a fabricated movement (2026-06-16).
+            // Both endpoints take the same reconciled level so the change
+            // pill honestly reads 0.00 / 0%.
+            let trailingFiat = trailingAnchorFiat(
+                quantities: running, now: now,
                 priceHistory: priceHistory, priceCache: priceCache,
-                fiatPerUnit: fiatPerUnit
-            )
-            let trailingFiat = totalFiatAt(
-                quantities: running, timestamp: now,
-                priceHistory: priceHistory, priceCache: priceCache,
-                fiatPerUnit: fiatPerUnit
+                fiatPerUnit: fiatPerUnit, currentBalanceFiat: currentBalanceFiat
             )
             return [
-                BalancePoint(timestamp: cutoff, fiat: leadingFiat),
+                BalancePoint(timestamp: cutoff, fiat: trailingFiat),
                 BalancePoint(timestamp: now, fiat: trailingFiat),
             ]
         }
@@ -410,18 +437,19 @@ enum BalanceHistoryReconstructor {
             points.append(BalancePoint(timestamp: tx.occurredAt, fiat: afterFiat))
         }
 
-        // **Trailing anchor at `now`** with the final cumulative
-        // state, valued at current prices (today's dayKey resolves
-        // today's close when present, then spot, then the
-        // balance-derived rung). NOTE the honesty disclosure in the
-        // type doc: this equals the cumulative-TRANSACTION total and
-        // can legitimately differ from the hero balance when some
-        // chain's history is incomplete — the user's explicit
-        // "transactions as the only truth source" trade.
-        let trailingFiat = totalFiatAt(
-            quantities: running, timestamp: now,
+        // **Trailing anchor at `now`** — reconciled to the wallet's
+        // REAL current balance fiat (the exact hero figure) when one
+        // exists, so the chart's right edge == the hero and the change
+        // pill (which reads `points.last − points.first`) is consistent
+        // with the line the user sees (2026-06-16). Falls back to the
+        // cumulative-transaction state valued at current prices when no
+        // real balance is available yet (offline before the first scan).
+        // The interior steps above stay 100% transaction-driven; only
+        // this endpoint meets the hero.
+        let trailingFiat = trailingAnchorFiat(
+            quantities: running, now: now,
             priceHistory: priceHistory, priceCache: priceCache,
-            fiatPerUnit: fiatPerUnit
+            fiatPerUnit: fiatPerUnit, currentBalanceFiat: currentBalanceFiat
         )
         points.append(BalancePoint(timestamp: now, fiat: trailingFiat))
 
@@ -487,6 +515,33 @@ enum BalanceHistoryReconstructor {
             }
         }
         return sum
+    }
+
+    /// The fiat level for the trailing point at `now`. **Reconciliation
+    /// to the hero (2026-06-16).** When the wallet has a real current
+    /// balance fiat (`Σ currentBalances.fiatValueCached`, the exact
+    /// figure the hero renders), the trailing point takes that level so
+    /// the chart's right edge == the hero number and the change pill,
+    /// computed as `points.last − points.first`, agrees with the line.
+    /// When no real balance fiat is available yet (offline before the
+    /// first scan returns `currentBalanceFiat == 0`), it falls back to
+    /// the cumulative-transaction state valued at current prices via
+    /// `totalFiatAt` — so an offline wallet still draws an honest
+    /// transaction-derived edge instead of collapsing to zero.
+    private static func trailingAnchorFiat(
+        quantities: [TokenKey: Decimal],
+        now: Date,
+        priceHistory: [String: [Int: Decimal]],
+        priceCache: [String: Decimal],
+        fiatPerUnit: [TokenKey: Decimal],
+        currentBalanceFiat: Decimal
+    ) -> Decimal {
+        if currentBalanceFiat > 0 { return currentBalanceFiat }
+        return totalFiatAt(
+            quantities: quantities, timestamp: now,
+            priceHistory: priceHistory, priceCache: priceCache,
+            fiatPerUnit: fiatPerUnit
+        )
     }
 
     /// Normalized per-token identity. **Symbols fold to uppercase;

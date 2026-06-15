@@ -387,6 +387,7 @@ struct BalanceHistoryChart: View {
         let now = Date()
         let span: TimeInterval
         switch range {
+        case .hour:  span = 3_600           // 1 hour
         case .day:   span = 86_400          // 1 day
         case .week:  span = 86_400 * 7      // 1 week
         case .month: span = 86_400 * 30     // ~1 month
@@ -419,6 +420,7 @@ struct BalanceHistoryChart: View {
     /// time" / "today" suffix on the resting delta caption.
     private var rangeLabel: LocalizedStringKey {
         switch currentRange {
+        case .hour:  return "this hour"
         case .day:   return "today"
         case .week:  return "this week"
         case .month: return "this month"
