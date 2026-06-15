@@ -90,8 +90,16 @@ targets:
         UILaunchScreen: {}
         UIApplicationSceneManifest:
           UIApplicationSupportsMultipleScenes: false
+        # iPhone stays portrait-only; iPad (and the Mac "Designed for iPad"
+        # window) allows all orientations so it's a real iPad app, not a
+        # portrait-locked letterbox.
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
+        "UISupportedInterfaceOrientations~ipad":
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationPortraitUpsideDown
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
         # Required for LocalAuthentication biometric prompt (without it the
         # app crashes on the first Face ID call) + AVCaptureSession QR scan.
         NSFaceIDUsageDescription: "Aperture uses Face ID to unlock the app and confirm transactions, so you don't have to type your PIN every time."
@@ -111,10 +119,15 @@ targets:
         MARKETING_VERSION: "1.0"
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
-        TARGETED_DEVICE_FAMILY: "1"
+        TARGETED_DEVICE_FAMILY: "1,2"   # iPhone + iPad (native iPad app)
         IPHONEOS_DEPLOYMENT_TARGET: "26.0"
+        # Mac Catalyst is BLOCKED: WalletCore/SwiftProtobuf/yttrium ship no
+        # ios-arm64-maccatalyst slice (verified — a Catalyst build fails to
+        # link). "Designed for iPad" runs the iPad arm64 app NATIVELY on Apple
+        # Silicon (needs only the ios-arm64 slice all deps have) — the only
+        # 100%-native macOS path the current binaries permit.
         SUPPORTS_MACCATALYST: NO
-        SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD: NO
+        SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD: YES
         ENABLE_PREVIEWS: YES
         DEVELOPMENT_TEAM: 6C4X774L9H
         CODE_SIGN_STYLE: Automatic
@@ -141,7 +154,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.thuglife.aperture.tests
         IPHONEOS_DEPLOYMENT_TARGET: "26.0"
-        TARGETED_DEVICE_FAMILY: "1"
+        TARGETED_DEVICE_FAMILY: "1,2"
         SUPPORTS_MACCATALYST: NO
         SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD: NO
         DEVELOPMENT_TEAM: 6C4X774L9H

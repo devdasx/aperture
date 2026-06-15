@@ -89,6 +89,18 @@ struct MainTabView: View {
     /// per-surface refresh logic.
     @Query(sort: \WalletRecord.sortOrder) private var allWallets: [WalletRecord]
 
+    /// **iPad / Mac adaptation (2026-06-16).** `.tabViewStyle(.sidebarAdaptable)`
+    /// makes the SAME four `Tab(...)` render as the Liquid Glass bottom
+    /// tab bar at COMPACT width (iPhone, iPad portrait, narrow Mac
+    /// window) and lift into a native Liquid Glass sidebar at REGULAR
+    /// width (iPad landscape, wide Mac window). The compact path is
+    /// byte-for-byte the shipping iPhone experience. At regular width
+    /// the UITabBar the long-press installer reaches through does not
+    /// exist, so we read the size class to (a) skip mounting the
+    /// installer there and (b) expose the native SwiftUI wallet-switch
+    /// `Menu` on the wallet pill instead (see `WalletHomeView`).
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+
     /// Long-press on the Wallet tab now surfaces a NATIVE
     /// `UIContextMenuInteraction` menu (per 2026-06-09 user direction:
     /// *"it should be apple native"*). The menu items mutate these
@@ -152,12 +164,22 @@ struct MainTabView: View {
                     // `buildWalletTabMenu()`. The menu's `UIAction`s
                     // mutate `@State` flags on this view; SwiftUI
                     // reacts via the modifiers below.
+                    //
+                    // **2026-06-16 — compact-width only.** In sidebar
+                    // mode (regular width) there is no UITabBar for the
+                    // installer to reach, so it would silently no-op.
+                    // We gate it to compact width to avoid the dead
+                    // reach-through; the native SwiftUI wallet-switch
+                    // `Menu` on `WalletHomeView`'s pill covers regular
+                    // width (it's shown there for the same reason).
                     .background(alignment: .bottom) {
-                        TabBarLongPressInstaller(tabIndex: 0) {
-                            buildWalletTabMenu()
+                        if horizontalSizeClass == .compact {
+                            TabBarLongPressInstaller(tabIndex: 0) {
+                                buildWalletTabMenu()
+                            }
+                            .frame(width: 0, height: 0)
+                            .allowsHitTesting(false)
                         }
-                        .frame(width: 0, height: 0)
-                        .allowsHitTesting(false)
                     }
             } label: {
                 walletTabLabel
@@ -207,6 +229,15 @@ struct MainTabView: View {
                 SettingsView()
             }
         }
+        // **Sidebar-adaptable (2026-06-16).** One native modifier turns
+        // the four `Tab(...)` into a size-class-adaptive shell: the
+        // EXACT Liquid Glass bottom tab bar at compact width (iPhone,
+        // iPad portrait, narrow Mac), the EXACT same four tabs lifted
+        // into a native Liquid Glass sidebar at regular width (iPad
+        // landscape, wide Mac) — each tab's existing NavigationStack
+        // becoming the detail pane. No NavigationSplitView rebuild; the
+        // system owns the morph. A no-op on compact-only iPhones.
+        .tabViewStyle(.sidebarAdaptable)
         // Fire a selection haptic on tab change. Per Rule #10 §A,
         // tab selection IS the canonical `.selection` haptic.
         .uniHaptic(.selection, trigger: selectedTabRaw)

@@ -124,6 +124,18 @@ struct UniAppApp: App {
                     )
                 }
         }
+        // **Mac / iPad window sizing (2026-06-16).** On a "Designed for
+        // iPad" Mac app (and on iPad in a resizable scene) the window
+        // otherwise opens stretched like a full-screen iPhone blown up.
+        // `.defaultSize` opens it at a comfortable phone-shaped wallet
+        // column, and `.windowResizability(.contentSize)` lets the user
+        // resize within the content's own bounds rather than to
+        // arbitrary giant dimensions. Both are no-ops on iPhone (single
+        // full-screen scene), so the iPhone experience is untouched.
+        // `UIApplicationSupportsMultipleScenes` stays `false` — the
+        // detached lock-overlay `UIWindow` assumes a single scene.
+        .windowResizability(.contentSize)
+        .defaultSize(width: 440, height: 920)
     }
 }
 
