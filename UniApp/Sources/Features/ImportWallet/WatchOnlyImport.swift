@@ -200,6 +200,9 @@ struct WatchOnlyEntryView: View {
 struct WatchOnlyReviewView: View {
     @Bindable var state: ImportWalletState
     let chain: SupportedChain
+    /// True while the parent flow is persisting the wallet — drives the
+    /// commit CTA's native loading spinner.
+    var isCommitting: Bool = false
     let onCommit: () -> Void
 
     @State private var addresses: [String] = []
@@ -214,9 +217,8 @@ struct WatchOnlyReviewView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: UniSpacing.l) {
                 if isDeriving {
-                    ProgressView()
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, UniSpacing.l)
+                    UniLoadingState(caption: "Resolving addresses…")
+                        .padding(.vertical, UniSpacing.xl)
                 } else if resolutionFailed || addresses.isEmpty {
                     errorState
                 } else {
@@ -234,7 +236,11 @@ struct WatchOnlyReviewView: View {
         .safeAreaInset(edge: .bottom) {
             if !isDeriving && !addresses.isEmpty {
                 GlassEffectContainer(spacing: UniSpacing.s) {
-                    UniButton(title: "Add watch-only wallet", variant: .primary) {
+                    UniButton(
+                        title: isCommitting ? "Adding…" : "Add watch-only wallet",
+                        variant: .primary,
+                        isLoading: isCommitting
+                    ) {
                         onCommit()
                     }
                 }

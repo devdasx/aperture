@@ -133,6 +133,7 @@ struct WalletReadyView: View {
                 UniButton(
                     title: persistButtonTitle,
                     variant: .primary,
+                    isLoading: persistState == .persisting,
                     isEnabled: persistState != .persisting
                 ) {
                     switch persistState {

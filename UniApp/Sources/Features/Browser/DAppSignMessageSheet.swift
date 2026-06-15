@@ -23,6 +23,10 @@ struct DAppSignMessageSheet: View {
 
     @Environment(\.dismiss) private var dismiss
 
+    /// True while the signature is being produced — drives the Sign CTA's
+    /// native loading spinner and suppresses Cancel so the two can't race.
+    @State private var isSigning = false
+
     var body: some View {
         NavigationStack {
             ScrollView {
@@ -118,9 +122,16 @@ struct DAppSignMessageSheet: View {
         VStack(spacing: UniSpacing.xs) {
             GlassEffectContainer(spacing: UniSpacing.s) {
                 VStack(spacing: UniSpacing.s) {
-                    UniButton(title: "Sign", variant: .primary) {
+                    UniButton(
+                        title: isSigning ? "Signing…" : "Sign",
+                        variant: .primary,
+                        isLoading: isSigning,
+                        isEnabled: !isSigning
+                    ) {
                         if request.chain.family == .evm {
+                            isSigning = true
                             Task {
+                                defer { isSigning = false }
                                 do {
                                     let signature = try await EVMDAppSigner.signPersonalMessage(
                                         messageHex: request.rawHex
@@ -142,7 +153,7 @@ struct DAppSignMessageSheet: View {
                             dismiss()
                         }
                     }
-                    UniButton(title: "Cancel", variant: .secondary) {
+                    UniButton(title: "Cancel", variant: .secondary, isEnabled: !isSigning) {
                         router.rejectPending()
                         dismiss()
                     }

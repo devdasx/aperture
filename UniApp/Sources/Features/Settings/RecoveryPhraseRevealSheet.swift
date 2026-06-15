@@ -36,7 +36,7 @@ struct RecoveryPhraseRevealSheet: View {
                             color: UniColors.Status.errorForeground
                         )
                     } else if words.isEmpty {
-                        ProgressView()
+                        UniLoadingState(caption: "Preparing your phrase…")
                             .padding(.vertical, UniSpacing.xxl)
                     } else {
                         phraseGrid
@@ -199,7 +199,7 @@ struct PrivateKeyRevealSheet: View {
                             color: UniColors.Status.errorForeground
                         )
                     } else if keyString.isEmpty {
-                        ProgressView()
+                        UniLoadingState(caption: "Preparing your key…")
                             .padding(.vertical, UniSpacing.xxl)
                     } else {
                         keyCard

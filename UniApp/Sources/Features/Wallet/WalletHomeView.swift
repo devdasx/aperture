@@ -1607,8 +1607,9 @@ struct WalletHomeView: View {
             .listRowInsets(EdgeInsets())
 
             UniButton(
-                title: "Retry",
+                title: isAnyRefreshInFlight ? "Retrying…" : "Retry",
                 variant: .secondary,
+                isLoading: isAnyRefreshInFlight,
                 isEnabled: !isAnyRefreshInFlight
             ) {
                 Task { await runRefresh(userInitiated: true) }

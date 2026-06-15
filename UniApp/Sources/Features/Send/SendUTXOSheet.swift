@@ -42,7 +42,12 @@ struct SendUTXOSheet: View {
 
     @ViewBuilder
     private var content: some View {
-        if utxos.isEmpty {
+        if utxos.isEmpty && model.isLoadingUTXOs {
+            // Honest loading: a fetch is in flight. Show the unified
+            // spinner rather than the "no coins" empty state.
+            UniLoadingState(caption: "Loading your coins…")
+                .background(UniColors.Background.primary)
+        } else if utxos.isEmpty {
             empty
         } else {
             List {

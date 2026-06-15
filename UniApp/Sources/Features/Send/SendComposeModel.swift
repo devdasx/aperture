@@ -206,6 +206,10 @@ final class SendComposeModel {
     var selectedUTXOs: [SelectedUTXO]?
     /// The fetched UTXO set (Bitcoin family). Empty until fetched.
     private(set) var availableUTXOs: [SelectedUTXO] = []
+    /// True while `loadUTXOs` is fetching — drives the coin-selection
+    /// sheet's honest loading state so the user sees a spinner instead of
+    /// a premature "no coins found" while the fetch is still in flight.
+    private(set) var isLoadingUTXOs = false
     /// EVM advanced — a user gas-limit override (gas units). nil = use the
     /// fee service's estimate.
     var gasLimitOverride: Decimal?
@@ -723,6 +727,8 @@ final class SendComposeModel {
     /// + auto-selection). No-op for non-UTXO chains.
     func loadUTXOs(service: UTXOService = UTXOService()) async {
         guard capability.supportsUTXO else { return }
+        isLoadingUTXOs = true
+        defer { isLoadingUTXOs = false }
         do {
             let utxos = try await service.fetchUTXOs(address: fromAddress, chain: chain)
             guard !Task.isCancelled else { return }
