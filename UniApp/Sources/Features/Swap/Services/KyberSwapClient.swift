@@ -181,6 +181,18 @@ actor KyberSwapClient {
         let fromHuman = request.amount
         let rate: Decimal = fromHuman > 0 ? (toAmount / fromHuman) : 0
 
+        // Funds-safety (Rule #16): validate the native value the API attached
+        // against the reviewed input BEFORE trusting it — an ERC-20-in swap
+        // MUST attach 0 (tokens move via approve+transferFrom); a native-in
+        // swap MUST attach exactly the amount the user reviewed. A mismatch
+        // signals a buggy/stale/tampered keyless response → refuse (never sign
+        // a native value the user didn't authorize). Exact decimal-string
+        // compare (any width, no Decimal precision loss).
+        let expectedValueNorm = request.fromToken.isNative ? Self.normDec(request.rawFromAmount) : "0"
+        guard Self.normDec(build.transactionValue) == expectedValueNorm else {
+            throw .invalidResponse("KyberSwap returned an unexpected native value")
+        }
+
         // Native value: the build's transactionValue (in-amount for
         // native-in, "0" for ERC-20-in). The SwapTxRequest convention is a
         // hex string, so convert the decimal string to hex `0x…`.
@@ -267,32 +279,44 @@ actor KyberSwapClient {
     /// (handled by the caller's default). Decimal-string → hex via
     /// big-integer-safe `Decimal` division; small enough values use UInt64.
     private static func hexValue(from decimalString: String?) -> String {
-        guard let s = decimalString, !s.isEmpty, s != "0" else {
-            return "0x0"
-        }
+        let s = normDec(decimalString)
+        guard s != "0" else { return "0x0" }
         // Fast path: fits in UInt64 (gas limits and most native values do;
         // 1 ETH = 10^18 wei < UInt64.max ≈ 1.8×10^19).
         if let u = UInt64(s) {
             return "0x" + String(u, radix: 16)
         }
-        // Big-value fallback: decimal-string → hex via repeated division by
-        // 16 in Decimal space (handles values > UInt64.max, e.g. large
-        // native amounts), exact integer math, no Double.
-        guard var value = Decimal(string: s), value > 0 else { return "0x0" }
-        let sixteen = Decimal(16)
+        // Big-value path (> UInt64.max): exact base-10 → hex via integer long
+        // division on the decimal DIGIT array (no Decimal/Double — the prior
+        // Decimal-division path lost precision above ~38 digits and CRASHED
+        // with an index-out-of-range at u256 scale; this is exact at any
+        // width, u256-safe). Repeatedly divide the number by 16, emitting the
+        // remainder as a hex digit (LSB-first), until it reaches zero.
+        var digits = s.map { $0.wholeNumberValue ?? -1 }
+        guard digits.allSatisfy({ (0...9).contains($0) }) else { return "0x0" }
         let hexAlphabet = Array("0123456789abcdef")
-        var digits = ""
-        while value > 0 {
-            // floored = floor(value / 16); remainder = value − floored*16.
-            var divided = value / sixteen
-            var floored = Decimal()
-            NSDecimalRound(&floored, &divided, 0, .down)
-            let remainder = value - (floored * sixteen)
-            let idx = (remainder as NSDecimalNumber).intValue
-            digits.append(hexAlphabet[idx])
-            value = floored
+        var out: [Character] = []
+        while !digits.allSatisfy({ $0 == 0 }) {
+            var remainder = 0
+            var quotient: [Int] = []
+            for d in digits {
+                let cur = remainder * 10 + d
+                quotient.append(cur / 16)
+                remainder = cur % 16
+            }
+            out.append(hexAlphabet[remainder])
+            while quotient.count > 1 && quotient.first == 0 { quotient.removeFirst() }
+            digits = quotient
         }
-        return "0x" + String(digits.reversed())
+        return "0x" + String(out.reversed())
+    }
+
+    /// Normalize a decimal integer string: nil/empty/all-zero → "0", else the
+    /// digits with leading zeros stripped. Used for exact width-safe value
+    /// comparison and hex conversion (Rule #28 — no Double/Decimal rounding).
+    private static func normDec(_ s: String?) -> String {
+        let trimmed = (s ?? "").drop(while: { $0 == "0" })
+        return trimmed.isEmpty ? "0" : String(trimmed)
     }
 
     /// Map a non-zero KyberSwap envelope `code` to a typed `SwapError`.

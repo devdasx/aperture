@@ -266,9 +266,13 @@ struct SwapExecutor {
         } else {
             return .failure(.feeUnavailable)
         }
+        // A provider-suggested gasLimit of 0 (or unparseable) must fall back to
+        // the safe ceiling — `flatMap` so a parsed `0` becomes `nil` and the
+        // `?? 800_000` fires (a 0 gasLimit signs an `intrinsic gas too low`
+        // revert AFTER a paid approval — wasted gas, broken swap).
         let gasLimit = evmTx.gasLimit
             .flatMap(SwapEVMABI.quantityToUInt64)
-            .map { $0 + $0 / 5 } ?? 800_000  // Li.Fi suggestion + 20%, else a safe ceiling
+            .flatMap { $0 > 0 ? $0 + $0 / 5 : nil } ?? 800_000  // suggestion + 20%, else a safe ceiling
 
         // A swap MUST carry router calldata. An empty/garbled payload would
         // sign a bare value-send INTO the router — for a native-coin input
@@ -276,6 +280,19 @@ struct SwapExecutor {
         // `?? Data()` fallback (Rule #16 — never sign a fund-losing tx).
         guard let calldata = SigningNumeric.hexToData(SwapEVMABI.strip0x(evmTx.data)),
               !calldata.isEmpty else {
+            return .failure(.missingExecutionData)
+        }
+
+        // Funds-safety (Rule #16): the allowlist gates WHERE funds go; this
+        // gates HOW MUCH native rides along. An ERC-20-in swap MUST attach
+        // zero native value (the tokens move via approve + transferFrom, never
+        // msg.value). A nonzero `value` on an ERC-20-in tx — a buggy, stale, or
+        // tampered keyless-provider response — would forward the user's native
+        // coin into the router ON TOP of the swap, a silent loss the allowlist
+        // can't catch. Refuse it. (Native-in value is bounded in each client
+        // against the reviewed amount.)
+        if !quote.fromToken.isNative,
+           !SwapEVMABI.strip0x(evmTx.value).drop(while: { $0 == "0" }).isEmpty {
             return .failure(.missingExecutionData)
         }
         let swapTx = SwapEVMSigner.UnsignedTx(

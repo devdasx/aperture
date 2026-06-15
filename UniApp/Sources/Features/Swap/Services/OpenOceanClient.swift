@@ -181,9 +181,14 @@ actor OpenOceanClient {
         // the swap leg's outAmount (the value tied to this exact tx); fall
         // back to the quote leg's outAmount if the swap omitted it.
         let toAmountRaw = swapData.outAmount ?? quoteData.outAmount
-        // minOutAmount is OpenOcean's slippage-protected floor — use it;
-        // never fabricate a min larger than the provider's guarantee.
-        let toAmountMinRaw = swapData.minOutAmount ?? toAmountRaw
+        // minOutAmount is OpenOcean's slippage-protected floor — use it. When
+        // the provider OMITS it, DON'T fall back to the expected out (that
+        // would display zero slippage protection while the calldata enforces
+        // outAmount×(1−slip)) — derive the real floor the same conservative
+        // way Kyber does, so the shown "minimum received" never overstates the
+        // on-chain guarantee (Rule #16).
+        let toAmountMinRaw = swapData.minOutAmount
+            ?? Self.slippageMinRaw(toAmountRaw, slippageBps: request.slippageBps)
 
         let toDecimals = request.toToken.decimals
         let toAmount = Self.humanAmount(toAmountRaw, decimals: toDecimals)
@@ -198,14 +203,26 @@ actor OpenOceanClient {
         // noise to 0; `nil` when absent or unparseable.
         let priceImpact = Self.priceImpactFraction(swapData.price_impact)
 
+        // Funds-safety (Rule #16): validate the native value against the
+        // reviewed input BEFORE trusting it — ERC-20-in MUST attach 0, native-
+        // in MUST attach exactly the swap amount. A mismatch signals a buggy/
+        // stale/tampered keyless response → refuse. Exact width-safe compare.
+        let expectedValueNorm = request.fromToken.isNative ? Self.normDec(request.rawFromAmount) : "0"
+        guard Self.normDec(swapData.value) == expectedValueNorm else {
+            throw .invalidResponse("OpenOcean returned an unexpected native value")
+        }
+
         // Native-in swaps carry a native value; ERC-20-in carry "0". Take
         // exactly what the API returned (verified: "0" / native amount),
         // normalized to a hex-quantity string the signer expects.
         let valueHex = Self.hexQuantity(fromDecimalString: swapData.value ?? "0")
 
-        // Gas: estimatedGas is gas-UNITS. Pad ~30% headroom (per the
-        // brief) and emit as a hex quantity. gasPrice is a wei string.
-        let gasLimitHex = swapData.estimatedGas.map { units -> String in
+        // Gas: estimatedGas is gas-UNITS. Pad ~30% headroom (per the brief)
+        // and emit as a hex quantity. A 0/absent estimate becomes `nil` so the
+        // executor's 800k ceiling applies — a signed gasLimit of 0 reverts
+        // (intrinsic gas too low) AFTER a paid approval (Rule #26).
+        let gasLimitHex = swapData.estimatedGas.flatMap { units -> String? in
+            guard units.value > 0 else { return nil }
             let padded = (units.value * 13) / 10  // ×1.3, integer math
             return Self.hexQuantity(fromInt: max(padded, units.value))
         }
@@ -260,6 +277,26 @@ actor OpenOceanClient {
     private static func slippagePercentString(bps: Int) -> String {
         let percent = Decimal(bps) / 100
         return (percent as NSDecimalNumber).stringValue
+    }
+
+    /// `raw × (1 − slippageBps/10_000)`, rounded DOWN to the integer
+    /// smallest-unit, as a plain-decimal string. The conservative on-chain
+    /// floor used when OpenOcean omits `minOutAmount`. Decimal math (Rule #28).
+    private static func slippageMinRaw(_ raw: String, slippageBps: Int) -> String {
+        guard let amount = Decimal(string: raw) else { return raw }
+        let factor = Decimal(10_000 - slippageBps) / Decimal(10_000)
+        var scaled = amount * factor
+        var rounded = Decimal()
+        NSDecimalRound(&rounded, &scaled, 0, .down)
+        return (rounded as NSDecimalNumber).stringValue
+    }
+
+    /// Normalize a decimal integer string: nil/empty/all-zero → "0", else the
+    /// digits with leading zeros stripped. Width-safe exact comparison for the
+    /// native-value invariant (no Double/Decimal rounding).
+    private static func normDec(_ s: String?) -> String {
+        let trimmed = (s ?? "").drop(while: { $0 == "0" })
+        return trimmed.isEmpty ? "0" : String(trimmed)
     }
 
     /// Build a `.gas` `SwapFee` (native units, no USD) when the gas
