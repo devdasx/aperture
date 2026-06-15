@@ -67,15 +67,41 @@ struct SwapComposeView: View {
 
     // MARK: - The two cards + flip button
 
+    /// Visible diameter of the flip control. The `.actionCircle` paints a
+    /// 56×56 glass; we shrink it to a seam-sized control and — critically —
+    /// constrain its LAYOUT frame to the same size (`.frame(width:height:)`,
+    /// not `.scaleEffect`, which leaves a 56×56 layout box). Layout bounds ==
+    /// visible bounds keeps the seam-offset math and the ring size exact.
+    private static let flipButtonScale: CGFloat = 0.72
+    private static let actionCircleDiameter: CGFloat = 56
+    private static var flipButtonDiameter: CGFloat { actionCircleDiameter * flipButtonScale }
+    /// The thin page-background ring around the glass, on each side.
+    private static let flipRingInset: CGFloat = UniSpacing.xxs
+    /// Total laid-out size of the flip control incl. its seam ring.
+    private static var flipControlDiameter: CGFloat { flipButtonDiameter + flipRingInset * 2 }
+    /// The gap straddled by the flip button. Fixed (height-independent) so
+    /// the seam sits at a known place regardless of either card's content.
+    private static let cardGap: CGFloat = UniSpacing.m
+
     private var swapCards: some View {
-        // The flip button overlaps the seam between the two cards — the
-        // classic swap geometry. A `ZStack` centers it on the gap.
-        ZStack {
-            VStack(spacing: UniSpacing.xs) {
-                fromCard
-                toCard
-            }
-            flipButton
+        // The flip button is anchored to the SEAM between the two cards —
+        // not the midpoint of the stack. Overlaying it on the FROM card's
+        // bottom edge and pushing it DOWN by half its own diameter centers
+        // it exactly on the gap, so it never drifts into the taller card's
+        // Available/Max row no matter how the card heights differ.
+        VStack(spacing: SwapComposeView.cardGap) {
+            fromCard
+                .overlay(alignment: .bottom) {
+                    flipButton
+                        // Center on the seam: push down half the control so
+                        // its midline lands on the FROM card's bottom edge,
+                        // i.e. dead-center of the gap below it.
+                        .offset(y: SwapComposeView.flipControlDiameter / 2)
+                        // Float above the TO card so the seam ring reads as
+                        // sitting ON the boundary, not under it.
+                        .zIndex(1)
+                }
+            toCard
         }
     }
 
@@ -114,6 +140,10 @@ struct SwapComposeView: View {
                     }
                     maxButton
                 }
+                // Reserve the lower-half footprint of the seam button so its
+                // top edge (≈ half its diameter above the card's bottom edge)
+                // never reaches the Available/MAX row, at any card height.
+                .padding(.bottom, SwapComposeView.flipControlDiameter / 2 - UniSpacing.m + UniSpacing.xs)
             }
         }
     }
@@ -171,8 +201,21 @@ struct SwapComposeView: View {
             }
         )
         .accessibilityLabel(Text("Flip the swap direction"))
-        // Scale the 56×56 action circle down to a seam-sized control.
-        .scaleEffect(0.72)
+        // Render the 56×56 action circle at the seam size…
+        .scaleEffect(SwapComposeView.flipButtonScale)
+        // …and clamp the LAYOUT footprint to that visible size so the ring
+        // and the seam offset use the real on-screen diameter (scaleEffect
+        // alone leaves a 56×56 layout box centered inside).
+        .frame(width: SwapComposeView.flipButtonDiameter,
+               height: SwapComposeView.flipButtonDiameter)
+        // A thin opaque ring in the page background sits between the glass
+        // and the two card edges, so the control reads as floating cleanly
+        // ON the seam rather than blending into either card. No shadow —
+        // the glass's own specular does the depth work (Rule #2 §B.3).
+        .padding(SwapComposeView.flipRingInset)
+        .background(
+            Circle().fill(UniColors.Background.primary)
+        )
     }
 
     // MARK: - Asset + picker buttons
