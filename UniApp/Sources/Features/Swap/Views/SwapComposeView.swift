@@ -648,6 +648,9 @@ private struct SwapAmountField: View {
             .keyboardType(.decimalPad)
             .multilineTextAlignment(.trailing)
             .focused(focused)
+            // The decimal pad has no Return key — add the native dismiss
+            // accessory bar (Rule #3) keyed to this field's focus.
+            .numericDoneToolbar(focused)
             .lineLimit(1)
             .minimumScaleFactor(0.4)
             .frame(maxWidth: .infinity)
@@ -667,6 +670,7 @@ private struct CustomSlippageSheet: View {
     @Binding var text: String
     let onCommit: () -> Void
     @Environment(\.dismiss) private var dismiss
+    @FocusState private var amountFocused: Bool
 
     var body: some View {
         NavigationStack {
@@ -681,7 +685,8 @@ private struct CustomSlippageSheet: View {
                         placeholder: "0.5",
                         text: $text,
                         directionPolicy: .forceLTR,
-                        keyboardType: .decimalPad
+                        keyboardType: .decimalPad,
+                        boolFocusBinding: $amountFocused
                     )
                     Text(verbatim: "%")
                         .font(UniTypography.title3)
@@ -693,6 +698,8 @@ private struct CustomSlippageSheet: View {
             }
             .padding(.horizontal, UniSpacing.l)
             .padding(.top, UniSpacing.m)
+            // The decimal pad has no Return key — native dismiss accessory.
+            .numericDoneToolbar($amountFocused)
             .navigationTitle(Text("Custom slippage"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

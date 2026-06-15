@@ -61,6 +61,9 @@ struct SendAmountHero: View {
                         .keyboardType(.decimalPad)
                         .multilineTextAlignment(.center)
                         .focused(amountFocused)
+                        // The decimal pad has no Return key — native dismiss
+                        // accessory bar keyed to this field's focus (Rule #3).
+                        .numericDoneToolbar(amountFocused)
                         .lineLimit(1)
                         .minimumScaleFactor(minSize / idealSize)
                         .layoutPriority(1)
@@ -327,6 +330,12 @@ private struct SendAmountRow: View {
     /// Zero-based position in `model.amounts`.
     let index: Int
 
+    /// This row's own decimal-pad focus — drives the native Done accessory
+    /// (the decimal pad has no Return key, Rule #3). Per-row so the toolbar
+    /// only shows for the row currently editing; only one keyboard is up at
+    /// a time, so the per-row bars never collide.
+    @FocusState private var fieldFocused: Bool
+
     private var status: SendComposeModel.RecipientFundingStatus {
         model.recipientFundingStatus(at: index)
     }
@@ -359,6 +368,10 @@ private struct SendAmountRow: View {
                     .font(UniTypography.title3.monospacedDigit())
                     .foregroundStyle(amountColor)
                     .keyboardType(.decimalPad)
+                    .focused($fieldFocused)
+                    // The decimal pad has no Return key — native dismiss
+                    // accessory bar keyed to this row's focus (Rule #3).
+                    .numericDoneToolbar($fieldFocused)
                     .lineLimit(1)
                     .minimumScaleFactor(0.5)
                     .layoutPriority(1)
