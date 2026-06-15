@@ -172,10 +172,16 @@ struct MainTabView: View {
             }
 
             // MARK: - Swap
+            //
+            // 2026-06-15 — `SwapPlaceholderView` retired; replaced by the
+            // real swap surface. `SwapTabView` hosts `SwapView` full-screen
+            // (compose → live quote → honest Review → sign + broadcast).
+            // No wrapping `NavigationStack` here: `SwapView` provides its
+            // own `NavigationStack(path:)`, so wrapping would double-stack
+            // the bar. The wallet-home Swap action still presents `SwapView`
+            // as a sheet (default `isSheet: true`) — unchanged.
             Tab("Swap", systemImage: "arrow.left.arrow.right", value: MainTab.swap) {
-                NavigationStack {
-                    SwapPlaceholderView()
-                }
+                SwapTabView()
             }
 
             // MARK: - Browser
