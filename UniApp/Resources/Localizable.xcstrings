@@ -310002,6 +310002,127 @@
           }
         }
       }
+    },
+    "Adding…": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Adding…"
+          }
+        }
+      }
+    },
+    "Deriving your account…": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Deriving your account…"
+          }
+        }
+      }
+    },
+    "Importing…": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Importing…"
+          }
+        }
+      }
+    },
+    "Loading the network fee…": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Loading the network fee…"
+          }
+        }
+      }
+    },
+    "Loading your coins…": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Loading your coins…"
+          }
+        }
+      }
+    },
+    "Preparing your key…": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Preparing your key…"
+          }
+        }
+      }
+    },
+    "Preparing your phrase…": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Preparing your phrase…"
+          }
+        }
+      }
+    },
+    "Resolving addresses…": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Resolving addresses…"
+          }
+        }
+      }
+    },
+    "Retrying…": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Retrying…"
+          }
+        }
+      }
+    },
+    "Signing…": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Signing…"
+          }
+        }
+      }
+    },
+    "dApp": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "dApp"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

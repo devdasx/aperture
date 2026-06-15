@@ -606,6 +606,10 @@ private enum SortedBIP39Words {
 
 struct MnemonicReviewView: View {
     @Bindable var state: ImportWalletState
+    /// True while the parent flow is persisting the wallet — drives the
+    /// Import CTA's native loading spinner (the commit derives + writes
+    /// to SwiftData + Keychain, a real beat).
+    var isCommitting: Bool = false
     let onCommit: () -> Void
 
     @AppStorage(CurrencyPreference.storageKey)
@@ -744,8 +748,9 @@ struct MnemonicReviewView: View {
     /// with no per-chain address rows.
     private var importCTA: some View {
         UniButton(
-            title: "Import wallet",
+            title: isCommitting ? "Importing…" : "Import wallet",
             variant: .primary,
+            isLoading: isCommitting,
             isEnabled: !derivedAddresses.isEmpty
         ) {
             onCommit()

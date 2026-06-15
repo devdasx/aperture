@@ -82,6 +82,13 @@ struct SendFeeSheet: View {
             // Custom entirely (FIX 6 · Rule #10 §B).
             .uniHaptic(.selection, trigger: model.selectedTier)
             .onAppear { seedCustomFields(quote) }
+        } else if model.feeState == .loading || model.feeState == .idle {
+            // Honest loading: while the fee is in flight (or hasn't been
+            // requested yet) show the unified centered spinner — never the
+            // "unavailable" surface, which would dishonestly claim the fee
+            // doesn't exist while it's still loading.
+            UniLoadingState(caption: "Loading the network fee…")
+                .background(UniColors.Background.primary)
         } else {
             unavailable
         }

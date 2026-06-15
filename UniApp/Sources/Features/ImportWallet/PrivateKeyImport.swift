@@ -211,6 +211,9 @@ struct PrivateKeyEntryView: View {
 struct PrivateKeyReviewView: View {
     @Bindable var state: ImportWalletState
     let chain: SupportedChain
+    /// True while the parent flow is persisting the wallet — drives the
+    /// commit CTA's native loading spinner.
+    var isCommitting: Bool = false
     let onCommit: () -> Void
 
     @State private var derivedAddress: String = ""
@@ -221,9 +224,8 @@ struct PrivateKeyReviewView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: UniSpacing.l) {
                 if isDeriving {
-                    ProgressView()
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, UniSpacing.l)
+                    UniLoadingState(caption: "Deriving your account…")
+                        .padding(.vertical, UniSpacing.xl)
                 } else if let error {
                     errorState(error)
                 } else {
@@ -240,7 +242,11 @@ struct PrivateKeyReviewView: View {
         .safeAreaInset(edge: .bottom) {
             if error == nil && !isDeriving {
                 GlassEffectContainer(spacing: UniSpacing.s) {
-                    UniButton(title: "Import account", variant: .primary) {
+                    UniButton(
+                        title: isCommitting ? "Importing…" : "Import account",
+                        variant: .primary,
+                        isLoading: isCommitting
+                    ) {
                         onCommit()
                     }
                 }

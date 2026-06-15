@@ -252,12 +252,22 @@ struct UniButton: View {
     /// Label for the three "row of text + optional leading SF Symbol"
     /// variants. 47pt-tall, full-bleed width. `.contentShape(Capsule())`
     /// expands the tap region to match the painted glass.
+    ///
+    /// When `isLoading`, the leading glyph is replaced by a native
+    /// `ProgressView`. The spinner is **explicitly tinted** to the
+    /// variant's resolved LABEL color (`spinnerTint`) — never left to
+    /// inherit the button's `.tint(...)`, which is the glass FILL color.
+    /// On a `.glassProminent` CTA (dark/Ink fill) an untinted spinner
+    /// inherits the dark fill tint and renders invisibly against it
+    /// (the 2026-06-15 "Send shows no loading" bug). The spinner + the
+    /// title text (e.g. "Sending…") read together as the working state.
     @ViewBuilder
     private var standardLabel: some View {
         HStack(spacing: UniSpacing.xs) {
             if isLoading {
                 ProgressView()
                     .controlSize(.small)
+                    .tint(spinnerTint)
             } else if let systemImage {
                 Image(systemName: systemImage)
                     .font(.system(size: 17, weight: .semibold))
@@ -268,6 +278,28 @@ struct UniButton: View {
         .frame(maxWidth: .infinity)
         .frame(height: 47)
         .contentShape(Capsule())
+    }
+
+    /// The color the variant's spinner (and label) reads as. Resolves to
+    /// the SAME role the title text uses, so the `ProgressView` is always
+    /// visible on the variant's surface — white-on-Ink for the prominent
+    /// CTAs, `.label` on the glass variants, accent for the inline link.
+    /// Rule #4 — every value is a `UniColors` role, never a literal.
+    private var spinnerTint: Color {
+        switch variant {
+        case .primary, .actionCircle:
+            // `.glassProminent` accent fill → label opposes the fill.
+            return UniColors.Button.primaryLabel
+        case .destructive:
+            // `.glassProminent` red fill → white label.
+            return UniColors.Button.destructiveLabel
+        case .secondary, .toolbarPill, .walletPill:
+            // `.glass` neutral fill → `.label`-tone label.
+            return UniColors.Button.secondaryLabel
+        case .tertiary:
+            // `.plain` inline link → accent.
+            return UniColors.Button.tertiaryLabel
+        }
     }
 
     @ViewBuilder
@@ -334,13 +366,23 @@ struct UniButton: View {
 
     /// Wallet-home action circle (Send/Receive/Swap). 56×56 SF Symbol
     /// inside a glass-prominent circle. The external `Text` label beneath
-    /// is rendered by the call site, not by `UniButton`.
+    /// is rendered by the call site, not by `UniButton`. When `isLoading`,
+    /// the glyph is replaced by a `spinnerTint`-tinted `ProgressView` so
+    /// the working state reads on the dark prominent fill.
     @ViewBuilder
     private var actionCircleLabel: some View {
-        Image(systemName: icon ?? "questionmark")
-            .font(.system(size: 22, weight: .semibold))
-            .frame(width: 56, height: 56)
-            .contentShape(Circle())
+        Group {
+            if isLoading {
+                ProgressView()
+                    .controlSize(.small)
+                    .tint(spinnerTint)
+            } else {
+                Image(systemName: icon ?? "questionmark")
+                    .font(.system(size: 22, weight: .semibold))
+            }
+        }
+        .frame(width: 56, height: 56)
+        .contentShape(Circle())
     }
 
     /// Resolves the variant's glass tint + label tone. When the button is

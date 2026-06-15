@@ -46,6 +46,14 @@ struct ImportWalletFlow: View {
     /// commit button again.
     @State private var isShowingPersistError = false
 
+    /// True while `persistThen` is running (derive + write to SwiftData +
+    /// Keychain + fire first refresh). Passed down to whichever review
+    /// view is on screen so its commit `UniButton` shows the native
+    /// loading spinner while the wallet is being saved — the work takes a
+    /// real beat, and a silent button reads as a frozen app (Rule #28:
+    /// the work stays off-main; the view just reflects the state).
+    @State private var isCommitting = false
+
     @Environment(\.modelContext) private var modelContext
 
     private static let log = Logger(
@@ -73,6 +81,7 @@ struct ImportWalletFlow: View {
                 case .mnemonicReview:
                     MnemonicReviewView(
                         state: state,
+                        isCommitting: isCommitting,
                         onCommit: {
                             persistThen(.mnemonic)
                         }
@@ -94,6 +103,7 @@ struct ImportWalletFlow: View {
                     PrivateKeyReviewView(
                         state: state,
                         chain: chain,
+                        isCommitting: isCommitting,
                         onCommit: {
                             persistThen(.privateKey(chain))
                         }
@@ -115,6 +125,7 @@ struct ImportWalletFlow: View {
                     WatchOnlyReviewView(
                         state: state,
                         chain: chain,
+                        isCommitting: isCommitting,
                         onCommit: {
                             persistThen(.watchOnly(chain))
                         }
@@ -141,9 +152,14 @@ struct ImportWalletFlow: View {
     /// failure, and navigation stays in place so the user can retry
     /// the commit from the same review screen.
     private func persistThen(_ result: ImportResult) {
+        // Suppress a double-commit: the button is already showing its
+        // loading spinner + disabled, but guard the async path too.
+        guard !isCommitting else { return }
+        isCommitting = true
         let repository = WalletRepository(modelContainer: modelContext.container)
         let container = modelContext.container
         Task { @MainActor in
+            defer { isCommitting = false }
             do {
                 let walletId = try await state.persist(result: result, into: repository)
                 // Seed / key bytes are now encrypted in Keychain —

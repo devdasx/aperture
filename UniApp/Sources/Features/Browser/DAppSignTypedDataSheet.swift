@@ -26,6 +26,10 @@ struct DAppSignTypedDataSheet: View {
     /// re-parse on every evaluation.
     @State private var decodedPreview: TypedDataPreview?
 
+    /// True while the signature is being produced — drives the Sign CTA's
+    /// native loading spinner and suppresses Cancel so the two can't race.
+    @State private var isSigning = false
+
     var body: some View {
         NavigationStack {
             ScrollView {
@@ -182,8 +186,15 @@ struct DAppSignTypedDataSheet: View {
         VStack(spacing: UniSpacing.xs) {
             GlassEffectContainer(spacing: UniSpacing.s) {
                 VStack(spacing: UniSpacing.s) {
-                    UniButton(title: "Sign", variant: .primary) {
+                    UniButton(
+                        title: isSigning ? "Signing…" : "Sign",
+                        variant: .primary,
+                        isLoading: isSigning,
+                        isEnabled: !isSigning
+                    ) {
+                        isSigning = true
                         Task {
+                            defer { isSigning = false }
                             do {
                                 let signature = try await EVMDAppSigner.signTypedData(
                                     json: request.rawJSON
@@ -195,7 +206,7 @@ struct DAppSignTypedDataSheet: View {
                             dismiss()
                         }
                     }
-                    UniButton(title: "Cancel", variant: .secondary) {
+                    UniButton(title: "Cancel", variant: .secondary, isEnabled: !isSigning) {
                         router.rejectPending()
                         dismiss()
                     }

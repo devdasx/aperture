@@ -123,15 +123,7 @@ struct BackupExistingWalletFlow: View {
     /// decrypt) but we still show a calm spinner so the screen never
     /// appears to be empty at first paint.
     private var loadingView: some View {
-        VStack(spacing: UniSpacing.s) {
-            ProgressView()
-            UniFootnote(
-                text: "Preparing your phrase.",
-                alignment: .center,
-                color: UniColors.Text.tertiary
-            )
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        UniLoadingState(caption: "Preparing your phrase…")
     }
 
     /// Calm honest surface when the mnemonic isn't available. Only
