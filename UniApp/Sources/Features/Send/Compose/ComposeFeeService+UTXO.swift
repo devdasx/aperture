@@ -45,19 +45,31 @@ extension ComposeFeeService {
             // https://litecoinspace.org/docs/api/rest
             return try await fetchEsploraRecommended(chain: chain)
         case .utxoByteFeeNoWitness:
-            // BCH — BlockCypher rate oracle (Haskoin has no fee endpoint).
-            // Docs: https://www.blockcypher.com/dev/bitcoin/#blockchain-api
-            return try await fetchBlockCypherRates(coin: "bch", clampFloor: 1)
+            // BCH — LIVE via the registered Blockbook provider's
+            // `/api/v2/estimatefee/{blocks}` (BUG 2; Haskoin has no fee
+            // endpoint). Blockbook returns BCH/kB; convert to sat/byte and
+            // clamp ≥ 1 (relay floor). Falls back to the doc-grounded 1
+            // sat/byte network default when the oracle is unreachable.
+            // Docs: https://github.com/trezor/blockbook/blob/master/docs/api.md ;
+            // reference.cash min relay = 1 sat/byte.
+            return await fetchBCHRates()
         case .dogecoinFixedPerKB:
             // DOGE — Dogecoin Core fee-recommendation.md (koinu/byte; 1 DOGE
-            // = 1e8 koinu): normal = RECOMMENDED 0.01 DOGE/kB = 1,000,000
-            // koinu/1000B = 1000 koinu/byte; slow/min = MIN RELAY 0.001
-            // DOGE/kB = 100,000 koinu/1000B = 100 koinu/byte (the hard
-            // floor); fast = 0.05 DOGE/kB = 5000 koinu/byte. Live BlockCypher
-            // market rates run far higher (offered as the dynamic upper
-            // option, not the floor). Docs: dogecoin/dogecoin
-            // doc/fee-recommendation.md.
-            return UTXORates(slow: 100, normal: 1000, fast: 5000) // koinu/byte
+            // = 1e8 koinu): slow/min = MIN RELAY 0.001 DOGE/kB = 100,000
+            // koinu/1000B = 100 koinu/byte (the hard floor); normal =
+            // RECOMMENDED 0.01 DOGE/kB = 1,000,000 koinu/1000B = 1000
+            // koinu/byte (what DOGE wallets ship + what confirms). FAST is
+            // now LIVE (BUG 2): the registered primary provider BlockCypher
+            // `/v1/doge/main`.high_fee_per_kb (koinu/kB ÷ 1000 = koinu/byte)
+            // reflects the current market upper rate (live-verified
+            // 2026-06-15 high_fee_per_kb ≈ 200,247,134 koinu/kB ≈ 200,247
+            // koinu/byte). The matrix's guidance: doc-grounded floor for
+            // slow/normal, live market high for fast. Docs:
+            // github.com/dogecoin/dogecoin/blob/master/doc/fee-recommendation.md ;
+            // https://www.blockcypher.com/dev/bitcoin/#blockchain-api
+            let liveFast = await fetchDogecoinLiveFastRate()
+            // fast = max(0.05 DOGE/kB doc floor, live market high).
+            return UTXORates(slow: 100, normal: 1000, fast: max(5000, liveFast))
         default:
             throw RPCError.invalidResponse("Non-UTXO model in utxoQuote")
         }
@@ -86,20 +98,55 @@ extension ComposeFeeService {
         return UTXORates(slow: slow, normal: normal, fast: fast)
     }
 
-    /// BlockCypher `/v1/{coin}/main` → {high,medium,low}_fee_per_kb in
-    /// sat/kB. We divide by 1000 → sat/byte and clamp to the relay floor.
-    /// Note: the BlockCypher base URL is the registered LTC fallback /
-    /// DOGE primary; for BCH it is not registered, so we POST through a
-    /// raw URLSession-free path — but the registry has no BCH BlockCypher
-    /// endpoint. Instead we fall back to the BCH 1 sat/byte network
-    /// default (matrix) when no oracle is reachable.
-    private func fetchBlockCypherRates(coin: String, clampFloor: Decimal) async throws -> UTXORates {
-        // BCH has no registered BlockCypher endpoint and Haskoin exposes
-        // no fee endpoint, so use the BCH network default (1 sat/byte
-        // normal, 2 fast) — the matrix's documented BCH behavior (near-
-        // empty mempool, 1 sat/byte confirms). This is doc-grounded, not
-        // a guess: reference.cash min relay = 1 sat/byte.
-        return UTXORates(slow: clampFloor, normal: clampFloor, fast: max(clampFloor, 2))
+    /// BCH live fee rate from the registered Blockbook provider
+    /// `/api/v2/estimatefee/{blocks}` (BUG 2). Blockbook returns BCH/kB as a
+    /// decimal string; convert to sat/byte (× 1e8 ÷ 1000 = × 100,000) and
+    /// clamp to the 1 sat/byte relay floor. slow=12-block, normal=6-block,
+    /// fast=2-block targets. Tolerant: any failed leg keeps the doc-grounded
+    /// 1 sat/byte default (reference.cash min relay; BCH mempool is near-empty
+    /// so 1 sat/byte confirms — live-verified 2026-06-15 estimatefee →
+    /// "0.00001" BCH/kB = 1 sat/byte). NEVER fabricates beyond the doc floor.
+    private func fetchBCHRates() async -> UTXORates {
+        async let slowF = fetchBlockbookSatPerByte(blocks: 12)
+        async let normalF = fetchBlockbookSatPerByte(blocks: 6)
+        async let fastF = fetchBlockbookSatPerByte(blocks: 2)
+        let (slow, normal, fast) = await (slowF, normalF, fastF)
+        return UTXORates(
+            slow: max(slow, 1),
+            normal: max(normal, 1),
+            fast: max(fast, max(normal, 1), 2))
+    }
+
+    /// One Blockbook `estimatefee/{blocks}` call → sat/byte. Returns 0 on any
+    /// failure (caller clamps to the relay floor).
+    private func fetchBlockbookSatPerByte(blocks: Int) async -> Decimal {
+        guard let data = try? await client.callREST(
+                chain: .bitcoinCash, path: "/api/v2/estimatefee/\(blocks)"),
+              let root = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
+              let s = root["result"] as? String,
+              let bchPerKb = Decimal(string: s, locale: Locale(identifier: "en_US_POSIX")),
+              bchPerKb > 0 else {
+            return 0
+        }
+        // BCH/kB → sat/byte: × 1e8 (BCH→sat) ÷ 1000 (kB→byte) = × 100,000.
+        return ComposeDecimal.ceilToInteger(bchPerKb * Decimal(100_000))
+    }
+
+    /// DOGE live market FAST rate (koinu/byte) from the registered primary
+    /// BlockCypher provider `/v1/doge/main`.high_fee_per_kb ÷ 1000 (BUG 2 ·
+    /// make DOGE's fast tier live, not a static guess). Tolerant: returns 0
+    /// on any failure so the caller keeps the doc-grounded 0.05 DOGE/kB floor
+    /// — never fabricates and never throws away the whole quote for the fast
+    /// tier alone. Doc: https://www.blockcypher.com/dev/bitcoin/#blockchain-api
+    private func fetchDogecoinLiveFastRate() async -> Decimal {
+        guard let data = try? await client.callREST(chain: .dogecoin, path: ""),
+              let root = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
+              let highPerKb = (root["high_fee_per_kb"] as? NSNumber)?.decimalValue,
+              highPerKb > 0 else {
+            return 0
+        }
+        // koinu/kB → koinu/byte. (BlockCypher's "kb" is 1000 bytes.)
+        return ComposeDecimal.ceilToInteger(highPerKb / 1000)
     }
 
     /// Typical vsize for a 1-input + 2-output native transfer (matrix

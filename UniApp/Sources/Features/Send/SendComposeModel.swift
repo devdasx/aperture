@@ -678,14 +678,44 @@ final class SendComposeModel {
         do {
             let quote = try await service.quote(ctx)
             guard !Task.isCancelled else { return }
-            feeQuote = quote
-            // If the chain has no speed tiers, pin to normal.
-            if !quote.hasSpeedTiers { selectedTier = .normal }
+            applyFeeQuote(quote)
             feeState = .loaded
         } catch {
             guard !Task.isCancelled else { return }
             Self.log.error("Fee quote failed for \(self.chain.rawValue, privacy: .public): \(String(describing: error), privacy: .public)")
             feeState = .failed(String(localized: "Couldn't load the network fee"))
+        }
+    }
+
+    /// Adopt a freshly-fetched (or test-supplied) quote, preserving the
+    /// user's chosen tier across refreshes (BUG 1 · fix #1). Extracted from
+    /// `loadFee` so the network call and the unit test exercise the SAME
+    /// resolution path. The OLD `loadFee` unconditionally pinned `.normal`
+    /// whenever the chain had no speed tiers — which silently reverted a
+    /// user-picked `.custom` on every debounced refresh for
+    /// custom-allowed/single-tier chains (Aptos), so the typed custom fee
+    /// never reached `resolvedFee`/`makeDraft`. Now we only change the tier
+    /// when the CURRENT one is genuinely invalid for the NEW quote.
+    func applyFeeQuote(_ quote: FeeQuote) {
+        feeQuote = quote
+        selectedTier = resolvedSelectedTier(for: quote)
+    }
+
+    /// Decide which tier survives a fee refresh given the NEW quote (BUG 1 ·
+    /// fix #1). Keeps the user's choice unless it can't be honored by the new
+    /// quote, in which case it degrades to the safest present preset. Never
+    /// silently drops a user-picked `.custom` that still has a `customFee`.
+    private func resolvedSelectedTier(for quote: FeeQuote) -> FeeTier {
+        switch selectedTier {
+        case .custom:
+            // Honor custom iff the chain allows it and the user actually
+            // entered one. Otherwise prefer the present normal preset.
+            if quote.isCustomAllowed, customFee != nil { return .custom }
+            return quote.tiers[.normal] != nil ? .normal : (quote.tiers.keys.first ?? .normal)
+        case .slow, .normal, .fast:
+            // Keep the preset if the new quote carries it; else normal.
+            if quote.tiers[selectedTier] != nil { return selectedTier }
+            return .normal
         }
     }
 

@@ -43,8 +43,15 @@ extension ComposeFeeService {
             .normal: choice(.normal, drops: max(open, base)),
             .fast:   choice(.fast,   drops: max(median, open)),
         ]
+        // BUG 3 · isCustomAllowed = FALSE for XRP. The Fee field is a FIXED
+        // drop burn (base 10 × load_factor); a higher bid only buys queue/
+        // open-ledger inclusion priority and never reduces cost (xrpl.org fee
+        // method). The slow/normal/fast tiers map minimum/open-ledger/median
+        // drops — those ARE the inclusion-priority lever the user has. A
+        // free-form "Custom drops" field would only let the user OVERPAY a
+        // burned fee with no benefit, so it is dishonest to surface (Rule #16).
         return FeeQuote(chain: ctx.chain, feeModel: .xrpFixed, tiers: tiers,
-                        isCustomAllowed: true, hasSpeedTiers: true, note: nil)
+                        isCustomAllowed: false, hasSpeedTiers: true, note: nil)
     }
 
     // MARK: - TRON
@@ -106,6 +113,21 @@ extension ComposeFeeService {
         copy.setTotals(
             estimated: c.estimatedTotalNative + memoFeeNative,
             worst: c.worstCaseTotalNative + memoFeeNative)
+        return copy
+    }
+
+    /// Recompute a Cosmos `FeeChoice`'s native total after the user sets a
+    /// custom gas price (BUG 3 · custom lever). total ukava = ceil(gasLimit ×
+    /// gasPrice). The data layer owns the math (Rule: money math never in the
+    /// UI). Doc: cosmos/chain-registry kava/chain.json fee tiers; node
+    /// minimum-gas-prices floor 0.001 ukava/gas (docs.kava.io node-config).
+    static func recomputeCosmosTotals(_ c: FeeChoice, decimals: Int) -> FeeChoice {
+        var copy = c
+        let gasLimit = c.cosmosGasLimit ?? 200_000
+        let price = c.cosmosGasPrice ?? Decimal(string: "0.1")!
+        let native = ComposeDecimal.toDisplay(
+            ComposeDecimal.ceilToInteger(gasLimit * price), decimals: decimals)
+        copy.setTotals(estimated: native, worst: native)
         return copy
     }
 
@@ -208,8 +230,14 @@ extension ComposeFeeService {
             .normal: choice(.normal, tip: 0),
             .fast:   choice(.fast,   tip: Decimal(10_000_000)), // ~0.001 DOT tip
         ]
+        // BUG 3 · isCustomAllowed = FALSE for Polkadot. The ONLY sender lever
+        // is the priority tip (docs.polkadot.com … fees), and we already
+        // expose it as the normal(no-tip)/fast(+tip) tiers. The partial_fee
+        // itself is runtime-computed (weight × multiplier), not user-settable.
+        // The compose UI has no Polkadot tip field, so a "Custom" radio would
+        // be a dead control (Rule #16) — the tiers ARE the tip lever.
         return FeeQuote(chain: ctx.chain, feeModel: .polkadotWeight, tiers: tiers,
-                        isCustomAllowed: true, hasSpeedTiers: true,
+                        isCustomAllowed: false, hasSpeedTiers: true,
                         note: "The only adjustable part is the priority tip")
     }
 
@@ -284,8 +312,15 @@ extension ComposeFeeService {
             .normal: choice(.normal, price: prices.regular),
             .fast:   choice(.fast,   price: prices.high),
         ]
+        // BUG 3 · isCustomAllowed = FALSE for Aptos. Aptos exposes a
+        // gas_unit_price lever, but its three native price levels
+        // (deprioritized/regular/prioritized from /v1/estimate_gas_price) ARE
+        // the user-facing lever and the max_gas_amount is auto-sized by a
+        // simulate before signing. The compose UI exposes no Aptos numeric
+        // field, so a "Custom" radio would be a dead control (Rule #16). The
+        // slow/normal/fast tiers map the three estimate levels.
         return FeeQuote(chain: ctx.chain, feeModel: .aptosGas, tiers: tiers,
-                        isCustomAllowed: true, hasSpeedTiers: false,
+                        isCustomAllowed: false, hasSpeedTiers: false,
                         note: "Max gas is refined by a simulation before signing")
     }
 

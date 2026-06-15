@@ -17,6 +17,9 @@ struct SendFeeSheet: View {
     @State private var customMaxFeeGwei = ""       // EVM 1559 maxFee (gwei)
     @State private var customTipGwei = ""          // EVM 1559 tip (gwei)
     @State private var customGasPriceGwei = ""     // EVM legacy gasPrice (gwei)
+    @State private var customSolPriority = ""      // Solana µ-lamports/CU
+    @State private var customStellarPerOp = ""     // Stellar stroops/op
+    @State private var customCosmosGasPrice = ""   // Cosmos ukava/gas
 
     private var quote: FeeQuote? { model.feeQuote }
 
@@ -188,9 +191,22 @@ struct SendFeeSheet: View {
             customField("Priority tip", text: $customTipGwei, suffix: "gwei")
         case .evmLegacy:
             customField("Gas price", text: $customGasPriceGwei, suffix: "gwei")
+        case .solana:
+            // Solana's user lever is the priority compute-unit price in
+            // micro-lamports/CU (solana.com/docs/core/fees).
+            customField("Priority price", text: $customSolPriority, suffix: "µ-lamports/CU")
+        case .stellarPerOp:
+            // Stellar's lever is the per-operation base-fee bid in stroops
+            // (min 100/op; developers.stellar.org fee-stats).
+            customField("Fee per operation", text: $customStellarPerOp, suffix: "stroops")
+        case .cosmosGas:
+            // Cosmos (Kava) lever is the gas price in ukava/gas (chain-registry
+            // tiers; node floor 0.001 ukava/gas).
+            customField("Gas price", text: $customCosmosGasPrice, suffix: "ukava/gas")
         default:
             // Other models expose no meaningful custom numeric lever from
-            // this screen — keep the preset tiers honest.
+            // this screen (gated off via `isCustomAllowed == false`, so this
+            // section never renders for them) — keep the preset tiers honest.
             EmptyView()
         }
     }
@@ -260,6 +276,15 @@ struct SendFeeSheet: View {
         if customGasPriceGwei.isEmpty, let w = normal.gasPriceWei {
             customGasPriceGwei = SendComposeModel.plainString(ComposeDecimal.toDisplay(w, decimals: 9), decimals: 4)
         }
+        if customSolPriority.isEmpty, let p = normal.computeUnitPrice {
+            customSolPriority = SendComposeModel.plainString(p, decimals: 0)
+        }
+        if customStellarPerOp.isEmpty, let s = normal.stellarPerOpStroops {
+            customStellarPerOp = SendComposeModel.plainString(s, decimals: 0)
+        }
+        if customCosmosGasPrice.isEmpty, let g = normal.cosmosGasPrice {
+            customCosmosGasPrice = SendComposeModel.plainString(g, decimals: 4)
+        }
     }
 
     /// Build the custom `FeeChoice` from the typed fields (only when the
@@ -289,6 +314,13 @@ struct SendFeeSheet: View {
         custom.gasLimit = base.gasLimit
         custom.l1DataFeeWei = base.l1DataFeeWei
         custom.gasPerPubdataLimit = base.gasPerPubdataLimit
+        custom.computeUnitPrice = base.computeUnitPrice
+        custom.computeUnitLimit = base.computeUnitLimit
+        custom.solanaBaseFeeLamports = base.solanaBaseFeeLamports
+        custom.stellarPerOpStroops = base.stellarPerOpStroops
+        custom.stellarOpCount = base.stellarOpCount
+        custom.cosmosGasLimit = base.cosmosGasLimit
+        custom.cosmosGasPrice = base.cosmosGasPrice
 
         switch quote.feeModel {
         case .utxoByteFee, .utxoByteFeeNoWitness, .dogecoinFixedPerKB:
@@ -317,6 +349,22 @@ struct SendFeeSheet: View {
             custom.gasPriceWei = gpGwei * ComposeDecimal.pow10(9)
             // Legacy is deterministic (estimated == worst == gasLimit × gp).
             custom = ComposeFeeService.recomputeEVMTotals(custom, decimals: dec)
+        case .solana:
+            // Custom priority compute-unit price (µ-lamports/CU). 0 is valid
+            // (no priority) so allow ≥ 0; require a parseable field.
+            guard let price = SendComposeModel.parseAmount(customSolPriority), price >= 0 else { return }
+            custom.computeUnitPrice = price
+            custom = ComposeFeeService.recomputeSolanaTotals(custom, decimals: dec)
+        case .stellarPerOp:
+            // Custom per-operation base-fee bid in stroops (clamp ≥ 100/op).
+            guard let bid = SendComposeModel.parseAmount(customStellarPerOp), bid > 0 else { return }
+            custom.stellarPerOpStroops = max(bid, 100)
+            custom = ComposeFeeService.recomputeStellarTotals(custom, decimals: dec)
+        case .cosmosGas:
+            // Custom gas price in ukava/gas (clamp ≥ 0.001 node floor).
+            guard let price = SendComposeModel.parseAmount(customCosmosGasPrice), price > 0 else { return }
+            custom.cosmosGasPrice = max(price, Decimal(string: "0.001")!)
+            custom = ComposeFeeService.recomputeCosmosTotals(custom, decimals: dec)
         default:
             return
         }
