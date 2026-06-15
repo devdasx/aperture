@@ -25,6 +25,14 @@ struct SwapView: View {
     /// direction-flip rebuild doesn't lose the user's position).
     @Binding var navigationPath: NavigationPath
 
+    /// Presentation context. `true` (default) = presented as a sheet from
+    /// the wallet-home Swap action — the leading "Close" toolbar item is
+    /// shown so the user can dismiss. `false` = the Swap tab's root screen,
+    /// where there is nothing to dismiss to, so the "Close" item is omitted.
+    /// Defaulting to `true` preserves the existing wallet-home call site
+    /// with no change.
+    var isSheet: Bool = true
+
     @Environment(\.dismiss) private var dismiss
 
     @State private var model: SwapComposeModel?
@@ -75,8 +83,13 @@ struct SwapView: View {
                 }
             }
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button("Close") { dismiss() }
+                // A sheet dismisses; a tab root does not. Omit "Close"
+                // when SwapView is the Swap tab's root (Rule #15 — a tab
+                // root is a screen, not a dialog with a cancel affordance).
+                if isSheet {
+                    ToolbarItem(placement: .topBarLeading) {
+                        Button("Close") { dismiss() }
+                    }
                 }
             }
         }
@@ -254,6 +267,27 @@ struct SwapView: View {
 
     private func hasAddress(for chain: SupportedChain) -> Bool {
         address(for: chain) != nil
+    }
+}
+
+// MARK: - Swap tab root
+
+/// **The Swap tab's root screen.** Hosts `SwapView` full-screen inside the
+/// bottom tab bar — the real compose + live-quote swap surface, not a
+/// placeholder. Owns the tab's own `NavigationPath` so the push into the
+/// honest Review summary survives a Rule #12 §G direction-flip rebuild.
+///
+/// `SwapView` already provides its own `NavigationStack(path:)`, so this
+/// wrapper must NOT add another one — that would double-stack the bar.
+/// `isSheet: false` omits the "Close" toolbar item (a tab root has nothing
+/// to dismiss to). Theme + locale + layout direction reach this screen via
+/// the `.uniAppEnvironment()` applied at the app/WindowGroup root (Rule #12);
+/// tab content does not re-apply it.
+struct SwapTabView: View {
+    @State private var path = NavigationPath()
+
+    var body: some View {
+        SwapView(navigationPath: $path, isSheet: false)
     }
 }
 

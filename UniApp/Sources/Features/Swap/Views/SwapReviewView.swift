@@ -105,6 +105,13 @@ struct SwapReviewView: View {
     var body: some View {
         Group {
             switch phase {
+            case .authenticating, .swapping:
+                SwapInFlightView(
+                    summary: summary,
+                    isBridge: isBridge,
+                    isAuthenticating: phase == .authenticating,
+                    execPhase: execPhase
+                )
             case .done(let executed):
                 SwapDoneView(
                     executed: executed,
@@ -264,53 +271,20 @@ struct SwapReviewView: View {
 
     // MARK: - Action bar (real Swap / Bridge CTA)
 
+    /// The resting Review CTA — the entry to the whole flow. Once tapped,
+    /// `beginSwap` advances `phase` to `.authenticating` / `.swapping`, which
+    /// routes the body to `SwapInFlightView`; the working/loading states live
+    /// there now, not here (so this bar only ever renders at rest).
     private var actionBar: some View {
         GlassEffectContainer(spacing: UniSpacing.s) {
-            VStack(spacing: UniSpacing.xs) {
-                if isWorking, let status = statusLine {
-                    Text(status)
-                        .font(UniTypography.footnote.monospacedDigit())
-                        .foregroundStyle(UniColors.Text.secondary)
-                        .transition(.opacity)
-                }
-                UniButton(
-                    title: ctaTitle,
-                    variant: .primary,
-                    isLoading: isWorking,
-                    isEnabled: !isWorking,
-                    action: beginSwap
-                )
-            }
+            UniButton(
+                title: isBridge ? "Bridge" : "Swap",
+                variant: .primary,
+                action: beginSwap
+            )
             .padding(.horizontal, UniSpacing.l)
             .padding(.top, UniSpacing.s)
             .padding(.bottom, UniSpacing.xs)
-        }
-    }
-
-    /// Honest CTA label: "Swap" same-chain, "Bridge" cross-chain (Rule #16).
-    private var ctaTitle: LocalizedStringKey {
-        switch phase {
-        case .authenticating:
-            return "Confirming…"
-        case .swapping:
-            return isBridge ? "Bridging…" : "Swapping…"
-        default:
-            return isBridge ? "Bridge" : "Swap"
-        }
-    }
-
-    /// The live, honest status under the CTA while the swap is in flight
-    /// (Rule #25). Mirrors whatever executor phase has arrived.
-    private var statusLine: LocalizedStringKey? {
-        guard phase == .swapping else { return nil }
-        switch execPhase {
-        case .preparing:         return "Preparing…"
-        case .checkingApproval:  return "Checking approval…"
-        case .approving:         return "Approving \(quote.fromToken.symbol)…"
-        case .confirmingApproval: return "Waiting for approval…"
-        case .signing:           return "Signing…"
-        case .broadcasting:      return "Submitting…"
-        case .confirming:        return "Confirming…"
         }
     }
 
@@ -426,6 +400,358 @@ struct SwapReviewView: View {
 
     private func resetToReview() {
         withAnimation(.smooth(duration: 0.3)) { phase = .review }
+    }
+}
+
+// MARK: - In-flight state
+
+/// The live execution surface — what the swap is *doing*, rendered as the
+/// real on-chain sequence rather than a one-line status (Rule #25). It owns
+/// the entire working window: the moment the user authenticates, through
+/// signing, broadcasting, and on-chain confirmation. It never fabricates a
+/// timer (Rule #16) — every step's state is read straight from the live
+/// `execPhase` the executor reports.
+///
+/// **The shape.** A distilled from→to header with a calm directional pulse,
+/// then a vertical step *rail* — Apple's pattern for an ordered, in-progress
+/// sequence (Apple Pay setup, Find My, device setup). Steps render
+/// pending → active → done with a filling connector; the active one carries
+/// a live spinner and emphasis, completed ones settle to a check, later ones
+/// stay dim. No CTA: the steps *are* the surface, and a broadcast can't be
+/// cancelled — the screen is non-dismissable mid-swap (back button hidden).
+///
+/// **Step set (honest to the chain).** A token swap needs an ERC-20 approval
+/// before the router can move it, so it shows **Approve → Sign → Submit →
+/// Confirm**; a native-coin swap has no approval and shows **Sign → Submit →
+/// Confirm**. The live phase maps onto exactly one active step.
+private struct SwapInFlightView: View {
+    let summary: SwapReviewSummary
+    let isBridge: Bool
+    /// `true` while the Face ID / passcode gate is up, before any executor
+    /// phase has begun. Drives the leading "Confirm on your iPhone" state.
+    let isAuthenticating: Bool
+    let execPhase: SwapExecutor.Phase
+
+    private var quote: SwapQuote { summary.quote }
+    /// A native-coin swap skips the approval step (no ERC-20 allowance).
+    private var needsApproval: Bool { !quote.fromToken.isNative }
+
+    /// The ordered steps for this swap — approval only when the from-token
+    /// is an ERC-20.
+    private var steps: [SwapInFlightStep] {
+        needsApproval ? [.approve, .sign, .submit, .confirm] : [.sign, .submit, .confirm]
+    }
+
+    /// Index of the currently-active step, or `nil` before the sequence
+    /// begins (during `.authenticating`, or `.preparing` before approval).
+    /// Steps before it render done; the rest pending.
+    private var activeIndex: Int? {
+        if isAuthenticating { return nil }
+        switch execPhase {
+        case .preparing:
+            // Preparing precedes the first real step — nothing active yet.
+            return nil
+        case .checkingApproval, .approving, .confirmingApproval:
+            return steps.firstIndex(of: .approve)
+        case .signing:
+            return steps.firstIndex(of: .sign)
+        case .broadcasting:
+            return steps.firstIndex(of: .submit)
+        case .confirming:
+            return steps.firstIndex(of: .confirm)
+        }
+    }
+
+    var body: some View {
+        ScrollView {
+            VStack(spacing: UniSpacing.xl) {
+                header
+                authBanner
+                rail
+            }
+            .padding(.horizontal, UniSpacing.l)
+            .padding(.top, UniSpacing.xl)
+            .padding(.bottom, UniSpacing.xxl)
+        }
+        .scrollIndicators(.hidden)
+        .scrollDisabled(true)
+        .background(UniColors.Background.primary)
+        .navigationTitle(isBridge ? "Bridging" : "Swapping")
+        .navigationBarTitleDisplayMode(.inline)
+        .navigationBarBackButtonHidden(true)
+    }
+
+    // MARK: Header — from → to with a calm directional pulse
+
+    private var header: some View {
+        VStack(spacing: UniSpacing.s) {
+            tokenLine(
+                token: quote.fromToken,
+                amount: summary.fromAmount,
+                caption: "You pay"
+            )
+            DirectionalPulse(isBridge: isBridge)
+                .frame(height: 24)
+            tokenLine(
+                token: quote.toToken,
+                amount: quote.toAmount,
+                caption: "You receive (estimated)"
+            )
+        }
+        .padding(UniSpacing.l)
+        .frame(maxWidth: .infinity)
+        .background(
+            RoundedRectangle(cornerRadius: UniRadius.card, style: .continuous)
+                .fill(UniColors.Fill.quaternary)
+        )
+    }
+
+    private func tokenLine(token: SwapToken, amount: Decimal, caption: LocalizedStringKey) -> some View {
+        HStack(spacing: UniSpacing.s) {
+            CoinMark(
+                chain: token.chain,
+                tokenSymbol: token.symbol,
+                contract: token.isNative ? nil : token.address,
+                customIconURL: token.logoURI
+            )
+            .frame(width: 36, height: 36)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(caption)
+                    .font(UniTypography.caption1)
+                    .foregroundStyle(UniColors.Text.tertiary)
+                Text(verbatim: token.chain.displayName)
+                    .font(UniTypography.footnote)
+                    .foregroundStyle(UniColors.Text.secondary)
+            }
+            Spacer(minLength: UniSpacing.s)
+            VStack(alignment: .trailing, spacing: 2) {
+                Text(verbatim: WalletFormatting.native(amount, decimals: token.decimals))
+                    .font(.system(.title3, design: .rounded, weight: .semibold).monospacedDigit())
+                    .foregroundStyle(UniColors.Text.primary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.5)
+                Text(verbatim: token.symbol)
+                    .font(UniTypography.footnote)
+                    .foregroundStyle(UniColors.Text.secondary)
+            }
+            .environment(\.layoutDirection, .leftToRight)
+        }
+    }
+
+    // MARK: Auth banner — the pre-step "Confirm on your iPhone" state
+
+    @ViewBuilder private var authBanner: some View {
+        if isAuthenticating {
+            HStack(spacing: UniSpacing.s) {
+                Image(systemName: "faceid")
+                    .font(.system(size: 20, weight: .regular))
+                    .symbolRenderingMode(.hierarchical)
+                    .foregroundStyle(UniColors.Brand.mark)
+                    .symbolEffect(.pulse, options: .repeating)
+                    .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Confirm on your iPhone")
+                        .font(UniTypography.subheadlineEmphasized)
+                        .foregroundStyle(UniColors.Text.primary)
+                    Text("Authenticate to sign this \(isBridge ? "bridge" : "swap").")
+                        .font(UniTypography.footnote)
+                        .foregroundStyle(UniColors.Text.secondary)
+                }
+                Spacer(minLength: 0)
+            }
+            .padding(UniSpacing.m)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(
+                RoundedRectangle(cornerRadius: UniRadius.card, style: .continuous)
+                    .fill(UniColors.Fill.quaternary)
+            )
+            .transition(.opacity.combined(with: .move(edge: .top)))
+        }
+    }
+
+    // MARK: Step rail — the heart
+
+    private var rail: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            ForEach(Array(steps.enumerated()), id: \.element) { index, step in
+                StepRow(
+                    step: step,
+                    state: state(for: index),
+                    isLast: index == steps.count - 1,
+                    fromSymbol: quote.fromToken.symbol,
+                    chainName: quote.fromToken.chain.displayName,
+                    isBridge: isBridge
+                )
+            }
+        }
+    }
+
+    private func state(for index: Int) -> StepRow.State {
+        guard let activeIndex else { return .pending }
+        if index < activeIndex { return .done }
+        if index == activeIndex { return .active }
+        return .pending
+    }
+}
+
+// MARK: - Step row
+
+/// A single row in the swap step rail: a leading status node + a filling
+/// rail segment to the next step, with the step's title + honest sub-copy.
+/// Three states animate between each other (`withAnimation` is applied by
+/// the parent's `execPhase` update): pending (dim, hollow) → active (live
+/// spinner, emphasized, tinted) → done (settled check).
+private struct StepRow: View {
+    enum State { case pending, active, done }
+
+    let step: SwapInFlightStep
+    let state: State
+    let isLast: Bool
+    let fromSymbol: String
+    let chainName: String
+    let isBridge: Bool
+
+    var body: some View {
+        HStack(alignment: .top, spacing: UniSpacing.m) {
+            railColumn
+            VStack(alignment: .leading, spacing: 2) {
+                Text(step.title)
+                    .font(state == .active ? UniTypography.bodyEmphasized : UniTypography.body)
+                    .foregroundStyle(titleColor)
+                Text(step.subtitle(fromSymbol: fromSymbol, chainName: chainName, isBridge: isBridge))
+                    .font(UniTypography.footnote)
+                    .foregroundStyle(subtitleColor)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(.bottom, isLast ? 0 : UniSpacing.l)
+            .opacity(state == .pending ? 0.5 : 1)
+            Spacer(minLength: 0)
+        }
+        .animation(.smooth(duration: 0.3), value: state)
+    }
+
+    // The leading column: status node + connecting rail to the next row.
+    private var railColumn: some View {
+        VStack(spacing: 0) {
+            node
+            if !isLast {
+                // The connector fills (accent) once this step is done; it's
+                // dim while this step is pending/active.
+                RoundedRectangle(cornerRadius: 1, style: .continuous)
+                    .fill(state == .done ? UniColors.Tint.accent : UniColors.Separator.regular)
+                    .frame(width: 2)
+                    .frame(maxHeight: .infinity)
+                    .animation(.smooth(duration: 0.3), value: state)
+            }
+        }
+        .frame(width: 28)
+    }
+
+    @ViewBuilder private var node: some View {
+        ZStack {
+            switch state {
+            case .done:
+                Image(systemName: "checkmark.circle.fill")
+                    .font(.system(size: 26, weight: .regular))
+                    .symbolRenderingMode(.palette)
+                    .foregroundStyle(UniColors.Icon.onTint, UniColors.Tint.accent)
+                    .symbolEffect(.bounce, options: .nonRepeating)
+            case .active:
+                Circle()
+                    .stroke(UniColors.Tint.accent, lineWidth: 2)
+                    .frame(width: 26, height: 26)
+                ProgressView()
+                    .controlSize(.small)
+                    .tint(UniColors.Tint.accent)
+            case .pending:
+                Circle()
+                    .stroke(UniColors.Separator.regular, lineWidth: 2)
+                    .frame(width: 26, height: 26)
+                Image(systemName: step.icon)
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(UniColors.Icon.tertiary)
+            }
+        }
+        .frame(width: 28, height: 28)
+    }
+
+    private var titleColor: Color {
+        switch state {
+        case .active: return UniColors.Text.primary
+        case .done:   return UniColors.Text.primary
+        case .pending: return UniColors.Text.secondary
+        }
+    }
+
+    private var subtitleColor: Color {
+        state == .active ? UniColors.Text.secondary : UniColors.Text.tertiary
+    }
+}
+
+/// The step vocabulary — one definition referenced by both `SwapInFlightView`
+/// (which builds the ordered list and maps the live phase onto it) and
+/// `StepRow` (which renders one). One real on-chain action per case, with
+/// honest copy that names the actual mechanism rather than a fabricated stage.
+private enum SwapInFlightStep: Hashable {
+    case approve, sign, submit, confirm
+
+    var title: LocalizedStringKey {
+        switch self {
+        case .approve: return "Approve"
+        case .sign:    return "Sign"
+        case .submit:  return "Submit"
+        case .confirm: return "Confirm"
+        }
+    }
+
+    func subtitle(fromSymbol: String, chainName: String, isBridge: Bool) -> LocalizedStringKey {
+        switch self {
+        case .approve: return "Letting the router move your \(fromSymbol)"
+        case .sign:    return "Signing on your iPhone"
+        case .submit:  return "Broadcasting to \(chainName)"
+        case .confirm:
+            return isBridge
+                ? "Bridging — waiting for on-chain confirmation"
+                : "Waiting for on-chain confirmation"
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .approve: return "checkmark.shield"
+        case .sign:    return "signature"
+        case .submit:  return "paperplane"
+        case .confirm: return "checkmark.seal"
+        }
+    }
+}
+
+// MARK: - Directional pulse
+
+/// A calm, repeating directional cue between the from/to tokens — a gentle
+/// breath along the arrow's axis (down for a swap, left↔right for a bridge).
+/// Materials-true, restrained: opacity + a small offset, nothing flashy. It
+/// honestly says "movement is happening" without faking progress.
+private struct DirectionalPulse: View {
+    let isBridge: Bool
+    @State private var animate = false
+
+    var body: some View {
+        Image(systemName: isBridge ? "arrow.left.arrow.right" : "arrow.down")
+            .font(.system(size: 15, weight: .semibold))
+            .foregroundStyle(UniColors.Tint.accent)
+            .opacity(animate ? 1 : 0.4)
+            .offset(
+                x: isBridge ? (animate ? 3 : -3) : 0,
+                y: isBridge ? 0 : (animate ? 3 : -3)
+            )
+            .frame(maxWidth: .infinity)
+            .accessibilityHidden(true)
+            .onAppear {
+                withAnimation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true)) {
+                    animate = true
+                }
+            }
     }
 }
 
