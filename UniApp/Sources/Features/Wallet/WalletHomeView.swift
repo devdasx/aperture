@@ -1101,12 +1101,12 @@ struct WalletHomeView: View {
                 .id(activeWallet?.id)
                 .listRowBackground(Color.clear)
                 .listRowSeparator(.hidden)
-                .listRowInsets(EdgeInsets(
-                    top: 0,
-                    leading: UniSpacing.m,
-                    bottom: 0,
-                    trailing: UniSpacing.m
-                ))
+                // Zero row insets so the card surface fills the inset-grouped
+                // section's content width — its left/right edges then line up
+                // exactly with the holdings/transactions grouped card below
+                // (which uses the same section width). The card draws its own
+                // internal padding; the section margin handles the screen gap.
+                .listRowInsets(EdgeInsets())
             }
         }
     }
