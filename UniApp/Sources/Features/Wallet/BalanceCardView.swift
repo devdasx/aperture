@@ -202,12 +202,10 @@ struct BalanceCardView: View {
         .clipShape(RoundedRectangle(cornerRadius: UniRadius.balanceCard, style: .continuous))
         .overlay(innerEdgeOverlay)
         .overlay(hairlineOverlay)
-        .shadow(
-            color: UniColors.BalanceCard.shadow(colorScheme),
-            radius: colorScheme == .dark ? 35 : 30,
-            x: 0,
-            y: colorScheme == .dark ? 30 : 26
-        )
+        // No drop shadow: the card sits flat on the page like the holdings /
+        // transactions cards below it (per user direction 2026-06-16 — the
+        // earlier spec shadow read as a grey "tray" behind the card). The
+        // inner specular edge + hairline still give the surface its depth.
         .accessibilityElement(children: .combine)
         .accessibilityLabel(accessibilityLabel)
         .task(id: rebuildKey) { await rebuild() }
