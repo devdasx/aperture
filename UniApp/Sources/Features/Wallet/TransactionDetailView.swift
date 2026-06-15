@@ -1,13 +1,52 @@
 import SwiftUI
 import SwiftData
+import UIKit
+import UniformTypeIdentifiers
 
-/// Push destination shown when the user taps a transaction row on
-/// the wallet home. v1 is a calm read-only summary — the full design
-/// (block explorer link, contract data decoding, receipt rendering)
-/// lands later.
+/// The full, chain-aware transaction **receipt**.
+///
+/// **Two-stage paint (Rule #25 / #28).** The stored `TransactionRecord`
+/// gives an instant first paint — the signed amount hero, direction, and
+/// status badge — exactly as the prior version did. On appear the screen
+/// asks `TransactionDetailService` for the rich, live detail off-main
+/// (`.task(id:)`), then enriches: a common receipt card every chain shares,
+/// plus a chain-specific section rendered by `switch detail.payload`
+/// (Bitcoin inputs/outputs/hex, EVM gas/transfers/input-data, Solana
+/// balance-changes/instructions/logs, or labeled rows for the 9 others).
+///
+/// **Honesty (Rule #16 / #26).** Nothing is fabricated. While the fetch is
+/// in flight a calm "Loading details…" reads under the summary; if it
+/// returns `nil` an honest "Couldn't load the full details right now" line
+/// shows — but the summary and the explorer link survive either way, so the
+/// user can always verify the tx on-chain. Status colors are green/orange
+/// only for real status; red is reserved for a genuinely failed tx, never
+/// decoration.
+///
+/// **Composition (Rules #2/#3/#4/#7/#19).** A `ScrollView` of opaque
+/// `UniCard` sections on the grouped page (content cards are opaque; no
+/// card-on-card). Copy affordances mirror the receive-row pattern (inline
+/// "Copied" tick + `.uniHaptic(.success)`). Long blocks (hex / input data /
+/// logs / instructions) live behind native `DisclosureGroup`s so the screen
+/// stays calm by default. Hashes / addresses / hex are LTR-locked (Rule #11)
+/// and monospaced. SF Symbols only; every color is a `UniColors` role.
 struct TransactionDetailView: View {
     let transactionId: UUID
     @Query private var matches: [TransactionRecord]
+
+    /// The live, fetched detail. `nil` until the fetch lands (or if it
+    /// fails — distinguished from "still loading" by `isLoading`).
+    @State private var detail: TransactionDetail?
+    /// `true` while the off-main fetch is in flight. Gates the inline
+    /// loading line vs. the honest failure line.
+    @State private var isLoading = false
+    /// Flipped `true` once a fetch has completed (success or failure), so
+    /// the failure line only appears after we've actually tried — never on
+    /// first frame before `.task` runs.
+    @State private var didAttempt = false
+
+    /// Drives the shared inline "Copied" confirmation + success haptic.
+    /// One timestamp for the whole screen — every copy affordance writes it.
+    @State private var lastCopiedAt: Date?
 
     init(transactionId: UUID) {
         self.transactionId = transactionId
@@ -21,8 +60,10 @@ struct TransactionDetailView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: UniSpacing.l) {
                 if let tx = matches.first {
-                    header(tx)
-                    detailGrid(tx)
+                    summary(tx)
+                    loadingOrFailureBanner
+                    commonCard(tx)
+                    payloadSections
                 } else {
                     missing
                 }
@@ -33,9 +74,16 @@ struct TransactionDetailView: View {
         .background(UniColors.Background.primary.ignoresSafeArea())
         .navigationTitle("Transaction")
         .navigationBarTitleDisplayMode(.inline)
+        // Off-main, re-runs if the id changes. Keyed on the stored tx's
+        // hash + chain so a navigation reuse with a fresh id refetches.
+        .task(id: transactionId) {
+            await loadDetail()
+        }
     }
 
-    private func header(_ tx: TransactionRecord) -> some View {
+    // MARK: - Stage 1 — summary (instant first paint, stored record)
+
+    private func summary(_ tx: TransactionRecord) -> some View {
         VStack(alignment: .leading, spacing: UniSpacing.s) {
             Text(directionLabel(tx))
                 .font(UniTypography.footnote)
@@ -45,63 +93,722 @@ struct TransactionDetailView: View {
 
             Text(amountLine(tx))
                 .font(UniTypography.heroBalance)
-                .foregroundStyle(UniColors.Text.primary)
+                .foregroundStyle(amountTint(tx))
                 .lineLimit(1)
                 .minimumScaleFactor(0.5)
+                .environment(\.layoutDirection, .leftToRight)
 
-            statusBadge(tx)
+            HStack(spacing: UniSpacing.s) {
+                statusBadge(statusForDisplay(tx))
+                if let chain = resolvedChain {
+                    UniFootnote(text: LocalizedStringKey(chain.displayName))
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    @ViewBuilder
+    private func statusBadge(_ status: TransactionStatus?) -> some View {
+        // Honesty: an unrecognized status never renders as a green
+        // "Confirmed" — show the stored raw value on a neutral badge.
+        switch status {
+        case .pending:   UniBadge(text: "Pending", kind: .warning)
+        case .confirmed: UniBadge(text: "Confirmed", kind: .success)
+        case .failed:    UniBadge(text: "Failed", kind: .error)
+        case nil:
+            UniBadge(text: LocalizedStringKey(matches.first?.statusRaw ?? "Unknown"), kind: .neutral)
+        }
+    }
+
+    // MARK: - Stage 2 — loading / failure banner
+
+    @ViewBuilder
+    private var loadingOrFailureBanner: some View {
+        if isLoading {
+            HStack(spacing: UniSpacing.s) {
+                ProgressView()
+                    .controlSize(.small)
+                    .tint(UniColors.Icon.secondary)
+                UniFootnote(text: "Loading details…", color: UniColors.Text.secondary)
+            }
+            .transition(.opacity)
+        } else if didAttempt, detail == nil {
+            HStack(alignment: .top, spacing: UniSpacing.s) {
+                Image(systemName: "wifi.exclamationmark")
+                    .font(.system(size: 16, weight: .regular))
+                    .foregroundStyle(UniColors.Icon.tertiary)
+                UniFootnote(
+                    text: "Couldn't load the full details right now. The summary above is from your device.",
+                    color: UniColors.Text.secondary
+                )
+            }
+            .transition(.opacity)
+        }
+    }
+
+    // MARK: - Common receipt card (every chain)
+
+    private func commonCard(_ tx: TransactionRecord) -> some View {
+        sectionCard(title: "Details") {
+            // Status — prefer the live, authoritative status when fetched.
+            keyValueRow(label: "Status", value: statusText(statusForDisplay(tx)))
+
+            // When — live blockTime if present, else the stored occurredAt.
+            if let date = detail?.blockTime ?? Optional(tx.occurredAt) {
+                divider
+                keyValueRow(
+                    label: "When",
+                    value: date.formatted(date: .abbreviated, time: .standard)
+                )
+            }
+
+            if let confirmations = detail?.confirmations {
+                divider
+                keyValueRow(
+                    label: "Confirmations",
+                    value: confirmations.formatted()
+                )
+            }
+
+            if let block = detail?.blockNumber ?? tx.blockNumber {
+                divider
+                keyValueRow(label: blockLabel, value: block.formatted())
+            }
+
+            if let feeText = feeDisplay(tx) {
+                divider
+                keyValueRow(label: "Network fee", value: feeText, monospaced: true)
+            }
+
+            divider
+            copyableRow(
+                label: "Hash",
+                display: WalletFormatting.shortAddress(hashForDisplay(tx), prefix: 10, suffix: 8),
+                full: hashForDisplay(tx),
+                accessibilityName: "transaction hash"
+            )
+
+            if let url = detail?.explorerURL ?? explorerFallbackURL(tx) {
+                divider
+                explorerLink(url)
+            }
+        }
+    }
+
+    private func explorerLink(_ url: URL) -> some View {
+        Link(destination: url) {
+            HStack(spacing: UniSpacing.s) {
+                Image(systemName: "safari")
+                    .font(.system(size: 17, weight: .semibold))
+                Text("View on explorer")
+                    .font(UniTypography.bodyEmphasized)
+                Spacer(minLength: 0)
+                Image(systemName: "arrow.up.right")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(UniColors.Icon.tertiary)
+            }
+            .foregroundStyle(UniColors.Text.link)
+            .contentShape(Rectangle())
+        }
+        .accessibilityLabel(Text("View on block explorer"))
+    }
+
+    // MARK: - Stage 3 — chain-specific sections
+
+    @ViewBuilder
+    private var payloadSections: some View {
+        switch detail?.payload {
+        case .bitcoin(let btc):  bitcoinSections(btc)
+        case .evm(let evm):      evmSections(evm)
+        case .solana(let sol):   solanaSections(sol)
+        case .generic(let rows): genericSection(rows)
+        case nil:                EmptyView()
+        }
+    }
+
+    // MARK: Bitcoin
+
+    @ViewBuilder
+    private func bitcoinSections(_ btc: BitcoinTxDetail) -> some View {
+        sectionCard(title: "Transaction") {
+            keyValueRow(label: "Size", value: "\(btc.size) bytes")
+            divider
+            keyValueRow(label: "Virtual size", value: "\(btc.vsize) vB")
+            divider
+            keyValueRow(label: "Weight", value: "\(btc.weight) WU")
+            divider
+            keyValueRow(label: "Version", value: btc.version.formatted())
+            divider
+            keyValueRow(label: "Locktime", value: btc.locktime.formatted())
+            if let feeRate = btc.feeRate {
+                divider
+                keyValueRow(
+                    label: "Fee rate",
+                    value: "\(WalletFormatting.native(feeRate, decimals: 2)) sat/vB",
+                    monospaced: true
+                )
+            }
+            if let feeSats = btc.feeSats {
+                divider
+                keyValueRow(label: "Fee", value: "\(feeSats.formatted()) sats", monospaced: true)
+            }
+        }
+
+        bitcoinLegSection(
+            title: "Inputs",
+            countSuffix: btc.inputs.count,
+            legs: btc.inputs,
+            emptyNote: "No inputs reported."
+        )
+
+        bitcoinLegSection(
+            title: "Outputs",
+            countSuffix: btc.outputs.count,
+            legs: btc.outputs,
+            emptyNote: "No outputs reported."
+        )
+
+        if let hex = btc.hex, !hex.isEmpty {
+            monoDisclosureSection(title: "Raw transaction", body: hex, copyName: "raw transaction hex")
         }
     }
 
     @ViewBuilder
-    private func statusBadge(_ tx: TransactionRecord) -> some View {
-        // Honesty: an unrecognized `statusRaw` must never render as a
-        // green "Confirmed" — assert nothing we can't verify. Show the
-        // stored raw value on a neutral badge instead.
-        switch TransactionStatus(rawValue: tx.statusRaw) {
-        case .pending:   UniBadge(text: "Pending", kind: .warning)
-        case .confirmed: UniBadge(text: "Confirmed", kind: .success)
-        case .failed:    UniBadge(text: "Failed", kind: .error)
-        case nil:        UniBadge(text: "\(tx.statusRaw)", kind: .neutral)
+    private func bitcoinLegSection(
+        title: LocalizedStringKey,
+        countSuffix: Int,
+        legs: [BitcoinTxIO],
+        emptyNote: LocalizedStringKey
+    ) -> some View {
+        sectionCard(title: title, trailing: countSuffix > 0 ? "\(countSuffix)" : nil) {
+            if legs.isEmpty {
+                UniFootnote(text: emptyNote, color: UniColors.Text.tertiary)
+            } else {
+                ForEach(Array(legs.enumerated()), id: \.element.id) { index, leg in
+                    if index > 0 { divider }
+                    bitcoinLegRow(leg)
+                }
+            }
         }
     }
 
-    private func detailGrid(_ tx: TransactionRecord) -> some View {
+    private func bitcoinLegRow(_ leg: BitcoinTxIO) -> some View {
+        VStack(alignment: .leading, spacing: UniSpacing.xxs) {
+            HStack(alignment: .firstTextBaseline, spacing: UniSpacing.s) {
+                if leg.isCoinbase {
+                    UniBody(text: "Coinbase (newly generated)", color: UniColors.Text.secondary)
+                } else if let address = leg.address {
+                    Button {
+                        copy(address, name: "address")
+                    } label: {
+                        monoValue(address, truncate: true)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(Text("Copy address"))
+                } else {
+                    UniBody(text: "Non-standard script", color: UniColors.Text.secondary)
+                }
+                Spacer(minLength: UniSpacing.s)
+                Text(verbatim: bitcoinValue(leg.value))
+                    .font(UniTypography.monoBody)
+                    .foregroundStyle(UniColors.Text.primary)
+                    .environment(\.layoutDirection, .leftToRight)
+            }
+            if let scriptType = leg.scriptType, !scriptType.isEmpty {
+                UniCaption(text: LocalizedStringKey(scriptType), color: UniColors.Text.tertiary)
+            }
+            if let outpoint = leg.outpoint {
+                monoCaption(WalletFormatting.shortAddress(outpoint, prefix: 10, suffix: 8))
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    // MARK: EVM
+
+    @ViewBuilder
+    private func evmSections(_ evm: EVMTxDetail) -> some View {
+        sectionCard(title: "Transaction") {
+            // A malformed tx can carry an empty `from`; treat empty as absent
+            // and render "—" rather than a copyable blank (finding #15).
+            if let from = nonEmpty(evm.from) {
+                copyableRow(
+                    label: "From",
+                    display: WalletFormatting.shortAddress(from, prefix: 8, suffix: 6),
+                    full: from,
+                    accessibilityName: "sender address"
+                )
+            } else {
+                keyValueRow(label: "From", value: "—")
+            }
+            divider
+            if let to = evm.to {
+                copyableRow(
+                    label: "To",
+                    display: WalletFormatting.shortAddress(to, prefix: 8, suffix: 6),
+                    full: to,
+                    accessibilityName: "recipient address"
+                )
+            } else if let created = evm.contractAddress {
+                copyableRow(
+                    label: "Contract created",
+                    display: WalletFormatting.shortAddress(created, prefix: 8, suffix: 6),
+                    full: created,
+                    accessibilityName: "created contract address"
+                )
+            } else {
+                keyValueRow(label: "To", value: "Contract creation")
+            }
+            divider
+            keyValueRow(label: "Nonce", value: evm.nonce.formatted())
+            divider
+            keyValueRow(label: "Type", value: evmTypeLabel(evm.type))
+            if let index = evm.transactionIndex {
+                divider
+                keyValueRow(label: "Position in block", value: index.formatted())
+            }
+        }
+
+        sectionCard(title: "Gas & fee") {
+            if let gasLimit = evm.gasLimit {
+                keyValueRow(label: "Gas limit", value: gasUnits(gasLimit), monospaced: true)
+            }
+            if let gasUsed = evm.gasUsed {
+                divider
+                keyValueRow(label: "Gas used", value: gasUnits(gasUsed), monospaced: true)
+            }
+            if let cumulative = evm.cumulativeGasUsed {
+                divider
+                keyValueRow(label: "Cumulative gas used", value: gasUnits(cumulative), monospaced: true)
+            }
+            if let gasPrice = evm.gasPrice {
+                divider
+                keyValueRow(label: "Gas price", value: gweiString(gasPrice), monospaced: true)
+            }
+            if let effective = evm.effectiveGasPrice {
+                divider
+                keyValueRow(label: "Effective gas price", value: gweiString(effective), monospaced: true)
+            }
+            if let maxFee = evm.maxFeePerGas {
+                divider
+                keyValueRow(label: "Max fee", value: gweiString(maxFee), monospaced: true)
+            }
+            if let priority = evm.maxPriorityFeePerGas {
+                divider
+                keyValueRow(label: "Max priority fee", value: gweiString(priority), monospaced: true)
+            }
+            if let feeText = feeDisplay(matches.first) {
+                divider
+                keyValueRow(label: "Total fee", value: feeText, monospaced: true)
+            }
+        }
+
+        if !evm.erc20Transfers.isEmpty {
+            sectionCard(title: "Token transfers", trailing: "\(evm.erc20Transfers.count)") {
+                ForEach(Array(evm.erc20Transfers.enumerated()), id: \.element.id) { index, transfer in
+                    if index > 0 { divider }
+                    erc20TransferRow(transfer)
+                }
+            }
+        }
+
+        if evm.input != "0x", !evm.input.isEmpty {
+            monoDisclosureSection(title: "Input data", body: evm.input, copyName: "input data")
+        }
+    }
+
+    private func erc20TransferRow(_ transfer: ERC20Transfer) -> some View {
+        VStack(alignment: .leading, spacing: UniSpacing.xxs) {
+            HStack(alignment: .firstTextBaseline, spacing: UniSpacing.s) {
+                if let token = nonEmpty(transfer.token) {
+                    Button {
+                        copy(token, name: "token contract")
+                    } label: {
+                        monoValue(WalletFormatting.shortAddress(token, prefix: 8, suffix: 6), truncate: false)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(Text("Copy token contract"))
+                } else {
+                    // Empty/malformed contract — render "—" (finding #15).
+                    monoValue("—", truncate: false)
+                }
+                Spacer(minLength: UniSpacing.s)
+                Text(verbatim: erc20AmountText(transfer))
+                    .font(UniTypography.monoBody)
+                    .foregroundStyle(UniColors.Text.primary)
+                    .environment(\.layoutDirection, .leftToRight)
+            }
+            HStack(spacing: UniSpacing.xxs) {
+                monoCaption(WalletFormatting.shortAddress(transfer.from, prefix: 6, suffix: 4))
+                Image(systemName: "arrow.right")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(UniColors.Icon.tertiary)
+                monoCaption(WalletFormatting.shortAddress(transfer.to, prefix: 6, suffix: 4))
+            }
+            // The "decimals not applied" caption ONLY shows for an unknown
+            // contract whose raw base-units value we couldn't scale
+            // (finding #5). A known token shows a real amount + symbol.
+            if transfer.decimals == nil {
+                UniCaption(
+                    text: "Raw amount — token decimals not applied",
+                    color: UniColors.Text.tertiary
+                )
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// The transfer's display amount: a decimals-scaled value + symbol when
+    /// the token is known (`USDC`, `DAI`, …), else the raw base-units value
+    /// (paired with the "decimals not applied" caption). 100 USDC renders as
+    /// "100 USDC", not "100,000,000" (finding #5).
+    private func erc20AmountText(_ transfer: ERC20Transfer) -> String {
+        if let decimals = transfer.decimals {
+            // Scale the full-precision raw `Decimal` directly (no string
+            // round-trip) so a uint256 value keeps its precision.
+            let scaled = transfer.valueRaw / pow(Decimal(10), max(0, decimals))
+            let amount = WalletFormatting.native(scaled, decimals: decimals)
+            if let symbol = nonEmpty(transfer.symbol ?? "") {
+                return "\(amount) \(symbol)"
+            }
+            return amount
+        }
+        return WalletFormatting.native(transfer.valueRaw, decimals: 0)
+    }
+
+    // MARK: Solana
+
+    @ViewBuilder
+    private func solanaSections(_ sol: SolanaTxDetail) -> some View {
+        sectionCard(title: "Transaction") {
+            keyValueRow(label: "Slot", value: sol.slot.formatted())
+            divider
+            keyValueRow(label: "Fee", value: "\(sol.feeLamports.formatted()) lamports", monospaced: true)
+            if let cu = sol.computeUnitsConsumed {
+                divider
+                keyValueRow(label: "Compute units", value: cu.formatted(), monospaced: true)
+            }
+            if let blockhash = sol.recentBlockhash {
+                divider
+                copyableRow(
+                    label: "Recent blockhash",
+                    display: WalletFormatting.shortAddress(blockhash, prefix: 8, suffix: 6),
+                    full: blockhash,
+                    accessibilityName: "recent blockhash"
+                )
+            }
+            if let err = sol.errString {
+                divider
+                keyValueRow(label: "Error", value: err, valueColor: UniColors.Status.errorForeground)
+            }
+        }
+
+        if !sol.netChanges.isEmpty {
+            sectionCard(title: "Balance changes", trailing: "\(sol.netChanges.count)") {
+                ForEach(Array(sol.netChanges.enumerated()), id: \.element.id) { index, change in
+                    if index > 0 { divider }
+                    solanaChangeRow(change)
+                }
+            }
+        }
+
+        if !sol.instructions.isEmpty {
+            monoDisclosureSection(
+                title: "Instructions",
+                lines: sol.instructions,
+                copyName: "instructions"
+            )
+        }
+
+        if !sol.logMessages.isEmpty {
+            monoDisclosureSection(
+                title: "Program logs",
+                lines: sol.logMessages,
+                copyName: "program logs"
+            )
+        }
+    }
+
+    private func solanaChangeRow(_ change: SolanaBalanceChange) -> some View {
+        VStack(alignment: .leading, spacing: UniSpacing.xxs) {
+            HStack(alignment: .firstTextBaseline, spacing: UniSpacing.s) {
+                Button {
+                    copy(change.account, name: "account")
+                } label: {
+                    monoValue(WalletFormatting.shortAddress(change.account, prefix: 8, suffix: 6), truncate: false)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(Text("Copy account"))
+                Spacer(minLength: UniSpacing.s)
+                Text(verbatim: solanaChangeAmount(change))
+                    .font(UniTypography.monoBody)
+                    .foregroundStyle(changeTint(change.amount))
+                    .environment(\.layoutDirection, .leftToRight)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    // MARK: Generic (XRPL / TRON / TON / NEAR / Aptos / Cosmos / Polkadot / Stellar / Sui)
+
+    @ViewBuilder
+    private func genericSection(_ rows: [DetailField]) -> some View {
+        if !rows.isEmpty {
+            sectionCard(title: "On-chain detail") {
+                ForEach(Array(rows.enumerated()), id: \.element.id) { index, field in
+                    if index > 0 { divider }
+                    genericRow(field)
+                }
+            }
+        }
+    }
+
+    private func genericRow(_ field: DetailField) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: UniSpacing.s) {
+            // Label is an English source string — localize it (Rule #9/#20).
+            Text(LocalizedStringKey(field.label))
+                .font(UniTypography.footnote)
+                .foregroundStyle(UniColors.Text.secondary)
+            Spacer(minLength: UniSpacing.s)
+            // Value is real chain data — verbatim, mono, LTR, copyable.
+            Button {
+                copy(field.value, name: field.label.lowercased())
+            } label: {
+                Text(verbatim: genericDisplayValue(field.value))
+                    .font(UniTypography.monoBody)
+                    .foregroundStyle(UniColors.Text.primary)
+                    .multilineTextAlignment(.trailing)
+                    .lineLimit(3)
+                    .environment(\.layoutDirection, .leftToRight)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(Text("Copy \(field.label)"))
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    // MARK: - Reusable section / row primitives
+
+    /// An opaque content card with a leading section header (Rule #2 §B.3).
+    /// Optional trailing count chip (Inputs · 3).
+    private func sectionCard<C: View>(
+        title: LocalizedStringKey,
+        trailing: String? = nil,
+        @ViewBuilder content: @escaping () -> C
+    ) -> some View {
         VStack(alignment: .leading, spacing: UniSpacing.s) {
-            detailRow(label: "Counterparty", value: tx.counterparty.isEmpty ? "—" : WalletFormatting.shortAddress(tx.counterparty))
-            UniDivider()
-            detailRow(label: "When", value: tx.occurredAt.formatted(date: .abbreviated, time: .shortened))
-            UniDivider()
-            detailRow(label: "Hash", value: WalletFormatting.shortAddress(tx.txHash, prefix: 10, suffix: 6))
-            if let block = tx.blockNumber {
-                UniDivider()
-                detailRow(label: "Block", value: String(block))
+            HStack(alignment: .firstTextBaseline) {
+                Text(title)
+                    .font(UniTypography.footnote)
+                    .foregroundStyle(UniColors.Text.tertiary)
+                    .textCase(.uppercase)
+                    .tracking(0.6)
+                if let trailing {
+                    Spacer(minLength: UniSpacing.s)
+                    Text(verbatim: trailing)
+                        .font(UniTypography.footnote.monospacedDigit())
+                        .foregroundStyle(UniColors.Text.tertiary)
+                }
             }
-            if let fee = tx.feeRaw {
-                UniDivider()
-                detailRow(label: "Fee", value: fee)
+            .padding(.horizontal, UniSpacing.xxs)
+
+            UniCard {
+                VStack(alignment: .leading, spacing: UniSpacing.s) {
+                    content()
+                }
             }
         }
-        .padding(UniSpacing.m)
-        .background(
-            RoundedRectangle(cornerRadius: UniRadius.card, style: .continuous)
-                .fill(UniColors.Material.card)
-        )
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    private func detailRow(label: LocalizedStringKey, value: String) -> some View {
-        HStack(alignment: .firstTextBaseline) {
+    private var divider: some View { UniDivider() }
+
+    /// A plain label → value row. `monospaced` for numeric / hashy values.
+    private func keyValueRow(
+        label: LocalizedStringKey,
+        value: String,
+        monospaced: Bool = false,
+        valueColor: Color = UniColors.Text.primary
+    ) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: UniSpacing.s) {
             Text(label)
                 .font(UniTypography.footnote)
                 .foregroundStyle(UniColors.Text.secondary)
             Spacer(minLength: UniSpacing.s)
-            Text(value)
-                .font(UniTypography.monoBody)
-                .foregroundStyle(UniColors.Text.primary)
-                .multilineTextAlignment(.trailing)
-                .lineLimit(1)
+            // Monospaced values are hashy/numeric chain data — LTR-locked
+            // (Rule #11 §C). Plain prose values (status, "Contract
+            // creation") follow the ambient direction.
+            keyValueText(value, monospaced: monospaced, valueColor: valueColor)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// A label → truncated-mono-value row that copies the FULL value on
+    /// tap, with the shared inline "Copied" tick + success haptic.
+    private func copyableRow(
+        label: LocalizedStringKey,
+        display: String,
+        full: String,
+        accessibilityName: String
+    ) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: UniSpacing.s) {
+            Text(label)
+                .font(UniTypography.footnote)
+                .foregroundStyle(UniColors.Text.secondary)
+            Spacer(minLength: UniSpacing.s)
+            Button {
+                copy(full, name: accessibilityName)
+            } label: {
+                HStack(spacing: UniSpacing.xs) {
+                    monoValue(display, truncate: false)
+                    Image(systemName: "doc.on.doc")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(UniColors.Text.link)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(Text("Copy \(accessibilityName)"))
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// A monospaced value `Text`, LTR-locked. `truncate` middle-truncates
+    /// for very long single-line values inside dense rows.
+    private func monoValue(_ value: String, truncate: Bool) -> some View {
+        Text(verbatim: value)
+            .font(UniTypography.monoBody)
+            .foregroundStyle(UniColors.Text.primary)
+            .lineLimit(1)
+            .truncationMode(truncate ? .middle : .tail)
+            .environment(\.layoutDirection, .leftToRight)
+    }
+
+    /// A trailing value `Text` for `keyValueRow`. Monospaced values are
+    /// LTR-locked (Rule #11 §C); plain prose follows ambient direction.
+    @ViewBuilder
+    private func keyValueText(_ value: String, monospaced: Bool, valueColor: Color) -> some View {
+        let text = Text(verbatim: value)
+            .font(monospaced ? UniTypography.monoBody : UniTypography.body)
+            .foregroundStyle(valueColor)
+            .multilineTextAlignment(.trailing)
+            .lineLimit(4)
+        if monospaced {
+            text.environment(\.layoutDirection, .leftToRight)
+        } else {
+            text
         }
     }
+
+    private func monoCaption(_ value: String) -> some View {
+        Text(verbatim: value)
+            .font(.system(.caption2, design: .monospaced))
+            .foregroundStyle(UniColors.Text.tertiary)
+            .lineLimit(1)
+            .environment(\.layoutDirection, .leftToRight)
+    }
+
+    /// A collapsed disclosure that reveals a long monospaced block
+    /// (raw hex / input data) inside a horizontally + vertically scrollable
+    /// pane, with a copy button. Calm by default — the screen doesn't
+    /// flood the user with a 2KB hex string unless they ask.
+    private func monoDisclosureSection(
+        title: LocalizedStringKey,
+        body text: String,
+        copyName: String
+    ) -> some View {
+        sectionCard(title: title) {
+            DisclosureGroup {
+                VStack(alignment: .leading, spacing: UniSpacing.s) {
+                    ScrollView(.vertical, showsIndicators: true) {
+                        Text(verbatim: text)
+                            .font(.system(.caption, design: .monospaced))
+                            .foregroundStyle(UniColors.Text.secondary)
+                            .textSelection(.enabled)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .environment(\.layoutDirection, .leftToRight)
+                    }
+                    .frame(maxHeight: 200)
+
+                    copyBlockButton(text, name: copyName)
+                }
+                .padding(.top, UniSpacing.xs)
+            } label: {
+                disclosureLabel(byteCount: text.count, unit: "characters")
+            }
+            .tint(UniColors.Text.link)
+        }
+    }
+
+    /// Same, for an array of lines (Solana instructions / logs). Each line
+    /// gets its own row so the user can read the trace top-to-bottom.
+    private func monoDisclosureSection(
+        title: LocalizedStringKey,
+        lines: [String],
+        copyName: String
+    ) -> some View {
+        sectionCard(title: title, trailing: "\(lines.count)") {
+            DisclosureGroup {
+                VStack(alignment: .leading, spacing: UniSpacing.s) {
+                    ScrollView(.vertical, showsIndicators: true) {
+                        VStack(alignment: .leading, spacing: UniSpacing.xs) {
+                            ForEach(Array(lines.enumerated()), id: \.offset) { _, line in
+                                Text(verbatim: line)
+                                    .font(.system(.caption, design: .monospaced))
+                                    .foregroundStyle(UniColors.Text.secondary)
+                                    .textSelection(.enabled)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .environment(\.layoutDirection, .leftToRight)
+                            }
+                        }
+                    }
+                    .frame(maxHeight: 240)
+
+                    copyBlockButton(lines.joined(separator: "\n"), name: copyName)
+                }
+                .padding(.top, UniSpacing.xs)
+            } label: {
+                disclosureLabel(byteCount: lines.count, unit: "lines")
+            }
+            .tint(UniColors.Text.link)
+        }
+    }
+
+    private func disclosureLabel(byteCount: Int, unit: LocalizedStringKey) -> some View {
+        HStack(spacing: UniSpacing.xs) {
+            Text("Show")
+                .font(UniTypography.body)
+                .foregroundStyle(UniColors.Text.primary)
+            Text(verbatim: "·")
+                .foregroundStyle(UniColors.Text.tertiary)
+            Text(verbatim: byteCount.formatted())
+                .font(UniTypography.footnote.monospacedDigit())
+                .foregroundStyle(UniColors.Text.tertiary)
+            Text(unit)
+                .font(UniTypography.footnote)
+                .foregroundStyle(UniColors.Text.tertiary)
+        }
+    }
+
+    private func copyBlockButton(_ value: String, name: String) -> some View {
+        Button {
+            copy(value, name: name)
+        } label: {
+            HStack(spacing: UniSpacing.xs) {
+                Image(systemName: "doc.on.doc")
+                    .font(.system(size: 13, weight: .semibold))
+                Text("Copy")
+                    .font(UniTypography.footnote)
+            }
+            .foregroundStyle(UniColors.Text.link)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(Text("Copy \(name)"))
+    }
+
+    // MARK: - Missing state
 
     private var missing: some View {
         VStack(spacing: UniSpacing.s) {
@@ -117,6 +824,169 @@ struct TransactionDetailView: View {
         .frame(maxWidth: .infinity)
         .padding(UniSpacing.xl)
     }
+
+    // MARK: - Fetch wiring (off-main, Rule #28)
+
+    private func loadDetail() async {
+        guard let tx = matches.first, let chain = resolvedChain else {
+            withAnimation(.easeInOut(duration: 0.2)) {
+                isLoading = false
+                didAttempt = true
+            }
+            return
+        }
+        withAnimation(.easeInOut(duration: 0.2)) {
+            isLoading = true
+            didAttempt = false
+        }
+        let fetched = await TransactionDetailService.detail(
+            chain: chain,
+            txHash: tx.txHash,
+            tokenContract: tx.tokenContract,
+            address: tx.address?.address,
+            counterparty: tx.counterparty
+        )
+        guard !Task.isCancelled else { return }
+        withAnimation(.easeInOut(duration: 0.25)) {
+            detail = fetched
+            isLoading = false
+            didAttempt = true
+        }
+    }
+
+    // MARK: - Copy
+
+    private func copy(_ value: String, name: String) {
+        UIPasteboard.general.setItems(
+            [[UTType.plainText.identifier: value]],
+            options: [.expirationDate: Date().addingTimeInterval(120)]
+        )
+        lastCopiedAt = Date()
+        UniHapticEngine.shared.play(.success)
+    }
+
+    // MARK: - Derived values
+
+    private var resolvedChain: SupportedChain? {
+        detail?.chain
+            ?? matches.first?.address.flatMap { SupportedChain(rawValue: $0.chainRaw) }
+    }
+
+    /// The block-vs-slot label per chain family (Solana / Sui report a
+    /// slot / checkpoint, not a block).
+    private var blockLabel: LocalizedStringKey {
+        switch resolvedChain {
+        case .solana: return "Slot"
+        case .sui:    return "Checkpoint"
+        default:      return "Block"
+        }
+    }
+
+    /// Live status when fetched, else the stored status.
+    private func statusForDisplay(_ tx: TransactionRecord) -> TransactionStatus? {
+        detail?.status ?? TransactionStatus(rawValue: tx.statusRaw)
+    }
+
+    private func statusText(_ status: TransactionStatus?) -> String {
+        switch status {
+        case .pending:   return String.apertureLocalized("Pending")
+        case .confirmed: return String.apertureLocalized("Confirmed")
+        case .failed:    return String.apertureLocalized("Failed")
+        case nil:        return matches.first?.statusRaw ?? String.apertureLocalized("Unknown")
+        }
+    }
+
+    private func hashForDisplay(_ tx: TransactionRecord) -> String {
+        detail?.hash ?? tx.txHash
+    }
+
+    private func explorerFallbackURL(_ tx: TransactionRecord) -> URL? {
+        guard let chain = resolvedChain else { return nil }
+        return TransactionExplorer.url(for: tx.txHash, chain: chain)
+    }
+
+    /// The native network fee, formatted with the chain ticker. Prefers
+    /// the live `feeNative`; falls back to the stored raw fee string.
+    private func feeDisplay(_ tx: TransactionRecord?) -> String? {
+        if let fee = detail?.feeNative {
+            let ticker = detail?.feeTicker ?? resolvedChain?.ticker ?? ""
+            let decimals = resolvedChain?.nativeDecimals ?? 8
+            return "\(WalletFormatting.native(fee, decimals: decimals)) \(ticker)"
+        }
+        if let raw = tx?.feeRaw, !raw.isEmpty {
+            return raw
+        }
+        return nil
+    }
+
+    // MARK: - Formatting helpers
+
+    private func bitcoinValue(_ sats: Int64) -> String {
+        let coin = Decimal(sats) / pow(Decimal(10), 8)
+        let ticker = resolvedChain?.ticker ?? "BTC"
+        return "\(WalletFormatting.native(coin, decimals: 8)) \(ticker)"
+    }
+
+    private func gasUnits(_ value: Decimal) -> String {
+        WalletFormatting.native(value, decimals: 0)
+    }
+
+    /// wei → gwei (÷1e9), capped to a readable precision. Gas prices are
+    /// universally read in gwei.
+    private func gweiString(_ wei: Decimal) -> String {
+        let gwei = wei / pow(Decimal(10), 9)
+        return "\(WalletFormatting.native(gwei, decimals: 4)) gwei"
+    }
+
+    private func evmTypeLabel(_ type: Int?) -> String {
+        switch type {
+        case 0:  return String.apertureLocalized("Legacy")
+        case 1:  return "EIP-2930"
+        case 2:  return "EIP-1559"
+        case let value?: return "Type \(value)"
+        case nil: return "—"
+        }
+    }
+
+    private func solanaChangeAmount(_ change: SolanaBalanceChange) -> String {
+        let sign = change.amount > 0 ? "+" : (change.amount < 0 ? "−" : "")
+        let magnitude = change.amount < 0 ? -change.amount : change.amount
+        return "\(sign)\(WalletFormatting.native(magnitude, decimals: 8)) \(change.symbol)"
+    }
+
+    /// Treat an empty/whitespace string as absent — the service can carry an
+    /// empty `from` / token contract for a malformed tx, and the screen's
+    /// convention is to render absent values as "—" (finding #15).
+    private func nonEmpty(_ value: String) -> String? {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
+    private func genericDisplayValue(_ value: String) -> String {
+        // Long opaque values (hashes / addresses) get middle-truncated so
+        // a row stays one or two lines; short values render in full. The
+        // full value is always copyable via the row's tap.
+        guard value.count > 28, !value.contains(" ") else { return value }
+        return WalletFormatting.shortAddress(value, prefix: 12, suffix: 8)
+    }
+
+    // MARK: - Tints (status colors only for real status; Rule #16)
+
+    private func amountTint(_ tx: TransactionRecord) -> Color {
+        switch TransactionDirection(rawValue: tx.directionRaw) {
+        case .incoming?: return UniColors.Crypto.up
+        case .outgoing?: return UniColors.Text.primary
+        default:         return UniColors.Text.primary
+        }
+    }
+
+    private func changeTint(_ amount: Decimal) -> Color {
+        if amount > 0 { return UniColors.Crypto.up }
+        if amount < 0 { return UniColors.Text.primary }
+        return UniColors.Text.secondary
+    }
+
+    // MARK: - Stored-record labels (carried from v1)
 
     private func directionLabel(_ tx: TransactionRecord) -> String {
         switch TransactionDirection(rawValue: tx.directionRaw) {
