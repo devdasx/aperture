@@ -260,6 +260,7 @@ struct AssetDetailView: View {
             BalanceHistoryChart(
                 transactions: derived.assetScopedTransactions,
                 currentBalances: derived.assetCurrentBalances,
+                ownAddresses: Set((activeWallet?.addresses ?? []).map { $0.address.lowercased() }),
                 priceCache: priceCacheBySymbol(for: derived.resolution.fiatCurrencyCode),
                 priceHistory: priceHistoryBySymbol(for: derived.resolution.fiatCurrencyCode),
                 currencyCode: derived.resolution.fiatCurrencyCode,

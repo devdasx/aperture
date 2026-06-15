@@ -102,6 +102,11 @@ final class ChartScrubModel {
 struct BalanceHistoryChart: View {
     let transactions: [TransactionRecord]
     let currentBalances: [TokenBalanceRecord]
+    /// The wallet's own addresses (lowercased) so self-transfers (counterparty
+    /// == one of these) are dropped from the reconstruction, same as the
+    /// flagship balance card. Defaults to empty (no filtering) for callers
+    /// that don't supply it.
+    var ownAddresses: Set<String> = []
     /// **2026-06-12 — per-symbol price fallback.** For tokens the
     /// wallet held in the past but no longer holds, currentBalances
     /// has zero rows for that token → fiatPerUnit map can't price
@@ -330,7 +335,8 @@ struct BalanceHistoryChart: View {
                 tokenSymbol: $0.tokenSymbol,
                 tokenContract: $0.tokenContract,
                 amountRaw: $0.amountRaw,
-                directionRaw: $0.directionRaw
+                directionRaw: $0.directionRaw,
+                counterparty: $0.counterparty
             )
         }
         let balanceSnapshots = currentBalances.map {
@@ -345,6 +351,7 @@ struct BalanceHistoryChart: View {
         let cache = priceCache
         let history = priceHistory
         let range = currentRange
+        let own = ownAddresses
 
         // Heavy Decimal reconstruction OFF the main actor.
         let reconstructed = await Task.detached(priority: .userInitiated) {
@@ -353,6 +360,7 @@ struct BalanceHistoryChart: View {
                 balanceSnapshots: balanceSnapshots,
                 priceCache: cache,
                 priceHistory: history,
+                ownAddresses: own,
                 range: range
             )
         }.value

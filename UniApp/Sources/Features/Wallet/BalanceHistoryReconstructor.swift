@@ -179,6 +179,10 @@ enum BalanceHistoryReconstructor {
         let tokenContract: String?
         let amountRaw: String
         let directionRaw: String
+        /// The other side of the transfer (receiver for `.out`, sender for
+        /// `.in`). Used to drop self-transfers from the chart — see the
+        /// `ownAddresses` filter in `reconstruct`.
+        let counterparty: String
     }
 
     /// `Sendable` snapshot of the balance fields the reconstruction
@@ -200,6 +204,7 @@ enum BalanceHistoryReconstructor {
         currentBalances: [TokenBalanceRecord],
         priceCache: [String: Decimal] = [:],
         priceHistory: [String: [Int: Decimal]] = [:],
+        ownAddresses: Set<String> = [],
         range: BalanceHistoryRange,
         now: Date = Date()
     ) -> [BalancePoint] {
@@ -211,7 +216,8 @@ enum BalanceHistoryReconstructor {
                     tokenSymbol: $0.tokenSymbol,
                     tokenContract: $0.tokenContract,
                     amountRaw: $0.amountRaw,
-                    directionRaw: $0.directionRaw
+                    directionRaw: $0.directionRaw,
+                    counterparty: $0.counterparty
                 )
             },
             balanceSnapshots: currentBalances.map {
@@ -225,6 +231,7 @@ enum BalanceHistoryReconstructor {
             },
             priceCache: priceCache,
             priceHistory: priceHistory,
+            ownAddresses: ownAddresses,
             range: range,
             now: now
         )
@@ -241,6 +248,7 @@ enum BalanceHistoryReconstructor {
         balanceSnapshots: [HistoryBalance],
         priceCache: [String: Decimal] = [:],
         priceHistory: [String: [Int: Decimal]] = [:],
+        ownAddresses: Set<String> = [],
         range: BalanceHistoryRange,
         now: Date = Date()
     ) -> [BalancePoint] {
@@ -254,6 +262,17 @@ enum BalanceHistoryReconstructor {
         // confirmed in place); failed ones never moved a balance.
         let sorted = transactions
             .filter { $0.statusRaw != TransactionStatus.failed.rawValue }
+            // Drop self-transfers — a send to / receive from one of the
+            // wallet's OWN addresses nets to zero on the balance, so it must
+            // not move the chart. Excluding it drops BOTH legs (the out and
+            // any matching in), so the curve stays flat across a self-send.
+            // Only transfers to/from a DIFFERENT address count (user direction
+            // 2026-06-16). Empty-counterparty events are left to `apply`'s
+            // direction logic (internal already contributes no delta).
+            .filter { tx in
+                tx.counterparty.isEmpty
+                    || !ownAddresses.contains(tx.counterparty.lowercased())
+            }
             .sorted { $0.occurredAt < $1.occurredAt }
 
         // Balance-derived per-unit prices — the LAST valuation rung.

@@ -1087,6 +1087,9 @@ struct WalletHomeView: View {
                     currencyCode: currencyCode,
                     transactions: allTransactions,
                     currentBalances: balances.map { $0.balance },
+                    // The wallet's own addresses (lowercased) so the chart can
+                    // drop self-transfers (counterparty == one of these).
+                    ownAddresses: Set((activeWallet?.addresses ?? []).map { $0.address.lowercased() }),
                     priceCache: priceCacheMemo,
                     priceHistory: priceHistoryMemo,
                     scrubModel: scrubModel,
