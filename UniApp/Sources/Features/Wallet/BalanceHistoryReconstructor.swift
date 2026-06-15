@@ -86,13 +86,23 @@ enum BalanceHistoryRange: String, CaseIterable, Hashable, Sendable {
 /// residue — precision drift or pre-history activity the explorers
 /// never reported — clamps to zero; quantities never go below zero.
 ///
-/// For the selected range `[cutoff, now]` the emitted series is:
+/// For the selected range the emitted series is built over an
+/// **effective window** `[effectiveCutoff, now]` where
+/// `effectiveCutoff = max(range.cutoff, firstTransactionDate)` — the
+/// window start is clamped to the wallet's first transaction so the
+/// curve never draws a flat-0 lead from a cutoff that predates any
+/// activity (2026-06-16 fix; see the body for the full rationale):
 ///
-/// 1. **Leading anchor at `cutoff`**, valued from the state
-///    accumulated over ALL transactions BEFORE the cutoff — so the
-///    line starts at the true balance-as-of-window-start, not at
-///    zero. (`.all` has no separate leading anchor: the oldest
-///    transaction's before-step at state zero IS the leading edge.)
+/// 1. **Leading anchor at `effectiveCutoff`**, valued from the state
+///    accumulated over ALL transactions BEFORE the effective cutoff —
+///    so the line starts at the true balance-as-of-window-start, never
+///    at a padded zero. Emitted only when `effectiveCutoff` is strictly
+///    before the first in-window transaction (an older wallet's 1M/1Y,
+///    where the raw cutoff wins). When the window start clamps to the
+///    first transaction itself (a young wallet's 1M/1Y, and EVERY `.all`),
+///    no separate leading anchor is emitted — that first transaction's
+///    own before-step (its pre-history state, 1 ms earlier) IS the
+///    leading edge, exactly the original `.all` semantics.
 /// 2. **A before/after step pair for EVERY in-window transaction** at
 ///    its exact timestamp. The before-point sits 1 ms earlier so the
 ///    chart plots a vertical step; both halves are valued at the same
@@ -164,11 +174,15 @@ enum BalanceHistoryRange: String, CaseIterable, Hashable, Sendable {
 ///    no fetched history yet would otherwise draw a dishonest flat
 ///    zero. For `.all` the synthetic leading anchor sits 30 days back
 ///    so the plateau reads as a line, not a dot.
-/// 3. **Zero IN-window transactions + accumulated pre-window state ⇒
-///    flat line at that state's value across the window** ("the
-///    wallet sat here all week"). Both endpoints value through the
-///    ladder at their own timestamps, so with historical price
-///    coverage the segment honestly tracks price movement.
+/// 3. **Zero IN-window transactions ⇒ flat line at the pre-window
+///    state's value across the window** ("the wallet sat here all
+///    week"). This is the truthful flat: a range that contains no
+///    transactions correctly draws a flat line, because the held
+///    quantity didn't change in that window — movement on a range
+///    comes ONLY from trades within it, never from market-price drift
+///    (current-price valuation is applied uniformly to every point).
+///    The flat spans `[effectiveCutoff, now]` and both endpoints take
+///    the hero-reconciled level so the change pill honestly reads 0%.
 ///
 /// **Why this is a pure function.** Easy to verify against test
 /// vectors; no SwiftUI dependency; safely callable from any actor.
@@ -352,12 +366,41 @@ enum BalanceHistoryReconstructor {
             ]
         }
 
+        // **Effective window start — clamp the cutoff to the wallet's
+        // FIRST transaction (2026-06-16 flat-0-lead fix).** When the
+        // selected range's raw cutoff predates the wallet's first
+        // (non-failed, non-self) transaction, anchoring the line at the
+        // raw cutoff draws a long flat-0 run from the cutoff until that
+        // first transaction — on a 1Y/All view that's most of the width,
+        // squishing the real shape into a sliver at the right edge so the
+        // curve reads "straight" and the change pill reads "no change".
+        //
+        // Clamping the effective window start to `firstTxDate` instead
+        // fills the range with the REAL transaction shape:
+        //   • A young/active wallet's 1M/1Y/All all converge to the full
+        //     real history (the curve starts where the user's history
+        //     actually starts), and the leading point becomes the first
+        //     transaction's pre-step at the genuine pre-history state
+        //     (zero for an account whose first-ever event is a receive).
+        //   • An older wallet's 1M still anchors at its real, NON-zero
+        //     one-month-ago balance (its first transaction is older than
+        //     the 1-month cutoff, so `max` keeps the raw cutoff) and
+        //     shows the in-window trades.
+        //
+        // `max(cutoff, firstTxDate)` is correct for EVERY range including
+        // `.all` (whose raw cutoff is `.distantPast`, so the effective
+        // start collapses to the first transaction). The forward walk and
+        // the leading anchor both key off `effectiveCutoff`, never the
+        // raw `cutoff`, below.
+        let firstTxDate = sorted[0].occurredAt
+        let effectiveCutoff = max(cutoff, firstTxDate)
+
         // **Forward cumulative walk.** Quantities start at ZERO and
-        // accumulate every pre-window transaction so the leading
-        // anchor carries the true balance-as-of-window-start.
+        // accumulate every pre-(effective-window) transaction so the
+        // leading anchor carries the true balance-as-of-window-start.
         var running: [TokenKey: Decimal] = [:]
         var index = 0
-        while index < sorted.count, sorted[index].occurredAt < cutoff {
+        while index < sorted.count, sorted[index].occurredAt < effectiveCutoff {
             apply(sorted[index], to: &running)
             index += 1
         }
@@ -366,13 +409,18 @@ enum BalanceHistoryReconstructor {
         // **Zero in-window transactions.** Flat window at the
         // pre-window cumulative state — "the wallet sat here all
         // week." Each endpoint values at its own timestamp through
-        // the ladder. (`.all` never reaches this branch: its cutoff
-        // is `.distantPast`, so every transaction is in-window.)
+        // the ladder. (`.all` never reaches this branch: its effective
+        // cutoff collapses to the first transaction, which is therefore
+        // always in-window.) The flat line spans `[effectiveCutoff, now]`
+        // — for a finite range whose cutoff predates the first tx but
+        // whose only tx is itself pre-window, `effectiveCutoff` is the
+        // raw cutoff (the tx is before the window), so this is the honest
+        // "the wallet sat at its pre-window level across this window".
         if inWindow.isEmpty {
             // The wallet sat still across the whole window — so the line
             // is flat at the REAL current balance (the hero figure), with
-            // 0% change. This is the common 1H case: no transaction in the
-            // last hour ⇒ a flat curve at the hero number, NOT a fold to a
+            // 0% change. This is the common 1H/1D case: no transaction in
+            // the window ⇒ a flat curve at the hero number, NOT a fold to a
             // different range and NOT a fabricated movement (2026-06-16).
             // Both endpoints take the same reconciled level so the change
             // pill honestly reads 0.00 / 0%.
@@ -382,7 +430,7 @@ enum BalanceHistoryReconstructor {
                 fiatPerUnit: fiatPerUnit, currentBalanceFiat: currentBalanceFiat
             )
             return [
-                BalancePoint(timestamp: cutoff, fiat: trailingFiat),
+                BalancePoint(timestamp: effectiveCutoff, fiat: trailingFiat),
                 BalancePoint(timestamp: now, fiat: trailingFiat),
             ]
         }
@@ -390,18 +438,30 @@ enum BalanceHistoryReconstructor {
         var points: [BalancePoint] = []
         points.reserveCapacity(inWindow.count * 2 + 2)
 
-        // **Leading anchor.** Finite ranges anchor at the cutoff with
-        // the pre-window state so the line spans the full picked
-        // range. `.all` skips it — the first transaction's
-        // before-step (state zero, 1 ms earlier) IS the leading edge,
-        // which encodes "state zero before the oldest transaction".
-        if range != .all {
+        // **Leading anchor.** Anchored at `effectiveCutoff` (the clamped
+        // window start) carrying the pre-window cumulative state, so the
+        // line spans the picked range starting at the wallet's REAL
+        // history — never a padded flat-0 lead. Emitted ONLY when the
+        // effective cutoff is strictly before the first in-window
+        // transaction's before-step:
+        //   • Older wallet's 1M/1Y: `effectiveCutoff` == the raw cutoff
+        //     (earlier than the first in-window tx) → a distinct leading
+        //     anchor at the genuine one-period-ago balance.
+        //   • Young wallet's 1M/1Y AND every `.all`: `effectiveCutoff` ==
+        //     `firstTxDate` == the first in-window tx's timestamp, so the
+        //     guard is false and we DON'T emit a duplicate — the first
+        //     transaction's own before-step (its pre-history state, 1 ms
+        //     earlier) becomes the leading edge. This preserves the
+        //     original `.all` semantics ("state zero before the oldest
+        //     transaction") while extending the same start-at-first-tx
+        //     behavior to finite ranges, killing the flat-0 lead.
+        if effectiveCutoff < inWindow[inWindow.startIndex].occurredAt {
             let leadingFiat = totalFiatAt(
-                quantities: running, timestamp: cutoff,
+                quantities: running, timestamp: effectiveCutoff,
                 priceHistory: priceHistory, priceCache: priceCache,
                 fiatPerUnit: fiatPerUnit
             )
-            points.append(BalancePoint(timestamp: cutoff, fiat: leadingFiat))
+            points.append(BalancePoint(timestamp: effectiveCutoff, fiat: leadingFiat))
         }
 
         // **One step pair per in-window transaction.** The

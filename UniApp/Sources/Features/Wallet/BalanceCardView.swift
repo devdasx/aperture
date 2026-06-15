@@ -148,27 +148,49 @@ struct BalanceCardView: View {
     /// derived truth source. The reconstructor already anchors
     /// `points.last` to the wallet's real current balance (the hero
     /// figure), so the pill stays honest AND consistent with the curve.
-    /// Flat when there's no positive baseline to compare against.
+    ///
+    /// **2026-06-16 — genuine 0-baseline.** The reconstructor now clamps
+    /// the window start to the wallet's first transaction (no flat-0
+    /// lead), so on 1M/1Y/All the first point is the first real
+    /// transaction's value — usually > 0, so the pill shows the real
+    /// change. But when the wallet's first-ever event is a receive, that
+    /// first point is legitimately **0** (the pre-history before-step):
+    /// the wallet truly started from nothing in-window. We DON'T fall
+    /// back to "no change" then — we read the REAL gain (`last − first`,
+    /// i.e. the full current value as a positive change) and an honest
+    /// "since start" percent treatment (see `changePercent`). Flat only
+    /// when `last == first` (no net movement across the window).
     private var sign: UniColors.BalanceCard.Sign {
-        guard let first = points.first, let last = points.last,
-              first.fiat > 0 else { return .flat }
+        guard let first = points.first, let last = points.last else { return .flat }
         if last.fiat > first.fiat { return .up }
         if last.fiat < first.fiat { return .down }
         return .flat
     }
 
     /// The signed change over the selected range — `points.last −
-    /// points.first`, the same endpoints the chart draws. `0` when there's
-    /// no positive baseline (nothing real to measure against).
+    /// points.first`, the same endpoints the chart draws. Works for the
+    /// genuine 0-baseline (`first == 0`) case too: the change is then the
+    /// full current value as a positive gain, never suppressed to 0.
     private var change: Decimal {
-        guard let first = points.first, let last = points.last,
-              first.fiat > 0 else { return 0 }
+        guard let first = points.first, let last = points.last else { return 0 }
         return last.fiat - first.fiat
     }
 
+    /// `true` when the window's baseline is a genuine zero — the wallet
+    /// started from nothing in this range (its first-ever transaction is
+    /// the in-window receive). Drives the "since start" pill treatment so
+    /// we never divide by zero to fabricate a percent.
+    private var isSinceStartBaseline: Bool {
+        guard let first = points.first else { return false }
+        return first.fiat <= 0 && change != 0
+    }
+
     /// The percent change over the range — `(last − first) / first × 100`,
-    /// off the chart's own endpoints. `0` when the baseline isn't positive
-    /// (never a divide-by-zero or a fabricated percent).
+    /// off the chart's own endpoints. `0` when the baseline is a genuine
+    /// zero (a percent off a zero base is undefined — the pill shows the
+    /// absolute gain with a "since start" label instead via
+    /// `isSinceStartBaseline`; never a divide-by-zero, never a fabricated
+    /// percent).
     private var changePercent: Double {
         guard let first = points.first, let last = points.last,
               first.fiat > 0 else { return 0 }
@@ -503,20 +525,33 @@ struct BalanceCardView: View {
     }
 
     /// `2.41%` — always with two decimals, no sign (the arrow carries it).
+    /// **2026-06-16:** for the genuine 0-baseline (the wallet started from
+    /// nothing in-window) a percent is undefined — show an em-dash so the
+    /// pill never displays a fabricated `0.00%` or divides by zero. The
+    /// real magnitude of the gain rides on the `amountText` line instead.
     private var percentText: String {
+        if isSinceStartBaseline { return "\u{2014}" } // — (no percent off a zero base)
         let pct = abs(changePercent)
         return String(format: "%.2f%%", pct)
     }
 
-    /// `+293.10 today` / `−391.20 today` / `No change today`. The minus is
-    /// a true U+2212 (handoff §States: "not a hyphen").
+    /// `+293.10 today` / `−391.20 today` / `+12.41 since start` /
+    /// `No change today`. The minus is a true U+2212 (handoff §States:
+    /// "not a hyphen"). **2026-06-16:** the genuine 0-baseline case shows
+    /// the REAL gain (`last − first`) with a "since start" suffix — an
+    /// honest "you're up this much since your wallet's first transaction
+    /// in this window", never a false "No change".
     private var amountText: String {
-        if sign == .flat || change == 0 {
+        if change == 0 {
             return String.apertureLocalized("No change today")
         }
         let magnitude = abs(change)
         let formatted = WalletFormatting.fiat(magnitude, currencyCode: currencyCode)
         let signGlyph = sign == .up ? "+" : "\u{2212}"
+        if isSinceStartBaseline {
+            let sinceStart = String.apertureLocalized("since start")
+            return "\(signGlyph)\(formatted) \(sinceStart)"
+        }
         let today = String.apertureLocalized("today")
         return "\(signGlyph)\(formatted) \(today)"
     }

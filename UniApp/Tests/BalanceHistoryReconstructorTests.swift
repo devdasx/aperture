@@ -139,7 +139,7 @@ struct BalanceHistoryReconstructorTests {
 
     // MARK: - (b) Range windowing
 
-    @Test("A tx 3 days ago appears in 1W but not 1D; 1D's leading anchor carries the pre-window cumulative value")
+    @Test("A tx 3 days ago appears in 1W (clamped to the tx, no flat-0 lead) but not 1D; 1D is flat at the pre-window value")
     @MainActor
     func rangeWindowingHonorsCutoffAndPreWindowState() throws {
         let now = Date(timeIntervalSinceReferenceDate: 800_000_000)
@@ -150,8 +150,12 @@ struct BalanceHistoryReconstructorTests {
         ]
         let priceCache: [String: Decimal] = ["FOO": Decimal(1)]
 
-        // 1W — the receive is in-window: leading anchor at zero, then
-        // the 0→100 step, then the trailing anchor at 100.
+        // 1W — the receive is in-window AND is the wallet's first ever
+        // transaction, so the effective window start clamps to the tx
+        // (2026-06-16 flat-0-lead fix). NO leading anchor at the 7-day
+        // cutoff (that would be a 4-day flat-0 run before the receive —
+        // the exact bug). The series is the first tx's before-step at
+        // state zero, then the 0→100 up-step, then the trailing anchor.
         let week = BalanceHistoryReconstructor.reconstruct(
             transactions: txs,
             currentBalances: [],
@@ -159,12 +163,16 @@ struct BalanceHistoryReconstructorTests {
             range: .week,
             now: now
         )
-        #expect(week.count == 4, "1W: anchor + step pair + trailing. Got \(week)")
-        #expect(week.map(\.fiat) == [0, 0, 100, 100], "1W series must show the up-step. Got \(week.map(\.fiat))")
-        #expect(week.first?.timestamp == BalanceHistoryRange.week.cutoff(from: now))
+        #expect(week.count == 3, "1W: step pair + trailing, no flat-0 lead. Got \(week)")
+        #expect(week.map(\.fiat) == [0, 100, 100], "1W must start at the first tx, not a padded zero. Got \(week.map(\.fiat))")
+        // The curve starts at the first transaction's before-step (1 ms
+        // earlier), NOT at the 7-day-ago cutoff.
+        #expect(week.first?.timestamp == threeDaysAgo.addingTimeInterval(-0.001))
 
-        // 1D — the receive is BEFORE the window: flat line at the
-        // pre-window cumulative value (100) across the whole day.
+        // 1D — the receive is BEFORE the window (no in-window tx): flat
+        // line at the pre-window cumulative value (100) across the whole
+        // day, anchored at the 1-day cutoff. This is the honest flat —
+        // the held quantity didn't change in the last day.
         let day = BalanceHistoryReconstructor.reconstruct(
             transactions: txs,
             currentBalances: [],
@@ -175,10 +183,109 @@ struct BalanceHistoryReconstructorTests {
         #expect(day.count == 2, "1D: leading + trailing anchors only. Got \(day)")
         #expect(
             day.map(\.fiat) == [100, 100],
-            "1D's leading anchor must carry the pre-window cumulative value. Got \(day.map(\.fiat))"
+            "1D's flat line must carry the pre-window cumulative value. Got \(day.map(\.fiat))"
         )
         #expect(day.first?.timestamp == BalanceHistoryRange.day.cutoff(from: now))
         #expect(day.last?.timestamp == now)
+    }
+
+    // MARK: - (i) Flat-0-lead fix: young wallet converges on every range (2026-06-16)
+
+    @Test("Young wallet — 1M, 1Y, All all start at the first transaction with NO flat-0 lead and converge to the same real shape")
+    @MainActor
+    func youngWalletRangesConvergeWithoutFlatZeroLead() throws {
+        // A wallet whose FIRST EVER transaction is 8 days ago — earlier
+        // than the 1M and 1Y cutoffs. Before the fix, 1M/1Y anchored at
+        // the (now − 1mo / now − 1yr) cutoff with a fiat-0 value, drawing
+        // a long flat-0 run until the first tx and squishing the real
+        // shape into a sliver (the "straight chart / no change" bug). The
+        // fix clamps the effective window start to the first transaction,
+        // so 1M, 1Y, and All all draw the same real shape starting at the
+        // first tx.
+        let now = Date(timeIntervalSinceReferenceDate: 800_000_000)
+        let d8 = now.addingTimeInterval(-8 * 86_400)   // first ever tx
+        let d6 = now.addingTimeInterval(-6 * 86_400)
+        let d4 = now.addingTimeInterval(-4 * 86_400)
+
+        let txs = [
+            Self.makeTx(symbol: "USDT", contract: Self.usdtLowercased, amount: "20", direction: .incoming, at: d8),
+            Self.makeTx(symbol: "USDT", contract: Self.usdtLowercased, amount: "10", direction: .outgoing, at: d6),
+            Self.makeTx(symbol: "USDT", contract: Self.usdtLowercased, amount: "500", direction: .incoming, at: d4),
+        ]
+        let balances = [
+            Self.makeBalance(
+                symbol: "USDT", contract: Self.usdtChecksummed,
+                rawBalance: "510000000", decimals: 6, fiatCached: Decimal(510)
+            )
+        ]
+        let priceCache: [String: Decimal] = ["USDT": Decimal(1)]
+
+        let expectedShape: [Decimal] = [0, 20, 20, 10, 10, 510, 510]
+
+        for range in [BalanceHistoryRange.month, .year, .all] {
+            let points = BalanceHistoryReconstructor.reconstruct(
+                transactions: txs,
+                currentBalances: balances,
+                priceCache: priceCache,
+                range: range,
+                now: now
+            )
+            // No flat-0 lead: the FIRST point is the first tx's before-step
+            // at state zero (the genuine pre-history value), immediately
+            // followed by the up-step — not a long run of zeros.
+            #expect(
+                points.map(\.fiat) == expectedShape,
+                "\(range): must converge to the real shape with no flat-0 lead. Got \(points.map(\.fiat))"
+            )
+            // The curve STARTS at the first transaction, never at the raw
+            // (now − 1mo / now − 1yr / distantPast) cutoff.
+            #expect(
+                points.first?.timestamp == d8.addingTimeInterval(-0.001),
+                "\(range): curve must start at the first transaction. Got \(String(describing: points.first?.timestamp))"
+            )
+            // Right edge == the real current balance (the hero).
+            #expect(points.last?.fiat == Decimal(510), "\(range): trailing edge == hero. Got \(String(describing: points.last?.fiat))")
+        }
+    }
+
+    @Test("Older wallet — 1M still anchors at the NON-zero one-month-ago balance (cutoff is not clamped to the older first tx)")
+    @MainActor
+    func olderWallet1MAnchorsAtNonZeroPreWindowBalance() throws {
+        // First tx is ~6 months ago (older than the 1M cutoff), so the 1M
+        // window's effective start stays the raw cutoff — NOT clamped to
+        // the first tx. The 1M leading anchor must carry the genuine
+        // one-month-ago balance (non-zero), then show only the in-window
+        // trades. (1Y/All, whose cutoff predates the first tx, DO clamp.)
+        let now = Date(timeIntervalSinceReferenceDate: 800_000_000)
+        let sixMonthsAgo = Calendar.current.date(byAdding: .month, value: -6, to: now)!
+        let d45 = now.addingTimeInterval(-45 * 86_400)   // pre-1M-window (>1 calendar month)
+        let d10 = now.addingTimeInterval(-10 * 86_400)   // in 1M window
+        let d5 = now.addingTimeInterval(-5 * 86_400)     // in 1M window
+
+        let txs = [
+            Self.makeTx(symbol: "USDT", contract: Self.usdtLowercased, amount: "100", direction: .incoming, at: sixMonthsAgo),
+            Self.makeTx(symbol: "USDT", contract: Self.usdtLowercased, amount: "50", direction: .incoming, at: d45),
+            Self.makeTx(symbol: "USDT", contract: Self.usdtLowercased, amount: "30", direction: .incoming, at: d10),
+            Self.makeTx(symbol: "USDT", contract: Self.usdtLowercased, amount: "30", direction: .outgoing, at: d5),
+        ]
+        let priceCache: [String: Decimal] = ["USDT": Decimal(1)]
+
+        let month = BalanceHistoryReconstructor.reconstruct(
+            transactions: txs,
+            currentBalances: [],
+            priceCache: priceCache,
+            range: .month,
+            now: now
+        )
+        // Leading anchor at the 1M cutoff carries the pre-window balance
+        // (100 + 50 = 150); then 30 in (→180), 30 out (→150); trailing 150.
+        #expect(
+            month.map(\.fiat) == [150, 150, 180, 180, 150, 150],
+            "1M must anchor at the non-zero one-month-ago balance. Got \(month.map(\.fiat))"
+        )
+        // The leading anchor sits at the 1M cutoff, NOT at the older first tx.
+        #expect(month.first?.timestamp == BalanceHistoryRange.month.cutoff(from: now))
+        #expect(month.first?.fiat == Decimal(150))
     }
 
     // MARK: - (c) Outgoing steps go down
