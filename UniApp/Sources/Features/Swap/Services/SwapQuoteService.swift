@@ -112,25 +112,22 @@ actor SwapQuoteService {
     func searchTokens(query: String, chains: [SupportedChain]) async -> [SwapToken] {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return [] }
-        let swappable = chains.filter { SwapChainMap.isSwappable($0) }
+        let swappable = Set(chains.filter { SwapChainMap.isSwappable($0) })
         guard !swappable.isEmpty else { return [] }
+        let evmChains = swappable.filter { SwapChainMap.kind(for: $0) == .evm }
+        let includeSolana = swappable.contains(.solana)
 
-        return await withTaskGroup(of: [SwapToken].self) { group in
-            for chain in swappable {
-                group.addTask { [lifi, jupiter] in
-                    if chain == .solana {
-                        return await jupiter.searchTokens(query: trimmed)
-                    }
-                    if let token = await lifi.searchToken(query: trimmed, on: chain) {
-                        return [token]
-                    }
-                    return []
-                }
-            }
-            var all: [SwapToken] = []
-            for await result in group { all.append(contentsOf: result) }
-            return all
-        }
+        // Two parallel calls (Rule #28): ONE Li.Fi multi-chain token search
+        // across every swappable EVM chain (`/tokens?chains=…&search=`), plus
+        // Jupiter for Solana. Both match name / symbol / contract; both
+        // return [] on failure. EVM hits come first so a canonical multi-EVM
+        // token (e.g. LINK) is seen before single-chain Solana look-alikes;
+        // `SwapAsset.fromProviderTokens` then folds + ranks the union.
+        async let evm: [SwapToken] = evmChains.isEmpty
+            ? [] : lifi.searchTokens(query: trimmed, chains: Array(evmChains))
+        async let solana: [SwapToken] = includeSolana
+            ? jupiter.searchTokens(query: trimmed) : []
+        return await evm + solana
     }
 
     /// `true` when EVM/cross-chain quotes are available (Li.Fi key set).
