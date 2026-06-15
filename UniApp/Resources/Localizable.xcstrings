@@ -309958,6 +309958,50 @@
           }
         }
       }
+    },
+    "Less than the network minimum (\\(floor)) remains, so this recipient can't be paid.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Less than the network minimum (\\(floor)) remains, so this recipient can't be paid."
+          }
+        }
+      }
+    },
+    "More than your remaining balance.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "More than your remaining balance."
+          }
+        }
+      }
+    },
+    "Tap to retry": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tap to retry"
+          }
+        }
+      }
+    },
+    "The earlier recipients use your whole balance — nothing is left for this one.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The earlier recipients use your whole balance — nothing is left for this one."
+          }
+        }
+      }
     }
   },
   "version": "1.0"

@@ -28,6 +28,12 @@ enum SendValidationError: Error, Hashable, Sendable {
     case noRecipients
     /// More recipients than the chain supports in one tx.
     case tooManyRecipients(max: Int)
+    /// A recipient with a typed amount can't be funded — the earlier
+    /// recipients consume the balance, leaving too little (below the
+    /// network minimum) for this one. Blocks Review so a typed amount is
+    /// never silently dropped from the broadcast (Rule #16). The model
+    /// appends this when a `.blocked` row still holds a positive amount.
+    case recipientUnfunded
 
     /// English source message for display (resolved via
     /// `LocalizedStringKey` at the call site).
@@ -57,6 +63,8 @@ enum SendValidationError: Error, Hashable, Sendable {
             return "Add at least one recipient"
         case .tooManyRecipients:
             return "Too many recipients for one transaction"
+        case .recipientUnfunded:
+            return "A recipient can't be paid with what's left — lower an earlier amount or remove it"
         }
     }
 }
