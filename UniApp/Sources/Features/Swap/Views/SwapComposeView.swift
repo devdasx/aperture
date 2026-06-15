@@ -79,28 +79,28 @@ struct SwapComposeView: View {
     private static let flipRingInset: CGFloat = UniSpacing.xxs
     /// Total laid-out size of the flip control incl. its seam ring.
     private static var flipControlDiameter: CGFloat { flipButtonDiameter + flipRingInset * 2 }
-    /// The gap straddled by the flip button. Fixed (height-independent) so
-    /// the seam sits at a known place regardless of either card's content.
-    private static let cardGap: CGFloat = UniSpacing.m
+    /// How far the flip control bites into EACH card. As a VStack sibling
+    /// pulled up and down into both cards by this much (negative vertical
+    /// padding), the control is dead-centered on the seam by construction and
+    /// overlaps the FROM and TO cards equally — visible on both, regardless of
+    /// either card's height. (It can no longer ride high into the taller card
+    /// the way the old bottom-anchored overlay did.)
+    private static var flipSeamOverlap: CGFloat { flipControlDiameter / 2 - UniSpacing.xxs }
 
     private var swapCards: some View {
-        // The flip button is anchored to the SEAM between the two cards —
-        // not the midpoint of the stack. Overlaying it on the FROM card's
-        // bottom edge and pushing it DOWN by half its own diameter centers
-        // it exactly on the gap, so it never drifts into the taller card's
-        // Available/Max row no matter how the card heights differ.
-        VStack(spacing: SwapComposeView.cardGap) {
+        // The flip control sits ON the seam between the two cards. It's a
+        // VStack sibling pulled UP into the FROM card and DOWN into the TO
+        // card by `flipSeamOverlap` (negative vertical padding), so it's
+        // centered on the seam by construction and overlaps BOTH cards by the
+        // same amount — equally visible on YOU PAY and YOU RECEIVE, never
+        // riding high into the taller card.
+        VStack(spacing: 0) {
             fromCard
-                .overlay(alignment: .bottom) {
-                    flipButton
-                        // Center on the seam: push down half the control so
-                        // its midline lands on the FROM card's bottom edge,
-                        // i.e. dead-center of the gap below it.
-                        .offset(y: SwapComposeView.flipControlDiameter / 2)
-                        // Float above the TO card so the seam ring reads as
-                        // sitting ON the boundary, not under it.
-                        .zIndex(1)
-                }
+            flipButton
+                .padding(.vertical, -SwapComposeView.flipSeamOverlap)
+                // Draw above both cards so the opaque seam ring reads as
+                // sitting ON the boundary, not tucked under either edge.
+                .zIndex(1)
             toCard
         }
     }
@@ -140,10 +140,11 @@ struct SwapComposeView: View {
                     }
                     maxButton
                 }
-                // Reserve the lower-half footprint of the seam button so its
-                // top edge (≈ half its diameter above the card's bottom edge)
-                // never reaches the Available/MAX row, at any card height.
-                .padding(.bottom, SwapComposeView.flipControlDiameter / 2 - UniSpacing.m + UniSpacing.xs)
+                // Keep the Available/MAX row clear of the seam button: the
+                // control bites `flipSeamOverlap` up into this card — past the
+                // card's own 16pt inset — so reserve the difference (plus a
+                // little breathing room) below the row.
+                .padding(.bottom, SwapComposeView.flipSeamOverlap + UniSpacing.xs - UniSpacing.m)
             }
         }
     }
