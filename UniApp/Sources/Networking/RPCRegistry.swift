@@ -76,127 +76,159 @@ enum RPCRegistry {
     // provider rate-limits or returns a 429/timeout, RPCClient
     // rotates to the next. The diverse provider set means a single
     // provider's outage no longer blocks an entire chain.
+    //
+    // **2026-06-16 — 1rpc.io authentication + more fallbacks.**
+    // The 1rpc endpoints now use the authenticated keyed path
+    // (`https://1rpc.io/<KEY>/<slug>`) when `Secrets.hasOneRPCKey`,
+    // and the public path (`https://1rpc.io/<slug>`) otherwise — see
+    // `oneRPC(...)`. The public 1rpc tier caps at 200 requests/day
+    // per IP and then returns JSON-RPC error `-32001` "You've reached
+    // the usage limit for your current plan…" (HTTP 200, live-verified
+    // 2026-06-16; doc: https://docs.1rpc.io/using-the-web3-api/errors).
+    // That keyless quota is what rate-limited a swap broadcast and
+    // surfaced as a terminal failure. The keyed path raises the limit
+    // (live-verified: 30/30 keyed eth_blockNumber succeeded while the
+    // same IP's public path returned -32001). Additional independent
+    // public fallbacks (Tenderly public gateway, BNB dataseeds, etc.)
+    // were added per chain after live-curl confirming the correct
+    // chainId + a live block (eth_chainId + eth_blockNumber). The
+    // broken `zksync-era-rpc.publicnode.com` (now HTTP 404 — publicnode
+    // dropped zkSync Era) was removed.
     private static func ethereumEndpoints() -> [RPCEndpoint?] {
         [
             jr("eth-publicnode",  "https://ethereum-rpc.publicnode.com",          .ethereum, "publicnode",  .publicNode,  0),
-            jr("eth-llamarpc",    "https://eth.llamarpc.com",                     .ethereum, "llamarpc",    .moderate20,  1),
-            jr("eth-cloudflare",  "https://cloudflare-eth.com",                   .ethereum, "cloudflare",  .moderate10,  2),
-            jr("eth-ankr",        "https://rpc.ankr.com/eth",                     .ethereum, "ankr",        .moderate10,  3),
-            jr("eth-drpc",        "https://eth.drpc.org",                         .ethereum, "drpc",        .moderate10,  4),
-            jr("eth-1rpc",        "https://1rpc.io/eth",                          .ethereum, "1rpc",        .moderate10,  5),
-            jr("eth-blast",       "https://eth-mainnet.public.blastapi.io",       .ethereum, "blast",       .moderate10,  6),
-            jr("eth-blockpi",     "https://ethereum.blockpi.network/v1/rpc/public", .ethereum, "blockpi",   .moderate10,  7),
-            jr("eth-merkle",      "https://eth.merkle.io",                        .ethereum, "merkle",      .moderate10,  8),
+            oneRPC("eth-1rpc",    slug: "eth",                                    .ethereum,                              1),
+            jr("eth-llamarpc",    "https://eth.llamarpc.com",                     .ethereum, "llamarpc",    .moderate20,  2),
+            jr("eth-drpc",        "https://eth.drpc.org",                         .ethereum, "drpc",        .moderate10,  3),
+            jr("eth-tenderly",    "https://gateway.tenderly.co/public/mainnet",   .ethereum, "tenderly",    .moderate10,  4),
+            jr("eth-cloudflare",  "https://cloudflare-eth.com",                   .ethereum, "cloudflare",  .moderate10,  5),
+            jr("eth-ankr",        "https://rpc.ankr.com/eth",                     .ethereum, "ankr",        .moderate10,  6),
+            jr("eth-blast",       "https://eth-mainnet.public.blastapi.io",       .ethereum, "blast",       .moderate10,  7),
+            jr("eth-blockpi",     "https://ethereum.blockpi.network/v1/rpc/public", .ethereum, "blockpi",   .moderate10,  8),
+            jr("eth-merkle",      "https://eth.merkle.io",                        .ethereum, "merkle",      .moderate10,  9),
         ]
     }
     private static func arbitrumEndpoints() -> [RPCEndpoint?] {
         [
             jr("arb-publicnode",  "https://arbitrum-one-rpc.publicnode.com",      .arbitrum, "publicnode",  .publicNode,  0),
-            jr("arb-llamarpc",    "https://arbitrum.llamarpc.com",                .arbitrum, "llamarpc",    .moderate20,  1),
-            jr("arb-ankr",        "https://rpc.ankr.com/arbitrum",                .arbitrum, "ankr",        .moderate10,  2),
-            jr("arb-drpc",        "https://arbitrum.drpc.org",                    .arbitrum, "drpc",        .moderate10,  3),
-            jr("arb-1rpc",        "https://1rpc.io/arb",                          .arbitrum, "1rpc",        .moderate10,  4),
-            jr("arb-blast",       "https://arbitrum-one.public.blastapi.io",      .arbitrum, "blast",       .moderate10,  5),
-            jr("arb-blockpi",     "https://arbitrum.blockpi.network/v1/rpc/public", .arbitrum, "blockpi",   .moderate10,  6),
-            jr("arb-official",    "https://arb1.arbitrum.io/rpc",                 .arbitrum, "offchain-labs", .moderate10, 7),
+            oneRPC("arb-1rpc",    slug: "arb",                                    .arbitrum,                              1),
+            jr("arb-official",    "https://arb1.arbitrum.io/rpc",                 .arbitrum, "offchain-labs", .moderate20, 2),
+            jr("arb-llamarpc",    "https://arbitrum.llamarpc.com",                .arbitrum, "llamarpc",    .moderate20,  3),
+            jr("arb-drpc",        "https://arbitrum.drpc.org",                    .arbitrum, "drpc",        .moderate10,  4),
+            jr("arb-tenderly",    "https://arbitrum.gateway.tenderly.co",         .arbitrum, "tenderly",    .moderate10,  5),
+            jr("arb-ankr",        "https://rpc.ankr.com/arbitrum",                .arbitrum, "ankr",        .moderate10,  6),
+            jr("arb-blast",       "https://arbitrum-one.public.blastapi.io",      .arbitrum, "blast",       .moderate10,  7),
+            jr("arb-blockpi",     "https://arbitrum.blockpi.network/v1/rpc/public", .arbitrum, "blockpi",   .moderate10,  8),
         ]
     }
     private static func baseEndpoints() -> [RPCEndpoint?] {
         [
             jr("base-publicnode", "https://base-rpc.publicnode.com",              .base, "publicnode",      .publicNode,  0),
-            jr("base-llamarpc",   "https://base.llamarpc.com",                    .base, "llamarpc",        .moderate20,  1),
-            jr("base-ankr",       "https://rpc.ankr.com/base",                    .base, "ankr",            .moderate10,  2),
-            jr("base-drpc",       "https://base.drpc.org",                        .base, "drpc",            .moderate10,  3),
-            jr("base-1rpc",       "https://1rpc.io/base",                         .base, "1rpc",            .moderate10,  4),
-            jr("base-blast",      "https://base-mainnet.public.blastapi.io",      .base, "blast",           .moderate10,  5),
-            jr("base-blockpi",    "https://base.blockpi.network/v1/rpc/public",   .base, "blockpi",         .moderate10,  6),
-            jr("base-official",   "https://mainnet.base.org",                     .base, "coinbase",        .moderate10,  7),
+            oneRPC("base-1rpc",   slug: "base",                                   .base,                                  1),
+            jr("base-official",   "https://mainnet.base.org",                     .base, "coinbase",        .moderate20,  2),
+            jr("base-llamarpc",   "https://base.llamarpc.com",                    .base, "llamarpc",        .moderate20,  3),
+            jr("base-drpc",       "https://base.drpc.org",                        .base, "drpc",            .moderate10,  4),
+            jr("base-tenderly",   "https://base.gateway.tenderly.co",             .base, "tenderly",        .moderate10,  5),
+            jr("base-ankr",       "https://rpc.ankr.com/base",                    .base, "ankr",            .moderate10,  6),
+            jr("base-blast",      "https://base-mainnet.public.blastapi.io",      .base, "blast",           .moderate10,  7),
+            jr("base-blockpi",    "https://base.blockpi.network/v1/rpc/public",   .base, "blockpi",         .moderate10,  8),
         ]
     }
     private static func optimismEndpoints() -> [RPCEndpoint?] {
         [
             jr("op-publicnode",   "https://optimism-rpc.publicnode.com",          .optimism, "publicnode",  .publicNode,  0),
-            jr("op-llamarpc",     "https://optimism.llamarpc.com",                .optimism, "llamarpc",    .moderate20,  1),
-            jr("op-ankr",         "https://rpc.ankr.com/optimism",                .optimism, "ankr",        .moderate10,  2),
-            jr("op-drpc",         "https://optimism.drpc.org",                    .optimism, "drpc",        .moderate10,  3),
-            jr("op-1rpc",         "https://1rpc.io/op",                           .optimism, "1rpc",        .moderate10,  4),
-            jr("op-blast",        "https://optimism-mainnet.public.blastapi.io",  .optimism, "blast",       .moderate10,  5),
-            jr("op-blockpi",      "https://optimism.blockpi.network/v1/rpc/public", .optimism, "blockpi",   .moderate10,  6),
-            jr("op-official",     "https://mainnet.optimism.io",                  .optimism, "op-labs",     .moderate10,  7),
+            oneRPC("op-1rpc",     slug: "op",                                     .optimism,                              1),
+            jr("op-official",     "https://mainnet.optimism.io",                  .optimism, "op-labs",     .moderate20,  2),
+            jr("op-llamarpc",     "https://optimism.llamarpc.com",                .optimism, "llamarpc",    .moderate20,  3),
+            jr("op-drpc",         "https://optimism.drpc.org",                    .optimism, "drpc",        .moderate10,  4),
+            jr("op-tenderly",     "https://optimism.gateway.tenderly.co",         .optimism, "tenderly",    .moderate10,  5),
+            jr("op-ankr",         "https://rpc.ankr.com/optimism",                .optimism, "ankr",        .moderate10,  6),
+            jr("op-blast",        "https://optimism-mainnet.public.blastapi.io",  .optimism, "blast",       .moderate10,  7),
+            jr("op-blockpi",      "https://optimism.blockpi.network/v1/rpc/public", .optimism, "blockpi",   .moderate10,  8),
         ]
     }
     private static func scrollEndpoints() -> [RPCEndpoint?] {
         [
             jr("scr-publicnode",  "https://scroll-rpc.publicnode.com",            .scroll, "publicnode",    .publicNode,  0),
-            jr("scr-scroll",      "https://rpc.scroll.io",                        .scroll, "scroll-foundation", .moderate10, 1),
-            jr("scr-ankr",        "https://rpc.ankr.com/scroll",                  .scroll, "ankr",          .moderate10,  2),
+            oneRPC("scr-1rpc",    slug: "scroll",                                 .scroll,                                1),
+            jr("scr-scroll",      "https://rpc.scroll.io",                        .scroll, "scroll-foundation", .moderate20, 2),
             jr("scr-drpc",        "https://scroll.drpc.org",                      .scroll, "drpc",          .moderate10,  3),
-            jr("scr-blockpi",     "https://scroll.blockpi.network/v1/rpc/public", .scroll, "blockpi",       .moderate10,  4),
-            jr("scr-1rpc",        "https://1rpc.io/scroll",                       .scroll, "1rpc",          .moderate10,  5),
+            jr("scr-ankr",        "https://rpc.ankr.com/scroll",                  .scroll, "ankr",          .moderate10,  4),
+            jr("scr-blockpi",     "https://scroll.blockpi.network/v1/rpc/public", .scroll, "blockpi",       .moderate10,  5),
         ]
     }
     private static func zkSyncEndpoints() -> [RPCEndpoint?] {
+        // NOTE: `zksync-era-rpc.publicnode.com` was removed 2026-06-16 —
+        // it now returns HTTP 404 (publicnode dropped zkSync Era).
+        // `mainnet.era.zksync.io` (matter-labs official), `zksync.drpc.org`,
+        // and keyed 1rpc (`zksync2-era`) were live-verified (chainId 0x144).
         [
-            jr("zks-publicnode",  "https://zksync-era-rpc.publicnode.com",        .zkSync, "publicnode",    .publicNode,  0),
-            jr("zks-mainnet",     "https://mainnet.era.zksync.io",                .zkSync, "matter-labs",   .moderate10,  1),
-            jr("zks-ankr",        "https://rpc.ankr.com/zksync_era",              .zkSync, "ankr",          .moderate10,  2),
-            jr("zks-drpc",        "https://zksync.drpc.org",                      .zkSync, "drpc",          .moderate10,  3),
+            jr("zks-mainnet",     "https://mainnet.era.zksync.io",                .zkSync, "matter-labs",   .publicNode,  0),
+            oneRPC("zks-1rpc",    slug: "zksync2-era",                            .zkSync,                                1),
+            jr("zks-drpc",        "https://zksync.drpc.org",                      .zkSync, "drpc",          .moderate10,  2),
+            jr("zks-ankr",        "https://rpc.ankr.com/zksync_era",              .zkSync, "ankr",          .moderate10,  3),
             jr("zks-blockpi",     "https://zksync-era.blockpi.network/v1/rpc/public", .zkSync, "blockpi",   .moderate10,  4),
-            jr("zks-1rpc",        "https://1rpc.io/zksync2-era",                  .zkSync, "1rpc",          .moderate10,  5),
         ]
     }
     private static func polygonEndpoints() -> [RPCEndpoint?] {
         [
             jr("pol-publicnode",  "https://polygon-bor-rpc.publicnode.com",       .polygon, "publicnode",   .publicNode,  0),
-            jr("pol-llamarpc",    "https://polygon.llamarpc.com",                 .polygon, "llamarpc",     .moderate20,  1),
-            jr("pol-ankr",        "https://rpc.ankr.com/polygon",                 .polygon, "ankr",         .moderate10,  2),
+            oneRPC("pol-1rpc",    slug: "matic",                                  .polygon,                               1),
+            jr("pol-llamarpc",    "https://polygon.llamarpc.com",                 .polygon, "llamarpc",     .moderate20,  2),
             jr("pol-drpc",        "https://polygon.drpc.org",                     .polygon, "drpc",         .moderate10,  3),
-            jr("pol-1rpc",        "https://1rpc.io/matic",                        .polygon, "1rpc",         .moderate10,  4),
-            jr("pol-blast",       "https://polygon-mainnet.public.blastapi.io",   .polygon, "blast",        .moderate10,  5),
-            jr("pol-blockpi",     "https://polygon.blockpi.network/v1/rpc/public", .polygon, "blockpi",     .moderate10,  6),
-            jr("pol-official",    "https://polygon-rpc.com",                      .polygon, "polygon",      .moderate10,  7),
+            jr("pol-tenderly",    "https://polygon.gateway.tenderly.co",          .polygon, "tenderly",     .moderate10,  4),
+            jr("pol-ankr",        "https://rpc.ankr.com/polygon",                 .polygon, "ankr",         .moderate10,  5),
+            jr("pol-blast",       "https://polygon-mainnet.public.blastapi.io",   .polygon, "blast",        .moderate10,  6),
+            jr("pol-blockpi",     "https://polygon.blockpi.network/v1/rpc/public", .polygon, "blockpi",     .moderate10,  7),
+            jr("pol-official",    "https://polygon-rpc.com",                      .polygon, "polygon",      .moderate10,  8),
         ]
     }
     private static func bnbChainEndpoints() -> [RPCEndpoint?] {
         [
             jr("bsc-publicnode",  "https://bsc-rpc.publicnode.com",               .bnbChain, "publicnode",  .publicNode,  0),
-            jr("bsc-llamarpc",    "https://binance.llamarpc.com",                 .bnbChain, "llamarpc",    .moderate20,  1),
-            jr("bsc-ankr",        "https://rpc.ankr.com/bsc",                     .bnbChain, "ankr",        .moderate10,  2),
+            oneRPC("bsc-1rpc",    slug: "bnb",                                    .bnbChain,                              1),
+            jr("bsc-llamarpc",    "https://binance.llamarpc.com",                 .bnbChain, "llamarpc",    .moderate20,  2),
             jr("bsc-drpc",        "https://bsc.drpc.org",                         .bnbChain, "drpc",        .moderate10,  3),
-            jr("bsc-1rpc",        "https://1rpc.io/bnb",                          .bnbChain, "1rpc",        .moderate10,  4),
-            jr("bsc-blast",       "https://bsc-mainnet.public.blastapi.io",       .bnbChain, "blast",       .moderate10,  5),
-            jr("bsc-blockpi",     "https://bsc.blockpi.network/v1/rpc/public",    .bnbChain, "blockpi",     .moderate10,  6),
-            jr("bsc-dataseed1",   "https://bsc-dataseed1.binance.org",            .bnbChain, "binance",     .moderate10,  7),
-            jr("bsc-dataseed2",   "https://bsc-dataseed2.binance.org",            .bnbChain, "binance",     .moderate10,  8),
+            jr("bsc-ankr",        "https://rpc.ankr.com/bsc",                     .bnbChain, "ankr",        .moderate10,  4),
+            jr("bsc-meowrpc",     "https://bsc.meowrpc.com",                      .bnbChain, "meowrpc",     .moderate10,  5),
+            jr("bsc-blast",       "https://bsc-mainnet.public.blastapi.io",       .bnbChain, "blast",       .moderate10,  6),
+            jr("bsc-blockpi",     "https://bsc.blockpi.network/v1/rpc/public",    .bnbChain, "blockpi",     .moderate10,  7),
+            jr("bsc-dataseed1",   "https://bsc-dataseed1.binance.org",            .bnbChain, "binance",     .moderate10,  8),
+            jr("bsc-dataseed2",   "https://bsc-dataseed2.binance.org",            .bnbChain, "binance",     .moderate10,  9),
+            jr("bsc-dataseed3",   "https://bsc-dataseed3.binance.org",            .bnbChain, "binance",     .moderate10, 10),
+            jr("bsc-dataseed4",   "https://bsc-dataseed4.binance.org",            .bnbChain, "binance",     .moderate10, 11),
         ]
     }
     private static func opBNBEndpoints() -> [RPCEndpoint?] {
         [
             jr("opbnb-publicnode","https://opbnb-rpc.publicnode.com",             .opBNB, "publicnode",     .publicNode,  0),
-            jr("opbnb-bnbchain",  "https://opbnb-mainnet-rpc.bnbchain.org",       .opBNB, "bnbchain",       .moderate10,  1),
-            jr("opbnb-ankr",      "https://rpc.ankr.com/opbnb",                   .opBNB, "ankr",           .moderate10,  2),
+            oneRPC("opbnb-1rpc",  slug: "opbnb",                                  .opBNB,                                 1),
+            jr("opbnb-bnbchain",  "https://opbnb-mainnet-rpc.bnbchain.org",       .opBNB, "bnbchain",       .moderate20,  2),
             jr("opbnb-drpc",      "https://opbnb.drpc.org",                       .opBNB, "drpc",           .moderate10,  3),
-            jr("opbnb-blockpi",   "https://opbnb.blockpi.network/v1/rpc/public",  .opBNB, "blockpi",        .moderate10,  4),
+            jr("opbnb-ankr",      "https://rpc.ankr.com/opbnb",                   .opBNB, "ankr",           .moderate10,  4),
+            jr("opbnb-blockpi",   "https://opbnb.blockpi.network/v1/rpc/public",  .opBNB, "blockpi",        .moderate10,  5),
         ]
     }
     private static func avalancheEndpoints() -> [RPCEndpoint?] {
+        // NOTE: `ava-mainnet.public.blastapi.io` was removed 2026-06-16 —
+        // it now returns HTTP 403 (Blast gated the public Avalanche path).
         [
             jr("avax-publicnode", "https://avalanche-c-chain-rpc.publicnode.com", .avalanche, "publicnode", .publicNode,  0),
-            jr("avax-ava-labs",   "https://api.avax.network/ext/bc/C/rpc",        .avalanche, "ava-labs",   .moderate20,  1),
-            jr("avax-ankr",       "https://rpc.ankr.com/avalanche",               .avalanche, "ankr",       .moderate10,  2),
+            oneRPC("avax-1rpc",   slug: "avax/c",                                 .avalanche,                             1),
+            jr("avax-ava-labs",   "https://api.avax.network/ext/bc/C/rpc",        .avalanche, "ava-labs",   .moderate20,  2),
             jr("avax-drpc",       "https://avalanche.drpc.org",                   .avalanche, "drpc",       .moderate10,  3),
-            jr("avax-1rpc",       "https://1rpc.io/avax/c",                       .avalanche, "1rpc",       .moderate10,  4),
-            jr("avax-blast",      "https://ava-mainnet.public.blastapi.io/ext/bc/C/rpc", .avalanche, "blast", .moderate10, 5),
-            jr("avax-blockpi",    "https://avalanche.blockpi.network/v1/rpc/public", .avalanche, "blockpi", .moderate10,  6),
+            jr("avax-ankr",       "https://rpc.ankr.com/avalanche",               .avalanche, "ankr",       .moderate10,  4),
+            jr("avax-blockpi",    "https://avalanche.blockpi.network/v1/rpc/public", .avalanche, "blockpi", .moderate10,  5),
         ]
     }
     private static func celoEndpoints() -> [RPCEndpoint?] {
         [
             jr("celo-publicnode", "https://celo-rpc.publicnode.com",              .celo, "publicnode",      .publicNode,  0),
-            jr("celo-forno",      "https://forno.celo.org",                       .celo, "celo-foundation", .moderate10,  1),
-            jr("celo-ankr",       "https://rpc.ankr.com/celo",                    .celo, "ankr",            .moderate10,  2),
+            oneRPC("celo-1rpc",   slug: "celo",                                   .celo,                                  1),
+            jr("celo-forno",      "https://forno.celo.org",                       .celo, "celo-foundation", .moderate20,  2),
             jr("celo-drpc",       "https://celo.drpc.org",                        .celo, "drpc",            .moderate10,  3),
-            jr("celo-blockpi",    "https://celo.blockpi.network/v1/rpc/public",   .celo, "blockpi",         .moderate10,  4),
+            jr("celo-ankr",       "https://rpc.ankr.com/celo",                    .celo, "ankr",            .moderate10,  4),
+            jr("celo-blockpi",    "https://celo.blockpi.network/v1/rpc/public",   .celo, "blockpi",         .moderate10,  5),
         ]
     }
     private static func kavaEvmEndpoints() -> [RPCEndpoint?] {
@@ -322,6 +354,33 @@ enum RPCRegistry {
             return nil
         }
         return RPCEndpoint(id: id, url: parsed, kind: .jsonRPC, chain: chain, provider: provider, rateLimit: limit, priority: pri, weight: 1)
+    }
+
+    /// 1rpc.io endpoint factory. Builds the **authenticated keyed path**
+    /// `https://1rpc.io/<KEY>/<slug>` when `Secrets.hasOneRPCKey`, and
+    /// the **public path** `https://1rpc.io/<slug>` otherwise (honest
+    /// degradation — Rule #16). `slug` is the 1rpc per-chain segment
+    /// (live-verified 2026-06-16 against the keyed endpoint: `eth`,
+    /// `arb`, `base`, `op`, `scroll`, `zksync2-era`, `matic`, `bnb`,
+    /// `opbnb`, `avax/c`, `celo` — each returned its correct chainId).
+    /// The keyed tier earns a higher rate-limit budget than the public
+    /// tier's 200/day quota, so it sorts ahead of the keyless public
+    /// 1rpc fallbacks (`moderate20` vs `moderate10`). The key never
+    /// touches source — `Secrets.oneRPCKey` reads it from the build's
+    /// Info.plist (injected from gitignored `Secrets.xcconfig`).
+    private static func oneRPC(_ id: String, slug: String, _ chain: SupportedChain, _ pri: Int) -> RPCEndpoint? {
+        let keyed = Secrets.hasOneRPCKey
+        let url = keyed
+            ? "https://1rpc.io/\(Secrets.oneRPCKey)/\(slug)"
+            : "https://1rpc.io/\(slug)"
+        guard let parsed = URL(string: url) else {
+            log.fault("Dropped malformed 1rpc endpoint URL for \(id, privacy: .public)")
+            return nil
+        }
+        // Keyed → generous budget; keyless public → conservative (the
+        // 200/day public quota means we must not lean on it).
+        let limit: RPCEndpoint.RateLimit = keyed ? .moderate20 : .moderate10
+        return RPCEndpoint(id: id, url: parsed, kind: .jsonRPC, chain: chain, provider: "1rpc", rateLimit: limit, priority: pri, weight: 1)
     }
 
     private static func rs(_ id: String, _ url: String, _ chain: SupportedChain, _ provider: String, _ limit: RPCEndpoint.RateLimit, _ pri: Int) -> RPCEndpoint? {

@@ -102,6 +102,7 @@ targets:
         ANKR_API_TOKEN: "$(ANKR_API_TOKEN)"
         ZEROX_API_KEY: "$(ZEROX_API_KEY)"
         ONEINCH_API_KEY: "$(ONEINCH_API_KEY)"
+        ONERPC_API_KEY: "$(ONERPC_API_KEY)"
     settings:
       base:
         PRODUCT_NAME: Aperture

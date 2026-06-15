@@ -30,6 +30,8 @@
 	<string>Aperture uses Face ID to unlock the app and confirm transactions, so you don't have to type your PIN every time.</string>
 	<key>ONEINCH_API_KEY</key>
 	<string>$(ONEINCH_API_KEY)</string>
+	<key>ONERPC_API_KEY</key>
+	<string>$(ONERPC_API_KEY)</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

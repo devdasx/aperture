@@ -327,6 +327,14 @@ actor RPCClient {
         if let errorDict = dict["error"] as? [String: Any] {
             let code = errorDict["code"] as? Int ?? -1
             let message = errorDict["message"] as? String ?? "unknown"
+            // See the matching block in `dispatchJSON` (2026-06-16):
+            // a provider throttle delivered as a JSON-RPC error envelope
+            // at HTTP 200 rotates as `.rateLimited`, never a terminal
+            // method error.
+            if Self.rateLimit(forCode: code, message: message) {
+                log.error("RPC usage/rate limit on \(endpoint.id, privacy: .public) (code \(code)) — rotating")
+                throw .rateLimited(retryAfter: Date().addingTimeInterval(60))
+            }
             throw .rpcError(code: code, message: message)
         }
         // Skipped for upstreams that never echo the id (rippled) —
@@ -802,6 +810,17 @@ actor RPCClient {
         if let errorDict = dict["error"] as? [String: Any] {
             let code = errorDict["code"] as? Int ?? -1
             let message = errorDict["message"] as? String ?? "unknown"
+            // **2026-06-16 — rate-limit re-classification.** A provider
+            // throttle delivered as a JSON-RPC error envelope at HTTP 200
+            // (the 1rpc `-32001` "usage limit" case) must rotate to a
+            // healthy endpoint, never surface as a terminal method error
+            // on a swap broadcast. Convert it to `.rateLimited` so it
+            // takes the "alive but saturated — rotate, no breaker" path
+            // and is never retained as the terminal `lastError`.
+            if Self.rateLimit(forCode: code, message: message) {
+                log.error("RPC usage/rate limit on \(endpoint.id, privacy: .public) (code \(code)) — rotating")
+                throw .rateLimited(retryAfter: Date().addingTimeInterval(60))
+            }
             throw .rpcError(code: code, message: message)
         }
         // Skipped for upstreams that never echo the id (rippled) —
@@ -846,6 +865,15 @@ actor RPCClient {
         case -32700, -32600, -32601, -32602:
             // Parse error / invalid request / method not found /
             // invalid params — all functions of what we sent.
+            //
+            // **2026-06-16 — narrow carve-out.** Some providers
+            // overload the standard `-32600`/`-32602` codes to carry
+            // a rate-limit / capacity message (e.g. a gateway that
+            // wraps "request limit exceeded" in `-32600`). Those are
+            // already re-classified to `.rateLimited` upstream in
+            // `dispatchJSON` (see `rateLimit(forCode:message:)`), so
+            // a `.rpcError` reaching here with one of these codes is a
+            // genuine request-shape error — do NOT rotate.
             return false
         case 3:
             // Geth-style `eth_call` execution revert (code 3 with
@@ -861,6 +889,53 @@ actor RPCClient {
             // -32603 internal-error included).
             return !message.lowercased().contains("revert")
         }
+    }
+
+    /// Classify a JSON-RPC error envelope as a **rate-limit / usage-quota**
+    /// failure (2026-06-16). When `true`, the dispatcher converts the
+    /// envelope to `.rateLimited` instead of `.rpcError`, so it rotates to
+    /// the next endpoint WITHOUT tripping the circuit breaker AND without
+    /// the limit message being retained as the terminal `lastError` — the
+    /// real defect behind the failed swap.
+    ///
+    /// **Why this is needed.** Some providers return their throttle as a
+    /// JSON-RPC error envelope at **HTTP 200**, so the `429` branch in
+    /// `dispatchJSON` never fires and the failure looks like a method
+    /// error. The canonical case (live-verified 2026-06-16; doc:
+    /// https://docs.1rpc.io/using-the-web3-api/errors): the unauthenticated
+    /// 1rpc.io tier returns
+    /// `{"error":{"code":-32001,"message":"You've reached the usage limit
+    /// for your current plan…"}}` once its 200/day quota is spent. Without
+    /// this classifier that surfaced verbatim as
+    /// "The network rejected the transaction: You've reached the usage
+    /// limit…" on a swap broadcast, instead of rotating to a healthy
+    /// endpoint.
+    ///
+    /// Matches by **code** (`-32001`/`-32005`/`-32029` — known
+    /// limit/over-capacity codes across providers) OR by **message**
+    /// substring (provider-agnostic: "usage limit", "rate limit",
+    /// "ratelimit", "too many requests", "request limit", "exceeded your",
+    /// "current plan", "capacity", "throttle", "upgrade here"). Substring
+    /// matching is the robust path because the code is not standardized.
+    static func rateLimit(forCode code: Int, message: String) -> Bool {
+        // Never mis-classify an `eth_call` revert as a rate limit.
+        let lower = message.lowercased()
+        if lower.contains("revert") { return false }
+        switch code {
+        case -32001, -32005, -32029:
+            // -32001 = 1rpc usage-limit; -32005 = geth/Infura
+            // "limit exceeded"; -32029 = Alchemy/others over-capacity.
+            return true
+        default:
+            break
+        }
+        let needles = [
+            "usage limit", "rate limit", "ratelimit", "rate-limit",
+            "too many requests", "request limit", "exceeded your",
+            "current plan", "capacity", "throttle", "upgrade here",
+            "over rate", "quota",
+        ]
+        return needles.contains { lower.contains($0) }
     }
 
     // MARK: - Internals: REST dispatch

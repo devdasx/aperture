@@ -34,6 +34,17 @@ enum Secrets {
     /// 1inch swap API — optional alternate EVM swap aggregator.
     static let oneInchAPIKey: String = value("ONEINCH_API_KEY")
 
+    /// 1rpc.io — authenticated multi-chain RPC. When set, the RPC registry
+    /// uses the keyed path (`https://1rpc.io/<key>/<chain>`) for far higher
+    /// rate limits than the unauthenticated public tier (which returns a
+    /// "usage limit reached" error under load). Optional — the registry's
+    /// other public endpoints remain the fallback when this is empty.
+    static let oneRPCKey: String = value("ONERPC_API_KEY")
+
+    /// `true` when the 1rpc key is configured, so the registry can switch
+    /// the 1rpc endpoints to the authenticated path.
+    static var hasOneRPCKey: Bool { !oneRPCKey.isEmpty }
+
     /// `true` when the swap engine has the Li.Fi key it needs. Callers gate
     /// on this and show an honest "Swap unavailable" state otherwise.
     static var hasLifiKey: Bool { !lifiAPIKey.isEmpty }
