@@ -310640,6 +310640,39 @@
           }
         }
       }
+    },
+    "Confirm to swap.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Confirm to swap."
+          }
+        }
+      }
+    },
+    "Nothing was swapped — your funds didn’t move.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nothing was swapped — your funds didn’t move."
+          }
+        }
+      }
+    },
+    "\\(receivedSymbol) was added to your tokens.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "\\(receivedSymbol) was added to your tokens."
+          }
+        }
+      }
     }
   },
   "version": "1.0"
