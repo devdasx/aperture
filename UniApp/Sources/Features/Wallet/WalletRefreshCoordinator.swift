@@ -537,17 +537,31 @@ struct WalletRefreshCoordinator: Sendable {
         // accumulate across the fan-out, not reset per refresh.
         let rpcClient = RPCClient.shared
 
+        // **Per-chain own-address set (2026-06-16, Rule #24).** Group the
+        // wallet's full address snapshot by chain so every per-address
+        // history scan knows ALL of the wallet's own addresses on that
+        // chain. A transfer whose counterparty is one of these is a
+        // self-transfer → the scanner relabels BOTH legs `.internal`
+        // (the spend AND the receive), fixing the multi-address case the
+        // per-address adapters can't see. Built once, shared (immutable)
+        // across the fan-out.
+        let ownAddressesByChain: [SupportedChain: Set<String>] = Dictionary(
+            grouping: snapshot, by: { $0.chain }
+        ).mapValues { Set($0.map { $0.address }) }
+
         // First pass — collect the addresses that yielded nothing.
         var pendingRetry: [AddressSnapshot] = []
         await withTaskGroup(of: AddressSnapshot?.self) { group in
             for snap in snapshot {
                 let customContracts = customTokensByChain[snap.chain]?.map { $0.contract } ?? []
+                let own = ownAddressesByChain[snap.chain] ?? [snap.address]
                 group.addTask {
                     let persisted = await scanTransactionHistory(
                         address: snap,
                         client: rpcClient,
                         txRepo: txRepo,
-                        customContracts: customContracts
+                        customContracts: customContracts,
+                        ownAddresses: own
                     )
                     return persisted == 0 ? snap : nil
                 }
@@ -573,12 +587,14 @@ struct WalletRefreshCoordinator: Sendable {
         await withTaskGroup(of: Void.self) { group in
             for snap in pendingRetry {
                 let customContracts = customTokensByChain[snap.chain]?.map { $0.contract } ?? []
+                let own = ownAddressesByChain[snap.chain] ?? [snap.address]
                 group.addTask {
                     _ = await scanTransactionHistory(
                         address: snap,
                         client: rpcClient,
                         txRepo: txRepo,
-                        customContracts: customContracts
+                        customContracts: customContracts,
+                        ownAddresses: own
                     )
                 }
             }
@@ -706,7 +722,8 @@ struct WalletRefreshCoordinator: Sendable {
         address: AddressSnapshot,
         client: RPCClient,
         txRepo: TransactionRepository,
-        customContracts: [String] = []
+        customContracts: [String] = [],
+        ownAddresses: Set<String> = []
     ) async -> Int {
         let scanner = RealRPCTransactionScanner(client: client)
         let events = await scanner.scan(
@@ -714,10 +731,25 @@ struct WalletRefreshCoordinator: Sendable {
             limit: 25,
             customContractsByChain: customContracts.isEmpty
                 ? [:]
-                : [address.chain: customContracts]
+                : [address.chain: customContracts],
+            // Full per-chain own-address set so the scanner can relabel a
+            // transfer to/from another of the wallet's own addresses as a
+            // self-transfer (2026-06-16). Defaults to this one address when
+            // the caller didn't supply the set.
+            ownAddressesByChain: ownAddresses.isEmpty
+                ? [:]
+                : [address.chain: ownAddresses]
         )
         guard !events.isEmpty else { return 0 }
         for event in events {
+            // **Self-transfer taxonomy (2026-06-16).** Pass an explicit
+            // `.selfTransfer` kind for `.internal` events so the repository
+            // upsert reclassifies BOTH a stored row's `directionRaw` AND
+            // its `kindRaw` — correcting the stale pre-2026-06-12
+            // `.outgoing`/`.transfer` leg of the user's BTC self-send on
+            // the next scan. Non-internal events keep `nil` (direction-
+            // derived) kind, unchanged from before.
+            let explicitKind: TransactionKind? = event.direction == .internal ? .selfTransfer : nil
             do {
                 try await txRepo.upsertTransaction(
                     addressId: address.id,
@@ -726,6 +758,7 @@ struct WalletRefreshCoordinator: Sendable {
                     amountRaw: Self.decimalString(event.amount),
                     tokenSymbol: event.tokenSymbol,
                     tokenContract: event.tokenContract,
+                    kind: explicitKind,
                     blockNumber: event.blockNumber,
                     occurredAt: event.occurredAt,
                     status: event.status,
