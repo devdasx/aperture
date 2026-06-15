@@ -150,6 +150,33 @@ shared element.
 Source: brand kit `design_handoff_splash_to_onboarding/assets/logo-circle.svg`.
 License: Proprietary — provided by app owner.
 
+## Brand/IrisAvatar + IrisWatermark{White,Ink} — the balance-card iris
+
+The flagship balance-card design handoff
+(`/Users/thuglifex/Downloads/design_handoff_balance_card 2/assets/`)
+ships the iris as three full-color brand artifacts. Per Rule #7 they
+are bundled verbatim (the iris IS the in-app logo) — never re-drawn
+from SwiftUI primitives. All are 1000×1000 viewBox SVGs of the same
+6-blade iris.
+
+- `IrisAvatar.imageset/logo-circle.svg` — the iris-in-dark-disc avatar
+  (radial gradient `#3A3D44`→`#0B0D11` disc + white iris). Rendered as
+  the 38pt avatar disc in the balance-card header. NOTE this is the
+  handoff's radial-gradient disc (no spoke strokes), distinct from
+  `LogoCircle.imageset/logo-circle.svg` (the splash/onboarding linear-
+  gradient disc with spokes) — kept separate so the balance card matches
+  its handoff pixel-for-pixel.
+- `IrisWatermarkWhite.imageset/watermark-white.svg` — white iris, no
+  disc. Rendered behind the balance value, top-right, at ~5% opacity on
+  the **dark** card surface.
+- `IrisWatermarkInk.imageset/watermark-ink.svg` — Ink (`#0A0C10`) iris,
+  no disc. The same watermark at ~4.5% opacity on the **light** card
+  surface.
+
+Source: brand kit `design_handoff_balance_card 2/assets/{logo-circle,
+watermark-white,watermark-ink}.svg`. License: Proprietary — provided by
+app owner.
+
 ## Brand/ — flat brand mark (template SVGs)
 
 The flat six-blade "Iris Solid" mark, without a tile, in three brand

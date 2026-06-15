@@ -63,6 +63,107 @@ enum WalletFormatting {
         amount.formatted(.currency(code: currencyCode))
     }
 
+    // MARK: - Fiat parts (balance-card three-run rendering)
+
+    /// The currency string split into three independently-styleable runs
+    /// for the flagship balance card, which renders the currency code
+    /// **muted**, the integer in **primary**, and the decimals in a
+    /// **fainter tint** (handoff `design_handoff_balance_card 2`).
+    ///
+    /// - `currency`: the currency symbol / code run (`"US$"`, `"JOD"`,
+    ///   `"€"`), positioned per the locale (prefix in en, suffix in de).
+    /// - `integer`: the grouped integer run including the grouping
+    ///   separators and any sign (`"12,480"`).
+    /// - `fraction`: the decimal run *including its leading separator*
+    ///   (`".25"`), or `nil` when the locale renders no fraction.
+    /// - `currencyLeads`: `true` when the currency run comes before the
+    ///   number (en), `false` when it trails (de) — so the card can lay
+    ///   the runs out in the locale's order.
+    struct FiatParts: Equatable {
+        let currency: String
+        let integer: String
+        let fraction: String?
+        let currencyLeads: Bool
+    }
+
+    /// Decompose a fiat amount into its currency / integer / fraction
+    /// runs, locale-correct. Uses `Decimal.FormatStyle.Currency`'s
+    /// `.attributed` output so grouping, decimal separator, symbol
+    /// position, and digit shaping all follow the user's locale, then
+    /// buckets the runs by their `numberPart` (integer / fraction) and
+    /// `numberSymbol` (currency / sign / separators) format-field
+    /// attributes — the native, honest way to split a formatted currency
+    /// (never hand-parses the digits).
+    ///
+    /// Classification per run:
+    /// - `numberSymbol == .currency` → the currency run.
+    /// - `numberPart == .fraction`, or `numberSymbol == .decimalSeparator`
+    ///   → the fraction run (the separator flips us into fraction mode).
+    /// - everything else numeric (`.integer`, `.sign`, grouping separator)
+    ///   → the integer run (until the decimal separator is seen).
+    /// - non-attributed literals (the gap between symbol and number) are
+    ///   dropped; the card re-introduces a single gap when laying out.
+    static func fiatParts(_ amount: Decimal, currencyCode: String) -> FiatParts {
+        let attributed = amount.formatted(
+            .currency(code: currencyCode).attributed
+        )
+
+        var currency = ""
+        var integer = ""
+        var fraction = ""
+        var sawDecimalSeparator = false
+        var sawNumber = false
+        var currencyLeads = true
+
+        for run in attributed.runs {
+            let text = String(attributed[run.range].characters)
+            let symbol = run.numberSymbol
+            let part = run.numberPart
+
+            if symbol == .currency {
+                currency += text
+                if !sawNumber { currencyLeads = true }
+                continue
+            }
+
+            if symbol == .decimalSeparator || part == .fraction {
+                sawDecimalSeparator = true
+                fraction += text
+                sawNumber = true
+                if currency.isEmpty { currencyLeads = false }
+                continue
+            }
+
+            if part == .integer || symbol == .sign || symbol == .groupingSeparator {
+                sawNumber = true
+                if currency.isEmpty { currencyLeads = false }
+                if sawDecimalSeparator {
+                    fraction += text
+                } else {
+                    integer += text
+                }
+                continue
+            }
+
+            // Non-attributed literal (whitespace between symbol & number,
+            // or an unmapped glyph). Drop pure whitespace; fold any other
+            // stray glyph into the currency run.
+            let trimmed = text.trimmingCharacters(in: .whitespaces)
+            if !trimmed.isEmpty {
+                currency += trimmed
+            }
+        }
+
+        let integerTrimmed = integer.trimmingCharacters(in: .whitespaces)
+        let currencyTrimmed = currency.trimmingCharacters(in: .whitespaces)
+        return FiatParts(
+            currency: currencyTrimmed,
+            integer: integerTrimmed.isEmpty ? "0" : integerTrimmed,
+            fraction: fraction.isEmpty ? nil : fraction,
+            currencyLeads: currencyLeads
+        )
+    }
+
     /// Format a native chain (token/coin) amount for DISPLAY. Capped at
     /// `maxDisplayFractionDigits` (8) fractional digits and **truncated
     /// toward zero** — never rounded up — so a balance is never overstated

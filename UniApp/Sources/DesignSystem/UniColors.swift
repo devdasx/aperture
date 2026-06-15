@@ -649,6 +649,273 @@ enum UniColors {
         static let cameraOnMediaNote = Color.white.opacity(0.9)
     }
 
+    // MARK: - BalanceCard (the flagship wallet-home surface)
+
+    /// Every color the flagship balance card uses, transcribed verbatim
+    /// from the design handoff
+    /// (`design_handoff_balance_card 2/README.md` §Color tokens).
+    ///
+    /// **Why these are brand-fixed per mode (Rule #4 §B exception), not
+    /// system semantics.** The card is its own gradient surface — it does
+    /// NOT sit on the iOS grouped-card fill. The handoff specifies exact
+    /// dark and light gradients (`#16181D→#0A0B0E` radial-lifted in dark,
+    /// `#FBFBFD→#EFF1F5` in light), exact muted/decimals tints, exact
+    /// up/down/flat semantic colors (a brighter green/red in dark so the
+    /// chart glows, the deeper green/red in light), and exact pill
+    /// background alphas. These are load-bearing brand values that the
+    /// system palette can't express; they live here as the single hex
+    /// surface (every other color in the app still flows through a
+    /// semantic role). Each role is a `ColorScheme` function so the call
+    /// site passes its resolved scheme and never sees a hex value — the
+    /// card adapts to the app's appearance (dark card in dark mode, light
+    /// card in light mode), matching the handoff's two-column reference.
+    ///
+    /// **`Increase Contrast` (handoff §Accessibility).** When the call
+    /// site reports `legibilityWeight`/high-contrast, the muted/label
+    /// tints lift to the stronger values the handoff names
+    /// (`.7` / `#6E7079`); the card passes a `boostContrast` flag.
+    enum BalanceCard {
+
+        // MARK: Surface gradient
+
+        /// Radial-lift top stop (`130% 90% at 12% 0%`). Dark: `#2B2E36`.
+        /// Light: `#FFFFFF`. The bright corner that gives the card depth.
+        static func surfaceLift(_ scheme: ColorScheme) -> Color {
+            scheme == .dark ? hex("#2B2E36") : hex("#FFFFFF")
+        }
+        /// Linear-gradient top stop (`165deg`). Dark: `#16181D`.
+        /// Light: `#FBFBFD`.
+        static func surfaceTop(_ scheme: ColorScheme) -> Color {
+            scheme == .dark ? hex("#16181D") : hex("#FBFBFD")
+        }
+        /// Linear-gradient bottom stop. Dark: `#0A0B0E`. Light: `#EFF1F5`.
+        static func surfaceBottom(_ scheme: ColorScheme) -> Color {
+            scheme == .dark ? hex("#0A0B0E") : hex("#EFF1F5")
+        }
+        /// The card's drop shadow. Dark: `rgba(0,0,0,.7)`. Light:
+        /// `rgba(10,12,16,.34)`. The handoff's offset/blur are applied at
+        /// the call site; this is just the color.
+        static func shadow(_ scheme: ColorScheme) -> Color {
+            scheme == .dark
+                ? Color.black.opacity(0.5)
+                : (hex("#0A0C10")).opacity(0.30)
+        }
+        /// The faint inner top-edge specular highlight
+        /// (`inset 0 1px 0 …`). Dark: `rgba(255,255,255,.06)`. Light:
+        /// `#fff`. Drawn as a 1pt top hairline overlay.
+        static func innerEdge(_ scheme: ColorScheme) -> Color {
+            scheme == .dark ? Color.white.opacity(0.06) : Color.white
+        }
+        /// The light-mode 1px hairline border (`0 0 0 1px rgba(10,12,16,.05)`).
+        /// `nil` in dark (the dark card has no border, only the inner edge).
+        static func hairline(_ scheme: ColorScheme) -> Color {
+            scheme == .dark ? Color.clear : (hex("#0A0C10")).opacity(0.05)
+        }
+
+        // MARK: Text
+
+        /// Primary text (wallet name, the balance integer). Dark:
+        /// `#FFFFFF`. Light: `#0A0C10`. Fixed to the card surface, NOT
+        /// `.label` — the card is its own appearance-fixed surface.
+        static func textPrimary(_ scheme: ColorScheme) -> Color {
+            scheme == .dark ? hex("#FFFFFF") : hex("#0A0C10")
+        }
+        /// Label / muted (the "Total balance" caption, the "today" amount,
+        /// the address line, resting segment text). Dark:
+        /// `rgba(255,255,255,.55)`. Light: `#8B8D94`. Lifts under
+        /// Increase Contrast to `.7` / `#6E7079`.
+        static func textMuted(_ scheme: ColorScheme, boostContrast: Bool = false) -> Color {
+            if boostContrast {
+                return scheme == .dark ? Color.white.opacity(0.7) : hex("#6E7079")
+            }
+            return scheme == .dark ? Color.white.opacity(0.55) : hex("#8B8D94")
+        }
+        /// The fainter decimals tint. Dark: `rgba(255,255,255,.35)`.
+        /// Light: `#B4B6BE`. The handoff's signature "decimals in a
+        /// fainter tint" treatment on the balance number.
+        static func decimals(_ scheme: ColorScheme, boostContrast: Bool = false) -> Color {
+            if boostContrast {
+                return scheme == .dark ? Color.white.opacity(0.5) : hex("#9A9CA4")
+            }
+            return scheme == .dark ? Color.white.opacity(0.35) : hex("#B4B6BE")
+        }
+        /// The "Copy address" action color — slightly stronger than the
+        /// plain muted so it reads as tappable. Dark: `rgba(255,255,255,.6)`.
+        /// Light: `#6E7079`.
+        static func copyAction(_ scheme: ColorScheme) -> Color {
+            scheme == .dark ? Color.white.opacity(0.6) : hex("#6E7079")
+        }
+
+        // MARK: Controls
+
+        /// The circular eye/visibility button background. Dark:
+        /// `rgba(255,255,255,.08)`. Light: `rgba(10,12,16,.05)`.
+        static func eyeButtonFill(_ scheme: ColorScheme) -> Color {
+            scheme == .dark ? Color.white.opacity(0.08) : (hex("#0A0C10")).opacity(0.05)
+        }
+        /// The eye glyph color. Dark: `rgba(255,255,255,.8)`. Light:
+        /// `#54565E`.
+        static func eyeGlyph(_ scheme: ColorScheme) -> Color {
+            scheme == .dark ? Color.white.opacity(0.8) : hex("#54565E")
+        }
+        /// The avatar disc's 1px ring. Dark: `rgba(255,255,255,.1)`.
+        /// Light: `rgba(10,12,16,.08)`.
+        static func avatarRing(_ scheme: ColorScheme) -> Color {
+            scheme == .dark ? Color.white.opacity(0.1) : (hex("#0A0C10")).opacity(0.08)
+        }
+
+        // MARK: Segmented selector
+
+        /// Segment track fill. Dark: `rgba(255,255,255,.07)`. Light:
+        /// `rgba(10,12,16,.05)`.
+        static func segmentTrack(_ scheme: ColorScheme) -> Color {
+            scheme == .dark ? Color.white.opacity(0.07) : (hex("#0A0C10")).opacity(0.05)
+        }
+        /// Active-segment pill fill. Dark: `rgba(255,255,255,.14)`.
+        /// Light: `#fff` (with a soft drop shadow, applied at the call
+        /// site).
+        static func segmentActiveFill(_ scheme: ColorScheme) -> Color {
+            scheme == .dark ? Color.white.opacity(0.14) : hex("#FFFFFF")
+        }
+        /// Active-segment text. Dark: `#fff`. Light: `#0A0C10`.
+        static func segmentActiveText(_ scheme: ColorScheme) -> Color {
+            scheme == .dark ? hex("#FFFFFF") : hex("#0A0C10")
+        }
+        /// Soft shadow under the light-mode active pill
+        /// (`0 2px 8px -3px rgba(10,12,16,.3)`). Color only.
+        static func segmentActiveShadow(_ scheme: ColorScheme) -> Color {
+            scheme == .dark ? Color.clear : (hex("#0A0C10")).opacity(0.3)
+        }
+
+        // MARK: Watermark
+
+        /// The iris watermark opacity behind the value. Dark: `0.05`.
+        /// Light: `0.045`.
+        static func watermarkOpacity(_ scheme: ColorScheme) -> Double {
+            scheme == .dark ? 0.05 : 0.045
+        }
+
+        // MARK: Semantic (change pill + chart) — by sign
+
+        /// The chart-state sign the card is rendering. Drives the stroke,
+        /// fill, and pill colors together (handoff §State selection logic
+        /// — pill icon, chart color, and percent always agree).
+        enum Sign: Equatable {
+            case up, down, flat
+        }
+
+        /// Stroke / accent color for the chart line + the pill foreground.
+        /// Up: bright green in dark (`#3FE79A`, glow on) / deep green in
+        /// light (`#179A5B`). Down: bright red dark (`#FF7A6B`) / deep red
+        /// light (`#E0483D`). Flat: white@low-opacity dark / ink@low-opacity
+        /// light (the neutral mid-line, no glow).
+        static func accent(_ sign: Sign, _ scheme: ColorScheme) -> Color {
+            switch sign {
+            case .up:
+                return scheme == .dark ? hex("#3FE79A") : hex("#179A5B")
+            case .down:
+                return scheme == .dark ? hex("#FF7A6B") : hex("#E0483D")
+            case .flat:
+                return scheme == .dark ? Color.white.opacity(0.65) : hex("#8B8D94")
+            }
+        }
+
+        /// The chart STROKE color specifically. For up/down it equals
+        /// `accent`; for flat the handoff draws the line in a dimmer
+        /// neutral (`rgba(255,255,255,.45)` dark / `rgba(10,12,16,.4)`
+        /// light) than the flat pill text — separated so the flat chart
+        /// line reads quieter than its pill.
+        static func chartStroke(_ sign: Sign, _ scheme: ColorScheme) -> Color {
+            switch sign {
+            case .up, .down:
+                return accent(sign, scheme)
+            case .flat:
+                return scheme == .dark ? Color.white.opacity(0.45) : (hex("#0A0C10")).opacity(0.4)
+            }
+        }
+
+        /// The hue the gradient area fill is built from (matches the
+        /// stroke hue per handoff). For flat, the fill uses the card's
+        /// monochrome primary at a low opacity.
+        static func chartFillHue(_ sign: Sign, _ scheme: ColorScheme) -> Color {
+            switch sign {
+            case .up, .down:
+                return accent(sign, scheme)
+            case .flat:
+                return textPrimary(scheme)
+            }
+        }
+
+        /// The gradient area fill's top opacity. Up/down: `0.20` (up)
+        /// / `0.18` (down) per the HTML reference. Flat: `0.06` (a
+        /// barely-there wash). Bottom is always `0`.
+        static func chartFillTopOpacity(_ sign: Sign) -> Double {
+            switch sign {
+            case .up:   return 0.20
+            case .down: return 0.18
+            case .flat: return 0.06
+            }
+        }
+
+        /// Whether the dark-mode gaussian glow filter is applied to the
+        /// stroke. On for up/down in dark; off for flat and always off
+        /// in light (handoff: "Dark chart has the glow; light chart does
+        /// not").
+        static func chartGlow(_ sign: Sign, _ scheme: ColorScheme) -> Bool {
+            scheme == .dark && sign != .flat
+        }
+
+        /// Change-pill background. Up dark `rgba(45,224,140,.16)` / light
+        /// `rgba(23,154,91,.12)`. Down dark `rgba(255,122,107,.16)` /
+        /// light `rgba(224,72,61,.1)`. Flat dark `rgba(255,255,255,.1)` /
+        /// light `rgba(10,12,16,.06)`.
+        static func pillBackground(_ sign: Sign, _ scheme: ColorScheme) -> Color {
+            switch sign {
+            case .up:
+                return scheme == .dark
+                    ? Color(.sRGB, red: 45/255, green: 224/255, blue: 140/255, opacity: 0.16)
+                    : Color(.sRGB, red: 23/255, green: 154/255, blue: 91/255, opacity: 0.12)
+            case .down:
+                return scheme == .dark
+                    ? Color(.sRGB, red: 255/255, green: 122/255, blue: 107/255, opacity: 0.16)
+                    : Color(.sRGB, red: 224/255, green: 72/255, blue: 61/255, opacity: 0.10)
+            case .flat:
+                return scheme == .dark
+                    ? Color.white.opacity(0.1)
+                    : (hex("#0A0C10")).opacity(0.06)
+            }
+        }
+
+        // MARK: Zero state
+
+        /// The "Add funds" button fill. Dark: white (`#fff`). Light: ink
+        /// (`#0A0C10`). The handoff inverts the button against the card.
+        static func fundButtonFill(_ scheme: ColorScheme) -> Color {
+            scheme == .dark ? hex("#FFFFFF") : hex("#0A0C10")
+        }
+        /// The "Add funds" label/glyph. Dark: ink. Light: white. (Opposes
+        /// `fundButtonFill`.)
+        static func fundButtonLabel(_ scheme: ColorScheme) -> Color {
+            scheme == .dark ? hex("#0A0C10") : hex("#FFFFFF")
+        }
+
+        // MARK: Scrub cursor
+
+        /// The scrub hairline / cursor color — the chart accent at the
+        /// touched point (handoff §Interactions: "dot.style.background =
+        /// d.col").
+        static func scrubCursor(_ sign: Sign, _ scheme: ColorScheme) -> Color {
+            chartStroke(sign, scheme)
+        }
+
+        /// File-local hex resolver — re-uses the Rule #4 §B `Color(hex:)`
+        /// initializer that is fileprivate to this file. Falls back to a
+        /// neutral so a typo never crashes the flagship surface.
+        private static func hex(_ value: String) -> Color {
+            Color(hex: value) ?? Color(uiColor: .label)
+        }
+    }
+
     // MARK: - Illustration (onboarding native scenes)
 
     /// Color roles for SwiftUI-native illustrations (onboarding heroes etc.).

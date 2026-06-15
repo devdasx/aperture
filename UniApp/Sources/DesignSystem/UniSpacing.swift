@@ -21,4 +21,14 @@ enum UniSpacing {
     static let xxl: CGFloat = 48
     /// 64 pt — full-screen empty-state breathing room.
     static let xxxl: CGFloat = 64
+
+    // MARK: - Semantic roles
+
+    /// 22 pt — the balance card's bottom inset, beneath the segmented
+    /// time selector. Specified by the balance-card design handoff
+    /// (`design_handoff_balance_card 2/README.md`: "22pt bottom pad
+    /// below the selector"). A bespoke value between `mPlus` (20) and
+    /// `l` (24) that the card's anatomy depends on, named so the call
+    /// site reads as intent rather than a magic number.
+    static let balanceCardBottom: CGFloat = 22
 }
