@@ -75,6 +75,27 @@ actor SwapHTTP {
         return try await perform(type, request: request)
     }
 
+    /// POST a PRE-BUILT raw JSON body and decode the response into `T`.
+    /// Used by the Jupiter `/swap` build, whose body embeds the verbatim
+    /// `quoteResponse` object (arbitrary provider JSON) under a key — which
+    /// can't be expressed as a static `Encodable` without lossy re-encoding.
+    func postRawJSON<T: Decodable & Sendable>(
+        _ type: T.Type,
+        url: URL,
+        bodyData: Data,
+        headers: [String: String] = [:]
+    ) async throws(SwapError) -> T {
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        for (key, value) in headers {
+            request.setValue(value, forHTTPHeaderField: key)
+        }
+        request.httpBody = bodyData
+        return try await perform(type, request: request)
+    }
+
     // MARK: - Core
 
     private func perform<T: Decodable & Sendable>(
