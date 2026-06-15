@@ -385,7 +385,13 @@ struct UniQRScannerSheet: View {
 /// its own view so it can sit inside `PhotosPicker` / `Button` label
 /// closures (nonisolated `@ViewBuilder` contexts) without a main-actor
 /// isolation crossing.
-private struct ActionBarLabel: View {
+/// `nonisolated` on the whole value type so its stored properties and
+/// synthesized memberwise init are constructible from `PhotosPicker` /
+/// `Button` label closures (nonisolated `@ViewBuilder` contexts). Without it
+/// the init is `@MainActor` (SwiftUI's `View` is `@MainActor` under Swift 6)
+/// and can't be called there; `body` still satisfies the `@MainActor` `View`
+/// requirement.
+nonisolated private struct ActionBarLabel: View {
     let title: LocalizedStringKey
     let systemImage: String
 

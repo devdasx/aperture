@@ -78,13 +78,14 @@ struct BroadcastService: Sendable {
             // Node returns the canonical hash; fall back to our local
             // keccak256 hash if the node echoed something empty.
             return returned.isEmpty ? signed.txHash : returned
-        } catch let rpc as RPCError {
-            throw Self.mapBroadcastError(rpc)
         } catch {
-            // Transport-level failure (the request left the device but no
-            // definitive accept/reject came back) → outcome UNKNOWN, never
-            // claim the funds are safe (Rule #16).
-            throw SigningError.broadcastAmbiguous(error.localizedDescription)
+            // `callJSONString` is typed `throws(RPCError)`, so `error` is an
+            // RPCError. `mapBroadcastError` already routes the transport /
+            // unparseable / all-endpoints-failed / cancelled cases to
+            // `.broadcastAmbiguous` (outcome UNKNOWN — never claim the funds
+            // are safe, Rule #16) and only a definitive node rejection to
+            // `.broadcastFailed`.
+            throw Self.mapBroadcastError(error)
         }
     }
 

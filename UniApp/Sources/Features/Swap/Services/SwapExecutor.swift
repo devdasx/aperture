@@ -170,10 +170,11 @@ struct SwapExecutor {
         let signature: String
         do {
             signature = try await broadcaster.broadcast(signed, chain: chain)
-        } catch let error as SigningError {
-            return .failure(mapBroadcast(error))
         } catch {
-            return .failure(.broadcastAmbiguous(error.localizedDescription))
+            // `broadcast` is typed `throws(SigningError)`, so `error` is a
+            // SigningError; `mapBroadcast` preserves `.broadcastAmbiguous`, so
+            // the unknown-outcome handling is intact (Rule #16).
+            return .failure(mapBroadcast(error))
         }
 
         // Confirm + auto-add the received token on success.
@@ -313,10 +314,11 @@ struct SwapExecutor {
         let txHash: String
         do {
             txHash = try await broadcaster.broadcast(signed, chain: chain)
-        } catch let error as SigningError {
-            return .failure(mapBroadcast(error))
         } catch {
-            return .failure(.broadcastAmbiguous(error.localizedDescription))
+            // `broadcast` is typed `throws(SigningError)`, so `error` is a
+            // SigningError; `mapBroadcast` preserves `.broadcastAmbiguous`, so
+            // the unknown-outcome handling is intact (Rule #16).
+            return .failure(mapBroadcast(error))
         }
 
         // 4. Confirm + auto-add the received token. For a SAME-CHAIN swap a
@@ -372,10 +374,11 @@ struct SwapExecutor {
         let approveHash: String
         do {
             approveHash = try await broadcaster.broadcast(signed, chain: chain)
-        } catch let error as SigningError {
-            return .failure(mapBroadcast(error))
         } catch {
-            return .failure(.broadcastAmbiguous(error.localizedDescription))
+            // `broadcast` is typed `throws(SigningError)`, so `error` is a
+            // SigningError; `mapBroadcast` preserves `.broadcastAmbiguous`, so
+            // the unknown-outcome handling is intact (Rule #16).
+            return .failure(mapBroadcast(error))
         }
         onPhase(.confirmingApproval)
         switch await SwapAllowance.awaitReceipt(txHash: approveHash, chain: chain) {
