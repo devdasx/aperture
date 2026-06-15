@@ -50,6 +50,7 @@ struct SwapExecutor {
         case quoteExpired
         case noWallet
         case missingExecutionData
+        case swapBuildFailed
         case feeUnavailable
         case nonceUnavailable
         case approvalReverted
@@ -67,6 +68,8 @@ struct SwapExecutor {
                 return "Couldn't find a wallet to sign this swap."
             case .missingExecutionData:
                 return "This quote can't be executed — its transaction data is missing. Refresh and try again."
+            case .swapBuildFailed:
+                return "Couldn't build the swap transaction. The quote may have expired — go back and refresh it."
             case .feeUnavailable:
                 return "Couldn't fetch the network fee right now. Try again in a moment."
             case .nonceUnavailable:
@@ -110,11 +113,96 @@ struct SwapExecutor {
         case .lifi:
             return await executeEVM(quote: quote, walletId: walletId, passphrase: passphrase, onPhase: onPhase)
         case .jupiter:
-            // Solana execution (Jupiter /swap → sign VersionedTransaction →
-            // sendTransaction) lands in the immediate next step. Honest
-            // refusal, never a fabricated success (Rule #16).
-            return .failure(.unsupported("Solana swap execution is landing in the next update — EVM swaps work now."))
+            return await executeSolana(quote: quote, walletId: walletId, passphrase: passphrase, onPhase: onPhase)
         }
+    }
+
+    // MARK: - Solana (Jupiter)
+
+    private func executeSolana(
+        quote: SwapQuote,
+        walletId: UUID,
+        passphrase: String?,
+        onPhase: @MainActor (Phase) -> Void
+    ) async -> Result<Executed, ExecError> {
+        onPhase(.preparing)
+        let chain = SupportedChain.solana
+        guard let solanaTx = quote.solanaTx else { return .failure(.missingExecutionData) }
+        guard let resolved = resolveWallet(walletId: walletId, chain: chain) else {
+            return .failure(.noWallet)
+        }
+        let wallet = resolved.descriptor
+        let fromAddress = resolved.address
+
+        // Build the signable VersionedTransaction NOW (post-auth) so its
+        // embedded blockhash is fresh when we sign + broadcast immediately.
+        onPhase(.signing)
+        guard let base64Tx = await SwapQuoteService.shared.buildSolanaSwap(
+            quoteResponseJSON: solanaTx.quoteResponseJSON, userPublicKey: fromAddress
+        ) else {
+            return .failure(.swapBuildFailed)
+        }
+
+        let signedBase64: String
+        do {
+            signedBase64 = try await Task.detached(priority: .userInitiated) {
+                try SigningKeyProvider.withPrivateKey(
+                    wallet: wallet, chain: chain, passphrase: passphrase, expectedAddress: fromAddress
+                ) { key in
+                    try SwapSolanaSigner.signVersioned(base64: base64Tx, privateKey: key)
+                }
+            }.value
+        } catch let error as SigningError {
+            return .failure(.signingFailed(error.userMessage))
+        } catch {
+            return .failure(.signingFailed(error.localizedDescription))
+        }
+
+        // Broadcast via the shared Solana sendTransaction path.
+        onPhase(.broadcasting)
+        guard let rawData = Data(base64Encoded: signedBase64) else {
+            return .failure(.signingFailed("signed transaction isn't valid base64"))
+        }
+        let signed = SignedTransaction(rawData: rawData, rawHex: signedBase64, txHash: "")
+        let signature: String
+        do {
+            signature = try await broadcaster.broadcast(signed, chain: chain)
+        } catch let error as SigningError {
+            return .failure(mapBroadcast(error))
+        } catch {
+            return .failure(.broadcastAmbiguous(error.localizedDescription))
+        }
+
+        // Confirm + auto-add the received token on success.
+        onPhase(.confirming)
+        let confirmed = await awaitSolanaConfirm(signature: signature)
+        if confirmed == true {
+            await SwapTokenPersistence.persistIfNeeded(quote.toToken, container: container)
+        }
+        return .success(Executed(txHash: signature, chain: chain, confirmed: confirmed))
+    }
+
+    /// Poll `getSignatureStatuses` until the swap signature confirms.
+    /// `true` confirmed (err == null), `false` failed (err != null), `nil`
+    /// not resolved within the window. Mirrors `SendExecutor.pollSolanaStatus`.
+    private func awaitSolanaConfirm(
+        signature: String, attempts: Int = 12, delaySeconds: UInt64 = 4
+    ) async -> Bool? {
+        guard !signature.isEmpty else { return nil }
+        for _ in 0..<attempts {
+            try? await Task.sleep(for: .seconds(delaySeconds))
+            let opts: [String: Sendable] = ["searchTransactionHistory": true]
+            guard let data = try? await RPCClient.shared.callJSONResultData(
+                chain: .solana, method: "getSignatureStatuses", params: [[signature], opts]
+            ) else { continue }
+            guard let root = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
+                  let values = root["value"] as? [Any], let first = values.first else { continue }
+            guard let status = first as? [String: Any] else { continue } // null → still pending
+            let confirmation = status["confirmationStatus"] as? String ?? ""
+            guard confirmation == "confirmed" || confirmation == "finalized" else { continue }
+            return status["err"] is NSNull || status["err"] == nil
+        }
+        return nil
     }
 
     // MARK: - EVM (Li.Fi)
@@ -134,30 +222,39 @@ struct SwapExecutor {
         let wallet = resolved.descriptor
         let fromAddress = resolved.address
 
-        // 1. ERC-20 approval (skip for a native-coin input).
+        // 1. ERC-20 approval (skip for a native-coin input). Track the
+        //    approve nonce so the swap nonce can't collide with it.
+        var approveNonce: UInt64?
         if !quote.fromToken.isNative, let spender = quote.approvalAddress {
             onPhase(.checkingApproval)
             let tokenContract = quote.fromToken.address
             let allowanceHex = await SwapAllowance.read(
                 token: tokenContract, owner: fromAddress, spender: spender, chain: chain
             )
-            let needed = SigningNumeric.bigEndianData(fromBaseUnitsString: quote.fromAmountRaw) ?? Data([0xff])
+            // An unparseable amount → require MAX (32 bytes of 0xff) so an
+            // unknown amount truly forces a fresh approve, never skips it.
+            let needed = SigningNumeric.bigEndianData(fromBaseUnitsString: quote.fromAmountRaw)
+                ?? Data(repeating: 0xff, count: 32)
             let sufficient = allowanceHex.map { SwapEVMABI.isAllowance($0, atLeast: needed) } ?? false
             if !sufficient {
-                if let failure = await sendApproval(
+                switch await sendApproval(
                     spender: spender, tokenContract: tokenContract, chain: chain,
                     wallet: wallet, fromAddress: fromAddress, passphrase: passphrase, onPhase: onPhase
                 ) {
-                    return .failure(failure)
+                case .success(let usedNonce): approveNonce = usedNonce
+                case .failure(let failure): return .failure(failure)
                 }
             }
         }
 
-        // 2. Sign the swap tx (fresh nonce + Li.Fi gas + 20% buffer).
+        // 2. Sign the swap tx (fresh nonce + Li.Fi gas + 20% buffer). After a
+        //    just-mined approve the swap nonce MUST be approveNonce+1 — guard
+        //    against a stale "pending" read from a rotated RPC endpoint.
         onPhase(.signing)
-        guard let nonce = await SwapAllowance.pendingNonce(address: fromAddress, chain: chain) else {
+        guard let pending = await SwapAllowance.pendingNonce(address: fromAddress, chain: chain) else {
             return .failure(.nonceUnavailable)
         }
+        let nonce = approveNonce.map { max(pending, $0 + 1) } ?? pending
         let gasPrice: UInt64
         if let liFiPrice = evmTx.gasPrice.flatMap(SwapEVMABI.quantityToUInt64) {
             gasPrice = liFiPrice
@@ -170,10 +267,17 @@ struct SwapExecutor {
             .flatMap(SwapEVMABI.quantityToUInt64)
             .map { $0 + $0 / 5 } ?? 800_000  // Li.Fi suggestion + 20%, else a safe ceiling
 
+        // A swap MUST carry router calldata. An empty/garbled payload would
+        // sign a bare value-send INTO the router — for a native-coin input
+        // that's the full swap amount, lost. Refuse rather than the silent
+        // `?? Data()` fallback (Rule #16 — never sign a fund-losing tx).
+        guard let calldata = SigningNumeric.hexToData(SwapEVMABI.strip0x(evmTx.data)),
+              !calldata.isEmpty else {
+            return .failure(.missingExecutionData)
+        }
         let swapTx = SwapEVMSigner.UnsignedTx(
             chain: chain, nonce: nonce, to: evmTx.to, valueHex: evmTx.value,
-            data: SigningNumeric.hexToData(SwapEVMABI.strip0x(evmTx.data)) ?? Data(),
-            gasLimit: gasLimit, gasPriceWei: gasPrice
+            data: calldata, gasLimit: gasLimit, gasPriceWei: gasPrice
         )
         let signed: SignedTransaction
         do {
@@ -195,17 +299,24 @@ struct SwapExecutor {
             return .failure(.broadcastAmbiguous(error.localizedDescription))
         }
 
-        // 4. Confirm + auto-add the received token on success.
+        // 4. Confirm + auto-add the received token. For a SAME-CHAIN swap a
+        //    source receipt of 0x1 means the swap is DONE. For a cross-chain
+        //    BRIDGE the source 0x1 only confirms the deposit — the destination
+        //    leg lands later — so report it as 'submitted/bridging' (confirmed
+        //    = nil), not done, honestly (Rule #16).
         onPhase(.confirming)
-        let confirmed = await SwapAllowance.awaitReceipt(txHash: txHash, chain: chain, attempts: 10, delaySeconds: 5)
-        if confirmed == true {
+        let isBridge = quote.fromToken.chain != quote.toToken.chain
+        let sourceConfirmed = await SwapAllowance.awaitReceipt(txHash: txHash, chain: chain, attempts: 10, delaySeconds: 5)
+        if sourceConfirmed == true {
             await SwapTokenPersistence.persistIfNeeded(quote.toToken, container: container)
         }
-        return .success(Executed(txHash: txHash, chain: chain, confirmed: confirmed))
+        let reported: Bool? = (isBridge && sourceConfirmed == true) ? nil : sourceConfirmed
+        return .success(Executed(txHash: txHash, chain: chain, confirmed: reported))
     }
 
     /// Build, sign, broadcast `approve(spender, MAX)` and wait for its
-    /// receipt. Returns `nil` on success, or the failure to surface.
+    /// receipt. On success returns the NONCE the approve used (so the swap
+    /// nonce can be guarded to `approveNonce + 1`); otherwise the failure.
     private func sendApproval(
         spender: String,
         tokenContract: String,
@@ -214,17 +325,17 @@ struct SwapExecutor {
         fromAddress: String,
         passphrase: String?,
         onPhase: @MainActor (Phase) -> Void
-    ) async -> ExecError? {
+    ) async -> Result<UInt64, ExecError> {
         onPhase(.approving)
         guard let nonce = await SwapAllowance.pendingNonce(address: fromAddress, chain: chain) else {
-            return .nonceUnavailable
+            return .failure(.nonceUnavailable)
         }
         guard let gasPrice = await SwapAllowance.gasPriceWei(chain: chain) else {
-            return .feeUnavailable
+            return .failure(.feeUnavailable)
         }
         guard let calldataHex = SwapEVMABI.approveCallData(spender: spender),
               let calldata = SigningNumeric.hexToData(SwapEVMABI.strip0x(calldataHex)) else {
-            return .missingExecutionData
+            return .failure(.missingExecutionData)
         }
         let approveTx = SwapEVMSigner.UnsignedTx(
             chain: chain, nonce: nonce, to: tokenContract, valueHex: "0x0",
@@ -234,23 +345,23 @@ struct SwapExecutor {
         do {
             signed = try await signDetached(tx: approveTx, wallet: wallet, chain: chain, fromAddress: fromAddress, passphrase: passphrase)
         } catch let error as SigningError {
-            return .signingFailed(error.userMessage)
+            return .failure(.signingFailed(error.userMessage))
         } catch {
-            return .signingFailed(error.localizedDescription)
+            return .failure(.signingFailed(error.localizedDescription))
         }
         let approveHash: String
         do {
             approveHash = try await broadcaster.broadcast(signed, chain: chain)
         } catch let error as SigningError {
-            return mapBroadcast(error)
+            return .failure(mapBroadcast(error))
         } catch {
-            return .broadcastAmbiguous(error.localizedDescription)
+            return .failure(.broadcastAmbiguous(error.localizedDescription))
         }
         onPhase(.confirmingApproval)
         switch await SwapAllowance.awaitReceipt(txHash: approveHash, chain: chain) {
-        case .some(true): return nil
-        case .some(false): return .approvalReverted
-        case .none: return .approvalTimeout
+        case .some(true): return .success(nonce)
+        case .some(false): return .failure(.approvalReverted)
+        case .none: return .failure(.approvalTimeout)
         }
     }
 

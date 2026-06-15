@@ -7,10 +7,10 @@ import SwiftData
 /// (Rule #27, off the render path per Rule #28), drives the token/chain
 /// picker sheets, and pushes the honest Review summary.
 ///
-/// **Staged like Send.** Same-chain SWAP and cross-chain BRIDGE are both
-/// real here: the engine returns live Li.Fi / Jupiter quotes. Execution
-/// (sign + broadcast) is the NEXT increment — Review is an honest summary,
-/// never a fabricated swap (mirrors how Send was staged before signing).
+/// **Real end-to-end.** Same-chain SWAP and cross-chain BRIDGE both quote
+/// live (Li.Fi / Jupiter) AND execute for real: the Review screen
+/// (`SwapReviewView`) signs + broadcasts through `SwapExecutor` behind a
+/// PIN/Face-ID gate, and auto-adds the received token on a confirmed swap.
 ///
 /// **Defaults to a sensible FROM.** The FROM side seeds to the native coin
 /// of the swappable chain the wallet holds the most native value on (falling
@@ -68,6 +68,8 @@ struct SwapView: View {
                     SwapReviewView(
                         summary: summary,
                         currencyCode: currencyCode,
+                        walletId: activeWallet?.id ?? UUID(),
+                        walletHasPassphrase: activeWallet?.hasPassphrase ?? false,
                         onClose: { dismiss() }
                     )
                 }

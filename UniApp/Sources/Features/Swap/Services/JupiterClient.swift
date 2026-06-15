@@ -124,6 +124,31 @@ actor JupiterClient {
         }
     }
 
+    // MARK: - Execute (build the signable swap transaction)
+
+    /// POST the verbatim quote to Jupiter `/swap/v1/swap` to get the
+    /// serialized (base64) `VersionedTransaction` the wallet signs +
+    /// broadcasts. `quoteResponseJSON` is the EXACT `/quote` response object
+    /// captured at quote time (embedded raw under `quoteResponse` — it's
+    /// arbitrary provider JSON, not a static shape). `userPublicKey` is the
+    /// wallet's Solana address (fee payer + sole signer). Returns the base64
+    /// transaction, or `nil` on failure. Keyless `lite-api` host (no header).
+    func fetchSwapTransaction(quoteResponseJSON: String, userPublicKey: String) async -> String? {
+        guard let url = URL(string: "\(swapBase)/swap") else { return nil }
+        // The address is base58 (no JSON-special chars); the quote object is
+        // embedded verbatim so its lookup tables / routing are preserved.
+        let body = """
+        {"quoteResponse":\(quoteResponseJSON),"userPublicKey":"\(userPublicKey)","wrapAndUnwrapSol":true,"dynamicComputeUnitLimit":true}
+        """
+        guard let bodyData = body.data(using: .utf8) else { return nil }
+        do {
+            let dto = try await http.postRawJSON(JupiterSwapDTO.self, url: url, bodyData: bodyData)
+            return dto.swapTransaction.isEmpty ? nil : dto.swapTransaction
+        } catch {
+            return nil
+        }
+    }
+
     // MARK: - Raw fetch (keep JSON for execute seam)
 
     private func fetchQuote(url: URL) async throws(SwapError) -> (JupiterQuoteDTO, String) {

@@ -130,6 +130,16 @@ actor SwapQuoteService {
         return await evm + solana
     }
 
+    // MARK: - Execute (build the signable Solana swap tx)
+
+    /// Build the signable Solana swap transaction (Jupiter `/swap`) from the
+    /// quote's verbatim `quoteResponseJSON`. Delegates to the shared Jupiter
+    /// client so the executor doesn't spin up its own. Returns the base64
+    /// `VersionedTransaction`, or `nil` on failure.
+    func buildSolanaSwap(quoteResponseJSON: String, userPublicKey: String) async -> String? {
+        await jupiter.fetchSwapTransaction(quoteResponseJSON: quoteResponseJSON, userPublicKey: userPublicKey)
+    }
+
     /// `true` when EVM/cross-chain quotes are available (Li.Fi key set).
     /// Solana→Solana (Jupiter) is always available regardless.
     nonisolated var isLiFiConfigured: Bool { Secrets.hasLifiKey }

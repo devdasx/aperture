@@ -52,3 +52,11 @@ struct JupiterTokenDTO: Decodable, Sendable {
     let icon: String?
     let isVerified: Bool?
 }
+
+/// `POST /swap/v1/swap` response — the serialized (base64) v0
+/// `VersionedTransaction` the wallet signs + broadcasts. `lastValidBlockHeight`
+/// is informational (the message already embeds a fresh blockhash).
+struct JupiterSwapDTO: Decodable, Sendable {
+    let swapTransaction: String
+    let lastValidBlockHeight: Int?
+}
