@@ -310673,6 +310673,28 @@
           }
         }
       }
+    },
+    "Confirm on your iPhone": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Confirm on your iPhone"
+          }
+        }
+      }
+    },
+    "%@ was added to your tokens.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ was added to your tokens."
+          }
+        }
+      }
     }
   },
   "version": "1.0"
