@@ -55,6 +55,10 @@ struct BalanceCardView: View {
     /// fed straight to `BalanceHistoryReconstructor` to build the curve.
     let transactions: [TransactionRecord]
     let currentBalances: [TokenBalanceRecord]
+    /// The active wallet's OWN addresses (lowercased). Transactions whose
+    /// counterparty is in this set are self-transfers and are dropped from the
+    /// chart reconstruction (they net to zero on the balance).
+    let ownAddresses: Set<String>
     let priceCache: [String: Decimal]
     let priceHistory: [String: [Int: Decimal]]
 
@@ -103,6 +107,7 @@ struct BalanceCardView: View {
         currencyCode: String,
         transactions: [TransactionRecord],
         currentBalances: [TokenBalanceRecord],
+        ownAddresses: Set<String>,
         priceCache: [String: Decimal],
         priceHistory: [String: [Int: Decimal]],
         scrubModel: ChartScrubModel,
@@ -115,6 +120,7 @@ struct BalanceCardView: View {
         self.currencyCode = currencyCode
         self.transactions = transactions
         self.currentBalances = currentBalances
+        self.ownAddresses = ownAddresses
         self.priceCache = priceCache
         self.priceHistory = priceHistory
         self.scrubModel = scrubModel
@@ -616,7 +622,8 @@ struct BalanceCardView: View {
                 tokenSymbol: $0.tokenSymbol,
                 tokenContract: $0.tokenContract,
                 amountRaw: $0.amountRaw,
-                directionRaw: $0.directionRaw
+                directionRaw: $0.directionRaw,
+                counterparty: $0.counterparty
             )
         }
         let balanceSnapshots = currentBalances.map {
@@ -631,6 +638,7 @@ struct BalanceCardView: View {
         let cache = priceCache
         let history = priceHistory
         let range = currentRange
+        let own = ownAddresses
 
         let reconstructed = await Task.detached(priority: .userInitiated) {
             BalanceHistoryReconstructor.reconstruct(
@@ -638,6 +646,7 @@ struct BalanceCardView: View {
                 balanceSnapshots: balanceSnapshots,
                 priceCache: cache,
                 priceHistory: history,
+                ownAddresses: own,
                 range: range
             )
         }.value
