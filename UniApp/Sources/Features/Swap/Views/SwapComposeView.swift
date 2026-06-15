@@ -38,7 +38,6 @@ struct SwapComposeView: View {
 
     @AppStorage("languagePreference") private var languageCode: String = LanguagePreference.systemCode
 
-    @FocusState private var amountFocused: Bool
     /// One polite `.selection` beat for the flip / MAX / slippage affordances
     /// that aren't `UniButton`s (Rule #10 §B).
     @State private var selectionTapCount = 0
@@ -60,13 +59,13 @@ struct SwapComposeView: View {
             }
             .padding(.horizontal, UniSpacing.l)
             .padding(.top, UniSpacing.m)
-            .padding(.bottom, UniSpacing.xxxl + UniSpacing.xl)
+            .padding(.bottom, UniSpacing.m)
         }
         .scrollDismissesKeyboard(.interactively)
         .scrollIndicators(.hidden)
         .background(UniColors.Background.primary)
         .uniHaptic(.selection, trigger: selectionTapCount)
-        .safeAreaInset(edge: .bottom) { reviewBar }
+        .safeAreaInset(edge: .bottom) { bottomBar }
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .principal) {
@@ -165,10 +164,9 @@ struct SwapComposeView: View {
                 HStack(alignment: .center, spacing: UniSpacing.s) {
                     assetButton(token: model.fromToken, side: .from)
 
-                    SwapAmountField(
-                        text: $model.amountText,
-                        isOverBalance: model.isOverBalance,
-                        focused: $amountFocused
+                    SwapAmountDisplay(
+                        text: model.amountText,
+                        isOverBalance: model.isOverBalance
                     )
                 }
 
@@ -498,6 +496,24 @@ struct SwapComposeView: View {
     private static let highSlippageThresholdBps = 100
     private var isHighSlippage: Bool { model.slippageBps >= Self.highSlippageThresholdBps }
 
+    // MARK: - Bottom functional stack (number pad + Review CTA)
+
+    /// The in-app decimal number pad (replacing the native keyboard for the
+    /// FROM amount) stacked above the Review CTA. Opaque background so the
+    /// content cards scroll cleanly under the whole functional area.
+    private var bottomBar: some View {
+        VStack(spacing: UniSpacing.s) {
+            SwapNumberPad(
+                text: $model.amountText,
+                onKey: { selectionTapCount &+= 1 }
+            )
+            .padding(.horizontal, UniSpacing.l)
+            reviewBar
+        }
+        .padding(.top, UniSpacing.s)
+        .background(UniColors.Background.primary)
+    }
+
     // MARK: - Review CTA (functional layer)
 
     private var reviewBar: some View {
@@ -526,31 +542,151 @@ struct SwapComposeView: View {
     }
 }
 
-// MARK: - Amount field (LTR-locked, auto-shrinking)
+// MARK: - Amount display (LTR-locked, auto-shrinking, in-app keypad target)
 
-/// The FROM amount entry — a calm, monospaced-digit field that auto-shrinks
-/// to fit one line (the Send hero's never-overflow behavior, scaled to the
-/// card). LTR-locked (Rule #11) because it's a transcribable value.
-private struct SwapAmountField: View {
-    @Binding var text: String
+/// The FROM amount — a read-only display fed by the in-app `SwapNumberPad`
+/// (no native keyboard). Shows a quiet "0" placeholder when empty and a
+/// blinking accent caret so it reads as the live input target. LTR-locked
+/// because it's a transcribable value; auto-shrinks to one line.
+private struct SwapAmountDisplay: View {
+    let text: String
     let isOverBalance: Bool
-    var focused: FocusState<Bool>.Binding
+
+    @State private var caretVisible = true
+
+    private var color: Color {
+        if text.isEmpty { return UniColors.Text.quaternary }
+        return isOverBalance ? UniColors.Status.errorForeground : UniColors.Text.primary
+    }
 
     var body: some View {
-        TextField("0", text: $text)
-            .font(.system(.title, design: .rounded, weight: .semibold).monospacedDigit())
-            .foregroundStyle(isOverBalance ? UniColors.Status.errorForeground : UniColors.Text.primary)
-            .keyboardType(.decimalPad)
-            .multilineTextAlignment(.trailing)
-            .focused(focused)
-            // The decimal pad has no Return key — add the native dismiss
-            // accessory bar (Rule #3) keyed to this field's focus.
-            .numericDoneToolbar(focused)
-            .lineLimit(1)
-            .minimumScaleFactor(0.4)
-            .frame(maxWidth: .infinity)
-            .animation(.snappy(duration: 0.2), value: isOverBalance)
-            .environment(\.layoutDirection, .leftToRight)
+        HStack(alignment: .center, spacing: 2) {
+            Spacer(minLength: 0)
+            Text(verbatim: text.isEmpty ? "0" : text)
+                .foregroundStyle(color)
+                .lineLimit(1)
+                .minimumScaleFactor(0.4)
+            // Blinking caret — marks this field as the one the keypad drives.
+            RoundedRectangle(cornerRadius: 1, style: .continuous)
+                .fill(UniColors.Icon.accent)
+                .frame(width: 2, height: 26)
+                .opacity(caretVisible ? 1 : 0)
+        }
+        .font(.system(.title, design: .rounded, weight: .semibold).monospacedDigit())
+        .animation(.snappy(duration: 0.2), value: isOverBalance)
+        .environment(\.layoutDirection, .leftToRight)
+        .onAppear {
+            withAnimation(.easeInOut(duration: 0.6).repeatForever(autoreverses: true)) {
+                caretVisible = false
+            }
+        }
+    }
+}
+
+// MARK: - In-app number pad (replaces the native decimal keyboard)
+
+/// A persistent on-screen decimal keypad for the FROM amount — 1–9, a decimal
+/// point, 0, and backspace. Writes straight to the bound amount string; the
+/// model's `didSet` re-quotes for free. Replaces the native `.decimalPad` so
+/// amount entry stays inside the swap surface (user direction). LTR-locked.
+private struct SwapNumberPad: View {
+    @Binding var text: String
+    /// Fire one selection beat per key (the parent owns the haptic trigger).
+    var onKey: () -> Void
+
+    private enum Key: Hashable {
+        case digit(String), decimal, backspace
+    }
+
+    private let rows: [[Key]] = [
+        [.digit("1"), .digit("2"), .digit("3")],
+        [.digit("4"), .digit("5"), .digit("6")],
+        [.digit("7"), .digit("8"), .digit("9")],
+        [.decimal, .digit("0"), .backspace],
+    ]
+
+    var body: some View {
+        VStack(spacing: UniSpacing.xs) {
+            ForEach(0..<rows.count, id: \.self) { row in
+                HStack(spacing: UniSpacing.xs) {
+                    ForEach(rows[row], id: \.self) { key in
+                        keyButton(key)
+                    }
+                }
+            }
+        }
+        .environment(\.layoutDirection, .leftToRight)
+    }
+
+    @ViewBuilder
+    private func keyButton(_ key: Key) -> some View {
+        Button {
+            apply(key)
+            onKey()
+        } label: {
+            keyGlyph(key)
+                .font(.system(.title2, design: .rounded, weight: .medium).monospacedDigit())
+                .foregroundStyle(UniColors.Text.primary)
+                .frame(maxWidth: .infinity)
+                .frame(height: 52)
+                .contentShape(RoundedRectangle(cornerRadius: UniRadius.m, style: .continuous))
+        }
+        .buttonStyle(NumberKeyStyle())
+        .accessibilityLabel(accessibilityLabel(key))
+    }
+
+    @ViewBuilder
+    private func keyGlyph(_ key: Key) -> some View {
+        switch key {
+        case .digit(let d): Text(verbatim: d)
+        case .decimal:      Text(verbatim: ".")
+        case .backspace:    Image(systemName: "delete.left")
+        }
+    }
+
+    private func accessibilityLabel(_ key: Key) -> Text {
+        switch key {
+        case .digit(let d): return Text(verbatim: d)
+        case .decimal:      return Text("Decimal point")
+        case .backspace:    return Text("Delete")
+        }
+    }
+
+    /// Mutate the amount string. Guards: a single decimal point; no leading
+    /// zero pile-up ("0" then "5" → "5"); a bare "." becomes "0."; a bounded
+    /// total length so the field can't run away.
+    private func apply(_ key: Key) {
+        switch key {
+        case .digit(let d):
+            if text == "0" {
+                text = (d == "0") ? "0" : d
+            } else if text.count < 20 {
+                text += d
+            }
+        case .decimal:
+            if text.isEmpty {
+                text = "0."
+            } else if !text.contains(".") {
+                text += "."
+            }
+        case .backspace:
+            if !text.isEmpty { text.removeLast() }
+        }
+    }
+}
+
+// MARK: - Number-pad key style
+
+/// A quiet, tappable key: a soft filled rect that darkens + nudges on press.
+private struct NumberKeyStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .background(
+                RoundedRectangle(cornerRadius: UniRadius.m, style: .continuous)
+                    .fill(configuration.isPressed ? UniColors.Fill.tertiary : UniColors.Fill.quaternary)
+            )
+            .scaleEffect(configuration.isPressed ? 0.97 : 1)
+            .animation(.snappy(duration: 0.12), value: configuration.isPressed)
     }
 }
 
