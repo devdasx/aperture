@@ -922,6 +922,7 @@
         }
       }
     },
+    "—": {},
     "...": {
       "extractionState": "manual",
       "localizations": {
@@ -1540,6 +1541,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "\\(buffer.count) / \\(required)"
+          }
+        }
+      }
+    },
+    "\\(chain.displayName) can pay up to \\(maxRecipients) recipients in one transaction.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "\\(chain.displayName) can pay up to \\(maxRecipients) recipients in one transaction."
           }
         }
       }
@@ -2477,6 +2489,17 @@
         }
       }
     },
+    "\\(history.count) dApps in your recent list.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "\\(history.count) dApps in your recent list."
+          }
+        }
+      }
+    },
     "\\(percent)%": {
       "extractionState": "manual",
       "localizations": {
@@ -2484,6 +2507,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "\\(percent)%"
+          }
+        }
+      }
+    },
+    "\\(recipients.count) recipients": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "\\(recipients.count) recipients"
           }
         }
       }
@@ -14215,6 +14249,7 @@
         }
       }
     },
+    "%lld selected": {},
     "%lld valid · %lld invalid": {
       "extractionState": "manual",
       "localizations": {
@@ -17609,6 +17644,8 @@
         }
       }
     },
+    "~ a few min": {},
+    "~ next block": {},
     "~10 min · next block": {
       "extractionState": "manual",
       "localizations": {
@@ -18542,6 +18579,7 @@
         }
       }
     },
+    "~30+ min": {},
     "~30s": {
       "extractionState": "manual",
       "localizations": {
@@ -21953,6 +21991,7 @@
         }
       }
     },
+    "A higher fee confirms faster. Too low and the transaction can get stuck.": {},
     "A network fee is what you pay the blockchain — not Aperture — to process your transaction. It goes to the people running the network, never to us.": {
       "extractionState": "manual",
       "localizations": {
@@ -25960,6 +25999,7 @@
         }
       }
     },
+    "Add a memo": {},
     "Add a note or data hex…": {
       "extractionState": "manual",
       "localizations": {
@@ -27509,6 +27549,8 @@
         }
       }
     },
+    "Add an optional note that travels with the transaction.": {},
+    "Add comment": {},
     "Add custom token": {
       "extractionState": "new",
       "localizations": {
@@ -27820,6 +27862,7 @@
         }
       }
     },
+    "Add destination tag": {},
     "Add ERC-20 / SPL tokens by pasting their contract or mint address. Aperture reads name, symbol, and decimals from chain.": {
       "extractionState": "new",
       "localizations": {
@@ -28436,6 +28479,7 @@
         }
       }
     },
+    "Add OP_RETURN data": {},
     "Add passphrase": {
       "comment": "Recovery-phrase view toolbar menu: open the passphrase sheet (no passphrase yet).",
       "extractionState": "manual",
@@ -28744,6 +28788,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "加入密語"
+          }
+        }
+      }
+    },
+    "Add recipient": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Add recipient"
           }
         }
       }
@@ -30308,6 +30363,18 @@
         }
       }
     },
+    "Address or \\(nameHint!)": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Address or \\(nameHint!)"
+          }
+        }
+      }
+    },
+    "Address or %@": {},
     "Addresses": {
       "extractionState": "manual",
       "localizations": {
@@ -32756,6 +32823,7 @@
         }
       }
     },
+    "Advanced gas": {},
     "After 1 minute": {
       "extractionState": "manual",
       "localizations": {
@@ -36154,6 +36222,18 @@
         }
       }
     },
+    "Amount entry is the next step we'll build.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Amount entry is the next step we'll build."
+          }
+        }
+      }
+    },
+    "Amounts (%lld)": {},
     "An optional extra word that combines with your recovery phrase to create a different wallet. You must remember it — it is not stored anywhere, and it cannot be recovered.": {
       "comment": "Passphrase sheet body — honesty about non-recoverability.",
       "extractionState": "manual",
@@ -41453,6 +41533,7 @@
         }
       }
     },
+    "Aperture estimates the gas limit automatically. Only change this if you know the transaction needs more.": {},
     "Aperture has no servers that store your wallet, balances, transactions, or addresses.": {
       "extractionState": "manual",
       "localizations": {
@@ -48575,7 +48656,7 @@
         }
       }
     },
-    "Asset": {},
+    "Attach a small data note to the transaction. This is optional and isn't needed to send — exchanges never require it.": {},
     "Authenticate": {
       "extractionState": "manual",
       "localizations": {
@@ -49497,6 +49578,7 @@
         }
       }
     },
+    "Automatic": {},
     "Available": {
       "extractionState": "manual",
       "localizations": {
@@ -71853,6 +71935,7 @@
         }
       }
     },
+    "Coin selection": {},
     "Coinbase": {
       "extractionState": "manual",
       "localizations": {
@@ -73402,6 +73485,7 @@
         }
       }
     },
+    "Comment": {},
     "Complete": {
       "extractionState": "manual",
       "localizations": {
@@ -82714,6 +82798,31 @@
         }
       }
     },
+    "Couldn't find \\(name). Check the spelling, or paste the address directly.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Couldn't find \\(name). Check the spelling, or paste the address directly."
+          }
+        }
+      }
+    },
+    "Couldn't find \\(name). Check the spelling, or paste the address.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Couldn't find \\(name). Check the spelling, or paste the address."
+          }
+        }
+      }
+    },
+    "Couldn't find %@. Check the spelling, or paste the address.": {},
+    "Couldn't load the network fee": {},
+    "Couldn't open that photo.": {},
     "Couldn't reach the chain": {
       "extractionState": "manual",
       "localizations": {
@@ -91340,6 +91449,7 @@
         }
       }
     },
+    "Data note": {},
     "Decimals": {
       "extractionState": "new",
       "localizations": {
@@ -94444,6 +94554,7 @@
         }
       }
     },
+    "Destination tag": {},
     "Details": {
       "extractionState": "manual",
       "localizations": {
@@ -101231,6 +101342,9 @@
         }
       }
     },
+    "Edit comment": {},
+    "Edit destination tag": {},
+    "Edit memo": {},
     "Edit network fee": {
       "extractionState": "manual",
       "localizations": {
@@ -101542,6 +101656,7 @@
         }
       }
     },
+    "Edit OP_RETURN data": {},
     "Edit passphrase": {
       "comment": "Recovery-phrase view toolbar menu: open the passphrase sheet (passphrase already set).",
       "extractionState": "manual",
@@ -103707,6 +103822,29 @@
         }
       }
     },
+    "Enter a \\(chain.displayName) address or a \\(hint).": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Enter a \\(chain.displayName) address or a \\(hint)."
+          }
+        }
+      }
+    },
+    "Enter a \\(chain.displayName) address.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Enter a \\(chain.displayName) address."
+          }
+        }
+      }
+    },
+    "Enter in %@": {},
     "Enter recovery phrase": {
       "extractionState": "manual",
       "localizations": {
@@ -104012,6 +104150,8 @@
         }
       }
     },
+    "Enter the comment the recipient gave you.": {},
+    "Enter the numeric tag the recipient gave you.": {},
     "Enter the same passcode again.": {
       "localizations": {
         "af": {
@@ -107098,6 +107238,7 @@
         }
       }
     },
+    "Estimated": {},
     "Estimated at sign time": {
       "extractionState": "manual",
       "localizations": {
@@ -107409,6 +107550,7 @@
         }
       }
     },
+    "Estimated fee": {},
     "Every cached balance and price": {
       "extractionState": "manual",
       "localizations": {
@@ -108381,6 +108523,7 @@
         }
       }
     },
+    "Everything above is ready and real. Signing and broadcasting the transaction is the part we're building next — nothing has been sent.": {},
     "EVM private key (32-byte hex).": {
       "extractionState": "manual",
       "localizations": {
@@ -111138,6 +111281,7 @@
         }
       }
     },
+    "Exchanges require a comment for TON deposits. Send the exact comment they gave you, or the deposit can be lost.": {},
     "Exit test mode": {
       "extractionState": "manual",
       "localizations": {
@@ -112375,6 +112519,17 @@
         }
       }
     },
+    "Fallback \\(index)": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fallback \\(index)"
+          }
+        }
+      }
+    },
     "Fallback %lld": {
       "localizations": {
         "af": {
@@ -112990,6 +113145,7 @@
         }
       }
     },
+    "Faster": {},
     "Favorites": {
       "extractionState": "manual",
       "localizations": {
@@ -113923,6 +114079,8 @@
         }
       }
     },
+    "Fee rate": {},
+    "Fetching the current rate…": {},
     "Fetching token info…": {
       "extractionState": "new",
       "localizations": {
@@ -115490,6 +115648,28 @@
           "stringUnit": {
             "state": "translated",
             "value": "First time sending here"
+          }
+        }
+      }
+    },
+    "First time sending here — double-check it, transactions can't be reversed.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "First time sending here — double-check it, transactions can't be reversed."
+          }
+        }
+      }
+    },
+    "First time sending here — double-check it. Transactions can't be reversed.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "First time sending here — double-check it. Transactions can't be reversed."
           }
         }
       }
@@ -118608,6 +118788,7 @@
         }
       }
     },
+    "Gas price": {},
     "Gas, nonce, hex data": {
       "extractionState": "manual",
       "localizations": {
@@ -142699,6 +142880,7 @@
         }
       }
     },
+    "Let Aperture choose the best coins": {},
     "Lets you bump the fee later if it's stuck.": {
       "extractionState": "manual",
       "localizations": {
@@ -143633,6 +143815,7 @@
         }
       }
     },
+    "Light on": {},
     "Local database": {
       "extractionState": "manual",
       "localizations": {
@@ -147032,6 +147215,7 @@
         }
       }
     },
+    "Many exchanges require a memo. Sending without the one they gave you can lose the deposit.": {},
     "Many people know this key.": {
       "extractionState": "manual",
       "localizations": {
@@ -147964,6 +148148,7 @@
         }
       }
     },
+    "Max fee": {},
     "Max fee (gwei)": {
       "extractionState": "manual",
       "localizations": {
@@ -148275,6 +148460,7 @@
         }
       }
     },
+    "Memo": {},
     "Message": {
       "extractionState": "manual",
       "localizations": {
@@ -151062,6 +151248,7 @@
         }
       }
     },
+    "Most exchanges REQUIRE a destination tag for XRP deposits. A deposit sent without the right tag can be credited to the wrong account or lost.": {},
     "Move value between networks without leaving the wallet.": {
       "comment": "Slide 8 body.",
       "extractionState": "manual",
@@ -152312,6 +152499,7 @@
         }
       }
     },
+    "NEAR keeps a small amount locked for account storage; it can't be sent.": {},
     "Need \\(required - buffer.count) more": {
       "extractionState": "manual",
       "localizations": {
@@ -158792,6 +158980,17 @@
         }
       }
     },
+    "No activity on \\(chain.displayName).": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No activity on \\(chain.displayName)."
+          }
+        }
+      }
+    },
     "No activity on %@.": {
       "localizations": {
         "af": {
@@ -164047,6 +164246,7 @@
         }
       }
     },
+    "No QR code found in that image.": {},
     "No scalar fields to preview.": {
       "extractionState": "manual",
       "localizations": {
@@ -164669,6 +164869,7 @@
         }
       }
     },
+    "No spendable coins were found for this address.": {},
     "No telemetry, no event tracking, no crash reports sent back to Aperture.": {
       "extractionState": "manual",
       "localizations": {
@@ -171798,6 +171999,7 @@
         }
       }
     },
+    "Nothing to paste.": {},
     "Nothing to watch yet": {
       "localizations": {
         "af": {
@@ -178607,6 +178809,7 @@
         }
       }
     },
+    "OP_RETURN": {},
     "OP_RETURN · message on-chain (optional)": {
       "extractionState": "manual",
       "localizations": {
@@ -178918,6 +179121,7 @@
         }
       }
     },
+    "OP_RETURN data": {},
     "Open \\(favorite.host)": {
       "extractionState": "manual",
       "localizations": {
@@ -193454,6 +193658,7 @@
         }
       }
     },
+    "Point your camera at a %@ address QR code.": {},
     "Point your camera at a WalletConnect QR code from any dApp.": {
       "extractionState": "manual",
       "localizations": {
@@ -193765,6 +193970,7 @@
         }
       }
     },
+    "Polkadot needs 0.01 DOT to remain — dropping below it would close the account and lose the funds.": {},
     "Preferences": {
       "extractionState": "manual",
       "localizations": {
@@ -196553,6 +196759,7 @@
         }
       }
     },
+    "Priority tip": {},
     "Privacy": {
       "comment": "Legal footer link — Privacy Policy.",
       "extractionState": "manual",
@@ -204615,6 +204822,17 @@
         }
       }
     },
+    "Receive on this network": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Receive on this network"
+          }
+        }
+      }
+    },
     "Received": {
       "extractionState": "manual",
       "localizations": {
@@ -205553,6 +205771,52 @@
         }
       }
     },
+    "Recipient \\(index)": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Recipient \\(index)"
+          }
+        }
+      }
+    },
+    "Recipient %lld": {},
+    "Recipient address": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Recipient address"
+          }
+        }
+      }
+    },
+    "Recipients": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Recipients"
+          }
+        }
+      }
+    },
+    "Recipients (\\(entries.count))": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Recipients (\\(entries.count))"
+          }
+        }
+      }
+    },
+    "Recipients (%lld)": {},
     "Recommended": {
       "extractionState": "manual",
       "localizations": {
@@ -207712,6 +207976,17 @@
       }
     },
     "Remove %@?": {},
+    "Remove recipient": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Remove recipient"
+          }
+        }
+      }
+    },
     "Remove this wallet": {
       "extractionState": "manual",
       "localizations": {
@@ -211770,6 +212045,17 @@
         }
       }
     },
+    "Resolving…": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Resolving…"
+          }
+        }
+      }
+    },
     "Restores the default wallet identity — Ink background, Wallet glyph.": {
       "extractionState": "manual",
       "localizations": {
@@ -214837,6 +215123,17 @@
         }
       }
     },
+    "Same as an earlier recipient": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Same as an earlier recipient"
+          }
+        }
+      }
+    },
     "Save": {
       "comment": "Passphrase sheet primary CTA — commits the entered passphrase.",
       "extractionState": "manual",
@@ -216706,6 +217003,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "掃描"
+          }
+        }
+      }
+    },
+    "Scan address": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Scan address"
           }
         }
       }
@@ -221036,6 +221344,7 @@
         }
       }
     },
+    "Select coins": {},
     "Select none": {
       "extractionState": "new",
       "localizations": {
@@ -221968,6 +222277,17 @@
         }
       }
     },
+    "Send \\(assetLabel) to": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Send \\(assetLabel) to"
+          }
+        }
+      }
+    },
     "Send \\(draft.unitTicker)": {
       "extractionState": "manual",
       "localizations": {
@@ -221990,7 +222310,6 @@
         }
       }
     },
-    "Send %@": {},
     "Send %@ on this network": {},
     "Send a test amount first": {
       "extractionState": "manual",
@@ -224837,6 +225156,7 @@
         }
       }
     },
+    "Sending the maximum": {},
     "Sending transactions from the browser isn't available in Aperture yet. The request will be returned to the dApp unsigned.": {
       "localizations": {
         "af": {
@@ -226074,6 +226394,52 @@
         }
       }
     },
+    "Sent \\(recipient.sendCount) times": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sent \\(recipient.sendCount) times"
+          }
+        }
+      }
+    },
+    "Sent %lld times": {},
+    "Sent here \\(count) times before": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sent here \\(count) times before"
+          }
+        }
+      }
+    },
+    "Sent here %lld times before": {},
+    "Sent here once before": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sent here once before"
+          }
+        }
+      }
+    },
+    "Sent once": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sent once"
+          }
+        }
+      }
+    },
     "Set a passcode": {
       "extractionState": "manual",
       "localizations": {
@@ -227001,6 +227367,7 @@
         }
       }
     },
+    "Set your own": {},
     "Sets the compute-unit limit automatically.": {
       "extractionState": "manual",
       "localizations": {
@@ -234164,6 +234531,7 @@
         }
       }
     },
+    "Signing is the next step": {},
     "Signing this data may authorize a token transfer or permit. Only sign typed data from dApps you trust.": {
       "extractionState": "manual",
       "localizations": {
@@ -236665,6 +237033,8 @@
         }
       }
     },
+    "Slower": {},
+    "Solana keeps ~0.00089 SOL as the rent-exempt minimum so the account stays on-chain.": {},
     "Solana secret key (base58).": {
       "extractionState": "manual",
       "localizations": {
@@ -238524,6 +238894,7 @@
         }
       }
     },
+    "Speed": {},
     "Speed up": {
       "extractionState": "manual",
       "localizations": {
@@ -239481,6 +239852,7 @@
         }
       }
     },
+    "Stellar keeps a minimum balance (from 1 XLM) reserved to keep your account active.": {},
     "Still pending · 4 min": {
       "extractionState": "manual",
       "localizations": {
@@ -247909,6 +248281,7 @@
         }
       }
     },
+    "Tag (numbers only)": {},
     "Tails": {
       "extractionState": "manual",
       "localizations": {
@@ -252257,6 +252630,21 @@
         }
       }
     },
+    "That isn't a valid tag — use numbers only (0 to 4,294,967,295).": {},
+    "That's not a valid \\(chain.displayName) address.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "That's not a valid \\(chain.displayName) address."
+          }
+        }
+      }
+    },
+    "That's not a valid %@ address.": {},
+    "That's not a valid code.": {},
+    "That's not the right kind of QR code.": {},
     "The canonical 2048-word English wordlist from bitcoin/bips. Verified SHA-256 in source.": {
       "extractionState": "manual",
       "localizations": {
@@ -253489,6 +253877,7 @@
         }
       }
     },
+    "The network fee isn't available right now.": {},
     "The recovery phrase you just saw will be discarded. You'll need to start the creation process again if you change your mind.": {
       "extractionState": "manual",
       "localizations": {
@@ -253794,6 +254183,7 @@
         }
       }
     },
+    "The selected coins don't cover the amount and fee. Select more, or use Automatic.": {},
     "The Terms of Service haven't been written yet. Aperture is open source — the only thing governing your use of the app today is the MIT license in the repository.": {
       "extractionState": "manual",
       "localizations": {
@@ -259388,6 +259778,17 @@
         }
       }
     },
+    "This is an address you've used before.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This is an address you've used before."
+          }
+        }
+      }
+    },
     "This is an extended public key. Use Watch-only instead.": {
       "extractionState": "manual",
       "localizations": {
@@ -261246,6 +261647,7 @@
         }
       }
     },
+    "This recipient isn't activated yet — sending will cost about 1.1 TRX extra to create the account.": {},
     "This removes \\(walletName) from this iPhone. Every other wallet stays exactly as it is.": {
       "extractionState": "manual",
       "localizations": {
@@ -266577,6 +266979,17 @@
         }
       }
     },
+    "to": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "to"
+          }
+        }
+      }
+    },
     "To": {
       "extractionState": "manual",
       "localizations": {
@@ -268436,6 +268849,7 @@
         }
       }
     },
+    "Total": {},
     "Total \\(derived.displayName) balance": {
       "extractionState": "manual",
       "localizations": {
@@ -270596,6 +271010,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "交易在鏈上確認後會顯示在這裡。"
+          }
+        }
+      }
+    },
+    "Transactions involving \\(identity.symbol) on \\(chain.displayName) appear here as they confirm on-chain.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Transactions involving \\(identity.symbol) on \\(chain.displayName) appear here as they confirm on-chain."
           }
         }
       }
@@ -273381,6 +273806,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "再試一次。"
+          }
+        }
+      }
+    },
+    "Turn on camera access in Settings to scan with the camera. You can still pick a QR code from your photos or paste one.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Turn on camera access in Settings to scan with the camera. You can still pick a QR code from your photos or paste one."
           }
         }
       }
@@ -276459,6 +276895,7 @@
         }
       }
     },
+    "Unconfirmed": {},
     "Under %@": {
       "extractionState": "manual",
       "localizations": {
@@ -282057,6 +282494,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "使用此短語"
+          }
+        }
+      }
+    },
+    "Use this recipient": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Use this recipient"
           }
         }
       }
@@ -300637,6 +301085,7 @@
         }
       }
     },
+    "XRP keeps a 1 XRP base reserve (plus 0.2 XRP per object) locked to keep your account open.": {},
     "Yes, send it": {
       "extractionState": "manual",
       "localizations": {
@@ -303454,6 +303903,17 @@
         }
       }
     },
+    "You've never sent to this address before. Double-check every character — crypto transactions can't be reversed.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "You've never sent to this address before. Double-check every character — crypto transactions can't be reversed."
+          }
+        }
+      }
+    },
     "You've never sent to this address. For large amounts, try a small test send first — once it arrives, send the rest with one tap.": {
       "extractionState": "manual",
       "localizations": {
@@ -304391,6 +304851,7 @@
         }
       }
     },
+    "Your coins (%lld)": {},
     "Your Face ID enrollment changed. Authenticate once to trust this iPhone again.": {
       "extractionState": "manual",
       "localizations": {
@@ -309388,387 +309849,46 @@
         }
       }
     },
-    "Receive on this network": {
+    "Adding a memo on TRON costs an extra 1 TRX.": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Receive on this network"
+            "value": "Adding a memo on TRON costs an extra 1 TRX."
           }
         }
       }
     },
-    "Amount entry is the next step we'll build.": {
+    "Amounts (\\(model.amounts.count))": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Amount entry is the next step we'll build."
+            "value": "Amounts (\\(model.amounts.count))"
           }
         }
       }
     },
-    "Couldn't find \\(name). Check the spelling, or paste the address directly.": {
+    "Your coins (\\(utxos.count))": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Couldn't find \\(name). Check the spelling, or paste the address directly."
+            "value": "Your coins (\\(utxos.count))"
           }
         }
       }
     },
-    "Enter a \\(chain.displayName) address or a \\(hint).": {
+    "\\(utxos.count) selected": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Enter a \\(chain.displayName) address or a \\(hint)."
-          }
-        }
-      }
-    },
-    "Enter a \\(chain.displayName) address.": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Enter a \\(chain.displayName) address."
-          }
-        }
-      }
-    },
-    "Resolving…": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Resolving…"
-          }
-        }
-      }
-    },
-    "Send \\(assetLabel) to": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Send \\(assetLabel) to"
-          }
-        }
-      }
-    },
-    "That's not a valid \\(chain.displayName) address.": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "That's not a valid \\(chain.displayName) address."
-          }
-        }
-      }
-    },
-    "This is an address you've used before.": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "This is an address you've used before."
-          }
-        }
-      }
-    },
-    "You've never sent to this address before. Double-check every character — crypto transactions can't be reversed.": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "You've never sent to this address before. Double-check every character — crypto transactions can't be reversed."
-          }
-        }
-      }
-    },
-    "to": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "to"
-          }
-        }
-      }
-    },
-    "Add recipient": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Add recipient"
-          }
-        }
-      }
-    },
-    "Address or \\(nameHint!)": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Address or \\(nameHint!)"
-          }
-        }
-      }
-    },
-    "Couldn't find \\(name). Check the spelling, or paste the address.": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Couldn't find \\(name). Check the spelling, or paste the address."
-          }
-        }
-      }
-    },
-    "Fallback \\(index)": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Fallback \\(index)"
-          }
-        }
-      }
-    },
-    "First time sending here — double-check it, transactions can't be reversed.": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "First time sending here — double-check it, transactions can't be reversed."
-          }
-        }
-      }
-    },
-    "No activity on \\(chain.displayName).": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "No activity on \\(chain.displayName)."
-          }
-        }
-      }
-    },
-    "Recipient address": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Recipient address"
-          }
-        }
-      }
-    },
-    "Recipients": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Recipients"
-          }
-        }
-      }
-    },
-    "Recipients (\\(entries.count))": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Recipients (\\(entries.count))"
-          }
-        }
-      }
-    },
-    "Remove recipient": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Remove recipient"
-          }
-        }
-      }
-    },
-    "Sent \\(recipient.sendCount) times": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Sent \\(recipient.sendCount) times"
-          }
-        }
-      }
-    },
-    "Sent here \\(count) times before": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Sent here \\(count) times before"
-          }
-        }
-      }
-    },
-    "Sent here once before": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Sent here once before"
-          }
-        }
-      }
-    },
-    "Sent once": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Sent once"
-          }
-        }
-      }
-    },
-    "Transactions involving \\(identity.symbol) on \\(chain.displayName) appear here as they confirm on-chain.": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Transactions involving \\(identity.symbol) on \\(chain.displayName) appear here as they confirm on-chain."
-          }
-        }
-      }
-    },
-    "\\(chain.displayName) can pay up to \\(maxRecipients) recipients in one transaction.": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "\\(chain.displayName) can pay up to \\(maxRecipients) recipients in one transaction."
-          }
-        }
-      }
-    },
-    "\\(history.count) dApps in your recent list.": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "\\(history.count) dApps in your recent list."
-          }
-        }
-      }
-    },
-    "\\(recipients.count) recipients": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "\\(recipients.count) recipients"
-          }
-        }
-      }
-    },
-    "First time sending here — double-check it. Transactions can't be reversed.": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "First time sending here — double-check it. Transactions can't be reversed."
-          }
-        }
-      }
-    },
-    "Recipient \\(index)": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Recipient \\(index)"
-          }
-        }
-      }
-    },
-    "Use this recipient": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Use this recipient"
-          }
-        }
-      }
-    },
-    "Same as an earlier recipient": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Same as an earlier recipient"
-          }
-        }
-      }
-    },
-    "Scan address": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Scan address"
-          }
-        }
-      }
-    },
-    "Turn on camera access in Settings to scan with the camera. You can still pick a QR code from your photos or paste one.": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Turn on camera access in Settings to scan with the camera. You can still pick a QR code from your photos or paste one."
+            "value": "\\(utxos.count) selected"
           }
         }
       }
