@@ -85,6 +85,7 @@ actor TransactionRepository {
         status: TransactionStatus,
         counterparty: String,
         feeRaw: String?,
+        id: UUID = UUID(),
         save: Bool = true
     ) throws {
         try ensureLegacyAddressIdBackfill()
@@ -94,6 +95,19 @@ actor TransactionRepository {
         )
         addrDescriptor.fetchLimit = 1
         guard let address = try modelContext.fetch(addrDescriptor).first else { return }
+
+        // **EVM contract-casing normalization (2026-06-15).** EVM token
+        // contracts arrive checksummed from one path (the send executor /
+        // AssetCatalog) and lowercase from another (the history scanner's
+        // log decoding). If the pending row and the confirmed row carry
+        // different casing for the same contract they never match → a
+        // duplicate / stuck-pending row. Normalize EVM contracts to
+        // lowercase at this single identity boundary (both the match
+        // predicate AND the stored value) so both writers share one
+        // identity. Non-EVM contracts (case-sensitive on their chains)
+        // are left verbatim.
+        let isEVM = SupportedChain(rawValue: address.chainRaw)?.family == .evm
+        let normalizedContract = isEVM ? tokenContract?.lowercased() : tokenContract
 
         // Predicate on the stored `addressId` primitive — the legacy
         // backfill above guarantees every reachable row has it set, so
@@ -105,7 +119,7 @@ actor TransactionRepository {
             predicate: #Predicate {
                 $0.txHash == txHash
                     && $0.addressId == addressId
-                    && $0.tokenContract == tokenContract
+                    && $0.tokenContract == normalizedContract
                     && $0.tokenSymbol == tokenSymbol
                     && $0.directionRaw == directionValue
             }
@@ -146,11 +160,12 @@ actor TransactionRepository {
             // those are immutable once a tx is on-chain.
         } else {
             let record = TransactionRecord(
+                id: id,
                 txHash: txHash,
                 direction: direction,
                 amountRaw: amountRaw,
                 tokenSymbol: tokenSymbol,
-                tokenContract: tokenContract,
+                tokenContract: normalizedContract,
                 blockNumber: blockNumber,
                 occurredAt: occurredAt,
                 status: status,

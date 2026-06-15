@@ -309892,6 +309892,72 @@
           }
         }
       }
+    },
+    "Aperture signs this on your iPhone and broadcasts it to the network. Once it's sent, it can't be reversed.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aperture signs this on your iPhone and broadcasts it to the network. Once it's sent, it can't be reversed."
+          }
+        }
+      }
+    },
+    "Broadcast to the \\(transaction.chain.displayName) network. It'll confirm on-chain in a moment.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Broadcast to the \\(transaction.chain.displayName) network. It'll confirm on-chain in a moment."
+          }
+        }
+      }
+    },
+    "Confirm to send this transaction.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Confirm to send this transaction."
+          }
+        }
+      }
+    },
+    "Copy transaction hash": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Copy transaction hash"
+          }
+        }
+      }
+    },
+    "Nothing was sent — your funds didn't move.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nothing was sent — your funds didn't move."
+          }
+        }
+      }
+    },
+    "This wallet has a passphrase. Enter it to sign — it never leaves this iPhone, and Aperture can't recover it for you.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This wallet has a passphrase. Enter it to sign — it never leaves this iPhone, and Aperture can't recover it for you."
+          }
+        }
+      }
     }
   },
   "version": "1.0"
