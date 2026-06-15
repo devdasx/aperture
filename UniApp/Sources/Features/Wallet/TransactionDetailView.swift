@@ -74,16 +74,13 @@ struct TransactionDetailView: View {
     var body: some View {
         Group {
             if let tx = matches.first {
-                // The centered status hero sits ABOVE a native inset-grouped
-                // List (the Settings.app register), giving the receipt a
-                // true on-system surface (Rule #3 — system List). The hero
-                // is opaque content; no glass on long-form content (B.3).
-                VStack(spacing: 0) {
-                    hero(tx)
-                        .padding(.horizontal, UniSpacing.l)
-                        .padding(.top, UniSpacing.l)
-                    detailList(tx)
-                }
+                // The whole receipt is ONE scroll: the centered status hero
+                // is folded in as the List's first (cleared) row, so it
+                // scrolls away together with the detail sections — the screen
+                // is a single native inset-grouped List (the Settings.app
+                // register). The hero is opaque content; no glass on
+                // long-form content (B.3).
+                detailList(tx)
             } else {
                 missing
             }
@@ -108,6 +105,7 @@ struct TransactionDetailView: View {
     /// owns the grouped background.
     private func detailList(_ tx: TransactionRecord) -> some View {
         List {
+            heroSection(tx)
             loadingOrFailureSection
             commonSection(tx)
             payloadSections
@@ -116,6 +114,26 @@ struct TransactionDetailView: View {
         .scrollContentBackground(.hidden)
         .background(UniColors.Background.primary)
         .frame(maxWidth: .infinity)
+    }
+
+    /// The centered status hero, folded into the List as its first row so it
+    /// scrolls with the detail sections (one scroll surface). A cleared,
+    /// separator-less, edge-to-edge row reads as a free-floating header —
+    /// NOT a boxed grouped cell — keeping the exact centered padding it had
+    /// when it sat above the List.
+    private func heroSection(_ tx: TransactionRecord) -> some View {
+        Section {
+            hero(tx)
+                .padding(.horizontal, UniSpacing.l)
+                .listRowBackground(Color.clear)
+                .listRowSeparator(.hidden)
+                .listRowInsets(EdgeInsets(
+                    top: UniSpacing.l,
+                    leading: 0,
+                    bottom: UniSpacing.s,
+                    trailing: 0
+                ))
+        }
     }
 
     // MARK: - Stage 1 — centered status hero (instant first paint)
