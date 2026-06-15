@@ -409,7 +409,9 @@ final class SwapComposeModel {
             phase = .quoted(quote)
             applyNativeMaxRecapIfNeeded(using: quote)
             scheduleAutoRefresh()
-        } catch let error as SwapError {
+        } catch {
+            // `service.quote` is typed `throws(SwapError)`, so `error` is a
+            // SwapError (no redundant `as` cast needed).
             guard !Task.isCancelled, token == quoteToken else { return }
             if case .cancelled = error { return } // not a user-facing error
             phase = .failed(error)

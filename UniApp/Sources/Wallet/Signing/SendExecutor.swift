@@ -80,10 +80,11 @@ struct SendExecutor {
         let txHash: String
         do {
             txHash = try await broadcaster.broadcast(signed, chain: draft.chain)
-        } catch let error as SigningError {
-            return .failure(error)
         } catch {
-            return .failure(.broadcastFailed(error.localizedDescription))
+            // `broadcast` is typed `throws(SigningError)`, so `error` carries
+            // the precise (incl. `.broadcastAmbiguous`) outcome — surface it
+            // verbatim rather than flattening to `.broadcastFailed`.
+            return .failure(error)
         }
 
         // 5. Write the PENDING outbox row (live-update, Rule #25/#27),
