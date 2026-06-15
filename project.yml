@@ -65,29 +65,51 @@ targets:
       # request handling, and approval responses.
       - package: ReownSwift
         product: ReownWalletKit
+    # API keys (Li.Fi swap/bridge, ANKR RPC, …) come from Secrets.xcconfig —
+    # LOCAL ONLY, gitignored. The committed Secrets.xcconfig.template
+    # documents the required keys. Values are injected into the app's
+    # Info.plist (the `info` block below) via `$(KEY)` substituted at build
+    # time from the xcconfig, and read at runtime by `Secrets.swift`.
+    # NEVER commit Secrets.xcconfig.
+    configFiles:
+      Debug: Secrets.xcconfig
+      Release: Secrets.xcconfig
+    # Explicit Info.plist instead of GENERATE_INFOPLIST_FILE: Xcode only
+    # injects a fixed allow-list of INFOPLIST_KEY_* settings, so arbitrary
+    # custom keys (our API keys) need a real plist carrying `$(KEY)` tokens
+    # substituted at build time. The source plist holds only the tokens,
+    # never the secret values — safe to commit. (Replicates exactly what
+    # GENERATE_INFOPLIST_FILE produced: launch screen, single-scene
+    # manifest, portrait-only, display name, Face ID + camera usage.)
+    info:
+      path: UniApp/Info.plist
+      properties:
+        CFBundleDisplayName: Aperture
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
+        UILaunchScreen: {}
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: false
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+        # Required for LocalAuthentication biometric prompt (without it the
+        # app crashes on the first Face ID call) + AVCaptureSession QR scan.
+        NSFaceIDUsageDescription: "Aperture uses Face ID to unlock the app and confirm transactions, so you don't have to type your PIN every time."
+        NSCameraUsageDescription: "Aperture uses the camera to scan WalletConnect QR codes from dApps so you can pair them with this wallet."
+        # Secret API keys — `$(KEY)` substituted from Secrets.xcconfig at
+        # build time; the source plist never contains the real values.
+        LIFI_API_KEY: "$(LIFI_API_KEY)"
+        ANKR_API_TOKEN: "$(ANKR_API_TOKEN)"
+        ZEROX_API_KEY: "$(ZEROX_API_KEY)"
+        ONEINCH_API_KEY: "$(ONEINCH_API_KEY)"
     settings:
       base:
         PRODUCT_NAME: Aperture
         PRODUCT_BUNDLE_IDENTIFIER: com.thuglife.aperture
-        GENERATE_INFOPLIST_FILE: YES
         CURRENT_PROJECT_VERSION: "1"
         MARKETING_VERSION: "1.0"
-        INFOPLIST_KEY_UILaunchScreen_Generation: YES
-        INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
-        INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone: "UIInterfaceOrientationPortrait"
-        INFOPLIST_KEY_CFBundleDisplayName: Aperture
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
-        # NSFaceIDUsageDescription — required when calling LocalAuthentication's
-        # .deviceOwnerAuthenticationWithBiometrics policy on a device with Face ID.
-        # Without this Info.plist key the app crashes on the first biometric prompt
-        # ("NSFaceIDUsageDescription must be set").
-        INFOPLIST_KEY_NSFaceIDUsageDescription: "Aperture uses Face ID to unlock the app and confirm transactions, so you don't have to type your PIN every time."
-        # 2026-06-10 — required when calling AVCaptureSession from the
-        # in-app browser's `BrowserQRScanSheet` to scan WalletConnect
-        # URIs. Without this Info.plist key the camera permission
-        # prompt fails silently and the scanner never streams a frame.
-        INFOPLIST_KEY_NSCameraUsageDescription: "Aperture uses the camera to scan WalletConnect QR codes from dApps so you can pair them with this wallet."
         TARGETED_DEVICE_FAMILY: "1"
         IPHONEOS_DEPLOYMENT_TARGET: "26.0"
         SUPPORTS_MACCATALYST: NO

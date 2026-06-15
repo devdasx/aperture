@@ -310123,6 +310123,248 @@
           }
         }
       }
+    },
+    "Aperture couldn't load the swappable tokens for \\(chain.displayName) right now. Check your connection and try again.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aperture couldn't load the swappable tokens for \\(chain.displayName) right now. Check your connection and try again."
+          }
+        }
+      }
+    },
+    "Flip": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Flip"
+          }
+        }
+      }
+    },
+    "Flip the swap direction": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Flip the swap direction"
+          }
+        }
+      }
+    },
+    "Max slippage": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Max slippage"
+          }
+        }
+      }
+    },
+    "Minimum received": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Minimum received"
+          }
+        }
+      }
+    },
+    "No tokens available": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No tokens available"
+          }
+        }
+      }
+    },
+    "Nothing to swap yet": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nothing to swap yet"
+          }
+        }
+      }
+    },
+    "Pick a network, then the token. Choosing a different network than the other side bridges across chains.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pick a network, then the token. Choosing a different network than the other side bridges across chains."
+          }
+        }
+      }
+    },
+    "Price impact": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Price impact"
+          }
+        }
+      }
+    },
+    "Rate": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rate"
+          }
+        }
+      }
+    },
+    "Search networks": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Search networks"
+          }
+        }
+      }
+    },
+    "Search tokens": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Search tokens"
+          }
+        }
+      }
+    },
+    "Select token": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Select token"
+          }
+        }
+      }
+    },
+    "Signing is coming next": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Signing is coming next"
+          }
+        }
+      }
+    },
+    "Swap isn't configured": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Swap isn't configured"
+          }
+        }
+      }
+    },
+    "The swap service isn't set up for this network pair right now. Solana-to-Solana swaps still work.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The swap service isn't set up for this network pair right now. Solana-to-Solana swaps still work."
+          }
+        }
+      }
+    },
+    "This is a real, live quote — but Aperture doesn't sign and broadcast swaps yet. Nothing has been sent. On-device signing + broadcast lands in the next update, the same way sending did.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This is a real, live quote — but Aperture doesn't sign and broadcast swaps yet. Nothing has been sent. On-device signing + broadcast lands in the next update, the same way sending did."
+          }
+        }
+      }
+    },
+    "This wallet has no balance on a network Aperture can swap on yet. Receive some crypto on Ethereum, Base, Solana, or another supported network to get started.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This wallet has no balance on a network Aperture can swap on yet. Receive some crypto on Ethereum, Base, Solana, or another supported network to get started."
+          }
+        }
+      }
+    },
+    "You pay": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "You pay"
+          }
+        }
+      }
+    },
+    "You receive": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "You receive"
+          }
+        }
+      }
+    },
+    "You receive (estimated)": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "You receive (estimated)"
+          }
+        }
+      }
+    },
+    "service temporarily unavailable": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "service temporarily unavailable"
+          }
+        }
+      }
     }
   },
   "version": "1.0"
