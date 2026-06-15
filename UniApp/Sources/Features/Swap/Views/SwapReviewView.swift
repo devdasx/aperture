@@ -114,10 +114,10 @@ struct SwapReviewView: View {
                 )
             case .done(let executed):
                 SwapDoneView(
+                    summary: summary,
                     executed: executed,
                     isBridge: isBridge,
-                    receivedAmount: WalletFormatting.native(quote.toAmount, decimals: quote.toToken.decimals),
-                    receivedSymbol: quote.toToken.symbol,
+                    currencyCode: currencyCode,
                     onDone: onClose
                 )
             case .failed(let error):
@@ -755,26 +755,44 @@ private struct DirectionalPulse: View {
     }
 }
 
-// MARK: - Done state
+// MARK: - Done state (the swap receipt)
 
-/// The honest result surface for a broadcast swap. Three faces, never
-/// fabricated (Rule #16):
+/// The honest result surface for a broadcast swap — a full, detailed
+/// receipt the user can read like a wallet register, not a sparse
+/// placeholder. Three faces, never fabricated (Rule #16):
 /// - `confirmed == true`  → "Swapped" / "Bridged" with the received amount.
 /// - `confirmed == false` → submitted but reverted; nothing was swapped.
 /// - `confirmed == nil`   → submitted; confirming may take a moment.
-/// All three show the REAL tx hash (short + copy + a "View on explorer"
-/// link). The received-token note appears only on a confirmed swap (the
-/// executor auto-adds it only on success).
+///
+/// **The shape (a stacked register).** A status hero, a swap-detail card
+/// (the from→to block + the verbatim quote breakdown + max slippage +
+/// network), and a transaction card (hash + copy + explorer + timestamp).
+/// On a confirmed swap a quiet "added to your tokens" note appears. The
+/// detail card shows on ALL three faces — for a reverted/pending result it
+/// honestly reads as "this is what you submitted", with the hero making
+/// the unsettled status plain.
+///
+/// **Restraint (Rule #2 / #4 / #16).** Lean monochrome; status green only
+/// for a genuinely confirmed result, status orange only for a genuine
+/// revert, brand mark (never alarming red) for pending. Liquid Glass on the
+/// Done CTA via the system `UniButton`; opaque `UniCard`s for the content
+/// register (content is opaque, chrome is glass — B.3).
 private struct SwapDoneView: View {
+    let summary: SwapReviewSummary
     let executed: SwapExecutor.Executed
     let isBridge: Bool
-    let receivedAmount: String
-    let receivedSymbol: String
+    let currencyCode: String
     let onDone: () -> Void
 
+    /// The moment this receipt was assembled — the swap's completion time
+    /// (captured once when the view first appears). Honest: it stamps when
+    /// the result landed, not a fabricated on-chain timestamp.
+    @State private var completedAt = Date()
     @State private var didCopy: Bool = false
     @State private var copiedAt: Date?
     @State private var copyResetTask: Task<Void, Never>?
+
+    private var quote: SwapQuote { summary.quote }
 
     private var isConfirmed: Bool { executed.confirmed == true }
     private var isReverted: Bool { executed.confirmed == false }
@@ -785,50 +803,65 @@ private struct SwapDoneView: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            ScrollView {
-                VStack(spacing: UniSpacing.l) {
-                    hero
-                    if isConfirmed { receivedNote }
-                    hashCard
-                }
-                .padding(.horizontal, UniSpacing.l)
-                .padding(.top, UniSpacing.xl)
-                .padding(.bottom, UniSpacing.xxl)
+        ScrollView {
+            VStack(spacing: UniSpacing.l) {
+                hero
+                detailSection
+                transactionSection
+                if isConfirmed { receivedNote }
             }
-            .scrollIndicators(.hidden)
+            .padding(.horizontal, UniSpacing.l)
+            .padding(.top, UniSpacing.l)
+            .padding(.bottom, UniSpacing.xxl)
         }
+        .scrollIndicators(.hidden)
         .background(UniColors.Background.primary)
         .safeAreaInset(edge: .bottom) { doneBar }
+        .navigationTitle(navTitle)
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(true)
         .uniHaptic(.success, trigger: copiedAt)
         .onDisappear { copyResetTask?.cancel() }
     }
 
+    private var navTitle: LocalizedStringKey {
+        if isReverted { return "Receipt" }
+        if isPending { return isBridge ? "Bridge submitted" : "Swap submitted" }
+        return "Receipt"
+    }
+
+    // MARK: - Status hero
+
     private var hero: some View {
-        VStack(spacing: UniSpacing.s) {
+        VStack(spacing: UniSpacing.xs) {
             Image(systemName: heroSymbol)
-                .font(.system(size: 56, weight: .regular))
+                .font(.system(size: 54, weight: .regular))
                 .symbolRenderingMode(.hierarchical)
                 .foregroundStyle(heroColor)
                 .symbolEffect(.bounce, options: .nonRepeating)
                 .accessibilityHidden(true)
+                .padding(.bottom, UniSpacing.xxs)
             UniLargeTitle(text: heroTitle, alignment: .center)
             if isConfirmed {
-                Text(verbatim: "\(receivedAmount) \(receivedSymbol)")
-                    .font(UniTypography.title3.monospacedDigit())
-                    .foregroundStyle(UniColors.Text.secondary)
+                Text(verbatim: "+\(WalletFormatting.native(quote.toAmount, decimals: quote.toToken.decimals)) \(quote.toToken.symbol)")
+                    .font(.system(.title2, design: .rounded, weight: .semibold).monospacedDigit())
+                    .foregroundStyle(UniColors.Status.successForeground)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.5)
                     .environment(\.layoutDirection, .leftToRight)
+                    .padding(.top, UniSpacing.xxs)
             }
             UniBody(text: heroBody, alignment: .center, color: UniColors.Text.secondary)
                 .fixedSize(horizontal: false, vertical: true)
+                .padding(.top, UniSpacing.xxs)
         }
+        .frame(maxWidth: .infinity)
+        .padding(.bottom, UniSpacing.xs)
     }
 
     private var heroSymbol: String {
-        if isReverted { return "exclamationmark.triangle" }
-        if isPending { return "clock" }
+        if isReverted { return "xmark.circle.fill" }
+        if isPending { return "clock.badge.checkmark" }
         return "checkmark.circle.fill"
     }
 
@@ -849,18 +882,213 @@ private struct SwapDoneView: View {
             return "The transaction was submitted but reverted on-chain. Nothing was swapped — your funds didn't move."
         }
         if isPending {
-            return "Submitted to the \(executed.chain.displayName) network. Confirming on-chain may take a moment — check the explorer for the final result."
+            return "Submitted to the \(executed.chain.displayName) network. Confirming may take a moment — check the explorer for the final result."
         }
         return isBridge
             ? "Your funds are on their way. A bridge can take a few minutes to arrive on the destination network."
-            : "Broadcast to the \(executed.chain.displayName) network and confirmed on-chain."
+            : "Broadcast to \(executed.chain.displayName) and confirmed on-chain."
     }
 
-    /// Only shown on a confirmed swap — the executor auto-adds the received
-    /// token to your tokens on success (Rule #16 — honest about what landed).
+    // MARK: - Detail section (the swap, restated honestly)
+
+    private var detailSection: some View {
+        VStack(alignment: .leading, spacing: UniSpacing.s) {
+            sectionLabel(detailLabel)
+            // The transfer block + slippage/network lines in one opaque
+            // register card.
+            UniCard {
+                VStack(spacing: UniSpacing.m) {
+                    transferBlock
+                    UniDivider()
+                    extraRows
+                }
+            }
+            // The verbatim provider breakdown — its own complete card
+            // (`SwapQuotePanel` owns its surface). Kept a sibling rather
+            // than nested so no card stacks on a card (Rule #2 B.3 —
+            // single-layered content surfaces).
+            SwapQuotePanel(
+                quote: quote,
+                isCrossChain: isBridge,
+                currencyCode: currencyCode
+            )
+        }
+    }
+
+    /// On a confirmed swap this card reports what happened; on a
+    /// reverted/pending result it honestly reads as "this is what you
+    /// submitted" (Rule #16 — the figures are the user's, not a claim it
+    /// settled).
+    private var detailLabel: LocalizedStringKey {
+        if isConfirmed { return isBridge ? "Bridge" : "Swap" }
+        return isBridge ? "Bridge you submitted" : "Swap you submitted"
+    }
+
+    /// The from → to transfer block — each side with its `CoinMark`, amount
+    /// (monospaced, LTR-locked), symbol, and network, with a direction glyph
+    /// between (down for a swap, left↔right for a bridge).
+    private var transferBlock: some View {
+        VStack(spacing: UniSpacing.s) {
+            transferRow(
+                token: quote.fromToken,
+                amount: summary.fromAmount,
+                caption: "You paid",
+                signPrefix: "−"
+            )
+            HStack {
+                Image(systemName: isBridge ? "arrow.left.arrow.right" : "arrow.down")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(UniColors.Icon.secondary)
+                    .accessibilityHidden(true)
+                Spacer()
+            }
+            .padding(.leading, UniSpacing.xs)
+            transferRow(
+                token: quote.toToken,
+                amount: quote.toAmount,
+                caption: isConfirmed ? "You received" : "You receive (estimated)",
+                signPrefix: "+"
+            )
+        }
+    }
+
+    private func transferRow(token: SwapToken, amount: Decimal, caption: LocalizedStringKey, signPrefix: String) -> some View {
+        HStack(spacing: UniSpacing.s) {
+            CoinMark(
+                chain: token.chain,
+                tokenSymbol: token.symbol,
+                contract: token.isNative ? nil : token.address,
+                customIconURL: token.logoURI
+            )
+            .frame(width: 36, height: 36)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(caption)
+                    .font(UniTypography.caption1)
+                    .foregroundStyle(UniColors.Text.tertiary)
+                Text(verbatim: token.chain.displayName)
+                    .font(UniTypography.footnote)
+                    .foregroundStyle(UniColors.Text.secondary)
+            }
+            Spacer(minLength: UniSpacing.s)
+            VStack(alignment: .trailing, spacing: 2) {
+                Text(verbatim: "\(signPrefix)\(WalletFormatting.native(amount, decimals: token.decimals))")
+                    .font(.system(.title3, design: .rounded, weight: .semibold).monospacedDigit())
+                    .foregroundStyle(UniColors.Text.primary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.5)
+                Text(verbatim: token.symbol)
+                    .font(UniTypography.footnote)
+                    .foregroundStyle(UniColors.Text.secondary)
+            }
+            .environment(\.layoutDirection, .leftToRight)
+        }
+    }
+
+    /// The two breakdown lines `SwapQuotePanel` doesn't carry — the slippage
+    /// tolerance used for this quote and the settlement network.
+    private var extraRows: some View {
+        VStack(spacing: 0) {
+            detailRow(
+                label: "Max slippage",
+                value: SwapComposeModel.slippageLabel(bps: summary.slippageBps)
+            )
+            UniDivider()
+            detailRow(
+                label: "Network",
+                value: executed.chain.displayName
+            )
+        }
+    }
+
+    private func detailRow(label: LocalizedStringKey, value: String) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: UniSpacing.s) {
+            Text(label)
+                .font(UniTypography.footnote)
+                .foregroundStyle(UniColors.Text.secondary)
+            Spacer(minLength: UniSpacing.s)
+            Text(verbatim: value)
+                .font(UniTypography.footnote.monospacedDigit())
+                .foregroundStyle(UniColors.Text.primary)
+                .lineLimit(1)
+                .multilineTextAlignment(.trailing)
+                .environment(\.layoutDirection, .leftToRight)
+        }
+        .padding(.vertical, UniSpacing.s)
+    }
+
+    // MARK: - Transaction section
+
+    private var transactionSection: some View {
+        VStack(alignment: .leading, spacing: UniSpacing.s) {
+            sectionLabel("Transaction")
+            UniCard {
+                VStack(alignment: .leading, spacing: 0) {
+                    HStack(alignment: .firstTextBaseline, spacing: UniSpacing.s) {
+                        Text("Hash")
+                            .font(UniTypography.footnote)
+                            .foregroundStyle(UniColors.Text.secondary)
+                        Spacer(minLength: UniSpacing.s)
+                        Text(verbatim: WalletFormatting.shortAddress(executed.txHash, prefix: 8, suffix: 6))
+                            .font(.system(.footnote, design: .monospaced))
+                            .foregroundStyle(UniColors.Text.primary)
+                            .environment(\.layoutDirection, .leftToRight)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                        copyButton
+                    }
+                    .padding(.vertical, UniSpacing.s)
+                    UniDivider()
+                    detailRow(label: "Time", value: timestampText)
+                    if let explorerURL {
+                        UniDivider()
+                        Link(destination: explorerURL) {
+                            HStack(spacing: UniSpacing.xs) {
+                                Text("View on explorer")
+                                    .font(UniTypography.subheadlineEmphasized)
+                                Spacer(minLength: 0)
+                                Image(systemName: "arrow.up.right")
+                                    .font(.system(size: 13, weight: .semibold))
+                            }
+                            .foregroundStyle(UniColors.Text.link)
+                            .padding(.vertical, UniSpacing.s)
+                            .contentShape(Rectangle())
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// Today → time only; otherwise a compact date + time. `Date.FormatStyle`
+    /// (Rule #3 — no hand-rolled formatting).
+    private var timestampText: String {
+        if Calendar.current.isDateInToday(completedAt) {
+            return completedAt.formatted(date: .omitted, time: .shortened)
+        }
+        return completedAt.formatted(date: .abbreviated, time: .shortened)
+    }
+
+    private var copyButton: some View {
+        Button {
+            copyHash()
+        } label: {
+            Image(systemName: didCopy ? "checkmark" : "doc.on.doc")
+                .font(.system(size: 15, weight: .semibold))
+                .frame(width: 30, height: 30)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(didCopy ? UniColors.Status.successForeground : UniColors.Text.link)
+        .accessibilityLabel(Text("Copy transaction hash"))
+    }
+
+    // MARK: - Received-token note (confirmed only)
+
+    /// Only on a confirmed swap — the executor auto-adds the received token
+    /// to your tokens on success (Rule #16 — honest about what landed).
     private var receivedNote: some View {
         Label {
-            Text("\(receivedSymbol) was added to your tokens.")
+            Text("\(quote.toToken.symbol) was added to your tokens.")
                 .font(UniTypography.footnote)
                 .foregroundStyle(UniColors.Text.secondary)
         } icon: {
@@ -876,52 +1104,17 @@ private struct SwapDoneView: View {
         )
     }
 
-    private var hashCard: some View {
-        UniCard {
-            VStack(alignment: .leading, spacing: UniSpacing.s) {
-                Text("Transaction")
-                    .font(UniTypography.footnote)
-                    .foregroundStyle(UniColors.Text.tertiary)
-                HStack(spacing: UniSpacing.s) {
-                    Text(verbatim: WalletFormatting.shortAddress(executed.txHash, prefix: 10, suffix: 8))
-                        .font(.system(.subheadline, design: .monospaced))
-                        .foregroundStyle(UniColors.Text.primary)
-                        .environment(\.layoutDirection, .leftToRight)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                    Spacer(minLength: UniSpacing.s)
-                    copyButton
-                }
-                if let explorerURL {
-                    Link(destination: explorerURL) {
-                        HStack(spacing: UniSpacing.xs) {
-                            Image(systemName: "safari")
-                                .font(.system(size: 14, weight: .semibold))
-                            Text("View on explorer")
-                                .font(UniTypography.subheadlineEmphasized)
-                        }
-                        .foregroundStyle(UniColors.Text.link)
-                        .padding(.top, UniSpacing.xxs)
-                        .contentShape(Rectangle())
-                    }
-                }
-            }
-        }
+    // MARK: - Section label
+
+    private func sectionLabel(_ text: LocalizedStringKey) -> some View {
+        Text(text)
+            .font(UniTypography.footnote)
+            .foregroundStyle(UniColors.Text.tertiary)
+            .textCase(.uppercase)
+            .padding(.leading, UniSpacing.xs)
     }
 
-    private var copyButton: some View {
-        Button {
-            copyHash()
-        } label: {
-            Image(systemName: didCopy ? "checkmark" : "doc.on.doc")
-                .font(.system(size: 16, weight: .semibold))
-                .frame(width: 32, height: 32)
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .foregroundStyle(didCopy ? UniColors.Status.successForeground : UniColors.Text.link)
-        .accessibilityLabel(Text("Copy transaction hash"))
-    }
+    // MARK: - Done bar
 
     private var doneBar: some View {
         GlassEffectContainer(spacing: UniSpacing.s) {
