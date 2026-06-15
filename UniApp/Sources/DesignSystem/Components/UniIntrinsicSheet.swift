@@ -173,6 +173,22 @@ private struct UniIntrinsicHeightSheetModifier: ViewModifier {
             }
             .presentationDetents(currentDetents)
             .presentationDragIndicator(.visible)
+            // iPad / Mac form-sheet sizing (Rule #3 — native iOS 18+ API).
+            // On COMPACT width (iPhone) `.presentationSizing(.fitted)` defers
+            // to the bottom-sheet `.presentationDetents` set above, so the
+            // iPhone experience is byte-for-byte unchanged — the
+            // `[.height(intrinsicHeight)]` / `.large` detent logic still
+            // owns the height. On REGULAR width (iPad / Mac) the system
+            // presents a centered form sheet that IGNORES `.height(_)`
+            // detents and otherwise falls back to a FIXED form-sheet height
+            // that CLIPS taller content (the create-wallet disclosure sheet's
+            // ack toggle + buttons were cut off — user-reported iPad bug
+            // 2026-06-16). `.fitted` makes the regular-width form sheet size
+            // to its content's intrinsic height instead, so the same
+            // content-sized behavior the iPhone already has now applies on
+            // iPad. The inner `ScrollView` in `UniSheet` still absorbs any
+            // overflow if content exceeds the system's form-sheet cap.
+            .presentationSizing(.fitted)
     }
 
     /// Decided detent set, computed from the latest intrinsic and
@@ -243,5 +259,48 @@ extension View {
     /// both on the same call site.
     func intrinsicHeightSheet() -> some View {
         modifier(UniIntrinsicHeightSheetModifier())
+    }
+
+    /// **The single canonical detent + iPad-sizing modifier** for every
+    /// explicit-detent sheet in UniApp. Replaces the bare
+    /// `.presentationDetents(_:)` call at the ~25 sheet sites that use
+    /// fixed `[.large]` / `[.medium]` / `[.medium, .large]` detents
+    /// (Receive, Swap, Browser, Send review/fee, the Settings nav
+    /// sheets, etc.).
+    ///
+    /// **What it does, and why it's one modifier not 25 edits.** It
+    /// applies the passed `detents` exactly as before AND adds the
+    /// native iOS 18+ `.presentationSizing(.fitted)` so the fix lands
+    /// at one shared surface that every call site adopts, instead of
+    /// 25 hand-edits that drift apart over time.
+    ///
+    /// **Compact width (iPhone) — unchanged.** On compact width
+    /// `.presentationSizing(.fitted)` defers to the bottom-sheet
+    /// `detents`, so the iPhone presentation is byte-for-byte identical
+    /// to the prior `.presentationDetents(detents)` call. The detents
+    /// still rule the height; nothing about the iPhone sheet moves.
+    ///
+    /// **Regular width (iPad / Mac) — fixed.** The system presents a
+    /// centered form sheet that ignores the bottom-sheet `detents` and
+    /// otherwise falls back to a FIXED form-sheet height that CLIPS
+    /// taller content (user-reported iPad bug 2026-06-16). `.fitted`
+    /// makes the regular-width form sheet size to its content instead,
+    /// so iPad sheets fit their content the way iPhone sheets already
+    /// do. Content that genuinely overflows a fitted form sheet must
+    /// live inside a `ScrollView` so it scrolls rather than clips.
+    ///
+    /// **Usage** (drop-in replacement for `.presentationDetents`):
+    /// ```swift
+    /// .sheet(isPresented: $isShowing) {
+    ///     SomeSheet()
+    ///         .uniAppEnvironment()
+    ///         .uniSheetDetents([.large])
+    ///         .presentationBackground(UniColors.Background.primary)
+    /// }
+    /// ```
+    func uniSheetDetents(_ detents: Set<PresentationDetent>) -> some View {
+        self
+            .presentationDetents(detents)
+            .presentationSizing(.fitted)
     }
 }

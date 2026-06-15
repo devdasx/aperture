@@ -117,7 +117,7 @@ struct ReceiveView: View {
                     onSaved: {}
                 )
                 .uniAppEnvironment()
-                .presentationDetents([.large])
+                .uniSheetDetents([.large])
                 .presentationBackground(UniColors.Background.primary)
             }
             .navigationDestination(for: ReceiveDestination.self) { destination in

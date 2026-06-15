@@ -138,7 +138,7 @@ struct AdvancedSettingsView: View {
             )
             .id(sheetDirectionKey)
             .uniAppEnvironment()
-            .presentationDetents([.large])
+            .uniSheetDetents([.large])
             .presentationBackground(UniColors.Background.primary)
         }
         .alert(

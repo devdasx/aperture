@@ -766,7 +766,7 @@ struct WalletHomeView: View {
             ReceiveView(navigationPath: $receivePath)
                 .id(sheetDirectionKey)
                 .uniAppEnvironment()
-                .presentationDetents([.large])
+                .uniSheetDetents([.large])
                 .presentationDragIndicator(.visible)
                 .presentationBackground(UniColors.Background.primary)
         }
@@ -778,7 +778,7 @@ struct WalletHomeView: View {
             SendView(navigationPath: $sendPath)
                 .id(sheetDirectionKey)
                 .uniAppEnvironment()
-                .presentationDetents([.large])
+                .uniSheetDetents([.large])
                 .presentationDragIndicator(.visible)
                 .presentationBackground(UniColors.Background.primary)
         }
@@ -791,7 +791,7 @@ struct WalletHomeView: View {
             SwapView(navigationPath: $swapPath)
                 .id(sheetDirectionKey)
                 .uniAppEnvironment()
-                .presentationDetents([.large])
+                .uniSheetDetents([.large])
                 .presentationDragIndicator(.visible)
                 .presentationBackground(UniColors.Background.primary)
         }
@@ -809,7 +809,7 @@ struct WalletHomeView: View {
             WalletHomeFilterSheet(searchPreview: filterSearchText)
                 .id(sheetDirectionKey)
                 .uniAppEnvironment()
-                .presentationDetents([.large])
+                .uniSheetDetents([.large])
                 .presentationDragIndicator(.visible)
                 .presentationBackground(UniColors.Background.primary)
         }
@@ -841,7 +841,7 @@ struct WalletHomeView: View {
                 }
             )
             .uniAppEnvironment()
-            .presentationDetents([.large])
+            .uniSheetDetents([.large])
             .presentationBackground(UniColors.Background.primary)
         }
         .fullScreenCover(isPresented: $isShowingCreate, onDismiss: { createPath = NavigationPath() }) {
@@ -872,7 +872,7 @@ struct WalletHomeView: View {
         .sheet(item: customiseTargetBinding) { target in
             WalletIconPickerSheet(walletId: target.walletId)
                 .uniAppEnvironment()
-                .presentationDetents([.large])
+                .uniSheetDetents([.large])
                 .presentationBackground(UniColors.Background.primary)
         }
     }
