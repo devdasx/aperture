@@ -29,6 +29,12 @@ import Foundation
 actor SwapQuoteService {
     private let lifi: LiFiClient
     private let jupiter: JupiterClient
+    /// Independent same-chain EVM aggregators raced against Li.Fi for the
+    /// best output. Each self-excludes (throws `.unsupportedPair`) for a
+    /// cross-chain / non-EVM / unsupported pair, so the race transparently
+    /// falls back to Li.Fi. Keyless (Rule #16 — no new secrets).
+    private let kyber: KyberSwapClient
+    private let openocean: OpenOceanClient
 
     /// Token-universe cache: `chain → (tokens, fetchedAt)`. Reference
     /// data, refreshed lazily. Quotes are never cached.
@@ -37,9 +43,16 @@ actor SwapQuoteService {
 
     static let shared = SwapQuoteService()
 
-    init(lifi: LiFiClient = LiFiClient(), jupiter: JupiterClient = JupiterClient()) {
+    init(
+        lifi: LiFiClient = LiFiClient(),
+        jupiter: JupiterClient = JupiterClient(),
+        kyber: KyberSwapClient = KyberSwapClient(),
+        openocean: OpenOceanClient = OpenOceanClient()
+    ) {
         self.lifi = lifi
         self.jupiter = jupiter
+        self.kyber = kyber
+        self.openocean = openocean
     }
 
     // MARK: - Quote
@@ -66,11 +79,43 @@ actor SwapQuoteService {
         let fromKind = SwapChainMap.kind(for: request.fromToken.chain)
         let toKind = SwapChainMap.kind(for: request.toToken.chain)
 
-        // Solana → Solana ⇒ Jupiter. Everything else ⇒ Li.Fi.
+        // Solana → Solana ⇒ Jupiter. Everything else ⇒ the EVM race.
         if fromKind == .solana && toKind == .solana {
             return try await jupiter.quote(request)
         }
-        return try await lifi.quote(request)
+        return try await racedEVMQuote(request)
+    }
+
+    /// Race Li.Fi + the same-chain EVM aggregators (KyberSwap, OpenOcean)
+    /// concurrently and return the quote with the best output. The
+    /// aggregators are best-effort: each throws `.unsupportedPair` for a
+    /// cross-chain bridge / unsupported chain (so only Li.Fi answers there),
+    /// and a transient failure / rate-limit just drops that racer. Slippage
+    /// is identical across providers (we pass the same `slippageBps`), so the
+    /// higher `toAmount` is also the higher slippage-protected floor — picking
+    /// max `toAmount` gives the user the genuine best fill (Rule #16/#26).
+    /// Li.Fi is the baseline and the source of the honest error if ALL fail.
+    private func racedEVMQuote(_ request: SwapQuoteRequest) async throws(SwapError) -> SwapQuote {
+        // Best-effort aggregators — `try?` drops any failure (self-exclusion,
+        // rate-limit, no-route) so a losing racer never sinks the swap.
+        async let kyberOpt = try? await self.kyber.quote(request)
+        async let openoceanOpt = try? await self.openocean.quote(request)
+
+        // Li.Fi baseline — keep its typed error to surface honestly if every
+        // provider fails (never a fabricated quote).
+        var lifiQuote: SwapQuote?
+        var lifiError: SwapError?
+        do {
+            lifiQuote = try await lifi.quote(request)
+        } catch let error {
+            lifiError = error
+        }
+
+        let candidates = [lifiQuote, await kyberOpt, await openoceanOpt].compactMap { $0 }
+        guard let best = candidates.max(by: { $0.toAmount < $1.toAmount }) else {
+            throw lifiError ?? .invalidResponse("no swap route available right now")
+        }
+        return best
     }
 
     // MARK: - Tokens

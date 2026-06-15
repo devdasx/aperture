@@ -110,7 +110,10 @@ struct SwapExecutor {
         let quote = summary.quote
         guard !quote.isExpired else { return .failure(.quoteExpired) }
         switch quote.provider {
-        case .lifi:
+        case .lifi, .kyberswap, .openocean:
+            // Every EVM aggregator signs the same evmTx (to/data/value) +
+            // ERC-20 approval path; the producing client already gated the
+            // router/spender against SwapRouterAllowlist.
             return await executeEVM(quote: quote, walletId: walletId, passphrase: passphrase, onPhase: onPhase)
         case .jupiter:
             return await executeSolana(quote: quote, walletId: walletId, passphrase: passphrase, onPhase: onPhase)
