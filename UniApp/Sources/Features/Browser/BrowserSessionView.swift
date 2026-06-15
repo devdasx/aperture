@@ -145,7 +145,7 @@ struct BrowserSessionView: View {
             )
             .id(sheetDirectionKey)
             .uniAppEnvironment()
-            .presentationDetents([.medium, .large])
+            .uniSheetDetents([.medium, .large])
             .presentationDragIndicator(.visible)
             .presentationBackground(UniColors.Background.primary)
         }
@@ -171,7 +171,7 @@ struct BrowserSessionView: View {
             }
             .id(sheetDirectionKey)
             .uniAppEnvironment()
-            .presentationDetents([.large])
+            .uniSheetDetents([.large])
             .presentationDragIndicator(.visible)
             .presentationBackground(UniColors.Background.primary)
         }

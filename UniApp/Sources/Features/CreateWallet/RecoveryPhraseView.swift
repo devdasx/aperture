@@ -180,7 +180,7 @@ struct RecoveryPhraseView: View {
                 onDismiss: { isShowingRollYourOwn = false }
             )
             .uniAppEnvironment()
-            .presentationDetents([.large])
+            .uniSheetDetents([.large])
             .presentationDragIndicator(.visible)
             .presentationBackground(UniColors.Background.primary)
         }

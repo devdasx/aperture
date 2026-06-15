@@ -38,7 +38,7 @@ struct SendFeeSheet: View {
                     }
                 }
         }
-        .presentationDetents([.medium, .large])
+        .uniSheetDetents([.medium, .large])
         .presentationDragIndicator(.visible)
         .presentationBackground(UniColors.Background.primary)
     }

@@ -249,7 +249,7 @@ struct MainTabView: View {
             if let active = activeWallet {
                 WalletIconPickerSheet(walletId: active.id)
                     .uniAppEnvironment()
-                    .presentationDetents([.large])
+                    .uniSheetDetents([.large])
                     .presentationDragIndicator(.visible)
                     .presentationBackground(UniColors.Background.primary)
             }
@@ -266,7 +266,7 @@ struct MainTabView: View {
                     WalletDetailView(walletId: active.id)
                 }
                 .uniAppEnvironment()
-                .presentationDetents([.large])
+                .uniSheetDetents([.large])
                 .presentationDragIndicator(.visible)
                 .presentationBackground(UniColors.Background.primary)
             }

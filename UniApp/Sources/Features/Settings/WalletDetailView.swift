@@ -281,19 +281,19 @@ struct WalletDetailView: View {
                 }
             )
             .uniAppEnvironment()
-            .presentationDetents([.large])
+            .uniSheetDetents([.large])
             .presentationBackground(UniColors.Background.primary)
         }
         .sheet(isPresented: $isShowingPhrase) {
             RecoveryPhraseRevealSheet(walletId: wallet.id)
                 .uniAppEnvironment()
-                .presentationDetents([.large])
+                .uniSheetDetents([.large])
                 .presentationBackground(UniColors.Background.primary)
         }
         .sheet(isPresented: $isShowingKey) {
             PrivateKeyRevealSheet(walletId: wallet.id)
                 .uniAppEnvironment()
-                .presentationDetents([.large])
+                .uniSheetDetents([.large])
                 .presentationBackground(UniColors.Background.primary)
         }
         .sheet(isPresented: $isShowingBackupFlow) {
@@ -309,7 +309,7 @@ struct WalletDetailView: View {
                 onCompleted: {}
             )
             .uniAppEnvironment()
-            .presentationDetents([.large])
+            .uniSheetDetents([.large])
             .presentationBackground(UniColors.Background.primary)
         }
         .sheet(item: $biometricChallenge) { challenge in
@@ -325,7 +325,7 @@ struct WalletDetailView: View {
         .sheet(isPresented: $isShowingIconPicker) {
             WalletIconPickerSheet(walletId: wallet.id)
                 .uniAppEnvironment()
-                .presentationDetents([.large])
+                .uniSheetDetents([.large])
                 .presentationBackground(UniColors.Background.primary)
         }
     }

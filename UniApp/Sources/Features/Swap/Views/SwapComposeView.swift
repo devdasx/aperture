@@ -82,7 +82,7 @@ struct SwapComposeView: View {
             MaxSlippageSheet(model: model)
                 .id(sheetDirectionKey)
                 .uniAppEnvironment()
-                .presentationDetents([.medium])
+                .uniSheetDetents([.medium])
                 .presentationDragIndicator(.visible)
                 .presentationBackground(UniColors.Background.primary)
         }
@@ -641,7 +641,7 @@ private struct MaxSlippageSheet: View {
                 )
                 .id(sheetDirectionKey)
                 .uniAppEnvironment()
-                .presentationDetents([.medium])
+                .uniSheetDetents([.medium])
                 .presentationDragIndicator(.visible)
                 .presentationBackground(UniColors.Background.primary)
             }

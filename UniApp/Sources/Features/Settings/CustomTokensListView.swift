@@ -70,7 +70,7 @@ struct CustomTokensListView: View {
                 onSaved: {}
             )
             .uniAppEnvironment()
-            .presentationDetents([.large])
+            .uniSheetDetents([.large])
             .presentationBackground(UniColors.Background.primary)
         }
         .alert(

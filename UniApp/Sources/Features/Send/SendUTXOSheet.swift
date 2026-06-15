@@ -35,7 +35,7 @@ struct SendUTXOSheet: View {
                     }
                 }
         }
-        .presentationDetents([.large])
+        .uniSheetDetents([.large])
         .presentationDragIndicator(.visible)
         .presentationBackground(UniColors.Background.primary)
     }

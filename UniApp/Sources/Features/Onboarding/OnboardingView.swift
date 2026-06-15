@@ -188,7 +188,7 @@ struct OnboardingView: View {
             OnboardingSettingsView(navigationPath: $settingsPath)
                 .id(sheetDirectionKey)
                 .uniAppEnvironment()
-                .presentationDetents([.large])
+                .uniSheetDetents([.large])
                 .presentationDragIndicator(.visible)
                 .presentationBackground(UniColors.Background.primary)
         }

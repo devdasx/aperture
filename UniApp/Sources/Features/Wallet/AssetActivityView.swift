@@ -114,7 +114,7 @@ struct AssetActivityView: View {
             )
             .id(sheetDirectionKey)
             .uniAppEnvironment()
-            .presentationDetents([.large])
+            .uniSheetDetents([.large])
             .presentationDragIndicator(.visible)
             .presentationBackground(UniColors.Background.primary)
         }

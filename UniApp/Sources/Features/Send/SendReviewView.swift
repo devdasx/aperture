@@ -143,7 +143,7 @@ struct SendReviewView: View {
                 }
             )
             .uniAppEnvironment()
-            .presentationDetents([.medium])
+            .uniSheetDetents([.medium])
             .presentationDragIndicator(.visible)
             .presentationBackground(UniColors.Background.primary)
         }
