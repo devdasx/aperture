@@ -804,24 +804,20 @@ private struct SwapDoneView: View {
     }
 
     var body: some View {
-        // The status hero sits ABOVE a native inset-grouped List (the
-        // Settings.app register the user expects), with the Done CTA pinned
-        // at the bottom. Content is the opaque List; chrome is the glass CTA
-        // (Rule #2 §B.3). The List IS the on-system content pattern
-        // (Rule #3 — system controls before custom).
-        VStack(spacing: 0) {
-            hero
-                .padding(.horizontal, UniSpacing.l)
-                .padding(.top, UniSpacing.l)
-            detailList
-        }
-        .background(UniColors.Background.primary)
-        .safeAreaInset(edge: .bottom) { doneBar }
-        .navigationTitle(navTitle)
-        .navigationBarTitleDisplayMode(.inline)
-        .navigationBarBackButtonHidden(true)
-        .uniHaptic(.success, trigger: copiedAt)
-        .onDisappear { copyResetTask?.cancel() }
+        // The whole receipt is ONE scroll: the status hero is folded into
+        // the List as its first (cleared) row, so it scrolls away together
+        // with the detail sections. The Done CTA stays PINNED at the bottom
+        // as a safe-area inset (outside the scroll). Content is the opaque
+        // List; chrome is the glass CTA (Rule #2 §B.3). The List IS the
+        // on-system content pattern (Rule #3 — system controls before custom).
+        detailList
+            .background(UniColors.Background.primary)
+            .safeAreaInset(edge: .bottom) { doneBar }
+            .navigationTitle(navTitle)
+            .navigationBarTitleDisplayMode(.inline)
+            .navigationBarBackButtonHidden(true)
+            .uniHaptic(.success, trigger: copiedAt)
+            .onDisappear { copyResetTask?.cancel() }
     }
 
     // MARK: - Detail list (native inset-grouped register)
@@ -833,6 +829,7 @@ private struct SwapDoneView: View {
     /// now native iOS.
     private var detailList: some View {
         List {
+            heroSection
             transferSection
             quoteSection
             transactionListSection
@@ -842,6 +839,26 @@ private struct SwapDoneView: View {
         .scrollContentBackground(.hidden)
         .background(UniColors.Background.primary)
         .scrollIndicators(.hidden)
+    }
+
+    /// The status hero, folded into the List as its first row so it scrolls
+    /// with the receipt sections (one scroll surface). A cleared,
+    /// separator-less, edge-to-edge row reads as a free-floating header —
+    /// NOT a boxed grouped cell — keeping the exact centered padding it had
+    /// when it sat above the List. The Done CTA remains pinned below.
+    private var heroSection: some View {
+        Section {
+            hero
+                .padding(.horizontal, UniSpacing.l)
+                .listRowBackground(Color.clear)
+                .listRowSeparator(.hidden)
+                .listRowInsets(EdgeInsets(
+                    top: UniSpacing.l,
+                    leading: 0,
+                    bottom: UniSpacing.s,
+                    trailing: 0
+                ))
+        }
     }
 
     private var navTitle: LocalizedStringKey {
@@ -1250,19 +1267,16 @@ private struct SwapFailedView: View {
     }
 
     var body: some View {
-        // Hero above a native inset-grouped List carrying the honest failure
-        // copy, CTA bar pinned at the bottom (Rule #2 §B.3 — opaque content,
-        // glass chrome; Rule #3 — system List).
-        VStack(spacing: 0) {
-            hero
-                .padding(.horizontal, UniSpacing.l)
-                .padding(.top, UniSpacing.xl)
-            messageList
-        }
-        .background(UniColors.Background.primary)
-        .safeAreaInset(edge: .bottom) { actionBar }
-        .navigationBarTitleDisplayMode(.inline)
-        .navigationBarBackButtonHidden(true)
+        // The whole screen is ONE scroll: the failure hero is folded into the
+        // List as its first (cleared) row, so it scrolls away with the honest
+        // failure copy. The CTA bar stays PINNED at the bottom as a safe-area
+        // inset (outside the scroll). Rule #2 §B.3 — opaque content, glass
+        // chrome; Rule #3 — system List.
+        messageList
+            .background(UniColors.Background.primary)
+            .safeAreaInset(edge: .bottom) { actionBar }
+            .navigationBarTitleDisplayMode(.inline)
+            .navigationBarBackButtonHidden(true)
     }
 
     private var hero: some View {
@@ -1273,6 +1287,27 @@ private struct SwapFailedView: View {
                 .foregroundStyle(isRefusal ? UniColors.Brand.mark : UniColors.Status.warningForeground)
                 .accessibilityHidden(true)
             UniLargeTitle(text: failureTitle, alignment: .center)
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    /// The failure hero, folded into the List as its first row so it scrolls
+    /// with the failure copy (one scroll surface). A cleared, separator-less,
+    /// edge-to-edge row reads as a free-floating header — NOT a boxed grouped
+    /// cell — keeping the exact centered padding it had when it sat above the
+    /// List. The CTA bar remains pinned below.
+    private var heroSection: some View {
+        Section {
+            hero
+                .padding(.horizontal, UniSpacing.l)
+                .listRowBackground(Color.clear)
+                .listRowSeparator(.hidden)
+                .listRowInsets(EdgeInsets(
+                    top: UniSpacing.xl,
+                    leading: 0,
+                    bottom: UniSpacing.s,
+                    trailing: 0
+                ))
         }
     }
 
@@ -1293,6 +1328,7 @@ private struct SwapFailedView: View {
 
     private var messageList: some View {
         List {
+            heroSection
             Section {
                 Text(verbatim: error.message)
                     .font(UniTypography.body)
