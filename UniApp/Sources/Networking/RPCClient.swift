@@ -106,6 +106,25 @@ actor RPCClient {
         return str
     }
 
+    /// Typed wrapper for JSON-RPC calls whose `result` is a bare JSON
+    /// number (e.g. Substrate's `system_accountNextIndex` → the account
+    /// nonce as an integer). Returns `UInt64`; throws if the result isn't
+    /// a non-negative number. Bridges the gap left by `callJSONString`
+    /// (string result) and `callJSONResultData` (object/array result).
+    func callJSONUInt64(
+        chain: SupportedChain,
+        method: String,
+        params: [Sendable],
+        validatesIDEcho: Bool = true
+    ) async throws(RPCError) -> UInt64 {
+        let result = try await callJSON(
+            chain: chain, method: method, params: params, validatesIDEcho: validatesIDEcho
+        )
+        if let n = result as? NSNumber { return n.uint64Value }
+        if let s = result as? String, let n = UInt64(s) { return n }
+        throw .invalidResponse("\(method) result was not a number")
+    }
+
     /// JSON-RPC calls whose `result` is a JSON object or array.
     /// Returns the `result` field **re-serialized as `Data`** so
     /// the caller can decode it in its own isolation —
@@ -485,6 +504,198 @@ actor RPCClient {
             }
             if !(200..<300).contains(http.statusCode) {
                 throw .invalidResponse("HTTP \(http.statusCode) from \(endpoint.id)")
+            }
+        }
+        return responseData
+    }
+
+    /// Dispatch a REST POST with a **raw string body** (and an explicit
+    /// `Content-Type`) against `chain`'s registered REST endpoints, with
+    /// the same fallback rotation + circuit breaker as `callREST`.
+    ///
+    /// Used by the Bitcoin-family broadcast path: Esplora
+    /// (mempool.space / blockstream / litecoinspace) `POST /tx` wants the
+    /// raw transaction HEX as a `text/plain` body and returns the txid
+    /// as plain text (live-verified 2026-06-15 — a malformed body
+    /// returns `sendrawtransaction RPC error: TX decode failed`,
+    /// HTTP 400). Distinct from `callRESTPost`, which encodes a JSON
+    /// dictionary body for BlockCypher's `{"tx":hex}` push shape.
+    ///
+    /// Returns the raw response `Data` (the broadcaster parses it: txid
+    /// as plain text for Esplora). Per-endpoint 4xx is surfaced as
+    /// `.invalidResponse` so the broadcaster can read the provider's
+    /// reason — a broadcast rejection (e.g. "min relay fee not met") is
+    /// a deterministic property of the tx, not an endpoint fault.
+    func callRESTPostRaw(
+        chain: SupportedChain,
+        path: String,
+        body: String,
+        contentType: String
+    ) async throws(RPCError) -> Data {
+        let endpoints = RPCRegistry.endpoints(for: chain)
+        guard !endpoints.isEmpty else { throw RPCError.noEndpoint(chain) }
+
+        var lastError: RPCError = .allEndpointsFailed(chain)
+        for endpoint in endpoints where endpoint.kind == .rest {
+            if isOpen(for: endpoint.id) { continue }
+            do {
+                try await rateLimiter.acquire(for: endpoint)
+                let data = try await dispatchRESTPostRaw(
+                    endpoint: endpoint,
+                    path: path,
+                    body: body,
+                    contentType: contentType
+                )
+                recordSuccess(for: endpoint.id)
+                return data
+            } catch {
+                if case .cancelled = error { throw error }
+                if case .rateLimited = error {
+                    lastError = error
+                    continue
+                }
+                // A 4xx from a broadcast is a deterministic property of
+                // the tx (the SAME malformed/underpriced tx fails on
+                // every node), so DON'T trip the breaker — but DO carry
+                // the provider's body up so the caller surfaces the
+                // honest reason. We still rotate to the next endpoint in
+                // case THIS provider is the one being difficult.
+                if case .invalidResponse = error {
+                    lastError = error
+                    continue
+                }
+                lastError = error
+                recordFailure(for: endpoint.id)
+                continue
+            }
+        }
+        throw lastError
+    }
+
+    private func dispatchRESTPostRaw(
+        endpoint: RPCEndpoint,
+        path: String,
+        body: String,
+        contentType: String
+    ) async throws(RPCError) -> Data {
+        let url = endpoint.url.appendingPathComponent(path)
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue(contentType, forHTTPHeaderField: "Content-Type")
+        request.httpBody = body.data(using: .utf8)
+
+        let responseData: Data
+        let response: URLResponse
+        do {
+            (responseData, response) = try await session.data(for: request)
+        } catch let urlError as URLError {
+            if urlError.code == .cancelled { throw .cancelled }
+            throw .network(urlError.localizedDescription)
+        } catch {
+            throw .network(error.localizedDescription)
+        }
+
+        if let http = response as? HTTPURLResponse {
+            if http.statusCode == 429 {
+                throw .rateLimited(retryAfter: retryAfterDate(from: http))
+            }
+            if !(200..<300).contains(http.statusCode) {
+                // Surface the provider's body so the broadcaster can read
+                // the rejection reason (e.g. "min relay fee not met").
+                let reason = String(data: responseData, encoding: .utf8)?
+                    .trimmingCharacters(in: .whitespacesAndNewlines) ?? "HTTP \(http.statusCode)"
+                throw .invalidResponse(reason)
+            }
+        }
+        return responseData
+    }
+
+    /// Dispatch a REST POST with a **binary `Data` body** (and an
+    /// explicit `Content-Type`) against `chain`'s registered REST
+    /// endpoints, with the same fallback rotation + circuit breaker as
+    /// `callRESTPostRaw`. Distinct from `callRESTPostRaw` (which sends a
+    /// UTF-8 string) because a binary payload (Aptos BCS-serialized
+    /// signed transaction, `Content-Type:
+    /// application/x.aptos.signed_transaction+bcs`) must NOT be passed
+    /// through `String(_:.utf8)` — that mangles non-UTF-8 bytes. Used by
+    /// the Aptos broadcast path (`POST /v1/transactions` with the
+    /// wallet-core `output.encoded` BCS bytes). Live-verified 2026-06-15:
+    /// a truncated BCS body returns `Failed to deserialize input into
+    /// SignedTransaction` (HTTP 400), proving the endpoint + content-type.
+    func callRESTPostData(
+        chain: SupportedChain,
+        path: String,
+        body: Data,
+        contentType: String
+    ) async throws(RPCError) -> Data {
+        let endpoints = RPCRegistry.endpoints(for: chain)
+        guard !endpoints.isEmpty else { throw RPCError.noEndpoint(chain) }
+
+        var lastError: RPCError = .allEndpointsFailed(chain)
+        for endpoint in endpoints where endpoint.kind == .rest {
+            if isOpen(for: endpoint.id) { continue }
+            do {
+                try await rateLimiter.acquire(for: endpoint)
+                let data = try await dispatchRESTPostData(
+                    endpoint: endpoint,
+                    path: path,
+                    body: body,
+                    contentType: contentType
+                )
+                recordSuccess(for: endpoint.id)
+                return data
+            } catch {
+                if case .cancelled = error { throw error }
+                if case .rateLimited = error {
+                    lastError = error
+                    continue
+                }
+                // A 4xx from a broadcast is deterministic (same tx fails
+                // on every node) — surface the provider's reason, rotate,
+                // but don't trip the breaker (mirror callRESTPostRaw).
+                if case .invalidResponse = error {
+                    lastError = error
+                    continue
+                }
+                lastError = error
+                recordFailure(for: endpoint.id)
+                continue
+            }
+        }
+        throw lastError
+    }
+
+    private func dispatchRESTPostData(
+        endpoint: RPCEndpoint,
+        path: String,
+        body: Data,
+        contentType: String
+    ) async throws(RPCError) -> Data {
+        let url = endpoint.url.appendingPathComponent(path)
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue(contentType, forHTTPHeaderField: "Content-Type")
+        request.httpBody = body
+
+        let responseData: Data
+        let response: URLResponse
+        do {
+            (responseData, response) = try await session.data(for: request)
+        } catch let urlError as URLError {
+            if urlError.code == .cancelled { throw .cancelled }
+            throw .network(urlError.localizedDescription)
+        } catch {
+            throw .network(error.localizedDescription)
+        }
+
+        if let http = response as? HTTPURLResponse {
+            if http.statusCode == 429 {
+                throw .rateLimited(retryAfter: retryAfterDate(from: http))
+            }
+            if !(200..<300).contains(http.statusCode) {
+                let reason = String(data: responseData, encoding: .utf8)?
+                    .trimmingCharacters(in: .whitespacesAndNewlines) ?? "HTTP \(http.statusCode)"
+                throw .invalidResponse(reason)
             }
         }
         return responseData

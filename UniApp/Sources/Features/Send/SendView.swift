@@ -132,7 +132,12 @@ struct SendView: View {
                         }
                     )
                 case let .review(draft):
-                    SendReviewLoader(draft: draft, onClose: closeFlow)
+                    SendReviewLoader(
+                        draft: draft,
+                        walletId: activeWallet?.id ?? UUID(),
+                        walletHasPassphrase: activeWallet?.hasPassphrase ?? false,
+                        onClose: closeFlow
+                    )
                 }
             }
         }
@@ -236,6 +241,13 @@ enum SendDestination: Hashable, Codable {
 /// resolved fresh here.
 private struct SendReviewLoader: View {
     let draft: SendDraft
+    /// The signing wallet's UUID — the executor needs it (the draft's
+    /// `fromAddress` identifies the address, not the wallet). Resolved from
+    /// the active wallet at the `.review` case in `SendView`.
+    let walletId: UUID
+    /// Whether the signing wallet has a BIP-39 passphrase (drives the
+    /// passphrase prompt before the send).
+    let walletHasPassphrase: Bool
     let onClose: () -> Void
 
     @State private var assetPrice: Decimal?
@@ -251,6 +263,8 @@ private struct SendReviewLoader: View {
             currencyCode: currencyCode,
             assetUnitPrice: assetPrice,
             nativeUnitPrice: nativePrice,
+            walletId: walletId,
+            walletHasPassphrase: walletHasPassphrase,
             onClose: onClose
         )
         .task { await resolvePrices() }
