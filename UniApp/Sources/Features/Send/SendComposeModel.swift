@@ -144,7 +144,10 @@ final class SendComposeModel {
         guard capability.supportsUTXO else { return "" }
         let coins = (selectedUTXOs ?? availableUTXOs).map(\.id).sorted().joined(separator: ",")
         let rate = baseResolvedFee?.byteFeeRate.map { Self.plainString($0, decimals: 4) } ?? "?"
-        let amount = Self.plainString(totalCrypto, decimals: effectiveDecimals)
+        // `rawTotalCrypto` (NOT `totalCrypto`) — the latter reads the funding
+        // cascade → `resolvedFee` → here, an infinite recursion. See
+        // `rawTotalCrypto`'s doc.
+        let amount = Self.plainString(rawTotalCrypto, decimals: effectiveDecimals)
         return "\(coins)|\(amount)|\(rate)|\(selectedTier.rawValue)"
     }
 
@@ -310,6 +313,17 @@ final class SendComposeModel {
     /// Total crypto amount across all PAYABLE recipients (blocked excluded).
     var totalCrypto: Decimal {
         recipientAmounts.reduce(Decimal.zero) { $0 + $1.amount }
+    }
+
+    /// Sum of EVERY recipient's typed amount in crypto, WITHOUT the
+    /// funding-status filter. Used to fingerprint the UTXO fee inputs
+    /// (`utxoFeeKey`). It MUST NOT read the funding cascade — `totalCrypto`
+    /// → `recipientFundingStatuses` → `allocatableTotal` → `resolvedFee` →
+    /// `applyFeeOverlays` → `utxoFeeKey` would recurse infinitely (the
+    /// Bitcoin amount-screen crash). This reads only `amounts` + the unit,
+    /// so the fee-key fingerprint is cycle-free.
+    var rawTotalCrypto: Decimal {
+        amounts.reduce(Decimal.zero) { $0 + cryptoAmount(for: $1) }
     }
 
     /// Fiat value of an amount of the SENT asset (nil when no price).
