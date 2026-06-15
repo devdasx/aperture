@@ -134,6 +134,21 @@ struct SwapQuoteRequest: Sendable, Hashable {
 enum SwapProviderKind: String, Sendable, Hashable, Codable {
     case lifi
     case jupiter
+    /// KyberSwap aggregator — independent same-chain EVM quote source raced
+    /// against Li.Fi (keyless). Signs through the same EVM path as Li.Fi.
+    case kyberswap
+    /// OpenOcean aggregator — independent same-chain EVM quote source raced
+    /// against Li.Fi (keyless; its Solana support is a later increment).
+    case openocean
+
+    /// `true` when the quote is signed via the EVM path (`evmTx`). Every EVM
+    /// aggregator shares Li.Fi's sign+approval flow; only Jupiter is Solana.
+    var isEVMSigned: Bool {
+        switch self {
+        case .lifi, .kyberswap, .openocean: return true
+        case .jupiter: return false
+        }
+    }
 }
 
 // MARK: - SwapStepKind
