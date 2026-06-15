@@ -160,3 +160,17 @@
 2026-06-15T22:11:40Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/AssetDetailView.swift	View all \(rows.count) transactions
 2026-06-15T22:11:40Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/AssetDetailView.swift	\(amount) \(identity.symbol)
 2026-06-15T22:11:40Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/AssetDetailView.swift	\(rows.count)
+2026-06-15T22:19:26Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/BalanceCardView.swift	 
+2026-06-15T22:19:26Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/BalanceCardView.swift	Add crypto to get started — receive or transfer it from another wallet.
+2026-06-15T22:19:26Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/BalanceCardView.swift	Add funds
+2026-06-15T22:19:26Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/BalanceCardView.swift	Add funds, opens Receive
+2026-06-15T22:19:26Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/BalanceCardView.swift	Balance hidden
+2026-06-15T22:19:26Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/BalanceCardView.swift	Balance history range
+2026-06-15T22:19:26Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/BalanceCardView.swift	Show balance
+2026-06-15T22:19:26Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/BalanceCardView.swift	Switch wallet, currently \(walletName)
+2026-06-15T22:19:26Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/BalanceCardView.swift	Total balance
+2026-06-15T22:19:26Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/BalanceCardView.swift	Total balance \(value), \(dir) \(percentText) today
+2026-06-15T22:19:26Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/BalanceCardView.swift	Total balance \(value), no change today
+2026-06-15T22:19:26Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/BalanceCardView.swift	Total balance \(value). Add crypto to get started.
+2026-06-15T22:19:26Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/BalanceCardView.swift	Total balance hidden, double tap the eye button to reveal
+2026-06-15T22:19:26Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/BalanceCardView.swift	••••••

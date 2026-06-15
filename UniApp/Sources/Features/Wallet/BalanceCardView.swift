@@ -144,25 +144,35 @@ struct BalanceCardView: View {
     /// range's first-vs-last reconstructed point (handoff §State selection
     /// logic). `balance === 0` is the Zero state (handled separately) and
     /// never reaches here.
+    /// Gain / loss / flat — measured from the reconstructed range-START value
+    /// to the user's REAL current balance (`totalFiat`, the exact figure the
+    /// hero shows), NOT the reconstructed trailing point (which can drift from
+    /// the real balance when a chain's history is incomplete — the reason the
+    /// pill could read non-real before). Flat when there's no positive
+    /// baseline to compare against.
     private var sign: UniColors.BalanceCard.Sign {
-        guard let first = points.first, let last = points.last else { return .flat }
-        if last.fiat > first.fiat { return .up }
-        if last.fiat < first.fiat { return .down }
+        guard let first = points.first, first.fiat > 0 else { return .flat }
+        if totalFiat > first.fiat { return .up }
+        if totalFiat < first.fiat { return .down }
         return .flat
     }
 
-    /// The signed change over the selected range (last − first).
+    /// The signed change over the selected range: the user's REAL current
+    /// balance − the reconstructed range-start value. `0` when there's no
+    /// positive baseline (nothing real to measure against).
     private var change: Decimal {
-        guard let first = points.first, let last = points.last else { return 0 }
-        return last.fiat - first.fiat
+        guard let first = points.first, first.fiat > 0 else { return 0 }
+        return totalFiat - first.fiat
     }
 
-    /// The percent change over the range (handoff pill).
+    /// The percent change over the range — `(current − start) / start × 100`,
+    /// off the user's real current balance. `0` when the baseline isn't
+    /// positive (never a divide-by-zero or a fabricated percent).
     private var changePercent: Double {
-        guard let first = points.first, let last = points.last else { return 0 }
+        guard let first = points.first, first.fiat > 0 else { return 0 }
         let firstD = NSDecimalNumber(decimal: first.fiat).doubleValue
-        let lastD = NSDecimalNumber(decimal: last.fiat).doubleValue
-        guard firstD != 0 else { return lastD == 0 ? 0 : 0 } // avoid /0; flat-at-zero reads 0.00%
+        let lastD = NSDecimalNumber(decimal: totalFiat).doubleValue
+        guard firstD != 0 else { return 0 }
         return (lastD - firstD) / abs(firstD) * 100
     }
 
