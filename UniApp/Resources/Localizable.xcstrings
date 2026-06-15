@@ -310618,6 +310618,28 @@
           }
         }
       }
+    },
+    "Search name or contract": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Search name or contract"
+          }
+        }
+      }
+    },
+    "Tip: paste a contract address for an exact match.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tip: paste a contract address for an exact match."
+          }
+        }
+      }
     }
   },
   "version": "1.0"
