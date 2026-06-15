@@ -92,6 +92,8 @@ struct KyberBuildDTO: Decodable, Sendable {
 /// would be unsafe (any missing pool/extra field breaks the build).
 indirect enum JSONValue: Codable, Sendable {
     case string(String)
+    case integer(Int64)
+    case uinteger(UInt64)
     case number(Double)
     case bool(Bool)
     case object([String: JSONValue])
@@ -104,6 +106,15 @@ indirect enum JSONValue: Codable, Sendable {
             self = .null
         } else if let b = try? container.decode(Bool.self) {
             self = .bool(b)
+        // Decode integers LOSSLESSLY (Int64 → UInt64) BEFORE Double: the
+        // routeSummary is re-sent verbatim to /route/build, and a Double
+        // round-trip corrupts integers > 2^53 nested in pool-extra objects
+        // (e.g. sqrtPriceX96, reserves) — which silently drops the KyberSwap
+        // racer on those routes. Only true fractional numbers fall to Double.
+        } else if let i = try? container.decode(Int64.self) {
+            self = .integer(i)
+        } else if let u = try? container.decode(UInt64.self) {
+            self = .uinteger(u)
         } else if let n = try? container.decode(Double.self) {
             self = .number(n)
         } else if let s = try? container.decode(String.self) {
@@ -123,12 +134,14 @@ indirect enum JSONValue: Codable, Sendable {
     func encode(to encoder: Encoder) throws {
         var container = encoder.singleValueContainer()
         switch self {
-        case .string(let s): try container.encode(s)
-        case .number(let n): try container.encode(n)
-        case .bool(let b):   try container.encode(b)
-        case .object(let o): try container.encode(o)
-        case .array(let a):  try container.encode(a)
-        case .null:          try container.encodeNil()
+        case .string(let s):   try container.encode(s)
+        case .integer(let i):  try container.encode(i)
+        case .uinteger(let u): try container.encode(u)
+        case .number(let n):   try container.encode(n)
+        case .bool(let b):     try container.encode(b)
+        case .object(let o):   try container.encode(o)
+        case .array(let a):    try container.encode(a)
+        case .null:            try container.encodeNil()
         }
     }
 
@@ -146,6 +159,10 @@ indirect enum JSONValue: Codable, Sendable {
         switch self {
         case .string(let s):
             return s
+        case .integer(let i):
+            return String(i)
+        case .uinteger(let u):
+            return String(u)
         case .number(let n):
             // Integer-valued doubles render without a decimal point.
             if n == n.rounded(), abs(n) < 9_007_199_254_740_992 {

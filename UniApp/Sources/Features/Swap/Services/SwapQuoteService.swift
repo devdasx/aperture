@@ -111,8 +111,16 @@ actor SwapQuoteService {
             lifiError = error
         }
 
+        // Pick the GUARANTEED floor (toAmountMin) the user is protected by
+        // on-chain, not the optimistic estimate — tie-break on toAmount. Each
+        // provider's min is now a real slippage-protected floor (OpenOcean's
+        // provider min, Kyber's conservative amountOut×(1−slip), Li.Fi's
+        // provider min), so this compares like with like (Rule #16/#26).
         let candidates = [lifiQuote, await kyberOpt, await openoceanOpt].compactMap { $0 }
-        guard let best = candidates.max(by: { $0.toAmount < $1.toAmount }) else {
+        guard let best = candidates.max(by: {
+            $0.toAmountMin != $1.toAmountMin ? $0.toAmountMin < $1.toAmountMin
+                                             : $0.toAmount < $1.toAmount
+        }) else {
             throw lifiError ?? .invalidResponse("no swap route available right now")
         }
         return best

@@ -587,10 +587,13 @@ private struct MaxSlippageSheet: View {
     private static let highSlippageThresholdBps = 100
     private var isHighSlippage: Bool { model.slippageBps >= Self.highSlippageThresholdBps }
 
-    /// Sane bounds the model itself never enforced: floor 0.01% (1 bps),
-    /// ceiling 50% (5000 bps). Both ends are clamped on commit.
-    private static let minSlippageBps = 1
-    private static let maxSlippageBps = 5000
+    /// Bounded to the range EVERY raced provider honors, so a custom value
+    /// can't silently drop a racer or diverge the displayed min from the
+    /// calldata: OpenOcean requires ≥ 5 bps (0.05%), KyberSwap caps at 2000
+    /// bps (20%). 20% is also a sane wallet ceiling — higher invites
+    /// sandwiching. Both ends are clamped on commit.
+    private static let minSlippageBps = 5
+    private static let maxSlippageBps = 2000
 
     var body: some View {
         NavigationStack {
