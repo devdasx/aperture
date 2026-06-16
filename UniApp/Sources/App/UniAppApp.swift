@@ -342,9 +342,22 @@ private struct AppRoot: View {
         .task(id: autoRefreshGate) { await runAutoRefreshLoop() }
     }
 
-    /// The 10-second auto-refresh loop. Sleeps first (the active
-    /// screen's own `.task` does the immediate first scan on appear),
-    /// then refreshes every 10 s for as long as the foreground/unlocked
+    /// Auto-refresh interval. **Eased 10 s → 30 s (2026-06-16)** as part
+    /// of the rate-limit-storm fix: each tick fans a full ~24-chain scan
+    /// (native + nonce + Multicall3 token batch per chain) plus a
+    /// per-address history sweep across the RPC fleet. At 10 s those
+    /// cycles overlapped and compounded the per-IP burst that tripped
+    /// providers' throttles (and contributed to the `nw_protocol` socket
+    /// flood). 30 s is still well inside "live" — the active screen's own
+    /// `.task` does the immediate first scan on appear, every refresh
+    /// updates the store reactively (Rule #25 live-update is preserved),
+    /// and the `WalletRefreshRegistry` still dedupes overlapping ticks —
+    /// while cutting the steady-state fan-out frequency 3×.
+    private static let autoRefreshInterval: Duration = .seconds(30)
+
+    /// The auto-refresh loop. Sleeps first (the active screen's own
+    /// `.task` does the immediate first scan on appear), then refreshes
+    /// every `autoRefreshInterval` for as long as the foreground/unlocked
     /// gate holds. Cancelled automatically when `autoRefreshGate`
     /// changes (background, lock, splash, wallet switch).
     private func runAutoRefreshLoop() async {
@@ -357,7 +370,7 @@ private struct AppRoot: View {
 
         let container = ApertureDatabase.shared.container
         while !Task.isCancelled {
-            try? await Task.sleep(for: .seconds(10))
+            try? await Task.sleep(for: Self.autoRefreshInterval)
             if Task.isCancelled { return }
             // Non-user-initiated: joins any in-flight refresh via the
             // registry instead of cancel-and-replacing it.
