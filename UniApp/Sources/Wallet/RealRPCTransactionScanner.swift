@@ -287,7 +287,14 @@ struct RealRPCTransactionScanner: TransactionScanner {
                 return try await LongTailTransactionAdapters.fetchKava(address: address, limit: limit, client: client)
             }
         } catch {
-            log.warning("Transaction fetch failed for \(chain.rawValue, privacy: .public) at \(address, privacy: .private): \(String(describing: error), privacy: .public)")
+            // A 404 = the account has no on-chain history yet (unfunded /
+            // never used) — an empty history, not a failure. Log quietly so
+            // an unfunded Stellar/Tron account doesn't spam the warning log.
+            if RPCError.isHTTPNotFound(error) {
+                log.debug("No transaction history for \(chain.rawValue, privacy: .public) at \(address, privacy: .private) (404 — unfunded)")
+            } else {
+                log.warning("Transaction fetch failed for \(chain.rawValue, privacy: .public) at \(address, privacy: .private): \(String(describing: error), privacy: .public)")
+            }
             return []
         }
     }
