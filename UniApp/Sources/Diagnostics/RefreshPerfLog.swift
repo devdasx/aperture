@@ -54,7 +54,7 @@ final class RefreshPerfLog: @unchecked Sendable {
         runStartNanos = start
         runLabel = label
         runStartedAtText = stamp
-        appendLocked(category: "refresh", message: "begin · \(label)", durationMs: nil, atNanos: start)
+        appendLocked(category: "refresh", note: "begin · \(label)", durationMs: nil, atNanos: start)
     }
 
     /// Record the run total and a closing marker.
@@ -63,7 +63,7 @@ final class RefreshPerfLog: @unchecked Sendable {
         lock.lock(); defer { lock.unlock() }
         let base = runStartNanos ?? at
         let totalMs = Double(at &- base) / 1_000_000
-        appendLocked(category: "refresh", message: "end · total", durationMs: totalMs, atNanos: at)
+        appendLocked(category: "refresh", note: "end · total", durationMs: totalMs, atNanos: at)
     }
 
     // MARK: - Events + spans
@@ -72,7 +72,7 @@ final class RefreshPerfLog: @unchecked Sendable {
     func event(_ category: String, _ message: String, durationMs: Double? = nil) {
         let at = nowNanos()
         lock.lock(); defer { lock.unlock() }
-        appendLocked(category: category, message: message, durationMs: durationMs, atNanos: at)
+        appendLocked(category: category, note: message, durationMs: durationMs, atNanos: at)
     }
 
     /// Open a manual span — returns a monotonic token to pass to `end`.
@@ -83,7 +83,7 @@ final class RefreshPerfLog: @unchecked Sendable {
         let at = nowNanos()
         let ms = Double(at &- token) / 1_000_000
         lock.lock(); defer { lock.unlock() }
-        appendLocked(category: category, message: message, durationMs: ms, atNanos: at)
+        appendLocked(category: category, note: message, durationMs: ms, atNanos: at)
     }
 
     /// Measure an async block and log its duration.
@@ -139,10 +139,10 @@ final class RefreshPerfLog: @unchecked Sendable {
     // MARK: - Internal
 
     /// Append under the lock, computing elapsed-since-run-start.
-    private func appendLocked(category: String, message: String, durationMs: Double?, atNanos: UInt64) {
+    private func appendLocked(category: String, note: String, durationMs: Double?, atNanos: UInt64) {
         let base = runStartNanos ?? atNanos
         let elapsed = Double(atNanos &- base) / 1_000_000
-        entries.append(Entry(elapsedMs: elapsed, category: category, message: message, durationMs: durationMs))
+        entries.append(Entry(elapsedMs: elapsed, category: category, message: note, durationMs: durationMs))
         if entries.count > maxEntries {
             entries.removeFirst(entries.count - maxEntries)
         }
