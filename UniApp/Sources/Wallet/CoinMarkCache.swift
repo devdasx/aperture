@@ -68,6 +68,18 @@ actor CoinMarkCache {
     private var negativeUntil: [String: Date] = [:]
     private static let notFoundTTL: TimeInterval = 6 * 60 * 60
     private static let transientTTL: TimeInterval = 2 * 60
+    /// Decode-failure cool-down (2026-06-16). When an HTTP-200 body
+    /// fails to decode as an image (truncated PNG, Git-LFS pointer,
+    /// mislabeled body → the `-17102 decompressing image — possibly
+    /// corrupt` log), the bytes themselves are bad, not the network.
+    /// Re-downloading them produces the SAME corrupt bytes and
+    /// re-throws -17102 on the next render — an endless log loop. So a
+    /// decode failure negative-caches the URL like a `notFound` (hours,
+    /// not the 2-minute transient window): a persistently-corrupt
+    /// upstream logo stops re-downloading and re-decoding for the
+    /// session, while still eventually re-trying in case the repo fixes
+    /// the asset.
+    private static let decodeFailedTTL: TimeInterval = 6 * 60 * 60
 
     /// What one network attempt produced — distinguishes "the logo
     /// doesn't exist upstream" from "the network hiccuped" so the
@@ -146,18 +158,34 @@ actor CoinMarkCache {
         }
     }
 
-    /// Drop ONE mark from memory + disk after it failed to decode —
-    /// corrupt / truncated bytes (the `-17102 decompressing image —
-    /// possibly corrupt` log). Removing the bad file lets the next
-    /// `data(for:)` re-fetch a healthy copy instead of serving the same
-    /// broken bytes forever (which would re-throw -17102 every render and
-    /// draw a blank mark). The negative cache is NOT set — this isn't an
-    /// upstream miss, just a bad local copy worth retrying.
-    func evict(url: URL) {
+    /// Mark ONE URL as serving undecodable bytes after a decode failure
+    /// — corrupt / truncated PNG, Git-LFS pointer, mislabeled body (the
+    /// `-17102 decompressing image — possibly corrupt` log).
+    ///
+    /// **2026-06-16 fix — negative-cache, don't just evict.** The
+    /// previous version only dropped the bad file from memory + disk.
+    /// But `CoinMark`'s `.task(id: url)` re-fires on every lazy
+    /// list-row reappearance, so the very next render called
+    /// `data(for:)`, found no cache, re-downloaded the SAME corrupt
+    /// bytes from the same upstream URL, re-decoded, and re-threw
+    /// -17102 — the log repeated forever and the mark stayed blank.
+    /// Evicting a bad local copy is necessary (we don't want to keep
+    /// serving broken bytes) but insufficient, because the corruption
+    /// is upstream.
+    ///
+    /// So this now does BOTH: drop the bad local copy AND set the
+    /// negative cache for `decodeFailedTTL` (hours). A persistently-
+    /// corrupt upstream logo therefore stops re-downloading and
+    /// re-decoding for the session — the initials chip shows instead —
+    /// while still eventually re-trying once the TTL lapses in case the
+    /// repo fixes the asset. `clearAll()` resets the negative cache, so
+    /// a factory reset re-tries immediately.
+    func markUndecodable(url: URL) {
         let key = url.absoluteString
         memory[key] = nil
         memoryOrder.removeAll { $0 == key }
         try? FileManager.default.removeItem(at: Self.diskPath(for: url))
+        negativeUntil[key] = Date().addingTimeInterval(Self.decodeFailedTTL)
     }
 
     /// Factory-reset surface (Settings → Advanced → Reset Aperture).

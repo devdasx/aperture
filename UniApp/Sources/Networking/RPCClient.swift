@@ -30,6 +30,12 @@ import OSLog
 actor RPCClient {
     private let session: URLSession
     private let rateLimiter: RateLimiter
+    /// Bounds how many requests are in flight at once — globally and
+    /// per host (2026-06-16). The `RateLimiter` caps the *rate* per
+    /// endpoint; this caps simultaneous open sockets so a refresh's
+    /// fan-out can't flood the OS network stack or burst a provider's
+    /// per-IP limiter. See `ConcurrencyGate`.
+    private let concurrencyGate: ConcurrencyGate
     private var breakers: [String: CircuitBreaker] = [:]
     private let log = Logger(subsystem: "com.thuglife.aperture", category: "rpc")
 
@@ -59,7 +65,11 @@ actor RPCClient {
     /// in tests.
     static let shared = RPCClient()
 
-    init(session: URLSession? = nil, rateLimiter: RateLimiter = RateLimiter()) {
+    init(
+        session: URLSession? = nil,
+        rateLimiter: RateLimiter = RateLimiter(),
+        concurrencyGate: ConcurrencyGate = .shared
+    ) {
         if let session {
             self.session = session
         } else {
@@ -70,9 +80,43 @@ actor RPCClient {
             config.timeoutIntervalForRequest = 10
             config.timeoutIntervalForResource = 20
             config.requestCachePolicy = .reloadIgnoringLocalCacheData
+            // **Bound HTTP/1.1 connections per host (2026-06-16).** Even
+            // behind the `ConcurrencyGate`, `URLSession`'s default of 6
+            // connections-per-host can open a fresh socket per concurrent
+            // request to the same host. Capping it at 4 (matching the
+            // gate's per-host ceiling) means burst reads to one host
+            // reuse a small keep-alive pool instead of spawning the
+            // `nw_protocol` socket flood the user saw in the OS log.
+            config.httpMaximumConnectionsPerHost = 4
             self.session = URLSession(configuration: config)
         }
         self.rateLimiter = rateLimiter
+        self.concurrencyGate = concurrencyGate
+    }
+
+    /// The upstream host key for an endpoint's URL — the
+    /// `ConcurrencyGate`'s per-host bucket key. Falls back to the
+    /// endpoint id when a URL somehow has no host (never for our
+    /// registered endpoints, which all parse with a host).
+    private static func gateHost(for endpoint: RPCEndpoint) -> String {
+        endpoint.url.host ?? endpoint.id
+    }
+
+    /// Run one `URLSession` request **inside the `ConcurrencyGate`** —
+    /// the single in-flight chokepoint every dispatch path funnels
+    /// through (2026-06-16). Acquires a global + per-host slot before
+    /// dialing and releases it via `defer` so the slot is freed on
+    /// success, throw, or cancellation. The gate `acquire` throws
+    /// `CancellationError` if the task is cancelled while waiting for a
+    /// slot; callers map that to `RPCError.cancelled`. The actual
+    /// network call is unchanged — this only bounds how many run at once.
+    private func performGated(
+        _ request: URLRequest,
+        host: String
+    ) async throws -> (Data, URLResponse) {
+        let release = try await concurrencyGate.acquire(host: host)
+        defer { release() }
+        return try await session.data(for: request)
     }
 
     // MARK: - JSON-RPC
@@ -100,6 +144,42 @@ actor RPCClient {
             params: params,
             validatesIDEcho: validatesIDEcho
         )
+        guard let str = result as? String else {
+            throw .invalidResponse("\(method) result was not a string")
+        }
+        return str
+    }
+
+    /// Like `callJSONString`, but a JSON `null` result resolves to
+    /// `nil` instead of throwing.
+    ///
+    /// **2026-06-16 — Polkadot zero-balance fix.** Substrate's
+    /// `state_getStorage` returns `{"result":null}` for an account
+    /// that has no `System::Account` entry — i.e. an account that has
+    /// never held a balance. That is the normal "zero balance" answer,
+    /// NOT an error. The plain `callJSONString` mapped it to
+    /// `.invalidResponse("state_getStorage result was not a string")`,
+    /// which the Polkadot adapter logged at `.error` and treated as a
+    /// fetch failure (log spam for every unfunded DOT address). This
+    /// wrapper distinguishes the two: a `null` result → `nil` (the
+    /// caller maps it to zero), a real hex string → `.some(str)`, and a
+    /// genuinely malformed result (number, object) still throws.
+    /// Verified live (2026-06-16): `rpc.polkadot.io state_getStorage`
+    /// on an empty System::Account key returns `{"jsonrpc":"2.0",
+    /// "id":1,"result":null}`.
+    func callJSONStringOrNull(
+        chain: SupportedChain,
+        method: String,
+        params: [Sendable],
+        validatesIDEcho: Bool = true
+    ) async throws(RPCError) -> String? {
+        let result = try await callJSON(
+            chain: chain,
+            method: method,
+            params: params,
+            validatesIDEcho: validatesIDEcho
+        )
+        if result is NSNull { return nil }
         guard let str = result as? String else {
             throw .invalidResponse("\(method) result was not a string")
         }
@@ -301,10 +381,12 @@ actor RPCClient {
         let responseData: Data
         let response: URLResponse
         do {
-            (responseData, response) = try await session.data(for: request)
+            (responseData, response) = try await performGated(request, host: Self.gateHost(for: endpoint))
         } catch let urlError as URLError {
             if urlError.code == .cancelled { throw .cancelled }
             throw .network(urlError.localizedDescription)
+        } catch is CancellationError {
+            throw .cancelled
         } catch {
             throw .network(error.localizedDescription)
         }
@@ -346,7 +428,7 @@ actor RPCClient {
             // at HTTP 200 rotates as `.rateLimited`, never a terminal
             // method error.
             if Self.rateLimit(forCode: code, message: message) {
-                log.error("RPC usage/rate limit on \(endpoint.id, privacy: .public) (code \(code)) — rotating")
+                log.debug("RPC usage/rate limit on \(endpoint.id, privacy: .public) (code \(code)) — rotating")
                 throw .rateLimited(retryAfter: Date().addingTimeInterval(60))
             }
             throw .rpcError(code: code, message: message)
@@ -428,7 +510,7 @@ actor RPCClient {
                 // breaker bookkeeping (see dispatchJSON).
                 if case .rateLimited = error {
                     lastError = error
-                    log.error("RPC rate-limited on \(endpoint.id, privacy: .public)")
+                    log.debug("RPC rate-limited on \(endpoint.id, privacy: .public) — rotating")
                     continue
                 }
                 lastError = error
@@ -512,10 +594,12 @@ actor RPCClient {
         let responseData: Data
         let response: URLResponse
         do {
-            (responseData, response) = try await session.data(for: request)
+            (responseData, response) = try await performGated(request, host: Self.gateHost(for: endpoint))
         } catch let urlError as URLError {
             if urlError.code == .cancelled { throw .cancelled }
             throw .network(urlError.localizedDescription)
+        } catch is CancellationError {
+            throw .cancelled
         } catch {
             throw .network(error.localizedDescription)
         }
@@ -623,10 +707,12 @@ actor RPCClient {
         let responseData: Data
         let response: URLResponse
         do {
-            (responseData, response) = try await session.data(for: request)
+            (responseData, response) = try await performGated(request, host: Self.gateHost(for: endpoint))
         } catch let urlError as URLError {
             if urlError.code == .cancelled { throw .cancelled }
             throw .network(urlError.localizedDescription)
+        } catch is CancellationError {
+            throw .cancelled
         } catch {
             throw .network(error.localizedDescription)
         }
@@ -716,10 +802,12 @@ actor RPCClient {
         let responseData: Data
         let response: URLResponse
         do {
-            (responseData, response) = try await session.data(for: request)
+            (responseData, response) = try await performGated(request, host: Self.gateHost(for: endpoint))
         } catch let urlError as URLError {
             if urlError.code == .cancelled { throw .cancelled }
             throw .network(urlError.localizedDescription)
+        } catch is CancellationError {
+            throw .cancelled
         } catch {
             throw .network(error.localizedDescription)
         }
@@ -811,10 +899,12 @@ actor RPCClient {
         let responseData: Data
         let response: URLResponse
         do {
-            (responseData, response) = try await session.data(for: request)
+            (responseData, response) = try await performGated(request, host: Self.gateHost(for: endpoint))
         } catch let urlError as URLError {
             if urlError.code == .cancelled { throw .cancelled }
             throw .network(urlError.localizedDescription)
+        } catch is CancellationError {
+            throw .cancelled
         } catch {
             throw .network(error.localizedDescription)
         }
@@ -860,7 +950,7 @@ actor RPCClient {
             // takes the "alive but saturated — rotate, no breaker" path
             // and is never retained as the terminal `lastError`.
             if Self.rateLimit(forCode: code, message: message) {
-                log.error("RPC usage/rate limit on \(endpoint.id, privacy: .public) (code \(code)) — rotating")
+                log.debug("RPC usage/rate limit on \(endpoint.id, privacy: .public) (code \(code)) — rotating")
                 throw .rateLimited(retryAfter: Date().addingTimeInterval(60))
             }
             throw .rpcError(code: code, message: message)
@@ -1003,10 +1093,12 @@ actor RPCClient {
         let responseData: Data
         let response: URLResponse
         do {
-            (responseData, response) = try await session.data(for: request)
+            (responseData, response) = try await performGated(request, host: Self.gateHost(for: endpoint))
         } catch let urlError as URLError {
             if urlError.code == .cancelled { throw .cancelled }
             throw .network(urlError.localizedDescription)
+        } catch is CancellationError {
+            throw .cancelled
         } catch {
             throw .network(error.localizedDescription)
         }

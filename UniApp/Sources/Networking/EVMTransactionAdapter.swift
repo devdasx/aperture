@@ -607,12 +607,24 @@ struct EVMTransactionAdapter: Sendable {
         case .zkSync:     return "https://zksync.blockscout.com"
         case .polygon:    return "https://polygon.blockscout.com"
         case .celo:       return "https://celo.blockscout.com"
-        case .kavaEvm:    return "https://kava-evm.blockscout.com"
+        // **2026-06-16 — kavaEvm Blockscout removed (live-probe, curl).**
+        // `kava-evm.blockscout.com` returns "default backend - 404" on
+        // every path (incl. root) — the instance is decommissioned. No
+        // keyless replacement is live (kavascan.com is Cloudflare-gated /
+        // SPA-only; kava.blockscout.com 404; explorer.kava.io HTTP 000;
+        // Routescan reports chainId 2222 "chain not supported"). Returning
+        // nil makes kavaEvm history fall through to the chunked
+        // `eth_getLogs` path (same honest fallback already used for
+        // bnbChain / opBNB / avalanche) instead of 404-storming a dead
+        // indexer. The kavaEvm getLogs scan must route to `evm.kava.io`
+        // (the only kavaEvm RPC that accepts the address-topic filter —
+        // see kavaEvmEndpoints in RPCRegistry).
+        //
         // No public Blockscout instances we trust at time of writing:
         // BSC (bnbChain) — official explorer is bscscan.com (key-only)
         // opBNB — same
         // Avalanche C — official explorer snowtrace.io (key-only)
-        case .bnbChain, .opBNB, .avalanche: return nil
+        case .bnbChain, .opBNB, .avalanche, .kavaEvm: return nil
         // Non-EVM cases never reach this function via the switch in
         // RealRPCTransactionScanner; included only for exhaustiveness.
         default: return nil

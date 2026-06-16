@@ -270,13 +270,26 @@ struct PolkadotChainAdapter: Sendable {
 
         // 3. state_getStorage through the shared client — positional
         //    params, so the standard JSON-RPC path applies. The result
-        //    is a hex string ("0x…") for an existing account; a `null`
-        //    result (account has no System::Account storage — never
-        //    used) surfaces as a thrown `.invalidResponse` from
-        //    `callJSONString` and maps to the zero summary below.
-        let resultStr: String
+        //    is a hex string ("0x…") for an existing account; a JSON
+        //    `null` result means the account has NO `System::Account`
+        //    storage entry — i.e. it has never held a balance. That is
+        //    the normal ZERO-balance answer, not an error.
+        //
+        //    **2026-06-16 fix.** This used `callJSONString`, which
+        //    mapped the `null` result to `.invalidResponse(
+        //    "state_getStorage result was not a string")`; the `catch`
+        //    below logged it at `.error` and treated every unfunded DOT
+        //    address as a fetch failure (the "state_getStorage result
+        //    was not a string" log spam). `callJSONStringOrNull`
+        //    returns `nil` for a `null` result, so an unused account is
+        //    a clean zero with no rotation and no error log. A genuine
+        //    endpoint failure (network, malformed body, throttle) still
+        //    throws → rotates → logs. Verified live (2026-06-16) against
+        //    16MHZ9tPcLkF4VMD33NYqTxDSEmT64RBsE8JSg4oSamar2PS: an empty
+        //    System::Account key returns `{"result":null}`.
+        let resultStr: String?
         do {
-            resultStr = try await client.callJSONString(
+            resultStr = try await client.callJSONStringOrNull(
                 chain: .polkadot,
                 method: "state_getStorage",
                 params: [keyHex]
@@ -287,8 +300,10 @@ struct PolkadotChainAdapter: Sendable {
             return ChainAccountSummary(nativeBalance: 0, isUsed: false)
         }
 
-        // 4. Expect a hex string "0x…".
-        guard resultStr.hasPrefix("0x") else {
+        // 4. `nil` (account never used → null storage) or a non-hex
+        //    string ⇒ zero balance. Only a proper "0x…" hex string
+        //    carries an AccountInfo to decode.
+        guard let resultStr, resultStr.hasPrefix("0x") else {
             return ChainAccountSummary(nativeBalance: 0, isUsed: false)
         }
         let hex = String(resultStr.dropFirst(2))

@@ -126,9 +126,13 @@ struct CoinMark: View {
             return ready
         }.value
         guard let image else {
-            // Bad local bytes — evict so a healthy copy re-downloads next
-            // time; the initials chip shows meanwhile (`prepared` stays nil).
-            await CoinMarkCache.shared.evict(url: url)
+            // Undecodable bytes (-17102). Drop the bad local copy AND
+            // negative-cache the URL: the corruption is upstream, so a
+            // bare re-download would fetch the same bad bytes and
+            // re-throw -17102 on the next row reappearance — an endless
+            // log loop. `markUndecodable` stops the retry for hours; the
+            // initials chip shows meanwhile (`prepared` stays nil).
+            await CoinMarkCache.shared.markUndecodable(url: url)
             return
         }
         await MainActor.run { self.prepared = image }
