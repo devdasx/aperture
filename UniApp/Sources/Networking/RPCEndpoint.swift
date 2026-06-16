@@ -95,5 +95,16 @@ struct RPCEndpoint: Sendable, Hashable, Identifiable {
             requestsPerDay: nil,
             burstAllowance: 20
         )
+
+        /// Infura — the user's PAID plan. Paid tiers sustain far more than
+        /// this; we cap at a polite 25 req/s (burst 40) per endpoint because
+        /// the `ConcurrencyGate` already bounds simultaneous sockets and a
+        /// paid key won't throttle at this rate. The reliable EVM primary.
+        static let infura = RateLimit(
+            requestsPerSecond: 25,
+            requestsPerMinute: 1_500,
+            requestsPerDay: nil,
+            burstAllowance: 40
+        )
     }
 }

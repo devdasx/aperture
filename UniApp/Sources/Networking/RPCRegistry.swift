@@ -28,6 +28,25 @@ enum RPCRegistry {
     /// each list sorted by `priority` ascending. A typo in an
     /// endpoint URL degrades to "one fewer fallback" (with a fault
     /// logged by `jr`/`rs`), never a crash.
+    /// Infura network slugs for the EVM chains the user's PAID key serves
+    /// (live-verified 2026-06-16): `mainnet` for Ethereum, `<chain>-mainnet`
+    /// for the rest. Chains NOT listed (kavaEvm, and every non-EVM chain)
+    /// get no Infura endpoint and keep their existing primaries. The keyed
+    /// URL is built by `infura(_:slug:_:)`.
+    private static let infuraSlug: [SupportedChain: String] = [
+        .ethereum: "mainnet",
+        .polygon: "polygon-mainnet",
+        .arbitrum: "arbitrum-mainnet",
+        .optimism: "optimism-mainnet",
+        .base: "base-mainnet",
+        .bnbChain: "bsc-mainnet",
+        .avalanche: "avalanche-mainnet",
+        .celo: "celo-mainnet",
+        .scroll: "scroll-mainnet",
+        .zkSync: "zksync-mainnet",
+        .opBNB: "opbnb-mainnet",
+    ]
+
     private static let endpointsByChain: [SupportedChain: [RPCEndpoint]] = {
         var map: [SupportedChain: [RPCEndpoint]] = [:]
         for chain in SupportedChain.allCases {
@@ -60,9 +79,18 @@ enum RPCRegistry {
             case .sui:         raw = suiEndpoints()
             case .kava:        raw = kavaEndpoints()
             }
-            map[chain] = raw
-                .compactMap { $0 }
-                .sorted { $0.priority < $1.priority }
+            var resolved = raw.compactMap { $0 }
+            // **Infura is the EVM PAID PRIMARY (2026-06-16).** When the
+            // user's INFURA_API_KEY is set, add the keyed Infura endpoint
+            // (priority -2 → sorts AHEAD of keyed 1rpc at -1 and publicnode
+            // at 0) for every chain Infura serves. EVM-only: non-EVM chains
+            // aren't in `infuraSlug`, so they're untouched. No key → nil →
+            // the chain's existing primaries stand.
+            if let slug = infuraSlug[chain],
+               let inf = infura("\(chain.rawValue)-infura", slug: slug, chain) {
+                resolved.append(inf)
+            }
+            map[chain] = resolved.sorted { $0.priority < $1.priority }
         }
         return map
     }()
@@ -541,6 +569,22 @@ enum RPCRegistry {
     /// coverage — only the spam. The keyed path (current production
     /// build has `ONERPC_API_KEY`) stays a real, generous-budget
     /// fallback.
+    /// Infura keyed EVM endpoint — the PAID PRIMARY (2026-06-16). The user
+    /// supplied a paid `INFURA_API_KEY`, so EVM reads route through Infura
+    /// first: priority -2 sorts it AHEAD of keyed 1rpc (-1) and publicnode
+    /// (0). `slug` is Infura's network slug (`mainnet` for Ethereum,
+    /// `<chain>-mainnet` for the rest). Returns nil when no key is set, so
+    /// the chain falls back to 1rpc/publicnode/etc. unchanged.
+    private static func infura(_ id: String, slug: String, _ chain: SupportedChain) -> RPCEndpoint? {
+        guard Secrets.hasInfuraKey else { return nil }
+        let url = "https://\(slug).infura.io/v3/\(Secrets.infuraAPIKey)"
+        guard let parsed = URL(string: url) else {
+            log.fault("Dropped malformed Infura endpoint URL for \(id, privacy: .public)")
+            return nil
+        }
+        return RPCEndpoint(id: id, url: parsed, kind: .jsonRPC, chain: chain, provider: "infura", rateLimit: .infura, priority: -2, weight: 1)
+    }
+
     private static func oneRPC(_ id: String, slug: String, _ chain: SupportedChain, _ pri: Int) -> RPCEndpoint? {
         guard Secrets.hasOneRPCKey else {
             // No key → the public tier is a guaranteed -32001 wall.
