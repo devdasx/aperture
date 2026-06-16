@@ -102,6 +102,17 @@ struct RefreshPipelinePersistenceTests {
         let nativeRow = try #require(native, "no native ETH balance row persisted after refresh")
         let amount = Decimal(string: nativeRow.rawBalance) ?? 0
         #expect(amount > 0, "vitalik.eth native balance persisted as \"\(nativeRow.rawBalance)\" (expected > 0)")
+
+        // Per-chain aggregate row recomputed from the SAME refresh — this
+        // is the row the balance card reads.
+        let chainRepo = ChainStateRepository(modelContainer: container)
+        let ethState = try #require(
+            try await chainRepo.chainState(walletId: walletId, chain: .ethereum),
+            "no ChainStateRecord for ethereum after refresh"
+        )
+        #expect((Decimal(string: ethState.nativeBalanceRaw) ?? 0) > 0,
+                "ethereum chain row native balance \"\(ethState.nativeBalanceRaw)\"")
+        #expect(ethState.txTotalCount > 0, "ethereum chain row recorded no transactions")
     }
 
     // MARK: - UTXO family (native + transaction-history persistence seam)
@@ -128,5 +139,83 @@ struct RefreshPipelinePersistenceTests {
         let txRepo = TransactionRepository(modelContainer: container)
         let txs = try await txRepo.transactions(walletId: walletId)
         #expect(!txs.isEmpty, "BTC genesis transaction history did not persist / read back")
+
+        // Per-chain aggregate row, including persisted UTXOs (BTC genesis is
+        // funded, so it has unspent outputs).
+        let chainRepo = ChainStateRepository(modelContainer: container)
+        let btcState = try #require(
+            try await chainRepo.chainState(walletId: walletId, chain: .bitcoin),
+            "no ChainStateRecord for bitcoin after refresh"
+        )
+        #expect((Decimal(string: btcState.nativeBalanceRaw) ?? 0) > 0, "bitcoin chain row native balance")
+        #expect(btcState.txTotalCount > 0, "bitcoin chain row recorded no transactions")
+        // NOTE: UTXO persistence is proven deterministically in
+        // `utxoPersistenceAggregatesInChainRow` below — NOT here. The
+        // genesis address has tens of thousands of dust UTXOs, which Esplora
+        // rejects with HTTP 400 on `/utxo` (verified). That's a pathological
+        // outlier, not the production case (real wallets have a handful of
+        // UTXOs), so asserting a live fetch against it would be a false red.
+    }
+
+    // MARK: - UTXO persistence (deterministic — the genesis address can't)
+
+    @Test("UTXO persistence: replaceUTXOs + rebuild reflects count/total in the chain row")
+    func utxoPersistenceAggregatesInChainRow() async throws {
+        let container = try makeContainer()
+        let walletId = try seedWallet(container, chain: .bitcoin, address: Self.btcAddress)
+        let repo = ChainStateRepository(modelContainer: container)
+
+        let utxos = [
+            SelectedUTXO(txid: "aa00", vout: 0, valueSats: 100_000, scriptHex: nil, confirmed: true),
+            SelectedUTXO(txid: "bb11", vout: 1, valueSats: 250_000, scriptHex: "76a914", confirmed: true),
+        ]
+        let written = try await repo.replaceUTXOs(
+            walletId: walletId, chain: .bitcoin, address: Self.btcAddress, utxos: utxos
+        )
+        #expect(written.count == 2)
+        #expect(written.totalSats == 350_000)
+
+        try await repo.rebuild(walletId: walletId, fiatCurrencyCode: "USD")
+        let state = try #require(try await repo.chainState(walletId: walletId, chain: .bitcoin))
+        #expect(state.utxoCount == 2, "chain row did not reflect persisted UTXO count")
+        #expect(state.utxoTotalSats == 350_000, "chain row UTXO total wrong")
+
+        // Snapshot semantics: replacing with a smaller set (one spent) must
+        // drop the stale output, not accumulate.
+        _ = try await repo.replaceUTXOs(
+            walletId: walletId, chain: .bitcoin, address: Self.btcAddress, utxos: [utxos[0]]
+        )
+        try await repo.rebuild(walletId: walletId, fiatCurrencyCode: "USD")
+        let after = try #require(try await repo.chainState(walletId: walletId, chain: .bitcoin))
+        #expect(after.utxoCount == 1, "replaceUTXOs must drop spent outputs (snapshot semantics)")
+        #expect(after.utxoTotalSats == 100_000)
+    }
+
+    // MARK: - Encryption (the user-chosen "encrypted key blob in DB" path)
+
+    @Test("ChainKeyVault seals and opens a private key losslessly")
+    func chainKeyVaultRoundTrips() throws {
+        let rawKey = Data(repeating: 0xAB, count: 32)
+        let sealed = try ChainKeyVault.seal(rawKey)
+        #expect(sealed != rawKey, "ciphertext must differ from plaintext")
+        let opened = try ChainKeyVault.open(sealed)
+        #expect(opened == rawKey, "AES-GCM round-trip must return the original key")
+    }
+
+    @Test("ChainStateRepository stores an encrypted key blob into the chain row")
+    func encryptedKeyBlobStoredAndFlagged() async throws {
+        let container = try makeContainer()
+        let walletId = try seedWallet(container, chain: .ethereum, address: Self.ethAddress)
+        let blob = try ChainKeyVault.seal(Data(repeating: 0xCD, count: 32))
+
+        let repo = ChainStateRepository(modelContainer: container)
+        try await repo.storeEncryptedKeys(walletId: walletId, blobs: [.ethereum: blob])
+
+        let state = try await repo.chainState(walletId: walletId, chain: .ethereum)
+        #expect(state?.hasEncryptedKey == true, "encrypted key blob did not persist into the chain row")
+
+        // The chain is no longer reported as missing a key.
+        let missing = try await repo.chainsMissingKey(walletId: walletId, candidates: [.ethereum])
+        #expect(!missing.contains(.ethereum), "chain still reported as missing a key after store")
     }
 }

@@ -81,6 +81,7 @@ enum FreshInstallGuard {
         "com.thuglife.aperture.wallet-manifest",   // WalletManifestStore.service — wallet list metadata
         "com.thuglife.aperture.pin",               // PinCodeStorage.service — PBKDF2 hash + salt + failure record
         "com.thuglife.aperture.pin.smoketest",     // PinCodeStorage.smokeCheckService — DEBUG smoke check
+        "com.thuglife.aperture.chainkey.master",   // ChainKeyVault — AES-GCM master key for per-chain key blobs
     ]
 
     /// Read-only mirror of `knownServices` for the audit test
