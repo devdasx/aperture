@@ -60,11 +60,14 @@ struct WalletRefreshCoordinator: Sendable {
         fiatCode: String,
         userInitiated: Bool = false
     ) async -> Set<SupportedChain> {
+        // Trigger label for the latency log — pull-to-refresh vs the
+        // silent background/import/launch refresh.
+        let triggerLabel = userInitiated ? "pull-to-refresh" : "background refresh"
         let task = await WalletRefreshRegistry.joinOrStart(
             walletId: walletId,
             cancelExisting: userInitiated
         ) {
-            await self.performRefresh(walletId: walletId, fiatCode: fiatCode)
+            await self.performRefresh(walletId: walletId, fiatCode: fiatCode, triggerLabel: triggerLabel)
         }
         return await task.value
     }
@@ -73,7 +76,12 @@ struct WalletRefreshCoordinator: Sendable {
     /// registry above, so at most one instance runs per wallet at a
     /// time. Returns the chains whose balance scan yielded nothing
     /// even after the bounded retry pass below.
-    private func performRefresh(walletId: UUID, fiatCode: String) async -> Set<SupportedChain> {
+    private func performRefresh(walletId: UUID, fiatCode: String, triggerLabel: String = "refresh") async -> Set<SupportedChain> {
+        // **Latency log (2026-06-17).** Reset + stamp the run here — the
+        // single chokepoint every trigger (pull-to-refresh, open-wallet,
+        // import, app-launch, periodic) funnels through — so the
+        // diagnostics screen always reflects the most recent real pipeline.
+        RefreshPerfLog.shared.beginRun(triggerLabel)
         let refreshGeneration = await MainActor.run {
             WalletRefreshState.shared.beginRefresh()
         }
@@ -114,7 +122,9 @@ struct WalletRefreshCoordinator: Sendable {
         // (incl. pull-to-refresh) never blocks scrolling/navigation. We
         // don't hold the context across await points — concurrency stays
         // clean and the snapshot is `Sendable`.
+        let snapshotToken = RefreshPerfLog.shared.start()
         var snapshot = fetchAddressSnapshot(walletId: walletId)
+        RefreshPerfLog.shared.end("db", "address snapshot (\(snapshot.count) addresses)", since: snapshotToken)
 
         // **2026-06-12 — empty-snapshot backoff.** A refresh fired in
         // the import-completion window can land before the freshly
@@ -244,6 +254,7 @@ struct WalletRefreshCoordinator: Sendable {
         // chain it could READ — a genuine zero balance still
         // yields — so "no row" means the read failed, not that the
         // wallet is empty.
+        let balancePassToken = RefreshPerfLog.shared.start()
         var nativeYieldedChains = await consumeBalanceStream(
             stream,
             chainSnapshots: chainSnapshots,
@@ -252,6 +263,7 @@ struct WalletRefreshCoordinator: Sendable {
             walletId: walletId,
             fiatCurrencyCode: currency.code
         )
+        RefreshPerfLog.shared.end("balance", "balance pass — \(nativeYieldedChains.count)/\(chainAddresses.count) chains landed", since: balancePassToken)
 
         var failedChains = Set(chainAddresses.keys).subtracting(nativeYieldedChains)
 
@@ -318,7 +330,9 @@ struct WalletRefreshCoordinator: Sendable {
             interim: true
         )
 
+        let historyPassToken = RefreshPerfLog.shared.start()
         await txHistoryTask
+        RefreshPerfLog.shared.end("history", "history pass (all chains)", since: historyPassToken)
         // Transaction history pass ran to completion — stamp it synced
         // (the scanner swallows per-chain failures, so completion is the
         // freshness signal available here). Skipped if cancelled.
@@ -336,11 +350,13 @@ struct WalletRefreshCoordinator: Sendable {
         // balance card reads per chain.
         await utxoTask
         await keyTask
+        let finalRebuildToken = RefreshPerfLog.shared.start()
         try? await chainStateRepo.rebuild(
             walletId: walletId,
             fiatCurrencyCode: currency.code,
             failedChains: failedChains
         )
+        RefreshPerfLog.shared.end("db", "final per-chain rebuild (all chains)", since: finalRebuildToken)
 
         // 2026-06-13 — persist this wallet's portfolio-value timeline.
         // The repository sums the freshly-upserted balance rows in the
@@ -397,6 +413,8 @@ struct WalletRefreshCoordinator: Sendable {
                 generation: refreshGeneration
             )
         }
+        RefreshPerfLog.shared.event("refresh", "failed chains: \(outcome.isEmpty ? "none" : outcome.map { $0.rawValue }.sorted().joined(separator: ", "))")
+        RefreshPerfLog.shared.endRun()
         return outcome
     }
 
@@ -514,6 +532,7 @@ struct WalletRefreshCoordinator: Sendable {
     ) async {
         let dirty = await channel.drain()
         guard !dirty.isEmpty else { return }
+        let token = RefreshPerfLog.shared.start()
         try? await txRepo.flush()
         try? await chainStateRepo.rebuild(
             walletId: walletId,
@@ -521,6 +540,7 @@ struct WalletRefreshCoordinator: Sendable {
             onlyChains: dirty,
             interim: true
         )
+        RefreshPerfLog.shared.end("db", "live balance commit [\(dirty.map { $0.rawValue }.sorted().joined(separator: ","))]", since: token)
     }
 
     /// 2026-06-09 — Upsert a streamScan-yielded native chain
@@ -872,6 +892,7 @@ struct WalletRefreshCoordinator: Sendable {
         ownAddresses: Set<String> = []
     ) async -> Int {
         let scanner = RealRPCTransactionScanner(client: client)
+        let fetchToken = RefreshPerfLog.shared.start()
         let events = await scanner.scan(
             addresses: [address.chain: address.address],
             limit: 25,
@@ -886,6 +907,7 @@ struct WalletRefreshCoordinator: Sendable {
                 ? [:]
                 : [address.chain: ownAddresses]
         )
+        RefreshPerfLog.shared.end("history", "fetch \(address.chain.rawValue) — \(events.count) events", since: fetchToken)
         guard !events.isEmpty else { return 0 }
         for event in events {
             // **Self-transfer taxonomy (2026-06-16).** Pass an explicit
@@ -923,6 +945,7 @@ struct WalletRefreshCoordinator: Sendable {
         // balances and of every other chain's history (which run in their
         // own parallel tasks). The flush commits whatever's staged so far;
         // concurrent per-chain commits serialize on the repository actors.
+        let commitToken = RefreshPerfLog.shared.start()
         try? await txRepo.flush()
         try? await chainStateRepo.rebuild(
             walletId: walletId,
@@ -930,6 +953,7 @@ struct WalletRefreshCoordinator: Sendable {
             onlyChains: [address.chain],
             interim: true
         )
+        RefreshPerfLog.shared.end("history", "live commit \(address.chain.rawValue) (\(events.count) events)", since: commitToken)
         Self.log.info("Transaction history for \(address.chain.rawValue, privacy: .public)/\(address.address, privacy: .public): persisted \(events.count, privacy: .public) events")
         return events.count
     }
@@ -1014,6 +1038,7 @@ struct WalletRefreshCoordinator: Sendable {
                 if snap.address.hasPrefix(StubKeyImportService.stubAddressPrefix) { continue }
                 group.addTask {
                     do {
+                        let utxoToken = RefreshPerfLog.shared.start()
                         let utxos = try await utxoService.fetchUTXOs(address: snap.address, chain: snap.chain)
                         _ = try await chainStateRepo.replaceUTXOs(
                             walletId: walletId,
@@ -1021,6 +1046,7 @@ struct WalletRefreshCoordinator: Sendable {
                             address: snap.address,
                             utxos: utxos
                         )
+                        RefreshPerfLog.shared.end("utxo", "\(snap.chain.rawValue) — \(utxos.count) UTXOs", since: utxoToken)
                         Self.log.info("Persisted \(utxos.count, privacy: .public) UTXOs for \(snap.chain.rawValue, privacy: .public)")
                     } catch {
                         if Task.isCancelled { return }
@@ -1051,9 +1077,11 @@ struct WalletRefreshCoordinator: Sendable {
         let toDerive = chainAddresses.filter { missing.contains($0.key) }
         guard !toDerive.isEmpty else { return }
 
+        let keyToken = RefreshPerfLog.shared.start()
         let blobs = await Task.detached(priority: .utility) {
             SigningKeyProvider.encryptedKeyBlobs(wallet: descriptor, chainAddresses: toDerive)
         }.value
+        RefreshPerfLog.shared.end("key", "derive + seal \(blobs.count)/\(toDerive.count) chain keys (HDWallet/PBKDF2)", since: keyToken)
         guard !blobs.isEmpty else { return }
         do {
             try await chainStateRepo.storeEncryptedKeys(walletId: walletId, blobs: blobs)

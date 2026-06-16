@@ -2707,7 +2707,9 @@ struct WalletHomeView: View {
             // explicitly now that the coordinator has finished writing.
             // Transactions need no rebuild — they read live from the
             // top-level `@Query`.
+            let uiToken = RefreshPerfLog.shared.start()
             rebuildDisplayRows()
+            RefreshPerfLog.shared.end("ui", "rebuildDisplayRows (main thread)", since: uiToken)
             // **2026-06-10 handoff signature.** Pull-to-refresh
             // complete fires the iris-settle pattern (soft tick →
             // medium tap). Per Rule #10 §I, signatures are gated

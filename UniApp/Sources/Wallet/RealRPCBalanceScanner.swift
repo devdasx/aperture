@@ -141,25 +141,31 @@ struct RealRPCBalanceScanner: BalanceScanner {
             // currently selected (the 2026-06-13 currency-change
             // contract).
             let pricesTask = Task { [pricing] in
-                await pricing.unitPrices(
-                    symbols: Self.uniquePriceSymbols(
-                        addresses: addresses,
-                        customTokens: customTokens,
-                        priorityTokenSymbols: priorityTokenSymbols
-                    ),
+                let priceToken = RefreshPerfLog.shared.start()
+                let symbols = Self.uniquePriceSymbols(
+                    addresses: addresses,
+                    customTokens: customTokens,
+                    priorityTokenSymbols: priorityTokenSymbols
+                )
+                let result = await pricing.unitPrices(
+                    symbols: symbols,
                     currencyCode: currency.code
                 )
+                RefreshPerfLog.shared.end("price", "price batch (\(symbols.count) symbols)", since: priceToken)
+                return result
             }
             let task = Task {
                 await withTaskGroup(of: Void.self) { group in
                     for (chain, address) in addresses {
                         // Native balance task (one per chain).
                         group.addTask { [client] in
+                            let nativeToken = RefreshPerfLog.shared.start()
                             let summary = await Self.fetchNative(
                                 chain: chain,
                                 address: address,
                                 client: client
                             )
+                            RefreshPerfLog.shared.end("balance", "native \(chain.rawValue)\(summary == nil ? " — FAILED" : "")", since: nativeToken)
                             // Scan failure → no row; the refresh
                             // coordinator preserves the persisted
                             // balance via its markScanComplete path.
@@ -209,6 +215,7 @@ struct RealRPCBalanceScanner: BalanceScanner {
                         }
                         let customForChain = customTokens[chain] ?? []
                         group.addTask { [client] in
+                            let tokenToken = RefreshPerfLog.shared.start()
                             await Self.streamTokens(
                                 chain: chain,
                                 address: address,
@@ -218,6 +225,7 @@ struct RealRPCBalanceScanner: BalanceScanner {
                                 customTokens: customForChain,
                                 yield: { row in continuation.yield(row) }
                             )
+                            RefreshPerfLog.shared.end("balance", "tokens \(chain.rawValue)", since: tokenToken)
                         }
                     }
                 }
