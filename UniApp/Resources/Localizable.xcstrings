@@ -311630,6 +311630,17 @@
           }
         }
       }
+    },
+    "Decimal point": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Decimal point"
+          }
+        }
+      }
     }
   },
   "version": "1.0"
