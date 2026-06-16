@@ -70,7 +70,13 @@ struct StellarChainAdapter: Sendable {
             let balance = Decimal(string: nativeStr) ?? 0
             return ChainAccountSummary(nativeBalance: balance, isUsed: balance > 0)
         } catch {
-            longTailLog.error("Stellar balance fetch failed for \(address, privacy: .private): \(String(describing: error), privacy: .public)")
+            // A 404 from Horizon = the account is unfunded / doesn't exist
+            // on-chain yet — the normal "0 balance" state, not an error.
+            if RPCError.isHTTPNotFound(error) {
+                longTailLog.debug("Stellar account \(address, privacy: .private) unfunded (404) — treating as 0 balance")
+            } else {
+                longTailLog.error("Stellar balance fetch failed for \(address, privacy: .private): \(String(describing: error), privacy: .public)")
+            }
             return ChainAccountSummary(nativeBalance: 0, isUsed: false)
         }
     }
@@ -214,7 +220,14 @@ struct TRONChainAdapter: Sendable {
             let trx = sun / 1_000_000
             return ChainAccountSummary(nativeBalance: trx, isUsed: trx > 0)
         } catch {
-            longTailLog.error("TRON balance fetch failed for \(address, privacy: .private): \(String(describing: error), privacy: .public)")
+            // A 404 from TronGrid/publicnode for /v1/accounts = the account
+            // is unfunded / not yet on-chain (or the fallback can't serve
+            // that path) — the normal "0 balance" state, not an error.
+            if RPCError.isHTTPNotFound(error) {
+                longTailLog.debug("TRON account \(address, privacy: .private) unfunded (404) — treating as 0 balance")
+            } else {
+                longTailLog.error("TRON balance fetch failed for \(address, privacy: .private): \(String(describing: error), privacy: .public)")
+            }
             return ChainAccountSummary(nativeBalance: 0, isUsed: false)
         }
     }

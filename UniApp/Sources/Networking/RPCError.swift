@@ -44,6 +44,21 @@ enum RPCError: Error, Sendable, Equatable {
     case cancelled
 }
 
+extension RPCError {
+    /// `true` when `error` is an HTTP 404 surfaced as `.invalidResponse`.
+    /// For account-based chains (Stellar Horizon, Tron) a 404 on the
+    /// account path means the account has never been funded — the normal
+    /// "zero balance / no history" state, NOT an error worth alarming
+    /// about. Callers treat it as an empty result and log it quietly.
+    /// Static + takes `any Error` so it works in untyped `catch` blocks
+    /// without a needless conditional cast.
+    static func isHTTPNotFound(_ error: any Error) -> Bool {
+        guard let rpc = error as? RPCError,
+              case .invalidResponse(let message) = rpc else { return false }
+        return message.contains("HTTP 404")
+    }
+}
+
 // MARK: - User-facing description (for the UI footer / banner)
 
 extension RPCError {

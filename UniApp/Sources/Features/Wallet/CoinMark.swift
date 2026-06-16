@@ -1,4 +1,5 @@
 import SwiftUI
+import ImageIO
 
 /// Resolves a `(chain, tokenSymbol, contract)` triple to a coin
 /// mark and renders it at the caller's frame.
@@ -114,16 +115,24 @@ struct CoinMark: View {
         // so the decode doesn't run on the actor that owns the
         // cache. Cooperative cancellation when the view goes away.
         let image: UIImage? = await Task.detached(priority: .userInitiated) {
-            // Require a real decode. `UIImage(data:)` is lazy and can
-            // succeed on truncated/corrupt bytes; `preparingForDisplay()`
-            // forces the decode and returns nil when the data can't be
-            // decompressed. The old `?? raw` fallback handed that broken
-            // lazy image to the renderer, which re-threw `-17102
-            // decompressing image — possibly corrupt` every frame and drew
-            // a blank mark. Now a failed decode yields nil → initials chip.
-            guard let raw = UIImage(data: data),
-                  let ready = raw.preparingForDisplay() else { return nil }
-            return ready
+            // **2026-06-16 — validate the container BEFORE decoding pixels.**
+            // The "-17102 decompressing image — possibly corrupt" log is
+            // emitted by ImageIO DURING a pixel decode of truncated/corrupt
+            // bytes — so the only way to avoid it is to never hand bad bytes
+            // to the decoder. `CGImageSourceGetStatus` reports whether the
+            // container is COMPLETE from the header/structure WITHOUT
+            // running the decompressor; a truncated download (the common
+            // cause) reports `.statusIncomplete`/`.statusInvalidData` and is
+            // rejected here, before any decode. Only a complete, decodable
+            // container proceeds to `preparingForDisplay()`.
+            guard let source = CGImageSourceCreateWithData(data as CFData, nil),
+                  CGImageSourceGetStatus(source) == .statusComplete,
+                  CGImageSourceGetCount(source) > 0,
+                  let cgImage = CGImageSourceCreateImageAtIndex(source, 0, nil) else {
+                return nil
+            }
+            let decoded = UIImage(cgImage: cgImage)
+            return decoded.preparingForDisplay() ?? decoded
         }.value
         guard let image else {
             // Undecodable bytes (-17102). Drop the bad local copy AND
