@@ -553,9 +553,21 @@ enum RPCRegistry {
             log.fault("Dropped malformed 1rpc endpoint URL for \(id, privacy: .public)")
             return nil
         }
-        // Keyed → generous budget. Sits below the always-keyless healthy
-        // endpoints (priority 9) so it's a real but last-resort fallback.
-        return RPCEndpoint(id: id, url: parsed, kind: .jsonRPC, chain: chain, provider: "1rpc", rateLimit: .moderate20, priority: pri, weight: 1)
+        // **2026-06-16 — keyed 1rpc is the PRIVACY PRIMARY.** The user
+        // supplied ONERPC_API_KEY explicitly so on-chain reads route
+        // through 1rpc.io, which strips client IP/metadata and does not
+        // log queries — the reason to use it for a wallet. The keyed path
+        // is verified healthy with a generous budget (the ~200/day quota
+        // wall is the KEYLESS public tier only — a distinct path this was
+        // previously confused with, which is why the key looked "unused").
+        // Priority -1 sorts it AHEAD of publicnode's 0, so it is the
+        // primary on every chain it's configured for; publicnode (0,
+        // unlimited) is the immediate fallback if the keyed quota ever
+        // exhausts (-32001 → clean rotate, no breaker strike). The
+        // per-call-site `pri` argument is intentionally ignored for the
+        // keyed endpoint — keyed 1rpc is always primary.
+        _ = pri
+        return RPCEndpoint(id: id, url: parsed, kind: .jsonRPC, chain: chain, provider: "1rpc", rateLimit: .moderate20, priority: -1, weight: 1)
     }
 
     private static func rs(_ id: String, _ url: String, _ chain: SupportedChain, _ provider: String, _ limit: RPCEndpoint.RateLimit, _ pri: Int) -> RPCEndpoint? {
