@@ -224,10 +224,14 @@ struct RealRPCTransactionScanner: TransactionScanner {
 
     // MARK: - Per-chain dispatch
 
-    /// Routes `(chain, address)` to its family adapter. Each adapter
-    /// returns up to `limit` events, newest-first. Adapter errors are
-    /// logged and swallowed — a failing chain shouldn't blank the
-    /// other chains' rows.
+    /// Routes `(chain, address)` to its per-chain `ChainConnector` (the
+    /// fleet design). Each connector owns its own `fetchHistory` — same
+    /// endpoints / pagination / parsing the family transaction adapters
+    /// used, ported verbatim — and returns up to `limit` events,
+    /// newest-first. Connector errors are logged and swallowed here — a
+    /// failing chain shouldn't blank the other chains' rows. The registry's
+    /// exhaustive switch replaces the per-family switch that used to live
+    /// here.
     private static func fetch(
         chain: SupportedChain,
         address: String,
@@ -242,47 +246,12 @@ struct RealRPCTransactionScanner: TransactionScanner {
             return []
         }
         do {
-            switch chain {
-            case .bitcoin, .bitcoinCash, .litecoin, .dogecoin:
-                let adapter = BitcoinFamilyTransactionAdapter(chain: chain, client: client)
-                return try await adapter.fetch(address: address, limit: limit)
-
-            case .ethereum, .arbitrum, .base, .optimism, .scroll, .zkSync,
-                 .polygon, .bnbChain, .opBNB, .avalanche, .celo:
-                let adapter = EVMTransactionAdapter(chain: chain, client: client)
-                return try await adapter.fetch(
-                    address: address,
-                    limit: limit,
-                    customContracts: customContracts
-                )
-
-            case .solana:
-                let adapter = SolanaTransactionAdapter(client: client)
-                return try await adapter.fetch(address: address, limit: limit)
-
-            case .ripple:
-                let adapter = XRPLTransactionAdapter(client: client)
-                return try await adapter.fetch(address: address, limit: limit)
-
-            case .tron:
-                let adapter = TronTransactionAdapter(client: client)
-                return try await adapter.fetch(address: address, limit: limit)
-
-            case .stellar:
-                let adapter = StellarTransactionAdapter(client: client)
-                return try await adapter.fetch(address: address, limit: limit)
-
-            case .aptos:
-                return try await LongTailTransactionAdapters.fetchAptos(address: address, limit: limit, client: client)
-            case .sui:
-                return try await LongTailTransactionAdapters.fetchSui(address: address, limit: limit, client: client)
-            case .near:
-                return try await LongTailTransactionAdapters.fetchNear(address: address, limit: limit, client: client)
-            case .ton:
-                return try await LongTailTransactionAdapters.fetchTon(address: address, limit: limit, client: client)
-            case .polkadot:
-                return try await LongTailTransactionAdapters.fetchPolkadot(address: address, limit: limit, client: client)
-            }
+            let connector = ChainConnectorRegistry.connector(for: chain)
+            return try await connector.fetchHistory(
+                address: address,
+                limit: limit,
+                customContracts: customContracts
+            )
         } catch {
             // A 404 = the account has no on-chain history yet (unfunded /
             // never used) — an empty history, not a failure. Log quietly so

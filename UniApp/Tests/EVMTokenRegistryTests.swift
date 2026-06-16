@@ -175,7 +175,7 @@ struct EVMTokenTestCase: Sendable, CustomStringConvertible {
         var out: [EVMTokenTestCase] = []
         let evmChains: [SupportedChain] = [
             .ethereum, .arbitrum, .base, .optimism, .scroll, .zkSync,
-            .polygon, .bnbChain, .opBNB, .avalanche, .celo, .kavaEvm
+            .polygon, .bnbChain, .opBNB, .avalanche, .celo
         ]
         for chain in evmChains {
             for entry in EVMTokenRegistry.tokens(for: chain) {
@@ -209,6 +209,5 @@ struct EVMChainTokenCount: Sendable, CustomStringConvertible {
         EVMChainTokenCount(chain: .opBNB,     expectedCount: 1),   // 3.9
         EVMChainTokenCount(chain: .avalanche, expectedCount: 9),   // 3.10
         EVMChainTokenCount(chain: .celo,      expectedCount: 2),   // 3.11
-        EVMChainTokenCount(chain: .kavaEvm,   expectedCount: 1),   // 3.12
     ]
 }
