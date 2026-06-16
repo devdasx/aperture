@@ -62,7 +62,6 @@ struct WalletCoreKeyImportService: KeyImportService {
         .opBNB:        204,
         .avalanche:    10009000,   // C-Chain
         .celo:         52752,
-        .kavaEvm:      10002222,
 
         // Solana family (ed25519 + base58)
         .solana:       501,
@@ -91,8 +90,6 @@ struct WalletCoreKeyImportService: KeyImportService {
         // Sui (ed25519 + BLAKE2b-256 address)
         .sui:          784,
 
-        // Kava (Cosmos secp256k1 + bech32 with "kava" HRP)
-        .kava:         459,
     ]
 
     // MARK: - Mnemonic-based derivation (preferred API)

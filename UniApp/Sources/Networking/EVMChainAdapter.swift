@@ -430,7 +430,6 @@ struct EVMChainAdapter: Sendable {
         case .opBNB:      return "opbnb"
         case .avalanche:  return "avalanchec"
         case .celo:       return "celo"
-        case .kavaEvm:    return "kavaevm"
         default:          return nil
         }
     }

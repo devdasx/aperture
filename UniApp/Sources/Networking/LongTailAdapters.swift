@@ -427,30 +427,3 @@ struct SuiChainAdapter: Sendable {
         }
     }
 }
-
-// MARK: - Kava (Cosmos)
-
-struct CosmosKavaAdapter: Sendable {
-    let client: RPCClient
-
-    func fetchAccountSummary(address: String) async throws(RPCError) -> ChainAccountSummary {
-        do {
-            let data = try await client.callREST(
-                chain: .kava,
-                path: "cosmos/bank/v1beta1/balances/\(address)"
-            )
-            guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                  let balances = json["balances"] as? [[String: Any]] else {
-                return ChainAccountSummary(nativeBalance: 0, isUsed: false)
-            }
-            let native = balances.first(where: { $0["denom"] as? String == "ukava" })
-            let amountStr = native?["amount"] as? String ?? "0"
-            let ukava = Decimal(string: amountStr) ?? 0
-            let kava = ukava / 1_000_000
-            return ChainAccountSummary(nativeBalance: kava, isUsed: kava > 0)
-        } catch {
-            longTailLog.error("Kava balance fetch failed for \(address, privacy: .private): \(String(describing: error), privacy: .public)")
-            return ChainAccountSummary(nativeBalance: 0, isUsed: false)
-        }
-    }
-}

@@ -65,7 +65,6 @@ enum TransactionExplorer {
         case 534352: return "https://scrollscan.com"          // Scroll
         case 324:    return "https://explorer.zksync.io"      // zkSync Era
         case 42220:  return "https://celoscan.io"             // Celo
-        case 2222:   return "https://kavascan.io"             // Kava EVM
         case 204:    return "https://opbnb.bscscan.com"       // opBNB
         default:     return nil
         }
@@ -95,11 +94,9 @@ enum TransactionExplorer {
         case .near:        return "https://nearblocks.io/txns/"
         case .polkadot:    return "https://polkadot.subscan.io/extrinsic/"
         case .ton:         return "https://tonviewer.com/transaction/"
-        case .kava:        return "https://www.mintscan.io/kava/tx/"
-
         // EVM chains are handled by `evmURL` — never reached here.
         case .ethereum, .arbitrum, .base, .optimism, .scroll, .zkSync,
-             .polygon, .bnbChain, .opBNB, .avalanche, .celo, .kavaEvm:
+             .polygon, .bnbChain, .opBNB, .avalanche, .celo:
             return nil
         }
     }

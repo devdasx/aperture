@@ -402,27 +402,6 @@ struct AllSupportedAssetsView: View {
             ))
         }
 
-        // Kava (Cosmos IBC).
-        for entry in KavaCosmosTokenRegistry.tokens {
-            let balance = tokenBalance(chain: .kava, contract: entry.denom)
-            let amount = balance.map {
-                WalletFormatting.decimalAmount(
-                    rawBalance: $0.rawBalance,
-                    decimals: $0.decimals
-                )
-            } ?? .zero
-            rows.append(TokenSupportedDisplayRow(
-                id: "kava.\(entry.denom)",
-                chain: .kava,
-                symbol: entry.symbol,
-                name: entry.name,
-                contract: entry.denom,
-                amount: amount,
-                fiatValue: (balance?.fiatValueCached).flatMap { $0 > 0 ? $0 : nil },
-                fiatCurrencyCode: balance?.fiatCurrencyCode ?? currencyCode
-            ))
-        }
-
         // Sort: held (fiat > 0) first by fiat desc, then unheld
         // alphabetically by (symbol, chain). Stable, honest.
         return rows.sorted { a, b in

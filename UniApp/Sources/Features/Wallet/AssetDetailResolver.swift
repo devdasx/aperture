@@ -307,16 +307,6 @@ enum AssetDetailResolver {
             ))
         }
 
-        // Kava (Cosmos IBC).
-        for entry in KavaCosmosTokenRegistry.tokens where entry.symbol.uppercased() == target {
-            rows.append(makeRow(
-                chain: .kava,
-                contract: entry.denom,
-                balance: index.lookup(chain: .kava, contract: entry.denom),
-                fallbackCurrencyCode: fallbackCurrencyCode
-            ))
-        }
-
         // **Held custom rows (registry-absent).** A user may have
         // added a custom token whose `tokenSymbol` matches our
         // identity but whose contract isn't in any registry. Surface
@@ -515,9 +505,6 @@ enum AssetNameLookup {
             return entry.name
         }
         if let entry = TONJettonRegistry.tokens.first(where: { $0.symbol.uppercased() == target }) {
-            return entry.name
-        }
-        if let entry = KavaCosmosTokenRegistry.tokens.first(where: { $0.symbol.uppercased() == target }) {
             return entry.name
         }
         return nil

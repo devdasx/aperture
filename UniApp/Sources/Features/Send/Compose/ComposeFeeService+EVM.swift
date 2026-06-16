@@ -228,7 +228,6 @@ extension ComposeFeeService {
     private func tipFloorWei(for chain: SupportedChain) -> Decimal {
         switch chain {
         case .polygon: return ComposeDecimal.pow10(9) * 25 // 25 gwei floor (matrix)
-        case .kavaEvm: return ComposeDecimal.pow10(9)      // ≥ 1 gwei feemarket floor
         default:       return 0
         }
     }

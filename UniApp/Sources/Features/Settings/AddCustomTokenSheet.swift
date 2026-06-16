@@ -325,7 +325,7 @@ struct AddCustomTokenSheet: View {
 
     private static let supportedChainsForCustomTokens: [SupportedChain] = [
         .ethereum, .arbitrum, .base, .optimism, .scroll, .zkSync,
-        .polygon, .bnbChain, .opBNB, .avalanche, .celo, .kavaEvm,
+        .polygon, .bnbChain, .opBNB, .avalanche, .celo,
         .solana,
     ]
 
