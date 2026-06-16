@@ -2452,7 +2452,20 @@ struct WalletHomeView: View {
             if let stored = try? modelContext.fetch(descriptor).first {
                 return stored
             }
+            // A deliberately-set, VALID active id that the main context
+            // can't see yet (cross-context merge lag right after a
+            // create / import — the new WalletRecord is saved in a
+            // background `@ModelActor` context and merges a beat later).
+            // Return nil → render the empty/loading state — NEVER fall
+            // back to a DIFFERENT wallet, which surfaced the previous
+            // wallet's balances under the new wallet's identity (the
+            // "new wallet briefly shows 0, then the old wallet's $250"
+            // bug). The id is trusted; the wallet appears the instant
+            // the merge lands.
+            return nil
         }
+        // Only when NO valid active id is set (first launch / a cleared
+        // pointer) do we heal to the first wallet.
         return allWallets.first(where: { walletExists(id: $0.id) })
     }
 
@@ -2544,35 +2557,28 @@ struct WalletHomeView: View {
     /// wallet got deleted. Sets the first wallet by sortOrder as
     /// active when the stored id is empty or stale.
     private func ensureActiveWalletSet() {
-        if let uuid = UUID(uuidString: activeWalletIdRaw) {
-            if allWallets.contains(where: { $0.id == uuid }) {
-                return
-            }
-            // The `@Query` lags repository inserts — the import flow
-            // writes `activeWalletId` only after its `@ModelActor`
-            // context has saved, but the main context's merge is
-            // asynchronous. Reverting to the first wallet in that
-            // window hijacked the active selection away from the
-            // just-imported wallet AND aimed the auto-refresh at the
-            // wrong wallet (the 2026-06-12 "imported wallet shows 0
-            // until relaunch" bug). Ask the store directly before
-            // declaring the id stale.
-            if walletExists(id: uuid) {
-                return
-            }
+        // A deliberately-set, VALID active id is TRUSTED — even when the
+        // main context can't see its wallet yet (cross-context merge lag
+        // right after a create / import: the new WalletRecord is saved in
+        // a background `@ModelActor` context and merges a beat later, so
+        // BOTH `allWallets` and a `walletExists` fetch can transiently
+        // miss it). Healing it to "the first wallet" in that window
+        // hijacked the just-created wallet's identity and surfaced the
+        // PREVIOUS wallet's balances under it (the "new wallet briefly
+        // shows 0, then the old wallet's $250" bug). The delete flow
+        // re-points the id itself (`WalletRepository
+        // .deleteWalletAndActivateNext`), so a valid id never legitimately
+        // dangles — leave it and let the merge land. If a valid id ever
+        // does point at nothing, `activeWallet` returns nil (an empty
+        // home the user can recover from by switching), which is far
+        // safer than showing another wallet's funds.
+        if UUID(uuidString: activeWalletIdRaw) != nil {
+            return
         }
-        // Stored id is empty or names a wallet the store no longer
-        // has. Heal from STORE truth, not from the `@Query`: during
-        // the post-delete merge window `allWallets` can still contain
-        // the just-deleted record, and stamping that id would
-        // re-dangle the pointer with nothing left to heal it
-        // (`.task(id:)` only re-fires on a raw change) — the home
-        // then shows one wallet in the pill (the query fallback) and
-        // another wallet's memoized rows (the 2026-06-13 post-delete
-        // mismatch). First wallet by `sortOrder` — the same
-        // deterministic landing `WalletRepository
-        // .deleteWalletAndActivateNext` uses, which a direct store
-        // fetch sees correctly even mid-merge.
+        // Stored id is EMPTY or unparseable — heal from STORE truth (first
+        // wallet by `sortOrder`, the same deterministic landing the delete
+        // flow uses, which a direct store fetch sees correctly even
+        // mid-merge).
         var descriptor = FetchDescriptor<WalletRecord>(
             sortBy: [SortDescriptor(\WalletRecord.sortOrder)]
         )
