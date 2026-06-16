@@ -171,23 +171,22 @@ struct EVMTransactionAdapter: Sendable {
     ///
     /// `https://api.routescan.io/v2/network/mainnet/evm/{chainId}/etherscan/api`
     private static func routescanAPIBase(for chain: SupportedChain) -> URL? {
-        let chainID: Int
-        switch chain {
-        case .ethereum: chainID = 1
-        case .optimism: chainID = 10
-        case .bnbChain: chainID = 56
-        case .opBNB:    chainID = 204
-        case .polygon:  chainID = 137
-        case .base:     chainID = 8453
-        case .arbitrum: chainID = 42161
-        case .avalanche: chainID = 43114
-        case .scroll:   chainID = 534352
-        case .zkSync:   chainID = 324
-        case .celo:     chainID = 42220
-        case .kavaEvm:  chainID = 2222
-        default: return nil
-        }
-        return URL(string: "https://api.routescan.io/v2/network/mainnet/evm/\(chainID)/etherscan/api")
+        // **2026-06-16 — Blockscout is the indexer; RouteScan is retired.**
+        // RouteScan's universal endpoint began returning
+        // `{"status":"0","message":"chain not supported","result":null}`
+        // for EVERY chain (verified live), which surfaced as the
+        // "Indexer txlist failed … missing `result` array" spam and forced
+        // a full `eth_getLogs` storm for token history. The per-chain
+        // Blockscout instance is now the primary indexer: its
+        // Etherscan-compatible `/api` serves BOTH `txlist` (native) and
+        // `tokentx` (ERC-20) with the same `page`/`offset`/`sort` params —
+        // full history, keyless, and (unlike `eth_getLogs`) with NO
+        // block-range cap. Chains without a public Blockscout
+        // (`bnbChain`, `opBNB`, `avalanche`) return nil → the token path
+        // falls back to chunked `eth_getLogs`; the native path returns
+        // empty honestly.
+        guard let host = blockscoutHost(for: chain) else { return nil }
+        return URL(string: "\(host)/api")
     }
 
     /// Build the lowercase set of contract addresses the user
@@ -810,9 +809,26 @@ struct EVMTransactionAdapter: Sendable {
         blockRange: Int64 = scanBlockRange
     ) async throws -> [TransactionEvent] {
         let latestBlock = try await fetchLatestBlock()
-        let fromBlock = max(0, latestBlock - blockRange)
-        let fromHex = "0x" + String(fromBlock, radix: 16)
-        let toHex = "0x" + String(latestBlock, radix: 16)
+        let floorBlock = max(0, latestBlock - blockRange)
+        // **2026-06-16 — per-call block-range cap.** publicnode and the
+        // arbitrum / polygon / kava / celo nodes reject an `eth_getLogs`
+        // span over 10,000 blocks (`-32701 exceed maximum block range:
+        // 10000`, `-32000 maximum [from, to] blocks distance: 10000`,
+        // `-32062 Block range is too large`), so the whole token-history
+        // fetch failed there. Split the lookback into ≤10k sub-ranges and
+        // fire each as its own getLogs call. This path is now a rare
+        // fallback (Blockscout `tokentx` is the primary token source), so
+        // the extra calls only happen on chains without a Blockscout.
+        let maxLogRange: Int64 = 10_000
+        var blockRanges: [(from: String, to: String)] = []
+        var hi = latestBlock
+        while hi >= floorBlock {
+            let lo = max(floorBlock, hi - maxLogRange + 1)
+            blockRanges.append((from: "0x" + String(lo, radix: 16),
+                                to: "0x" + String(hi, radix: 16)))
+            if lo == 0 { break }
+            hi = lo - 1
+        }
 
         // Pad the user's address to 32 bytes (66 hex chars including
         // "0x") for topic matching — EVM logs encode topics as 32-byte
@@ -854,22 +870,24 @@ struct EVMTransactionAdapter: Sendable {
         // the all-String/Int64 `RawLog` can. Extraction is in-task, so
         // the heavy fan-out stays parallel.
         await withTaskGroup(of: [RawLog]?.self) { group in
-            for chunk in chunks {
-                group.addTask {
-                    guard let raw = try? await self.fetchLogs(
-                        from: fromHex, to: toHex,
-                        fromTopic: nil, toTopic: padded,
-                        contractAddresses: chunk
-                    ) else { return nil }
-                    return Self.extractRawLogs(raw)
-                }
-                group.addTask {
-                    guard let raw = try? await self.fetchLogs(
-                        from: fromHex, to: toHex,
-                        fromTopic: padded, toTopic: nil,
-                        contractAddresses: chunk
-                    ) else { return nil }
-                    return Self.extractRawLogs(raw)
+            for range in blockRanges {
+                for chunk in chunks {
+                    group.addTask {
+                        guard let raw = try? await self.fetchLogs(
+                            from: range.from, to: range.to,
+                            fromTopic: nil, toTopic: padded,
+                            contractAddresses: chunk
+                        ) else { return nil }
+                        return Self.extractRawLogs(raw)
+                    }
+                    group.addTask {
+                        guard let raw = try? await self.fetchLogs(
+                            from: range.from, to: range.to,
+                            fromTopic: padded, toTopic: nil,
+                            contractAddresses: chunk
+                        ) else { return nil }
+                        return Self.extractRawLogs(raw)
+                    }
                 }
             }
             for await result in group {

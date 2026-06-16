@@ -146,6 +146,20 @@ actor CoinMarkCache {
         }
     }
 
+    /// Drop ONE mark from memory + disk after it failed to decode —
+    /// corrupt / truncated bytes (the `-17102 decompressing image —
+    /// possibly corrupt` log). Removing the bad file lets the next
+    /// `data(for:)` re-fetch a healthy copy instead of serving the same
+    /// broken bytes forever (which would re-throw -17102 every render and
+    /// draw a blank mark). The negative cache is NOT set — this isn't an
+    /// upstream miss, just a bad local copy worth retrying.
+    func evict(url: URL) {
+        let key = url.absoluteString
+        memory[key] = nil
+        memoryOrder.removeAll { $0 == key }
+        try? FileManager.default.removeItem(at: Self.diskPath(for: url))
+    }
+
     /// Factory-reset surface (Settings → Advanced → Reset Aperture).
     /// Cancels in-flight downloads, drops the in-memory caches, and
     /// removes the on-disk mark directory. The marks themselves are
