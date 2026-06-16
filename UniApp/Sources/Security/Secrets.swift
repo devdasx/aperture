@@ -42,6 +42,17 @@ enum Secrets {
     /// the 1rpc endpoints to the authenticated path.
     static var hasOneRPCKey: Bool { !oneRPCKey.isEmpty }
 
+    /// Infura — the user's PAID multi-chain EVM RPC. When set, the registry
+    /// routes EVM reads through Infura FIRST (the paid primary), with keyed
+    /// 1rpc + publicnode as fallbacks. URL: `https://<slug>.infura.io/v3/<key>`
+    /// (`mainnet` for Ethereum, `<chain>-mainnet` for the rest). Infura is
+    /// EVM-only — it does not serve Bitcoin/Doge/LTC/Stellar/Tron/Solana.
+    static let infuraAPIKey: String = value("INFURA_API_KEY")
+
+    /// `true` when the Infura key is configured, so the registry adds the
+    /// keyed Infura endpoint as the EVM primary.
+    static var hasInfuraKey: Bool { !infuraAPIKey.isEmpty }
+
     /// `true` when the swap engine has the Li.Fi key it needs. Callers gate
     /// on this and show an honest "Swap unavailable" state otherwise.
     static var hasLifiKey: Bool { !lifiAPIKey.isEmpty }
