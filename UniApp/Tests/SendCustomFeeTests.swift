@@ -152,36 +152,7 @@ struct SendCustomFeeTests {
                 "Custom maxFee was lost on refresh")
     }
 
-    // MARK: - Single-tier custom-allowed chain (the Aptos-class regression)
-
-    @Test("Custom survives refresh on a custom-allowed chain (no speed tiers)")
-    func customSurvivesOnSingleTierChain() throws {
-        // A synthetic custom-allowed, single-tier quote (the shape that the
-        // OLD `loadFee` reverted to .normal on every refresh).
-        func makeQuote() -> FeeQuote {
-            var normal = FeeChoice(tier: .normal, feeModel: .cosmosGas,
-                                   estimatedTotalNative: Decimal(string: "0.02")!,
-                                   worstCaseTotalNative: Decimal(string: "0.02")!)
-            normal.cosmosGasLimit = 200_000
-            normal.cosmosGasPrice = Decimal(string: "0.1")!
-            return FeeQuote(chain: .kava, feeModel: .cosmosGas,
-                            tiers: [.normal: normal],
-                            isCustomAllowed: true, hasSpeedTiers: true, note: nil)
-        }
-        let model = makeModel(chain: .kava)
-        model.applyFeeQuote(makeQuote())
-
-        var custom = FeeChoice(tier: .custom, feeModel: .cosmosGas,
-                               estimatedTotalNative: Decimal(string: "0.05")!,
-                               worstCaseTotalNative: Decimal(string: "0.05")!)
-        custom.cosmosGasLimit = 200_000
-        custom.cosmosGasPrice = Decimal(string: "0.25")!
-        model.customFee = custom
-        model.selectedTier = .custom
-        #expect(model.resolvedFee?.tier == .custom)
-
-        model.applyFeeQuote(makeQuote())
-        #expect(model.selectedTier == .custom, "Custom lost on single-tier refresh")
-        #expect(model.resolvedFee?.cosmosGasPrice == Decimal(string: "0.25")!)
-    }
+    // (The single-tier custom-allowed regression test used Kava/cosmosGas as
+    // its example; Kava was removed from the app, and it was the only
+    // cosmos-gas chain, so that test was dropped with the chain.)
 }

@@ -269,9 +269,21 @@ struct RealRPCBalanceScanner: BalanceScanner {
         )
     }
 
-    /// Static-registry token pass. The original `streamTokens` body —
-    /// extracted unchanged so the custom-token pass can run in the
-    /// same shape.
+    /// Static-registry token pass — now routed through the chain's
+    /// `ChainConnector` (the fleet design). The connector owns the
+    /// chain's curated registry + its own balance-fetch shape (EVM
+    /// Multicall3, Solana both-program SPL query, TRON/NEAR/Aptos/XRPL
+    /// reads, …), ported verbatim from the adapters. It returns the
+    /// positive-balance `[TokenBalance]` rows directly (`fiatBalance:
+    /// nil`); the scanner converts each to a `DiscoveredToken` and runs
+    /// the SAME two-phase deferred-fiat yield as before, so pricing +
+    /// the idempotent upsert downstream are unchanged. `customContracts:
+    /// []` here — the registry pass; the custom pass runs separately
+    /// (`streamCustomTokens`) so it can re-stamp the user's chosen
+    /// symbol/name. Chains without a token layer (Bitcoin family,
+    /// Stellar, Sui, TON, Polkadot) return `[]` from their connector,
+    /// yielding nothing — the old `default: return` behavior, now owned
+    /// by each connector.
     private static func streamRegistryTokens(
         chain: SupportedChain,
         address: String,
@@ -280,276 +292,49 @@ struct RealRPCBalanceScanner: BalanceScanner {
         currency: SupportedCurrency,
         yield: @Sendable @escaping (StreamRow) -> Void
     ) async {
-        switch chain.family {
-        case .evm:
-            let registry = EVMTokenRegistry.tokens(for: chain)
-            guard !registry.isEmpty else { return }
-            let adapter = EVMChainAdapter(chain: chain, client: client)
-
-            // **2026-06-09 — Multicall3 batched balance fetch.**
-            // Previously each token fired its own `eth_call`
-            // (N parallel requests rate-limited by the endpoint).
-            // Now one `eth_call` reads ALL token balances at once
-            // via the `aggregate3(...)` call on the universal
-            // Multicall3 contract (deployed at the same address on
-            // every major EVM chain). Result: 1 round trip instead
-            // of N — typically a 20–25× reduction in RPC requests
-            // per chain for the token-scan phase.
-            //
-            // **2026-06-12 — honest failure.** The batched fetch now
-            // THROWS on transport-level failure (offline, throttled,
-            // every endpoint down) instead of returning all-zeros.
-            // A thrown error skips the chain entirely — emitting
-            // rows would fabricate "0" balances that overwrite the
-            // user's persisted real values. Per-token `nil` entries
-            // (individually-failed tokens) stay treated as 0-and-
-            // skipped, which never yields a row either.
-            //
-            // **2026-06-12 — bounded retry.** A transient transport
-            // failure gets up to 2 more attempts (2 s / 5 s backoff,
-            // rate-limit aware) before the chain's token pass gives
-            // up for this refresh. `.cancelled` stops immediately.
-            let contracts = registry.map { $0.contract }
-            var rawBalances: [Decimal?]
-            do {
-                rawBalances = try await Self.withRetry { () async throws(RPCError) -> [Decimal?] in
-                    try await adapter.fetchTokenBalancesBatched(
-                        holder: address,
-                        contracts: contracts
-                    )
-                }
-            } catch {
-                if case .cancelled = error { return }
-                log.error(
-                    "token scan failed for \(chain.rawValue, privacy: .public): \(String(describing: error), privacy: .public)"
-                )
-                return
-            }
-            // Defensive (2026-06-10): a malformed / truncated
-            // Multicall3 response can decode to FEWER entries than
-            // `contracts.count`. Indexing `rawBalances[i]` past the
-            // short array crashed the scan task; pad with `nil`
-            // (unknown balance → treated as 0 and skipped) so every
-            // registry index is addressable.
-            if rawBalances.count < contracts.count {
-                rawBalances.append(
-                    contentsOf: [Decimal?](repeating: nil, count: contracts.count - rawBalances.count)
-                )
-            }
-            var discovered: [DiscoveredToken] = []
-            for (i, entry) in registry.enumerated() {
-                let raw = rawBalances[i] ?? 0
-                let amount = raw / Self.pow10(entry.decimals)
-                // Honest: only emit if balance > 0 — see prior comment.
-                guard amount > 0 else { continue }
-                discovered.append(DiscoveredToken(
-                    contract: entry.contract,
-                    symbol: entry.symbol,
-                    name: entry.name,
-                    decimals: entry.decimals,
-                    amount: amount
-                ))
-            }
-            await Self.yieldTokensWithDeferredFiat(
-                discovered,
-                chain: chain,
-                address: address,
-                pricesTask: pricesTask,
-                currency: currency,
-                yield: yield
+        let connector = ChainConnectorRegistry.connector(for: chain)
+        let rows = await connector.fetchTokenBalances(address: address, customContracts: [])
+        guard !rows.isEmpty else { return }
+        let discovered = rows.map { row in
+            DiscoveredToken(
+                contract: row.contract,
+                symbol: row.symbol,
+                name: row.name,
+                decimals: row.decimals,
+                amount: row.amount
             )
-        case .ed25519 where chain == .solana:
-            // **2026-06-12 — query BOTH SPL token programs.** The
-            // previous single `getTokenAccountsByOwner` call was
-            // hard-filtered to the legacy SPL Token program, so
-            // accounts owned by Token-2022 were never returned —
-            // the registry's `.splToken2022` mints (PYUSD, AUSD,
-            // DUSD, USDG) silently scanned as absent. See
-            // `fetchAllSolanaTokenAccounts`.
-            guard let accounts = await fetchAllSolanaTokenAccounts(
-                address: address,
-                client: client
-            ) else {
-                return
-            }
-            // Symmetry with EVM: only emit tokens that are in the
-            // curated `SolanaTokenRegistry`. `getTokenAccountsByOwner`
-            // returns EVERY mint the address has ever interacted with
-            // (dust airdrops, expired LP positions, scam tokens, …)
-            // — surfacing all of them would flood the UI with rows
-            // the user didn't choose to hold (Rule #2 §A.7 honesty
-            // about which tokens we actually support).
-            let supportedAccounts = accounts.filter {
-                SolanaTokenRegistry.mints[$0.mint] != nil
-            }
-            let discovered = supportedAccounts.map { account in
-                DiscoveredToken(
-                    contract: account.mint,
-                    symbol: SolanaTokenRegistry.symbol(for: account.mint),
-                    name: SolanaTokenRegistry.name(for: account.mint),
-                    decimals: account.decimals,
-                    amount: account.amount
-                )
-            }
-            await Self.yieldTokensWithDeferredFiat(
-                discovered,
-                chain: chain,
-                address: address,
-                pricesTask: pricesTask,
-                currency: currency,
-                yield: yield
-            )
-        // TRON — TRC-20 balances via TronGrid REST.
-        // `POST /wallet/triggerconstantcontract` with the `balanceOf`
-        // selector. Same calldata shape as EVM but the call body is
-        // TRON-flavored.
-        case .tron:
-            await withTaskGroup(of: Void.self) { tokenGroup in
-                for entry in TronTokenRegistry.tokens {
-                    tokenGroup.addTask {
-                        let raw = await Self.withNilRetry {
-                            await Self.fetchTronTokenBalance(
-                                holder: address,
-                                contract: entry.contract,
-                                client: client
-                            )
-                        } ?? 0
-                        let amount = raw / Self.pow10(entry.decimals)
-                        guard amount > 0 else { return }
-                        await Self.yieldTokensWithDeferredFiat(
-                            [DiscoveredToken(
-                                contract: entry.contract,
-                                symbol: entry.symbol,
-                                name: entry.name,
-                                decimals: entry.decimals,
-                                amount: amount
-                            )],
-                            chain: chain,
-                            address: address,
-                            pricesTask: pricesTask,
-                            currency: currency,
-                            yield: yield
-                        )
-                    }
-                }
-            }
-
-        // NEAR — NEP-141 `ft_balance_of` via `query` JSON-RPC with
-        // `request_type=call_function`. Args are base64-encoded JSON.
-        case .near:
-            await withTaskGroup(of: Void.self) { tokenGroup in
-                for entry in NearTokenRegistry.tokens {
-                    tokenGroup.addTask {
-                        let raw = await Self.withNilRetry {
-                            await Self.fetchNearTokenBalance(
-                                holder: address,
-                                tokenAccount: entry.tokenAccount,
-                                client: client
-                            )
-                        } ?? 0
-                        let amount = raw / Self.pow10(entry.decimals)
-                        guard amount > 0 else { return }
-                        await Self.yieldTokensWithDeferredFiat(
-                            [DiscoveredToken(
-                                contract: entry.tokenAccount,
-                                symbol: entry.symbol,
-                                name: entry.name,
-                                decimals: entry.decimals,
-                                amount: amount
-                            )],
-                            chain: chain,
-                            address: address,
-                            pricesTask: pricesTask,
-                            currency: currency,
-                            yield: yield
-                        )
-                    }
-                }
-            }
-
-        // Aptos — view function `0x1::primary_fungible_store::balance`.
-        case .aptos:
-            await withTaskGroup(of: Void.self) { tokenGroup in
-                for entry in AptosTokenRegistry.tokens {
-                    tokenGroup.addTask {
-                        let raw = await Self.withNilRetry {
-                            await Self.fetchAptosTokenBalance(
-                                holder: address,
-                                metadata: entry.contract,
-                                client: client
-                            )
-                        } ?? 0
-                        let amount = raw / Self.pow10(entry.decimals)
-                        guard amount > 0 else { return }
-                        await Self.yieldTokensWithDeferredFiat(
-                            [DiscoveredToken(
-                                contract: entry.contract,
-                                symbol: entry.symbol,
-                                name: entry.name,
-                                decimals: entry.decimals,
-                                amount: amount
-                            )],
-                            chain: chain,
-                            address: address,
-                            pricesTask: pricesTask,
-                            currency: currency,
-                            yield: yield
-                        )
-                    }
-                }
-            }
-
-        // XRPL — `account_lines` JSON-RPC returns all IOU lines.
-        // One fetch covers every registry token; the per-token work
-        // is a local dictionary lookup, so no task group needed.
-        case .ripple:
-            guard let lines = await Self.withNilRetry({
-                await Self.fetchXRPLTokenLines(holder: address, client: client)
-            }) else { return }
-            let discovered: [DiscoveredToken] = XRPLTokenRegistry.tokens.compactMap { entry in
-                let amount = lines[Self.xrplKey(currency: entry.currency, issuer: entry.issuer)] ?? 0
-                guard amount > 0 else { return nil }
-                return DiscoveredToken(
-                    contract: "\(entry.currency).\(entry.issuer)",
-                    symbol: entry.symbol,
-                    name: entry.name,
-                    decimals: entry.decimals,
-                    amount: amount
-                )
-            }
-            await Self.yieldTokensWithDeferredFiat(
-                discovered,
-                chain: chain,
-                address: address,
-                pricesTask: pricesTask,
-                currency: currency,
-                yield: yield
-            )
-
-        // TON jettons + Polkadot Asset Hub — registries ship in
-        // this turn so the Receive screen surfaces the tokens, but
-        // balance scanning requires per-chain RPC adapters that are
-        // significant plumbing (jetton wallet derivation for TON,
-        // Asset Hub endpoint registration for Polkadot). Surface
-        // honestly in SHIPPED.md per Rule #21.
-        default:
-            return
         }
+        await yieldTokensWithDeferredFiat(
+            discovered,
+            chain: chain,
+            address: address,
+            pricesTask: pricesTask,
+            currency: currency,
+            yield: yield
+        )
     }
+
 
     // MARK: - Custom tokens
 
-    /// User-added token pass. Runs the same balance-fetch path as the
-    /// static registry — EVM via `EVMChainAdapter.fetchTokenBalance`,
-    /// Solana via `getTokenAccountsByOwner` filtered to the user's
-    /// mints. Only EVM and Solana custom tokens are supported today
-    /// (matches the `AddCustomTokenSheet` chain picker); other
-    /// families return early.
+    /// User-added token pass — now routed through the chain's
+    /// `ChainConnector` (the fleet design). The connector's
+    /// `fetchTokenBalances(address:customContracts:)` reads the custom
+    /// contracts/mints alongside its registry set in the chain's own
+    /// balance-fetch shape (EVM Multicall3, Solana both-program SPL
+    /// query, …). The scanner keeps the custom pass distinct from the
+    /// registry pass so it can RE-STAMP each returned row with the user's
+    /// chosen `symbol` / `name` / `decimals` from the
+    /// `CustomTokenSnapshot` — the connector returns generic metadata for
+    /// contracts it doesn't recognize, but the user's labels are the
+    /// source of truth on the wallet home.
     ///
-    /// Per Rule #2 §A.7 honesty: zero balances are NOT yielded — the
-    /// custom token still shows in the Custom Tokens management
-    /// screen, but isn't surfaced on the wallet home until it carries
-    /// a positive balance. Same rule registry tokens use.
+    /// Per Rule #2 §A.7 honesty: zero balances are NOT yielded (the
+    /// connector already drops zero rows). The custom token still shows
+    /// in the Custom Tokens management screen, but isn't surfaced on the
+    /// wallet home until it carries a positive balance — same rule the
+    /// registry pass uses. Chains whose connector has no token layer
+    /// return `[]`, yielding nothing (the old `default: return`).
     private static func streamCustomTokens(
         chain: SupportedChain,
         address: String,
@@ -561,110 +346,52 @@ struct RealRPCBalanceScanner: BalanceScanner {
     ) async {
         guard !customTokens.isEmpty else { return }
 
-        switch chain.family {
-        case .evm:
-            // **2026-06-12 — Multicall3 batched custom-token fetch.**
-            // Previously each custom token fired its own `eth_call`
-            // sequentially through `withTaskGroup`, which gave the
-            // rate limiter no opportunity to batch. The static
-            // registry path has been on `fetchTokenBalancesBatched`
-            // since 2026-06-09 (one round trip for all tokens) —
-            // user-added custom tokens deserved the same path, and
-            // the only reason they didn't have it was history. Same
-            // honest-failure contract as the registry: a thrown
-            // batched-fetch error skips emit (preserves persisted
-            // balances) rather than fabricating zeros.
-            let adapter = EVMChainAdapter(chain: chain, client: client)
-            let contracts = customTokens.map { $0.contract }
-            var rawBalances: [Decimal?]
-            do {
-                rawBalances = try await Self.withRetry { () async throws(RPCError) -> [Decimal?] in
-                    try await adapter.fetchTokenBalancesBatched(
-                        holder: address,
-                        contracts: contracts
-                    )
-                }
-            } catch {
-                if case .cancelled = error { return }
-                log.error(
-                    "custom-token scan failed for \(chain.rawValue, privacy: .public): \(String(describing: error), privacy: .public)"
-                )
-                return
-            }
-            // Defensive — same shape as the registry path: a
-            // malformed Multicall3 response can decode short; pad
-            // with nil so per-index reads stay in-bounds.
-            if rawBalances.count < contracts.count {
-                rawBalances.append(
-                    contentsOf: [Decimal?](repeating: nil, count: contracts.count - rawBalances.count)
-                )
-            }
-            var discovered: [DiscoveredToken] = []
-            for (i, snap) in customTokens.enumerated() {
-                let raw = rawBalances[i] ?? 0
-                let amount = raw / Self.pow10(snap.decimals)
-                guard amount > 0 else { continue }
-                discovered.append(DiscoveredToken(
-                    contract: snap.contract,
-                    symbol: snap.symbol,
-                    name: snap.name,
-                    decimals: snap.decimals,
-                    amount: amount
-                ))
-            }
-            await Self.yieldTokensWithDeferredFiat(
-                discovered,
-                chain: chain,
-                address: address,
-                pricesTask: pricesTask,
-                currency: currency,
-                yield: yield
-            )
+        // Lookup from the user's custom contracts/mints → their snapshot,
+        // keyed case-insensitively (EVM checksum casing). The connector
+        // returns rows for its registry too; we keep ONLY the custom ones
+        // and re-stamp them with the user's chosen labels.
+        let snapByContract: [String: CustomTokenSnapshot] = Dictionary(
+            customTokens.map { ($0.contract.lowercased(), $0) },
+            uniquingKeysWith: { first, _ in first }
+        )
+        let customContracts = customTokens.map { $0.contract }
+        let rows = await ChainConnectorRegistry
+            .connector(for: chain)
+            .fetchTokenBalances(address: address, customContracts: customContracts)
 
-        case .ed25519 where chain == .solana:
-            // The `getTokenAccountsByOwner` queries already return
-            // every mint the address holds; the custom-token pass
-            // filters the accounts by the user's added mints rather
-            // than the static registry. **2026-06-12:** uses the same
-            // both-programs fetch as the registry pass — a user-added
-            // Token-2022 mint (AddCustomTokenSheet supports
-            // `.splToken2022`) is owned by the Token-2022 program and
-            // was invisible to the legacy-only query.
-            guard let accounts = await fetchAllSolanaTokenAccounts(
-                address: address,
-                client: client
-            ) else {
-                return
-            }
-            // Build a lookup from custom-token mints → snapshot so we
-            // can preserve the user's chosen symbol+name+iconURL.
-            let mintLookup: [String: CustomTokenSnapshot] = Dictionary(
-                uniqueKeysWithValues: customTokens.map { ($0.contract, $0) }
+        let discovered: [DiscoveredToken] = rows.compactMap { row in
+            guard let snap = snapByContract[row.contract.lowercased()] else { return nil }
+            // Re-stamp the user's chosen symbol/name/decimals AND re-scale
+            // the amount to the snapshot's decimals. A connector decodes a
+            // contract it doesn't recognize with a family-default decimals
+            // (EVM custom contracts use 18); the user's snapshot is the
+            // authoritative decimals. Re-scaling by the decimals ratio
+            // recovers the canonical amount the old per-family path
+            // computed (`raw / 10^snap.decimals`): for EVM,
+            // `row.amount × 10^18 / 10^snap.decimals`; for Solana, where
+            // the connector already returns the authoritative on-chain
+            // decimals, `row.decimals == snap.decimals` so the ratio is 1
+            // and the amount is unchanged.
+            let amount = row.decimals == snap.decimals
+                ? row.amount
+                : row.amount * Self.pow10(row.decimals) / Self.pow10(snap.decimals)
+            return DiscoveredToken(
+                contract: snap.contract,
+                symbol: snap.symbol,
+                name: snap.name,
+                decimals: snap.decimals,
+                amount: amount
             )
-            let discovered: [DiscoveredToken] = accounts.compactMap { account in
-                guard let snap = mintLookup[account.mint] else { return nil }
-                return DiscoveredToken(
-                    contract: snap.contract,
-                    symbol: snap.symbol,
-                    name: snap.name,
-                    decimals: snap.decimals,
-                    amount: account.amount
-                )
-            }
-            await Self.yieldTokensWithDeferredFiat(
-                discovered,
-                chain: chain,
-                address: address,
-                pricesTask: pricesTask,
-                currency: currency,
-                yield: yield
-            )
-
-        default:
-            // Custom tokens are EVM + Solana only for this turn —
-            // mirrors the AddCustomTokenSheet's chain picker.
-            return
         }
+        guard !discovered.isEmpty else { return }
+        await Self.yieldTokensWithDeferredFiat(
+            discovered,
+            chain: chain,
+            address: address,
+            pricesTask: pricesTask,
+            currency: currency,
+            yield: yield
+        )
     }
 
     // MARK: - Retry policy (2026-06-12)
@@ -1271,43 +998,20 @@ struct RealRPCBalanceScanner: BalanceScanner {
         }
     }
 
-    /// Same per-chain switch as `WalletRefreshCoordinator.fetchSummary`.
-    /// Kept inline here (instead of factored into a shared helper) so
-    /// the scanner has zero dependency on the wallet/database layer —
-    /// the review screen runs before any wallet exists in SwiftData.
+    /// Native-balance read, now routed through the per-chain
+    /// `ChainConnector` (the fleet design). Each chain's connector owns
+    /// its own `fetchNativeBalance` — same endpoints / parsing / decimals
+    /// the family adapters used, ported verbatim into the connector — and
+    /// dispatches through the shared `RPCClient` actor. The registry's
+    /// exhaustive switch replaces the per-family switch that used to live
+    /// here; the scanner stays decoupled from the wallet/DB layer (the
+    /// review screen runs before any wallet exists in SwiftData).
     private static func dispatch(
         chain: SupportedChain,
         address: String,
         client: RPCClient
     ) async throws(RPCError) -> ChainAccountSummary {
-        switch chain {
-        case .ethereum, .arbitrum, .base, .optimism, .scroll, .zkSync,
-             .polygon, .bnbChain, .opBNB, .avalanche, .celo:
-            let adapter = EVMChainAdapter(chain: chain, client: client)
-            let s = try await adapter.fetchAccountSummary(address: address)
-            return ChainAccountSummary(nativeBalance: s.nativeBalance, isUsed: s.isUsed)
-        case .bitcoin, .bitcoinCash, .litecoin, .dogecoin:
-            let adapter = BitcoinFamilyAdapter(chain: chain, client: client)
-            let s = try await adapter.fetchAccountSummary(address: address)
-            return ChainAccountSummary(nativeBalance: s.nativeBalance, isUsed: s.isUsed)
-        case .solana:
-            return try await SolanaChainAdapter(client: client).fetchAccountSummary(address: address)
-        case .ripple:
-            return try await XRPChainAdapter(client: client).fetchAccountSummary(address: address)
-        case .stellar:
-            return try await StellarChainAdapter(client: client).fetchAccountSummary(address: address)
-        case .near:
-            return try await NEARChainAdapter(client: client).fetchAccountSummary(address: address)
-        case .ton:
-            return try await TONChainAdapter(client: client).fetchAccountSummary(address: address)
-        case .tron:
-            return try await TRONChainAdapter(client: client).fetchAccountSummary(address: address)
-        case .polkadot:
-            return try await PolkadotChainAdapter(client: client).fetchAccountSummary(address: address)
-        case .aptos:
-            return try await AptosChainAdapter(client: client).fetchAccountSummary(address: address)
-        case .sui:
-            return try await SuiChainAdapter(client: client).fetchAccountSummary(address: address)
-        }
+        let connector = ChainConnectorRegistry.connector(for: chain)
+        return try await connector.fetchNativeBalance(address: address)
     }
 }
