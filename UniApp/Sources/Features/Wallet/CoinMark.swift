@@ -114,10 +114,23 @@ struct CoinMark: View {
         // so the decode doesn't run on the actor that owns the
         // cache. Cooperative cancellation when the view goes away.
         let image: UIImage? = await Task.detached(priority: .userInitiated) {
-            guard let raw = UIImage(data: data) else { return nil }
-            return raw.preparingForDisplay() ?? raw
+            // Require a real decode. `UIImage(data:)` is lazy and can
+            // succeed on truncated/corrupt bytes; `preparingForDisplay()`
+            // forces the decode and returns nil when the data can't be
+            // decompressed. The old `?? raw` fallback handed that broken
+            // lazy image to the renderer, which re-threw `-17102
+            // decompressing image — possibly corrupt` every frame and drew
+            // a blank mark. Now a failed decode yields nil → initials chip.
+            guard let raw = UIImage(data: data),
+                  let ready = raw.preparingForDisplay() else { return nil }
+            return ready
         }.value
-        guard let image else { return }
+        guard let image else {
+            // Bad local bytes — evict so a healthy copy re-downloads next
+            // time; the initials chip shows meanwhile (`prepared` stays nil).
+            await CoinMarkCache.shared.evict(url: url)
+            return
+        }
         await MainActor.run { self.prepared = image }
     }
 
