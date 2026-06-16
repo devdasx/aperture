@@ -53,7 +53,14 @@ enum ApertureSchemaV1: VersionedSchema {
             // 2026-06-13 — local-first settings (Rule #27 §D): the
             // authoritative settings row, kept in sync with @AppStorage
             // by SettingsStore.
-            AppSettingsRecord.self
+            AppSettingsRecord.self,
+            // 2026-06-17 — per-chain aggregate + UTXO persistence (user
+            // direction "a row for each chain with all its details"):
+            // `ChainStateRecord` is the denormalized one-row-per-(wallet,
+            // chain) snapshot the balance card reads; `ChainUTXORecord`
+            // persists the UTXO set for Bitcoin-family chains.
+            ChainStateRecord.self,
+            ChainUTXORecord.self
         ]
     }
 }

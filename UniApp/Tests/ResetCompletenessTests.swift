@@ -164,6 +164,21 @@ import SwiftData
             ))
         } else if model == AppSettingsRecord.self {
             context.insert(AppSettingsRecord())
+        } else if model == ChainStateRecord.self {
+            context.insert(ChainStateRecord(
+                walletId: UUID(),
+                chainRaw: "ethereum",
+                address: "0x0000000000000000000000000000000000000004"
+            ))
+        } else if model == ChainUTXORecord.self {
+            context.insert(ChainUTXORecord(
+                walletId: UUID(),
+                chainRaw: "bitcoin",
+                address: "bc1qresettest",
+                txid: "resettxid",
+                vout: 0,
+                valueSatsRaw: "1000"
+            ))
         } else {
             return false
         }
@@ -264,6 +279,8 @@ import SwiftData
             "ChainRecord",
             "AssetRecord",
             "AppSettingsRecord",
+            "ChainStateRecord",
+            "ChainUTXORecord",
         ]
         #expect(
             names == expected,
@@ -292,6 +309,7 @@ import SwiftData
             "com.thuglife.aperture.wallet-manifest",   // WalletManifestStore
             "com.thuglife.aperture.pin",               // PinCodeStorage
             "com.thuglife.aperture.pin.smoketest",     // PinCodeStorage (DEBUG)
+            "com.thuglife.aperture.chainkey.master",   // ChainKeyVault
         ]
         let actual = Set(FreshInstallGuard.knownServicesForAudit)
         #expect(

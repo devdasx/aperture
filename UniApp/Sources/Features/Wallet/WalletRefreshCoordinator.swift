@@ -78,6 +78,12 @@ struct WalletRefreshCoordinator: Sendable {
             WalletRefreshState.shared.beginRefresh()
         }
         let txRepo = TransactionRepository(modelContainer: container)
+        // 2026-06-17 — per-chain aggregate read-model (user direction "a
+        // row for each chain, with all its details"). The same parallel
+        // fan-out that fills the normalized balance / tx / UTXO rows feeds
+        // this denormalized one-row-per-chain snapshot; the balance card
+        // reads it so per-chain balances render live.
+        let chainStateRepo = ChainStateRepository(modelContainer: container)
 
         // **Local-first freshness ledger (Rule #27 §B).** Stamp this
         // wallet's balance + transaction domains as syncing now; mark
@@ -89,6 +95,9 @@ struct WalletRefreshCoordinator: Sendable {
         let syncScope = walletId.uuidString
         try? await syncRepo.markSyncing(domain: .balances, scopeId: syncScope)
         try? await syncRepo.markSyncing(domain: .transactions, scopeId: syncScope)
+        // Stamp existing per-chain rows as syncing so the UI can show a
+        // per-chain spinner until this refresh stamps each row's outcome.
+        try? await chainStateRepo.markSyncing(walletId: walletId)
 
         // Resolve the user's currency code → struct once, so the
         // per-address tasks share an immutable Sendable value.
@@ -177,6 +186,28 @@ struct WalletRefreshCoordinator: Sendable {
             snapshot: addressSnapshot,
             customTokensByChain: customTokensByChain,
             txRepo: txRepo
+        )
+
+        // 2026-06-17 — UTXO persistence + one-time encrypted-key population
+        // run in parallel with the balance + history fan-out (the
+        // `Promise.all` shape: independent `async let`s awaited before the
+        // final per-chain rebuild). Both are best-effort — a failure here
+        // never blocks the balances / history the user is waiting on.
+        // Immutable copy of the chain→address map for the key task —
+        // `chainAddresses` is a `var` read again by the balance retry pass,
+        // so sending the `var` itself into the `async let` would risk a
+        // data race (Swift 6 region isolation). The copy is value-typed and
+        // owned solely by the task.
+        let keyChainAddresses = chainAddresses
+        async let utxoTask: Void = scanAndPersistUTXOs(
+            walletId: walletId,
+            snapshot: addressSnapshot,
+            chainStateRepo: chainStateRepo
+        )
+        async let keyTask: Void = populateEncryptedKeys(
+            walletId: walletId,
+            chainAddresses: keyChainAddresses,
+            chainStateRepo: chainStateRepo
         )
 
         // **2026-06-11 — shared RPCClient.** The client's rate
@@ -269,6 +300,15 @@ struct WalletRefreshCoordinator: Sendable {
         // that froze the UI during pull-to-refresh.
         try? await txRepo.flush()
 
+        // Interim per-chain rebuild — balances have landed, so each chain
+        // row lights up live (still `.syncing`) while transaction history
+        // is in flight. The final rebuild below fills the tx counts + UTXOs.
+        try? await chainStateRepo.rebuild(
+            walletId: walletId,
+            fiatCurrencyCode: currency.code,
+            interim: true
+        )
+
         await txHistoryTask
         // Transaction history pass ran to completion — stamp it synced
         // (the scanner swallows per-chain failures, so completion is the
@@ -278,6 +318,20 @@ struct WalletRefreshCoordinator: Sendable {
         if !Task.isCancelled {
             try? await syncRepo.markSynced(domain: .transactions, scopeId: syncScope)
         }
+
+        // 2026-06-17 — FINAL per-chain rebuild. Ensure the parallel UTXO +
+        // encrypted-key population finished, then recompute every chain row
+        // from the now-complete balance + tx + UTXO state, stamping each
+        // row `.synced` (or `.failed` for chains whose live read failed —
+        // the row keeps its last-known balances). This is the snapshot the
+        // balance card reads per chain.
+        await utxoTask
+        await keyTask
+        try? await chainStateRepo.rebuild(
+            walletId: walletId,
+            fiatCurrencyCode: currency.code,
+            failedChains: failedChains
+        )
 
         // 2026-06-13 — persist this wallet's portfolio-value timeline.
         // The repository sums the freshly-upserted balance rows in the
@@ -834,6 +888,86 @@ struct WalletRefreshCoordinator: Sendable {
         }
 
         try? await syncRepo.markSynced(domain: .historical, scopeId: SyncDomain.globalScope)
+    }
+
+    // MARK: - Per-chain aggregate population (2026-06-17)
+
+    /// Fetch + persist the UTXO set for every Bitcoin-family address in the
+    /// snapshot, in parallel (`UTXOService` reuses the shared `RPCClient`).
+    /// Account-model chains have no UTXOs and are skipped. Best-effort: a
+    /// per-chain fetch failure leaves that chain's last-persisted UTXOs
+    /// untouched rather than blanking them.
+    private func scanAndPersistUTXOs(
+        walletId: UUID,
+        snapshot: [AddressSnapshot],
+        chainStateRepo: ChainStateRepository
+    ) async {
+        let utxoService = UTXOService(client: .shared)
+        await withTaskGroup(of: Void.self) { group in
+            for snap in snapshot where snap.chain.family == .bitcoin {
+                if snap.address.hasPrefix(StubKeyImportService.stubAddressPrefix) { continue }
+                group.addTask {
+                    do {
+                        let utxos = try await utxoService.fetchUTXOs(address: snap.address, chain: snap.chain)
+                        _ = try await chainStateRepo.replaceUTXOs(
+                            walletId: walletId,
+                            chain: snap.chain,
+                            address: snap.address,
+                            utxos: utxos
+                        )
+                        Self.log.info("Persisted \(utxos.count, privacy: .public) UTXOs for \(snap.chain.rawValue, privacy: .public)")
+                    } catch {
+                        if Task.isCancelled { return }
+                        Self.log.warning("UTXO fetch/persist failed for \(snap.chain.rawValue, privacy: .public): \(String(describing: error), privacy: .public)")
+                    }
+                }
+            }
+        }
+    }
+
+    /// One-time per-chain private-key population: derive + AES-GCM seal each
+    /// chain's key (only chains that don't already have a stored blob) and
+    /// persist the ciphertext into the chain rows. Watch-only wallets (no
+    /// key) are skipped. The derivation builds the `HDWallet` ONCE for all
+    /// chains and runs on a detached background task (the BIP-39 PBKDF2
+    /// stretch is CPU-bound) so it never blocks the balances / history.
+    private func populateEncryptedKeys(
+        walletId: UUID,
+        chainAddresses: [SupportedChain: String],
+        chainStateRepo: ChainStateRepository
+    ) async {
+        guard let descriptor = fetchWalletDescriptor(walletId: walletId),
+              descriptor.kind != .watchOnly,
+              !chainAddresses.isEmpty else { return }
+        let candidates = Set(chainAddresses.keys)
+        guard let missing = try? await chainStateRepo.chainsMissingKey(walletId: walletId, candidates: candidates),
+              !missing.isEmpty else { return }
+        let toDerive = chainAddresses.filter { missing.contains($0.key) }
+        guard !toDerive.isEmpty else { return }
+
+        let blobs = await Task.detached(priority: .utility) {
+            SigningKeyProvider.encryptedKeyBlobs(wallet: descriptor, chainAddresses: toDerive)
+        }.value
+        guard !blobs.isEmpty else { return }
+        do {
+            try await chainStateRepo.storeEncryptedKeys(walletId: walletId, blobs: blobs)
+            Self.log.info("Stored encrypted keys for \(blobs.count, privacy: .public) chain(s)")
+        } catch {
+            Self.log.warning("storeEncryptedKeys failed: \(String(describing: error), privacy: .public)")
+        }
+    }
+
+    /// Off-main `WalletDescriptor` for the key-derivation path — reads the
+    /// wallet's kind + passphrase flag from its own `ModelContext` and
+    /// returns a `Sendable` value the detached derivation can capture.
+    private func fetchWalletDescriptor(walletId: UUID) -> WalletDescriptor? {
+        let context = ModelContext(container)
+        var descriptor = FetchDescriptor<WalletRecord>(
+            predicate: #Predicate { $0.id == walletId }
+        )
+        descriptor.fetchLimit = 1
+        guard let wallet = try? context.fetch(descriptor).first else { return nil }
+        return WalletDescriptor(record: wallet)
     }
 
     // MARK: - Snapshot helpers

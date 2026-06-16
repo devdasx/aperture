@@ -101,6 +101,16 @@ struct WalletHomeView: View {
     /// during the pre-seed cold-launch window so the list never blanks.
     @Query(sort: \ChainRecord.sortIndex) private var chainRecords: [ChainRecord]
     @Query private var assetRecords: [AssetRecord]
+
+    /// **Per-chain aggregate rows (2026-06-17, user direction "balance
+    /// card should get its balances from each chain from its row").** A
+    /// top-level `@Query` so the hero total recomputes live the instant the
+    /// refresh coordinator rebuilds a chain's `ChainStateRecord` — the same
+    /// liveness mechanism the transaction feed uses. `totalFiat` sums these
+    /// rows (active wallet, active currency); it falls back to the live
+    /// balance-row sum before the first rebuild so a fresh wallet is never
+    /// wrong or blank.
+    @Query private var chainStateRecords: [ChainStateRecord]
     @AppStorage("activeWalletId") private var activeWalletIdRaw: String = ""
     @AppStorage(CurrencyPreference.storageKey) private var currencyCode: String = CurrencyPreference.defaultCode
     @AppStorage(HideBalancesPreference.hideBalanceOnHomeKey) private var hideBalanceOnHome: Bool = false
@@ -2500,7 +2510,26 @@ struct WalletHomeView: View {
     /// bug). Rows in the old currency drop out of the total for the
     /// brief window until `repriceWallet` re-denominates them.
     private var totalFiat: Decimal {
-        balances.reduce(Decimal.zero) { running, entry in
+        // **Per-chain database is the source of truth (user direction
+        // 2026-06-17).** Sum each chain's aggregate `ChainStateRecord` row
+        // (active wallet, active currency). These rows are recomputed from
+        // the same balance rows the fallback below sums — `recomputeRow`
+        // applies the identical currency filter — so the value is
+        // equivalent; reading the aggregate is what makes the hero "the
+        // balance from each chain's row" and updates it live via the
+        // `chainStateRecords` @Query as the coordinator rebuilds.
+        if let walletId = activeWallet?.id {
+            let perChain = chainStateRecords.filter {
+                $0.walletId == walletId && $0.fiatCurrencyCode == currencyCode
+            }
+            if !perChain.isEmpty {
+                return perChain.reduce(Decimal.zero) { $0 + $1.totalFiat }
+            }
+        }
+        // Fallback — before the first chain-state rebuild (fresh wallet /
+        // pre-migration store), sum the live balance rows directly so the
+        // hero is never wrong or empty.
+        return balances.reduce(Decimal.zero) { running, entry in
             guard entry.balance.fiatCurrencyCode == currencyCode else { return running }
             return running + entry.balance.fiatValueCached
         }
