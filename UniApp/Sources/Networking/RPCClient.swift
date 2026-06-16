@@ -314,15 +314,18 @@ actor RPCClient {
                 throw .rateLimited(retryAfter: retryAfterDate(from: http))
             }
             if !(200..<300).contains(http.statusCode) {
-                // 408 / 502 / 503 / 504 are TRANSIENT — the endpoint is
-                // reachable but timed out or is briefly unavailable (e.g.
-                // drpc.org returns 408 under load). Classify them as a
-                // network timeout so they read honestly in logs and rotate
-                // to a healthy fallback like any timeout — not as an
-                // "invalid response" (which sounds like a permanent fault).
-                // The circuit breaker still trips after repeated failures,
-                // so a consistently-slow endpoint gets skipped.
-                if [408, 502, 503, 504].contains(http.statusCode) {
+                // 408 / 502 / 503 / 504 and Cloudflare 520–527 are
+                // TRANSIENT — the endpoint is reachable but timed out or is
+                // briefly unavailable (drpc.org returns 408 under load; a
+                // Cloudflare-fronted node returns 521 when its origin is
+                // momentarily down). Classify them as a network timeout so
+                // they read honestly in logs and rotate to a healthy
+                // fallback like any timeout — not as an "invalid response"
+                // (which sounds like a permanent fault). The circuit breaker
+                // still trips after repeated failures, so a consistently-bad
+                // endpoint gets skipped.
+                if [408, 502, 503, 504].contains(http.statusCode)
+                    || (520...527).contains(http.statusCode) {
                     throw .network("HTTP \(http.statusCode) (timeout) from \(endpoint.id)")
                 }
                 throw .invalidResponse("HTTP \(http.statusCode) from \(endpoint.id)")
@@ -522,15 +525,18 @@ actor RPCClient {
                 throw .rateLimited(retryAfter: retryAfterDate(from: http))
             }
             if !(200..<300).contains(http.statusCode) {
-                // 408 / 502 / 503 / 504 are TRANSIENT — the endpoint is
-                // reachable but timed out or is briefly unavailable (e.g.
-                // drpc.org returns 408 under load). Classify them as a
-                // network timeout so they read honestly in logs and rotate
-                // to a healthy fallback like any timeout — not as an
-                // "invalid response" (which sounds like a permanent fault).
-                // The circuit breaker still trips after repeated failures,
-                // so a consistently-slow endpoint gets skipped.
-                if [408, 502, 503, 504].contains(http.statusCode) {
+                // 408 / 502 / 503 / 504 and Cloudflare 520–527 are
+                // TRANSIENT — the endpoint is reachable but timed out or is
+                // briefly unavailable (drpc.org returns 408 under load; a
+                // Cloudflare-fronted node returns 521 when its origin is
+                // momentarily down). Classify them as a network timeout so
+                // they read honestly in logs and rotate to a healthy
+                // fallback like any timeout — not as an "invalid response"
+                // (which sounds like a permanent fault). The circuit breaker
+                // still trips after repeated failures, so a consistently-bad
+                // endpoint gets skipped.
+                if [408, 502, 503, 504].contains(http.statusCode)
+                    || (520...527).contains(http.statusCode) {
                     throw .network("HTTP \(http.statusCode) (timeout) from \(endpoint.id)")
                 }
                 throw .invalidResponse("HTTP \(http.statusCode) from \(endpoint.id)")
@@ -819,15 +825,18 @@ actor RPCClient {
                 throw .rateLimited(retryAfter: retryAfter)
             }
             if !(200..<300).contains(http.statusCode) {
-                // 408 / 502 / 503 / 504 are TRANSIENT — the endpoint is
-                // reachable but timed out or is briefly unavailable (e.g.
-                // drpc.org returns 408 under load). Classify them as a
-                // network timeout so they read honestly in logs and rotate
-                // to a healthy fallback like any timeout — not as an
-                // "invalid response" (which sounds like a permanent fault).
-                // The circuit breaker still trips after repeated failures,
-                // so a consistently-slow endpoint gets skipped.
-                if [408, 502, 503, 504].contains(http.statusCode) {
+                // 408 / 502 / 503 / 504 and Cloudflare 520–527 are
+                // TRANSIENT — the endpoint is reachable but timed out or is
+                // briefly unavailable (drpc.org returns 408 under load; a
+                // Cloudflare-fronted node returns 521 when its origin is
+                // momentarily down). Classify them as a network timeout so
+                // they read honestly in logs and rotate to a healthy
+                // fallback like any timeout — not as an "invalid response"
+                // (which sounds like a permanent fault). The circuit breaker
+                // still trips after repeated failures, so a consistently-bad
+                // endpoint gets skipped.
+                if [408, 502, 503, 504].contains(http.statusCode)
+                    || (520...527).contains(http.statusCode) {
                     throw .network("HTTP \(http.statusCode) (timeout) from \(endpoint.id)")
                 }
                 throw .invalidResponse("HTTP \(http.statusCode) from \(endpoint.id)")
@@ -1007,15 +1016,18 @@ actor RPCClient {
                 throw .rateLimited(retryAfter: retryAfterDate(from: http))
             }
             if !(200..<300).contains(http.statusCode) {
-                // 408 / 502 / 503 / 504 are TRANSIENT — the endpoint is
-                // reachable but timed out or is briefly unavailable (e.g.
-                // drpc.org returns 408 under load). Classify them as a
-                // network timeout so they read honestly in logs and rotate
-                // to a healthy fallback like any timeout — not as an
-                // "invalid response" (which sounds like a permanent fault).
-                // The circuit breaker still trips after repeated failures,
-                // so a consistently-slow endpoint gets skipped.
-                if [408, 502, 503, 504].contains(http.statusCode) {
+                // 408 / 502 / 503 / 504 and Cloudflare 520–527 are
+                // TRANSIENT — the endpoint is reachable but timed out or is
+                // briefly unavailable (drpc.org returns 408 under load; a
+                // Cloudflare-fronted node returns 521 when its origin is
+                // momentarily down). Classify them as a network timeout so
+                // they read honestly in logs and rotate to a healthy
+                // fallback like any timeout — not as an "invalid response"
+                // (which sounds like a permanent fault). The circuit breaker
+                // still trips after repeated failures, so a consistently-bad
+                // endpoint gets skipped.
+                if [408, 502, 503, 504].contains(http.statusCode)
+                    || (520...527).contains(http.statusCode) {
                     throw .network("HTTP \(http.statusCode) (timeout) from \(endpoint.id)")
                 }
                 throw .invalidResponse("HTTP \(http.statusCode) from \(endpoint.id)")
