@@ -311641,6 +311641,939 @@
           }
         }
       }
+    },
+    "Refresh diagnostics": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Refresh diagnostics"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Diagnóstico de actualización"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "刷新诊断"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "重新整理診斷"
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "रिफ़्रेश डायग्नोस्टिक्स"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "تشخيص التحديث"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Diagnóstico de atualização"
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "রিফ্রেশ ডায়াগনস্টিকস"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Диагностика обновления"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "更新の診断"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aktualisierungsdiagnose"
+          }
+        },
+        "uk": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Діагностика оновлення"
+          }
+        },
+        "el": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Διαγνωστικά ανανέωσης"
+          }
+        },
+        "ro": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Diagnosticarea reîmprospătării"
+          }
+        },
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Diagnostika obnovení"
+          }
+        },
+        "hu": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Frissítési diagnosztika"
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Uppdateringsdiagnostik"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Oppdateringsdiagnostikk"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Diagnosticering af opdatering"
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Päivityksen diagnostiikka"
+          }
+        },
+        "he": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "אבחון רענון"
+          }
+        },
+        "ca": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Diagnòstic d’actualització"
+          }
+        },
+        "hr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dijagnostika osvježavanja"
+          }
+        },
+        "sk": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Diagnostika obnovenia"
+          }
+        },
+        "sl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Diagnostika osveževanja"
+          }
+        },
+        "sr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Дијагностика освежавања"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Actualiser le diagnostic"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "진단 새로고침"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aggiorna diagnostica"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tanılamayı yenile"
+          }
+        },
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Làm mới chẩn đoán"
+          }
+        },
+        "th": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "รีเฟรชการวินิจฉัย"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Segarkan diagnostik"
+          }
+        },
+        "fa": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "تازه‌سازی عیب‌یابی"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Odśwież diagnostykę"
+          }
+        },
+        "nl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Diagnostiek verversen"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "تشخیص ریفریش کریں"
+          }
+        },
+        "bg": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Опресняване на диагностиката"
+          }
+        },
+        "et": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Värskenda diagnostikat"
+          }
+        },
+        "lt": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Atnaujinti diagnostiką"
+          }
+        },
+        "lv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Atsvaidzināt diagnostiku"
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Endurnýja greiningu"
+          }
+        },
+        "ms": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Segar semula diagnostik"
+          }
+        },
+        "fil": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "I-refresh ang diagnostics"
+          }
+        },
+        "sw": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Onyesha upya uchunguzi"
+          }
+        },
+        "af": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Verfris diagnostiek"
+          }
+        },
+        "ta": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "கண்டறிதலைப் புதுப்பி"
+          }
+        },
+        "te": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "విశ్లేషణను రిఫ్రెష్ చేయండి"
+          }
+        },
+        "ml": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ഡയഗ്നോസ്റ്റിക്സ് പുതുക്കുക"
+          }
+        },
+        "mr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "निदान रिफ्रेश करा"
+          }
+        },
+        "pa": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ਡਾਇਗਨੌਸਟਿਕਸ ਤਾਜ਼ਾ ਕਰੋ"
+          }
+        }
+      }
+    },
+    "Refresh": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Refresh"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Actualizar"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "刷新"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "重新整理"
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "रिफ़्रेश करें"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "تحديث"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Atualizar"
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "রিফ্রেশ করুন"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Обновить"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "更新"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aktualisieren"
+          }
+        },
+        "uk": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Оновити"
+          }
+        },
+        "el": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ανανέωση"
+          }
+        },
+        "ro": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Reîmprospătează"
+          }
+        },
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Obnovit"
+          }
+        },
+        "hu": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Frissítés"
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Uppdatera"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Oppdater"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Opdater"
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Päivitä"
+          }
+        },
+        "he": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "רענון"
+          }
+        },
+        "ca": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Actualitza"
+          }
+        },
+        "hr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Osvježi"
+          }
+        },
+        "sk": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Obnoviť"
+          }
+        },
+        "sl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Osveži"
+          }
+        },
+        "sr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Освежи"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Actualiser"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "새로고침"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aggiorna"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Yenile"
+          }
+        },
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Làm mới"
+          }
+        },
+        "th": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "รีเฟรช"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Segarkan"
+          }
+        },
+        "fa": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "تازه‌سازی"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Odśwież"
+          }
+        },
+        "nl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Verversen"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ریفریش کریں"
+          }
+        },
+        "bg": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Опресняване"
+          }
+        },
+        "et": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Värskenda"
+          }
+        },
+        "lt": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Atnaujinti"
+          }
+        },
+        "lv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Atsvaidzināt"
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Endurnýja"
+          }
+        },
+        "ms": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Segar semula"
+          }
+        },
+        "fil": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "I-refresh"
+          }
+        },
+        "sw": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Onyesha upya"
+          }
+        },
+        "af": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Verfris"
+          }
+        },
+        "ta": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "புதுப்பி"
+          }
+        },
+        "te": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "రిఫ్రెష్ చేయండి"
+          }
+        },
+        "ml": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "പുതുക്കുക"
+          }
+        },
+        "mr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "रिफ्रेश करा"
+          }
+        },
+        "pa": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ਤਾਜ਼ਾ ਕਰੋ"
+          }
+        }
+      }
+    },
+    "A timed log of the last pull-to-refresh — every chain’s balance and history API, each RPC round-trip, and every database write, with how long each took. Pull to refresh on the wallet screen, then open this and tap Copy to share it.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "A timed log of the last pull-to-refresh — every chain’s balance and history API, each RPC round-trip, and every database write, with how long each took. Pull to refresh on the wallet screen, then open this and tap Copy to share it."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Un registro cronometrado de la última actualización al deslizar: la API de saldo e historial de cada cadena, cada ida y vuelta de RPC y cada escritura en la base de datos, con el tiempo que tardó cada una. Desliza para actualizar en la pantalla de la cartera, luego abre esto y toca Copiar para compartirlo."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "上一次下拉刷新的计时日志——每条链的余额和历史 API、每次 RPC 往返以及每次数据库写入，并附上各自的耗时。在钱包界面下拉刷新，然后打开此处并轻点“拷贝”以分享。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "上一次下拉重新整理的計時記錄——每條鏈的餘額與歷史 API、每次 RPC 往返以及每次資料庫寫入，並附上各自所花的時間。在錢包畫面下拉重新整理，然後開啟此處並輕點「拷貝」以分享。"
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "पिछले पुल-टू-रिफ़्रेश का एक समयबद्ध लॉग — हर चेन की बैलेंस और हिस्ट्री API, हर RPC राउंड-ट्रिप, और हर डेटाबेस राइट, साथ में हर एक में लगा समय। वॉलेट स्क्रीन पर खींचकर रिफ़्रेश करें, फिर इसे खोलें और साझा करने के लिए कॉपी पर टैप करें।"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "سجل زمني لآخر عملية تحديث بالسحب — واجهة برمجة الرصيد والسجل لكل سلسلة، وكل دورة RPC، وكل عملية كتابة في قاعدة البيانات، مع الزمن الذي استغرقته كل منها. اسحب للتحديث في شاشة المحفظة، ثم افتح هذه الشاشة وانقر على «نسخ» لمشاركتها."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Um registro cronometrado da última atualização por puxar: a API de saldo e histórico de cada rede, cada ida e volta de RPC e cada gravação no banco de dados, com o tempo que cada uma levou. Puxe para atualizar na tela da carteira, depois abra isto e toque em Copiar para compartilhar."
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "শেষ পুল-টু-রিফ্রেশের একটি সময়সহ লগ — প্রতিটি চেইনের ব্যালেন্স ও হিস্ট্রি API, প্রতিটি RPC রাউন্ড-ট্রিপ এবং প্রতিটি ডেটাবেস রাইট, প্রতিটিতে কত সময় লেগেছে তা সহ। ওয়ালেট স্ক্রিনে টেনে রিফ্রেশ করুন, তারপর এটি খুলুন এবং শেয়ার করতে কপি-তে ট্যাপ করুন।"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Хронометрированный журнал последнего обновления жестом: API баланса и истории каждой сети, каждый цикл запроса RPC и каждая запись в базу данных с указанием длительности каждой операции. Потяните для обновления на экране кошелька, затем откройте этот экран и нажмите «Скопировать», чтобы поделиться им."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "前回のプルして更新の操作を時間とともに記録したログです。各チェーンの残高および履歴 API、RPC の各往復、そしてデータベースへの各書き込みについて、それぞれの所要時間を記録します。ウォレット画面でプルして更新したあと、この画面を開き、「コピー」をタップして共有してください。"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ein Protokoll des letzten Ziehen-zum-Aktualisieren mit Zeitangaben – die Guthaben- und Verlaufs-API jeder Chain, jeder RPC-Roundtrip und jeder Schreibvorgang in der Datenbank, samt der jeweils benötigten Dauer. Ziehen Sie im Wallet-Bildschirm zum Aktualisieren, öffnen Sie anschließend diese Ansicht und tippen Sie auf „Kopieren“, um sie zu teilen."
+          }
+        },
+        "uk": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Хронометрований журнал останнього оновлення жестом: API балансу та історії кожної мережі, кожен цикл запиту RPC і кожен запис до бази даних із зазначенням тривалості кожної операції. Потягніть для оновлення на екрані гаманця, потім відкрийте цей екран і торкніться «Копіювати», щоб поділитися ним."
+          }
+        },
+        "el": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ένα χρονομετρημένο αρχείο καταγραφής της τελευταίας ανανέωσης με τράβηγμα — το API υπολοίπου και ιστορικού κάθε αλυσίδας, κάθε κύκλος RPC και κάθε εγγραφή στη βάση δεδομένων, μαζί με τον χρόνο που χρειάστηκε το καθένα. Τραβήξτε για ανανέωση στην οθόνη του πορτοφολιού, στη συνέχεια ανοίξτε αυτή την οθόνη και πατήστε «Αντιγραφή» για να την κοινοποιήσετε."
+          }
+        },
+        "ro": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Un jurnal cronometrat al ultimei reîmprospătări prin tragere — API-ul de sold și istoric al fiecărui lanț, fiecare ciclu RPC și fiecare scriere în baza de date, împreună cu durata fiecăreia. Trageți pentru a reîmprospăta pe ecranul portofelului, apoi deschideți acest ecran și atingeți Copiază pentru a-l partaja."
+          }
+        },
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Časový protokol posledního obnovení tažením — API zůstatku a historie každého řetězce, každý cyklus RPC a každý zápis do databáze, včetně doby trvání každé operace. Na obrazovce peněženky obnovte tažením, poté otevřete tuto obrazovku a klepnutím na Kopírovat ji sdílejte."
+          }
+        },
+        "hu": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Időbélyegzett napló a legutóbbi húzással történő frissítésről – minden lánc egyenleg- és előzmény-API-ja, minden RPC-oda-vissza fordulója és minden adatbázis-írás, az egyes műveletek időtartamával együtt. A tárca képernyőjén húzással frissítsen, majd nyissa meg ezt a képernyőt, és a megosztáshoz koppintson a Másolás gombra."
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "En tidsstämplad logg över den senaste dra-för-att-uppdatera — varje kedjas saldo- och historik-API, varje RPC-tur och retur och varje databasskrivning, med hur lång tid var och en tog. Dra för att uppdatera på plånboksskärmen, öppna sedan den här och tryck på Kopiera för att dela den."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "En tidsmålt logg over den siste dra-for-å-oppdatere — hver kjedes saldo- og historikk-API, hver RPC-rundtur og hver databaseskriving, med hvor lang tid hver enkelt tok. Dra for å oppdatere på lommebokskjermen, åpne deretter denne og trykk på Kopier for å dele den."
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "En tidsmålt log over den seneste træk-for-at-opdatere — hver kædes saldo- og historik-API, hver RPC-rundtur og hver skrivning til databasen, med hvor lang tid hver enkelt tog. Træk for at opdatere på pungens skærm, åbn derefter denne, og tryk på Kopier for at dele den."
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aikaleimattu loki viimeisimmästä vetäen päivittämisestä — jokaisen ketjun saldo- ja historia-API, jokainen RPC-edestakaisuus ja jokainen tietokantakirjoitus sekä kunkin kesto. Päivitä lompakkonäkymässä vetämällä, avaa sitten tämä näkymä ja jaa se napauttamalla Kopioi."
+          }
+        },
+        "he": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "יומן מתוזמן של פעולת המשיכה-לרענון האחרונה — ממשק ה-API של היתרה וההיסטוריה של כל רשת, כל סבב RPC וכל כתיבה למסד הנתונים, יחד עם משך הזמן של כל אחת. משכו לרענון במסך הארנק, לאחר מכן פתחו מסך זה והקישו על העתקה כדי לשתף אותו."
+          }
+        },
+        "ca": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Un registre cronometrat de l’última actualització en estirar: l’API de saldo i historial de cada cadena, cada anada i tornada d’RPC i cada escriptura a la base de dades, amb el temps que ha trigat cadascuna. Estira per actualitzar a la pantalla de la cartera, després obre això i toca Copia per compartir-ho."
+          }
+        },
+        "hr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vremenski zabilježen zapisnik posljednjeg osvježavanja povlačenjem — API stanja i povijesti svakog lanca, svaki ciklus RPC-a i svaki zapis u bazu podataka, zajedno s trajanjem svakoga. Povucite za osvježavanje na zaslonu novčanika, zatim otvorite ovaj zaslon i dodirnite Kopiraj da biste ga podijelili."
+          }
+        },
+        "sk": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Časový protokol posledného obnovenia potiahnutím — API zostatku a histórie každej reťaze, každý cyklus RPC a každý zápis do databázy vrátane času trvania každej operácie. Na obrazovke peňaženky obnovte potiahnutím, potom otvorte túto obrazovku a klepnutím na Kopírovať ju zdieľajte."
+          }
+        },
+        "sl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Časovno zabeležen dnevnik zadnjega osveževanja s potegom — API stanja in zgodovine vsake verige, vsak cikel RPC in vsak zapis v zbirko podatkov, skupaj s trajanjem vsakega. Na zaslonu denarnice osvežite s potegom, nato odprite ta zaslon in se dotaknite Kopiraj, da ga delite."
+          }
+        },
+        "sr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Временски забележен дневник последњег освежавања превлачењем — API стања и историје сваког ланца, сваки циклус RPC-а и сваки упис у базу података, заједно са трајањем сваког. На екрану новчаника освежите превлачењем, затим отворите овај екран и додирните Копирај да бисте га поделили."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Un journal chronométré de la dernière actualisation par tirage — l’API de solde et d’historique de chaque chaîne, chaque aller-retour RPC et chaque écriture en base de données, avec le temps pris par chacun. Tirez pour actualiser sur l’écran du portefeuille, puis ouvrez ceci et touchez Copier pour le partager."
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "마지막 당겨서 새로고침의 시간 기록입니다. 각 체인의 잔액 및 내역 API, 모든 RPC 왕복, 모든 데이터베이스 쓰기와 각각에 걸린 시간을 보여줍니다. 지갑 화면에서 당겨 새로고침한 다음, 여기를 열고 복사를 눌러 공유하세요."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Un registro cronometrato dell’ultimo aggiornamento tramite trascinamento: l’API di saldo e cronologia di ogni catena, ogni andata e ritorno RPC e ogni scrittura nel database, con il tempo impiegato da ciascuno. Trascini verso il basso per aggiornare nella schermata del portafoglio, poi apra questa pagina e tocchi Copia per condividerla."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Son çekerek yenilemenin zaman damgalı kaydı — her zincirin bakiye ve geçmiş API’si, her RPC gidiş-dönüşü ve her veritabanı yazımı, her birinin ne kadar sürdüğüyle birlikte. Cüzdan ekranında çekerek yenileyin, ardından bunu açıp paylaşmak için Kopyala’ya dokunun."
+          }
+        },
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nhật ký theo thời gian của lần kéo để làm mới gần nhất — API số dư và lịch sử của mỗi chuỗi, mỗi lượt gọi RPC khứ hồi và mỗi lần ghi vào cơ sở dữ liệu, kèm theo thời gian của từng mục. Hãy kéo để làm mới trên màn hình ví, rồi mở mục này và chạm Sao chép để chia sẻ."
+          }
+        },
+        "th": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "บันทึกตามเวลาของการดึงเพื่อรีเฟรชครั้งล่าสุด — API ยอดคงเหลือและประวัติของแต่ละเชน การรับส่ง RPC แต่ละรอบ และการเขียนฐานข้อมูลแต่ละครั้ง พร้อมเวลาที่แต่ละรายการใช้ ดึงเพื่อรีเฟรชบนหน้าจอกระเป๋าเงิน จากนั้นเปิดหน้านี้แล้วแตะคัดลอกเพื่อแชร์"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Catatan berwaktu dari tarik untuk menyegarkan terakhir — API saldo dan riwayat setiap rantai, setiap perjalanan bolak-balik RPC, dan setiap penulisan basis data, beserta waktu yang dibutuhkan masing-masing. Tarik untuk menyegarkan di layar dompet, lalu buka halaman ini dan ketuk Salin untuk membagikannya."
+          }
+        },
+        "fa": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "گزارشی زمان‌بندی‌شده از آخرین کشیدن برای تازه‌سازی — API موجودی و تاریخچهٔ هر زنجیره، هر رفت‌وبرگشت RPC و هر نوشتن در پایگاه داده، همراه با مدت‌زمان هر کدام. در صفحهٔ کیف پول بکشید تا تازه شود، سپس این صفحه را باز کنید و برای هم‌رسانی روی کپی بزنید."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rejestr czasowy ostatniego odświeżenia gestem przeciągnięcia — interfejs API salda i historii każdego łańcucha, każda wymiana RPC oraz każdy zapis do bazy danych, wraz z czasem trwania każdego z nich. Przeciągnij, aby odświeżyć na ekranie portfela, następnie otwórz ten widok i dotknij Kopiuj, aby go udostępnić."
+          }
+        },
+        "nl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Een gedetailleerd tijdslog van de laatste pull-to-refresh — de saldo- en geschiedenis-API van elke keten, elke RPC-aanroep en elke databaseschrijfactie, met hoelang elk duurde. Trek omlaag om te verversen op het walletscherm, open dit vervolgens en tik op Kopiëren om het te delen."
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "آخری پُل ٹو ریفریش کا وقت کے ساتھ ریکارڈ — ہر چین کی بیلنس اور ہسٹری API، ہر RPC راؤنڈ ٹرپ، اور ہر database لکھائی، اس کے ساتھ کہ ہر ایک میں کتنا وقت لگا۔ والٹ اسکرین پر کھینچ کر ریفریش کریں، پھر اِسے کھولیں اور شیئر کرنے کے لیے Copy پر ٹیپ کریں۔"
+          }
+        },
+        "bg": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Хронометриран дневник на последното дръпване за опресняване — API за баланс и история на всяка верига, всяко RPC двупосочно обръщение и всеки запис в базата данни, заедно с времето, което отне всяко от тях. Дръпнете надолу за опресняване на екрана на портфейла, после отворете това и докоснете Копиране, за да го споделите."
+          }
+        },
+        "et": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Viimase tõmba-värskendamise ajastatud logi — iga ahela saldo- ja ajaloo-API, iga RPC edasi-tagasi päring ja iga andmebaasi kirjutamine koos sellega, kui kaua iga toiming võttis. Tõmba rahakoti ekraanil värskendamiseks, seejärel ava see ja puuduta jagamiseks Kopeeri."
+          }
+        },
+        "lt": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Paskutinio patraukimo atnaujinti laiko žurnalas — kiekvienos grandinės balanso ir istorijos API, kiekviena RPC užklausa su atsakymu ir kiekvienas duomenų bazės įrašymas, nurodant, kiek truko kiekvienas iš jų. Piniginės ekrane patraukite žemyn, kad atnaujintumėte, tada atverkite tai ir bakstelėkite Kopijuoti, kad pasidalintumėte."
+          }
+        },
+        "lv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pēdējās vilkšanas atsvaidzināšanai laika žurnāls — katras ķēdes bilances un vēstures API, katra RPC turp un atpakaļ apmaiņa un katra datubāzes ierakstīšana, norādot, cik ilgi tā aizņēma. Maka ekrānā velciet uz leju, lai atsvaidzinātu, pēc tam atveriet šo un pieskarieties Kopēt, lai to kopīgotu."
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tímasett skráning af síðustu uppfærslu með því að draga niður — jafnvægis- og ferils-API hverrar keðju, hver RPC umferð og hver skrifun í gagnagrunn, ásamt því hve langan tíma hvert tók. Dragðu niður til að uppfæra á veskisskjánum, opnaðu svo þetta og ýttu á Afrita til að deila því."
+          }
+        },
+        "ms": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Log bermasa bagi tarik untuk segar semula yang terakhir — API baki dan sejarah setiap rantai, setiap pusingan ulang-alik RPC, dan setiap penulisan pangkalan data, beserta tempoh yang diambil oleh setiap satu. Tarik untuk segar semula pada skrin dompet, kemudian buka halaman ini dan ketik Salin untuk berkongsinya."
+          }
+        },
+        "fil": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Isang naka-timing na log ng huling pull-to-refresh — ang balance at history API ng bawat chain, bawat RPC round-trip, at bawat pagsulat sa database, kasama kung gaano katagal ang bawat isa. I-pull pababa para mag-refresh sa screen ng wallet, pagkatapos ay buksan ito at i-tap ang Copy para ibahagi."
+          }
+        },
+        "sw": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kumbukumbu yenye muda ya kuvuta-kuonyesha-upya kwa mwisho — API ya salio na historia ya kila mnyororo, kila mzunguko wa RPC, na kila uandishi kwenye hifadhidata, pamoja na muda uliotumika kwa kila moja. Vuta ili kuonyesha upya kwenye skrini ya pochi, kisha fungua hapa na uguse Nakili ili kuishiriki."
+          }
+        },
+        "af": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "’n Getydde log van die laaste trek-om-te-verfris — elke ketting se saldo- en geskiedenis-API, elke RPC-heen-en-weer, en elke databasisskryf, met hoe lank elkeen geneem het. Trek af om te verfris op die beursie-skerm, maak dan hierdie oop en tik Kopieer om dit te deel."
+          }
+        },
+        "ta": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "கடைசியாக இழுத்துப் புதுப்பித்ததின் நேரப் பதிவு — ஒவ்வொரு செயினின் இருப்பு மற்றும் வரலாறு API, ஒவ்வொரு RPC போக்குவரத்து, மற்றும் ஒவ்வொரு database எழுதுதல், அவை ஒவ்வொன்றும் எடுத்த நேரத்துடன். வாலெட் திரையில் இழுத்துப் புதுப்பித்து, பிறகு இதைத் திறந்து, பகிர நகலெடு என்பதைத் தட்டவும்."
+          }
+        },
+        "te": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "చివరిసారి లాగి-రిఫ్రెష్ చేసిన దాని సమయ-నమోదు — ప్రతి చెయిన్ బ్యాలెన్స్ మరియు చరిత్ర API, ప్రతి RPC రౌండ్-ట్రిప్, మరియు ప్రతి database రాత, ఒక్కొక్కటి తీసుకున్న సమయంతో సహా. వాలెట్ స్క్రీన్‌లో లాగి రిఫ్రెష్ చేసి, ఆపై దీన్ని తెరిచి, షేర్ చేయడానికి కాపీని నొక్కండి."
+          }
+        },
+        "ml": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "അവസാനമായി വലിച്ച് പുതുക്കിയതിന്റെ സമയക്രമത്തിലുള്ള ലോഗ് — ഓരോ ചെയിനിന്റെയും ബാലൻസ്, ഹിസ്റ്ററി API, ഓരോ RPC റൗണ്ട്-ട്രിപ്പ്, ഓരോ database എഴുത്ത് എന്നിവ, ഓരോന്നിനും എടുത്ത സമയത്തോടൊപ്പം. വാലറ്റ് സ്ക്രീനിൽ വലിച്ച് പുതുക്കുക, പിന്നെ ഇത് തുറന്ന് പങ്കിടാൻ പകർത്തുക എന്നതിൽ ടാപ്പ് ചെയ്യുക."
+          }
+        },
+        "mr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "शेवटच्या खेचून-रिफ्रेशची वेळेसह नोंद — प्रत्येक चेनचे शिल्लक व इतिहास API, प्रत्येक RPC फेरफटका आणि प्रत्येक database लेखन, यासह प्रत्येकाला किती वेळ लागला. वॉलेट स्क्रीनवर खेचून रिफ्रेश करा, नंतर हे उघडा आणि शेअर करण्यासाठी कॉपी वर टॅप करा."
+          }
+        },
+        "pa": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ਆਖ਼ਰੀ ਖਿੱਚ-ਕੇ-ਤਾਜ਼ਾ ਕਰਨ ਦਾ ਸਮੇਂ ਸਮੇਤ ਰਿਕਾਰਡ — ਹਰ ਚੇਨ ਦੀ ਬੈਲੇਂਸ ਅਤੇ ਇਤਿਹਾਸ API, ਹਰ RPC ਗੇੜਾ, ਅਤੇ ਹਰ database ਲਿਖਤ, ਨਾਲ ਹੀ ਹਰੇਕ ਨੂੰ ਕਿੰਨਾ ਸਮਾਂ ਲੱਗਾ। ਵਾਲਿਟ ਸਕਰੀਨ 'ਤੇ ਖਿੱਚ ਕੇ ਤਾਜ਼ਾ ਕਰੋ, ਫਿਰ ਇਸਨੂੰ ਖੋਲ੍ਹੋ ਅਤੇ ਸਾਂਝਾ ਕਰਨ ਲਈ ਕਾਪੀ 'ਤੇ ਟੈਪ ਕਰੋ।"
+          }
+        }
+      }
     }
   },
   "version": "1.0"
