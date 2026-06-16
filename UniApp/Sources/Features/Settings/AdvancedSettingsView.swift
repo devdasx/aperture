@@ -96,6 +96,30 @@ struct AdvancedSettingsView: View {
             }
 
             Section {
+                NavigationLink {
+                    DiagnosticsLogView()
+                } label: {
+                    HStack(spacing: UniSpacing.s) {
+                        Image(systemName: "speedometer")
+                            .font(.system(size: 17, weight: .regular))
+                            .foregroundStyle(UniColors.Icon.accent)
+                            .frame(width: 28)
+                        Text("Refresh diagnostics")
+                            .font(UniTypography.body)
+                            .foregroundStyle(UniColors.Text.primary)
+                        Spacer()
+                    }
+                    .padding(.vertical, UniSpacing.xxs)
+                }
+                .listRowBackground(UniColors.Background.secondary)
+            } footer: {
+                Text("A timed log of the last pull-to-refresh — every chain's balance and history API, each RPC round-trip, and every database write, with how long each took. Pull to refresh on the wallet screen, then open this and tap Copy to share it.")
+                    .font(UniTypography.footnote)
+                    .foregroundStyle(UniColors.Text.tertiary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Section {
                 Button {
                     isShowingResetSheet = true
                 } label: {
