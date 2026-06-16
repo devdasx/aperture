@@ -37,7 +37,6 @@ enum TrustWalletAssetURL {
         case .opBNB:        return "opbnb"
         case .avalanche:    return "avalanchec"
         case .celo:         return "celo"
-        case .kavaEvm:      return "kavaevm"
         case .solana:       return "solana"
         case .ripple:       return "ripple"
         case .stellar:      return "stellar"
@@ -47,7 +46,6 @@ enum TrustWalletAssetURL {
         case .polkadot:     return "polkadot"
         case .aptos:        return "aptos"
         case .sui:          return "sui"
-        case .kava:         return "kava"
         }
     }
 

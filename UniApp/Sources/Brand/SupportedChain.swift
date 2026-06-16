@@ -31,7 +31,6 @@ enum SupportedChain: String, CaseIterable, Hashable, Sendable, Codable {
     case opBNB
     case avalanche
     case celo
-    case kavaEvm
 
     // Other families
     case aptos
@@ -43,7 +42,6 @@ enum SupportedChain: String, CaseIterable, Hashable, Sendable, Codable {
     case sui
     case ton
     case tron
-    case kava
 
     /// Cryptographic family. Used to share parsers across sibling chains.
     var family: ChainFamily {
@@ -51,14 +49,12 @@ enum SupportedChain: String, CaseIterable, Hashable, Sendable, Codable {
         case .bitcoin, .bitcoinCash, .litecoin, .dogecoin:
             return .bitcoin
         case .ethereum, .arbitrum, .base, .optimism, .scroll, .zkSync,
-             .polygon, .bnbChain, .opBNB, .avalanche, .celo, .kavaEvm:
+             .polygon, .bnbChain, .opBNB, .avalanche, .celo:
             return .evm
         case .solana, .stellar, .sui:
             return .ed25519
         case .ripple:
             return .ripple
-        case .kava:
-            return .cosmos
         case .aptos:    return .aptos
         case .near:     return .near
         case .polkadot: return .polkadot
@@ -93,7 +89,6 @@ enum SupportedChain: String, CaseIterable, Hashable, Sendable, Codable {
         case .opBNB:        return "opBNB"
         case .avalanche:    return "Avalanche"
         case .celo:         return "Celo"
-        case .kavaEvm:      return "Kava EVM"
         case .aptos:        return "Aptos"
         case .near:         return "NEAR"
         case .polkadot:     return "Polkadot"
@@ -103,7 +98,6 @@ enum SupportedChain: String, CaseIterable, Hashable, Sendable, Codable {
         case .sui:          return "Sui"
         case .ton:          return "TON"
         case .tron:         return "TRON"
-        case .kava:         return "Kava"
         }
     }
 
@@ -121,7 +115,6 @@ enum SupportedChain: String, CaseIterable, Hashable, Sendable, Codable {
             return "BNB"
         case .avalanche:    return "AVAX"
         case .celo:         return "CELO"
-        case .kavaEvm, .kava: return "KAVA"
         case .aptos:        return "APT"
         case .near:         return "NEAR"
         case .polkadot:     return "DOT"
@@ -158,7 +151,6 @@ enum SupportedChain: String, CaseIterable, Hashable, Sendable, Codable {
         case .opBNB:        return "Crypto/opbnb"
         case .avalanche:    return "Crypto/avax"
         case .celo:         return "Crypto/celo"
-        case .kavaEvm, .kava: return "Crypto/kava"
         case .aptos:        return "Crypto/apt"
         case .near:         return "Crypto/near"
         case .polkadot:     return "Crypto/dot"
@@ -201,13 +193,12 @@ extension SupportedChain {
         case .litecoin:     return "ltc1…example…example"
         case .dogecoin:     return "D…example…example"
         case .ethereum, .arbitrum, .base, .optimism, .scroll, .zkSync,
-             .polygon, .bnbChain, .opBNB, .avalanche, .celo, .kavaEvm:
+             .polygon, .bnbChain, .opBNB, .avalanche, .celo:
             return "0x0000…example…0000"
         case .solana:       return "So1ana…Example…111"
         case .stellar:      return "GAEx…example…AMPLE"
         case .sui:          return "0x…example…sui"
         case .ripple:       return "rEx4mp…example…le"
-        case .kava:         return "kava1…example…kava"
         case .aptos:        return "0x…example…aptos"
         case .near:         return "example.near"
         case .polkadot:     return "1…example…polkadot"
@@ -237,10 +228,10 @@ extension SupportedChain {
         case .bitcoin, .bitcoinCash, .dogecoin, .litecoin:   return 8
         case .ethereum, .arbitrum, .base, .optimism, .scroll,
              .zkSync, .polygon, .bnbChain, .opBNB,
-             .avalanche, .celo, .kavaEvm:                    return 18
+             .avalanche, .celo:                              return 18
         case .solana, .sui, .ton:                            return 9
         case .stellar:                                       return 7
-        case .ripple, .tron, .kava:                          return 6
+        case .ripple, .tron:                                 return 6
         case .aptos:                                         return 8
         case .near:                                          return 24
         case .polkadot:                                      return 10

@@ -8,10 +8,10 @@ import SwiftUI
 struct NetworkProvidersView: View {
     private static let chainOrder: [SupportedChain] = [
         .ethereum, .arbitrum, .base, .optimism, .scroll, .zkSync,
-        .polygon, .bnbChain, .opBNB, .avalanche, .celo, .kavaEvm,
+        .polygon, .bnbChain, .opBNB, .avalanche, .celo,
         .bitcoin, .bitcoinCash, .litecoin, .dogecoin,
         .solana, .ripple, .stellar, .near, .ton, .tron,
-        .polkadot, .aptos, .sui, .kava,
+        .polkadot, .aptos, .sui,
     ]
 
     var body: some View {

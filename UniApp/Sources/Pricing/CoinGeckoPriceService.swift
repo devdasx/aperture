@@ -73,8 +73,8 @@ actor CoinGeckoPriceService {
     /// CoinGecko ids for the symbols Aperture can ever need to price:
     /// every `SupportedChain.ticker` plus every registry token
     /// (`EVMTokenRegistry`, `SolanaTokenRegistry`, `TronTokenRegistry`,
-    /// `NearTokenRegistry`, `AptosTokenRegistry`, `XRPLTokenRegistry`,
-    /// `KavaCosmosTokenRegistry`). Only confidently-verified ids are
+    /// `NearTokenRegistry`, `AptosTokenRegistry`, `XRPLTokenRegistry`).
+    /// Only confidently-verified ids are
     /// listed; long-tail stablecoins without one (USD1, USDai, USDf,
     /// DUSD, lisUSD) resolve through the USDT proxy in `id(for:)` —
     /// the same honesty bound as `KnownStablecoins`' Coinbase
@@ -90,7 +90,6 @@ actor CoinGeckoPriceService {
         "BNB":   "binancecoin",
         "AVAX":  "avalanche-2",
         "CELO":  "celo",
-        "KAVA":  "kava",
         "APT":   "aptos",
         "NEAR":  "near",
         "DOT":   "polkadot",

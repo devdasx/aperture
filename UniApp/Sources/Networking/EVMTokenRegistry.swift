@@ -136,10 +136,6 @@ enum EVMTokenRegistry {
             Entry(contract: "0x48065fbBE25f71C9282ddf5e1cD6D6A887483D5e", symbol: "USDT", name: "Tether USD", decimals: 6),
         ]
 
-        case .kavaEvm: return [
-            Entry(contract: "0x919C1c267BC06a7039e03fcc2eF738525769109c", symbol: "USDT", name: "Tether USD", decimals: 6),
-        ]
-
         default:
             return []
         }

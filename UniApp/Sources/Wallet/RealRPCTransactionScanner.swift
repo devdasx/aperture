@@ -10,14 +10,13 @@ import OSLog
 /// | Family             | Chains                                                              | Adapter                              |
 /// |--------------------|---------------------------------------------------------------------|--------------------------------------|
 /// | Bitcoin            | BTC, BCH, LTC, DOGE                                                 | `BitcoinFamilyTransactionAdapter`    |
-/// | EVM                | ETH, ARB, BASE, OP, Scroll, zkSync, MATIC, BNB, opBNB, AVAX, Celo, Kava EVM | `EVMTransactionAdapter`              |
+/// | EVM                | ETH, ARB, BASE, OP, Scroll, zkSync, MATIC, BNB, opBNB, AVAX, Celo | `EVMTransactionAdapter`              |
 /// | Solana             | SOL                                                                 | `SolanaTransactionAdapter`           |
 /// | XRPL               | XRP                                                                 | `XRPLTransactionAdapter`             |
 /// | TRON               | TRX                                                                 | `TronTransactionAdapter`             |
 /// | Stellar            | XLM                                                                 | `StellarTransactionAdapter`          |
 /// | Aptos / Sui / NEAR | APT, SUI, NEAR                                                      | `LongTailTransactionAdapters`        |
 /// | TON / Polkadot     | TON, DOT                                                            | `LongTailTransactionAdapters`        |
-/// | Kava (Cosmos)      | KAVA                                                                | `LongTailTransactionAdapters`        |
 ///
 /// **Honesty contract (Rule #16 §A.5).** Every adapter hits a real
 /// public endpoint registered in `RPCRegistry`. If a chain has no
@@ -249,7 +248,7 @@ struct RealRPCTransactionScanner: TransactionScanner {
                 return try await adapter.fetch(address: address, limit: limit)
 
             case .ethereum, .arbitrum, .base, .optimism, .scroll, .zkSync,
-                 .polygon, .bnbChain, .opBNB, .avalanche, .celo, .kavaEvm:
+                 .polygon, .bnbChain, .opBNB, .avalanche, .celo:
                 let adapter = EVMTransactionAdapter(chain: chain, client: client)
                 return try await adapter.fetch(
                     address: address,
@@ -283,8 +282,6 @@ struct RealRPCTransactionScanner: TransactionScanner {
                 return try await LongTailTransactionAdapters.fetchTon(address: address, limit: limit, client: client)
             case .polkadot:
                 return try await LongTailTransactionAdapters.fetchPolkadot(address: address, limit: limit, client: client)
-            case .kava:
-                return try await LongTailTransactionAdapters.fetchKava(address: address, limit: limit, client: client)
             }
         } catch {
             // A 404 = the account has no on-chain history yet (unfunded /

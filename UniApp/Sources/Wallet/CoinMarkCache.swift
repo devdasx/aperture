@@ -255,8 +255,6 @@ actor CoinMarkCache {
         case .opBNB:        return "opbnb"
         case .avalanche:    return "avalanchec"
         case .celo:         return "celo"
-        case .kavaEvm:      return "kavaevm"
-        case .kava:         return "kava"
         case .aptos:        return "aptos"
         case .near:         return "near"
         case .polkadot:     return "polkadot"

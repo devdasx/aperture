@@ -30,7 +30,7 @@ enum RPCRegistry {
     /// logged by `jr`/`rs`), never a crash.
     /// Infura network slugs for the EVM chains the user's PAID key serves
     /// (live-verified 2026-06-16): `mainnet` for Ethereum, `<chain>-mainnet`
-    /// for the rest. Chains NOT listed (kavaEvm, and every non-EVM chain)
+    /// for the rest. Chains NOT listed (every non-EVM chain)
     /// get no Infura endpoint and keep their existing primaries. The keyed
     /// URL is built by `infura(_:slug:_:)`.
     private static let infuraSlug: [SupportedChain: String] = [
@@ -63,7 +63,6 @@ enum RPCRegistry {
             case .opBNB:       raw = opBNBEndpoints()
             case .avalanche:   raw = avalancheEndpoints()
             case .celo:        raw = celoEndpoints()
-            case .kavaEvm:     raw = kavaEvmEndpoints()
             case .bitcoin:     raw = bitcoinEndpoints()
             case .bitcoinCash: raw = bitcoinCashEndpoints()
             case .litecoin:    raw = litecoinEndpoints()
@@ -77,7 +76,6 @@ enum RPCRegistry {
             case .polkadot:    raw = polkadotEndpoints()
             case .aptos:       raw = aptosEndpoints()
             case .sui:         raw = suiEndpoints()
-            case .kava:        raw = kavaEndpoints()
             }
             var resolved = raw.compactMap { $0 }
             // **Infura is the EVM PAID PRIMARY (2026-06-16).** When the
@@ -313,25 +311,6 @@ enum RPCRegistry {
             oneRPC("celo-1rpc",   slug: "celo",                                   .celo,                                  9),
         ]
     }
-    private static func kavaEvmEndpoints() -> [RPCEndpoint?] {
-        // **2026-06-16 — live-probe cleanup (curl-verified, chainId 0x8ae).**
-        // REMOVED: `kavaevm-bdnodes` (https://kava-evm-rpc.bdnodes.net —
-        // DNS NXDOMAIN, HTTP 000; the host no longer exists). `evm.kava.io`
-        // stays priority 0: it is slow (~1-1.7s first call) but it is the
-        // ONLY kavaEvm RPC that accepts the address-topic Transfer getLogs
-        // filter — publicnode rejects topic-only getLogs (-32701 "specify
-        // an address") and kava.drpc.org 408s on the free tier — and the
-        // kavaEvm history path now falls through to eth_getLogs (the dead
-        // Blockscout indexer is nilled in EVMTransactionAdapter). drpc +
-        // publicnode are fast/reliable for BALANCE only. Three healthy
-        // endpoints retained.
-        [
-            jr("kavaevm-evm",        "https://evm.kava.io",                       .kavaEvm, "kava-foundation", .moderate10, 0),
-            jr("kavaevm-drpc",       "https://kava.drpc.org",                     .kavaEvm, "drpc",           .moderate10, 1),
-            jr("kavaevm-publicnode", "https://kava-evm-rpc.publicnode.com",       .kavaEvm, "publicnode",     .publicNode, 2),
-        ]
-    }
-
     // MARK: - Bitcoin family (4 chains, REST)
 
     private static func bitcoinEndpoints() -> [RPCEndpoint?] {
@@ -513,24 +492,6 @@ enum RPCRegistry {
             jr("sui-blockvision", "https://sui-mainnet-endpoint.blockvision.org",   .sui, "blockvision",    .moderate10, 1),
         ]
     }
-    private static func kavaEndpoints() -> [RPCEndpoint?] {
-        // **2026-06-16 — live-probe cleanup (curl-verified, Cosmos REST).**
-        // REMOVED: `kava-blastapi` (kava-mainnet.public.blastapi.io): DNS
-        // NXDOMAIN / HTTP 000 — host gone (Kava ran single-endpoint).
-        // ADDED: `kava-rest.publicnode.com` (best — same publicnode infra,
-        // ~0.5s, 40-concurrent all 200) and `kava-api.polkachu.com`
-        // (~0.46s, real balances) — both keyless, both returned identical
-        // real balances to data.kava.io. NOTE: a separate real bug (the
-        // Kava history `order_by=ORDER_BY_DESC` 10MB gRPC overflow in
-        // LongTailTransactionAdapters) is an adapter query fix, not an
-        // endpoint-health issue — flagged for the chain-data pass.
-        [
-            rs("kava-api",       "https://api.data.kava.io",          .kava, "kava-foundation", .moderate20, 0),
-            rs("kava-publicnode","https://kava-rest.publicnode.com",  .kava, "publicnode",       .moderate20, 1),
-            rs("kava-polkachu",  "https://kava-api.polkachu.com",     .kava, "polkachu",         .moderate10, 2),
-        ]
-    }
-
     // MARK: - Constructors
 
     /// Optional factories — a typo in a hardcoded URL must degrade

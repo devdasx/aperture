@@ -503,7 +503,6 @@ final class DAppRequestRouter {
         .scroll: 534352,
         .zkSync: 324,
         .celo: 42220,
-        .kavaEvm: 2222
     ]
 
     private func activeChainIdInt() -> Int {

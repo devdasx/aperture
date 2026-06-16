@@ -15,9 +15,9 @@ enum ChainCoinType {
         .bitcoin: 0, .bitcoinCash: 145, .litecoin: 2, .dogecoin: 3,
         .ethereum: 60, .arbitrum: 10042221, .base: 8453, .optimism: 10000070,
         .scroll: 534352, .zkSync: 10000324, .polygon: 966, .bnbChain: 20000714,
-        .opBNB: 204, .avalanche: 10009000, .celo: 52752, .kavaEvm: 10002222,
+        .opBNB: 204, .avalanche: 10009000, .celo: 52752,
         .solana: 501, .ripple: 144, .stellar: 148, .near: 397, .ton: 607,
-        .tron: 195, .polkadot: 354, .aptos: 637, .sui: 784, .kava: 459,
+        .tron: 195, .polkadot: 354, .aptos: 637, .sui: 784,
     ]
 
     static func coinType(for chain: SupportedChain) -> CoinType? {

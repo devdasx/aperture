@@ -526,33 +526,6 @@ struct RealRPCBalanceScanner: BalanceScanner {
                 yield: yield
             )
 
-        // Kava (Cosmos) — bank balance filtered by IBC denom.
-        // One fetch covers every registry token; the per-token work
-        // is a local dictionary lookup, so no task group needed.
-        case .cosmos where chain == .kava:
-            guard let balances = await Self.withNilRetry({
-                await Self.fetchKavaCosmosBalances(holder: address, client: client)
-            }) else { return }
-            let discovered: [DiscoveredToken] = KavaCosmosTokenRegistry.tokens.compactMap { entry in
-                let raw = balances[entry.denom] ?? 0
-                guard raw > 0 else { return nil }
-                return DiscoveredToken(
-                    contract: entry.denom,
-                    symbol: entry.symbol,
-                    name: entry.name,
-                    decimals: entry.decimals,
-                    amount: raw / Self.pow10(entry.decimals)
-                )
-            }
-            await Self.yieldTokensWithDeferredFiat(
-                discovered,
-                chain: chain,
-                address: address,
-                pricesTask: pricesTask,
-                currency: currency,
-                yield: yield
-            )
-
         // TON jettons + Polkadot Asset Hub — registries ship in
         // this turn so the Receive screen surfaces the tokens, but
         // balance scanning requires per-chain RPC adapters that are
@@ -1107,36 +1080,6 @@ struct RealRPCBalanceScanner: BalanceScanner {
         return out
     }
 
-    // MARK: - Kava (Cosmos) bank balances
-
-    private static func fetchKavaCosmosBalances(
-        holder: String,
-        client: RPCClient
-    ) async -> [String: Decimal]? {
-        // `GET /cosmos/bank/v1beta1/balances/{address}` returns
-        // every denom the holder has. Index by denom.
-        do {
-            let data = try await client.callREST(
-                chain: .kava,
-                path: "cosmos/bank/v1beta1/balances/\(holder)"
-            )
-            guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                  let arr = json["balances"] as? [[String: Any]] else {
-                return nil
-            }
-            var out: [String: Decimal] = [:]
-            for entry in arr {
-                guard let denom = entry["denom"] as? String,
-                      let amountStr = entry["amount"] as? String,
-                      let amount = Decimal(string: amountStr) else { continue }
-                out[denom] = amount
-            }
-            return out
-        } catch {
-            return nil
-        }
-    }
-
     /// 10^n as a `Decimal` — used for token decimal scaling
     /// (e.g. raw USDC base units / 10^6 = canonical USDC amount).
     private static func pow10(_ n: Int) -> Decimal {
@@ -1245,10 +1188,6 @@ struct RealRPCBalanceScanner: BalanceScanner {
                     for entry in XRPLTokenRegistry.tokens {
                         symbols.insert(entry.symbol.uppercased())
                     }
-                case .cosmos where chain == .kava:
-                    for entry in KavaCosmosTokenRegistry.tokens {
-                        symbols.insert(entry.symbol.uppercased())
-                    }
                 default:
                     break
                 }
@@ -1343,7 +1282,7 @@ struct RealRPCBalanceScanner: BalanceScanner {
     ) async throws(RPCError) -> ChainAccountSummary {
         switch chain {
         case .ethereum, .arbitrum, .base, .optimism, .scroll, .zkSync,
-             .polygon, .bnbChain, .opBNB, .avalanche, .celo, .kavaEvm:
+             .polygon, .bnbChain, .opBNB, .avalanche, .celo:
             let adapter = EVMChainAdapter(chain: chain, client: client)
             let s = try await adapter.fetchAccountSummary(address: address)
             return ChainAccountSummary(nativeBalance: s.nativeBalance, isUsed: s.isUsed)
@@ -1369,8 +1308,6 @@ struct RealRPCBalanceScanner: BalanceScanner {
             return try await AptosChainAdapter(client: client).fetchAccountSummary(address: address)
         case .sui:
             return try await SuiChainAdapter(client: client).fetchAccountSummary(address: address)
-        case .kava:
-            return try await CosmosKavaAdapter(client: client).fetchAccountSummary(address: address)
         }
     }
 }

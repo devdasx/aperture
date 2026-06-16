@@ -32,7 +32,6 @@ enum EVMChainIdentity {
         case .scroll:     return 534352
         case .zkSync:     return 324
         case .celo:       return 42220
-        case .kavaEvm:    return 2222
         case .opBNB:      return 204
         default:          return nil
         }
@@ -50,7 +49,7 @@ enum EVMChainIdentity {
         case .bnbChain:
             return false
         case .ethereum, .arbitrum, .base, .optimism, .scroll, .zkSync,
-             .polygon, .opBNB, .avalanche, .celo, .kavaEvm:
+             .polygon, .opBNB, .avalanche, .celo:
             return true
         default:
             // Non-EVM — undefined; caller gates on family first.

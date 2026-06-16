@@ -58,12 +58,6 @@ enum TestAddresses {
         .opBNB: "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045",
         .avalanche: "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045",
         .celo: "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045",
-        // Kava EVM: WKAVA contract address — holds 9.7M KAVA in
-        // wrapping reserves. Verified 2026-06-06 via eth_getBalance.
-        // Binance's multichain hot wallet is inactive on Kava EVM
-        // (Binance lists Kava on the Cosmos side, not the EVM
-        // chain), so we use the wrapping contract instead.
-        .kavaEvm: "0xc86c7C0eFbd6A49B35E8714C5f59D99De09A225b",
 
         // --- Solana ---
         // VERIFIED 2026-06-06 — Binance Solana hot wallet,
@@ -126,10 +120,5 @@ enum TestAddresses {
         // address — useful as a stable test target.
         .sui: "0x0000000000000000000000000000000000000000000000000000000000000005",
 
-        // --- Kava (Cosmos) ---
-        // VERIFIED 2026-06-06 — Kava staking bonded-tokens-pool
-        // module address (98 billion uKAVA). Resolved by
-        // querying /cosmos/auth/v1beta1/module_accounts/bonded_tokens_pool.
-        .kava: "kava1fl48vsnmsdzcv85q5d2q4z5ajdha8yu3fwaj0s",
     ]
 }

@@ -124,13 +124,6 @@ enum AssetCatalog {
                 name: entry.name, contract: entry.masterContract, decimals: entry.decimals
             ))
         }
-        // Kava (Cosmos IBC).
-        for entry in KavaCosmosTokenRegistry.tokens {
-            rows.append(CatalogAsset(
-                id: "kava.\(entry.denom)", chain: .kava, symbol: entry.symbol,
-                name: entry.name, contract: entry.denom, decimals: entry.decimals
-            ))
-        }
         return rows
     }
 }

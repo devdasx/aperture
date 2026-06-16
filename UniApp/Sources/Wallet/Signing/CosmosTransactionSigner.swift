@@ -53,9 +53,6 @@ enum CosmosTransactionSigner {
         jit: TransactionSigner.JustInTimeData,
         privateKey: PrivateKey
     ) throws -> SignedTransaction {
-        guard draft.chain == .kava else {
-            throw SigningError.malformedDraft("Cosmos signer used for \(draft.chain.rawValue)")
-        }
         guard let recipient = draft.recipients.first else {
             throw SigningError.malformedDraft("no recipient")
         }

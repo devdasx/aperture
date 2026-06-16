@@ -140,9 +140,8 @@ extension ChainComposeCapability {
             return evm(.evm1559PlusL1Data, decimals: decimals)
         case .zkSync:
             return evm(.zkSyncEra, decimals: decimals)
-        case .polygon, .celo, .kavaEvm:
-            // Polygon (25-gwei tip floor), Celo (fee-currency option),
-            // Kava EVM (feemarket floor) — all 1559 with a per-chain
+        case .polygon, .celo:
+            // Polygon (25-gwei tip floor), Celo (fee-currency option) — all 1559 with a per-chain
             // clamp applied in the fee service.
             return evm(.evm1559, decimals: decimals)
         case .bnbChain:
@@ -233,15 +232,6 @@ extension ChainComposeCapability {
                 memoKind: .none, memoMaxBytes: nil,
                 reserve: .existentialDeposit(ed: Decimal(string: "0.01")!),
                 maxRecipients: 20, nativeDecimals: decimals)
-
-        // MARK: - Cosmos (Kava)
-
-        case .kava:
-            // No existential deposit on Cosmos; memo ≤512 chars.
-            return ChainComposeCapability(
-                feeModel: .cosmosGas, supportsUTXO: false, opReturnMaxBytes: nil,
-                memoKind: .cosmosMemo, memoMaxBytes: 512, reserve: .none,
-                maxRecipients: 10, nativeDecimals: decimals)
 
         // MARK: - Aptos
 

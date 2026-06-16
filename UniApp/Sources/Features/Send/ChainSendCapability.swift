@@ -23,11 +23,6 @@ enum ChainSendCapability {
         case .ton:
             return 4
 
-        // Cosmos / Kava — a tx body holds many messages; N bank MsgSend.
-        // wallet-core: CosmosSigningInput.messages[] (native).
-        case .kava:
-            return 10
-
         // Sui — `unsafe_pay` takes parallel recipient[]+amount[] arrays;
         // one atomic tx pays many. wallet-core / RPC (native).
         case .sui:
@@ -62,7 +57,7 @@ enum ChainSendCapability {
         // separate advanced feature, not a native "send to many at once").
         // TRON / XRPL / NEAR have one recipient per transaction.
         case .ethereum, .arbitrum, .base, .optimism, .scroll, .zkSync,
-             .polygon, .bnbChain, .opBNB, .avalanche, .celo, .kavaEvm,
+             .polygon, .bnbChain, .opBNB, .avalanche, .celo,
              .tron, .ripple, .near:
             return 1
         }
