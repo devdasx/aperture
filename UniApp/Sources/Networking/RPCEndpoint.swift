@@ -31,7 +31,7 @@ struct RPCEndpoint: Sendable, Hashable, Identifiable {
 
     /// Provider name — surfaced in `Rule #16` honesty footer.
     /// Examples: `"publicnode"`, `"llamarpc"`, `"cloudflare"`,
-    /// `"mempool.space"`, `"ankr"`, `"helius"`, `"solana-foundation"`.
+    /// `"mempool.space"`, `"publicnode"`, `"helius"`, `"solana-foundation"`.
     let provider: String
 
     /// Documented rate limit per the provider's published terms.

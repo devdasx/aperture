@@ -1,7 +1,7 @@
 import Foundation
 
-/// Runtime access to the API keys Aperture needs (Li.Fi swap/bridge, ANKR
-/// RPC, 0x/1inch alternates). The real values live in `Secrets.xcconfig`
+/// Runtime access to the API keys Aperture needs (Li.Fi swap/bridge,
+/// 0x/1inch swap alternates, 1rpc). The real values live in `Secrets.xcconfig`
 /// (gitignored, local only); `project.yml` injects them into the app's
 /// `Info.plist` via `$(KEY)` substituted at build time, and this enum reads
 /// them back via `Bundle.main.object(forInfoDictionaryKey:)`.
@@ -24,9 +24,6 @@ enum Secrets {
     /// Li.Fi — the swap + cross-chain bridge aggregator (EVM + Solana).
     /// REQUIRED for Swap. https://docs.li.fi/ (API base: https://li.quest/v1)
     static let lifiAPIKey: String = value("LIFI_API_KEY")
-
-    /// ANKR Advanced multi-chain RPC. Optional (public RPC is the fallback).
-    static let ankrAPIToken: String = value("ANKR_API_TOKEN")
 
     /// 0x swap API — optional alternate EVM swap aggregator.
     static let zeroXAPIKey: String = value("ZEROX_API_KEY")
