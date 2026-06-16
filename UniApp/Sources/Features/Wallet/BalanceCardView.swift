@@ -429,11 +429,13 @@ struct BalanceCardView: View {
 
         return Group {
             if isHidden {
-                // Masked figure — currency code + dots.
-                (currencyRun
-                 + Text(verbatim: "••••••")
+                // Masked figure — currency code + dots. iOS 26 deprecates
+                // `Text + Text`; compose via string interpolation, which
+                // preserves each run's own font + color.
+                let dots = Text(verbatim: "••••••")
                     .font(UniTypography.BalanceCard.balance)
-                    .foregroundStyle(UniColors.BalanceCard.textPrimary(colorScheme)))
+                    .foregroundStyle(UniColors.BalanceCard.textPrimary(colorScheme))
+                Text("\(currencyRun)\(dots)")
                     .tracking(2)
             } else {
                 composedBalance(parts)
@@ -466,12 +468,15 @@ struct BalanceCardView: View {
         let gap = Text(verbatim: " ")
             .font(UniTypography.BalanceCard.currency)
 
+        // iOS 26 deprecates `Text + Text`; compose via string
+        // interpolation — each interpolated `Text` keeps its own font +
+        // foregroundStyle.
         if parts.currency.isEmpty {
-            return integer + fraction
+            return Text("\(integer)\(fraction)")
         }
         return parts.currencyLeads
-            ? currency + gap + integer + fraction
-            : integer + fraction + gap + currency
+            ? Text("\(currency)\(gap)\(integer)\(fraction)")
+            : Text("\(integer)\(fraction)\(gap)\(currency)")
     }
 
     // MARK: - Change row

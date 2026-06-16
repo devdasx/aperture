@@ -6,7 +6,7 @@ options:
   developmentLanguage: en
   createIntermediateGroups: true
   generateEmptyDirectories: true
-  xcodeVersion: "26.0"
+  xcodeVersion: "26.5"
 
 settings:
   base:
@@ -159,8 +159,10 @@ targets:
         SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD: NO
         DEVELOPMENT_TEAM: 6C4X774L9H
         CODE_SIGN_STYLE: Automatic
-        # Tests don't need user scripts; faster builds.
-        ENABLE_USER_SCRIPT_SANDBOXING: NO
+        # Match the recommended baseline. No run-script phases here, so
+        # sandboxing is a no-op for build speed, but YES keeps this target
+        # off Xcode's "update to recommended settings" prompt.
+        ENABLE_USER_SCRIPT_SANDBOXING: YES
         # The host app's PRODUCT_NAME is Aperture (set in the
         # UniApp target above), so the test-host bundle path
         # follows that — not the project / target name "UniApp".
