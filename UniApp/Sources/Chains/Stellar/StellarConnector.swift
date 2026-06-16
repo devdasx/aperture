@@ -132,6 +132,17 @@ struct StellarConnector: ChainConnector {
                 data = try await client.callREST(chain: chain, path: path, query: query)
             } catch {
                 if case .cancelled = error { throw error }
+                // A 404 from Horizon = the account is unfunded / not on-ledger
+                // yet → it has no payment history, an empty array, NOT a
+                // failure (curl-verified 2026-06-16: unfunded accounts 404 on
+                // `/accounts/{addr}/payments`, funded accounts return records).
+                // This mirrors `fetchNativeBalance`'s own 404=unfunded mapping
+                // and the transaction scanner's `isHTTPNotFound` → [] contract,
+                // so a brand-new Stellar address yields [] instead of throwing.
+                if RPCError.isHTTPNotFound(error) {
+                    Self.log.debug("Stellar account \(address, privacy: .private) unfunded (404) — no payment history")
+                    break
+                }
                 if cursor == nil { throw error }
                 Self.log.warning("Horizon payments page failed — keeping \(events.count, privacy: .public) events")
                 break
