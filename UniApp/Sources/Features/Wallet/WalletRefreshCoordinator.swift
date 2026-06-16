@@ -185,7 +185,10 @@ struct WalletRefreshCoordinator: Sendable {
         async let txHistoryTask: Void = scanAllTransactionHistory(
             snapshot: addressSnapshot,
             customTokensByChain: customTokensByChain,
-            txRepo: txRepo
+            txRepo: txRepo,
+            chainStateRepo: chainStateRepo,
+            walletId: walletId,
+            fiatCurrencyCode: currency.code
         )
 
         // 2026-06-17 — UTXO persistence + one-time encrypted-key population
@@ -244,7 +247,10 @@ struct WalletRefreshCoordinator: Sendable {
         var nativeYieldedChains = await consumeBalanceStream(
             stream,
             chainSnapshots: chainSnapshots,
-            txRepo: txRepo
+            txRepo: txRepo,
+            chainStateRepo: chainStateRepo,
+            walletId: walletId,
+            fiatCurrencyCode: currency.code
         )
 
         var failedChains = Set(chainAddresses.keys).subtracting(nativeYieldedChains)
@@ -274,7 +280,10 @@ struct WalletRefreshCoordinator: Sendable {
                 let retriedChains = await consumeBalanceStream(
                     retryStream,
                     chainSnapshots: chainSnapshots,
-                    txRepo: txRepo
+                    txRepo: txRepo,
+                    chainStateRepo: chainStateRepo,
+                    walletId: walletId,
+                    fiatCurrencyCode: currency.code
                 )
                 nativeYieldedChains.formUnion(retriedChains)
                 failedChains = Set(chainAddresses.keys).subtracting(nativeYieldedChains)
@@ -408,8 +417,25 @@ struct WalletRefreshCoordinator: Sendable {
     private func consumeBalanceStream(
         _ stream: AsyncStream<RealRPCBalanceScanner.StreamRow>,
         chainSnapshots: [SupportedChain: AddressSnapshot],
-        txRepo: TransactionRepository
+        txRepo: TransactionRepository,
+        chainStateRepo: ChainStateRepository,
+        walletId: UUID,
+        fiatCurrencyCode: String
     ) async -> Set<SupportedChain> {
+        // **Live per-chain commit (2026-06-17, user direction).** Each
+        // yielded row stages its upsert (`save: false`) and marks its chain
+        // dirty; the committer below flushes + rebuilds dirty chains on a
+        // ~120ms cadence, so a chain renders live the moment ITS balance RPC
+        // lands — independent of every other chain — while the cadence
+        // bounds @Query churn (the save-storm the old single-end-flush
+        // guarded against). Fiat refines through the same path when the
+        // shared price batch resolves.
+        let channel = LiveCommitChannel()
+        async let committer: Void = runLiveBalanceCommitter(
+            channel: channel, txRepo: txRepo, chainStateRepo: chainStateRepo,
+            walletId: walletId, fiatCurrencyCode: fiatCurrencyCode
+        )
+
         var nativeYieldedChains: Set<SupportedChain> = []
         await withTaskGroup(of: Void.self) { upsertGroup in
             for await row in stream {
@@ -417,21 +443,25 @@ struct WalletRefreshCoordinator: Sendable {
                 case .native(let chainBalance):
                     guard let snap = chainSnapshots[chainBalance.chain] else { continue }
                     nativeYieldedChains.insert(chainBalance.chain)
+                    let chain = chainBalance.chain
                     upsertGroup.addTask {
                         await self.upsertNativeBalance(
                             snap: snap,
                             chainBalance: chainBalance,
                             txRepo: txRepo
                         )
+                        await channel.mark(chain)
                     }
                 case .token(let tokenBalance):
                     guard let snap = chainSnapshots[tokenBalance.chain] else { continue }
+                    let chain = tokenBalance.chain
                     upsertGroup.addTask {
                         await self.upsertTokenBalance(
                             snap: snap,
                             tokenBalance: tokenBalance,
                             txRepo: txRepo
                         )
+                        await channel.mark(chain)
                     }
                 }
             }
@@ -440,7 +470,57 @@ struct WalletRefreshCoordinator: Sendable {
             // (`markScanComplete` for chains that didn't yield).
             await upsertGroup.waitForAll()
         }
+        // Stream drained — let the committer make a final pass over any
+        // chains still dirty, then exit.
+        await channel.finish()
+        await committer
         return nativeYieldedChains
+    }
+
+    /// Coalescing live committer for the balance stream. On a ~120ms
+    /// cadence it drains the dirty-chain set, flushes the staged balance
+    /// upserts in ONE main-context merge, then rebuilds just those chains'
+    /// aggregate rows — so each chain goes live the instant its balance
+    /// lands while the cadence caps `@Query` invalidations. Exits after a
+    /// final drain once `channel.finish()` is signalled.
+    private func runLiveBalanceCommitter(
+        channel: LiveCommitChannel,
+        txRepo: TransactionRepository,
+        chainStateRepo: ChainStateRepository,
+        walletId: UUID,
+        fiatCurrencyCode: String
+    ) async {
+        while !(await channel.isFinished) {
+            try? await Task.sleep(for: .milliseconds(120))
+            await commitDirtyChains(
+                channel: channel, txRepo: txRepo, chainStateRepo: chainStateRepo,
+                walletId: walletId, fiatCurrencyCode: fiatCurrencyCode
+            )
+        }
+        await commitDirtyChains(
+            channel: channel, txRepo: txRepo, chainStateRepo: chainStateRepo,
+            walletId: walletId, fiatCurrencyCode: fiatCurrencyCode
+        )
+    }
+
+    /// Flush staged balance upserts and rebuild the dirty chains' aggregate
+    /// rows (one coalesced commit). No-op when nothing is dirty.
+    private func commitDirtyChains(
+        channel: LiveCommitChannel,
+        txRepo: TransactionRepository,
+        chainStateRepo: ChainStateRepository,
+        walletId: UUID,
+        fiatCurrencyCode: String
+    ) async {
+        let dirty = await channel.drain()
+        guard !dirty.isEmpty else { return }
+        try? await txRepo.flush()
+        try? await chainStateRepo.rebuild(
+            walletId: walletId,
+            fiatCurrencyCode: fiatCurrencyCode,
+            onlyChains: dirty,
+            interim: true
+        )
     }
 
     /// 2026-06-09 — Upsert a streamScan-yielded native chain
@@ -585,7 +665,10 @@ struct WalletRefreshCoordinator: Sendable {
     private func scanAllTransactionHistory(
         snapshot: [AddressSnapshot],
         customTokensByChain: [SupportedChain: [CustomTokenSnapshot]],
-        txRepo: TransactionRepository
+        txRepo: TransactionRepository,
+        chainStateRepo: ChainStateRepository,
+        walletId: UUID,
+        fiatCurrencyCode: String
     ) async {
         // Shared client (2026-06-11) — limiter + breaker state must
         // accumulate across the fan-out, not reset per refresh.
@@ -614,6 +697,9 @@ struct WalletRefreshCoordinator: Sendable {
                         address: snap,
                         client: rpcClient,
                         txRepo: txRepo,
+                        chainStateRepo: chainStateRepo,
+                        walletId: walletId,
+                        fiatCurrencyCode: fiatCurrencyCode,
                         customContracts: customContracts,
                         ownAddresses: own
                     )
@@ -647,6 +733,9 @@ struct WalletRefreshCoordinator: Sendable {
                         address: snap,
                         client: rpcClient,
                         txRepo: txRepo,
+                        chainStateRepo: chainStateRepo,
+                        walletId: walletId,
+                        fiatCurrencyCode: fiatCurrencyCode,
                         customContracts: customContracts,
                         ownAddresses: own
                     )
@@ -776,6 +865,9 @@ struct WalletRefreshCoordinator: Sendable {
         address: AddressSnapshot,
         client: RPCClient,
         txRepo: TransactionRepository,
+        chainStateRepo: ChainStateRepository,
+        walletId: UUID,
+        fiatCurrencyCode: String,
         customContracts: [String] = [],
         ownAddresses: Set<String> = []
     ) async -> Int {
@@ -824,6 +916,20 @@ struct WalletRefreshCoordinator: Sendable {
                 Self.log.error("upsertTransaction failed for \(event.txHash, privacy: .public) on \(address.chain.rawValue, privacy: .public): \(String(describing: error), privacy: .public)")
             }
         }
+        // **Live per-chain history commit (2026-06-17).** This chain's
+        // history RPC just finished — flush its staged legs and rebuild ONLY
+        // this chain's aggregate row, so the activity feed + the chain row
+        // update the instant THIS chain's history lands, independent of
+        // balances and of every other chain's history (which run in their
+        // own parallel tasks). The flush commits whatever's staged so far;
+        // concurrent per-chain commits serialize on the repository actors.
+        try? await txRepo.flush()
+        try? await chainStateRepo.rebuild(
+            walletId: walletId,
+            fiatCurrencyCode: fiatCurrencyCode,
+            onlyChains: [address.chain],
+            interim: true
+        )
         Self.log.info("Transaction history for \(address.chain.rawValue, privacy: .public)/\(address.address, privacy: .public): persisted \(events.count, privacy: .public) events")
         return events.count
     }
@@ -999,6 +1105,29 @@ struct WalletRefreshCoordinator: Sendable {
             )
         }
     }
+}
+
+// MARK: - Live commit channel
+
+/// Thread-safe dirty-chain channel driving the balance stream's live
+/// committer (2026-06-17). The stream consumer marks a chain dirty as its
+/// rows land; the committer drains + commits on a fixed cadence. An actor
+/// so the concurrent producer (per-row upsert tasks) and single consumer
+/// (the committer loop) never race on the set.
+private actor LiveCommitChannel {
+    private var dirty: Set<SupportedChain> = []
+    private var finished = false
+
+    func mark(_ chain: SupportedChain) { dirty.insert(chain) }
+
+    /// Return the currently-dirty chains and clear the set atomically.
+    func drain() -> Set<SupportedChain> {
+        defer { dirty.removeAll() }
+        return dirty
+    }
+
+    func finish() { finished = true }
+    var isFinished: Bool { finished }
 }
 
 // MARK: - Observable refresh state

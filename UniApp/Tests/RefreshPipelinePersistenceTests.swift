@@ -191,6 +191,55 @@ struct RefreshPipelinePersistenceTests {
         #expect(after.utxoTotalSats == 100_000)
     }
 
+    // MARK: - Live per-chain commit (targeted rebuild)
+
+    /// The per-chain live-refresh path commits a single chain at a time via
+    /// `rebuild(onlyChains:)`. This proves a targeted rebuild touches ONLY
+    /// the requested chain's aggregate row and leaves siblings untouched —
+    /// so Ethereum's balance landing can't disturb Bitcoin's row, and a
+    /// chain whose data hasn't landed yet doesn't get a premature row.
+    @Test("rebuild(onlyChains:) updates only the targeted chain's row")
+    func targetedRebuildTouchesOnlyRequestedChain() async throws {
+        let container = try makeContainer()
+        let context = ModelContext(container)
+        let wallet = WalletRecord(
+            name: "Targeted", kind: .watchOnly, mnemonicWordCount: nil,
+            hasPassphrase: false, colorTag: "default", sortOrder: 0, requiresBackup: false
+        )
+        context.insert(wallet)
+        let ethAddr = WalletAddressRecord(chainRaw: SupportedChain.ethereum.rawValue, address: "0xeth")
+        ethAddr.wallet = wallet
+        context.insert(ethAddr)
+        let btcAddr = WalletAddressRecord(chainRaw: SupportedChain.bitcoin.rawValue, address: "bc1qbtc")
+        btcAddr.wallet = wallet
+        context.insert(btcAddr)
+        try context.save()
+        let walletId = wallet.id
+
+        // Stage a native ETH balance row.
+        let txRepo = TransactionRepository(modelContainer: container)
+        try await txRepo.upsertBalance(
+            addressId: ethAddr.id, tokenSymbol: SupportedChain.ethereum.ticker,
+            tokenContract: nil, decimals: 0, rawBalance: "1.5",
+            fiatValueCached: 3000, fiatCurrencyCode: "USD"
+        )
+
+        let repo = ChainStateRepository(modelContainer: container)
+        // Rebuild ONLY ethereum.
+        try await repo.rebuild(walletId: walletId, fiatCurrencyCode: "USD", onlyChains: [.ethereum])
+        let eth = try await repo.chainState(walletId: walletId, chain: .ethereum)
+        let btc = try await repo.chainState(walletId: walletId, chain: .bitcoin)
+        #expect(eth != nil, "ethereum row should exist after a targeted ethereum rebuild")
+        #expect((eth.map { Decimal(string: $0.nativeBalanceRaw) ?? 0 } ?? 0) > 0,
+                "ethereum row should carry the staged balance")
+        #expect(btc == nil, "bitcoin row must NOT be created by an ethereum-only rebuild")
+
+        // Rebuild ONLY bitcoin → its row appears now.
+        try await repo.rebuild(walletId: walletId, fiatCurrencyCode: "USD", onlyChains: [.bitcoin])
+        let btc2 = try await repo.chainState(walletId: walletId, chain: .bitcoin)
+        #expect(btc2 != nil, "bitcoin row should exist after a targeted bitcoin rebuild")
+    }
+
     // MARK: - Encryption (the user-chosen "encrypted key blob in DB" path)
 
     @Test("ChainKeyVault seals and opens a private key losslessly")
