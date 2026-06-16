@@ -32,7 +32,7 @@ enum ScanState: Hashable, Sendable {
 /// Rule #3 — no third-party SDK).
 ///
 /// **Honesty (Rule #16).** Real implementations hit public RPC
-/// providers (mempool.space, Ankr, Solana mainnet-beta, etc.). The
+/// providers (mempool.space, publicnode, Solana mainnet-beta, etc.). The
 /// review screen's footer names this explicitly so the user knows
 /// Aperture itself sends nothing, but the public providers may log
 /// the read request.

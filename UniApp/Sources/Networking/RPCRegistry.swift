@@ -71,7 +71,7 @@ enum RPCRegistry {
 
     // **2026-06-09 — expanded EVM fallback lists.** Each chain now
     // carries 6–9 endpoints from independent providers (PublicNode,
-    // LlamaRPC, Ankr, dRPC, 1RPC, Blast, BlockPI, OnFinality,
+    // dRPC, 1RPC, Blast, OnFinality,
     // Cloudflare, Merkle, the chain's foundation/vendor). When one
     // provider rate-limits or returns a 429/timeout, RPCClient
     // rotates to the next. The diverse provider set means a single
@@ -473,7 +473,7 @@ enum RPCRegistry {
         // same Aptos Labs infra/shape as the primary (a redundancy/
         // availability fallback sharing the anonymous quota, not a separate
         // rate-limit budget) — no truly independent keyless Aptos fullnode
-        // exists (publicnode/ankr 403, drpc 400, 1rpc 429 all failed).
+        // exists (publicnode 403, drpc 400, 1rpc 429 all failed).
         [
             rs("apt-aptoslabs",     "https://fullnode.mainnet.aptoslabs.com/v1", .aptos, "aptos-labs", .moderate20, 0),
             rs("apt-aptoslabs-api", "https://api.mainnet.aptoslabs.com/v1",      .aptos, "aptos-labs", .moderate20, 1),
@@ -588,7 +588,7 @@ extension RPCEndpoint.RateLimit {
         requestsPerSecond: 20, requestsPerMinute: 1_200, requestsPerDay: nil, burstAllowance: 10
     )
 
-    /// 10 req/s sustained, 5 burst. For stricter endpoints (Ankr's
+    /// 10 req/s sustained, 5 burst. For stricter endpoints (some providers'
     /// lower tier, Cloudflare, mempool.space, etc.).
     static let moderate10 = RPCEndpoint.RateLimit(
         requestsPerSecond: 10, requestsPerMinute: 600, requestsPerDay: nil, burstAllowance: 5

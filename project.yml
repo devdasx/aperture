@@ -65,7 +65,7 @@ targets:
       # request handling, and approval responses.
       - package: ReownSwift
         product: ReownWalletKit
-    # API keys (Li.Fi swap/bridge, ANKR RPC, …) come from Secrets.xcconfig —
+    # API keys (Li.Fi swap/bridge, 1rpc, …) come from Secrets.xcconfig —
     # LOCAL ONLY, gitignored. The committed Secrets.xcconfig.template
     # documents the required keys. Values are injected into the app's
     # Info.plist (the `info` block below) via `$(KEY)` substituted at build
@@ -107,7 +107,6 @@ targets:
         # Secret API keys — `$(KEY)` substituted from Secrets.xcconfig at
         # build time; the source plist never contains the real values.
         LIFI_API_KEY: "$(LIFI_API_KEY)"
-        ANKR_API_TOKEN: "$(ANKR_API_TOKEN)"
         ZEROX_API_KEY: "$(ZEROX_API_KEY)"
         ONEINCH_API_KEY: "$(ONEINCH_API_KEY)"
         ONERPC_API_KEY: "$(ONERPC_API_KEY)"
