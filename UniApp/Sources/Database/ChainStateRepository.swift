@@ -61,10 +61,15 @@ actor ChainStateRepository {
     ///   - interim: a mid-refresh rebuild (balances landed, history still
     ///     in flight) — every row is stamped `.syncing` so the UI shows a
     ///     per-chain spinner until the final rebuild stamps the outcome.
+    /// - Parameter onlyChains: when non-nil, recompute ONLY these chains
+    ///   (the live per-domain path — a chain's balance or history just
+    ///   landed, so rebuild that one chain's aggregate and leave the rest
+    ///   untouched). `nil` rebuilds every chain the wallet has.
     @discardableResult
     func rebuild(
         walletId: UUID,
         fiatCurrencyCode: String,
+        onlyChains: Set<SupportedChain>? = nil,
         failedChains: Set<SupportedChain> = [],
         interim: Bool = false
     ) throws -> Int {
@@ -77,6 +82,7 @@ actor ChainStateRepository {
         var rebuilt = 0
         for address in wallet.addresses {
             guard let chain = SupportedChain(rawValue: address.chainRaw) else { continue }
+            if let onlyChains, !onlyChains.contains(chain) { continue }
             let state: ChainSyncState = interim
                 ? .syncing
                 : (failedChains.contains(chain) ? .failed : .synced)
