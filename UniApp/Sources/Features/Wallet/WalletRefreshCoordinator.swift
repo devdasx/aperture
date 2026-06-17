@@ -898,23 +898,23 @@ struct WalletRefreshCoordinator: Sendable {
                 Self.log.error("upsertTransaction failed for \(event.txHash, privacy: .public) on \(address.chain.rawValue, privacy: .public): \(String(describing: error), privacy: .public)")
             }
         }
-        // **Live per-chain history commit (2026-06-17).** This chain's
-        // history RPC just finished — flush its staged legs and rebuild ONLY
-        // this chain's aggregate row, so the activity feed + the chain row
-        // update the instant THIS chain's history lands, independent of
-        // balances and of every other chain's history (which run in their
-        // own parallel tasks). The flush commits whatever's staged so far;
-        // concurrent per-chain commits serialize on the repository actors.
-        let commitToken = RefreshPerfLog.shared.start()
-        try? await txRepo.flush()
-        try? await chainStateRepo.rebuild(
-            walletId: walletId,
-            fiatCurrencyCode: fiatCurrencyCode,
-            onlyChains: [address.chain],
-            interim: true
-        )
-        RefreshPerfLog.shared.end("history", "live commit \(address.chain.rawValue) (\(events.count) events)", since: commitToken)
-        Self.log.info("Transaction history for \(address.chain.rawValue, privacy: .public)/\(address.address, privacy: .public): persisted \(events.count, privacy: .public) events")
+        // **History persistence is coalesced (2026-06-18 perf fix).** This
+        // per-address scan stages its legs with `save: false` (above) and no
+        // longer flushes or rebuilds per chain. The old per-chain
+        // `flush() + rebuild(onlyChains:)` fired ~2 SwiftData saves PER chain
+        // (~48 per refresh tick across the ~24 chains), and every save
+        // invalidated the wallet-home `@Query` graph and re-evaluated its
+        // ~2,800-line body on the main thread — the dominant pull-to-refresh
+        // /steady-state lag and heat. The staged legs are committed instead
+        // by the balance committer's periodic flush (while the two passes
+        // overlap) and, authoritatively, by `performRefresh`'s end-of-run
+        // `txRepo.flush()` + all-chain `chainStateRepo.rebuild()`. History
+        // therefore lands at refresh completion (within the same ~30s tick)
+        // rather than streaming in chain-by-chain — the same data, far fewer
+        // main-thread @Query invalidations. (`walletId` / `chainStateRepo` /
+        // `fiatCurrencyCode` stay on the signature for the caller + the
+        // staging path; the per-chain commit they fed is gone.)
+        Self.log.info("Transaction history for \(address.chain.rawValue, privacy: .public)/\(address.address, privacy: .public): staged \(events.count, privacy: .public) events")
         return events.count
     }
 
@@ -1190,7 +1190,7 @@ final class WalletRefreshState {
 /// task's late completion can't clobber its replacement's
 /// registration.
 @MainActor
-private enum WalletRefreshRegistry {
+enum WalletRefreshRegistry {
     private struct Entry {
         let token: UUID
         let startedAt: DispatchTime
@@ -1248,5 +1248,24 @@ private enum WalletRefreshRegistry {
         }
         inFlight[walletId] = Entry(token: token, startedAt: DispatchTime.now(), task: task)
         return task
+    }
+
+    /// Cancel every in-flight refresh. Called from `UniAppApp` the moment
+    /// the scene enters `.background` (2026-06-18 — the "hot in the
+    /// background" fix). The auto-refresh LOOP already stops via its
+    /// `scenePhase` gate, but each refresh runs inside an UNSTRUCTURED
+    /// `Task` here, and `refreshWallet`'s `await task.value` does NOT
+    /// propagate cancellation into it — so an in-flight ~24-chain scan
+    /// would otherwise run to completion off-screen, draining the radio +
+    /// CPU. Cancelling the task directly propagates through the structured
+    /// fan-out + `RPCClient`/`URLSession` (every read honors
+    /// `Task.isCancelled`), so the pipeline unwinds within roughly one RPC
+    /// timeout instead of finishing the whole scan in the background.
+    static func cancelAll() {
+        for entry in inFlight.values {
+            entry.task.cancel()
+        }
+        inFlight.removeAll()
+        WalletRefreshState.shared.invalidate()
     }
 }

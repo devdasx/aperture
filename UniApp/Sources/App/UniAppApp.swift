@@ -107,6 +107,16 @@ struct UniAppApp: App {
                 .environment(\.autoLockController, lockController)
                 .onChange(of: scenePhase) { _, newPhase in
                     lockController.handleScenePhaseChange(newPhase)
+                    // Stop any in-flight multi-chain refresh the instant we
+                    // background, so it can't run to completion + drain the
+                    // radio/CPU off-screen (2026-06-18 "hot in background"
+                    // fix). The auto-refresh loop already stops via its
+                    // `autoRefreshGate` scenePhase gate; this cancels the
+                    // work that was ALREADY running (the unstructured
+                    // registry Task that `await task.value` doesn't cancel).
+                    if newPhase == .background {
+                        WalletRefreshRegistry.cancelAll()
+                    }
                 }
                 // Biometric drift detection per user direction
                 // 2026-06-06. If the user changed their Face ID
