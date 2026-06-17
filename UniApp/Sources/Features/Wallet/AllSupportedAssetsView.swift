@@ -70,22 +70,39 @@ struct AllSupportedAssetsView: View {
         AllSupportedFilterPreferences.decode(selectedNetworksJSON)
     }
 
-    /// Whether any section currently has rows after the active filter —
-    /// drives the empty-state overlay.
-    private var hasVisibleRows: Bool {
-        (assetType.showsCoins && !filteredCoinRows.isEmpty)
-            || (assetType.showsTokens && !filteredTokenRows.isEmpty)
-    }
-
     var body: some View {
-        List {
-            if assetType.showsCoins { coinsSection }
-            if assetType.showsTokens { tokensSection }
+        // Build the supported-asset rows ONCE per body pass and reuse them
+        // for the sections, the empty-state, and the filter sheet's counts.
+        // Lookups go through the shared O(1) `WalletSupportedRowBuilders`
+        // (HeldRowIndex) — the same path the home + asset-detail screens use
+        // — so we never re-scan held balances per token or recompute the
+        // full list mid-render.
+        let held = heldRows
+        let allCoins = WalletSupportedRowBuilders.coinRows(heldRows: held, currencyCode: currencyCode)
+        let allTokens = WalletSupportedRowBuilders.tokenRows(heldRows: held, currencyCode: currencyCode)
+        let coinRows = visibleCoins(allCoins)
+        let tokenRows = visibleTokens(allTokens)
+        let isEmpty = !((assetType.showsCoins && !coinRows.isEmpty)
+            || (assetType.showsTokens && !tokenRows.isEmpty))
+        let totalCount = allCoins.count + allTokens.count
+        let visibleCount = coinRows.count + tokenRows.count
+
+        return List {
+            if assetType.showsCoins { coinsSection(coinRows) }
+            if assetType.showsTokens { tokensSection(tokenRows) }
         }
         .listStyle(.insetGrouped)
         .scrollContentBackground(.hidden)
         .background(UniColors.Background.primary.ignoresSafeArea())
-        .overlay { emptyStateOverlay }
+        .overlay {
+            if isEmpty {
+                ContentUnavailableView {
+                    Label("No assets", systemImage: "line.3.horizontal.decrease")
+                } description: {
+                    Text("No supported assets match your filter.")
+                }
+            }
+        }
         .navigationTitle("All supported assets")
         .navigationBarTitleDisplayMode(.inline)
         .searchable(text: $searchText, prompt: Text("Search"))
@@ -103,8 +120,8 @@ struct AllSupportedAssetsView: View {
         }
         .sheet(isPresented: $isShowingFilter) {
             AllSupportedAssetsFilterSheet(
-                totalAssets: allCoinRows.count + allTokenRows.count,
-                visibleAssets: filteredCoinRows.count + filteredTokenRows.count
+                totalAssets: totalCount,
+                visibleAssets: visibleCount
             )
             .uniAppEnvironment()
             .uniSheetDetents([.large])
@@ -113,25 +130,12 @@ struct AllSupportedAssetsView: View {
         }
     }
 
-    @ViewBuilder
-    private var emptyStateOverlay: some View {
-        if !hasVisibleRows {
-            ContentUnavailableView {
-                Label("No assets", systemImage: "line.3.horizontal.decrease")
-            } description: {
-                Text("No supported assets match your filter.")
-            }
-        }
-    }
-
     // MARK: - Sections
 
-    /// Coins section — one row per `SupportedChain`. Sorted by the
-    /// canonical chain order so the screen reads stable across
-    /// renders.
+    /// Coins section — supported chains, already filtered + sorted by the
+    /// caller. Hidden entirely when no coin matches the active filter.
     @ViewBuilder
-    private var coinsSection: some View {
-        let rows = filteredCoinRows
+    private func coinsSection(_ rows: [CoinSupportedRow]) -> some View {
         if !rows.isEmpty {
             Section {
                 ForEach(rows, id: \.chain) { row in
@@ -153,14 +157,11 @@ struct AllSupportedAssetsView: View {
         }
     }
 
-    /// Tokens section — one row per `(symbol, chain)` from the
-    /// curated registries (`EVMTokenRegistry` ∪ `SolanaTokenRegistry`
-    /// ∪ TRON ∪ NEAR ∪ Aptos ∪ Polkadot ∪ XRPL ∪ TON ∪ Kava). Each
-    /// entry surfaces with its current balance for the active
-    /// wallet (zero if not held).
+    /// Tokens section — one row per `(symbol, chain)` across the curated
+    /// registries, already filtered + sorted by the caller. Hidden when no
+    /// token matches the active filter.
     @ViewBuilder
-    private var tokensSection: some View {
-        let rows = filteredTokenRows
+    private func tokensSection(_ rows: [TokenSupportedDisplayRow]) -> some View {
         if !rows.isEmpty {
             Section {
                 ForEach(rows, id: \.id) { row in
@@ -210,67 +211,15 @@ struct AllSupportedAssetsView: View {
         return result
     }
 
-    /// Look up the current native balance for a chain. Returns
-    /// `nil` when the wallet has no record (so the row renders zero
-    /// with `Price unavailable`).
-    private func nativeBalance(for chain: SupportedChain) -> TokenBalanceRecord? {
-        heldRows.first(where: { entry in
-            entry.chain == chain
-                && entry.balance.tokenContract == nil
-                && entry.balance.tokenSymbol == chain.ticker
-        })?.balance
-    }
-
-    /// Look up the current token balance for a `(chain, contract)`.
-    /// Contracts are compared case-insensitively for EVM (per
-    /// EIP-55 mixed case can vary by source) and verbatim for
-    /// non-EVM (case-sensitive per `SUPPORTED_ASSETS.md` rule).
-    private func tokenBalance(chain: SupportedChain, contract: String) -> TokenBalanceRecord? {
-        heldRows.first(where: { entry in
-            guard entry.chain == chain,
-                  let storedContract = entry.balance.tokenContract else { return false }
-            if chain.family == .evm {
-                return storedContract.lowercased() == contract.lowercased()
-            }
-            return storedContract == contract
-        })?.balance
-    }
-
     // MARK: - Coins rows
 
-    /// All Coins rows — one per `SupportedChain.allCases`. Renders
-    /// the active wallet's native balance when present; honest zero
-    /// otherwise.
-    private var allCoinRows: [CoinSupportedRow] {
-        SupportedChain.allCases.map { chain in
-            if let record = nativeBalance(for: chain) {
-                let amount = WalletFormatting.decimalAmount(
-                    rawBalance: record.rawBalance,
-                    decimals: record.decimals
-                )
-                return CoinSupportedRow(
-                    chain: chain,
-                    amount: amount,
-                    fiatValue: record.fiatValueCached > 0 ? record.fiatValueCached : nil,
-                    fiatCurrencyCode: record.fiatCurrencyCode
-                )
-            }
-            return CoinSupportedRow(
-                chain: chain,
-                amount: .zero,
-                fiatValue: nil,
-                fiatCurrencyCode: currencyCode
-            )
-        }
-    }
-
     /// Coins rows after applying the active filter (networks +
-    /// only-with-balance + search) and the chosen sort. Search matches
-    /// the chain's display name and ticker verbatim.
-    private var filteredCoinRows: [CoinSupportedRow] {
+    /// only-with-balance + search) and the chosen sort, over the full set
+    /// built once in `body`. Search matches display name and ticker.
+    private func visibleCoins(_ all: [CoinSupportedRow]) -> [CoinSupportedRow] {
         let networks = selectedNetworks
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
-        var rows = allCoinRows.filter { row in
+        var rows = all.filter { row in
             networks.isEmpty || networks.contains(row.chain.rawValue)
         }
         if onlyWithBalance {
@@ -307,208 +256,15 @@ struct AllSupportedAssetsView: View {
 
     // MARK: - Tokens rows
 
-    /// All Tokens rows — one per `(symbol, chain, contract)` from
-    /// the curated registries. Built by walking each chain family's
-    /// registry once and emitting one display row per registry
-    /// entry. The same `symbol` on multiple chains appears multiple
-    /// times (USDC on Ethereum, USDC on Polygon, USDC on Solana, …)
-    /// — that's the honest representation, because the same ticker
-    /// on a different network is a different asset (different
-    /// contract, different bridge, different cost).
-    ///
-    /// Sorted: held first (largest fiat desc), then unheld
-    /// alphabetically by `(symbol, chain.displayName)`. So the user
-    /// sees their actual holdings at the top, then can scroll
-    /// through the full supported list.
-    private var allTokenRows: [TokenSupportedDisplayRow] {
-        var rows: [TokenSupportedDisplayRow] = []
-
-        // EVM tokens — one entry per (chain, contract).
-        for chain in SupportedChain.allCases where chain.family == .evm {
-            for entry in EVMTokenRegistry.tokens(for: chain) {
-                let balance = tokenBalance(chain: chain, contract: entry.contract)
-                let amount = balance.map {
-                    WalletFormatting.decimalAmount(
-                        rawBalance: $0.rawBalance,
-                        decimals: $0.decimals
-                    )
-                } ?? .zero
-                rows.append(TokenSupportedDisplayRow(
-                    id: "evm.\(chain.rawValue).\(entry.contract)",
-                    chain: chain,
-                    symbol: entry.symbol,
-                    name: entry.name,
-                    contract: entry.contract,
-                    amount: amount,
-                    fiatValue: (balance?.fiatValueCached).flatMap { $0 > 0 ? $0 : nil },
-                    fiatCurrencyCode: balance?.fiatCurrencyCode ?? currencyCode
-                ))
-            }
-        }
-
-        // Solana mints.
-        for (mint, entry) in SolanaTokenRegistry.mints {
-            let balance = tokenBalance(chain: .solana, contract: mint)
-            let amount = balance.map {
-                WalletFormatting.decimalAmount(
-                    rawBalance: $0.rawBalance,
-                    decimals: $0.decimals
-                )
-            } ?? .zero
-            rows.append(TokenSupportedDisplayRow(
-                id: "spl.\(mint)",
-                chain: .solana,
-                symbol: entry.symbol,
-                name: entry.name,
-                contract: mint,
-                amount: amount,
-                fiatValue: (balance?.fiatValueCached).flatMap { $0 > 0 ? $0 : nil },
-                fiatCurrencyCode: balance?.fiatCurrencyCode ?? currencyCode
-            ))
-        }
-
-        // TRON (TRC-20).
-        for entry in TronTokenRegistry.tokens {
-            let balance = tokenBalance(chain: .tron, contract: entry.contract)
-            let amount = balance.map {
-                WalletFormatting.decimalAmount(
-                    rawBalance: $0.rawBalance,
-                    decimals: $0.decimals
-                )
-            } ?? .zero
-            rows.append(TokenSupportedDisplayRow(
-                id: "trc.\(entry.contract)",
-                chain: .tron,
-                symbol: entry.symbol,
-                name: entry.name,
-                contract: entry.contract,
-                amount: amount,
-                fiatValue: (balance?.fiatValueCached).flatMap { $0 > 0 ? $0 : nil },
-                fiatCurrencyCode: balance?.fiatCurrencyCode ?? currencyCode
-            ))
-        }
-
-        // NEAR (NEP-141).
-        for entry in NearTokenRegistry.tokens {
-            let balance = tokenBalance(chain: .near, contract: entry.tokenAccount)
-            let amount = balance.map {
-                WalletFormatting.decimalAmount(
-                    rawBalance: $0.rawBalance,
-                    decimals: $0.decimals
-                )
-            } ?? .zero
-            rows.append(TokenSupportedDisplayRow(
-                id: "nep.\(entry.tokenAccount)",
-                chain: .near,
-                symbol: entry.symbol,
-                name: entry.name,
-                contract: entry.tokenAccount,
-                amount: amount,
-                fiatValue: (balance?.fiatValueCached).flatMap { $0 > 0 ? $0 : nil },
-                fiatCurrencyCode: balance?.fiatCurrencyCode ?? currencyCode
-            ))
-        }
-
-        // Aptos (fungible asset).
-        for entry in AptosTokenRegistry.tokens {
-            let balance = tokenBalance(chain: .aptos, contract: entry.contract)
-            let amount = balance.map {
-                WalletFormatting.decimalAmount(
-                    rawBalance: $0.rawBalance,
-                    decimals: $0.decimals
-                )
-            } ?? .zero
-            rows.append(TokenSupportedDisplayRow(
-                id: "apt.\(entry.contract)",
-                chain: .aptos,
-                symbol: entry.symbol,
-                name: entry.name,
-                contract: entry.contract,
-                amount: amount,
-                fiatValue: (balance?.fiatValueCached).flatMap { $0 > 0 ? $0 : nil },
-                fiatCurrencyCode: balance?.fiatCurrencyCode ?? currencyCode
-            ))
-        }
-
-        // Polkadot (Asset Hub).
-        for entry in PolkadotAssetRegistry.tokens {
-            let assetIdString = String(entry.assetId)
-            let balance = tokenBalance(chain: .polkadot, contract: assetIdString)
-            let amount = balance.map {
-                WalletFormatting.decimalAmount(
-                    rawBalance: $0.rawBalance,
-                    decimals: $0.decimals
-                )
-            } ?? .zero
-            rows.append(TokenSupportedDisplayRow(
-                id: "dot.\(assetIdString)",
-                chain: .polkadot,
-                symbol: entry.symbol,
-                name: entry.name,
-                contract: assetIdString,
-                amount: amount,
-                fiatValue: (balance?.fiatValueCached).flatMap { $0 > 0 ? $0 : nil },
-                fiatCurrencyCode: balance?.fiatCurrencyCode ?? currencyCode
-            ))
-        }
-
-        // XRP Ledger (IOU).
-        for entry in XRPLTokenRegistry.tokens {
-            let contract = "\(entry.currency).\(entry.issuer)"
-            let balance = tokenBalance(chain: .ripple, contract: contract)
-            let amount = balance.map {
-                WalletFormatting.decimalAmount(
-                    rawBalance: $0.rawBalance,
-                    decimals: $0.decimals
-                )
-            } ?? .zero
-            rows.append(TokenSupportedDisplayRow(
-                id: "xrpl.\(contract)",
-                chain: .ripple,
-                symbol: entry.symbol,
-                name: entry.name,
-                contract: contract,
-                amount: amount,
-                fiatValue: (balance?.fiatValueCached).flatMap { $0 > 0 ? $0 : nil },
-                fiatCurrencyCode: balance?.fiatCurrencyCode ?? currencyCode
-            ))
-        }
-
-        // TON Jettons.
-        for entry in TONJettonRegistry.tokens {
-            let balance = tokenBalance(chain: .ton, contract: entry.masterContract)
-            let amount = balance.map {
-                WalletFormatting.decimalAmount(
-                    rawBalance: $0.rawBalance,
-                    decimals: $0.decimals
-                )
-            } ?? .zero
-            rows.append(TokenSupportedDisplayRow(
-                id: "ton.\(entry.masterContract)",
-                chain: .ton,
-                symbol: entry.symbol,
-                name: entry.name,
-                contract: entry.masterContract,
-                amount: amount,
-                fiatValue: (balance?.fiatValueCached).flatMap { $0 > 0 ? $0 : nil },
-                fiatCurrencyCode: balance?.fiatCurrencyCode ?? currencyCode
-            ))
-        }
-
-        // Unsorted here — `filteredTokenRows` applies the active sort
-        // (`sortTokens`) after filtering, so the order tracks the user's
-        // Filter & Sort choice rather than being fixed at build time.
-        return rows
-    }
-
     /// Token rows after applying the active filter (networks +
-    /// only-with-balance + search) and the chosen sort. Search matches
-    /// symbol, full registry name, and the chain's display name (so
-    /// searching "Polygon" surfaces every token on Polygon).
-    private var filteredTokenRows: [TokenSupportedDisplayRow] {
+    /// only-with-balance + search) and the chosen sort, over the full set
+    /// built once in `body`. Search matches symbol, full registry name,
+    /// and the chain's display name (so searching "Polygon" surfaces every
+    /// token on Polygon).
+    private func visibleTokens(_ all: [TokenSupportedDisplayRow]) -> [TokenSupportedDisplayRow] {
         let networks = selectedNetworks
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
-        var rows = allTokenRows.filter { row in
+        var rows = all.filter { row in
             networks.isEmpty || networks.contains(row.chain.rawValue)
         }
         if onlyWithBalance {
