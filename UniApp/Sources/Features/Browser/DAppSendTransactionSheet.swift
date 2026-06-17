@@ -1,10 +1,12 @@
 import SwiftUI
 
-/// Detail sheet for `eth_sendTransaction` (EVM) and Solana
-/// `signAndSendTransaction`. The user reads what the dApp asked for
-/// — from, to, value, gas, contract data. Aperture has no broadcast
-/// pipeline yet, so the only action is Dismiss, which returns an
-/// honest JSON-RPC 4200 ("not supported yet") to the page.
+/// Detail sheet for `eth_sendTransaction` (EVM). The user reads what the
+/// dApp asked for — from, to, value, gas, contract data — then "Confirm &
+/// send" signs it with the wallet key and broadcasts it on-chain (the same
+/// `SwapEVMSigner` + `BroadcastService` pipeline the in-app Swap uses, gated
+/// by biometrics), returning the real tx hash to the page (2026-06-17).
+/// (Solana `signAndSendTransaction` is not wired yet and still returns an
+/// honest JSON-RPC error rather than a fabricated signature — Rule #16.)
 ///
 /// **Sheet shape (Rule #15).** `NavigationStack` + `ScrollView`.
 /// `.large` detent only.
@@ -26,6 +28,8 @@ struct DAppSendTransactionSheet: View {
     @Environment(\.dismiss) private var dismiss
 
     @State private var isShowingFullAddress: Bool = false
+    @State private var isSending: Bool = false
+    @State private var sendError: String?
 
     var body: some View {
         NavigationStack {
@@ -203,33 +207,36 @@ struct DAppSendTransactionSheet: View {
         }
     }
 
-    /// Aperture has no transaction-broadcast pipeline yet, so there
-    /// is no "Send" button — pretending to send and returning a fake
-    /// hash would be the most damaging lie this sheet could tell
-    /// (Rule #16). The user sees the request details, an honest
-    /// status line, and a single Dismiss that returns JSON-RPC 4200
-    /// to the dApp.
+    /// Real send (2026-06-17). On "Confirm & send" the request is signed
+    /// with the wallet's key and broadcast on-chain via the same pipeline
+    /// the in-app Swap uses (`EVMDAppSigner.sendTransaction`), gated behind a
+    /// biometric check when available. The real tx hash is returned to the
+    /// dApp via `router.approveSend(txHash:)`; a node rejection surfaces its
+    /// honest reason inline and the request stays open to retry or cancel.
     @ViewBuilder
     private var actionRegion: some View {
         VStack(spacing: UniSpacing.s) {
-            HStack(alignment: .top, spacing: UniSpacing.s) {
-                Image(systemName: "info.circle")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(UniColors.Icon.secondary)
-                    .frame(width: 20)
-                UniFootnote(
-                    text: "Sending transactions from the browser isn't available in Aperture yet. The request will be returned to the dApp unsigned.",
-                    color: UniColors.Text.secondary
-                )
+            if let sendError {
+                HStack(alignment: .top, spacing: UniSpacing.s) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(UniColors.Status.errorForeground)
+                        .frame(width: 20)
+                    Text(verbatim: sendError)
+                        .font(UniTypography.footnote)
+                        .foregroundStyle(UniColors.Text.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
             GlassEffectContainer(spacing: UniSpacing.s) {
-                UniButton(title: "Dismiss", variant: .primary) {
-                    router.failPending(DAppRequestError(
-                        code: 4200,
-                        message: "Sending transactions from the browser isn't supported yet"
-                    ))
-                    dismiss()
+                UniButton(
+                    title: isSending ? "Sending…" : "Confirm & send",
+                    variant: .primary,
+                    isLoading: isSending
+                ) {
+                    confirmAndSend()
                 }
+                .disabled(isSending)
             }
         }
         .padding(.horizontal, UniSpacing.m)
@@ -239,6 +246,32 @@ struct DAppSendTransactionSheet: View {
                 .opacity(0.92)
                 .ignoresSafeArea(edges: .bottom)
         )
+    }
+
+    /// Authenticate (biometric when available — this moves funds), then sign
+    /// + broadcast the real transaction and hand the hash back to the dApp.
+    private func confirmAndSend() {
+        guard !isSending else { return }
+        isSending = true
+        sendError = nil
+        Task { @MainActor in
+            defer { isSending = false }
+            let biometrics = BiometricService()
+            if biometrics.isAvailable {
+                let outcome = await biometrics.authenticate(reason: "Confirm sending this transaction")
+                if case .failure = outcome {
+                    sendError = String.apertureLocalized("Authentication failed — the transaction wasn't sent.")
+                    return
+                }
+            }
+            switch await EVMDAppSigner.sendTransaction(request) {
+            case .success(let txHash):
+                router.approveSend(txHash: txHash)
+                dismiss()
+            case .failure(let error):
+                sendError = EVMDAppSigner.requestError(for: error).message
+            }
+        }
     }
 
     // MARK: - Derived
