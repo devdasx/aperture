@@ -66,14 +66,15 @@ struct SwapReviewView: View {
     let walletHasPassphrase: Bool
     /// Dismisses the whole Swap sheet.
     let onClose: () -> Void
+    /// "Run in the background" — leave the swap surface entirely (dismiss the
+    /// sheet to the wallet home, where the banner takes over) while the job
+    /// keeps running in `SwapBackgroundManager`. Defaults to `onClose`.
+    var onBackground: () -> Void = {}
 
     @AppStorage("biometricEnabled") private var biometricEnabled: Bool = false
 
     /// The swap state machine. `.review` is the resting state.
     @State private var phase: Phase = .review
-    /// The live executor phase while signing/broadcasting (drives the status
-    /// line under the CTA, Rule #25).
-    @State private var execPhase: SwapExecutor.Phase = .preparing
     /// Drives the success haptic (set once when a confirmed swap lands).
     @State private var swappedAt: Date?
     /// Drives the error haptic (bumped on each failure).
@@ -86,17 +87,25 @@ struct SwapReviewView: View {
     @State private var passphrase: String = ""
     /// The in-flight biometric authentication, cancellable on disappear.
     @State private var authTask: Task<Void, Never>?
-    /// The in-flight swap, cancellable on disappear.
+    /// A disposable watcher that fires the success/error haptic when THIS
+    /// screen is visible. Cancelled on disappear — the swap itself runs in
+    /// `swapManager`, not here, so cancelling the watcher never stops the swap.
     @State private var swapTask: Task<Void, Never>?
+
+    /// The background swap engine (2026-06-17). The swap runs HERE, decoupled
+    /// from this view, so "Run in the background" can dismiss the screen while
+    /// the approval / broadcast / confirm keeps going.
+    @State private var swapManager = SwapBackgroundManager.shared
+    /// The job this review is driving, once started. The body derives the
+    /// in-flight / done / failed surface from `swapManager.job(jobId)`.
+    @State private var jobId: SwapJob.ID?
 
     private enum Phase: Equatable {
         case review
         /// Auth prompt is up (biometric or PIN) — the CTA shows a spinner.
         case authenticating
-        /// Signing + broadcasting (off-main in the executor).
+        /// Started — the display is derived from the manager's job.
         case swapping
-        case done(SwapExecutor.Executed)
-        case failed(SwapExecutor.ExecError)
     }
 
     private var quote: SwapQuote { summary.quote }
@@ -105,24 +114,21 @@ struct SwapReviewView: View {
     var body: some View {
         Group {
             switch phase {
-            case .authenticating, .swapping:
+            case .authenticating:
                 SwapInFlightView(
                     summary: summary,
                     isBridge: isBridge,
-                    isAuthenticating: phase == .authenticating,
-                    execPhase: execPhase
+                    isAuthenticating: true,
+                    execPhase: .preparing,
+                    onBackground: nil
                 )
-            case .done(let executed):
-                SwapDoneView(
-                    summary: summary,
-                    executed: executed,
-                    isBridge: isBridge,
-                    currencyCode: currencyCode,
-                    onDone: onClose
-                )
-            case .failed(let error):
-                SwapFailedView(error: error, onRetry: resetToReview, onClose: onClose)
-            default:
+            case .swapping:
+                if let id = jobId, let job = swapManager.job(id) {
+                    swapJobSurface(id: id, job: job)
+                } else {
+                    reviewContent
+                }
+            case .review:
                 reviewContent
             }
         }
@@ -133,6 +139,37 @@ struct SwapReviewView: View {
             swapTask?.cancel()
             // Drop the passphrase from memory the moment the flow ends.
             passphrase = ""
+        }
+    }
+
+    /// The in-flight / finished surface, derived from the manager's job so it
+    /// updates live — and so the swap survives if the user taps "Run in the
+    /// background" (the job lives in `swapManager`, not this view).
+    @ViewBuilder
+    private func swapJobSurface(id: SwapJob.ID, job: SwapJob) -> some View {
+        switch job.status {
+        case .running:
+            SwapInFlightView(
+                summary: summary,
+                isBridge: isBridge,
+                isAuthenticating: false,
+                execPhase: job.execPhase,
+                onBackground: onBackground
+            )
+        case .done:
+            SwapDoneView(
+                summary: summary,
+                executed: job.executed ?? SwapExecutor.Executed(txHash: "", chain: quote.fromToken.chain, confirmed: nil),
+                isBridge: isBridge,
+                currencyCode: currencyCode,
+                onDone: { swapManager.dismiss(id); onClose() }
+            )
+        case .failed:
+            SwapFailedView(
+                error: job.error ?? .signingFailed("The swap didn't go through."),
+                onRetry: { swapManager.dismiss(id); jobId = nil; resetToReview() },
+                onClose: { swapManager.dismiss(id); onClose() }
+            )
         }
     }
 
@@ -371,29 +408,28 @@ struct SwapReviewView: View {
     /// Run the real swap through the executor (off-main heavy work inside it;
     /// this method only awaits and applies the result, Rule #28).
     private func startSwap() {
-        execPhase = .preparing
-        phase = .swapping
+        let pass = walletHasPassphrase ? passphrase : nil
+        // Hand the swap to the background manager. It owns the execution Task,
+        // so this view can be dismissed ("Run in the background") without
+        // stopping the approval / broadcast / confirm (2026-06-17).
+        let id = swapManager.start(summary: summary, walletId: walletId, passphrase: pass)
+        jobId = id
+        passphrase = ""
+        withAnimation(.smooth(duration: 0.35)) { phase = .swapping }
+        // Disposable haptic watcher — only matters while this screen is
+        // visible. Cancelled on disappear; never stops the swap.
         swapTask?.cancel()
         swapTask = Task { @MainActor in
-            let pass = walletHasPassphrase ? passphrase : nil
-            let result = await SwapExecutor().execute(
-                summary: summary,
-                walletId: walletId,
-                passphrase: pass,
-                onPhase: { p in
-                    withAnimation(.easeInOut(duration: 0.2)) { execPhase = p }
+            while let job = swapManager.job(id), !Task.isCancelled {
+                if job.status == .done {
+                    if job.didConfirm { swappedAt = Date() }
+                    return
                 }
-            )
-            // Drop the passphrase from memory immediately after the swap.
-            passphrase = ""
-            guard !Task.isCancelled else { return }
-            switch result {
-            case .success(let executed):
-                if executed.confirmed == true { swappedAt = Date() }
-                withAnimation(.smooth(duration: 0.35)) { phase = .done(executed) }
-            case .failure(let error):
-                failedTrigger += 1
-                withAnimation(.smooth(duration: 0.35)) { phase = .failed(error) }
+                if job.status == .failed {
+                    failedTrigger += 1
+                    return
+                }
+                try? await Task.sleep(for: .milliseconds(250))
             }
         }
     }
@@ -431,6 +467,9 @@ private struct SwapInFlightView: View {
     /// phase has begun. Drives the leading "Confirm on your iPhone" state.
     let isAuthenticating: Bool
     let execPhase: SwapExecutor.Phase
+    /// "Run in the background" handler. `nil` hides the affordance (the auth
+    /// gate can't be backgrounded — there's nothing in flight yet).
+    let onBackground: (() -> Void)?
 
     private var quote: SwapQuote { summary.quote }
     /// A native-coin swap skips the approval step (no ERC-20 allowance).
@@ -476,9 +515,30 @@ private struct SwapInFlightView: View {
         .scrollIndicators(.hidden)
         .scrollDisabled(true)
         .background(UniColors.Background.primary)
+        .safeAreaInset(edge: .bottom) { backgroundBar }
         .navigationTitle(isBridge ? "Bridging" : "Swapping")
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(true)
+    }
+
+    /// "Leave it running" — the swap (especially a slow ERC-20 approval) keeps
+    /// going in `SwapBackgroundManager`, and the wallet home shows a live
+    /// banner. Hidden during the auth gate (nothing is in flight yet).
+    @ViewBuilder
+    private var backgroundBar: some View {
+        if let onBackground, !isAuthenticating {
+            VStack(spacing: UniSpacing.xs) {
+                UniButton(title: "Run in the background", variant: .secondary, action: onBackground)
+                Text("You can leave — we'll finish it and show it on your wallet home.")
+                    .font(UniTypography.caption1)
+                    .foregroundStyle(UniColors.Text.tertiary)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(.horizontal, UniSpacing.l)
+            .padding(.top, UniSpacing.s)
+            .padding(.bottom, UniSpacing.xs)
+        }
     }
 
     // MARK: Header — from → to with a calm directional pulse
@@ -1360,11 +1420,63 @@ private struct SwapFailedView: View {
         GlassEffectContainer(spacing: UniSpacing.s) {
             VStack(spacing: UniSpacing.xs) {
                 UniButton(title: "Try again", variant: .primary, action: onRetry)
-                UniButton(title: "Close", variant: .tertiary, action: onClose)
+                UniButton(title: "Close", variant: .secondary, action: onClose)
             }
             .padding(.horizontal, UniSpacing.l)
             .padding(.top, UniSpacing.s)
             .padding(.bottom, UniSpacing.xs)
+        }
+    }
+}
+
+// MARK: - Background-job status surface
+
+/// Full status surface for a swap running in `SwapBackgroundManager`, opened
+/// from the wallet-home banner (2026-06-17). Reuses the exact in-flight / done
+/// / failed surfaces the review flow shows — driven by the live job — so a
+/// backgrounded swap looks identical when reopened. Lives in this file so it
+/// can reach the file-private `SwapInFlightView` / `SwapDoneView` /
+/// `SwapFailedView`.
+struct SwapJobStatusView: View {
+    let jobId: SwapJob.ID
+    let onClose: () -> Void
+
+    @State private var swapManager = SwapBackgroundManager.shared
+    @AppStorage(CurrencyPreference.storageKey) private var currencyCode: String = CurrencyPreference.defaultCode
+
+    var body: some View {
+        NavigationStack {
+            Group {
+                if let job = swapManager.job(jobId) {
+                    switch job.status {
+                    case .running:
+                        SwapInFlightView(
+                            summary: job.summary,
+                            isBridge: job.isBridge,
+                            isAuthenticating: false,
+                            execPhase: job.execPhase,
+                            onBackground: onClose
+                        )
+                    case .done:
+                        SwapDoneView(
+                            summary: job.summary,
+                            executed: job.executed ?? SwapExecutor.Executed(txHash: "", chain: job.summary.quote.fromToken.chain, confirmed: nil),
+                            isBridge: job.isBridge,
+                            currencyCode: currencyCode,
+                            onDone: { swapManager.dismiss(jobId); onClose() }
+                        )
+                    case .failed:
+                        SwapFailedView(
+                            error: job.error ?? .signingFailed("The swap didn't go through."),
+                            onRetry: { swapManager.dismiss(jobId); onClose() },
+                            onClose: { swapManager.dismiss(jobId); onClose() }
+                        )
+                    }
+                } else {
+                    // The job was dismissed elsewhere — close the sheet.
+                    Color.clear.onAppear { onClose() }
+                }
+            }
         }
     }
 }

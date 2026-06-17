@@ -215,6 +215,10 @@ struct WalletHomeView: View {
     /// direction rebuilds, reset on dismiss.
     @State private var isShowingSwap: Bool = false
     @State private var swapPath: NavigationPath = NavigationPath()
+    /// Background-swap engine — drives the under-actions banner (2026-06-17).
+    @State private var swapManager = SwapBackgroundManager.shared
+    /// The background swap job whose status sheet is open, if any.
+    @State private var openSwapJobId: SwapJob.ID?
     /// **Filter & Sort sheet (2026-06-09).** Drives the
     /// `.sheet(isPresented: $isShowingFilter)` block below. The sheet
     /// reads + writes preferences through `@AppStorage` against
@@ -805,6 +809,24 @@ struct WalletHomeView: View {
                 .presentationDragIndicator(.visible)
                 .presentationBackground(UniColors.Background.primary)
         }
+        // Background-swap status (2026-06-17). Tapping the under-actions
+        // banner reopens the live status of a swap running in
+        // `SwapBackgroundManager` — the same in-flight / done / failed surface
+        // the review flow shows.
+        .sheet(
+            isPresented: Binding(
+                get: { openSwapJobId != nil },
+                set: { if !$0 { openSwapJobId = nil } }
+            )
+        ) {
+            if let id = openSwapJobId {
+                SwapJobStatusView(jobId: id, onClose: { openSwapJobId = nil })
+                    .uniAppEnvironment()
+                    .uniSheetDetents([.large])
+                    .presentationDragIndicator(.visible)
+                    .presentationBackground(UniColors.Background.primary)
+            }
+        }
         // Filter & Sort sheet (2026-06-09). `.large` detent only per
         // M-008's nav-shaped-sheet rule. Rule #12 §G direction key +
         // `.uniAppEnvironment()` so theme + locale propagate into the
@@ -1229,6 +1251,27 @@ struct WalletHomeView: View {
                 bottom: 0,
                 trailing: UniSpacing.m
             ))
+
+            // Background-swap banner (2026-06-17). When a swap is running in
+            // `SwapBackgroundManager` — the user tapped "Run in the
+            // background" — or has just finished, it shows here directly under
+            // the actions: tappable to reopen its live status, dismissable
+            // once it's done.
+            if !isTestMode, let job = swapManager.bannerJob {
+                SwapBackgroundBanner(
+                    job: job,
+                    onOpen: { openSwapJobId = job.id },
+                    onDismiss: { swapManager.dismiss(job.id) }
+                )
+                .listRowBackground(Color.clear)
+                .listRowSeparator(.hidden)
+                .listRowInsets(EdgeInsets(
+                    top: UniSpacing.xs,
+                    leading: UniSpacing.m,
+                    bottom: 0,
+                    trailing: UniSpacing.m
+                ))
+            }
 
             // Coins ↔ Tokens segmented switcher. Native iOS
             // `.pickerStyle(.segmented)` — the same control iOS
