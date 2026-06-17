@@ -45,6 +45,26 @@ enum SettingsDestination: Hashable, Codable {
     case preferences
     case help
     case about
+
+    /// Whether this destination may be auto-restored on a cold launch.
+    /// The Security screen is auth-gated (PIN / Face ID) — restoring
+    /// straight back into it would re-show the screen the user
+    /// authenticated for minutes ago without a fresh challenge, which is
+    /// exactly the bypass the user reported (2026-06-17). So `.security`
+    /// (and anything pushed beneath it, e.g. `.autoLock`) is excluded:
+    /// the user lands on the Settings root and re-enters Security with a
+    /// fresh PIN / Face ID prompt. Mirrors
+    /// `WalletHomeDestination.isColdLaunchRestorable`.
+    var isColdLaunchRestorable: Bool {
+        switch self {
+        case .security:
+            return false
+        case .wallets, .walletDetail, .autoLock, .privacy, .acknowledgments,
+             .networkProviders, .advanced, .hideSmallBalances, .language,
+             .appearance, .currency, .preferences, .help, .about:
+            return true
+        }
+    }
 }
 
 struct SettingsView: View {
@@ -67,7 +87,10 @@ struct SettingsView: View {
     /// survive the root direction-flip rebuild (`AppRoot.
     /// rootDirectionKey`) — the Choose-language screen stays put
     /// when its own selection flips LTR ↔ RTL.
-    @State private var navigationPath: NavigationPath
+    // Typed stack (not the opaque `NavigationPath`) so restoration can
+    // inspect it and refuse to re-open the auth-gated Security screen on
+    // a cold launch — same pattern as `WalletHomeDestination`.
+    @State private var navigationPath: [SettingsDestination]
 
     init() {
         // `@State` reads its initial value only when the view's
@@ -75,8 +98,9 @@ struct SettingsView: View {
         // direction flip) — exactly the moments restoration should
         // apply. Re-running this on routine `MainTabView` body passes
         // is a no-op against existing state, and the decode cost is a
-        // few enum cases of JSON.
-        _navigationPath = State(initialValue: ScreenRestoration.restoredSettingsPath())
+        // few enum cases of JSON. `restoredSettingsStack()` truncates at
+        // the first non-restorable destination (e.g. `.security`).
+        _navigationPath = State(initialValue: ScreenRestoration.restoredSettingsStack())
     }
 
     @AppStorage("themePreference") private var themeRaw: String = ThemePreference.defaultRaw
@@ -309,7 +333,7 @@ struct SettingsView: View {
             // so a force-quit needs no last-moment save. Consumed by
             // `init` above on the next fresh identity.
             .onChange(of: navigationPath) { _, newPath in
-                ScreenRestoration.saveSettingsPath(newPath)
+                ScreenRestoration.saveSettingsStack(newPath)
             }
         }
     }
