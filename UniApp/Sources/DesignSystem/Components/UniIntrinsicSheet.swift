@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 /// Sheet presentation modifier that sizes the sheet to **exactly its
 /// content's intrinsic height** — no taller (no empty space below the
@@ -188,7 +189,10 @@ private struct UniIntrinsicHeightSheetModifier: ViewModifier {
             // content-sized behavior the iPhone already has now applies on
             // iPad. The inner `ScrollView` in `UniSheet` still absorbs any
             // overflow if content exceeds the system's form-sheet cap.
-            .presentationSizing(.fitted)
+            // 2026-06-17: routed through `uniSheetSizing()` so iPad uses a
+            // `.page` sheet (scrolls, never collapses) instead of `.fitted`
+            // (which collapsed full-content sheets to a tiny centered card).
+            .uniSheetSizing()
     }
 
     /// Decided detent set, computed from the latest intrinsic and
@@ -301,6 +305,32 @@ extension View {
     func uniSheetDetents(_ detents: Set<PresentationDetent>) -> some View {
         self
             .presentationDetents(detents)
-            .presentationSizing(.fitted)
+            .uniSheetSizing()
+    }
+}
+
+extension View {
+    /// The one place that chooses a presentation SIZE per device, so both the
+    /// detent path (`uniSheetDetents`) and the intrinsic-height path share it.
+    ///
+    /// **iPhone (unchanged) → `.fitted`.** On compact width `.fitted` defers to
+    /// the bottom-sheet `.presentationDetents`, so the iPhone sheet is
+    /// byte-for-byte what it has always been — and it works perfectly.
+    ///
+    /// **iPad / Mac (fixed 2026-06-17) → `.page`.** `.fitted` sizes a
+    /// regular-width sheet to its content's *intrinsic* size — and a full
+    /// navigation surface (Receive, Swap, the filter/options sheets, Settings
+    /// nav sheets) has no intrinsic size, so iPad collapsed it into a tiny
+    /// centered card (user-reported). `.page` presents the standard large iPad
+    /// page sheet that **scrolls** tall content instead of clipping it and
+    /// never collapses. This supersedes the 2026-06-16 `.fitted` attempt,
+    /// which fixed clipping on iPad but introduced the collapse.
+    @ViewBuilder
+    func uniSheetSizing() -> some View {
+        if UIDevice.current.userInterfaceIdiom == .phone {
+            self.presentationSizing(.fitted)
+        } else {
+            self.presentationSizing(.page)
+        }
     }
 }
