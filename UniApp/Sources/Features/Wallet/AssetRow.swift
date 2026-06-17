@@ -36,10 +36,13 @@ struct AssetRow: View {
             logo
 
             VStack(alignment: .leading, spacing: UniSpacing.xxs) {
-                Text(tokenSymbol)
+                // 2026-06-17 — full NAME is the title, SHORT NAME (ticker)
+                // the subtitle (user direction; matches the asset pickers).
+                Text(chain.displayName)
                     .font(UniTypography.bodyEmphasized)
                     .foregroundStyle(UniColors.Text.primary)
-                Text(chain.displayName)
+                    .lineLimit(1)
+                Text(tokenSymbol)
                     .font(UniTypography.footnote)
                     .foregroundStyle(UniColors.Text.secondary)
             }

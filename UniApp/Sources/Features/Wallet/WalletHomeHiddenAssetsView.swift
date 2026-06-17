@@ -164,8 +164,8 @@ struct WalletHomeHiddenAssetsView: View {
                 ForEach(rows, id: \.id) { row in
                     AssetVisibilityRow(
                         leadingMark: AnyView(tokenMark(for: row)),
-                        title: "\(row.symbol) — \(row.name)",
-                        subtitle: row.chain.displayName,
+                        title: row.name,
+                        subtitle: "\(row.symbol) · \(row.chain.displayName)",
                         isHidden: bindingForTokenHidden(row)
                     )
                     .listRowBackground(UniColors.Background.secondary)

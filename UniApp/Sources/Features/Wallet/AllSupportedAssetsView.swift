@@ -454,10 +454,14 @@ private struct TokenSupportedRow: View {
                 .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: UniSpacing.xxs) {
-                Text(verbatim: row.symbol)
+                // 2026-06-17 — full NAME is the title, SHORT NAME (symbol)
+                // the subtitle (user direction); the chain stays in the
+                // subtitle since the all-supported list spans every chain.
+                Text(verbatim: row.name)
                     .font(UniTypography.bodyEmphasized)
                     .foregroundStyle(UniColors.Text.primary)
-                Text("\(row.name) · \(row.chain.displayName)")
+                    .lineLimit(1)
+                Text("\(row.symbol) · \(row.chain.displayName)")
                     .font(UniTypography.footnote)
                     .foregroundStyle(UniColors.Text.secondary)
                     .lineLimit(1)

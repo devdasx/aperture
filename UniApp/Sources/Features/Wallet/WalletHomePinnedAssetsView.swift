@@ -109,8 +109,8 @@ struct WalletHomePinnedAssetsView: View {
                     ForEach(pinnedTokens, id: \.id) { row in
                         PinnedAssetRow(
                             leadingMark: AnyView(tokenMark(for: row)),
-                            title: "\(row.symbol) — \(row.name)",
-                            subtitle: row.chain.displayName,
+                            title: row.name,
+                            subtitle: "\(row.symbol) · \(row.chain.displayName)",
                             unpin: { unpin(token: row) }
                         )
                         .listRowBackground(UniColors.Background.secondary)

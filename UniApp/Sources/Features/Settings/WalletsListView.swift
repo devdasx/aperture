@@ -11,9 +11,22 @@ import SwiftData
 /// list doesn't carry chrome it doesn't need.
 struct WalletsListView: View {
     @Query(sort: \WalletRecord.sortOrder) private var wallets: [WalletRecord]
+    /// Per-chain aggregate rows — summed per wallet for the row balance
+    /// (2026-06-17). The same source the wallet-home hero uses, so the
+    /// management list and the home agree.
+    @Query private var chainStates: [ChainStateRecord]
     @AppStorage("activeWalletId") private var activeWalletIdRaw: String = ""
+    @AppStorage(CurrencyPreference.storageKey) private var currencyCode: String = CurrencyPreference.defaultCode
     @AppStorage("languagePreference") private var languageCode: String = LanguagePreference.systemCode
     @Environment(\.modelContext) private var modelContext
+
+    /// A wallet's total balance in the user's currency, summed from its
+    /// per-chain aggregate rows. Zero until the wallet has been scanned.
+    private func fiatBalance(for wallet: WalletRecord) -> Decimal {
+        chainStates
+            .filter { $0.walletId == wallet.id && $0.fiatCurrencyCode == currencyCode }
+            .reduce(Decimal.zero) { $0 + $1.totalFiat }
+    }
 
     @State private var searchText: String = ""
     @State private var isShowingCreate: Bool = false
@@ -149,6 +162,16 @@ struct WalletsListView: View {
                         .foregroundStyle(UniColors.Status.warningForeground)
                 }
             }
+
+            Spacer(minLength: UniSpacing.s)
+
+            // Each wallet's total balance in the user's currency
+            // (2026-06-17 user direction) — not just the name.
+            Text(WalletFormatting.fiat(fiatBalance(for: wallet), currencyCode: currencyCode))
+                .font(UniTypography.bodyEmphasized)
+                .foregroundStyle(UniColors.Text.primary)
+                .monospacedDigit()
+                .lineLimit(1)
         }
         .padding(.vertical, UniSpacing.xxs)
     }
