@@ -21,6 +21,12 @@ struct AssetNetworkDetailView: View {
     @Query(sort: \WalletRecord.sortOrder) private var allWallets: [WalletRecord]
     @AppStorage("activeWalletId") private var activeWalletIdRaw: String = ""
     @AppStorage(CurrencyPreference.storageKey) private var currencyCode: String = CurrencyPreference.defaultCode
+    // Local-currency activity amounts (2026-06-18).
+    @Query private var cachedPrices: [CachedPriceRecord]
+
+    private var priceMap: [String: Decimal] {
+        ActivityFiat.priceMap(cachedPrices, currency: currencyCode)
+    }
 
     // Filter — same global preferences. The network filter is
     // overridden to this view's chain only, via `intersected`.
@@ -214,7 +220,10 @@ struct AssetNetworkDetailView: View {
                             tokenSymbol: tx.tokenSymbol,
                             counterparty: tx.counterparty,
                             occurredAt: tx.occurredAt,
-                            status: TransactionStatus(rawValue: tx.statusRaw) ?? .confirmed
+                            status: TransactionStatus(rawValue: tx.statusRaw) ?? .confirmed,
+                            kind: tx.kind,
+                            fiatValue: ActivityFiat.value(amountRaw: tx.amountRaw, symbol: tx.tokenSymbol, map: priceMap),
+                            fiatCurrencyCode: currencyCode
                         )
                     }
                 }

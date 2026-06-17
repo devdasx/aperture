@@ -752,6 +752,12 @@ struct AssetDetailView: View {
             ?? .ethereum
     }
 
+    /// symbol → unit price in the user's currency, for local-currency
+    /// activity amounts (2026-06-18).
+    private var activityPriceMap: [String: Decimal] {
+        ActivityFiat.priceMap(cachedPrices, currency: currencyCode)
+    }
+
     /// Shared row label for both the navigable and the plain
     /// (unresolvable-chain) activity entries.
     private func activityRow(_ tx: TransactionRecord, chain: SupportedChain) -> ActivityRow {
@@ -762,7 +768,10 @@ struct AssetDetailView: View {
             tokenSymbol: tx.tokenSymbol,
             counterparty: tx.counterparty,
             occurredAt: tx.occurredAt,
-            status: TransactionStatus(rawValue: tx.statusRaw) ?? .confirmed
+            status: TransactionStatus(rawValue: tx.statusRaw) ?? .confirmed,
+            kind: tx.kind,
+            fiatValue: ActivityFiat.value(amountRaw: tx.amountRaw, symbol: tx.tokenSymbol, map: activityPriceMap),
+            fiatCurrencyCode: currencyCode
         )
     }
 }
