@@ -454006,6 +454006,939 @@
           }
         }
       }
+    },
+    "Amounts in local currency": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Amounts in local currency"
+          }
+        },
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Částky v místní měně"
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "স্থানীয় মুদ্রায় পরিমাণ"
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "स्थानीय मुद्रा में राशि"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Beløp i lokal valuta"
+          }
+        },
+        "he": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "סכומים במטבע המקומי"
+          }
+        },
+        "hr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Iznosi u lokalnoj valuti"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "المبالغ بالعملة المحلية"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Beløb i lokal valuta"
+          }
+        },
+        "sk": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sumy v miestnej mene"
+          }
+        },
+        "sr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Износи у локалној валути"
+          }
+        },
+        "sl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Zneski v lokalni valuti"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Beträge in lokaler Währung"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Суммы в местной валюте"
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Belopp i lokal valuta"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Valores na moeda local"
+          }
+        },
+        "el": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ποσά σε τοπικό νόμισμα"
+          }
+        },
+        "uk": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Суми в місцевій валюті"
+          }
+        },
+        "ro": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sume în moneda locală"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Importes en moneda local"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "以當地貨幣顯示金額"
+          }
+        },
+        "hu": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Összegek helyi pénznemben"
+          }
+        },
+        "ca": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Imports en moneda local"
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Summat paikallisessa valuutassa"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "以本地货币显示金额"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "現地通貨で金額を表示"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Montants en devise locale"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "현지 통화로 금액 표시"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Importi nella valuta locale"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tutarlar yerel para biriminde"
+          }
+        },
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Số tiền theo nội tệ"
+          }
+        },
+        "th": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "จำนวนเงินเป็นสกุลเงินท้องถิ่น"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Jumlah dalam mata uang lokal"
+          }
+        },
+        "fa": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "مبالغ به ارز محلی"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kwoty w walucie lokalnej"
+          }
+        },
+        "nl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bedragen in lokale valuta"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "رقوم مقامی کرنسی میں"
+          }
+        },
+        "bg": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Суми в местна валута"
+          }
+        },
+        "et": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Summad kohalikus vääringus"
+          }
+        },
+        "lt": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sumos vietine valiuta"
+          }
+        },
+        "lv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Summas vietējā valūtā"
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Upphæðir í staðargjaldmiðli"
+          }
+        },
+        "ms": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Jumlah dalam mata wang tempatan"
+          }
+        },
+        "fil": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mga halaga sa lokal na pera"
+          }
+        },
+        "sw": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kiasi katika sarafu ya eneo lako"
+          }
+        },
+        "af": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bedrae in plaaslike geldeenheid"
+          }
+        },
+        "ta": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "உள்ளூர் நாணயத்தில் தொகைகள்"
+          }
+        },
+        "te": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "స్థానిక కరెన్సీలో మొత్తాలు"
+          }
+        },
+        "ml": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "പ്രാദേശിക കറൻസിയിൽ തുകകൾ"
+          }
+        },
+        "mr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "स्थानिक चलनातील रकमा"
+          }
+        },
+        "pa": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ਸਥਾਨਕ ਮੁਦਰਾ ਵਿੱਚ ਰਕਮਾਂ"
+          }
+        }
+      }
+    },
+    "Self transfer": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Self transfer"
+          }
+        },
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Převod sobě"
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "নিজের কাছে স্থানান্তর"
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "स्वयं को स्थानांतरण"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Overføring til deg selv"
+          }
+        },
+        "he": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "העברה אל עצמך"
+          }
+        },
+        "hr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Prijenos sebi"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "تحويل إلى محفظتك"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Overførsel til dig selv"
+          }
+        },
+        "sk": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Prevod sebe"
+          }
+        },
+        "sr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Пренос себи"
+          }
+        },
+        "sl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Prenos sebi"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Eigene Überweisung"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Перевод себе"
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Överföring till dig själv"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Transferência própria"
+          }
+        },
+        "el": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Μεταφορά προς εσάς"
+          }
+        },
+        "uk": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Переказ собі"
+          }
+        },
+        "ro": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Transfer propriu"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Transferencia propia"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "自我轉帳"
+          }
+        },
+        "hu": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Saját átutalás"
+          }
+        },
+        "ca": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Transferència pròpia"
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Siirto itselle"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "自我转账"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "自分への送金"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Transfert interne"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "내 지갑 간 이체"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Trasferimento interno"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kendine transfer"
+          }
+        },
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Chuyển nội bộ"
+          }
+        },
+        "th": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "โอนเข้าบัญชีตัวเอง"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Transfer ke diri sendiri"
+          }
+        },
+        "fa": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "انتقال داخلی"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Przelew własny"
+          }
+        },
+        "nl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Eigen overboeking"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "اپنے ہی والیٹ میں منتقلی"
+          }
+        },
+        "bg": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Превод към себе си"
+          }
+        },
+        "et": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sisemine ülekanne"
+          }
+        },
+        "lt": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pervedimas sau"
+          }
+        },
+        "lv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pārskaitījums sev"
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Millifærsla til sjálfs sín"
+          }
+        },
+        "ms": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pemindahan sendiri"
+          }
+        },
+        "fil": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Transfer sa sarili"
+          }
+        },
+        "sw": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Uhamisho kwako mwenyewe"
+          }
+        },
+        "af": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Eie oorplasing"
+          }
+        },
+        "ta": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "சொந்தக் கணக்கிற்கான பரிமாற்றம்"
+          }
+        },
+        "te": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "మీ ఖాతాకే బదిలీ"
+          }
+        },
+        "ml": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "സ്വന്തം വാലറ്റിലേക്കുള്ള കൈമാറ്റം"
+          }
+        },
+        "mr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "स्वतःकडे हस्तांतरण"
+          }
+        },
+        "pa": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ਆਪਣੇ ਹੀ ਵਾਲਿਟ ਵਿੱਚ ਤਬਾਦਲਾ"
+          }
+        }
+      }
+    },
+    "Show transaction-history amounts in your local currency. Turn off to show the native coin amount instead.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Show transaction-history amounts in your local currency. Turn off to show the native coin amount instead."
+          }
+        },
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Zobrazí částky v historii transakcí ve vaší místní měně. Vypnutím zobrazíte místo toho částku v nativní minci."
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "লেনদেনের ইতিহাসের পরিমাণ আপনার স্থানীয় মুদ্রায় দেখান। পরিবর্তে মূল কয়েনের পরিমাণ দেখাতে এটি বন্ধ করুন।"
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "लेन-देन इतिहास की राशियाँ आपकी स्थानीय मुद्रा में दिखाएँ। इसके बजाय मूल सिक्के की राशि दिखाने के लिए इसे बंद करें।"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vis beløpene i transaksjonshistorikken i din lokale valuta. Slå av for å vise beløpet i den opprinnelige valutaen i stedet."
+          }
+        },
+        "he": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "הצגת הסכומים בהיסטוריית העסקאות במטבע המקומי שלך. כבה כדי להציג במקום זאת את הסכום במטבע המקורי."
+          }
+        },
+        "hr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Prikažite iznose u povijesti transakcija u svojoj lokalnoj valuti. Isključite kako biste umjesto toga prikazali iznos u izvornoj valuti."
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "عرض مبالغ سجل المعاملات بعملتك المحلية. أوقف التشغيل لعرض مبلغ العملة الأصلية بدلًا من ذلك."
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vis beløbene i transaktionshistorikken i din lokale valuta. Slå fra for at vise beløbet i den oprindelige valuta i stedet."
+          }
+        },
+        "sk": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Zobrazí sumy v histórii transakcií vo vašej miestnej mene. Vypnutím zobrazíte namiesto toho sumu v natívnej minci."
+          }
+        },
+        "sr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Приказује износе у историји трансакција у вашој локалној валути. Искључите да бисте уместо тога приказали износ у изворној валути."
+          }
+        },
+        "sl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Prikaže zneske v zgodovini transakcij v vaši lokalni valuti. Izklopite, če želite namesto tega prikazati znesek v izvirni valuti."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Zeigt die Beträge im Transaktionsverlauf in Ihrer lokalen Währung an. Deaktivieren Sie diese Option, um stattdessen den Betrag in der nativen Münze anzuzeigen."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Показывать суммы в истории транзакций в вашей местной валюте. Отключите, чтобы вместо этого показывать сумму в собственной монете."
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Visa beloppen i transaktionshistoriken i din lokala valuta. Stäng av för att visa beloppet i den ursprungliga valutan i stället."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mostra os valores do histórico de transações na sua moeda local. Desative para mostrar o valor na moeda nativa."
+          }
+        },
+        "el": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Εμφάνιση των ποσών του ιστορικού συναλλαγών στο τοπικό σας νόμισμα. Απενεργοποιήστε το για να εμφανίζεται το ποσό στο εγγενές νόμισμα."
+          }
+        },
+        "uk": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Показувати суми в історії транзакцій у вашій місцевій валюті. Вимкніть, щоб натомість показувати суму у власній монеті."
+          }
+        },
+        "ro": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Afișează sumele din istoricul tranzacțiilor în moneda dumneavoastră locală. Dezactivați pentru a afișa în schimb suma în moneda nativă."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Muestra los importes del historial de transacciones en tu moneda local. Desactívalo para mostrar el importe en la moneda nativa."
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在交易紀錄中以當地貨幣顯示金額。關閉後將改為顯示原生幣種金額。"
+          }
+        },
+        "hu": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "A tranzakciós előzmények összegeit a helyi pénznemében jeleníti meg. Kapcsolja ki, ha helyette az eredeti érme összegét szeretné megjeleníteni."
+          }
+        },
+        "ca": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mostra els imports de l'historial de transaccions en la teva moneda local. Desactiva-ho per mostrar l'import en la moneda nativa."
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Näytä tapahtumahistorian summat paikallisessa valuutassasi. Poista käytöstä, jos haluat näyttää summan alkuperäisessä valuutassa."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在交易历史中以本地货币显示金额。关闭后将改为显示原生币种金额。"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "取引履歴の金額を現地通貨で表示します。オフにすると、元の通貨の金額を表示します。"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Affiche les montants de l’historique des transactions dans votre devise locale. Désactivez pour afficher le montant dans la cryptomonnaie d’origine."
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "거래 내역의 금액을 현지 통화로 표시합니다. 끄면 해당 코인 단위의 금액으로 표시됩니다."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mostra gli importi della cronologia transazioni nella tua valuta locale. Disattiva per mostrare invece l’importo nella criptovaluta originale."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "İşlem geçmişindeki tutarları yerel para biriminizde gösterir. Bunun yerine tutarı kendi kripto biriminde göstermek için kapatın."
+          }
+        },
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hiển thị số tiền trong lịch sử giao dịch theo nội tệ của bạn. Tắt để hiển thị số tiền theo đơn vị đồng coin gốc."
+          }
+        },
+        "th": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "แสดงจำนวนเงินในประวัติธุรกรรมเป็นสกุลเงินท้องถิ่นของคุณ ปิดเพื่อแสดงจำนวนเป็นหน่วยเหรียญดั้งเดิมแทน"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tampilkan jumlah pada riwayat transaksi dalam mata uang lokal Anda. Matikan untuk menampilkan jumlah dalam satuan koin aslinya."
+          }
+        },
+        "fa": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "مبالغ تاریخچهٔ تراکنش‌ها را به ارز محلی شما نمایش می‌دهد. برای نمایش مبلغ به واحد ارز اصلی، آن را خاموش کنید."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pokazuje kwoty w historii transakcji w Twojej walucie lokalnej. Wyłącz, aby zamiast tego pokazać kwotę w jednostce danej kryptowaluty."
+          }
+        },
+        "nl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Toont de bedragen in je transactiegeschiedenis in je lokale valuta. Zet uit om in plaats daarvan het bedrag in de munt zelf te tonen."
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ٹرانزیکشن کی تاریخ میں رقوم آپ کی مقامی کرنسی میں دکھاتا ہے۔ اس کے بجائے رقم کوائن کی اپنی اکائی میں دکھانے کے لیے اسے بند کریں۔"
+          }
+        },
+        "bg": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Показва сумите в историята на транзакциите в местната ви валута. Изключете, за да виждате вместо това сумата в самата криптовалута."
+          }
+        },
+        "et": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kuvab tehinguajaloo summad sinu kohalikus vääringus. Lülita välja, et kuvada selle asemel summa mündi enda ühikus."
+          }
+        },
+        "lt": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rodo operacijų istorijos sumas jūsų vietine valiuta. Išjunkite, kad vietoj to būtų rodoma suma pačios monetos vienetais."
+          }
+        },
+        "lv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rāda darījumu vēstures summas jūsu vietējā valūtā. Izslēdziet, lai tā vietā rādītu summu pašas monētas vienībās."
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sýnir upphæðir í færslusögunni í þínum staðargjaldmiðli. Slökktu til að sýna upphæðina í myntinni sjálfri í staðinn."
+          }
+        },
+        "ms": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Memaparkan jumlah dalam sejarah transaksi dengan mata wang tempatan anda. Matikan untuk memaparkan jumlah dalam unit syiling asalnya."
+          }
+        },
+        "fil": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ipinapakita ang mga halaga sa history ng transaksyon sa iyong lokal na pera. I-off para ipakita ang halaga sa mismong unit ng coin."
+          }
+        },
+        "sw": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Huonyesha kiasi katika historia ya miamala kwa sarafu ya eneo lako. Zima ili kuonyesha kiasi katika sarafu ya msingi badala yake."
+          }
+        },
+        "af": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Wys die bedrae in jou transaksiegeskiedenis in jou plaaslike geldeenheid. Skakel af om eerder die bedrag in die muntstuk self te wys."
+          }
+        },
+        "ta": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "பரிவர்த்தனை வரலாற்றில் உள்ள தொகைகளை உங்கள் உள்ளூர் நாணயத்தில் காட்டும். அதற்குப் பதிலாக நாணயத்தின் சொந்த அலகில் தொகையைக் காட்ட இதை அணைக்கவும்."
+          }
+        },
+        "te": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "లావాదేవీ చరిత్రలోని మొత్తాలను మీ స్థానిక కరెన్సీలో చూపుతుంది. బదులుగా కాయిన్ స్వంత యూనిట్‌లో మొత్తాన్ని చూపడానికి దీన్ని ఆఫ్ చేయండి."
+          }
+        },
+        "ml": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ഇടപാട് ചരിത്രത്തിലെ തുകകൾ നിങ്ങളുടെ പ്രാദേശിക കറൻസിയിൽ കാണിക്കുന്നു. പകരം നാണയത്തിന്റെ സ്വന്തം യൂണിറ്റിൽ തുക കാണിക്കാൻ ഇത് ഓഫ് ചെയ്യുക."
+          }
+        },
+        "mr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "व्यवहार इतिहासातील रकमा तुमच्या स्थानिक चलनात दाखवते. त्याऐवजी नाण्याच्या स्वतःच्या एककात रक्कम दाखवण्यासाठी हे बंद करा."
+          }
+        },
+        "pa": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ਲੈਣ-ਦੇਣ ਇਤਿਹਾਸ ਦੀਆਂ ਰਕਮਾਂ ਤੁਹਾਡੀ ਸਥਾਨਕ ਮੁਦਰਾ ਵਿੱਚ ਦਿਖਾਉਂਦਾ ਹੈ। ਇਸ ਦੀ ਥਾਂ ਰਕਮ ਨੂੰ ਕੋਇਨ ਦੀ ਆਪਣੀ ਇਕਾਈ ਵਿੱਚ ਦਿਖਾਉਣ ਲਈ ਇਸਨੂੰ ਬੰਦ ਕਰੋ।"
+          }
+        }
+      }
     }
   },
   "version": "1.0"
