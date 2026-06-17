@@ -182,7 +182,19 @@ struct MainTabView: View {
                         }
                     }
             } label: {
-                walletTabLabel
+                // **iPad — a normal "Home" tab (user direction 2026-06-17).**
+                // In the regular-width sidebar / top-tab layout the wallet
+                // avatar read as an odd green dot among the text tabs. iPad
+                // gets a standard labelled tab ("Home" + house glyph); iPhone
+                // keeps the active wallet's gradient avatar AS the Wallet
+                // tab's identity (the compact bottom bar where it belongs).
+                // The wallet identity + switcher still live on the
+                // wallet-home pill ("Wallet 1 ▾") in both.
+                if UIDevice.current.userInterfaceIdiom == .pad {
+                    Label("Home", systemImage: "house.fill")
+                } else {
+                    walletTabLabel
+                }
                 // 2026-06-09 — `popoverTip` REMOVED from the Tab
                 // label. iOS 26's new TabView renders its `label:`
                 // closure inside the UIKit tab-bar button image
