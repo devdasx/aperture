@@ -111,6 +111,7 @@ targets:
         ONEINCH_API_KEY: "$(ONEINCH_API_KEY)"
         ONERPC_API_KEY: "$(ONERPC_API_KEY)"
         INFURA_API_KEY: "$(INFURA_API_KEY)"
+        ALCHEMY_API_KEY: "$(ALCHEMY_API_KEY)"
     settings:
       base:
         PRODUCT_NAME: Aperture
