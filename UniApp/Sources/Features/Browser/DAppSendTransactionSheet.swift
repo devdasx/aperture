@@ -100,7 +100,7 @@ struct DAppSendTransactionSheet: View {
                 LabelRow(label: "Network") {
                     Text(verbatim: request.chain.displayName)
                 }
-                if let gas = request.gasHex, !gas.isEmpty {
+                if let gas = formattedGas {
                     LabelRow(label: "Gas estimate") {
                         Text(verbatim: gas)
                     }
@@ -240,10 +240,14 @@ struct DAppSendTransactionSheet: View {
             }
         }
         .padding(.horizontal, UniSpacing.m)
-        .padding(.bottom, UniSpacing.xs)
+        .padding(.top, UniSpacing.s)
+        .padding(.bottom, UniSpacing.s)
+        // A fully OPAQUE pinned bar (was 0.92 — the translucency let the
+        // scrolling cards bleed through and read as if the CTA were
+        // hidden). The bar sits in the bottom safe-area inset so the
+        // button is always reachable and clears the home indicator.
         .background(
             UniColors.Background.primary
-                .opacity(0.92)
                 .ignoresSafeArea(edges: .bottom)
         )
     }
@@ -260,7 +264,7 @@ struct DAppSendTransactionSheet: View {
             if biometrics.isAvailable {
                 let outcome = await biometrics.authenticate(reason: "Confirm sending this transaction")
                 if case .failure = outcome {
-                    sendError = String.apertureLocalized("Authentication failed — the transaction wasn't sent.")
+                    sendError = String.apertureLocalized("Authentication failed — the transaction wasn’t sent.")
                     return
                 }
             }
@@ -276,20 +280,56 @@ struct DAppSendTransactionSheet: View {
 
     // MARK: - Derived
 
-    /// The decoded native amount, formatted by `WalletFormatting`.
-    /// Today the dApp sends the value as a hex-encoded big number;
-    /// we render it raw (the formatter pass arrives when the
-    /// bridge wires real decimals + ticker resolution).
+    /// The native amount the dApp asked to send, decoded from the
+    /// hex-wei `valueHex` into a human-readable decimal of the chain's
+    /// native coin (e.g. `0x38d7ea4c68000` → `0.001 ETH`). When the hex
+    /// can't be parsed we fall back to showing it verbatim rather than a
+    /// wrong number (Rule #16 — never fabricate a value).
+    ///
+    /// A swap (like Sushi's) sends `0` native value and moves tokens
+    /// through the router's `data`, so this honestly reads `0 ETH` for
+    /// those — the token leg lives in the contract call, which Aperture
+    /// does not decode without the source (see `contractDataCard`).
     private var formattedValue: String {
         let raw = request.valueHex
-        if raw == "0x0" || raw == "0x00" || raw.isEmpty {
-            return "0 \(request.chain.ticker)"
+        let ticker = request.chain.ticker
+        if raw.isEmpty || raw == "0x" || raw == "0x0" || raw == "0x00" {
+            return "0 \(ticker)"
         }
-        return "\(raw) \(request.chain.ticker)"
+        guard let wei = Self.decimalFromHex(raw) else {
+            return "\(raw) \(ticker)"
+        }
+        let amount = wei / pow(Decimal(10), request.chain.nativeDecimals)
+        return "\(WalletFormatting.native(amount, decimals: min(request.chain.nativeDecimals, 8))) \(ticker)"
     }
 
     private var rawValueDisplay: String {
         request.valueHex
+    }
+
+    /// Decoded gas limit (units) from the hex `gasHex`, formatted with
+    /// grouping (e.g. `0x391d7` → `233,943`). The raw hex is opaque to a
+    /// human; the unit count is the honest readout. `nil` when absent or
+    /// unparseable, so the row is simply hidden.
+    private var formattedGas: String? {
+        guard let gas = request.gasHex, !gas.isEmpty,
+              let units = Self.decimalFromHex(gas) else { return nil }
+        return WalletFormatting.native(units, decimals: 0)
+    }
+
+    /// Parse a `0x`-prefixed hex quantity into a `Decimal`. Returns nil
+    /// for malformed input so the caller shows the raw hex instead of a
+    /// wrong value.
+    private static func decimalFromHex(_ hex: String) -> Decimal? {
+        var s = hex.lowercased()
+        if s.hasPrefix("0x") { s.removeFirst(2) }
+        guard !s.isEmpty else { return nil }
+        var result = Decimal(0)
+        for ch in s {
+            guard let digit = ch.hexDigitValue else { return nil }
+            result = result * 16 + Decimal(digit)
+        }
+        return result
     }
 
     private var hasContractData: Bool {
