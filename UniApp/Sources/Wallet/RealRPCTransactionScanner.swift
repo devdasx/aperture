@@ -262,10 +262,17 @@ struct RealRPCTransactionScanner: TransactionScanner {
                 customContracts: customContracts
             )
         } catch {
-            // A 404 = the account has no on-chain history yet (unfunded /
-            // never used) — an empty history, not a failure. Log quietly so
-            // an unfunded Stellar/Tron account doesn't spam the warning log.
-            if RPCError.isHTTPNotFound(error) {
+            // A cancellation is NOT a failure — a per-chain `withTimeout`
+            // elapsed (a slow explorer, e.g. Dogecoin), a newer pull-to-refresh
+            // superseded this one, or the user navigated away. The persisted
+            // history stands and the next refresh retries; log quietly so it
+            // doesn't read as "Transaction fetch failed … : cancelled".
+            if RPCError.isCancellation(error) {
+                log.debug("Transaction fetch cancelled for \(chain.rawValue, privacy: .public) at \(address, privacy: .private) (timeout/superseded — will retry)")
+            } else if RPCError.isHTTPNotFound(error) {
+                // A 404 = the account has no on-chain history yet (unfunded /
+                // never used) — an empty history, not a failure. Log quietly so
+                // an unfunded Stellar/Tron account doesn't spam the warning log.
                 log.debug("No transaction history for \(chain.rawValue, privacy: .public) at \(address, privacy: .private) (404 — unfunded)")
             } else {
                 log.warning("Transaction fetch failed for \(chain.rawValue, privacy: .public) at \(address, privacy: .private): \(String(describing: error), privacy: .public)")

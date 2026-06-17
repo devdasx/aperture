@@ -842,8 +842,16 @@ struct WalletRefreshCoordinator: Sendable {
         let chainForScan = address.chain
         // Bound the per-chain history fetch — a slow chain is abandoned at the
         // deadline (keeps its persisted history) instead of holding the
-        // refresh open.
-        let events = await withTimeout(2.0) {
+        // refresh open. History runs AFTER balances and all chains scan
+        // concurrently (see the `withTaskGroup` caller), so this bound is the
+        // slowest single chain's ceiling, NOT a sum — it can be generous
+        // without delaying the balance card. 8s (up from 2s, 2026-06-17): a
+        // block-explorer history page for the slower chains (Dogecoin, BCH,
+        // LTC) routinely needs >2s, and the tight bound was cancelling them
+        // every refresh — so their activity never loaded and the console
+        // filled with "… : cancelled". 8s lets one page (limit 25) land while
+        // still abandoning a genuinely stuck chain.
+        let events = await withTimeout(8.0) {
             await scanner.scan(
                 addresses: [chainForScan: address.address],
                 limit: 25,
