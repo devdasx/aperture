@@ -277,8 +277,7 @@ struct WalletHomeView: View {
     /// $0.00 list would claim "you hold nothing" when the truth is
     /// "we couldn't ask." Show the honest error state instead.
     private var showsNetworkErrorState: Bool {
-        !isTestMode
-            && refreshOutcomeAppliesToActiveWallet
+        refreshOutcomeAppliesToActiveWallet
             && !refreshState.lastRefreshFailedChains.isEmpty
             && allHeldRows.isEmpty
     }
@@ -286,8 +285,7 @@ struct WalletHomeView: View {
     /// Some chains reported, some didn't — the successful rows render
     /// normally and one quiet footnote keeps the surface honest.
     private var showsPartialNetworkFootnote: Bool {
-        !isTestMode
-            && refreshOutcomeAppliesToActiveWallet
+        refreshOutcomeAppliesToActiveWallet
             && !refreshState.lastRefreshFailedChains.isEmpty
             && !allHeldRows.isEmpty
     }
@@ -340,76 +338,6 @@ struct WalletHomeView: View {
     /// the scrub-lag the user reported). `nil` `fiat` → hero shows the
     /// real `totalFiat`.
     @State private var scrubModel = ChartScrubModel()
-
-    // MARK: - Test mode (mirrors MnemonicReviewView's affordance)
-    //
-    // Tapping the flask in the toolbar swaps the real wallet's
-    // SwiftData-backed holdings + activity for an in-memory stream
-    // from `RealRPCBalanceScanner` against `TestAddresses.map` —
-    // the same curated public addresses the Import → Review
-    // screen uses to prove the full pipeline end-to-end on every
-    // supported chain and every token in the registry. Purely a
-    // developer / verifier affordance; the user's real wallet
-    // rows are never mutated and the SwiftData store is never
-    // touched while test mode is active.
-    //
-    // Send / Swap / Switch are disabled while testing — they
-    // operate against the user's real wallet and have no honest
-    // meaning against a public test address. Receive stays
-    // enabled because it reads addresses from the active wallet
-    // record (via `@AppStorage("activeWalletId")`), not from the
-    // in-memory test bucket.
-    //
-    // **Storage (2026-06-09):** switched from `@State` to
-    // `@AppStorage("isTestMode")` so the Settings → Developer →
-    // Test mode toggle can flip the same flag. The toolbar flask
-    // icon was removed in the same turn — the affordance now lives
-    // in Settings only.
-    @AppStorage("isTestMode") private var isTestMode: Bool = false
-    @State private var testBalances: [SupportedChain: ChainBalance] = [:]
-    @State private var testTokens: [SupportedChain: [TokenBalance]] = [:]
-    /// Test-mode transaction history. Mirrors `testBalances` /
-    /// `testTokens` — held in-memory only so SwiftData stays clean
-    /// while the user verifies the scanner against public addresses.
-    /// Populated by `runTestScan()` via the unified
-    /// `RealRPCTransactionScanner`. Same scanner powers the real
-    /// wallet's refresh path (which writes into `TransactionRepository`).
-    @State private var testTransactions: [TransactionEvent] = []
-    @State private var testScanTrigger: Int = 0
-
-    /// In-flight test-scan task. Stored so a re-trigger cancels the
-    /// previous stream before starting a new one, and so the scan
-    /// stops when the view disappears — the prior untracked
-    /// `Task {}` launches could race two scans into the same
-    /// in-memory buckets.
-    @State private var testScanTask: Task<Void, Never>?
-
-    /// Newest-first, capped-at-10 projection of `testTransactions`.
-    /// Maintained at the mutation sites (the scan loop and the
-    /// enter/exit transitions) so the body never re-sorts the buffer
-    /// per render.
-    @State private var sortedTestActivityRows: [TransactionEvent] = []
-
-    /// Reference-typed container for the streaming scanners. The
-    /// view struct is re-initialized on every parent invalidation;
-    /// holding the scanners behind `@State` keeps one stable
-    /// instance per view identity instead of reconstructing the
-    /// clients on every struct churn.
-    ///
-    /// - `balance` — shared streaming balance scanner, the same
-    ///   instance shape the Mnemonic Review screen uses.
-    /// - `transactions` — unified transaction-history scanner. One
-    ///   instance powers both test mode (in-memory
-    ///   `testTransactions`) and the real wallet's `runRefresh()`
-    ///   path (writes through `TransactionRepository`). See
-    ///   `RealRPCTransactionScanner` for the per-family dispatch
-    ///   table.
-    private final class ScannerBox {
-        let balance = RealRPCBalanceScanner()
-        let transactions = RealRPCTransactionScanner()
-    }
-
-    @State private var scanners = ScannerBox()
 
     // MARK: - Memoized derived state (computed off-body)
     //
@@ -630,10 +558,6 @@ struct WalletHomeView: View {
                     // silent unless it produces a change — the user
                     // sees the `mostRecentScanAt` footer tick over
                     // honestly.
-                    //
-                    // Test mode does its own scan via the Settings
-                    // toggle; we guard against double-firing here.
-                    guard !isTestMode else { return }
                     await runRefresh()
                 }
                 .task(id: priceDataFingerprint) {
@@ -651,19 +575,6 @@ struct WalletHomeView: View {
                     // Exchange. Only fetches symbols we don't
                     // already have history for — idempotent.
                     await ensureHistoricalPricesLoaded()
-                }
-                .safeAreaInset(edge: .bottom) { testModeBanner }
-                .onChange(of: testScanTrigger) { _, _ in
-                    // Tracked test-scan task — cancel the in-flight
-                    // stream before starting a new one so rapid
-                    // re-triggers never race two scans into the same
-                    // in-memory buckets.
-                    testScanTask?.cancel()
-                    testScanTask = Task { await runTestScan() }
-                }
-                .onDisappear {
-                    testScanTask?.cancel()
-                    testScanTask = nil
                 }
                 .onChange(of: filterPreferenceFingerprint) { _, _ in
                     rebuildFilterInputs()
@@ -992,14 +903,10 @@ struct WalletHomeView: View {
         // roster and the search is genuinely useful there.
     }
 
-    /// Holdings region — branches by test mode, then by filter
-    /// view mode, then by the segmented tab (in split mode only).
+    /// Holdings region — branches by the network-error state, then by
+    /// filter view mode, then by the segmented tab (in split mode only).
     ///
-    /// **Test mode** keeps the prior single-section grouped-by-chain
-    /// shape — the developer playground reads as it always did and
-    /// the user's filter preferences don't apply.
-    ///
-    /// **Production** branches on `filterViewModeRaw`:
+    /// Branches on `filterViewModeRaw`:
     /// - `.split` — the original shape: a segmented Coins/Tokens
     ///   switcher in chrome, only the selected section renders below.
     /// - `.combined` — one unified section with every coin AND every
@@ -1008,9 +915,7 @@ struct WalletHomeView: View {
     ///   below).
     @ViewBuilder
     private var holdingsBody: some View {
-        if isTestMode {
-            holdingsListSection
-        } else if showsNetworkErrorState {
+        if showsNetworkErrorState {
             // Fresh wallet + total scan failure — nothing persisted,
             // so the all-supported $0.00 list would be a lie. Show
             // the honest error state with a Retry CTA instead
@@ -1056,68 +961,51 @@ struct WalletHomeView: View {
     /// around the content rows without leaking into the floating
     /// chrome rows.
     ///
-    /// **Test mode.** Hidden in test mode (the scanner doesn't
-    /// produce transaction history; reconstructing a curve from one
-    /// snapshot would be dishonest). In test mode the hero alone
-    /// renders as a separate floating row (no card) so the user
-    /// reads it as a developer affordance, not as their wallet.
-    ///
     /// **Header row separator.** The `.listRowSeparator(.hidden)` on
     /// the hero row suppresses the divider between hero and chart —
     /// they read as one calm surface, not as two adjacent list rows.
     @ViewBuilder
     private var balanceCardSection: some View {
-        if isTestMode {
-            // Test mode — no card, no chart. The hero alone floats.
-            Section {
-                walletHomeHeaderRow
-                    .disabled(true)
-                    .listRowBackground(Color.clear)
-                    .listRowSeparator(.hidden)
-                    .listRowInsets(EdgeInsets())
-            }
-        } else {
-            // Production — the flagship `BalanceCardView` as ONE
-            // full-bleed row. The card owns its own gradient surface,
-            // 30pt radius, watermark, header, balance, change pill,
-            // chart, and segmented selector (the design handoff
-            // `design_handoff_balance_card 2/`), so the list row is
-            // chrome-free: a `Color.clear` background, hidden
-            // separators, and a 16pt horizontal inset (the handoff's
-            // "screen − 2×16pt margins") with zero vertical inset (the
-            // card draws its own internal padding). This replaces the
-            // prior two-row hero + sparkline split.
-            Section {
-                BalanceCardView(
-                    walletId: activeWallet?.id,
-                    walletName: activeWallet?.name ?? String.apertureLocalized("Wallet"),
-                    totalFiat: totalFiat,
-                    currencyCode: currencyCode,
-                    transactions: allTransactions,
-                    currentBalances: balances.map { $0.balance },
-                    // The wallet's own addresses (lowercased) so the chart can
-                    // drop self-transfers (counterparty == one of these).
-                    ownAddresses: Set((activeWallet?.addresses ?? []).map { $0.address.lowercased() }),
-                    priceCache: priceCacheMemo,
-                    priceHistory: priceHistoryMemo,
-                    scrubModel: scrubModel,
-                    onSwitchWallet: { isShowingSwitcher = true },
-                    onAddFunds: { isShowingReceive = true }
-                )
-                // Re-key on the active wallet so the per-wallet hidden
-                // flag's `@AppStorage` key (which embeds the id) is
-                // re-resolved when the user switches wallets — the new
-                // wallet shows its own remembered hidden state.
-                .id(activeWallet?.id)
-                .listRowBackground(Color.clear)
-                .listRowSeparator(.hidden)
-                // Zero row insets so the card surface fills the inset-grouped
-                // section's content width — its left/right edges then line up
-                // exactly with the holdings/transactions grouped card below
-                // (which uses the same section width). The card draws its own
-                // internal padding; the section margin handles the screen gap.
-                .listRowInsets(EdgeInsets())
-            }
+        // Production — the flagship `BalanceCardView` as ONE
+        // full-bleed row. The card owns its own gradient surface,
+        // 30pt radius, watermark, header, balance, change pill,
+        // chart, and segmented selector (the design handoff
+        // `design_handoff_balance_card 2/`), so the list row is
+        // chrome-free: a `Color.clear` background, hidden
+        // separators, and a 16pt horizontal inset (the handoff's
+        // "screen − 2×16pt margins") with zero vertical inset (the
+        // card draws its own internal padding). This replaces the
+        // prior two-row hero + sparkline split.
+        Section {
+            BalanceCardView(
+                walletId: activeWallet?.id,
+                walletName: activeWallet?.name ?? String.apertureLocalized("Wallet"),
+                totalFiat: totalFiat,
+                currencyCode: currencyCode,
+                transactions: allTransactions,
+                currentBalances: balances.map { $0.balance },
+                // The wallet's own addresses (lowercased) so the chart can
+                // drop self-transfers (counterparty == one of these).
+                ownAddresses: Set((activeWallet?.addresses ?? []).map { $0.address.lowercased() }),
+                priceCache: priceCacheMemo,
+                priceHistory: priceHistoryMemo,
+                scrubModel: scrubModel,
+                onSwitchWallet: { isShowingSwitcher = true },
+                onAddFunds: { isShowingReceive = true }
+            )
+            // Re-key on the active wallet so the per-wallet hidden
+            // flag's `@AppStorage` key (which embeds the id) is
+            // re-resolved when the user switches wallets — the new
+            // wallet shows its own remembered hidden state.
+            .id(activeWallet?.id)
+            .listRowBackground(Color.clear)
+            .listRowSeparator(.hidden)
+            // Zero row insets so the card surface fills the inset-grouped
+            // section's content width — its left/right edges then line up
+            // exactly with the holdings/transactions grouped card below
+            // (which uses the same section width). The card draws its own
+            // internal padding; the section margin handles the screen gap.
+            .listRowInsets(EdgeInsets())
         }
     }
 
@@ -1128,14 +1016,11 @@ struct WalletHomeView: View {
     // writer still stamps `SyncStatusRecord` so freshness is tracked;
     // nothing renders it.
 
-    /// Hero row factored out so both modes (production card, test
-    /// mode floating) use the exact same instance — same parameter
-    /// resolution, same disabled-when-test rule.
+    /// Hero row factored out so the production card reuses one
+    /// instance — same parameter resolution.
     private var walletHomeHeaderRow: some View {
         WalletHomeHeader(
-            walletName: isTestMode
-                ? String.apertureLocalized("Public test addresses")
-                : (activeWallet?.name ?? String.apertureLocalized("Wallet")),
+            walletName: activeWallet?.name ?? String.apertureLocalized("Wallet"),
             // 2026-06-09 — when scrubbing the chart, the hero
             // renders the scrubbed point's fiat instead of the
             // wallet's actual total. The chart's own scrubbing
@@ -1147,14 +1032,12 @@ struct WalletHomeView: View {
             // INSIDE WalletHomeHeader via `scrubModel` so a drag frame
             // re-renders only the header, not this whole body
             // (2026-06-13 perf fix).
-            totalFiat: isTestMode ? testTotalFiat : totalFiat,
+            totalFiat: totalFiat,
             currencyCode: currencyCode,
-            chainCount: isTestMode ? testChainsHeldCount : chainsHeldCount,
-            tokenCount: isTestMode ? testTokenRowCount : balances.count,
-            totalChainsSupported: isTestMode
-                ? TestAddresses.map.count
-                : WalletFormatting.chainCount(activeWallet?.addresses ?? []),
-            hasAnyBalance: isTestMode ? !testBalances.isEmpty : !balances.isEmpty,
+            chainCount: chainsHeldCount,
+            tokenCount: balances.count,
+            totalChainsSupported: WalletFormatting.chainCount(activeWallet?.addresses ?? []),
+            hasAnyBalance: !balances.isEmpty,
             // Local OR shared — a user pull that replaced a wedged
             // pipeline keeps the header honest about the replacement
             // still running (2026-06-12).
@@ -1162,8 +1045,7 @@ struct WalletHomeView: View {
             lastSyncedAt: mostRecentScanAt,
             hideBalance: hideBalanceOnHome,
             onSwitchWallet: { isShowingSwitcher = true },
-            // Scrub channel — nil in test mode (no chart there).
-            scrubModel: isTestMode ? nil : scrubModel
+            scrubModel: scrubModel
         )
     }
 
@@ -1213,12 +1095,11 @@ struct WalletHomeView: View {
             }
 
             WalletActionRegion(
-                canSend: !isTestMode && activeWallet?.kind != .watchOnly,
+                canSend: activeWallet?.kind != .watchOnly,
                 onSend: { isShowingSend = true },
                 onReceive: { isShowingReceive = true },
                 onSwap: { isShowingSwap = true }
             )
-            .disabled(isTestMode)
             .listRowBackground(Color.clear)
             .listRowSeparator(.hidden)
             .listRowInsets(EdgeInsets(
@@ -1233,7 +1114,7 @@ struct WalletHomeView: View {
             // background" — or has just finished, it shows here directly under
             // the actions: tappable to reopen its live status, dismissable
             // once it's done.
-            if !isTestMode, let job = swapManager.bannerJob {
+            if let job = swapManager.bannerJob {
                 SwapBackgroundBanner(
                     job: job,
                     onOpen: { openSwapJobId = job.id },
@@ -1264,7 +1145,7 @@ struct WalletHomeView: View {
             // Also hidden while the total-failure error state owns
             // the holdings region — switching Coins/Tokens over an
             // error card would be a no-op (2026-06-12).
-            if !isTestMode && filterViewMode == .split && !showsNetworkErrorState {
+            if filterViewMode == .split && !showsNetworkErrorState {
                 holdingsTabPicker
                     .listRowBackground(Color.clear)
                     .listRowSeparator(.hidden)
@@ -1281,34 +1162,17 @@ struct WalletHomeView: View {
         }
     }
 
-    /// Native segmented picker — Coins | Tokens. Disabled in test
-    /// mode (the test buckets share one Holdings section there, no
-    /// reason to switch).
+    /// Native segmented picker — Coins | Tokens.
     private var holdingsTabPicker: some View {
         Picker("Holdings tab", selection: $selectedHoldingsTab) {
             Text("Coins").tag(HoldingsTab.coins)
             Text("Tokens").tag(HoldingsTab.tokens)
         }
         .pickerStyle(.segmented)
-        .disabled(isTestMode)
         .accessibilityLabel(Text("Switch between Coins and Tokens"))
     }
 
     // MARK: - Holdings section (native List)
-
-    /// Test-mode holdings section. Per `holdingsBody`'s branching,
-    /// production never reaches this section — it routes through
-    /// `coinsSection` / `tokensSection` / `emptyHoldingsSection`
-    /// instead. Test mode keeps the original "Holdings" label +
-    /// the playground-style streaming rows.
-    @ViewBuilder
-    private var holdingsListSection: some View {
-        Section {
-            testHoldingsRows
-        } header: {
-            Text("Holdings")
-        }
-    }
 
     // MARK: - Coins section (native coins, 10-row cap + Show all)
 
@@ -1751,72 +1615,6 @@ struct WalletHomeView: View {
         .accessibilityLabel(Text("Show all supported assets"))
     }
 
-    // MARK: - Test-mode holdings + activity
-    //
-    // In test mode the SwiftData rows are NOT consulted — we render
-    // straight from the in-memory `testBalances` + `testTokens`
-    // buckets populated by the streaming scanner. The visual register
-    // mirrors the Mnemonic Review screen exactly (`ReviewChainRow` +
-    // `ReviewTokenRow`) so the user gets one consistent "this is the
-    // test affordance" feel across both surfaces.
-
-    /// Test-mode holdings rows. Until the streaming scanner yields
-    /// the first row, a centered `ProgressView` row stands in (a
-    /// single list row, separator hidden, cleared background — so it
-    /// reads as a momentary state, not as data the user could act on).
-    @ViewBuilder
-    private var testHoldingsRows: some View {
-        if testBalances.isEmpty && testTokens.isEmpty {
-            VStack(spacing: UniSpacing.s) {
-                ProgressView()
-                UniFootnote(
-                    text: "Scanning every chain against curated public addresses.",
-                    alignment: .center,
-                    color: UniColors.Text.tertiary
-                )
-            }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, UniSpacing.l)
-            .listRowSeparator(.hidden)
-        } else {
-            // Stable identity via `chain.rawValue` — the previous
-            // `.enumerated().offset` id shifted on every streaming
-            // re-sort, destroying + recreating every row (and its
-            // icon fetch tasks) per render.
-            ForEach(sortedTestChains, id: \.rawValue) { chain in
-                ReviewChainRow(
-                    chain: chain,
-                    address: TestAddresses.map[chain] ?? "",
-                    balance: testBalances[chain]
-                )
-                let chainTokens = (testTokens[chain] ?? []).sorted { a, b in
-                    (a.fiatBalance ?? 0) > (b.fiatBalance ?? 0)
-                }
-                ForEach(chainTokens) { token in
-                    ReviewTokenRow(token: token)
-                }
-            }
-        }
-    }
-
-    private var sortedTestChains: [SupportedChain] {
-        // Union of chains that have either a native or token row.
-        // Sort by total fiat desc — biggest holding's chain leads,
-        // same convention as the real-wallet holdings list.
-        let union = Set(testBalances.keys).union(testTokens.keys)
-        return union.sorted { lhs, rhs in
-            testTotalFiat(for: lhs) > testTotalFiat(for: rhs)
-        }
-    }
-
-    private func testTotalFiat(for chain: SupportedChain) -> Decimal {
-        let nativeFiat = testBalances[chain]?.fiatBalance ?? 0
-        let tokenFiat = (testTokens[chain] ?? []).reduce(Decimal.zero) {
-            $0 + ($1.fiatBalance ?? 0)
-        }
-        return nativeFiat + tokenFiat
-    }
-
     /// Display cap for both the Coins and Tokens sections — the
     /// home screen shows the first 10 of each, then a "Show all"
     /// navigation row when the holdings exceed the cap.
@@ -2125,24 +1923,14 @@ struct WalletHomeView: View {
 
     // MARK: - Activity section (native List)
 
-    /// Recent-activity section. Branches three ways like the holdings
-    /// section: test mode (in-memory `testTransactions`), empty
-    /// production wallet (`UniEmptyState`), and the normal recent-ten
-    /// list. Each transaction row wraps `ActivityRow` in a `Button`
-    /// so the row tap routes to the transaction detail.
+    /// Recent-activity section. Branches two ways: empty production
+    /// wallet (`UniEmptyState`) and the normal recent-ten list. Each
+    /// transaction row wraps `ActivityRow` in a `Button` so the row
+    /// tap routes to the transaction detail.
     @ViewBuilder
     private var activityListSection: some View {
         Section {
-            if isTestMode {
-                if testTransactions.isEmpty {
-                    testActivityEmpty
-                        .listRowBackground(Color.clear)
-                        .listRowSeparator(.hidden)
-                        .listRowInsets(EdgeInsets())
-                } else {
-                    testActivityRows
-                }
-            } else if recentTransactions.isEmpty {
+            if recentTransactions.isEmpty {
                 emptyActivity
                     .listRowBackground(Color.clear)
                     .listRowSeparator(.hidden)
@@ -2169,11 +1957,10 @@ struct WalletHomeView: View {
     /// **Not a CTA (Rule #19 §C):** "View all" navigates, it does not
     /// commit the user to a next state — so it is a plain `Button`
     /// styled as a quiet text link via `UniColors.Text.link`, not a
-    /// `UniButton`. Test mode has no production history to page into,
-    /// so the link is production-only.
+    /// `UniButton`.
     @ViewBuilder
     private var activityHeader: some View {
-        if !isTestMode && allTransactions.count > 5 {
+        if allTransactions.count > 5 {
             HStack(alignment: .firstTextBaseline) {
                 Text("Recent activity")
                 Spacer(minLength: UniSpacing.s)
@@ -2214,28 +2001,6 @@ struct WalletHomeView: View {
                 )
             }
             .buttonStyle(.plain)
-        }
-    }
-
-    /// Test-mode activity feed. Renders the memoized
-    /// `sortedTestActivityRows` projection (newest-first, capped at
-    /// 10 — same cap as `recentTransactions`), maintained at the
-    /// mutation sites in `runTestScan()` rather than re-sorted per
-    /// body pass. Uses the same `ActivityRow` component the real
-    /// wallet uses — so visual consistency between test mode and
-    /// the production path is automatic.
-    @ViewBuilder
-    private var testActivityRows: some View {
-        ForEach(sortedTestActivityRows, id: \.txHash) { event in
-            ActivityRow(
-                chain: event.chain,
-                direction: event.direction,
-                amount: event.amount,
-                tokenSymbol: event.tokenSymbol,
-                counterparty: event.counterparty,
-                occurredAt: event.occurredAt,
-                status: event.status
-            )
         }
     }
 
@@ -2283,10 +2048,7 @@ struct WalletHomeView: View {
             // 2026-06-09 — the pill now leads with the active
             // wallet's `WalletAvatar` (symbol + colorHex). The
             // text remains the wallet's name; the trailing chevron
-            // signals "tap to switch." In test mode we fall back
-            // to the prior text-only `.toolbarPill` because test
-            // mode displays public addresses, not a user wallet —
-            // no identity to render.
+            // signals "tap to switch."
             //
             // **Tap** opens the full `WalletSwitcherSheet` (the
             // index of every wallet with create/import affordances
@@ -2296,60 +2058,50 @@ struct WalletHomeView: View {
             // on the same affordance because the pill IS the
             // active-wallet identity on this screen — same affordance,
             // two depths.
-            if isTestMode {
-                UniButton(
-                    verbatim: String.apertureLocalized("Public test addresses"),
-                    variant: .toolbarPill,
-                    isEnabled: false
-                ) {
-                    isShowingSwitcher = true
-                }
-                .accessibilityLabel(Text("Test mode active"))
-            } else {
-                // 2026-06-09 — pass the active wallet's gradient-disc
-                // spec to the pill so the leading slot renders the
-                // new avatar. Falls back to an auto(name)-derived
-                // spec from the default "Wallet" name when no active
-                // wallet exists yet (cold launch before
-                // `ensureActiveWalletSet()` lands one).
-                let pillSpec: WalletAvatarSpec = activeWallet?.avatarSpec
-                    ?? WalletAvatarSpec.auto(name: "Wallet")
-                UniButton(
-                    verbatim: activeWallet?.name ?? String.apertureLocalized("Wallet"),
-                    variant: .walletPill,
-                    walletSpec: pillSpec,
-                    walletId: activeWallet?.id
-                ) {
-                    isShowingSwitcher = true
-                }
-                .accessibilityLabel(Text("Switch wallet, currently \(activeWallet?.name ?? "")"))
-                // **Long-press switcher — split by size class
-                // (2026-06-16).**
-                //
-                // COMPACT (iPhone): no `.contextMenu` here. The
-                // long-press wallet switcher lives on the bottom
-                // tab bar's Wallet button (via
-                // `TabBarLongPressInstaller`). Tap on this toolbar
-                // pill opens the switcher SHEET; the tab-bar
-                // long-press is the Telegram/Instagram-style fast
-                // switcher. This path is unchanged from 2026-06-09.
-                //
-                // REGULAR (iPad landscape / wide Mac): in sidebar
-                // mode there is no UITabBar, so the installer can't
-                // attach — the switcher would silently die. We
-                // attach the native SwiftUI `walletPillContextMenu`
-                // here instead (Switch wallet / Customise / Add /
-                // Manage — the SAME actions). `.contextMenu` is a
-                // pure-SwiftUI modifier, so it works on the toolbar
-                // pill at any width; gating to `.regular` keeps the
-                // iPhone gesture exactly as it was.
-                .modifier(
-                    WalletPillRegularWidthMenu(
-                        isRegularWidth: horizontalSizeClass == .regular,
-                        menu: { walletPillContextMenu }
-                    )
-                )
+            //
+            // 2026-06-09 — pass the active wallet's gradient-disc
+            // spec to the pill so the leading slot renders the
+            // new avatar. Falls back to an auto(name)-derived
+            // spec from the default "Wallet" name when no active
+            // wallet exists yet (cold launch before
+            // `ensureActiveWalletSet()` lands one).
+            let pillSpec: WalletAvatarSpec = activeWallet?.avatarSpec
+                ?? WalletAvatarSpec.auto(name: "Wallet")
+            UniButton(
+                verbatim: activeWallet?.name ?? String.apertureLocalized("Wallet"),
+                variant: .walletPill,
+                walletSpec: pillSpec,
+                walletId: activeWallet?.id
+            ) {
+                isShowingSwitcher = true
             }
+            .accessibilityLabel(Text("Switch wallet, currently \(activeWallet?.name ?? "")"))
+            // **Long-press switcher — split by size class
+            // (2026-06-16).**
+            //
+            // COMPACT (iPhone): no `.contextMenu` here. The
+            // long-press wallet switcher lives on the bottom
+            // tab bar's Wallet button (via
+            // `TabBarLongPressInstaller`). Tap on this toolbar
+            // pill opens the switcher SHEET; the tab-bar
+            // long-press is the Telegram/Instagram-style fast
+            // switcher. This path is unchanged from 2026-06-09.
+            //
+            // REGULAR (iPad landscape / wide Mac): in sidebar
+            // mode there is no UITabBar, so the installer can't
+            // attach — the switcher would silently die. We
+            // attach the native SwiftUI `walletPillContextMenu`
+            // here instead (Switch wallet / Customise / Add /
+            // Manage — the SAME actions). `.contextMenu` is a
+            // pure-SwiftUI modifier, so it works on the toolbar
+            // pill at any width; gating to `.regular` keeps the
+            // iPhone gesture exactly as it was.
+            .modifier(
+                WalletPillRegularWidthMenu(
+                    isRegularWidth: horizontalSizeClass == .regular,
+                    menu: { walletPillContextMenu }
+                )
+            )
         }
     }
 
@@ -2790,7 +2542,6 @@ struct WalletHomeView: View {
     /// currency switch could write `fiatValueCached: 0` and re-zero the
     /// hero.)
     private func repriceForCurrencyChange() async {
-        guard !isTestMode else { return }
         let code = (CurrencyPreference.currency(for: currencyCode)?.code
             ?? CurrencyPreference.defaultCode).uppercased()
 
@@ -2870,179 +2621,6 @@ struct WalletHomeView: View {
             }
         }
         return activeWallet?.id
-    }
-
-    // MARK: - Test mode bottom banner + actions
-
-    /// Bottom safe-area inset banner — only renders when
-    /// `isTestMode` is true. Mirrors `MnemonicReviewView`'s
-    /// "Exit test mode" footer so the affordance reads
-    /// identically across both surfaces.
-    @ViewBuilder
-    private var testModeBanner: some View {
-        if isTestMode {
-            GlassEffectContainer(spacing: UniSpacing.s) {
-                VStack(spacing: UniSpacing.s) {
-                    UniFootnote(
-                        text: "Test mode — scanning public addresses. The Send / Swap actions are disabled while in this mode; exit to return to your wallet.",
-                        alignment: .center
-                    )
-                    .fixedSize(horizontal: false, vertical: true)
-                    UniButton(title: "Exit test mode", variant: .secondary) {
-                        exitTestMode()
-                    }
-                }
-            }
-            .padding(.horizontal, UniSpacing.l)
-            .padding(.bottom, UniSpacing.l)
-        }
-    }
-
-    /// Calm empty activity surface for test mode. Honest per
-    /// Rule #2 §A.7 — the test affordance reads balances, not
-    /// transaction history, so we say so plainly instead of
-    /// faking a list. Uses the same `UniEmptyState` primitive as
-    /// the prod empty surfaces so the test variant doesn't read
-    /// as a different visual family (Rule #2 §A.5 consistency).
-    private var testActivityEmpty: some View {
-        UniEmptyState(
-            title: "No transactions in test mode.",
-            detail: "Test mode verifies balance reads only. Exit to see real activity for your wallet.",
-            mark: .icon(systemName: "flask")
-        )
-    }
-
-    /// Sum of native + token fiat across every chain in the test
-    /// buckets. Feeds the hero number in the header so the user
-    /// sees the live test total as rows stream in.
-    private var testTotalFiat: Decimal {
-        var total = Decimal.zero
-        for (_, balance) in testBalances {
-            total += balance.fiatBalance ?? 0
-        }
-        for (_, tokens) in testTokens {
-            for token in tokens {
-                total += token.fiatBalance ?? 0
-            }
-        }
-        return total
-    }
-
-    private var testChainsHeldCount: Int {
-        Set(testBalances.keys).union(testTokens.keys).count
-    }
-
-    private var testTokenRowCount: Int {
-        testBalances.count + testTokens.reduce(0) { $0 + $1.value.count }
-    }
-
-    /// Flip the test toggle. Entering test mode clears any prior
-    /// buckets and kicks off a stream against `TestAddresses.map`.
-    /// Exiting clears the buckets so the user's real wallet
-    /// reappears immediately.
-    private func toggleTestMode() {
-        if isTestMode {
-            exitTestMode()
-        } else {
-            enterTestMode()
-        }
-    }
-
-    private func enterTestMode() {
-        testBalances = [:]
-        testTokens = [:]
-        testTransactions = []
-        sortedTestActivityRows = []
-        isTestMode = true
-        testScanTrigger &+= 1
-    }
-
-    private func exitTestMode() {
-        isTestMode = false
-        testBalances = [:]
-        testTokens = [:]
-        testTransactions = []
-        sortedTestActivityRows = []
-    }
-
-    /// Consume the streaming scan against `TestAddresses.map`.
-    /// Mirrors `MnemonicReviewView.runScan()` — replacements per
-    /// `(chain, contract)` are atomic so refreshed rows overwrite
-    /// stale ones.
-    ///
-    /// **Transactions (2026-06-08).** In addition to the balance
-    /// stream, we kick off a concurrent task that drives the
-    /// unified `RealRPCTransactionScanner` against the same address
-    /// map and appends events to `testTransactions` as each chain's
-    /// adapter resolves. The two streams are independent — balances
-    /// land via `scanners.balance`, transactions via
-    /// `scanners.transactions`. Both observe `isTestMode` (and the
-    /// tracked task's cancellation) so a mid-flight toggle or a
-    /// re-trigger clears the buckets and stops both feeds cleanly.
-    private func runTestScan() async {
-        let snapshot = isTestMode
-        guard snapshot else { return }
-        let currency = CurrencyPreference.currency(for: currencyCode)
-            ?? CurrencyPreference.all[0]
-
-        // Transactions: run in parallel with the balance stream so
-        // the user sees rows landing chain-by-chain in the activity
-        // feed AT THE SAME TIME as the holdings rows fill in.
-        let txTask = Task { [txScanner = scanners.transactions] in
-            let txStream = txScanner.streamScan(
-                addresses: TestAddresses.map,
-                limit: 10
-            )
-            for await event in txStream {
-                guard isTestMode, !Task.isCancelled else { return }
-                // De-dup per (chain, hash) so repeated rescans don't
-                // double-count.
-                testTransactions.removeAll {
-                    $0.chain == event.chain && $0.txHash == event.txHash
-                }
-                testTransactions.append(event)
-                // Maintain the memoized newest-first projection at
-                // the mutation site so the body never sorts.
-                sortedTestActivityRows = Array(
-                    testTransactions
-                        .sorted { $0.occurredAt > $1.occurredAt }
-                        .prefix(10)
-                )
-            }
-        }
-
-        let stream = scanners.balance.streamScan(
-            addresses: TestAddresses.map,
-            currency: currency
-        )
-        for await row in stream {
-            // Bail if the user exited test mode mid-stream, or the
-            // tracked task was cancelled by a re-trigger / disappear.
-            guard isTestMode, !Task.isCancelled else {
-                txTask.cancel()
-                return
-            }
-            switch row {
-            case .native(let chainBalance):
-                testBalances[chainBalance.chain] = chainBalance
-            case .token(let tokenBalance):
-                var existing = testTokens[tokenBalance.chain] ?? []
-                existing.removeAll { $0.contract == tokenBalance.contract }
-                existing.append(tokenBalance)
-                testTokens[tokenBalance.chain] = existing
-            }
-        }
-        // The stream can also terminate because the tracked task was
-        // cancelled mid-await — propagate the cancellation to the
-        // transaction feed instead of awaiting it.
-        if Task.isCancelled {
-            txTask.cancel()
-            return
-        }
-        // Let the transaction stream finish on its own — balance
-        // stream completion shouldn't cut off the slower chain
-        // adapters.
-        _ = await txTask.value
     }
 }
 

@@ -625,14 +625,6 @@ struct MnemonicReviewView: View {
     @State private var isDeriving = true
     @State private var scanState: ScanState = .idle
     @State private var rescanTrigger: Int = 0
-#if DEBUG
-    /// `true` while the Test toolbar action has swapped in
-    /// `TestAddresses.map`. Disables the Import CTA — the user
-    /// can't commit a wallet they don't have the seed for — and
-    /// shows an inline banner naming the state honestly.
-    /// Debug builds only; release builds ship no test affordance.
-    @State private var isTestMode: Bool = false
-#endif
 
     /// Real on-chain balance scanner backed by `RPCClient` + per-family
     /// adapters. Each chain scans independently and streams its row to
@@ -678,23 +670,6 @@ struct MnemonicReviewView: View {
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 HStack(spacing: UniSpacing.xs) {
-#if DEBUG
-                    // Test action: swap in curated public addresses
-                    // with known on-chain balances and re-run the
-                    // scan. Auditable end-to-end verification —
-                    // every chain hits its real RPC; rows that come
-                    // back with balances prove the pipeline works
-                    // for that chain end-to-end. Debug builds only.
-                    Button {
-                        useTestAddresses()
-                    } label: {
-                        Image(systemName: "flask.fill")
-                            .font(.system(size: 17, weight: .semibold))
-                    }
-                    .accessibilityLabel(Text("Test against public addresses"))
-                    .disabled(isDeriving)
-#endif
-
                     Button {
                         rescanTrigger &+= 1
                     } label: {
@@ -713,24 +688,7 @@ struct MnemonicReviewView: View {
             // "Back" button at the bottom is noise (Rule #2 §A.2 —
             // remove the least-essential element).
             GlassEffectContainer(spacing: UniSpacing.s) {
-#if DEBUG
-                if isTestMode {
-                    VStack(spacing: UniSpacing.s) {
-                        UniFootnote(
-                            text: "Test mode — scanning public addresses. The Import action is disabled while in this mode; exit to import your wallet.",
-                            alignment: .center
-                        )
-                        .fixedSize(horizontal: false, vertical: true)
-                        UniButton(title: "Exit test mode", variant: .secondary) {
-                            exitTestMode()
-                        }
-                    }
-                } else {
-                    importCTA
-                }
-#else
                 importCTA
-#endif
             }
             .padding(.horizontal, UniSpacing.l)
             .padding(.bottom, UniSpacing.l)
@@ -857,29 +815,4 @@ struct MnemonicReviewView: View {
             self.isDeriving = false
         }
     }
-
-#if DEBUG
-    /// Swap in curated public addresses with known on-chain
-    /// balances and re-run the same scan pipeline an imported
-    /// wallet would. Purely a developer / verifier affordance —
-    /// no funds move, no state persists beyond the screen, and
-    /// `state.derivedAddressesFromMnemonic` (the value the import
-    /// commit reads) is left untouched. The Import CTA is disabled
-    /// while test mode is active so the user can't accidentally
-    /// commit a wallet they don't have the seed for.
-    private func useTestAddresses() {
-        balances = [:]
-        derivedAddresses = TestAddresses.map
-        isTestMode = true
-        Task { await runScan() }
-    }
-
-    /// Exit test mode and restore the originally-derived addresses.
-    private func exitTestMode() {
-        balances = [:]
-        derivedAddresses = state.derivedAddressesFromMnemonic
-        isTestMode = false
-        Task { await runScan() }
-    }
-#endif
 }
