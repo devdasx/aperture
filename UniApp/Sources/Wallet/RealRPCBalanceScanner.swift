@@ -160,11 +160,11 @@ struct RealRPCBalanceScanner: BalanceScanner {
                         // Native balance task (one per chain).
                         group.addTask { [client] in
                             let nativeToken = RefreshPerfLog.shared.start()
-                            let summary = await Self.fetchNative(
-                                chain: chain,
-                                address: address,
-                                client: client
-                            )
+                            // Bound the per-chain native read so one slow chain
+                            // can't stall the whole stream (and the spinner).
+                            let summary = await withTimeout(2.0) {
+                                await Self.fetchNative(chain: chain, address: address, client: client)
+                            } ?? nil
                             RefreshPerfLog.shared.end("balance", "native \(chain.rawValue)\(summary == nil ? " — FAILED" : "")", since: nativeToken)
                             // Scan failure → no row; the refresh
                             // coordinator preserves the persisted
@@ -216,15 +216,20 @@ struct RealRPCBalanceScanner: BalanceScanner {
                         let customForChain = customTokens[chain] ?? []
                         group.addTask { [client] in
                             let tokenToken = RefreshPerfLog.shared.start()
-                            await Self.streamTokens(
-                                chain: chain,
-                                address: address,
-                                client: client,
-                                pricesTask: pricesTask,
-                                currency: currency,
-                                customTokens: customForChain,
-                                yield: { row in continuation.yield(row) }
-                            )
+                            // Bound the per-chain token sweep too — rows yielded
+                            // before the deadline are kept; a slow chain is
+                            // abandoned instead of holding the stream open.
+                            _ = await withTimeout(2.0) {
+                                await Self.streamTokens(
+                                    chain: chain,
+                                    address: address,
+                                    client: client,
+                                    pricesTask: pricesTask,
+                                    currency: currency,
+                                    customTokens: customForChain,
+                                    yield: { row in continuation.yield(row) }
+                                )
+                            }
                             RefreshPerfLog.shared.end("balance", "tokens \(chain.rawValue)", since: tokenToken)
                         }
                     }

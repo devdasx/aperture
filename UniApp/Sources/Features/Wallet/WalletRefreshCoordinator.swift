@@ -265,42 +265,15 @@ struct WalletRefreshCoordinator: Sendable {
         )
         RefreshPerfLog.shared.end("balance", "balance pass — \(nativeYieldedChains.count)/\(chainAddresses.count) chains landed", since: balancePassToken)
 
-        var failedChains = Set(chainAddresses.keys).subtracting(nativeYieldedChains)
+        let failedChains = Set(chainAddresses.keys).subtracting(nativeYieldedChains)
 
-        // **2026-06-12 — one bounded coordinator-level retry pass.**
-        // A fresh import has nothing persisted; if a chain's first
-        // read fails, the user would see a silent $0.00 row forever
-        // (honest-failure semantics yield no row, and nothing was
-        // ever stored). Give every failed chain exactly one more
-        // attempt after a short backoff — transient provider blips
-        // (rate-limit bursts, cold circuit breakers) usually clear
-        // within seconds. Chains that fail twice are reported via
-        // the returned set + `WalletRefreshState` so the UI can be
-        // honest instead of rendering all-zeros.
-        if !failedChains.isEmpty, !Task.isCancelled {
-            Self.log.info("Balance scan retry for \(failedChains.count, privacy: .public) failed chain(s) after backoff")
-            try? await Task.sleep(for: .seconds(3))
-            if !Task.isCancelled {
-                let retryAddresses = chainAddresses.filter { failedChains.contains($0.key) }
-                let retryCustomTokens = customTokensByChain.filter { failedChains.contains($0.key) }
-                let retryStream = scanner.streamScan(
-                    addresses: retryAddresses,
-                    currency: currency,
-                    customTokens: retryCustomTokens,
-                    priorityTokenSymbols: heldSymbols
-                )
-                let retriedChains = await consumeBalanceStream(
-                    retryStream,
-                    chainSnapshots: chainSnapshots,
-                    txRepo: txRepo,
-                    chainStateRepo: chainStateRepo,
-                    walletId: walletId,
-                    fiatCurrencyCode: currency.code
-                )
-                nativeYieldedChains.formUnion(retriedChains)
-                failedChains = Set(chainAddresses.keys).subtracting(nativeYieldedChains)
-            }
-        }
+        // **2026-06-17 — retry pass removed for speed.** The old code slept
+        // 3s and re-scanned failed chains in-pipeline, which kept the spinner
+        // up for seconds *after* the fast chains were already done. Each chain
+        // is now per-chain time-bounded (see `withTimeout` in the scanner), a
+        // failed chain keeps its last-known persisted balance, and the next
+        // refresh re-attempts it — the live per-chain commits + the @Query UI
+        // mean the user sees what landed immediately, with no blocking wait.
 
         // Chains whose native row never landed — mark scan
         // complete with prior `isUsed` so the "Last synced" footer
@@ -706,46 +679,14 @@ struct WalletRefreshCoordinator: Sendable {
             grouping: snapshot, by: { $0.chain }
         ).mapValues { Set($0.map { $0.address }) }
 
-        // First pass — collect the addresses that yielded nothing.
-        var pendingRetry: [AddressSnapshot] = []
-        await withTaskGroup(of: AddressSnapshot?.self) { group in
-            for snap in snapshot {
-                let customContracts = customTokensByChain[snap.chain]?.map { $0.contract } ?? []
-                let own = ownAddressesByChain[snap.chain] ?? [snap.address]
-                group.addTask {
-                    let persisted = await scanTransactionHistory(
-                        address: snap,
-                        client: rpcClient,
-                        txRepo: txRepo,
-                        chainStateRepo: chainStateRepo,
-                        walletId: walletId,
-                        fiatCurrencyCode: fiatCurrencyCode,
-                        customContracts: customContracts,
-                        ownAddresses: own
-                    )
-                    return persisted == 0 ? snap : nil
-                }
-            }
-            for await emptyYield in group {
-                if let emptyYield { pendingRetry.append(emptyYield) }
-            }
-        }
-
-        // Stub addresses short-circuit inside the scanner — retrying
-        // them is a guaranteed second no-op, so drop them here.
-        pendingRetry.removeAll { $0.address.hasPrefix(StubKeyImportService.stubAddressPrefix) }
-        guard !pendingRetry.isEmpty, !Task.isCancelled else { return }
-
-        Self.log.info("Transaction-history retry for \(pendingRetry.count, privacy: .public) address(es) after backoff")
-        try? await Task.sleep(for: .seconds(3))
-        guard !Task.isCancelled else { return }
-
-        // Second (final) pass — same fetch, same persistence path.
-        // Still-empty results stay empty; the scanner's honesty
-        // contract means we never fabricate rows for a chain that
-        // won't answer.
+        // **Single per-chain history pass (2026-06-17 — in-pipeline retry
+        // removed for speed).** Each scan is per-chain time-bounded (see
+        // `withTimeout` in `scanTransactionHistory`); a chain that yields
+        // nothing (genuinely empty OR timed out) keeps its persisted history
+        // and is re-attempted on the NEXT refresh. The live per-chain commits
+        // keep the activity feed current — no blocking 3s backoff + 2nd pass.
         await withTaskGroup(of: Void.self) { group in
-            for snap in pendingRetry {
+            for snap in snapshot {
                 let customContracts = customTokensByChain[snap.chain]?.map { $0.contract } ?? []
                 let own = ownAddressesByChain[snap.chain] ?? [snap.address]
                 group.addTask {
@@ -893,20 +834,26 @@ struct WalletRefreshCoordinator: Sendable {
     ) async -> Int {
         let scanner = RealRPCTransactionScanner(client: client)
         let fetchToken = RefreshPerfLog.shared.start()
-        let events = await scanner.scan(
-            addresses: [address.chain: address.address],
-            limit: 25,
-            customContractsByChain: customContracts.isEmpty
-                ? [:]
-                : [address.chain: customContracts],
-            // Full per-chain own-address set so the scanner can relabel a
-            // transfer to/from another of the wallet's own addresses as a
-            // self-transfer (2026-06-16). Defaults to this one address when
-            // the caller didn't supply the set.
-            ownAddressesByChain: ownAddresses.isEmpty
-                ? [:]
-                : [address.chain: ownAddresses]
-        )
+        let chainForScan = address.chain
+        // Bound the per-chain history fetch — a slow chain is abandoned at the
+        // deadline (keeps its persisted history) instead of holding the
+        // refresh open.
+        let events = await withTimeout(2.0) {
+            await scanner.scan(
+                addresses: [chainForScan: address.address],
+                limit: 25,
+                customContractsByChain: customContracts.isEmpty
+                    ? [:]
+                    : [chainForScan: customContracts],
+                // Full per-chain own-address set so the scanner can relabel a
+                // transfer to/from another of the wallet's own addresses as a
+                // self-transfer (2026-06-16). Defaults to this one address when
+                // the caller didn't supply the set.
+                ownAddressesByChain: ownAddresses.isEmpty
+                    ? [:]
+                    : [chainForScan: ownAddresses]
+            )
+        } ?? []
         RefreshPerfLog.shared.end("history", "fetch \(address.chain.rawValue) — \(events.count) events", since: fetchToken)
         guard !events.isEmpty else { return 0 }
         for event in events {
