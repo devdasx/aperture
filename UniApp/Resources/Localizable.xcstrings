@@ -460226,6 +460226,2494 @@
           }
         }
       }
+    },
+    "Broadcast to \\(executed.chain.displayName) and confirmed on-chain.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Broadcast to \\(executed.chain.displayName) and confirmed on-chain."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Transmitido a \\(executed.chain.displayName) y confirmado en la cadena."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已广播至 \\(executed.chain.displayName)，并在链上确认。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已廣播至 \\(executed.chain.displayName)，並在鏈上確認。"
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "\\(executed.chain.displayName) पर प्रसारित किया गया और ऑन-चेन पुष्ट हुआ।"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "تم بثّها إلى \\(executed.chain.displayName) وتأكيدها على السلسلة."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Transmitida para \\(executed.chain.displayName) e confirmada on-chain."
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "\\(executed.chain.displayName)-এ সম্প্রচার করা হয়েছে এবং অন-চেইন নিশ্চিত হয়েছে।"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Отправлено в сеть \\(executed.chain.displayName) и подтверждено в блокчейне."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "\\(executed.chain.displayName) にブロードキャストし、オンチェーンで確認されました。"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "An \\(executed.chain.displayName) gesendet und On-Chain bestätigt."
+          }
+        },
+        "uk": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Надіслано до \\(executed.chain.displayName) та підтверджено в блокчейні."
+          }
+        },
+        "el": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Μεταδόθηκε στο \\(executed.chain.displayName) και επιβεβαιώθηκε on-chain."
+          }
+        },
+        "ro": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Difuzată către \\(executed.chain.displayName) și confirmată on-chain."
+          }
+        },
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Odesláno do sítě \\(executed.chain.displayName) a potvrzeno na blockchainu."
+          }
+        },
+        "hu": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Elküldve a(z) \\(executed.chain.displayName) hálózatra, és megerősítve a láncon."
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sänd till \\(executed.chain.displayName) och bekräftad on-chain."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kringkastet til \\(executed.chain.displayName) og bekreftet on-chain."
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sendt til \\(executed.chain.displayName) og bekræftet on-chain."
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lähetetty verkkoon \\(executed.chain.displayName) ja vahvistettu lohkoketjussa."
+          }
+        },
+        "he": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "שודרה אל \\(executed.chain.displayName) ואושרה על גבי הרשת."
+          }
+        },
+        "ca": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Transmesa a \\(executed.chain.displayName) i confirmada a la cadena."
+          }
+        },
+        "hr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Emitirano u mrežu \\(executed.chain.displayName) i potvrđeno na lancu."
+          }
+        },
+        "sk": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Odoslané do siete \\(executed.chain.displayName) a potvrdené na blockchaine."
+          }
+        },
+        "sl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Posredovano v omrežje \\(executed.chain.displayName) in potrjeno v verigi."
+          }
+        },
+        "sr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Емитовано у мрежу \\(executed.chain.displayName) и потврђено на ланцу."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Diffusée sur \\(executed.chain.displayName) et confirmée sur la chaîne."
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "\\(executed.chain.displayName)에 전송되어 온체인에서 확인되었어요."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Trasmessa su \\(executed.chain.displayName) e confermata on-chain."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "\\(executed.chain.displayName) ağına yayınlandı ve zincir üzerinde onaylandı."
+          }
+        },
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Đã phát lên \\(executed.chain.displayName) và được xác nhận trên chuỗi."
+          }
+        },
+        "th": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "เผยแพร่ไปยัง \\(executed.chain.displayName) และยืนยันบนเชนแล้ว"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Disiarkan ke \\(executed.chain.displayName) dan dikonfirmasi on-chain."
+          }
+        },
+        "fa": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "در \\(executed.chain.displayName) منتشر شد و روی زنجیره تأیید شد."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Wysłano do \\(executed.chain.displayName) i potwierdzono w łańcuchu."
+          }
+        },
+        "nl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Verzonden naar \\(executed.chain.displayName) en on-chain bevestigd."
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "\\(executed.chain.displayName) پر نشر کر دیا گیا اور آن چین تصدیق ہو گئی۔"
+          }
+        },
+        "bg": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Излъчена към \\(executed.chain.displayName) и потвърдена в блокчейна."
+          }
+        },
+        "et": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Edastatud võrku \\(executed.chain.displayName) ja kinnitatud ahelas."
+          }
+        },
+        "lt": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Išsiųsta į \\(executed.chain.displayName) ir patvirtinta grandinėje."
+          }
+        },
+        "lv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pārraidīts uz \\(executed.chain.displayName) un apstiprināts ķēdē."
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sent á \\(executed.chain.displayName) og staðfest á keðjunni."
+          }
+        },
+        "ms": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Disiarkan ke \\(executed.chain.displayName) dan disahkan di atas rantai."
+          }
+        },
+        "fil": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Na-broadcast sa \\(executed.chain.displayName) at nakumpirma on-chain."
+          }
+        },
+        "sw": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Imetangazwa kwa \\(executed.chain.displayName) na kuthibitishwa kwenye mnyororo."
+          }
+        },
+        "af": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Uitgesaai na \\(executed.chain.displayName) en op die ketting bevestig."
+          }
+        },
+        "ta": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "\\(executed.chain.displayName) இல் ஒளிபரப்பப்பட்டு செயினில் உறுதிப்படுத்தப்பட்டது."
+          }
+        },
+        "te": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "\\(executed.chain.displayName)కి ప్రసారం చేయబడింది మరియు చైన్‌లో నిర్ధారించబడింది."
+          }
+        },
+        "ml": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "\\(executed.chain.displayName) ലേക്ക് പ്രക്ഷേപണം ചെയ്യുകയും ചെയിനിൽ സ്ഥിരീകരിക്കുകയും ചെയ്തു."
+          }
+        },
+        "mr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "\\(executed.chain.displayName) वर प्रसारित केले आणि चेनवर पुष्टी झाली."
+          }
+        },
+        "pa": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "\\(executed.chain.displayName) ਉੱਤੇ ਪ੍ਰਸਾਰਿਤ ਕੀਤਾ ਅਤੇ ਚੇਨ ਉੱਤੇ ਪੁਸ਼ਟੀ ਹੋ ਗਈ।"
+          }
+        }
+      }
+    },
+    "Broadcast to the \\(transaction.chain.displayName) network. Confirming may take a moment — you can safely leave this screen.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Broadcast to the \\(transaction.chain.displayName) network. Confirming may take a moment — you can safely leave this screen."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Transmitido a la red \\(transaction.chain.displayName). La confirmación puede tardar un momento — puedes salir de esta pantalla con seguridad."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已广播至 \\(transaction.chain.displayName) 网络。确认可能需要片刻 — 你可以放心离开此页面。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已廣播至 \\(transaction.chain.displayName) 網路。確認可能需要片刻 — 你可以放心離開此頁面。"
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "\\(transaction.chain.displayName) नेटवर्क पर प्रसारित किया गया। पुष्टि होने में थोड़ा समय लग सकता है — आप यह स्क्रीन सुरक्षित रूप से छोड़ सकते हैं।"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "تم بثّها إلى شبكة \\(transaction.chain.displayName). قد يستغرق التأكيد لحظة — يمكنك مغادرة هذه الشاشة بأمان."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Transmitida para a rede \\(transaction.chain.displayName). A confirmação pode levar um momento — você pode sair desta tela com segurança."
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "\\(transaction.chain.displayName) নেটওয়ার্কে সম্প্রচার করা হয়েছে। নিশ্চিত হতে কিছুটা সময় লাগতে পারে — আপনি নিরাপদে এই স্ক্রিন থেকে বেরিয়ে যেতে পারেন।"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Отправлено в сеть \\(transaction.chain.displayName). Подтверждение может занять время — вы можете спокойно покинуть этот экран."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "\\(transaction.chain.displayName) ネットワークにブロードキャストしました。確認には少し時間がかかることがあります — この画面はそのまま閉じても問題ありません。"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "An das \\(transaction.chain.displayName)-Netzwerk gesendet. Die Bestätigung kann einen Moment dauern — Sie können diesen Bildschirm bedenkenlos verlassen."
+          }
+        },
+        "uk": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Надіслано до мережі \\(transaction.chain.displayName). Підтвердження може зайняти трохи часу — ви можете безпечно залишити цей екран."
+          }
+        },
+        "el": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Μεταδόθηκε στο δίκτυο \\(transaction.chain.displayName). Η επιβεβαίωση μπορεί να πάρει λίγο χρόνο — μπορείτε να φύγετε από αυτήν την οθόνη με ασφάλεια."
+          }
+        },
+        "ro": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Difuzată către rețeaua \\(transaction.chain.displayName). Confirmarea poate dura un moment — puteți părăsi acest ecran în siguranță."
+          }
+        },
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Odesláno do sítě \\(transaction.chain.displayName). Potvrzení může chvíli trvat — tuto obrazovku můžete bezpečně opustit."
+          }
+        },
+        "hu": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Elküldve a(z) \\(transaction.chain.displayName) hálózatra. A megerősítés eltarthat egy ideig — nyugodtan elhagyhatja ezt a képernyőt."
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sänd till \\(transaction.chain.displayName)-nätverket. Bekräftelsen kan ta en stund — du kan lämna den här skärmen utan risk."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kringkastet til \\(transaction.chain.displayName)-nettverket. Bekreftelsen kan ta et øyeblikk — du kan trygt forlate denne skjermen."
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sendt til \\(transaction.chain.displayName)-netværket. Bekræftelsen kan tage et øjeblik — du kan trygt forlade denne skærm."
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lähetetty \\(transaction.chain.displayName)-verkkoon. Vahvistus voi kestää hetken — voit turvallisesti poistua tästä näkymästä."
+          }
+        },
+        "he": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "שודרה אל רשת \\(transaction.chain.displayName). האישור עשוי להימשך רגע — אפשר לצאת מהמסך הזה בבטחה."
+          }
+        },
+        "ca": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Transmesa a la xarxa \\(transaction.chain.displayName). La confirmació pot trigar un moment — pots sortir d’aquesta pantalla amb seguretat."
+          }
+        },
+        "hr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Emitirano u mrežu \\(transaction.chain.displayName). Potvrda može potrajati trenutak — ovaj zaslon možete sigurno napustiti."
+          }
+        },
+        "sk": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Odoslané do siete \\(transaction.chain.displayName). Potvrdenie môže chvíľu trvať — túto obrazovku môžete bezpečne opustiť."
+          }
+        },
+        "sl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Posredovano v omrežje \\(transaction.chain.displayName). Potrditev lahko traja trenutek — ta zaslon lahko varno zapustite."
+          }
+        },
+        "sr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Емитовано у мрежу \\(transaction.chain.displayName). Потврда може потрајати тренутак — овај екран можете безбедно напустити."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Diffusée sur le réseau \\(transaction.chain.displayName). La confirmation peut prendre un instant — vous pouvez quitter cet écran en toute sécurité."
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "\\(transaction.chain.displayName) 네트워크에 전송했어요. 확인에 잠시 시간이 걸릴 수 있어요 — 이 화면을 벗어나도 괜찮아요."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Trasmessa sulla rete \\(transaction.chain.displayName). La conferma può richiedere un momento — puoi lasciare questa schermata in sicurezza."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "\\(transaction.chain.displayName) ağına yayınlandı. Onay biraz zaman alabilir — bu ekrandan güvenle ayrılabilirsiniz."
+          }
+        },
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Đã phát lên mạng \\(transaction.chain.displayName). Việc xác nhận có thể mất một lát — bạn có thể rời màn hình này một cách an toàn."
+          }
+        },
+        "th": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "เผยแพร่ไปยังเครือข่าย \\(transaction.chain.displayName) แล้ว การยืนยันอาจใช้เวลาสักครู่ — คุณออกจากหน้านี้ได้อย่างปลอดภัย"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Disiarkan ke jaringan \\(transaction.chain.displayName). Konfirmasi mungkin memerlukan waktu sejenak — Anda dapat meninggalkan layar ini dengan aman."
+          }
+        },
+        "fa": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "در شبکه \\(transaction.chain.displayName) منتشر شد. تأیید ممکن است لحظه‌ای طول بکشد — می‌توانید با خیال راحت این صفحه را ترک کنید."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Wysłano do sieci \\(transaction.chain.displayName). Potwierdzenie może chwilę potrwać — można bezpiecznie opuścić ten ekran."
+          }
+        },
+        "nl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Verzonden naar het \\(transaction.chain.displayName)-netwerk. Bevestiging kan even duren — je kunt dit scherm veilig verlaten."
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "\\(transaction.chain.displayName) نیٹ ورک پر نشر کر دیا گیا۔ تصدیق میں کچھ لمحے لگ سکتے ہیں — آپ بحفاظت اس اسکرین سے باہر جا سکتے ہیں۔"
+          }
+        },
+        "bg": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Излъчена към мрежата \\(transaction.chain.displayName). Потвърждението може да отнеме момент — можете безопасно да напуснете този екран."
+          }
+        },
+        "et": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Edastatud võrku \\(transaction.chain.displayName). Kinnitamine võib veidi aega võtta — sa võid selle ekraani turvaliselt sulgeda."
+          }
+        },
+        "lt": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Išsiųsta į \\(transaction.chain.displayName) tinklą. Patvirtinimas gali šiek tiek užtrukti — galite saugiai palikti šį ekraną."
+          }
+        },
+        "lv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pārraidīts uz \\(transaction.chain.displayName) tīklu. Apstiprināšana var aizņemt mirkli — jūs varat droši pamest šo ekrānu."
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sent á \\(transaction.chain.displayName)-netið. Staðfesting getur tekið augnablik — þú getur óhætt farið af þessum skjá."
+          }
+        },
+        "ms": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Disiarkan ke rangkaian \\(transaction.chain.displayName). Pengesahan mungkin mengambil seketika — anda boleh meninggalkan skrin ini dengan selamat."
+          }
+        },
+        "fil": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Na-broadcast sa network na \\(transaction.chain.displayName). Maaaring tumagal nang sandali ang pagkumpirma — ligtas mong maiiwan ang screen na ito."
+          }
+        },
+        "sw": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Imetangazwa kwa mtandao wa \\(transaction.chain.displayName). Uthibitisho unaweza kuchukua muda kidogo — unaweza kuondoka kwenye skrini hii kwa usalama."
+          }
+        },
+        "af": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Uitgesaai na die \\(transaction.chain.displayName)-netwerk. Bevestiging kan ’n oomblik neem — jy kan hierdie skerm veilig verlaat."
+          }
+        },
+        "ta": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "\\(transaction.chain.displayName) நெட்வொர்க்கில் ஒளிபரப்பப்பட்டது. உறுதிப்படுத்தலுக்கு சிறிது நேரம் ஆகலாம் — இந்தத் திரையைப் பாதுகாப்பாக விட்டுச் செல்லலாம்."
+          }
+        },
+        "te": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "\\(transaction.chain.displayName) నెట్‌వర్క్‌కి ప్రసారం చేయబడింది. నిర్ధారణకు కొద్దిసేపు పట్టవచ్చు — మీరు ఈ స్క్రీన్‌ను సురక్షితంగా వదిలి వెళ్లవచ్చు."
+          }
+        },
+        "ml": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "\\(transaction.chain.displayName) നെറ്റ്‌വർക്കിലേക്ക് പ്രക്ഷേപണം ചെയ്തു. സ്ഥിരീകരണത്തിന് അല്പസമയം എടുത്തേക്കാം — ഈ സ്ക്രീൻ സുരക്ഷിതമായി വിട്ടുപോകാം."
+          }
+        },
+        "mr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "\\(transaction.chain.displayName) नेटवर्कवर प्रसारित केले. पुष्टी होण्यास थोडा वेळ लागू शकतो — तुम्ही ही स्क्रीन सुरक्षितपणे सोडू शकता."
+          }
+        },
+        "pa": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "\\(transaction.chain.displayName) ਨੈੱਟਵਰਕ ਉੱਤੇ ਪ੍ਰਸਾਰਿਤ ਕੀਤਾ। ਪੁਸ਼ਟੀ ਹੋਣ ਵਿੱਚ ਕੁਝ ਪਲ ਲੱਗ ਸਕਦੇ ਹਨ — ਤੁਸੀਂ ਇਸ ਸਕ੍ਰੀਨ ਨੂੰ ਸੁਰੱਖਿਅਤ ਢੰਗ ਨਾਲ ਛੱਡ ਸਕਦੇ ਹੋ।"
+          }
+        }
+      }
+    },
+    "Confirmed on the \\(transaction.chain.displayName) network.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Confirmed on the \\(transaction.chain.displayName) network."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Confirmado en la red \\(transaction.chain.displayName)."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已在 \\(transaction.chain.displayName) 网络确认。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已在 \\(transaction.chain.displayName) 網路確認。"
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "\\(transaction.chain.displayName) नेटवर्क पर पुष्ट हुआ।"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "تم التأكيد على شبكة \\(transaction.chain.displayName)."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Confirmada na rede \\(transaction.chain.displayName)."
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "\\(transaction.chain.displayName) নেটওয়ার্কে নিশ্চিত হয়েছে।"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Подтверждено в сети \\(transaction.chain.displayName)."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "\\(transaction.chain.displayName) ネットワークで確認されました。"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Im \\(transaction.chain.displayName)-Netzwerk bestätigt."
+          }
+        },
+        "uk": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Підтверджено в мережі \\(transaction.chain.displayName)."
+          }
+        },
+        "el": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Επιβεβαιώθηκε στο δίκτυο \\(transaction.chain.displayName)."
+          }
+        },
+        "ro": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Confirmată în rețeaua \\(transaction.chain.displayName)."
+          }
+        },
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Potvrzeno v síti \\(transaction.chain.displayName)."
+          }
+        },
+        "hu": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Megerősítve a(z) \\(transaction.chain.displayName) hálózaton."
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bekräftad på \\(transaction.chain.displayName)-nätverket."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bekreftet på \\(transaction.chain.displayName)-nettverket."
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bekræftet på \\(transaction.chain.displayName)-netværket."
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vahvistettu \\(transaction.chain.displayName)-verkossa."
+          }
+        },
+        "he": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "אושרה ברשת \\(transaction.chain.displayName)."
+          }
+        },
+        "ca": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Confirmada a la xarxa \\(transaction.chain.displayName)."
+          }
+        },
+        "hr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Potvrđeno u mreži \\(transaction.chain.displayName)."
+          }
+        },
+        "sk": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Potvrdené v sieti \\(transaction.chain.displayName)."
+          }
+        },
+        "sl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Potrjeno v omrežju \\(transaction.chain.displayName)."
+          }
+        },
+        "sr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Потврђено у мрежи \\(transaction.chain.displayName)."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Confirmée sur le réseau \\(transaction.chain.displayName)."
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "\\(transaction.chain.displayName) 네트워크에서 확인되었어요."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Confermata sulla rete \\(transaction.chain.displayName)."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "\\(transaction.chain.displayName) ağında onaylandı."
+          }
+        },
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Đã được xác nhận trên mạng \\(transaction.chain.displayName)."
+          }
+        },
+        "th": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ยืนยันบนเครือข่าย \\(transaction.chain.displayName) แล้ว"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dikonfirmasi di jaringan \\(transaction.chain.displayName)."
+          }
+        },
+        "fa": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "در شبکه \\(transaction.chain.displayName) تأیید شد."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Potwierdzono w sieci \\(transaction.chain.displayName)."
+          }
+        },
+        "nl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bevestigd op het \\(transaction.chain.displayName)-netwerk."
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "\\(transaction.chain.displayName) نیٹ ورک پر تصدیق ہو گئی۔"
+          }
+        },
+        "bg": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Потвърдена в мрежата \\(transaction.chain.displayName)."
+          }
+        },
+        "et": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kinnitatud võrgus \\(transaction.chain.displayName)."
+          }
+        },
+        "lt": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Patvirtinta \\(transaction.chain.displayName) tinkle."
+          }
+        },
+        "lv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Apstiprināts \\(transaction.chain.displayName) tīklā."
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Staðfest á \\(transaction.chain.displayName)-netinu."
+          }
+        },
+        "ms": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Disahkan di rangkaian \\(transaction.chain.displayName)."
+          }
+        },
+        "fil": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nakumpirma sa network na \\(transaction.chain.displayName)."
+          }
+        },
+        "sw": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Imethibitishwa kwenye mtandao wa \\(transaction.chain.displayName)."
+          }
+        },
+        "af": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bevestig op die \\(transaction.chain.displayName)-netwerk."
+          }
+        },
+        "ta": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "\\(transaction.chain.displayName) நெட்வொர்க்கில் உறுதிப்படுத்தப்பட்டது."
+          }
+        },
+        "te": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "\\(transaction.chain.displayName) నెట్‌వర్క్‌లో నిర్ధారించబడింది."
+          }
+        },
+        "ml": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "\\(transaction.chain.displayName) നെറ്റ്‌വർക്കിൽ സ്ഥിരീകരിച്ചു."
+          }
+        },
+        "mr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "\\(transaction.chain.displayName) नेटवर्कवर पुष्टी झाली."
+          }
+        },
+        "pa": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "\\(transaction.chain.displayName) ਨੈੱਟਵਰਕ ਉੱਤੇ ਪੁਸ਼ਟੀ ਹੋ ਗਈ।"
+          }
+        }
+      }
+    },
+    "Enter in \\(model.assetSymbol)": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Enter in \\(model.assetSymbol)"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Introducir en \\(model.assetSymbol)"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "以 \\(model.assetSymbol) 输入"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "以 \\(model.assetSymbol) 輸入"
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "\\(model.assetSymbol) में दर्ज करें"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "الإدخال بـ \\(model.assetSymbol)"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Inserir em \\(model.assetSymbol)"
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "\\(model.assetSymbol)-এ লিখুন"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ввод в \\(model.assetSymbol)"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "\\(model.assetSymbol) で入力"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "In \\(model.assetSymbol) eingeben"
+          }
+        },
+        "uk": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ввести в \\(model.assetSymbol)"
+          }
+        },
+        "el": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Εισαγωγή σε \\(model.assetSymbol)"
+          }
+        },
+        "ro": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Introdu în \\(model.assetSymbol)"
+          }
+        },
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Zadat v \\(model.assetSymbol)"
+          }
+        },
+        "hu": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Megadás \\(model.assetSymbol) egységben"
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ange i \\(model.assetSymbol)"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Skriv inn i \\(model.assetSymbol)"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Indtast i \\(model.assetSymbol)"
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Syötä yksikössä \\(model.assetSymbol)"
+          }
+        },
+        "he": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "הזנה ב-\\(model.assetSymbol)"
+          }
+        },
+        "ca": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Introduir en \\(model.assetSymbol)"
+          }
+        },
+        "hr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Unesi u \\(model.assetSymbol)"
+          }
+        },
+        "sk": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Zadať v \\(model.assetSymbol)"
+          }
+        },
+        "sl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vnesi v \\(model.assetSymbol)"
+          }
+        },
+        "sr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Унос у \\(model.assetSymbol)"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Saisir en \\(model.assetSymbol)"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "\\(model.assetSymbol)(으)로 입력"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Inserisci in \\(model.assetSymbol)"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "\\(model.assetSymbol) cinsinden gir"
+          }
+        },
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nhập bằng \\(model.assetSymbol)"
+          }
+        },
+        "th": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ป้อนเป็น \\(model.assetSymbol)"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Masukkan dalam \\(model.assetSymbol)"
+          }
+        },
+        "fa": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "وارد کردن به \\(model.assetSymbol)"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Wprowadź w \\(model.assetSymbol)"
+          }
+        },
+        "nl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Invoeren in \\(model.assetSymbol)"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "\\(model.assetSymbol) میں درج کریں"
+          }
+        },
+        "bg": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Въведете в \\(model.assetSymbol)"
+          }
+        },
+        "et": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sisesta valuutas \\(model.assetSymbol)"
+          }
+        },
+        "lt": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Įveskite \\(model.assetSymbol)"
+          }
+        },
+        "lv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ievadiet \\(model.assetSymbol)"
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Slá inn í \\(model.assetSymbol)"
+          }
+        },
+        "ms": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Masukkan dalam \\(model.assetSymbol)"
+          }
+        },
+        "fil": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ilagay sa \\(model.assetSymbol)"
+          }
+        },
+        "sw": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Weka kwa \\(model.assetSymbol)"
+          }
+        },
+        "af": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Voer in \\(model.assetSymbol) in"
+          }
+        },
+        "ta": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "\\(model.assetSymbol) இல் உள்ளிடவும்"
+          }
+        },
+        "te": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "\\(model.assetSymbol)లో నమోదు చేయండి"
+          }
+        },
+        "ml": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "\\(model.assetSymbol) ൽ നൽകുക"
+          }
+        },
+        "mr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "\\(model.assetSymbol) मध्ये प्रविष्ट करा"
+          }
+        },
+        "pa": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "\\(model.assetSymbol) ਵਿੱਚ ਦਾਖਲ ਕਰੋ"
+          }
+        }
+      }
+    },
+    "Enter in \\(model.currencyCode.uppercased())": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Enter in \\(model.currencyCode.uppercased())"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Introducir en \\(model.currencyCode.uppercased())"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "以 \\(model.currencyCode.uppercased()) 输入"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "以 \\(model.currencyCode.uppercased()) 輸入"
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "\\(model.currencyCode.uppercased()) में दर्ज करें"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "الإدخال بـ \\(model.currencyCode.uppercased())"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Inserir em \\(model.currencyCode.uppercased())"
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "\\(model.currencyCode.uppercased())-এ লিখুন"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ввод в \\(model.currencyCode.uppercased())"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "\\(model.currencyCode.uppercased()) で入力"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "In \\(model.currencyCode.uppercased()) eingeben"
+          }
+        },
+        "uk": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ввести в \\(model.currencyCode.uppercased())"
+          }
+        },
+        "el": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Εισαγωγή σε \\(model.currencyCode.uppercased())"
+          }
+        },
+        "ro": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Introdu în \\(model.currencyCode.uppercased())"
+          }
+        },
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Zadat v \\(model.currencyCode.uppercased())"
+          }
+        },
+        "hu": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Megadás \\(model.currencyCode.uppercased()) egységben"
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ange i \\(model.currencyCode.uppercased())"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Skriv inn i \\(model.currencyCode.uppercased())"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Indtast i \\(model.currencyCode.uppercased())"
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Syötä valuutassa \\(model.currencyCode.uppercased())"
+          }
+        },
+        "he": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "הזנה ב-\\(model.currencyCode.uppercased())"
+          }
+        },
+        "ca": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Introduir en \\(model.currencyCode.uppercased())"
+          }
+        },
+        "hr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Unesi u \\(model.currencyCode.uppercased())"
+          }
+        },
+        "sk": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Zadať v \\(model.currencyCode.uppercased())"
+          }
+        },
+        "sl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vnesi v \\(model.currencyCode.uppercased())"
+          }
+        },
+        "sr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Унос у \\(model.currencyCode.uppercased())"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Saisir en \\(model.currencyCode.uppercased())"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "\\(model.currencyCode.uppercased())(으)로 입력"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Inserisci in \\(model.currencyCode.uppercased())"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "\\(model.currencyCode.uppercased()) cinsinden gir"
+          }
+        },
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nhập bằng \\(model.currencyCode.uppercased())"
+          }
+        },
+        "th": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ป้อนเป็น \\(model.currencyCode.uppercased())"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Masukkan dalam \\(model.currencyCode.uppercased())"
+          }
+        },
+        "fa": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "وارد کردن به \\(model.currencyCode.uppercased())"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Wprowadź w \\(model.currencyCode.uppercased())"
+          }
+        },
+        "nl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Invoeren in \\(model.currencyCode.uppercased())"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "\\(model.currencyCode.uppercased()) میں درج کریں"
+          }
+        },
+        "bg": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Въведете в \\(model.currencyCode.uppercased())"
+          }
+        },
+        "et": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sisesta valuutas \\(model.currencyCode.uppercased())"
+          }
+        },
+        "lt": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Įveskite \\(model.currencyCode.uppercased())"
+          }
+        },
+        "lv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ievadiet \\(model.currencyCode.uppercased())"
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Slá inn í \\(model.currencyCode.uppercased())"
+          }
+        },
+        "ms": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Masukkan dalam \\(model.currencyCode.uppercased())"
+          }
+        },
+        "fil": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ilagay sa \\(model.currencyCode.uppercased())"
+          }
+        },
+        "sw": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Weka kwa \\(model.currencyCode.uppercased())"
+          }
+        },
+        "af": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Voer in \\(model.currencyCode.uppercased()) in"
+          }
+        },
+        "ta": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "\\(model.currencyCode.uppercased()) இல் உள்ளிடவும்"
+          }
+        },
+        "te": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "\\(model.currencyCode.uppercased())లో నమోదు చేయండి"
+          }
+        },
+        "ml": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "\\(model.currencyCode.uppercased()) ൽ നൽകുക"
+          }
+        },
+        "mr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "\\(model.currencyCode.uppercased()) मध्ये प्रविष्ट करा"
+          }
+        },
+        "pa": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "\\(model.currencyCode.uppercased()) ਵਿੱਚ ਦਾਖਲ ਕਰੋ"
+          }
+        }
+      }
+    },
+    "The transaction reverted on-chain. Nothing was sent — your funds did not move.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The transaction reverted on-chain. Nothing was sent — your funds did not move."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "La transacción se revirtió en la cadena. No se envió nada — tus fondos no se movieron."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "交易在链上已回滚。未发送任何资金 — 你的资金没有变动。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "交易在鏈上已回退。未發送任何資金 — 你的資金沒有變動。"
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "लेन-देन ऑन-चेन वापस लौट गया। कुछ भी नहीं भेजा गया — आपके फंड स्थानांतरित नहीं हुए।"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "تم التراجع عن المعاملة على السلسلة. لم يُرسَل أي شيء — لم تتحرك أموالك."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "A transação foi revertida on-chain. Nada foi enviado — seus fundos não se moveram."
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "লেনদেনটি অন-চেইন প্রত্যাহার হয়েছে। কিছুই পাঠানো হয়নি — আপনার তহবিল সরেনি।"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Транзакция была отменена в блокчейне. Ничего не отправлено — ваши средства не перемещались."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "トランザクションはオンチェーンで取り消されました。何も送信されていません — 資金は移動していません。"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Die Transaktion wurde On-Chain rückgängig gemacht. Es wurde nichts gesendet — Ihr Guthaben wurde nicht bewegt."
+          }
+        },
+        "uk": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Транзакцію скасовано в блокчейні. Нічого не надіслано — ваші кошти не рухалися."
+          }
+        },
+        "el": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Η συναλλαγή αναιρέθηκε on-chain. Δεν στάλθηκε τίποτα — τα κεφάλαιά σας δεν μετακινήθηκαν."
+          }
+        },
+        "ro": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tranzacția a fost anulată on-chain. Nu s-a trimis nimic — fondurile tale nu s-au mișcat."
+          }
+        },
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Transakce byla na blockchainu vrácena zpět. Nic nebylo odesláno — vaše prostředky se nepohnuly."
+          }
+        },
+        "hu": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "A tranzakció visszafordult a láncon. Semmi sem lett elküldve — az egyenlege nem mozdult."
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Transaktionen återställdes on-chain. Inget skickades — dina medel rördes inte."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Transaksjonen ble reversert on-chain. Ingenting ble sendt — midlene dine ble ikke flyttet."
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Transaktionen blev tilbageført on-chain. Intet blev sendt — dine midler blev ikke flyttet."
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tapahtuma peruuntui lohkoketjussa. Mitään ei lähetetty — varasi eivät liikkuneet."
+          }
+        },
+        "he": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "העסקה בוטלה על גבי הרשת. שום דבר לא נשלח — הכספים שלך לא זזו."
+          }
+        },
+        "ca": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "La transacció s’ha revertit a la cadena. No s’ha enviat res — els teus fons no s’han mogut."
+          }
+        },
+        "hr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Transakcija je poništena na lancu. Ništa nije poslano — vaša sredstva nisu pomaknuta."
+          }
+        },
+        "sk": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Transakcia bola na blockchaine vrátená späť. Nič sa neodoslalo — vaše prostriedky sa nepohli."
+          }
+        },
+        "sl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Transakcija je bila razveljavljena v verigi. Nič ni bilo poslano — vaša sredstva se niso premaknila."
+          }
+        },
+        "sr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Трансакција је поништена на ланцу. Ништа није послато — ваша средства се нису померила."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "La transaction a été annulée sur la chaîne. Rien n’a été envoyé — vos fonds n’ont pas bougé."
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "거래가 온체인에서 되돌려졌어요. 아무것도 전송되지 않았어요 — 자금은 이동하지 않았어요."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "La transazione è stata annullata on-chain. Non è stato inviato nulla — i tuoi fondi non si sono mossi."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "İşlem zincir üzerinde geri alındı. Hiçbir şey gönderilmedi — paranız yerinde kaldı."
+          }
+        },
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Giao dịch đã bị hoàn lại trên chuỗi. Không có gì được gửi đi — số tiền của bạn không hề dịch chuyển."
+          }
+        },
+        "th": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ธุรกรรมถูกย้อนกลับบนเชน ไม่มีการส่งสิ่งใด — เงินของคุณไม่ได้เคลื่อนไหว"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Transaksi dibatalkan on-chain. Tidak ada yang terkirim — dana Anda tidak berpindah."
+          }
+        },
+        "fa": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "تراکنش روی زنجیره برگشت خورد. چیزی ارسال نشد — وجوه شما جابه‌جا نشد."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Transakcja została wycofana w łańcuchu. Nic nie wysłano — środki nie zostały przeniesione."
+          }
+        },
+        "nl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "De transactie is on-chain teruggedraaid. Er is niets verzonden — je tegoed is niet verplaatst."
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ٹرانزیکشن آن چین واپس ہو گئی۔ کچھ نہیں بھیجا گیا — آپ کے فنڈز منتقل نہیں ہوئے۔"
+          }
+        },
+        "bg": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Транзакцията беше отменена в блокчейна. Нищо не беше изпратено — средствата ви не са се преместили."
+          }
+        },
+        "et": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tehing tühistati ahelas. Midagi ei saadetud — sinu raha ei liikunud."
+          }
+        },
+        "lt": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Operacija buvo atšaukta grandinėje. Niekas nebuvo išsiųsta — jūsų lėšos nepajudėjo."
+          }
+        },
+        "lv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Darījums tika atcelts ķēdē. Nekas netika nosūtīts — jūsu līdzekļi nekustējās."
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Færslan var afturkölluð á keðjunni. Ekkert var sent — fjármunir þínir hreyfðust ekki."
+          }
+        },
+        "ms": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Transaksi telah dibatalkan di atas rantai. Tiada apa yang dihantar — dana anda tidak berpindah."
+          }
+        },
+        "fil": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Binawi ang transaksyon on-chain. Walang naipadala — hindi gumalaw ang iyong pondo."
+          }
+        },
+        "sw": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Muamala ulibatilishwa kwenye mnyororo. Hakuna kilichotumwa — fedha zako hazikuhama."
+          }
+        },
+        "af": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Die transaksie is op die ketting teruggerol. Niks is gestuur nie — jou fondse het nie beweeg nie."
+          }
+        },
+        "ta": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "பரிவர்த்தனை செயினில் மீள்மாற்றப்பட்டது. எதுவும் அனுப்பப்படவில்லை — உங்கள் நிதி நகரவில்லை."
+          }
+        },
+        "te": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "లావాదేవీ చైన్‌లో రద్దైంది. ఏమీ పంపబడలేదు — మీ నిధులు కదలలేదు."
+          }
+        },
+        "ml": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ഇടപാട് ചെയിനിൽ പിൻവലിക്കപ്പെട്ടു. ഒന്നും അയച്ചിട്ടില്ല — നിങ്ങളുടെ ഫണ്ട് നീങ്ങിയിട്ടില്ല."
+          }
+        },
+        "mr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "व्यवहार चेनवर परत झाला. काहीही पाठवले गेले नाही — तुमचा निधी हलला नाही."
+          }
+        },
+        "pa": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ਲੈਣ-ਦੇਣ ਚੇਨ ਉੱਤੇ ਵਾਪਸ ਹੋ ਗਿਆ। ਕੁਝ ਨਹੀਂ ਭੇਜਿਆ ਗਿਆ — ਤੁਹਾਡੇ ਫੰਡ ਨਹੀਂ ਹਿੱਲੇ।"
+          }
+        }
+      }
+    },
+    "\\(chain.displayName) network": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "\\(chain.displayName) network"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Red \\(chain.displayName)"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "\\(chain.displayName) 网络"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "\\(chain.displayName) 網路"
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "\\(chain.displayName) नेटवर्क"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "شبكة \\(chain.displayName)"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rede \\(chain.displayName)"
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "\\(chain.displayName) নেটওয়ার্ক"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Сеть \\(chain.displayName)"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "\\(chain.displayName) ネットワーク"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "\\(chain.displayName)-Netzwerk"
+          }
+        },
+        "uk": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Мережа \\(chain.displayName)"
+          }
+        },
+        "el": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Δίκτυο \\(chain.displayName)"
+          }
+        },
+        "ro": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rețeaua \\(chain.displayName)"
+          }
+        },
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Síť \\(chain.displayName)"
+          }
+        },
+        "hu": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "\\(chain.displayName) hálózat"
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "\\(chain.displayName)-nätverket"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "\\(chain.displayName)-nettverket"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "\\(chain.displayName)-netværket"
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "\\(chain.displayName)-verkko"
+          }
+        },
+        "he": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "רשת \\(chain.displayName)"
+          }
+        },
+        "ca": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Xarxa \\(chain.displayName)"
+          }
+        },
+        "hr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mreža \\(chain.displayName)"
+          }
+        },
+        "sk": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sieť \\(chain.displayName)"
+          }
+        },
+        "sl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Omrežje \\(chain.displayName)"
+          }
+        },
+        "sr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Мрежа \\(chain.displayName)"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Réseau \\(chain.displayName)"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "\\(chain.displayName) 네트워크"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rete \\(chain.displayName)"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "\\(chain.displayName) ağı"
+          }
+        },
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mạng \\(chain.displayName)"
+          }
+        },
+        "th": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "เครือข่าย \\(chain.displayName)"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Jaringan \\(chain.displayName)"
+          }
+        },
+        "fa": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "شبکه \\(chain.displayName)"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sieć \\(chain.displayName)"
+          }
+        },
+        "nl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "\\(chain.displayName)-netwerk"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "\\(chain.displayName) نیٹ ورک"
+          }
+        },
+        "bg": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Мрежа \\(chain.displayName)"
+          }
+        },
+        "et": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "\\(chain.displayName) võrk"
+          }
+        },
+        "lt": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "\\(chain.displayName) tinklas"
+          }
+        },
+        "lv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "\\(chain.displayName) tīkls"
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "\\(chain.displayName)-net"
+          }
+        },
+        "ms": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rangkaian \\(chain.displayName)"
+          }
+        },
+        "fil": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Network na \\(chain.displayName)"
+          }
+        },
+        "sw": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mtandao wa \\(chain.displayName)"
+          }
+        },
+        "af": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "\\(chain.displayName)-netwerk"
+          }
+        },
+        "ta": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "\\(chain.displayName) நெட்வொர்க்"
+          }
+        },
+        "te": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "\\(chain.displayName) నెట్‌వర్క్"
+          }
+        },
+        "ml": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "\\(chain.displayName) നെറ്റ്‌വർക്ക്"
+          }
+        },
+        "mr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "\\(chain.displayName) नेटवर्क"
+          }
+        },
+        "pa": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "\\(chain.displayName) ਨੈੱਟਵਰਕ"
+          }
+        }
+      }
+    },
+    "\\(row.symbol) · \\(row.chain.displayName)": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "\\(row.symbol) · \\(row.chain.displayName)"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "\\(row.symbol) · \\(row.chain.displayName)"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "\\(row.symbol) · \\(row.chain.displayName)"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "\\(row.symbol) · \\(row.chain.displayName)"
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "\\(row.symbol) · \\(row.chain.displayName)"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "\\(row.symbol) · \\(row.chain.displayName)"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "\\(row.symbol) · \\(row.chain.displayName)"
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "\\(row.symbol) · \\(row.chain.displayName)"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "\\(row.symbol) · \\(row.chain.displayName)"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "\\(row.symbol) · \\(row.chain.displayName)"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "\\(row.symbol) · \\(row.chain.displayName)"
+          }
+        },
+        "uk": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "\\(row.symbol) · \\(row.chain.displayName)"
+          }
+        },
+        "el": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "\\(row.symbol) · \\(row.chain.displayName)"
+          }
+        },
+        "ro": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "\\(row.symbol) · \\(row.chain.displayName)"
+          }
+        },
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "\\(row.symbol) · \\(row.chain.displayName)"
+          }
+        },
+        "hu": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "\\(row.symbol) · \\(row.chain.displayName)"
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "\\(row.symbol) · \\(row.chain.displayName)"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "\\(row.symbol) · \\(row.chain.displayName)"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "\\(row.symbol) · \\(row.chain.displayName)"
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "\\(row.symbol) · \\(row.chain.displayName)"
+          }
+        },
+        "he": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "\\(row.symbol) · \\(row.chain.displayName)"
+          }
+        },
+        "ca": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "\\(row.symbol) · \\(row.chain.displayName)"
+          }
+        },
+        "hr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "\\(row.symbol) · \\(row.chain.displayName)"
+          }
+        },
+        "sk": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "\\(row.symbol) · \\(row.chain.displayName)"
+          }
+        },
+        "sl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "\\(row.symbol) · \\(row.chain.displayName)"
+          }
+        },
+        "sr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "\\(row.symbol) · \\(row.chain.displayName)"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "\\(row.symbol) · \\(row.chain.displayName)"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "\\(row.symbol) · \\(row.chain.displayName)"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "\\(row.symbol) · \\(row.chain.displayName)"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "\\(row.symbol) · \\(row.chain.displayName)"
+          }
+        },
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "\\(row.symbol) · \\(row.chain.displayName)"
+          }
+        },
+        "th": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "\\(row.symbol) · \\(row.chain.displayName)"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "\\(row.symbol) · \\(row.chain.displayName)"
+          }
+        },
+        "fa": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "\\(row.symbol) · \\(row.chain.displayName)"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "\\(row.symbol) · \\(row.chain.displayName)"
+          }
+        },
+        "nl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "\\(row.symbol) · \\(row.chain.displayName)"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "\\(row.symbol) · \\(row.chain.displayName)"
+          }
+        },
+        "bg": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "\\(row.symbol) · \\(row.chain.displayName)"
+          }
+        },
+        "et": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "\\(row.symbol) · \\(row.chain.displayName)"
+          }
+        },
+        "lt": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "\\(row.symbol) · \\(row.chain.displayName)"
+          }
+        },
+        "lv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "\\(row.symbol) · \\(row.chain.displayName)"
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "\\(row.symbol) · \\(row.chain.displayName)"
+          }
+        },
+        "ms": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "\\(row.symbol) · \\(row.chain.displayName)"
+          }
+        },
+        "fil": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "\\(row.symbol) · \\(row.chain.displayName)"
+          }
+        },
+        "sw": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "\\(row.symbol) · \\(row.chain.displayName)"
+          }
+        },
+        "af": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "\\(row.symbol) · \\(row.chain.displayName)"
+          }
+        },
+        "ta": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "\\(row.symbol) · \\(row.chain.displayName)"
+          }
+        },
+        "te": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "\\(row.symbol) · \\(row.chain.displayName)"
+          }
+        },
+        "ml": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "\\(row.symbol) · \\(row.chain.displayName)"
+          }
+        },
+        "mr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "\\(row.symbol) · \\(row.chain.displayName)"
+          }
+        },
+        "pa": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "\\(row.symbol) · \\(row.chain.displayName)"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

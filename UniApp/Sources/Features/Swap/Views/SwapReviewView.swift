@@ -853,11 +853,43 @@ private struct SwapDoneView: View {
     @State private var copiedAt: Date?
     @State private var copyResetTask: Task<Void, Never>?
 
+    /// The live on-chain verdict, polled after the screen appears so a tx
+    /// that was still pending when the executor handed off flips to
+    /// confirmed/reverted right here (Rule #25). `nil` until the poll
+    /// resolves — then it overrides the executor's snapshot. The screen
+    /// shows "Submitted" honestly until the chain actually reports back.
+    @State private var liveConfirmed: Bool?
+    /// Stamped the instant the live poll resolves — drives the success /
+    /// error haptic so the flip is felt, not just seen.
+    @State private var resolvedAt: Date?
+
     private var quote: SwapQuote { summary.quote }
 
-    private var isConfirmed: Bool { executed.confirmed == true }
-    private var isReverted: Bool { executed.confirmed == false }
-    private var isPending: Bool { executed.confirmed == nil }
+    /// The executor's snapshot, superseded by the live poll once it lands.
+    private var effectiveConfirmed: Bool? { liveConfirmed ?? executed.confirmed }
+
+    private var isConfirmed: Bool { effectiveConfirmed == true }
+    private var isReverted: Bool { effectiveConfirmed == false }
+    private var isPending: Bool { effectiveConfirmed == nil }
+
+    /// Keep checking the chain until the broadcast tx confirms or reverts,
+    /// then flip the hero from "Submitted" to the real result (Rule #25).
+    /// Only runs when the executor handed off a still-pending tx — a result
+    /// the executor already resolved needs no further polling. Honest: if the
+    /// budget runs out it leaves the screen on "Submitted" (Rule #16).
+    private func pollForConfirmation() async {
+        guard executed.confirmed == nil, !executed.txHash.isEmpty else { return }
+        let outcome = await TransactionConfirmation.awaitResolution(
+            txHash: executed.txHash,
+            chain: executed.chain
+        )
+        guard !Task.isCancelled else { return }
+        switch outcome {
+        case .confirmed: liveConfirmed = true;  resolvedAt = Date()
+        case .failed:    liveConfirmed = false; resolvedAt = Date()
+        case .pending:   break // budget exhausted — stay honestly "Submitted"
+        }
+    }
 
     private var explorerURL: URL? {
         TransactionExplorer.url(for: executed.txHash, chain: executed.chain)
@@ -877,6 +909,9 @@ private struct SwapDoneView: View {
             .navigationBarTitleDisplayMode(.inline)
             .navigationBarBackButtonHidden(true)
             .uniHaptic(.success, trigger: copiedAt)
+            .uniHaptic(.success, trigger: isConfirmed ? resolvedAt : nil)
+            .uniHaptic(.error, trigger: isReverted ? resolvedAt : nil)
+            .task(id: executed.txHash) { await pollForConfirmation() }
             .onDisappear { copyResetTask?.cancel() }
     }
 
