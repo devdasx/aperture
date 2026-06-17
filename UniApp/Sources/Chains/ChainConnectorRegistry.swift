@@ -24,6 +24,17 @@ enum ChainConnectorRegistry {
     /// The connector for `chain`. Exhaustive: every chain resolves to a
     /// concrete connector value, no trap, no `default`.
     static func connector(for chain: SupportedChain) -> any ChainConnector {
+        // **Alchemy routing (2026-06-17, user direction).** When an Alchemy
+        // key is configured, the 10 EVM chains Alchemy's Portfolio + Transfers
+        // APIs cover (Ethereum, Arbitrum, Base, Optimism, Scroll, zkSync,
+        // Polygon, BNB, Avalanche, Celo) read balances + history SOLELY through
+        // `AlchemyConnector` — no Infura/Multicall3/eth_getLogs fallback. Every
+        // other chain (opBNB, the Bitcoin family, Solana, and the long-tail
+        // L1s — none of which Alchemy's Portfolio API serves) keeps its own
+        // independent connector below.
+        if Secrets.hasAlchemyKey, AlchemyConnector.supportedChains.contains(chain) {
+            return AlchemyConnector(chain: chain)
+        }
         switch chain {
         // MARK: - EVM family (each its own copy of EthereumConnector)
         case .ethereum:  return EthereumConnector()
