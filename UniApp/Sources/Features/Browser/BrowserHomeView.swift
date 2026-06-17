@@ -32,13 +32,13 @@ import SwiftData
 ///   - No connected sessions → the section disappears; the
 ///     "Connect a dApp" hint lives inside the guide footnote.
 ///
-/// **Search (Rule #14 carve-out).** The browser's smart URL field
-/// is NOT `.searchable(text:)`. The system's `.searchable` is for
-/// filtering visible content; this field is the user's primary
-/// commit affordance — type a URL, tap Go, navigate. Apple's
-/// Safari, Chrome, every browser ships a custom URL field for the
-/// same reason. The custom field still honors Rule #11 (semantic
-/// edges) and Rule #2 §B (Liquid Glass via system APIs).
+/// **Search (2026-06-17 — native `.searchable`, user direction).** The
+/// URL field is now the system `.searchable(text:)` bar connected to the
+/// nav bar — identical to every other screen (Wallets, Currency, Receive,
+/// etc.) so the browser doesn't feel bespoke. It still routes intelligently:
+/// `.onSubmit(of: .search)` hands the text to `BrowserURLNormalizer`, which
+/// decides URL vs. search query. (This supersedes the earlier custom
+/// `BrowserSearchField` carve-out; the user asked for the native bar.)
 ///
 /// **Honesty (Rule #16).** The Open-source anchor sits inline at
 /// the bottom of the list as a tertiary UniButton. Aperture
@@ -75,7 +75,7 @@ struct BrowserHomeView: View {
 
     // MARK: - Local UI state
 
-    /// The URL field's text. Bound to `BrowserSearchField`. Reset
+    /// The URL field's text. Bound to the nav-bar `.searchable`. Reset
     /// when the user navigates so the next visit starts fresh.
     @State private var searchText: String = ""
 
@@ -102,6 +102,16 @@ struct BrowserHomeView: View {
         listSurface
             .navigationTitle("Browser")
             .navigationBarTitleDisplayMode(.large)
+            // Native iOS 26 search bar, connected to the nav bar (user
+            // direction 2026-06-17) — identical to every other screen's
+            // `.searchable`. It doubles as the smart URL field: the typed
+            // text routes through `BrowserURLNormalizer` on submit (URL vs.
+            // search query). Autocapitalization / autocorrection are off so
+            // URLs aren't mangled, and `.webSearch` parsing happens on submit.
+            .searchable(text: $searchText, prompt: Text("Search or enter address"))
+            .textInputAutocapitalization(.never)
+            .autocorrectionDisabled()
+            .onSubmit(of: .search) { submitSearch() }
             .toolbar { toolbarItems }
             .navigationDestination(item: $sessionDestination) { destination in
                 BrowserSessionView(
@@ -180,7 +190,6 @@ struct BrowserHomeView: View {
     @ViewBuilder
     private var listSurface: some View {
         List {
-            searchSection
             favoritesSection
             recentSection
             connectedSection
@@ -192,21 +201,6 @@ struct BrowserHomeView: View {
     }
 
     // MARK: - Sections
-
-    /// The smart URL field. Rendered as one cleared row so the
-    /// glass capsule floats free of the inset-grouped card chrome
-    /// (Rule #2 §B.3 — chrome floats over content).
-    @ViewBuilder
-    private var searchSection: some View {
-        Section {
-            BrowserSearchField(text: $searchText, onSubmit: submitSearch)
-                .padding(.horizontal, UniSpacing.xs)
-                .padding(.vertical, UniSpacing.xs)
-                .listRowBackground(Color.clear)
-                .listRowSeparator(.hidden)
-                .listRowInsets(EdgeInsets(top: UniSpacing.xs, leading: 0, bottom: UniSpacing.s, trailing: 0))
-        }
-    }
 
     /// The 4-column favorites grid. One List row holding the grid
     /// — iOS draws the inset-grouped card around it for free.
