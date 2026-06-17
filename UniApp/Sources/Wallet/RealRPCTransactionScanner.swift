@@ -105,9 +105,18 @@ struct RealRPCTransactionScanner: TransactionScanner {
         addresses: [SupportedChain: String],
         limit: Int,
         customContractsByChain: [SupportedChain: [String]],
-        ownAddressesByChain: [SupportedChain: Set<String>]
+        ownAddressesByChain: [SupportedChain: Set<String>],
+        deepHistory: Bool = false
     ) async -> [TransactionEvent] {
-        let depth = max(limit, Self.fullHistoryCap)
+        // **Latency fix (2026-06-17).** The bulk scan used to force
+        // `max(limit, fullHistoryCap)` = 1000 events PER CHAIN on EVERY
+        // refresh — deep-paginating dozens of RPC calls per chain, which is
+        // exactly what hammered Infura into a 429 storm and made history
+        // fetches take 10–22 s each (even for chains with no activity). A live
+        // pull-to-refresh only needs the recent page (`limit`, ~25), one or
+        // two RPC calls per chain; the full-history backfill is opt-in via
+        // `deepHistory` (a future "load full history" / first-import path).
+        let depth = deepHistory ? max(limit, Self.fullHistoryCap) : limit
         return await withTaskGroup(of: [TransactionEvent].self) { group in
             for (chain, address) in addresses {
                 let custom = customContractsByChain[chain] ?? []

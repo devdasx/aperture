@@ -79,6 +79,18 @@ actor ChainStateRepository {
         walletDescriptor.fetchLimit = 1
         guard let wallet = try modelContext.fetch(walletDescriptor).first else { return 0 }
 
+        // **Balance-$0 fix (2026-06-17).** TokenBalanceRecord + TransactionRecord
+        // are written by `TransactionRepository`, a SEPARATE `@ModelActor` with
+        // its OWN context. This actor's long-lived `modelContext` caches those
+        // rows the first time it fetches them (during an early interim/live
+        // rebuild, when the native fiat is still nil/0), and SwiftData does NOT
+        // refresh a cached object's scalars on a later re-fetch — so the final
+        // rebuild kept reading fiat=0 and `ChainStateRecord.totalFiat` was stuck
+        // at 0 (the hero showed $0 even though balances + prices were persisted).
+        // Read the balance + tx rows from a FRESH context per rebuild so we
+        // always see exactly what `txRepo` committed to the store.
+        let readContext = ModelContext(modelContainer)
+
         var rebuilt = 0
         for address in wallet.addresses {
             guard let chain = SupportedChain(rawValue: address.chainRaw) else { continue }
@@ -87,6 +99,7 @@ actor ChainStateRepository {
                 ? .syncing
                 : (failedChains.contains(chain) ? .failed : .synced)
             try recomputeRow(
+                readContext: readContext,
                 walletId: walletId,
                 chain: chain,
                 addressId: address.id,
@@ -107,6 +120,7 @@ actor ChainStateRepository {
     /// the `ChainStateRecord`. Preserves the encrypted-key blob (only
     /// `storeEncryptedKeys` writes that).
     private func recomputeRow(
+        readContext: ModelContext,
         walletId: UUID,
         chain: SupportedChain,
         addressId: UUID,
@@ -117,11 +131,13 @@ actor ChainStateRepository {
         syncState: ChainSyncState,
         save: Bool
     ) throws {
-        // --- Balances (native + tokens) ---
+        // --- Balances (native + tokens) --- read from the fresh `readContext`
+        // (see the rebuild() comment): the priced fiat `txRepo` committed is
+        // only visible to a context that hasn't already cached these rows at 0.
         let balanceDescriptor = FetchDescriptor<TokenBalanceRecord>(
             predicate: #Predicate { $0.addressId == addressId }
         )
-        let balances = try modelContext.fetch(balanceDescriptor)
+        let balances = try readContext.fetch(balanceDescriptor)
         let nativeTicker = chain.ticker
         var nativeBalanceRaw = "0"
         var nativeDecimals = 0
@@ -151,7 +167,7 @@ actor ChainStateRepository {
         let txDescriptor = FetchDescriptor<TransactionRecord>(
             predicate: #Predicate { $0.addressId == addressId }
         )
-        let txs = try modelContext.fetch(txDescriptor)
+        let txs = try readContext.fetch(txDescriptor)
         var sent = 0, received = 0, swap = 0, selfT = 0, bridge = 0, failed = 0, pending = 0
         for tx in txs {
             let status = TransactionStatus(rawValue: tx.statusRaw) ?? .confirmed
@@ -175,7 +191,7 @@ actor ChainStateRepository {
         let utxoDescriptor = FetchDescriptor<ChainUTXORecord>(
             predicate: #Predicate { $0.walletId == walletId && $0.chainRaw == chainRaw }
         )
-        let utxos = try modelContext.fetch(utxoDescriptor)
+        let utxos = try readContext.fetch(utxoDescriptor)
         let utxoTotal = utxos.reduce(Int64(0)) { $0 + $1.valueSats }
 
         // --- Upsert the aggregate row ---

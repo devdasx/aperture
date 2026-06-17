@@ -47,6 +47,24 @@ struct RPCEndpoint: Sendable, Hashable, Identifiable {
     /// share. Future hatch for load balancing across mirrors.
     let weight: Int
 
+    /// **Rate-limit bucket key (2026-06-17 — Infura 429-storm fix).**
+    /// Most providers throttle PER HOST, so each endpoint's own `id` is the
+    /// right bucket key. But account-billed providers (Infura, keyed 1RPC)
+    /// throttle PER ACCOUNT across all of their per-chain subdomains —
+    /// `mainnet.infura.io`, `base-mainnet.infura.io`, … all draw from one
+    /// account quota. Keying those by `id` let all 11 EVM chains each fire at
+    /// the full per-host rate simultaneously (11× the account budget) → the
+    /// 223-strong HTTP 429 storm that made a refresh take 35s. Grouping every
+    /// endpoint of such a provider under ONE bucket makes the `RateLimiter`
+    /// enforce the real account rate.
+    var rateLimitGroup: String {
+        switch provider {
+        case "infura": return "account:infura"
+        case "1rpc": return "account:1rpc"
+        default: return id
+        }
+    }
+
     enum Kind: String, Sendable, Hashable {
         /// Standard JSON-RPC 2.0 envelope:
         /// `{ "jsonrpc": "2.0", "id": 1, "method": "...", "params": [...] }`.

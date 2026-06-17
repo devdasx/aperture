@@ -240,6 +240,50 @@ struct RefreshPipelinePersistenceTests {
         #expect(btc2 != nil, "bitcoin row should exist after a targeted bitcoin rebuild")
     }
 
+    // MARK: - Balance-$0 regression (cross-@ModelActor fiat staleness)
+
+    /// Reproduces the "balance shows $0" bug: `ChainStateRepository` (one
+    /// `@ModelActor`) must read the fiat that `TransactionRepository` (a
+    /// DIFFERENT `@ModelActor`) committed. The pre-fix code cached the balance
+    /// row at fiat=0 during the first rebuild and never saw the later priced
+    /// write, so `ChainStateRecord.totalFiat` stayed 0 even though the price
+    /// had landed. Deterministic — no network/pricing dependency.
+    @Test("rebuild re-reads fiat a sibling context committed (balance-​$0 regression)")
+    func rebuildReadsSiblingContextFiat() async throws {
+        let container = try makeContainer()
+        let walletId = try seedWallet(container, chain: .ethereum, address: Self.ethAddress)
+
+        let context = ModelContext(container)
+        var descriptor = FetchDescriptor<WalletRecord>(predicate: #Predicate { $0.id == walletId })
+        descriptor.fetchLimit = 1
+        let addressId = try #require(try context.fetch(descriptor).first?.addresses.first?.id)
+
+        let txRepo = TransactionRepository(modelContainer: container)
+        let chainRepo = ChainStateRepository(modelContainer: container)
+        let eth = SupportedChain.ethereum
+
+        // 1) The nil-fiat phase: a balance row exists at fiat 0.
+        try await txRepo.upsertBalance(
+            addressId: addressId, tokenSymbol: eth.ticker, tokenContract: nil,
+            decimals: 0, rawBalance: "2.0", fiatValueCached: 0, fiatCurrencyCode: "USD"
+        )
+        // 2) First rebuild — chainRepo's context caches the row at fiat 0.
+        try await chainRepo.rebuild(walletId: walletId, fiatCurrencyCode: "USD")
+        let before = try await chainRepo.chainState(walletId: walletId, chain: eth)
+        #expect(before?.totalFiat == 0, "sanity: fiat not priced yet")
+
+        // 3) The priced re-yield: txRepo (sibling context) updates the SAME row.
+        try await txRepo.upsertBalance(
+            addressId: addressId, tokenSymbol: eth.ticker, tokenContract: nil,
+            decimals: 0, rawBalance: "2.0", fiatValueCached: 5000, fiatCurrencyCode: "USD"
+        )
+        // 4) Second rebuild MUST see the new fiat (the bug: it read a stale 0).
+        try await chainRepo.rebuild(walletId: walletId, fiatCurrencyCode: "USD")
+        let after = try #require(try await chainRepo.chainState(walletId: walletId, chain: eth))
+        #expect(after.totalFiat == 5000, "rebuild must re-read sibling-committed fiat — got \(after.totalFiat)")
+        #expect(after.nativeFiat == 5000)
+    }
+
     // MARK: - Encryption (the user-chosen "encrypted key blob in DB" path)
 
     @Test("ChainKeyVault seals and opens a private key losslessly")

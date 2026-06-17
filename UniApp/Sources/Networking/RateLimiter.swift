@@ -38,9 +38,14 @@ actor RateLimiter {
     }
 
     private func bucket(for endpoint: RPCEndpoint) -> TokenBucket {
-        if let existing = buckets[endpoint.id] { return existing }
+        // Key by `rateLimitGroup`, not `id`: account-billed providers (Infura,
+        // 1RPC) share ONE bucket across all their per-chain subdomains so the
+        // limiter enforces the account quota, not N× it (2026-06-17 Infura
+        // 429-storm fix). Per-host providers fall back to their endpoint id.
+        let key = endpoint.rateLimitGroup
+        if let existing = buckets[key] { return existing }
         let new = TokenBucket(limit: endpoint.rateLimit)
-        buckets[endpoint.id] = new
+        buckets[key] = new
         return new
     }
 }
