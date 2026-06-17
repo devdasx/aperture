@@ -53,7 +53,18 @@ struct BrowserHomeView: View {
     @Query(sort: \BrowserHistoryRecord.lastVisitedAt, order: .reverse)
     private var history: [BrowserHistoryRecord]
 
-    /// SwiftData context for swipe-to-delete + clear-history.
+    /// User-pinned favorites. The grid now shows ONLY these — there is no
+    /// pre-curated starter set masquerading as the user's choices (2026-06-18
+    /// user direction). Toggled by swiping a directory row.
+    @Query(sort: \BrowserBookmarkRecord.sortOrder)
+    private var bookmarks: [BrowserBookmarkRecord]
+
+    /// Persisted in-app-browser connections — surfaced in the Connected
+    /// section and used to offer swipe-to-disconnect on the directory.
+    @Query(sort: \ConnectedDAppRecord.connectedAt, order: .reverse)
+    private var connectedDApps: [ConnectedDAppRecord]
+
+    /// SwiftData context for swipe-to-delete + clear-history + favoriting.
     @Environment(\.modelContext) private var modelContext
 
     /// The shared dApp router — supplies the `injectedSessions`
@@ -106,6 +117,13 @@ struct BrowserHomeView: View {
         listSurface
             .navigationTitle("Browser")
             .navigationBarTitleDisplayMode(.large)
+            // Wire the dApp router's SwiftData context as soon as the browser
+            // home appears — BEFORE the user can reach a connect sheet
+            // (2026-06-18 fix). Previously this happened only in
+            // BrowserSessionView.task, so a connection approved before that
+            // view's task ran never persisted a ConnectedDAppRecord and the
+            // Connected dApps list stayed empty. The setter is idempotent.
+            .task { router.setModelContext(modelContext) }
             // Native iOS 26 search bar, connected to the nav bar (user
             // direction 2026-06-17) — identical to every other screen's
             // `.searchable`. It doubles as the smart URL field: the typed
@@ -236,6 +254,25 @@ struct BrowserHomeView: View {
                     }
                     .buttonStyle(.plain)
                     .listRowBackground(UniColors.Background.secondary)
+                    .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                        Button {
+                            toggleFavorite(dapp)
+                        } label: {
+                            Label(
+                                isFavorited(dapp.host) ? "Unfavorite" : "Favorite",
+                                systemImage: isFavorited(dapp.host) ? "star.slash" : "star"
+                            )
+                        }
+                        .tint(UniColors.Tint.accent)
+
+                        if connectedHosts.contains(dapp.host) {
+                            Button(role: .destructive) {
+                                disconnectHost(dapp.host)
+                            } label: {
+                                Label("Disconnect", systemImage: "xmark")
+                            }
+                        }
+                    }
                 }
             } header: {
                 UniCaption(
@@ -250,29 +287,59 @@ struct BrowserHomeView: View {
     private var directoryDApps: [BrowserDApp] {
         let all = BrowserDApp.directory(for: selectedCategory)
         guard selectedCategory == .all else { return all }
-        let favoriteHosts = Set(BrowserFavorite.starterSet.map { $0.host })
+        let favoriteHosts = Set(favoriteBookmarks.map { $0.host })
         return all.filter { !favoriteHosts.contains($0.host) }
     }
 
-    /// The 4-column favorites grid. One List row holding the grid
-    /// — iOS draws the inset-grouped card around it for free.
+    /// The user's pinned favorites, in sort order. Empty until the user
+    /// swipes a directory row to favorite it.
+    private var favoriteBookmarks: [BrowserBookmarkRecord] {
+        bookmarks.filter { $0.isFavorite }
+    }
+
+    /// `favoriteBookmarks` hydrated into the grid's `BrowserFavorite` shape.
+    /// URLs are validated (no force-unwrap — these are user data), and a
+    /// missing favicon falls back to the favicon service.
+    private var favorites: [BrowserFavorite] {
+        favoriteBookmarks.compactMap { record in
+            guard let url = URL(string: record.url) else { return nil }
+            let icon = record.iconURL.flatMap(URL.init(string:))
+                ?? URL(string: "https://www.google.com/s2/favicons?domain=\(record.host)&sz=128")
+            guard let iconURL = icon else { return nil }
+            return BrowserFavorite(
+                id: record.host,
+                name: record.title.isEmpty ? record.host : record.title,
+                url: url,
+                host: record.host,
+                iconURL: iconURL,
+                category: .swap
+            )
+        }
+    }
+
+    /// The 4-column favorites grid. One List row holding the grid — iOS
+    /// draws the inset-grouped card around it for free. Shown only when the
+    /// user has actually pinned at least one dApp (2026-06-18 — no
+    /// pre-curated set shown as if the user chose it).
     @ViewBuilder
     private var favoritesSection: some View {
-        Section {
-            BrowserFavoritesGrid(
-                favorites: BrowserFavorite.starterSet,
-                onSelect: { favorite in
-                    sessionDestination = BrowserSessionDestination(url: favorite.url)
-                }
-            )
-            .padding(.vertical, UniSpacing.s)
-            .listRowBackground(UniColors.Background.secondary)
-            .listRowSeparator(.hidden)
-        } header: {
-            UniCaption(
-                text: "Favorites",
-                color: UniColors.Text.tertiary
-            )
+        if !favorites.isEmpty {
+            Section {
+                BrowserFavoritesGrid(
+                    favorites: favorites,
+                    onSelect: { favorite in
+                        sessionDestination = BrowserSessionDestination(url: favorite.url)
+                    }
+                )
+                .padding(.vertical, UniSpacing.s)
+                .listRowBackground(UniColors.Background.secondary)
+                .listRowSeparator(.hidden)
+            } header: {
+                UniCaption(
+                    text: "Favorites",
+                    color: UniColors.Text.tertiary
+                )
+            }
         }
     }
 
@@ -399,6 +466,46 @@ struct BrowserHomeView: View {
     private func delete(_ record: BrowserHistoryRecord) {
         modelContext.delete(record)
         try? modelContext.save()
+    }
+
+    /// Hosts the wallet is currently connected to (in-app injected +
+    /// WalletConnect) — drives the directory's swipe-to-disconnect.
+    private var connectedHosts: Set<String> {
+        var set = Set(connectedDApps.map { $0.host })
+        set.formUnion(walletConnect.activeSessions.compactMap { URL(string: $0.url)?.host })
+        return set
+    }
+
+    /// Whether the user has pinned this host as a favorite.
+    private func isFavorited(_ host: String) -> Bool {
+        bookmarks.contains { $0.host == host && $0.isFavorite }
+    }
+
+    /// Toggle a directory dApp's favorite state — flips an existing
+    /// bookmark row or inserts a new one (favoriting appends to the end of
+    /// the user's order).
+    private func toggleFavorite(_ dapp: BrowserDApp) {
+        if let existing = bookmarks.first(where: { $0.host == dapp.host }) {
+            existing.isFavorite.toggle()
+        } else {
+            let nextOrder = (bookmarks.map { $0.sortOrder }.max() ?? -1) + 1
+            modelContext.insert(BrowserBookmarkRecord(
+                url: dapp.url.absoluteString,
+                title: dapp.name,
+                host: dapp.host,
+                iconURL: "https://www.google.com/s2/favicons?domain=\(dapp.host)&sz=128",
+                sortOrder: nextOrder,
+                isFavorite: true
+            ))
+        }
+        try? modelContext.save()
+    }
+
+    /// Disconnect an in-app (injected) connection from the directory swipe.
+    /// Routes through the shared router, which revokes the host AND deletes
+    /// its `ConnectedDAppRecord`; the `@Query` above then drops the row.
+    private func disconnectHost(_ host: String) {
+        router.disconnect(host: host)
     }
 
     /// Swipe-to-disconnect on a connected row.
