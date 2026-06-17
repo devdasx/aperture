@@ -123,9 +123,6 @@ struct SettingsView: View {
     /// exactly once. Empty string = no deep link.
     @AppStorage("settingsDeepLink") private var settingsDeepLink: String = ""
 
-    @State private var isShowingTerms: Bool = false
-    @State private var isShowingPrivacyPolicy: Bool = false
-
     private var theme: ThemePreference {
         ThemePreference(rawValue: themeRaw) ?? .system
     }
@@ -301,10 +298,7 @@ struct SettingsView: View {
                 case .currency:                  CurrencyPickerView()
                 case .preferences:               PreferencesView()
                 case .help:                      HelpAndSupportView()
-                case .about:                     AboutView(
-                                                    onTapTerms: { isShowingTerms = true },
-                                                    onTapPrivacy: { isShowingPrivacyPolicy = true }
-                                                 )
+                case .about:                     AboutView()
                 }
             }
             // No `.toolbar` Done item — as a tab root in
@@ -314,18 +308,6 @@ struct SettingsView: View {
             // Done item existed for the sheet-host era (the wallet-
             // home's `.sheet { SettingsView }`) and is retired with
             // the host.
-            .sheet(isPresented: $isShowingTerms) {
-                TermsPlaceholderSheet()
-                    .uniAppEnvironment()
-                    .intrinsicHeightSheet()
-                    .presentationBackground(UniColors.Background.primary)
-            }
-            .sheet(isPresented: $isShowingPrivacyPolicy) {
-                PrivacyPolicyPlaceholderSheet()
-                    .uniAppEnvironment()
-                    .intrinsicHeightSheet()
-                    .presentationBackground(UniColors.Background.primary)
-            }
             .onAppear { consumeDeepLink() }
             .onChange(of: settingsDeepLink) { _, _ in consumeDeepLink() }
             // Last-screen restoration mirror (2026-06-13). Every push
@@ -398,8 +380,17 @@ private struct SettingsRow: View {
 // MARK: - About
 
 private struct AboutView: View {
-    let onTapTerms: () -> Void
-    let onTapPrivacy: () -> Void
+    @Environment(\.openURL) private var openURL
+
+    /// Canonical web destinations on aperturex.io. The legal + support
+    /// pages live on the site (not bundled) so they stay current without
+    /// shipping an app update; each row opens in the system browser.
+    private enum Web {
+        static let terms = "https://aperturex.io/terms"
+        static let privacy = "https://aperturex.io/privacy"
+        static let privacyChoices = "https://aperturex.io/privacy-choices"
+        static let support = "https://aperturex.io/support"
+    }
 
     var body: some View {
         List {
@@ -427,34 +418,13 @@ private struct AboutView: View {
                 .padding(.vertical, UniSpacing.xxs)
             }
 
+            // Legal + support — each opens the live page on aperturex.io
+            // in the system browser (trailing ↗ signals it leaves the app).
             Section {
-                Button { onTapTerms() } label: {
-                    HStack {
-                        Text("Terms")
-                            .font(UniTypography.body)
-                            .foregroundStyle(UniColors.Text.primary)
-                        Spacer()
-                        Image(systemName: "chevron.right")
-                            .font(.system(size: 13, weight: .semibold))
-                            .foregroundStyle(UniColors.Icon.tertiary)
-                            .accessibilityHidden(true)
-                    }
-                }
-                .buttonStyle(.plain)
-
-                Button { onTapPrivacy() } label: {
-                    HStack {
-                        Text("Privacy")
-                            .font(UniTypography.body)
-                            .foregroundStyle(UniColors.Text.primary)
-                        Spacer()
-                        Image(systemName: "chevron.right")
-                            .font(.system(size: 13, weight: .semibold))
-                            .foregroundStyle(UniColors.Icon.tertiary)
-                            .accessibilityHidden(true)
-                    }
-                }
-                .buttonStyle(.plain)
+                externalRow("Terms of Service", Web.terms)
+                externalRow("Privacy Policy", Web.privacy)
+                externalRow("Your Privacy Choices", Web.privacyChoices)
+                externalRow("Support", Web.support)
             }
 
             Section {
@@ -469,6 +439,30 @@ private struct AboutView: View {
         .listStyle(.insetGrouped)
         .navigationTitle(Text("About"))
         .navigationBarTitleDisplayMode(.large)
+    }
+
+    /// A row that opens a web page in the system browser. The trailing
+    /// `arrow.up.right` glyph signals the tap leaves the app (vs the
+    /// `chevron.right` used for in-app push navigation).
+    @ViewBuilder
+    private func externalRow(_ title: LocalizedStringKey, _ urlString: String) -> some View {
+        if let url = URL(string: urlString) {
+            Button { openURL(url) } label: {
+                HStack {
+                    Text(title)
+                        .font(UniTypography.body)
+                        .foregroundStyle(UniColors.Text.primary)
+                    Spacer()
+                    Image(systemName: "arrow.up.right")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(UniColors.Icon.tertiary)
+                        .accessibilityHidden(true)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityHint(Text("Opens in browser"))
+        }
     }
 }
 
