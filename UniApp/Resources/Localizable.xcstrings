@@ -454939,6 +454939,5293 @@
           }
         }
       }
+    },
+    "Allowance": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Allowance"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Límite autorizado"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "授权额度"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "授權額度"
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "स्वीकृत सीमा"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "الحدّ المسموح"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Limite autorizado"
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "অনুমোদিত সীমা"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Разрешённая сумма"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "許可額"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Freigegebener Betrag"
+          }
+        },
+        "uk": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Дозволена сума"
+          }
+        },
+        "el": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Επιτρεπόμενο όριο"
+          }
+        },
+        "ro": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Limită autorizată"
+          }
+        },
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Povolený limit"
+          }
+        },
+        "hu": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Engedélyezett keret"
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tillåtet belopp"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tillatt beløp"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tilladt beløb"
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sallittu määrä"
+          }
+        },
+        "he": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "מסגרת מאושרת"
+          }
+        },
+        "ca": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Límit autoritzat"
+          }
+        },
+        "hr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dopušteni iznos"
+          }
+        },
+        "sk": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Povolený limit"
+          }
+        },
+        "sl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dovoljeni znesek"
+          }
+        },
+        "sr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Дозвољени износ"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Plafond autorisé"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "허용 한도"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Limite autorizzato"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "İzin verilen limit"
+          }
+        },
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hạn mức cho phép"
+          }
+        },
+        "th": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "วงเงินที่อนุญาต"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Batas yang diizinkan"
+          }
+        },
+        "fa": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "سقف مجاز"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dozwolony limit"
+          }
+        },
+        "nl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Toegestane limiet"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "اجازت شدہ حد"
+          }
+        },
+        "bg": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Разрешен лимит"
+          }
+        },
+        "et": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lubatud piirmäär"
+          }
+        },
+        "lt": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Leidžiama riba"
+          }
+        },
+        "lv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Atļautais limits"
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Leyfð hámarksupphæð"
+          }
+        },
+        "ms": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Had yang dibenarkan"
+          }
+        },
+        "fil": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pinapayagang limitasyon"
+          }
+        },
+        "sw": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kikomo kinachoruhusiwa"
+          }
+        },
+        "af": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Toegelate limiet"
+          }
+        },
+        "ta": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "அனுமதிக்கப்பட்ட வரம்பு"
+          }
+        },
+        "te": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "అనుమతించబడిన పరిమితి"
+          }
+        },
+        "ml": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "അനുവദനീയമായ പരിധി"
+          }
+        },
+        "mr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "अनुमत मर्यादा"
+          }
+        },
+        "pa": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ਮਨਜ਼ੂਰ ਹੱਦ"
+          }
+        }
+      }
+    },
+    "Approvals let a contract move your tokens. Revoking signs and broadcasts an on-chain approve(spender, 0) — a network fee applies. Read live from the chain; nothing is stored.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Approvals let a contract move your tokens. Revoking signs and broadcasts an on-chain approve(spender, 0) — a network fee applies. Read live from the chain; nothing is stored."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Las aprobaciones permiten que un contrato mueva tus tokens. Revocar firma y transmite un approve(spender, 0) en la cadena — se aplica una comisión de red. Se lee en vivo desde la cadena; no se almacena nada."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "授权允许合约转移你的代币。撤销会签名并广播一笔链上的 approve(spender, 0) — 需支付网络费。数据从链上实时读取;不存储任何内容。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "授權允許合約轉移你的代幣。撤銷會簽署並廣播一筆鏈上的 approve(spender, 0) — 需支付網路費。資料從鏈上即時讀取;不會儲存任何內容。"
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "स्वीकृतियाँ किसी कॉन्ट्रैक्ट को आपके टोकन ट्रांसफ़र करने देती हैं। रद्द करने पर ऑन-चेन approve(spender, 0) पर हस्ताक्षर होकर प्रसारित होता है — इस पर नेटवर्क शुल्क लगता है। यह चेन से लाइव पढ़ा जाता है; कुछ भी संग्रहीत नहीं होता।"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "تتيح الموافقات لعقدٍ ما نقل رموزك. يؤدّي الإلغاء إلى توقيع وبثّ approve(spender, 0) على السلسلة — وتُطبَّق رسوم الشبكة. تُقرأ البيانات مباشرةً من السلسلة؛ ولا يُخزَّن شيء."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "As aprovações permitem que um contrato mova seus tokens. Revogar assina e transmite um approve(spender, 0) on-chain — uma taxa de rede se aplica. Lido ao vivo da chain; nada é armazenado."
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "অনুমোদন কোনো কন্ট্রাক্টকে আপনার টোকেন সরানোর অনুমতি দেয়। প্রত্যাহার করলে একটি অন-চেইন approve(spender, 0) স্বাক্ষরিত ও সম্প্রচারিত হয় — এতে একটি নেটওয়ার্ক ফি প্রযোজ্য। চেইন থেকে সরাসরি পড়া হয়; কিছুই সংরক্ষণ করা হয় না।"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Разрешения позволяют контракту перемещать ваши токены. Отзыв подписывает и транслирует в сети approve(spender, 0) — взимается сетевая комиссия. Читается напрямую из сети; ничего не сохраняется."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "承認は、コントラクトがあなたのトークンを移動できるようにするものです。取り消すと、オンチェーンの approve(spender, 0) に署名してブロードキャストします — ネットワーク手数料がかかります。データはチェーンから直接読み取られ、何も保存されません。"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Genehmigungen erlauben einem Vertrag, Ihre Tokens zu bewegen. Beim Widerruf wird ein approve(spender, 0) on-chain signiert und übertragen — es fällt eine Netzwerkgebühr an. Live von der Chain gelesen; nichts wird gespeichert."
+          }
+        },
+        "uk": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Дозволи дають змогу контракту переміщувати ваші токени. Відкликання підписує й транслює в мережі approve(spender, 0) — стягується мережева комісія. Зчитується наживо з мережі; нічого не зберігається."
+          }
+        },
+        "el": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Οι εγκρίσεις επιτρέπουν σε ένα συμβόλαιο να μετακινεί τα tokens σας. Η ανάκληση υπογράφει και μεταδίδει ένα approve(spender, 0) on-chain — ισχύει χρέωση δικτύου. Διαβάζεται ζωντανά από την αλυσίδα· τίποτα δεν αποθηκεύεται."
+          }
+        },
+        "ro": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aprobările permit unui contract să-ți mute tokenurile. Revocarea semnează și transmite un approve(spender, 0) on-chain — se aplică o taxă de rețea. Citit în timp real din lanț; nimic nu este stocat."
+          }
+        },
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Schválení umožňují smlouvě přesouvat vaše tokeny. Odvolání podepíše a odešle on-chain approve(spender, 0) — účtuje se síťový poplatek. Načítá se živě z řetězce; nic se neukládá."
+          }
+        },
+        "hu": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "A jóváhagyások lehetővé teszik, hogy egy szerződés mozgassa a tokenjeit. A visszavonás aláír és közvetít egy on-chain approve(spender, 0) műveletet — hálózati díj merül fel. Élőben a láncról olvasva; semmi sem kerül tárolásra."
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Godkännanden låter ett kontrakt flytta dina tokens. Att återkalla signerar och sänder ut ett approve(spender, 0) on-chain — en nätverksavgift tillkommer. Läses live från kedjan; inget lagras."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Godkjenninger lar en kontrakt flytte tokenene dine. Å tilbakekalle signerer og kringkaster en approve(spender, 0) on-chain — et nettverksgebyr påløper. Leses live fra kjeden; ingenting lagres."
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Godkendelser lader en kontrakt flytte dine tokens. At tilbagekalde signerer og udsender en approve(spender, 0) on-chain — der pålægges et netværksgebyr. Læses live fra kæden; intet gemmes."
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hyväksynnät antavat sopimuksen siirtää tokenisi. Peruminen allekirjoittaa ja lähettää ketjuun approve(spender, 0) — verkkomaksu peritään. Luetaan suoraan ketjusta; mitään ei tallenneta."
+          }
+        },
+        "he": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "אישורים מאפשרים לחוזה להזיז את הטוקנים שלך. ביטול חותם ומשדר approve(spender, 0) On-chain — חלה עמלת רשת. נקרא בזמן אמת מהשרשרת; דבר אינו נשמר."
+          }
+        },
+        "ca": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Les aprovacions permeten que un contracte mogui els teus tokens. Revocar signa i transmet un approve(spender, 0) a la cadena — s’hi aplica una comissió de xarxa. Es llegeix en directe des de la cadena; no es desa res."
+          }
+        },
+        "hr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Odobrenja omogućuju ugovoru da premješta vaše tokene. Opoziv potpisuje i emitira approve(spender, 0) na lancu — naplaćuje se mrežna naknada. Čita se uživo s lanca; ništa se ne pohranjuje."
+          }
+        },
+        "sk": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Schválenia umožňujú zmluve presúvať vaše tokeny. Odvolanie podpíše a odošle on-chain approve(spender, 0) — účtuje sa sieťový poplatok. Načítava sa naživo z reťazca; nič sa neukladá."
+          }
+        },
+        "sl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Odobritve pogodbi omogočajo premikanje vaših žetonov. Preklic podpiše in odda approve(spender, 0) na verigi — zaračuna se omrežnina. Bere se v živo z verige; nič se ne shrani."
+          }
+        },
+        "sr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Одобрења омогућавају уговору да премешта ваше токене. Опозив потписује и емитује approve(spender, 0) на ланцу — наплаћује се мрежна накнада. Чита се уживо са ланца; ништа се не чува."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Les autorisations permettent à un contrat de déplacer vos jetons. La révocation signe et diffuse un approve(spender, 0) sur la chaîne — des frais de réseau s’appliquent. Lecture en direct depuis la chaîne ; rien n’est stocké."
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "승인은 컨트랙트가 토큰을 옮길 수 있게 해줘요. 취소하면 온체인 approve(spender, 0)에 서명해 전송하며 — 네트워크 수수료가 들어요. 체인에서 실시간으로 읽어오고, 아무것도 저장하지 않아요."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Le autorizzazioni consentono a un contratto di spostare i suoi token. La revoca firma e trasmette un approve(spender, 0) on-chain — si applica una commissione di rete. I dati vengono letti in tempo reale dalla chain; non viene memorizzato nulla."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Onaylar, bir sözleşmenin tokenlarınızı taşımasına izin verir. İptal, zincir üzerinde bir approve(spender, 0) imzalar ve yayınlar — bir ağ ücreti uygulanır. Veriler zincirden canlı okunur; hiçbir şey saklanmaz."
+          }
+        },
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Phê duyệt cho phép một hợp đồng di chuyển token của bạn. Thu hồi sẽ ký và phát một approve(spender, 0) trên chuỗi — phí mạng được áp dụng. Dữ liệu được đọc trực tiếp từ chuỗi; không có gì được lưu trữ."
+          }
+        },
+        "th": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "การอนุมัติช่วยให้สัญญาย้ายโทเคนของคุณได้ การเพิกถอนจะลงนามและเผยแพร่ approve(spender, 0) บนเชน — มีค่าธรรมเนียมเครือข่าย อ่านสดจากเชน ไม่มีการจัดเก็บข้อมูลใด"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Persetujuan memungkinkan sebuah kontrak memindahkan token Anda. Pencabutan menandatangani dan menyiarkan approve(spender, 0) di on-chain — biaya jaringan berlaku. Dibaca langsung dari rantai; tidak ada yang disimpan."
+          }
+        },
+        "fa": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "تأییدها به یک قرارداد اجازه می‌دهند توکن‌های شما را جابه‌جا کند. لغو، یک approve(spender, 0) را روی زنجیره امضا و منتشر می‌کند — کارمزد شبکه اعمال می‌شود. به‌صورت زنده از زنجیره خوانده می‌شود؛ چیزی ذخیره نمی‌شود."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Uprawnienia pozwalają kontraktowi przenosić Twoje tokeny. Cofnięcie podpisuje i nadaje w łańcuchu approve(spender, 0) — obowiązuje opłata sieciowa. Dane odczytywane są na żywo z łańcucha; nic nie jest przechowywane."
+          }
+        },
+        "nl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Met goedkeuringen kan een contract je tokens verplaatsen. Bij het intrekken wordt een approve(spender, 0) on-chain ondertekend en verzonden — er gelden netwerkkosten. Live van de chain gelezen; er wordt niets opgeslagen."
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "منظوریاں ایک کنٹریکٹ کو آپ کے ٹوکن منتقل کرنے کی اجازت دیتی ہیں۔ منسوخی آن چین approve(spender, 0) پر دستخط کرکے اسے نشر کرتی ہے — نیٹ ورک فیس لاگو ہوتی ہے۔ ڈیٹا براہِ راست چین سے پڑھا جاتا ہے؛ کچھ بھی محفوظ نہیں کیا جاتا۔"
+          }
+        },
+        "bg": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Одобренията позволяват на договор да премества Вашите токени. Отмяната подписва и излъчва approve(spender, 0) във веригата — прилага се мрежова такса. Чете се на живо от веригата; нищо не се съхранява."
+          }
+        },
+        "et": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Heakskiidud lubavad lepingul sinu tokeneid liigutada. Tühistamine allkirjastab ja edastab plokiahelas approve(spender, 0) — kehtib võrgutasu. Loetakse ahelast reaalajas; midagi ei salvestata."
+          }
+        },
+        "lt": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Patvirtinimai leidžia sutarčiai perkelti jūsų žetonus. Atšaukimas pasirašo ir transliuoja grandinėje approve(spender, 0) — taikomas tinklo mokestis. Skaitoma tiesiogiai iš grandinės; niekas nesaugoma."
+          }
+        },
+        "lv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Apstiprinājumi ļauj līgumam pārvietot jūsu marķierus. Atsaukšana paraksta un pārraida ķēdē approve(spender, 0) — tiek piemērota tīkla maksa. Dati tiek nolasīti tiešraidē no ķēdes; nekas netiek glabāts."
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Heimildir leyfa samningi að flytja tókana þína. Afturköllun undirritar og sendir approve(spender, 0) á keðjunni — netgjald á við. Lesið beint af keðjunni; engu er vistað."
+          }
+        },
+        "ms": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kelulusan membenarkan sesuatu kontrak memindahkan token anda. Pembatalan menandatangani dan menyiarkan approve(spender, 0) di atas rantai — yuran rangkaian dikenakan. Dibaca secara langsung daripada rantai; tiada apa-apa disimpan."
+          }
+        },
+        "fil": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pinapayagan ng mga pag-apruba ang isang contract na ilipat ang iyong mga token. Ang pagbawi ay pumipirma at nagbo-broadcast ng on-chain na approve(spender, 0) — may network fee na ipinapataw. Binabasa nang live mula sa chain; walang itinatago."
+          }
+        },
+        "sw": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vibali huruhusu mkataba kuhamisha tokeni zako. Kutengua hutia saini na kutangaza approve(spender, 0) kwenye mnyororo — ada ya mtandao hutozwa. Husomwa moja kwa moja kutoka kwenye mnyororo; hakuna kinachohifadhiwa."
+          }
+        },
+        "af": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Goedkeurings laat 'n kontrak toe om jou tokens te skuif. Herroeping onderteken en saai 'n approve(spender, 0) op die ketting uit — 'n netwerkfooi geld. Lewendig van die ketting af gelees; niks word gestoor nie."
+          }
+        },
+        "ta": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "அனுமதிகள் ஒரு ஒப்பந்தம் உங்கள் டோக்கன்களை நகர்த்த அனுமதிக்கின்றன. திரும்பப் பெறுதல் சங்கிலியில் ஒரு approve(spender, 0) கையொப்பமிட்டு ஒளிபரப்புகிறது — ஒரு பிணைய கட்டணம் பொருந்தும். சங்கிலியிலிருந்து நேரடியாகப் படிக்கப்படுகிறது; எதுவும் சேமிக்கப்படவில்லை."
+          }
+        },
+        "te": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ఆమోదాలు ఒక కాంట్రాక్ట్ మీ టోకెన్‌లను తరలించడానికి అనుమతిస్తాయి. ఉపసంహరణ చెయిన్‌లో ఒక approve(spender, 0)ను సంతకం చేసి ప్రసారం చేస్తుంది — నెట్‌వర్క్ రుసుము వర్తిస్తుంది. చెయిన్ నుండి ప్రత్యక్షంగా చదవబడుతుంది; ఏదీ నిల్వ చేయబడదు."
+          }
+        },
+        "ml": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "അനുമതികൾ ഒരു കരാറിന് നിങ്ങളുടെ ടോക്കണുകൾ നീക്കാൻ അനുവദിക്കുന്നു. പിൻവലിക്കൽ ചെയിനിൽ ഒരു approve(spender, 0) ഒപ്പിട്ട് പ്രക്ഷേപണം ചെയ്യുന്നു — ഒരു നെറ്റ്‌വർക്ക് ഫീസ് ബാധകമാണ്. ചെയിനിൽ നിന്ന് നേരിട്ട് വായിക്കുന്നു; ഒന്നും സംഭരിക്കുന്നില്ല."
+          }
+        },
+        "mr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "मंजुऱ्या एखाद्या कॉन्ट्रॅक्टला तुमचे टोकन हलवण्याची परवानगी देतात. रद्द करणे साखळीवर एक approve(spender, 0) स्वाक्षरी करून प्रसारित करते — नेटवर्क शुल्क लागू होते. साखळीवरून थेट वाचले जाते; काहीही साठवले जात नाही."
+          }
+        },
+        "pa": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ਮਨਜ਼ੂਰੀਆਂ ਕਿਸੇ ਕੰਟਰੈਕਟ ਨੂੰ ਤੁਹਾਡੇ ਟੋਕਨ ਹਿਲਾਉਣ ਦਿੰਦੀਆਂ ਹਨ। ਰੱਦ ਕਰਨਾ ਚੇਨ ਉੱਤੇ ਇੱਕ approve(spender, 0) ਉੱਤੇ ਦਸਤਖਤ ਕਰਕੇ ਪ੍ਰਸਾਰਿਤ ਕਰਦਾ ਹੈ — ਇੱਕ ਨੈੱਟਵਰਕ ਫੀਸ ਲਾਗੂ ਹੁੰਦੀ ਹੈ। ਚੇਨ ਤੋਂ ਸਿੱਧਾ ਪੜ੍ਹਿਆ ਜਾਂਦਾ ਹੈ; ਕੁਝ ਵੀ ਸਟੋਰ ਨਹੀਂ ਕੀਤਾ ਜਾਂਦਾ।"
+          }
+        }
+      }
+    },
+    "Authentication failed — the revoke wasn’t sent.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Authentication failed — the revoke wasn’t sent."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "La autenticación falló — la revocación no se envió."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "身份验证失败 — 撤销未发送。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "驗證失敗 — 撤銷未送出。"
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "प्रमाणीकरण विफल — रद्द अनुरोध नहीं भेजा गया।"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "فشلت المصادقة — لم يُرسَل الإلغاء."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "A autenticação falhou — a revogação não foi enviada."
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "প্রমাণীকরণ ব্যর্থ — প্রত্যাহার পাঠানো হয়নি।"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Аутентификация не удалась — отзыв не отправлен."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "認証に失敗しました — 取り消しは送信されませんでした。"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Authentifizierung fehlgeschlagen — der Widerruf wurde nicht gesendet."
+          }
+        },
+        "uk": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Автентифікація не вдалася — відкликання не надіслано."
+          }
+        },
+        "el": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Η ταυτοποίηση απέτυχε — η ανάκληση δεν στάλθηκε."
+          }
+        },
+        "ro": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Autentificarea a eșuat — revocarea nu a fost trimisă."
+          }
+        },
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ověření selhalo — odvolání nebylo odesláno."
+          }
+        },
+        "hu": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "A hitelesítés sikertelen — a visszavonás nem lett elküldve."
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Autentiseringen misslyckades — återkallelsen skickades inte."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Autentiseringen mislyktes — tilbakekallet ble ikke sendt."
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Godkendelsen mislykkedes — tilbagekaldet blev ikke sendt."
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Todennus epäonnistui — peruutusta ei lähetetty."
+          }
+        },
+        "he": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "האימות נכשל — הביטול לא נשלח."
+          }
+        },
+        "ca": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "L’autenticació ha fallat — la revocació no s’ha enviat."
+          }
+        },
+        "hr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Autentifikacija nije uspjela — opoziv nije poslan."
+          }
+        },
+        "sk": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Overenie zlyhalo — odvolanie nebolo odoslané."
+          }
+        },
+        "sl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Preverjanje pristnosti ni uspelo — preklic ni bil poslan."
+          }
+        },
+        "sr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Аутентификација није успела — опозив није послат."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Échec de l’authentification — la révocation n’a pas été envoyée."
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "인증에 실패했어요 — 취소가 전송되지 않았어요."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Autenticazione non riuscita — la revoca non è stata inviata."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kimlik doğrulama başarısız — iptal gönderilmedi."
+          }
+        },
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Xác thực thất bại — thu hồi chưa được gửi."
+          }
+        },
+        "th": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "การยืนยันตัวตนล้มเหลว — ไม่ได้ส่งการเพิกถอน"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Autentikasi gagal — pencabutan tidak terkirim."
+          }
+        },
+        "fa": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "احراز هویت ناموفق بود — لغو ارسال نشد."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Uwierzytelnianie nie powiodło się — cofnięcie nie zostało wysłane."
+          }
+        },
+        "nl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Verificatie mislukt — de intrekking is niet verzonden."
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "توثیق ناکام ہوگئی — منسوخی نہیں بھیجی گئی۔"
+          }
+        },
+        "bg": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Удостоверяването е неуспешно — отмяната не беше изпратена."
+          }
+        },
+        "et": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Autentimine ebaõnnestus — tühistust ei saadetud."
+          }
+        },
+        "lt": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Autentifikavimas nepavyko — atšaukimas neišsiųstas."
+          }
+        },
+        "lv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Autentifikācija neizdevās — atsaukums netika nosūtīts."
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Auðkenning mistókst — afturköllunin var ekki send."
+          }
+        },
+        "ms": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pengesahan gagal — pembatalan tidak dihantar."
+          }
+        },
+        "fil": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nabigo ang pag-authenticate — hindi naipadala ang pagbawi."
+          }
+        },
+        "sw": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Uthibitishaji umeshindwa — utenguzi haukutumwa."
+          }
+        },
+        "af": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Verifikasie het misluk — die herroeping is nie gestuur nie."
+          }
+        },
+        "ta": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "அங்கீகாரம் தோல்வியடைந்தது — திரும்பப் பெறுதல் அனுப்பப்படவில்லை."
+          }
+        },
+        "te": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ప్రామాణీకరణ విఫలమైంది — ఉపసంహరణ పంపబడలేదు."
+          }
+        },
+        "ml": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "പ്രാമാണീകരണം പരാജയപ്പെട്ടു — പിൻവലിക്കൽ അയച്ചില്ല."
+          }
+        },
+        "mr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "प्रमाणीकरण अयशस्वी झाले — रद्द करणे पाठवले गेले नाही."
+          }
+        },
+        "pa": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ਪ੍ਰਮਾਣੀਕਰਨ ਅਸਫਲ ਰਿਹਾ — ਰੱਦ ਕਰਨਾ ਨਹੀਂ ਭੇਜਿਆ ਗਿਆ।"
+          }
+        }
+      }
+    },
+    "Confirm revoking this approval": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Confirm revoking this approval"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Confirmar la revocación de esta aprobación"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "确认撤销此授权"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "確認撤銷此授權"
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "इस स्वीकृति को रद्द करने की पुष्टि करें"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "تأكيد إلغاء هذه الموافقة"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Confirmar a revogação desta aprovação"
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "এই অনুমোদন প্রত্যাহার নিশ্চিত করুন"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Подтвердите отзыв этого разрешения"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "この承認の取り消しを確認"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Widerruf dieser Genehmigung bestätigen"
+          }
+        },
+        "uk": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Підтвердьте відкликання цього дозволу"
+          }
+        },
+        "el": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Επιβεβαίωση ανάκλησης αυτής της έγκρισης"
+          }
+        },
+        "ro": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Confirmă revocarea acestei aprobări"
+          }
+        },
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Potvrďte odvolání tohoto schválení"
+          }
+        },
+        "hu": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Erősítse meg a jóváhagyás visszavonását"
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bekräfta återkallelsen av detta godkännande"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bekreft tilbakekall av denne godkjenningen"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bekræft tilbagekaldelsen af denne godkendelse"
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vahvista tämän hyväksynnän peruutus"
+          }
+        },
+        "he": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "אשר את ביטול האישור הזה"
+          }
+        },
+        "ca": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Confirma la revocació d’aquesta aprovació"
+          }
+        },
+        "hr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Potvrdite opoziv ovog odobrenja"
+          }
+        },
+        "sk": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Potvrďte odvolanie tohto schválenia"
+          }
+        },
+        "sl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Potrdite preklic te odobritve"
+          }
+        },
+        "sr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Потврдите опозив овог одобрења"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Confirmer la révocation de cette autorisation"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "이 승인 취소를 확인"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Confermare la revoca di questa autorizzazione"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bu onayın iptalini onayla"
+          }
+        },
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Xác nhận thu hồi phê duyệt này"
+          }
+        },
+        "th": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ยืนยันการเพิกถอนการอนุมัตินี้"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Konfirmasi pencabutan persetujuan ini"
+          }
+        },
+        "fa": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "تأیید لغو این تأیید"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Potwierdź cofnięcie tego uprawnienia"
+          }
+        },
+        "nl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bevestig het intrekken van deze goedkeuring"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "اس منظوری کی منسوخی کی تصدیق کریں"
+          }
+        },
+        "bg": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Потвърдете отмяната на това одобрение"
+          }
+        },
+        "et": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kinnita selle heakskiidu tühistamine"
+          }
+        },
+        "lt": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Patvirtinkite šio patvirtinimo atšaukimą"
+          }
+        },
+        "lv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Apstipriniet šī apstiprinājuma atsaukšanu"
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Staðfestu afturköllun þessarar heimildar"
+          }
+        },
+        "ms": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sahkan pembatalan kelulusan ini"
+          }
+        },
+        "fil": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kumpirmahin ang pagbawi sa pag-apruba na ito"
+          }
+        },
+        "sw": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Thibitisha kutengua kibali hiki"
+          }
+        },
+        "af": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bevestig die herroeping van hierdie goedkeuring"
+          }
+        },
+        "ta": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "இந்த அனுமதியைத் திரும்பப் பெறுவதை உறுதிப்படுத்து"
+          }
+        },
+        "te": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ఈ ఆమోదాన్ని ఉపసంహరించడాన్ని నిర్ధారించు"
+          }
+        },
+        "ml": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ഈ അനുമതി പിൻവലിക്കുന്നത് സ്ഥിരീകരിക്കുക"
+          }
+        },
+        "mr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ही मंजुरी रद्द करण्याची पुष्टी करा"
+          }
+        },
+        "pa": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ਇਸ ਮਨਜ਼ੂਰੀ ਨੂੰ ਰੱਦ ਕਰਨ ਦੀ ਪੁਸ਼ਟੀ ਕਰੋ"
+          }
+        }
+      }
+    },
+    "Connection & Approvals": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Connection & Approvals"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conexión y aprobaciones"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "连接与授权"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "連線與授權"
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "कनेक्शन और स्वीकृतियाँ"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "الاتّصال والموافقات"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conexão e aprovações"
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "সংযোগ ও অনুমোদন"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Подключения и разрешения"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "接続と承認"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Verbindung und Genehmigungen"
+          }
+        },
+        "uk": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Підключення та дозволи"
+          }
+        },
+        "el": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Σύνδεση και εγκρίσεις"
+          }
+        },
+        "ro": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conexiune și aprobări"
+          }
+        },
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Připojení a schválení"
+          }
+        },
+        "hu": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kapcsolat és jóváhagyások"
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Anslutning och godkännanden"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tilkobling og godkjenninger"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Forbindelse og godkendelser"
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Yhteys ja hyväksynnät"
+          }
+        },
+        "he": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "חיבור ואישורים"
+          }
+        },
+        "ca": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Connexió i aprovacions"
+          }
+        },
+        "hr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Povezivanje i odobrenja"
+          }
+        },
+        "sk": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pripojenie a schválenia"
+          }
+        },
+        "sl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Povezava in odobritve"
+          }
+        },
+        "sr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Повезивање и одобрења"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Connexion et autorisations"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "연결 및 승인"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Connessione e autorizzazioni"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bağlantı ve onaylar"
+          }
+        },
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kết nối và phê duyệt"
+          }
+        },
+        "th": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "การเชื่อมต่อและการอนุมัติ"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Koneksi & persetujuan"
+          }
+        },
+        "fa": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "اتصال و تأییدها"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Połączenie i uprawnienia"
+          }
+        },
+        "nl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Verbinding en goedkeuringen"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "کنکشن اور منظوریاں"
+          }
+        },
+        "bg": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Връзка и одобрения"
+          }
+        },
+        "et": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ühendus ja heakskiidud"
+          }
+        },
+        "lt": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ryšys ir patvirtinimai"
+          }
+        },
+        "lv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Savienojums un apstiprinājumi"
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tenging og heimildir"
+          }
+        },
+        "ms": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sambungan & kelulusan"
+          }
+        },
+        "fil": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Koneksyon at mga pag-apruba"
+          }
+        },
+        "sw": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Muunganisho na vibali"
+          }
+        },
+        "af": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Verbinding en goedkeurings"
+          }
+        },
+        "ta": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "இணைப்பு மற்றும் அனுமதிகள்"
+          }
+        },
+        "te": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "కనెక్షన్ & ఆమోదాలు"
+          }
+        },
+        "ml": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "കണക്ഷനും അനുമതികളും"
+          }
+        },
+        "mr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "कनेक्शन आणि मंजुऱ्या"
+          }
+        },
+        "pa": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ਕਨੈਕਸ਼ਨ ਅਤੇ ਮਨਜ਼ੂਰੀਆਂ"
+          }
+        }
+      }
+    },
+    "Favorite": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Favorite"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Favorito"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "收藏"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "收藏"
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "पसंदीदा"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "إضافة إلى المفضّلة"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Favoritar"
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "পছন্দে যোগ করুন"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "В избранное"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "お気に入りに追加"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Favorisieren"
+          }
+        },
+        "uk": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "В обране"
+          }
+        },
+        "el": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Αγαπημένο"
+          }
+        },
+        "ro": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Favorit"
+          }
+        },
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Přidat k oblíbeným"
+          }
+        },
+        "hu": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kedvenc"
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Favorit"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Favoritt"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Favorit"
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Suosikki"
+          }
+        },
+        "he": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "מועדף"
+          }
+        },
+        "ca": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Preferit"
+          }
+        },
+        "hr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dodaj u favorite"
+          }
+        },
+        "sk": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pridať k obľúbeným"
+          }
+        },
+        "sl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Priljubljeno"
+          }
+        },
+        "sr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Омиљено"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ajouter aux favoris"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "즐겨찾기"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aggiungi ai preferiti"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Favorilere ekle"
+          }
+        },
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Thêm vào yêu thích"
+          }
+        },
+        "th": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "เพิ่มในรายการโปรด"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tambahkan ke favorit"
+          }
+        },
+        "fa": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "افزودن به علاقه‌مندی‌ها"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dodaj do ulubionych"
+          }
+        },
+        "nl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Toevoegen aan favorieten"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "پسندیدہ میں شامل کریں"
+          }
+        },
+        "bg": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Добави в любими"
+          }
+        },
+        "et": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lisa lemmikutesse"
+          }
+        },
+        "lt": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Įtraukti į mėgstamus"
+          }
+        },
+        "lv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pievienot izlasei"
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bæta við eftirlæti"
+          }
+        },
+        "ms": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tambah ke kegemaran"
+          }
+        },
+        "fil": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Idagdag sa paborito"
+          }
+        },
+        "sw": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ongeza kwenye vipendwa"
+          }
+        },
+        "af": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Voeg by gunstelinge"
+          }
+        },
+        "ta": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "பிடித்தவைகளில் சேர்"
+          }
+        },
+        "te": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ఇష్టమైనవాటికి జోడించు"
+          }
+        },
+        "ml": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "പ്രിയപ്പെട്ടവയിലേക്ക് ചേർക്കുക"
+          }
+        },
+        "mr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "आवडत्यांमध्ये जोडा"
+          }
+        },
+        "pa": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ਮਨਪਸੰਦ ਵਿੱਚ ਸ਼ਾਮਲ ਕਰੋ"
+          }
+        }
+      }
+    },
+    "No token approvals": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No token approvals"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sin aprobaciones de tokens"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "暂无代币授权"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "暫無代幣授權"
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "कोई टोकन स्वीकृति नहीं"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "لا توجد موافقات رموز"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nenhuma aprovação de token"
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "কোনো টোকেন অনুমোদন নেই"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Нет разрешений для токенов"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "トークンの承認はありません"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Keine Token-Genehmigungen"
+          }
+        },
+        "uk": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Немає дозволів на токени"
+          }
+        },
+        "el": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Καμία έγκριση token"
+          }
+        },
+        "ro": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nicio aprobare de tokenuri"
+          }
+        },
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Žádná schválení tokenů"
+          }
+        },
+        "hu": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nincsenek token-jóváhagyások"
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Inga token-godkännanden"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ingen token-godkjenninger"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ingen token-godkendelser"
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ei token-hyväksyntöjä"
+          }
+        },
+        "he": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "אין אישורי טוקנים"
+          }
+        },
+        "ca": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cap aprovació de tokens"
+          }
+        },
+        "hr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nema odobrenja tokena"
+          }
+        },
+        "sk": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Žiadne schválenia tokenov"
+          }
+        },
+        "sl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ni odobritev žetonov"
+          }
+        },
+        "sr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Нема одобрења токена"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aucune autorisation de jeton"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "토큰 승인 없음"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nessuna autorizzazione di token"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Token onayı yok"
+          }
+        },
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Không có phê duyệt token"
+          }
+        },
+        "th": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ไม่มีการอนุมัติโทเคน"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tidak ada persetujuan token"
+          }
+        },
+        "fa": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "هیچ تأیید توکنی نیست"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Brak uprawnień tokenów"
+          }
+        },
+        "nl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Geen tokengoedkeuringen"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "کوئی ٹوکن منظوری نہیں"
+          }
+        },
+        "bg": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Няма одобрения за токени"
+          }
+        },
+        "et": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tokenite heakskiite pole"
+          }
+        },
+        "lt": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Žetonų patvirtinimų nėra"
+          }
+        },
+        "lv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nav marķieru apstiprinājumu"
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Engar tókaheimildir"
+          }
+        },
+        "ms": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tiada kelulusan token"
+          }
+        },
+        "fil": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Walang pag-apruba ng token"
+          }
+        },
+        "sw": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hakuna vibali vya tokeni"
+          }
+        },
+        "af": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Geen tokengoedkeurings nie"
+          }
+        },
+        "ta": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "டோக்கன் அனுமதிகள் இல்லை"
+          }
+        },
+        "te": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "టోకెన్ ఆమోదాలు లేవు"
+          }
+        },
+        "ml": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ടോക്കൺ അനുമതികളൊന്നുമില്ല"
+          }
+        },
+        "mr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "टोकन मंजुऱ्या नाहीत"
+          }
+        },
+        "pa": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ਕੋਈ ਟੋਕਨ ਮਨਜ਼ੂਰੀ ਨਹੀਂ"
+          }
+        }
+      }
+    },
+    "Revoke": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Revoke"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Revocar"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "撤销"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "撤銷"
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "रद्द करें"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "إلغاء"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Revogar"
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "প্রত্যাহার"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Отозвать"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "取り消す"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Widerrufen"
+          }
+        },
+        "uk": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Відкликати"
+          }
+        },
+        "el": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ανάκληση"
+          }
+        },
+        "ro": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Revocă"
+          }
+        },
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Odvolat"
+          }
+        },
+        "hu": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Visszavonás"
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Återkalla"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tilbakekall"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tilbagekald"
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Peru"
+          }
+        },
+        "he": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "בטל"
+          }
+        },
+        "ca": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Revocar"
+          }
+        },
+        "hr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Opozovi"
+          }
+        },
+        "sk": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Odvolať"
+          }
+        },
+        "sl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Prekliči"
+          }
+        },
+        "sr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Опозови"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Révoquer"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "취소"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Revoca"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "İptal et"
+          }
+        },
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Thu hồi"
+          }
+        },
+        "th": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "เพิกถอน"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cabut"
+          }
+        },
+        "fa": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "لغو"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cofnij"
+          }
+        },
+        "nl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Intrekken"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "منسوخ کریں"
+          }
+        },
+        "bg": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Отмени"
+          }
+        },
+        "et": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tühista"
+          }
+        },
+        "lt": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Atšaukti"
+          }
+        },
+        "lv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Atsaukt"
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Afturkalla"
+          }
+        },
+        "ms": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Batalkan"
+          }
+        },
+        "fil": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bawiin"
+          }
+        },
+        "sw": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tengua"
+          }
+        },
+        "af": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Herroep"
+          }
+        },
+        "ta": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "திரும்பப் பெறு"
+          }
+        },
+        "te": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ఉపసంహరించు"
+          }
+        },
+        "ml": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "പിൻവലിക്കുക"
+          }
+        },
+        "mr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "रद्द करा"
+          }
+        },
+        "pa": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ਰੱਦ ਕਰੋ"
+          }
+        }
+      }
+    },
+    "Revoke sent": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Revoke sent"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Revocación enviada"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "撤销已发送"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "撤銷已送出"
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "रद्द अनुरोध भेजा गया"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "تمّ إرسال الإلغاء"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Revogação enviada"
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "প্রত্যাহার পাঠানো হয়েছে"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Отзыв отправлен"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "取り消しを送信しました"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Widerruf gesendet"
+          }
+        },
+        "uk": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Відкликання надіслано"
+          }
+        },
+        "el": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Η ανάκληση στάλθηκε"
+          }
+        },
+        "ro": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Revocare trimisă"
+          }
+        },
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Odvolání odesláno"
+          }
+        },
+        "hu": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Visszavonás elküldve"
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Återkallelse skickad"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tilbakekall sendt"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tilbagekald sendt"
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Peruutus lähetetty"
+          }
+        },
+        "he": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "הביטול נשלח"
+          }
+        },
+        "ca": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Revocació enviada"
+          }
+        },
+        "hr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Opoziv poslan"
+          }
+        },
+        "sk": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Odvolanie odoslané"
+          }
+        },
+        "sl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Preklic poslan"
+          }
+        },
+        "sr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Опозив послат"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Révocation envoyée"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "취소 전송됨"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Revoca inviata"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "İptal gönderildi"
+          }
+        },
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Đã gửi thu hồi"
+          }
+        },
+        "th": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ส่งการเพิกถอนแล้ว"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pencabutan dikirim"
+          }
+        },
+        "fa": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "لغو ارسال شد"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cofnięcie wysłane"
+          }
+        },
+        "nl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Intrekking verzonden"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "منسوخی بھیج دی گئی"
+          }
+        },
+        "bg": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Отмяната е изпратена"
+          }
+        },
+        "et": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tühistus saadetud"
+          }
+        },
+        "lt": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Atšaukimas išsiųstas"
+          }
+        },
+        "lv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Atsaukums nosūtīts"
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Afturköllun send"
+          }
+        },
+        "ms": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pembatalan dihantar"
+          }
+        },
+        "fil": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Naipadala ang pagbawi"
+          }
+        },
+        "sw": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Utenguzi umetumwa"
+          }
+        },
+        "af": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Herroeping gestuur"
+          }
+        },
+        "ta": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "திரும்பப் பெறுதல் அனுப்பப்பட்டது"
+          }
+        },
+        "te": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ఉపసంహరణ పంపబడింది"
+          }
+        },
+        "ml": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "പിൻവലിക്കൽ അയച്ചു"
+          }
+        },
+        "mr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "रद्द करणे पाठवले"
+          }
+        },
+        "pa": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ਰੱਦ ਕਰਨਾ ਭੇਜਿਆ ਗਿਆ"
+          }
+        }
+      }
+    },
+    "Revoking…": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Revoking…"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Revocando…"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在撤销…"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在撤銷…"
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "रद्द किया जा रहा है…"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "جارٍ الإلغاء…"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Revogando…"
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "প্রত্যাহার করা হচ্ছে…"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Отзыв…"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "取り消し中…"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Wird widerrufen…"
+          }
+        },
+        "uk": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Відкликання…"
+          }
+        },
+        "el": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ανάκληση…"
+          }
+        },
+        "ro": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Se revocă…"
+          }
+        },
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Odvolávání…"
+          }
+        },
+        "hu": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Visszavonás…"
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Återkallar…"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tilbakekaller…"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tilbagekalder…"
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Perutaan…"
+          }
+        },
+        "he": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "מבטל…"
+          }
+        },
+        "ca": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Revocant…"
+          }
+        },
+        "hr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Opoziva se…"
+          }
+        },
+        "sk": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Odvoláva sa…"
+          }
+        },
+        "sl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Preklicevanje…"
+          }
+        },
+        "sr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Опозивање…"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Révocation…"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "취소하는 중…"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Revoca in corso…"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "İptal ediliyor…"
+          }
+        },
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Đang thu hồi…"
+          }
+        },
+        "th": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "กำลังเพิกถอน…"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mencabut…"
+          }
+        },
+        "fa": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "در حال لغو…"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cofanie…"
+          }
+        },
+        "nl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Intrekken…"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "منسوخ کیا جا رہا ہے…"
+          }
+        },
+        "bg": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Отмяна…"
+          }
+        },
+        "et": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tühistamine…"
+          }
+        },
+        "lt": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Atšaukiama…"
+          }
+        },
+        "lv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Atsaukšana…"
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Afturkalla…"
+          }
+        },
+        "ms": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Membatalkan…"
+          }
+        },
+        "fil": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Binabawi…"
+          }
+        },
+        "sw": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Inatengua…"
+          }
+        },
+        "af": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Herroep tans…"
+          }
+        },
+        "ta": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "திரும்பப் பெறுகிறது…"
+          }
+        },
+        "te": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ఉపసంహరిస్తోంది…"
+          }
+        },
+        "ml": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "പിൻവലിക്കുന്നു…"
+          }
+        },
+        "mr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "रद्द करत आहे…"
+          }
+        },
+        "pa": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ਰੱਦ ਕੀਤਾ ਜਾ ਰਿਹਾ ਹੈ…"
+          }
+        }
+      }
+    },
+    "Scanning your approvals on-chain…": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Scanning your approvals on-chain…"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Escaneando tus aprobaciones en la cadena…"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在链上扫描你的授权…"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在鏈上掃描你的授權…"
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ऑन-चेन आपकी स्वीकृतियाँ स्कैन की जा रही हैं…"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "يجري فحص موافقاتك على السلسلة…"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Verificando suas aprovações on-chain…"
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "অন-চেইনে আপনার অনুমোদন স্ক্যান করা হচ্ছে…"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Сканируем ваши разрешения в сети…"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "オンチェーンであなたの承認をスキャン中…"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ihre Genehmigungen werden on-chain durchsucht…"
+          }
+        },
+        "uk": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Скануємо ваші дозволи в мережі…"
+          }
+        },
+        "el": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Σάρωση των εγκρίσεών σας on-chain…"
+          }
+        },
+        "ro": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Se scanează aprobările tale on-chain…"
+          }
+        },
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Prohledáváme vaše schválení on-chain…"
+          }
+        },
+        "hu": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Jóváhagyások keresése a láncon…"
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Söker igenom dina godkännanden on-chain…"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Skanner godkjenningene dine on-chain…"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Scanner dine godkendelser on-chain…"
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tarkistetaan hyväksyntäsi ketjusta…"
+          }
+        },
+        "he": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "סורק את האישורים שלך On-chain…"
+          }
+        },
+        "ca": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Escanejant les teves aprovacions a la cadena…"
+          }
+        },
+        "hr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pretražujemo vaša odobrenja na lancu…"
+          }
+        },
+        "sk": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Prehľadávame vaše schválenia on-chain…"
+          }
+        },
+        "sl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pregledujemo vaše odobritve na verigi…"
+          }
+        },
+        "sr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Скенирамо ваша одобрења на ланцу…"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Analyse de vos autorisations sur la chaîne…"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "온체인에서 승인을 검사하고 있어요…"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Analisi delle sue autorizzazioni sulla chain…"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Onaylarınız zincir üzerinde taranıyor…"
+          }
+        },
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Đang quét các phê duyệt của bạn trên chuỗi…"
+          }
+        },
+        "th": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "กำลังสแกนการอนุมัติของคุณบนเชน…"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Memindai persetujuan Anda di on-chain…"
+          }
+        },
+        "fa": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "در حال اسکن تأییدهای شما روی زنجیره…"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Skanowanie uprawnień w łańcuchu…"
+          }
+        },
+        "nl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Je goedkeuringen worden on-chain gescand…"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "آن چین آپ کی منظوریاں اسکین کی جا رہی ہیں…"
+          }
+        },
+        "bg": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Сканиране на одобренията Ви в веригата…"
+          }
+        },
+        "et": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sinu heakskiitude skannimine plokiahelas…"
+          }
+        },
+        "lt": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Skenuojami jūsų patvirtinimai grandinėje…"
+          }
+        },
+        "lv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tiek skenēti jūsu apstiprinājumi ķēdē…"
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Skanna heimildir þínar á keðjunni…"
+          }
+        },
+        "ms": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mengimbas kelulusan anda di atas rantai…"
+          }
+        },
+        "fil": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sina-scan ang iyong mga pag-apruba on-chain…"
+          }
+        },
+        "sw": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Inachunguza vibali vyako kwenye mnyororo…"
+          }
+        },
+        "af": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Jou goedkeurings word op die ketting geskandeer…"
+          }
+        },
+        "ta": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "உங்கள் அனுமதிகள் சங்கிலியில் ஸ்கேன் செய்யப்படுகின்றன…"
+          }
+        },
+        "te": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "మీ ఆమోదాలను చెయిన్‌లో స్కాన్ చేస్తోంది…"
+          }
+        },
+        "ml": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "നിങ്ങളുടെ അനുമതികൾ ചെയിനിൽ സ്കാൻ ചെയ്യുന്നു…"
+          }
+        },
+        "mr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "तुमच्या मंजुऱ्या साखळीवर स्कॅन करत आहे…"
+          }
+        },
+        "pa": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ਤੁਹਾਡੀਆਂ ਮਨਜ਼ੂਰੀਆਂ ਚੇਨ ਉੱਤੇ ਸਕੈਨ ਕੀਤੀਆਂ ਜਾ ਰਹੀਆਂ ਹਨ…"
+          }
+        }
+      }
+    },
+    "Spender": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Spender"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gastador"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "支出方"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "支出方"
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "खर्चकर्ता"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "المُنفِق"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gastador"
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ব্যয়কারী"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Получатель прав"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "使用許可先"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ausgabeberechtigter"
+          }
+        },
+        "uk": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Отримувач прав"
+          }
+        },
+        "el": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Δικαιούχος δαπάνης"
+          }
+        },
+        "ro": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cheltuitor"
+          }
+        },
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Oprávněný utratit"
+          }
+        },
+        "hu": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Költő fél"
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Spenderare"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bruker av midler"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bruger af midler"
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Käyttöoikeuden saaja"
+          }
+        },
+        "he": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "גורם מורשה להוצאה"
+          }
+        },
+        "ca": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gastador"
+          }
+        },
+        "hr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Trošitelj"
+          }
+        },
+        "sk": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Oprávnený minúť"
+          }
+        },
+        "sl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Porabnik"
+          }
+        },
+        "sr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Трошач"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bénéficiaire"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "지출자"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Beneficiario"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Harcayan"
+          }
+        },
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bên chi tiêu"
+          }
+        },
+        "th": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ผู้ใช้จ่าย"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pembelanja"
+          }
+        },
+        "fa": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "خرج‌کننده"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Wydający"
+          }
+        },
+        "nl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Begunstigde"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "خرچ کرنے والا"
+          }
+        },
+        "bg": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Изразходващ"
+          }
+        },
+        "et": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kulutaja"
+          }
+        },
+        "lt": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Išleidėjas"
+          }
+        },
+        "lv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tērētājs"
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Eyðandi"
+          }
+        },
+        "ms": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pembelanja"
+          }
+        },
+        "fil": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tagagastos"
+          }
+        },
+        "sw": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mtumiaji"
+          }
+        },
+        "af": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Besteder"
+          }
+        },
+        "ta": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "செலவிடுபவர்"
+          }
+        },
+        "te": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ఖర్చు చేసేవారు"
+          }
+        },
+        "ml": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ചെലവഴിക്കുന്നയാൾ"
+          }
+        },
+        "mr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "खर्च करणारा"
+          }
+        },
+        "pa": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ਖਰਚ ਕਰਨ ਵਾਲਾ"
+          }
+        }
+      }
+    },
+    "This wallet has no active ERC-20 approvals on the scanned EVM chains.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This wallet has no active ERC-20 approvals on the scanned EVM chains."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Esta cartera no tiene aprobaciones ERC-20 activas en las cadenas EVM analizadas."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在已扫描的 EVM 链上,此钱包没有活跃的 ERC-20 授权。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在已掃描的 EVM 鏈上,此錢包沒有有效的 ERC-20 授權。"
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "स्कैन की गई EVM चेनों पर इस वॉलेट में कोई सक्रिय ERC-20 स्वीकृति नहीं है।"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "لا تملك هذه المحفظة أي موافقات ERC-20 نشطة على سلاسل EVM التي تمّ فحصها."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Esta carteira não tem aprovações ERC-20 ativas nas chains EVM analisadas."
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "স্ক্যান করা EVM চেইনগুলোতে এই ওয়ালেটের কোনো সক্রিয় ERC-20 অনুমোদন নেই।"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "У этого кошелька нет активных разрешений ERC-20 в просканированных сетях EVM."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "スキャンした EVM チェーンに、このウォレットのアクティブな ERC-20 承認はありません。"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Diese Wallet hat in den durchsuchten EVM-Chains keine aktiven ERC-20-Genehmigungen."
+          }
+        },
+        "uk": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "У цього гаманця немає активних дозволів ERC-20 у просканованих мережах EVM."
+          }
+        },
+        "el": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Αυτό το πορτοφόλι δεν έχει ενεργές εγκρίσεις ERC-20 στις σαρωμένες αλυσίδες EVM."
+          }
+        },
+        "ro": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Acest portofel nu are aprobări ERC-20 active pe lanțurile EVM scanate."
+          }
+        },
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tato peněženka nemá na prohledaných řetězcích EVM žádná aktivní schválení ERC-20."
+          }
+        },
+        "hu": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ennek a tárcának nincs aktív ERC-20 jóváhagyása a vizsgált EVM-láncokon."
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Den här plånboken har inga aktiva ERC-20-godkännanden på de genomsökta EVM-kedjorna."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Denne lommeboken har ingen aktive ERC-20-godkjenninger på de skannede EVM-kjedene."
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Denne wallet har ingen aktive ERC-20-godkendelser på de scannede EVM-kæder."
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tällä lompakolla ei ole aktiivisia ERC-20-hyväksyntöjä tarkistetuissa EVM-ketjuissa."
+          }
+        },
+        "he": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "לארנק הזה אין אישורי ERC-20 פעילים ברשתות ה-EVM שנסרקו."
+          }
+        },
+        "ca": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aquesta cartera no té aprovacions ERC-20 actives a les cadenes EVM analitzades."
+          }
+        },
+        "hr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ovaj novčanik nema aktivnih ERC-20 odobrenja na skeniranim EVM lancima."
+          }
+        },
+        "sk": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Táto peňaženka nemá na prehľadaných reťazcoch EVM žiadne aktívne schválenia ERC-20."
+          }
+        },
+        "sl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ta denarnica nima aktivnih odobritev ERC-20 na pregledanih verigah EVM."
+          }
+        },
+        "sr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Овај новчаник нема активних ERC-20 одобрења на скенираним EVM ланцима."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ce portefeuille n’a aucune autorisation ERC-20 active sur les chaînes EVM analysées."
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "이 지갑에는 검사한 EVM 체인에 활성화된 ERC-20 승인이 없어요."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Questo wallet non ha autorizzazioni ERC-20 attive sulle chain EVM analizzate."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bu cüzdanın taranan EVM zincirlerinde etkin bir ERC-20 onayı yok."
+          }
+        },
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ví này không có phê duyệt ERC-20 đang hoạt động trên các chuỗi EVM đã quét."
+          }
+        },
+        "th": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "กระเป๋านี้ไม่มีการอนุมัติ ERC-20 ที่ใช้งานอยู่บนเชน EVM ที่สแกน"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dompet ini tidak memiliki persetujuan ERC-20 aktif pada rantai EVM yang dipindai."
+          }
+        },
+        "fa": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "این کیف پول هیچ تأیید فعال ERC-20 روی زنجیره‌های EVM اسکن‌شده ندارد."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ten portfel nie ma aktywnych uprawnień ERC-20 w przeskanowanych łańcuchach EVM."
+          }
+        },
+        "nl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Deze wallet heeft geen actieve ERC-20-goedkeuringen op de gescande EVM-chains."
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "اس والیٹ میں اسکین کی گئی EVM چینز پر کوئی فعال ERC-20 منظوری نہیں ہے۔"
+          }
+        },
+        "bg": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Този портфейл няма активни ERC-20 одобрения в сканираните EVM вериги."
+          }
+        },
+        "et": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sellel rahakotil pole skannitud EVM-ahelates aktiivseid ERC-20 heakskiite."
+          }
+        },
+        "lt": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ši piniginė neturi aktyvių ERC-20 patvirtinimų nuskenuotose EVM grandinėse."
+          }
+        },
+        "lv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Šim makam nav aktīvu ERC-20 apstiprinājumu skenētajās EVM ķēdēs."
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Þetta veski hefur engar virkar ERC-20 heimildir á skönnuðu EVM-keðjunum."
+          }
+        },
+        "ms": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dompet ini tiada kelulusan ERC-20 aktif pada rantai EVM yang diimbas."
+          }
+        },
+        "fil": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Walang aktibong ERC-20 na pag-apruba ang wallet na ito sa mga na-scan na EVM chain."
+          }
+        },
+        "sw": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pochi hii haina vibali vya ERC-20 vinavyotumika kwenye minyororo ya EVM iliyochunguzwa."
+          }
+        },
+        "af": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hierdie beursie het geen aktiewe ERC-20-goedkeurings op die geskandeerde EVM-kettings nie."
+          }
+        },
+        "ta": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ஸ்கேன் செய்யப்பட்ட EVM சங்கிலிகளில் இந்த வாலெட்டில் செயலில் உள்ள ERC-20 அனுமதிகள் எதுவும் இல்லை."
+          }
+        },
+        "te": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "స్కాన్ చేసిన EVM చెయిన్‌లలో ఈ వాలెట్‌కు చురుకైన ERC-20 ఆమోదాలు ఏవీ లేవు."
+          }
+        },
+        "ml": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "സ്കാൻ ചെയ്ത EVM ചെയിനുകളിൽ ഈ വാലറ്റിന് സജീവമായ ERC-20 അനുമതികളൊന്നുമില്ല."
+          }
+        },
+        "mr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "स्कॅन केलेल्या EVM साखळ्यांवर या वॉलेटला कोणत्याही सक्रिय ERC-20 मंजुऱ्या नाहीत."
+          }
+        },
+        "pa": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ਸਕੈਨ ਕੀਤੀਆਂ EVM ਚੇਨਾਂ ਉੱਤੇ ਇਸ ਵਾਲਿਟ ਕੋਲ ਕੋਈ ਸਰਗਰਮ ERC-20 ਮਨਜ਼ੂਰੀ ਨਹੀਂ ਹੈ।"
+          }
+        }
+      }
+    },
+    "Token approvals": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Token approvals"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aprobaciones de tokens"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "代币授权"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "代幣授權"
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "टोकन स्वीकृतियाँ"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "موافقات الرموز"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aprovações de tokens"
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "টোকেন অনুমোদন"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Разрешения для токенов"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "トークンの承認"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Token-Genehmigungen"
+          }
+        },
+        "uk": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Дозволи на токени"
+          }
+        },
+        "el": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Εγκρίσεις tokens"
+          }
+        },
+        "ro": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aprobări de tokenuri"
+          }
+        },
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Schválení tokenů"
+          }
+        },
+        "hu": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Token-jóváhagyások"
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Token-godkännanden"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Token-godkjenninger"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Token-godkendelser"
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Token-hyväksynnät"
+          }
+        },
+        "he": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "אישורי טוקנים"
+          }
+        },
+        "ca": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aprovacions de tokens"
+          }
+        },
+        "hr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Odobrenja tokena"
+          }
+        },
+        "sk": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Schválenia tokenov"
+          }
+        },
+        "sl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Odobritve žetonov"
+          }
+        },
+        "sr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Одобрења токена"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Autorisations de jetons"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "토큰 승인"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Autorizzazioni dei token"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Token onayları"
+          }
+        },
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Phê duyệt token"
+          }
+        },
+        "th": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "การอนุมัติโทเคน"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Persetujuan token"
+          }
+        },
+        "fa": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "تأییدهای توکن"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Uprawnienia tokenów"
+          }
+        },
+        "nl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tokengoedkeuringen"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ٹوکن منظوریاں"
+          }
+        },
+        "bg": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Одобрения за токени"
+          }
+        },
+        "et": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tokenite heakskiidud"
+          }
+        },
+        "lt": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Žetonų patvirtinimai"
+          }
+        },
+        "lv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Marķieru apstiprinājumi"
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tókaheimildir"
+          }
+        },
+        "ms": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kelulusan token"
+          }
+        },
+        "fil": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mga pag-apruba ng token"
+          }
+        },
+        "sw": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vibali vya tokeni"
+          }
+        },
+        "af": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tokengoedkeurings"
+          }
+        },
+        "ta": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "டோக்கன் அனுமதிகள்"
+          }
+        },
+        "te": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "టోకెన్ ఆమోదాలు"
+          }
+        },
+        "ml": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ടോക്കൺ അനുമതികൾ"
+          }
+        },
+        "mr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "टोकन मंजुऱ्या"
+          }
+        },
+        "pa": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ਟੋਕਨ ਮਨਜ਼ੂਰੀਆਂ"
+          }
+        }
+      }
+    },
+    "Unfavorite": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Unfavorite"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Quitar de favoritos"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "取消收藏"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "取消收藏"
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "पसंदीदा से हटाएँ"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "إزالة من المفضّلة"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Desfavoritar"
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "পছন্দ থেকে সরান"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Убрать из избранного"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "お気に入りから削除"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aus Favoriten entfernen"
+          }
+        },
+        "uk": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Прибрати з обраного"
+          }
+        },
+        "el": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Κατάργηση από αγαπημένα"
+          }
+        },
+        "ro": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Elimină de la favorite"
+          }
+        },
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Odebrat z oblíbených"
+          }
+        },
+        "hu": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Eltávolítás a kedvencekből"
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ta bort favorit"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fjern favoritt"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fjern favorit"
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Poista suosikeista"
+          }
+        },
+        "he": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "הסר ממועדפים"
+          }
+        },
+        "ca": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Treure de preferits"
+          }
+        },
+        "hr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ukloni iz favorita"
+          }
+        },
+        "sk": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Odobrať z obľúbených"
+          }
+        },
+        "sl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Odstrani iz priljubljenih"
+          }
+        },
+        "sr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Уклони из омиљених"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Retirer des favoris"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "즐겨찾기 해제"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rimuovi dai preferiti"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Favorilerden çıkar"
+          }
+        },
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bỏ yêu thích"
+          }
+        },
+        "th": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "นำออกจากรายการโปรด"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hapus dari favorit"
+          }
+        },
+        "fa": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "حذف از علاقه‌مندی‌ها"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Usuń z ulubionych"
+          }
+        },
+        "nl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Verwijderen uit favorieten"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "پسندیدہ سے ہٹائیں"
+          }
+        },
+        "bg": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Премахни от любими"
+          }
+        },
+        "et": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Eemalda lemmikutest"
+          }
+        },
+        "lt": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pašalinti iš mėgstamų"
+          }
+        },
+        "lv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Noņemt no izlases"
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fjarlægja úr eftirlæti"
+          }
+        },
+        "ms": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Buang dari kegemaran"
+          }
+        },
+        "fil": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Alisin sa paborito"
+          }
+        },
+        "sw": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ondoa kwenye vipendwa"
+          }
+        },
+        "af": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Verwyder uit gunstelinge"
+          }
+        },
+        "ta": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "பிடித்தவைகளிலிருந்து அகற்று"
+          }
+        },
+        "te": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ఇష్టమైనవాటి నుండి తీసివేయి"
+          }
+        },
+        "ml": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "പ്രിയപ്പെട്ടവയിൽ നിന്ന് നീക്കുക"
+          }
+        },
+        "mr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "आवडत्यांमधून काढा"
+          }
+        },
+        "pa": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ਮਨਪਸੰਦ ਵਿੱਚੋਂ ਹਟਾਓ"
+          }
+        }
+      }
+    },
+    "Disconnecting revokes a dApp's account access. It can't read your address again until you re-connect.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Disconnecting revokes a dApp's account access. It can't read your address again until you re-connect."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Desconectar revoca el acceso de una dApp a tu cuenta. No podrá volver a leer tu dirección hasta que vuelvas a conectarte."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "断开连接会撤销 dApp 对你账户的访问权限。在你重新连接之前,它无法再次读取你的地址。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "中斷連線會撤銷 dApp 對你帳戶的存取權。在你重新連線之前,它無法再次讀取你的位址。"
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "डिस्कनेक्ट करने से किसी dApp की आपके खाते तक पहुँच रद्द हो जाती है। जब तक आप दोबारा कनेक्ट नहीं करते, वह आपका पता दोबारा नहीं पढ़ सकती।"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "يؤدّي قطع الاتّصال إلى إلغاء وصول تطبيق dApp إلى حسابك. ولن يتمكّن من قراءة عنوانك مجدّدًا حتى تُعيد الاتّصال."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Desconectar revoga o acesso de uma dApp à sua conta. Ela não poderá ler seu endereço novamente até você reconectar."
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "সংযোগ বিচ্ছিন্ন করলে কোনো dApp-এর আপনার অ্যাকাউন্টে প্রবেশাধিকার প্রত্যাহার হয়। আপনি পুনরায় সংযোগ না করা পর্যন্ত এটি আপনার ঠিকানা আর পড়তে পারবে না।"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Отключение отзывает доступ dApp к вашему аккаунту. Оно не сможет снова прочитать ваш адрес, пока вы не подключитесь повторно."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "切断すると、dApp によるアカウントへのアクセスが取り消されます。再接続するまで、あなたのアドレスを再び読み取ることはできません。"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Beim Trennen wird der Kontozugriff einer dApp widerrufen. Sie kann Ihre Adresse erst wieder lesen, wenn Sie sich erneut verbinden."
+          }
+        },
+        "uk": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Відключення відкликає доступ dApp до вашого облікового запису. Воно не зможе знову прочитати вашу адресу, доки ви не під’єднаєтеся повторно."
+          }
+        },
+        "el": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Η αποσύνδεση ανακαλεί την πρόσβαση μιας dApp στον λογαριασμό σας. Δεν θα μπορεί να διαβάσει ξανά τη διεύθυνσή σας μέχρι να επανασυνδεθείτε."
+          }
+        },
+        "ro": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Deconectarea revocă accesul unei dApp la contul tău. Nu îți va mai putea citi adresa până când te reconectezi."
+          }
+        },
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Odpojení odvolá přístup dApp k vašemu účtu. Vaši adresu už nepřečte, dokud se znovu nepřipojíte."
+          }
+        },
+        "hu": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "A leválasztás visszavonja egy dApp hozzáférését a fiókjához. Csak akkor olvashatja újra a címét, ha ismét csatlakozik."
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Att koppla från återkallar en dApp:s åtkomst till ditt konto. Den kan inte läsa din adress igen förrän du återansluter."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Å koble fra tilbakekaller en dApps tilgang til kontoen din. Den kan ikke lese adressen din igjen før du kobler til på nytt."
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "At afbryde forbindelsen tilbagekalder en dApps adgang til din konto. Den kan ikke læse din adresse igen, før du opretter forbindelse på ny."
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Yhteyden katkaiseminen peruu dApp-sovelluksen pääsyn tiliisi. Se ei voi lukea osoitettasi uudelleen, ennen kuin yhdistät uudelleen."
+          }
+        },
+        "he": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ניתוק החיבור מבטל את גישת ה-dApp לחשבון שלך. היא לא תוכל לקרוא את הכתובת שלך שוב עד שתתחבר מחדש."
+          }
+        },
+        "ca": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Desconnectar revoca l’accés d’una dApp al teu compte. No podrà tornar a llegir la teva adreça fins que et tornis a connectar."
+          }
+        },
+        "hr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Prekid veze opoziva pristup dApp-a vašem računu. Neće moći ponovno pročitati vašu adresu dok se ponovno ne povežete."
+          }
+        },
+        "sk": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Odpojenie odvolá prístup dApp k vášmu účtu. Vašu adresu už neprečíta, kým sa znova nepripojíte."
+          }
+        },
+        "sl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Prekinitev povezave prekliče dostop dApp do vašega računa. Vašega naslova ne bo mogel znova prebrati, dokler se znova ne povežete."
+          }
+        },
+        "sr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Прекид везе опозива приступ dApp-а вашем налогу. Неће моћи поново да прочита вашу адресу док се поново не повежете."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "La déconnexion révoque l’accès d’une dApp à votre compte. Elle ne pourra plus lire votre adresse tant que vous ne vous reconnectez pas."
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "연결을 끊으면 dApp의 계정 접근 권한이 취소돼요. 다시 연결하기 전까지는 주소를 다시 읽을 수 없어요."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "La disconnessione revoca l’accesso di una dApp al suo account. Non potrà più leggere il suo indirizzo finché non si riconnette."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bağlantıyı kesmek, bir dApp’in hesap erişimini iptal eder. Yeniden bağlanana kadar adresinizi tekrar okuyamaz."
+          }
+        },
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ngắt kết nối sẽ thu hồi quyền truy cập tài khoản của một dApp. Nó không thể đọc lại địa chỉ của bạn cho đến khi bạn kết nối lại."
+          }
+        },
+        "th": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "การยกเลิกการเชื่อมต่อจะเพิกถอนสิทธิ์การเข้าถึงบัญชีของ dApp โดยจะอ่านที่อยู่ของคุณอีกไม่ได้จนกว่าคุณจะเชื่อมต่อใหม่"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Memutus koneksi akan mencabut akses akun sebuah dApp. dApp tidak dapat membaca alamat Anda lagi hingga Anda menghubungkan kembali."
+          }
+        },
+        "fa": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "قطع اتصال، دسترسی حساب یک dApp را لغو می‌کند. تا زمانی که دوباره متصل نشوید، نمی‌تواند نشانی شما را دوباره بخواند."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rozłączenie cofa dostęp dApp do konta. Nie odczyta ona ponownie Twojego adresu, dopóki nie połączysz się ponownie."
+          }
+        },
+        "nl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bij het verbreken van de verbinding trek je de accounttoegang van een dApp in. Die kan je adres pas weer lezen als je opnieuw verbindt."
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "کنکشن منقطع کرنے سے کسی dApp کی اکاؤنٹ رسائی منسوخ ہو جاتی ہے۔ جب تک آپ دوبارہ منسلک نہیں ہوتے، یہ آپ کا پتہ دوبارہ نہیں پڑھ سکتا۔"
+          }
+        },
+        "bg": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Прекъсването на връзката отменя достъпа на dApp до акаунта. То няма да може да чете адреса Ви отново, докато не се свържете повторно."
+          }
+        },
+        "et": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ühenduse katkestamine tühistab dAppi juurdepääsu kontole. See ei saa sinu aadressi enam lugeda, kuni uuesti ühendud."
+          }
+        },
+        "lt": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Atsijungus atšaukiama dApp prieiga prie paskyros. Ji nebegalės nuskaityti jūsų adreso, kol vėl neprisijungsite."
+          }
+        },
+        "lv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Atvienošanās atsauc dApp piekļuvi kontam. Tā vairs nevarēs nolasīt jūsu adresi, līdz jūs atkārtoti izveidosiet savienojumu."
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Að aftengja afturkallar aðgang dApp að reikningnum. Það getur ekki lesið vistfangið þitt aftur fyrr en þú tengist á ný."
+          }
+        },
+        "ms": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Memutuskan sambungan membatalkan akses akaun sesebuah dApp. Ia tidak boleh membaca alamat anda semula sehingga anda menyambung semula."
+          }
+        },
+        "fil": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ang pagdiskonekta ay binabawi ang access ng isang dApp sa account. Hindi na nito mababasa muli ang iyong address hangga't hindi ka muling kumokonekta."
+          }
+        },
+        "sw": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kukata muunganisho hutengua ufikiaji wa akaunti wa dApp. Haitaweza kusoma anwani yako tena hadi uunganishe upya."
+          }
+        },
+        "af": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Om te ontkoppel herroep 'n dApp se toegang tot die rekening. Dit kan jou adres nie weer lees nie totdat jy weer koppel."
+          }
+        },
+        "ta": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "இணைப்பை துண்டிப்பது ஒரு dApp இன் கணக்கு அணுகலைத் திரும்பப் பெறுகிறது. நீங்கள் மீண்டும் இணைக்கும் வரை அது உங்கள் முகவரியை மீண்டும் படிக்க முடியாது."
+          }
+        },
+        "te": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "డిస్‌కనెక్ట్ చేయడం ఒక dApp యొక్క ఖాతా యాక్సెస్‌ను ఉపసంహరిస్తుంది. మీరు మళ్లీ కనెక్ట్ అయ్యే వరకు అది మీ చిరునామాను మళ్లీ చదవలేదు."
+          }
+        },
+        "ml": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "വിച്ഛേദിക്കുന്നത് ഒരു dApp-ന്റെ അക്കൗണ്ട് ആക്സസ് പിൻവലിക്കുന്നു. നിങ്ങൾ വീണ്ടും കണക്റ്റ് ചെയ്യുന്നതുവരെ അതിന് നിങ്ങളുടെ വിലാസം വീണ്ടും വായിക്കാനാകില്ല."
+          }
+        },
+        "mr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "कनेक्शन तोडल्याने एखाद्या dApp चा खात्यावरील प्रवेश रद्द होतो. तुम्ही पुन्हा कनेक्ट होईपर्यंत ते तुमचा पत्ता पुन्हा वाचू शकत नाही."
+          }
+        },
+        "pa": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ਕਨੈਕਸ਼ਨ ਤੋੜਨ ਨਾਲ ਕਿਸੇ dApp ਦੀ ਖਾਤਾ ਪਹੁੰਚ ਰੱਦ ਹੋ ਜਾਂਦੀ ਹੈ। ਜਦੋਂ ਤੱਕ ਤੁਸੀਂ ਮੁੜ ਕਨੈਕਟ ਨਹੀਂ ਹੁੰਦੇ, ਇਹ ਤੁਹਾਡਾ ਪਤਾ ਦੁਬਾਰਾ ਨਹੀਂ ਪੜ੍ਹ ਸਕਦਾ।"
+          }
+        }
+      }
+    },
+    "This wallet can't revoke — it's watch-only or a single-key import.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This wallet can't revoke — it's watch-only or a single-key import."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Esta cartera no puede revocar: es de solo lectura o una importación de clave única."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "此钱包无法撤销 — 它是只读钱包或单密钥导入。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "此錢包無法撤銷 — 它是唯讀錢包或單一金鑰匯入。"
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "यह वॉलेट रद्द नहीं कर सकता — यह केवल-दृश्य है या एकल-कुंजी आयात है।"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "لا تستطيع هذه المحفظة الإلغاء — فهي للعرض فقط أو استيراد بمفتاح واحد."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Esta carteira não pode revogar — é somente leitura ou uma importação de chave única."
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "এই ওয়ালেট প্রত্যাহার করতে পারে না — এটি কেবল-দর্শন বা একক-কী আমদানি।"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Этот кошелёк не может отозвать — он только для просмотра или импортирован одним ключом."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "このウォレットは取り消せません — 閲覧専用、または単一鍵のインポートです。"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Diese Wallet kann nicht widerrufen — sie ist nur zur Ansicht oder ein Einzelschlüssel-Import."
+          }
+        },
+        "uk": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Цей гаманець не може відкликати — він лише для перегляду або імпортований одним ключем."
+          }
+        },
+        "el": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Αυτό το πορτοφόλι δεν μπορεί να ανακαλέσει — είναι μόνο για προβολή ή εισαγωγή ενός κλειδιού."
+          }
+        },
+        "ro": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Acest portofel nu poate revoca — este doar pentru vizualizare sau un import cu o singură cheie."
+          }
+        },
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tato peněženka nemůže odvolávat — je pouze pro čtení nebo importovaná jedním klíčem."
+          }
+        },
+        "hu": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ez a tárca nem tud visszavonni — csak megtekintésre szolgál, vagy egyetlen kulccsal importált."
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Den här plånboken kan inte återkalla — den är endast för visning eller en enkelnyckelimport."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Denne lommeboken kan ikke tilbakekalle — den er kun for visning eller en enkeltnøkkelimport."
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Denne wallet kan ikke tilbagekalde — den er kun til visning eller en enkeltnøgleimport."
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tämä lompakko ei voi perua — se on vain katselua varten tai yhden avaimen tuonti."
+          }
+        },
+        "he": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "הארנק הזה אינו יכול לבטל — הוא לצפייה בלבד או ייבוא במפתח יחיד."
+          }
+        },
+        "ca": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aquesta cartera no pot revocar — és només de lectura o una importació de clau única."
+          }
+        },
+        "hr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ovaj novčanik ne može opozvati — samo je za pregled ili je uvoz s jednim ključem."
+          }
+        },
+        "sk": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Táto peňaženka nemôže odvolávať — je len na prezeranie alebo import jedným kľúčom."
+          }
+        },
+        "sl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ta denarnica ne more preklicati — je samo za ogled ali uvoz z enim ključem."
+          }
+        },
+        "sr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Овај новчаник не може да опозове — само је за преглед или је увоз једним кључем."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ce portefeuille ne peut pas révoquer — il est en lecture seule ou issu d’un import à clé unique."
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "이 지갑은 취소할 수 없어요 — 보기 전용이거나 단일 키로 가져온 지갑이에요."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Questo wallet non può revocare — è di sola lettura o un’importazione a chiave singola."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bu cüzdan iptal edemez — yalnızca izleme amaçlı veya tek anahtarlı bir içe aktarma."
+          }
+        },
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ví này không thể thu hồi — đây là ví chỉ xem hoặc nhập bằng khóa đơn."
+          }
+        },
+        "th": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "กระเป๋านี้เพิกถอนไม่ได้ — เป็นแบบดูอย่างเดียวหรือนำเข้าด้วยคีย์เดียว"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dompet ini tidak dapat mencabut — dompet hanya-pantau atau impor satu kunci."
+          }
+        },
+        "fa": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "این کیف پول نمی‌تواند لغو کند — فقط‌خواندنی است یا با یک کلید واحد وارد شده است."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ten portfel nie może cofnąć — jest tylko do podglądu lub zaimportowany z jednego klucza."
+          }
+        },
+        "nl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Deze wallet kan niet intrekken — het is alleen-bekijken of een import met één sleutel."
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "یہ والیٹ منسوخ نہیں کر سکتا — یہ صرف دیکھنے کے لیے ہے یا واحد کلید سے درآمد شدہ ہے۔"
+          }
+        },
+        "bg": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Този портфейл не може да отменя — той е само за преглед или импорт с един ключ."
+          }
+        },
+        "et": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "See rahakott ei saa tühistada — see on ainult vaatamiseks või ühe võtmega imporditud."
+          }
+        },
+        "lt": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ši piniginė negali atšaukti — ji skirta tik peržiūrai arba importuota su vienu raktu."
+          }
+        },
+        "lv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Šis maks nevar atsaukt — tas ir tikai skatīšanai vai importēts ar vienu atslēgu."
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Þetta veski getur ekki afturkallað — það er aðeins til skoðunar eða innflutt með einum lykli."
+          }
+        },
+        "ms": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dompet ini tidak boleh membatalkan — ia hanya-pantau atau import satu kunci."
+          }
+        },
+        "fil": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hindi makakapagbawi ang wallet na ito — ito ay watch-only o isang single-key na import."
+          }
+        },
+        "sw": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pochi hii haiwezi kutengua — ni ya kutazama tu au iliyoingizwa kwa ufunguo mmoja."
+          }
+        },
+        "af": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hierdie beursie kan nie herroep nie — dit is slegs-kyk of 'n enkelsleutel-invoer."
+          }
+        },
+        "ta": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "இந்த வாலெட் திரும்பப் பெற முடியாது — இது பார்வை-மட்டும் அல்லது ஒற்றை-விசை இறக்குமதி."
+          }
+        },
+        "te": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ఈ వాలెట్ ఉపసంహరించలేదు — ఇది చూడటానికి-మాత్రమే లేదా ఏక-కీ దిగుమతి."
+          }
+        },
+        "ml": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ഈ വാലറ്റിന് പിൻവലിക്കാനാകില്ല — ഇത് കാണാൻ-മാത്രമുള്ളതോ ഒറ്റ-കീ ഇറക്കുമതിയോ ആണ്."
+          }
+        },
+        "mr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "हे वॉलेट रद्द करू शकत नाही — ते केवळ-पाहण्यासाठी आहे किंवा एकल-कीने आयात केलेले आहे."
+          }
+        },
+        "pa": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ਇਹ ਵਾਲਿਟ ਰੱਦ ਨਹੀਂ ਕਰ ਸਕਦਾ — ਇਹ ਸਿਰਫ਼-ਦੇਖਣ ਲਈ ਹੈ ਜਾਂ ਇੱਕ-ਕੁੰਜੀ ਨਾਲ ਆਯਾਤ ਕੀਤਾ ਗਿਆ ਹੈ।"
+          }
+        }
+      }
     }
   },
   "version": "1.0"
