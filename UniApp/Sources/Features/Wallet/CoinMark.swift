@@ -57,11 +57,29 @@ struct CoinMark: View {
     @State private var prepared: UIImage?
 
     var body: some View {
+        // A native coin's logo is BUNDLED in the asset catalog
+        // (`coin-<slug>`, fetched from Trust Wallet at build time) — render
+        // it instantly, with no network, no first-launch flash, and no risk
+        // of cache eviction blanking it (user direction 2026-06-17). Tokens
+        // (which are open-ended) keep the network + persistent-disk path.
+        if let bundled = bundledNativeAssetName {
+            Image(bundled)
+                .resizable()
+                .scaledToFit()
+                .clipShape(Circle())
+        } else {
+            networkMark
+        }
+    }
+
+    /// The network/cache-backed mark — Trust Wallet fetch, decoded off-main,
+    /// cached to durable disk, initials chip until it lands.
+    private var networkMark: some View {
         // Resolve the Trust Wallet / custom URL ONCE per body pass —
         // it doubles as the `.task(id:)` rebuild key AND the fetch
         // target, so the derivation never runs twice for one render.
         let url = resolvedURL
-        Group {
+        return Group {
             if let image = prepared {
                 Image(uiImage: image)
                     .resizable()
@@ -74,6 +92,15 @@ struct CoinMark: View {
         .task(id: url) {
             await loadFromCache(url: url)
         }
+    }
+
+    /// Bundled native-coin asset name (`coin-<slug>`) when one exists in the
+    /// catalog for this chain's Trust Wallet slug; `nil` for tokens or any
+    /// chain whose logo wasn't bundled.
+    private var bundledNativeAssetName: String? {
+        guard isNativeCoin, let slug = CoinMarkCache.trustWalletChainSlug(for: chain) else { return nil }
+        let name = "coin-\(slug)"
+        return UIImage(named: name) != nil ? name : nil
     }
 
     // MARK: - Trust Wallet mark URL

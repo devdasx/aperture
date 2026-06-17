@@ -313,9 +313,26 @@ actor CoinMarkCache {
     /// The one on-disk location this cache writes to. `clearAll()`
     /// removes exactly this directory; `diskPath(for:)` builds file
     /// paths inside it — one source of truth for both.
+    ///
+    /// **2026-06-17 — Application Support, NOT Caches.** Previously this
+    /// lived under `Caches/`, which iOS evicts under disk pressure — so a
+    /// downloaded token icon could silently disappear and re-show as an
+    /// initials chip until re-fetched (the user: "some tokens without
+    /// icons … cached and persisted"). Application Support is durable app
+    /// data the system never evicts, so once a mark is downloaded it stays
+    /// for good. `clearAll()` (factory reset) still wipes it. Excluded from
+    /// iCloud backup below — these are reproducible public brand assets, no
+    /// need to bloat the user's backup.
     nonisolated static var diskDirectory: URL {
-        let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
-        return caches.appendingPathComponent("AperturePaint/CoinMarks", isDirectory: true)
+        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        var dir = base.appendingPathComponent("AperturePaint/CoinMarks", isDirectory: true)
+        if !FileManager.default.fileExists(atPath: dir.path) {
+            try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+            var resourceValues = URLResourceValues()
+            resourceValues.isExcludedFromBackup = true
+            try? dir.setResourceValues(resourceValues)
+        }
+        return dir
     }
 
     nonisolated static func diskPath(for url: URL) -> URL {
