@@ -1233,27 +1233,45 @@ final class WalletRefreshState {
 private enum WalletRefreshRegistry {
     private struct Entry {
         let token: UUID
+        let startedAt: DispatchTime
         let task: Task<Set<SupportedChain>, Never>
     }
 
     private static var inFlight: [UUID: Entry] = [:]
 
+    /// **Wedge threshold (2026-06-17 — "24 cancelled RPCs" fix).** A user
+    /// pull cancels an in-flight run ONLY if it has been going longer than
+    /// this. A young, healthy in-flight refresh (a scene/on-appear/periodic
+    /// scan, or a pull that landed seconds ago) is already fetching fresh
+    /// data, so the new pull JOINS it instead of cancelling 20+ in-flight
+    /// RPCs and starting the whole thing over (the wasted cancellations seen
+    /// in the diagnostics log). Past this, the pipeline is probably wedged
+    /// (a stuck endpoint), so the pull replaces it.
+    private static let wedgeThreshold: TimeInterval = 6
+
     /// Returns the already-running refresh task for `walletId` when
-    /// one exists (and `cancelExisting` is `false`); otherwise starts
-    /// `operation` as a new task, registers it, and deregisters it on
-    /// completion. With `cancelExisting`, any in-flight task is
-    /// cancelled first and a fresh pipeline starts in its place.
+    /// one exists and is healthy; otherwise starts `operation` as a new
+    /// task, registers it, and deregisters it on completion. With
+    /// `cancelExisting`, an in-flight task is replaced ONLY if it looks
+    /// wedged (older than `wedgeThreshold`); a younger one is joined.
     static func joinOrStart(
         walletId: UUID,
         cancelExisting: Bool = false,
         operation: @escaping @Sendable () async -> Set<SupportedChain>
     ) -> Task<Set<SupportedChain>, Never> {
         if let existing = inFlight[walletId] {
-            guard cancelExisting else { return existing.task }
-            // User pulled against a (possibly wedged) pipeline —
-            // cancel it (propagates through the scan stream and
-            // RPCClient as `RPCError.cancelled`) and stale-out its
-            // pending state publication before the replacement runs.
+            let elapsed = Double(
+                DispatchTime.now().uptimeNanoseconds &- existing.startedAt.uptimeNanoseconds
+            ) / 1_000_000_000
+            // Join unless the caller wants a replacement AND the in-flight run
+            // looks wedged. This collapses a near-simultaneous background scan
+            // + user pull into ONE pipeline instead of cancel-and-restart.
+            if !cancelExisting || elapsed < wedgeThreshold {
+                return existing.task
+            }
+            // Wedged pipeline — cancel it (propagates through the scan stream
+            // and RPCClient as `RPCError.cancelled`) and stale-out its pending
+            // state publication before the replacement runs.
             existing.task.cancel()
             WalletRefreshState.shared.invalidate()
         }
@@ -1268,7 +1286,7 @@ private enum WalletRefreshRegistry {
             }
             return failedChains
         }
-        inFlight[walletId] = Entry(token: token, task: task)
+        inFlight[walletId] = Entry(token: token, startedAt: DispatchTime.now(), task: task)
         return task
     }
 }
