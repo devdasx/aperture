@@ -45,15 +45,6 @@ enum SettingsDestination: Hashable, Codable {
     case preferences
     case help
     case about
-
-    /// **Developer / Design playground.** Pushes `TestScreenView` — a
-    /// faithful copy of the wallet-home surface with mock data and
-    /// inert actions, used by the design team (and the user) to
-    /// evaluate design experiments before promoting them to the real
-    /// wallet screen. Lives under the dedicated "Developer" section
-    /// so its provenance is honest — this is not a user feature, it's
-    /// a design/dev affordance.
-    case testScreen
 }
 
 struct SettingsView: View {
@@ -101,10 +92,6 @@ struct SettingsView: View {
     // `NavigationStack` path. Removed so toggling a preference can
     // never disturb the stack owner. Do not re-add a preference key
     // here unless this view's body actually renders it.
-    /// Test-mode toggle — same `@AppStorage` key the wallet-home
-    /// reads. Flipping here updates the wallet view in place
-    /// (2026-06-09 — replaced the toolbar flask).
-    @AppStorage("isTestMode") private var isTestMode: Bool = false
 
     /// Deep-link token stamped by `MainTabView`'s long-press menu
     /// ("Manage wallets" → Settings tab + push `.wallets`). The
@@ -257,52 +244,7 @@ struct SettingsView: View {
                     .listRowBackground(UniColors.Background.secondary)
                 }
 
-                // Section 6 — Developer (design playground)
-                //
-                // Surfaces the `TestScreen` route — a faithful copy of
-                // the wallet-home with mock data and inert actions, used
-                // by the design team (and the user) to evaluate design
-                // experiments before promoting them to the real wallet
-                // surface. Lives in a dedicated "Developer" section
-                // (header on the section) so its provenance is honest:
-                // this is a dev / design affordance, not a user feature.
-                // DEBUG-only: the playground screen and the public-
-                // address test scan must not ship to production users
-                // — the toggle runs live RPC scans against well-known
-                // addresses from the user's IP.
-                #if DEBUG
-                Section {
-                    NavigationLink(value: SettingsDestination.testScreen) {
-                        SettingsRow(
-                            systemImage: "flask",
-                            title: "Test Screen",
-                            trailing: nil
-                        )
-                    }
-                    .listRowBackground(UniColors.Background.secondary)
-
-                    // Test against public addresses toggle. The flask
-                    // icon used to live in the wallet-home toolbar
-                    // (2026-06-06 ship); moved here on 2026-06-09 per
-                    // user direction so the toolbar reads cleaner —
-                    // gear on the left, wallet pill centred, nothing
-                    // trailing. `isTestMode` is `@AppStorage` so
-                    // toggling here flips the wallet-home's view in
-                    // place; no extra plumbing.
-                    UniToggle(isOn: $isTestMode) {
-                        SettingsRow(
-                            systemImage: "atom",
-                            title: "Test against public addresses",
-                            trailing: nil
-                        )
-                    }
-                    .listRowBackground(UniColors.Background.secondary)
-                } header: {
-                    Text("Developer")
-                }
-                #endif
-
-                // Section 7 — Advanced (terminal nuclear hatch)
+                // Section 6 — Advanced (terminal nuclear hatch)
                 Section {
                     NavigationLink(value: SettingsDestination.advanced) {
                         SettingsRow(
@@ -339,14 +281,6 @@ struct SettingsView: View {
                                                     onTapTerms: { isShowingTerms = true },
                                                     onTapPrivacy: { isShowingPrivacyPolicy = true }
                                                  )
-                case .testScreen:
-                    #if DEBUG
-                    TestScreenView()
-                    #else
-                    // Unreachable in release — the Developer section
-                    // that pushes this destination is DEBUG-only.
-                    EmptyView()
-                    #endif
                 }
             }
             // No `.toolbar` Done item — as a tab root in

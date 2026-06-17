@@ -78,7 +78,6 @@ final class SettingsStore {
         let haptics = bool("hapticFeedbackEnabled", true)
         let bgRefresh = bool("backgroundBalanceRefresh", true)
         let chartRange = str("walletHomeBalanceHistoryRange", BalanceHistoryRange.all.rawValue)
-        let testMode = bool("isTestMode", false)
         let tab = int("selectedTab", 0)
         let activeWallet = str("activeWalletId", "")
         let deepLink = str("settingsDeepLink", "")
@@ -96,7 +95,6 @@ final class SettingsStore {
             || r.hapticFeedbackEnabled != haptics
             || r.backgroundBalanceRefresh != bgRefresh
             || r.walletHomeBalanceHistoryRange != chartRange
-            || r.isTestMode != testMode
             || r.selectedTab != tab
             || r.activeWalletId != activeWallet
             || r.settingsDeepLink != deepLink
@@ -113,7 +111,6 @@ final class SettingsStore {
         r.hapticFeedbackEnabled = haptics
         r.backgroundBalanceRefresh = bgRefresh
         r.walletHomeBalanceHistoryRange = chartRange
-        r.isTestMode = testMode
         r.selectedTab = tab
         r.activeWalletId = activeWallet
         r.settingsDeepLink = deepLink

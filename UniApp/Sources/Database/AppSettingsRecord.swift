@@ -36,7 +36,6 @@ final class AppSettingsRecord {
     var hapticFeedbackEnabled: Bool
     var backgroundBalanceRefresh: Bool
     var walletHomeBalanceHistoryRange: String
-    var isTestMode: Bool
 
     // Navigation / session.
     var selectedTab: Int
@@ -62,7 +61,6 @@ final class AppSettingsRecord {
         hapticFeedbackEnabled: Bool = true,
         backgroundBalanceRefresh: Bool = true,
         walletHomeBalanceHistoryRange: String = "",
-        isTestMode: Bool = false,
         selectedTab: Int = 0,
         activeWalletId: String = "",
         settingsDeepLink: String = "",
@@ -80,7 +78,6 @@ final class AppSettingsRecord {
         self.hapticFeedbackEnabled = hapticFeedbackEnabled
         self.backgroundBalanceRefresh = backgroundBalanceRefresh
         self.walletHomeBalanceHistoryRange = walletHomeBalanceHistoryRange
-        self.isTestMode = isTestMode
         self.selectedTab = selectedTab
         self.activeWalletId = activeWalletId
         self.settingsDeepLink = settingsDeepLink
