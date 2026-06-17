@@ -79,6 +79,10 @@ struct BrowserHomeView: View {
     /// when the user navigates so the next visit starts fresh.
     @State private var searchText: String = ""
 
+    /// The selected directory category chip (2026-06-17). `.all` shows the
+    /// curated favorites + the full directory; a category filters to it.
+    @State private var selectedCategory: BrowserDAppCategory = .all
+
     /// The pushed `BrowserSessionView`'s URL. When non-nil the
     /// session view is on the navigation stack.
     @State private var sessionDestination: BrowserSessionDestination?
@@ -190,7 +194,9 @@ struct BrowserHomeView: View {
     @ViewBuilder
     private var listSurface: some View {
         List {
-            favoritesSection
+            chipsSection
+            if selectedCategory == .all { favoritesSection }
+            directorySection
             recentSection
             connectedSection
             footerSection
@@ -201,6 +207,52 @@ struct BrowserHomeView: View {
     }
 
     // MARK: - Sections
+
+    /// Category chips — a cleared, full-bleed row so the horizontal
+    /// scroller floats free of the inset-grouped chrome (2026-06-17).
+    @ViewBuilder
+    private var chipsSection: some View {
+        Section {
+            BrowserCategoryChips(selected: $selectedCategory)
+                .listRowBackground(Color.clear)
+                .listRowSeparator(.hidden)
+                .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
+        }
+    }
+
+    /// The dApp directory, filtered by the selected chip. On `.all` the
+    /// eight curated favorites (shown in the grid above) are excluded so
+    /// they don't appear twice. Tapping a row opens the dApp.
+    @ViewBuilder
+    private var directorySection: some View {
+        let dapps = directoryDApps
+        if !dapps.isEmpty {
+            Section {
+                ForEach(dapps) { dapp in
+                    Button {
+                        sessionDestination = BrowserSessionDestination(url: dapp.url)
+                    } label: {
+                        BrowserDAppRow(dapp: dapp)
+                    }
+                    .buttonStyle(.plain)
+                    .listRowBackground(UniColors.Background.secondary)
+                }
+            } header: {
+                UniCaption(
+                    text: selectedCategory == .all ? "All dApps" : selectedCategory.label,
+                    color: UniColors.Text.tertiary
+                )
+            }
+        }
+    }
+
+    /// The directory rows for the current chip — favorites removed on `.all`.
+    private var directoryDApps: [BrowserDApp] {
+        let all = BrowserDApp.directory(for: selectedCategory)
+        guard selectedCategory == .all else { return all }
+        let favoriteHosts = Set(BrowserFavorite.starterSet.map { $0.host })
+        return all.filter { !favoriteHosts.contains($0.host) }
+    }
 
     /// The 4-column favorites grid. One List row holding the grid
     /// — iOS draws the inset-grouped card around it for free.
