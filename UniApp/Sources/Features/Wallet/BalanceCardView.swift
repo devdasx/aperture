@@ -47,6 +47,11 @@ struct BalanceCardView: View {
     /// The active wallet's stable id — keys the per-wallet hidden flag.
     let walletId: UUID?
     let walletName: String
+    /// The active wallet's avatar spec (gradient + glyph). The card's
+    /// leading mark renders THIS — the user's chosen wallet color/icon,
+    /// the same as wallet management — instead of a fixed black logo
+    /// (2026-06-17 user direction).
+    let avatarSpec: WalletAvatarSpec
     /// The wallet's resting total fiat (the value when not scrubbing).
     let totalFiat: Decimal
     let currencyCode: String
@@ -103,6 +108,7 @@ struct BalanceCardView: View {
     init(
         walletId: UUID?,
         walletName: String,
+        avatarSpec: WalletAvatarSpec,
         totalFiat: Decimal,
         currencyCode: String,
         transactions: [TransactionRecord],
@@ -116,6 +122,7 @@ struct BalanceCardView: View {
     ) {
         self.walletId = walletId
         self.walletName = walletName
+        self.avatarSpec = avatarSpec
         self.totalFiat = totalFiat
         self.currencyCode = currencyCode
         self.transactions = transactions
@@ -313,13 +320,11 @@ struct BalanceCardView: View {
 
     private var header: some View {
         HStack(alignment: .top, spacing: 11) {
-            // Iris avatar disc (the in-app logo).
-            Image("IrisAvatar")
-                .resizable()
-                .renderingMode(.original)
-                .scaledToFit()
-                .frame(width: 38, height: 38)
-                .clipShape(Circle())
+            // The wallet's OWN avatar (gradient + glyph) — the color/icon
+            // the user picked in wallet management, not a fixed black
+            // logo (2026-06-17 user direction). `.row` is 36pt; the 1pt
+            // ring keeps the card's existing disc treatment.
+            WalletAvatar(spec: avatarSpec, size: .row, walletId: walletId)
                 .overlay(
                     Circle().stroke(UniColors.BalanceCard.avatarRing(colorScheme), lineWidth: 1)
                 )

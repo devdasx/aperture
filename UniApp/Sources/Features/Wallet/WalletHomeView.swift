@@ -980,6 +980,8 @@ struct WalletHomeView: View {
             BalanceCardView(
                 walletId: activeWallet?.id,
                 walletName: activeWallet?.name ?? String.apertureLocalized("Wallet"),
+                avatarSpec: activeWallet?.avatarSpec
+                    ?? WalletAvatarSpec.auto(name: activeWallet?.name ?? "Wallet"),
                 totalFiat: totalFiat,
                 currencyCode: currencyCode,
                 transactions: allTransactions,
