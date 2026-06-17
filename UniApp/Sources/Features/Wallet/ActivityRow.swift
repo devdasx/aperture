@@ -70,10 +70,11 @@ struct ActivityRow: View {
                 Text(title)
                     .font(UniTypography.bodyEmphasized)
                     .foregroundStyle(UniColors.Text.primary)
-                Text(WalletFormatting.shortAddress(counterparty))
+                Text(verbatim: subtitle)
                     .font(UniTypography.footnote)
                     .foregroundStyle(UniColors.Text.secondary)
-                    .monospacedDigit()
+                    .lineLimit(1)
+                    .truncationMode(.tail)
             }
 
             Spacer(minLength: UniSpacing.s)
@@ -184,6 +185,18 @@ struct ActivityRow: View {
         }
     }
 
+    /// Subtitle — the token's full + short name ("Avalanche · AVAX",
+    /// "USD Coin · USDC"), replacing the counterparty address (2026-06-18
+    /// user direction; the full address stays one tap away in the tx
+    /// detail). Falls back to the bare symbol when no full name is known.
+    private var subtitle: String {
+        if let name = ActivityTokenName.fullName(chain: chain, symbol: tokenSymbol),
+           name.caseInsensitiveCompare(tokenSymbol) != .orderedSame {
+            return "\(name) · \(tokenSymbol)"
+        }
+        return tokenSymbol
+    }
+
     /// Signed amount — the local-currency value by default (Preferences
     /// toggle), falling back to the native token amount when fiat display
     /// is off OR no price is known for the symbol (Rule #16 — never guess
@@ -265,5 +278,31 @@ enum ActivityFiat {
         guard let price = map[symbol.uppercased()], price > 0,
               let amount = Decimal(string: amountRaw) else { return nil }
         return amount * price
+    }
+}
+
+// MARK: - ActivityTokenName
+
+/// Resolves a `(chain, symbol)` to the token's full display name for the
+/// activity-row subtitle (2026-06-18). Native coins use the chain's name
+/// ("Avalanche"); registry tokens use their curated `CatalogAsset.name`
+/// ("USD Coin"). The `(chainRaw|SYMBOL) → name` index is built once from
+/// the static `AssetCatalog` — pure data, no DB context — so per-row
+/// lookup is O(1). Returns nil when nothing is known, so the row falls
+/// back to the bare symbol (Rule #16 — never invent a name).
+enum ActivityTokenName {
+    private static let nameByChainSymbol: [String: String] = {
+        var map: [String: String] = [:]
+        for asset in AssetCatalog.allAssets {
+            map["\(asset.chain.rawValue)|\(asset.symbol.uppercased())"] = asset.name
+        }
+        return map
+    }()
+
+    static func fullName(chain: SupportedChain, symbol: String) -> String? {
+        if symbol.caseInsensitiveCompare(chain.ticker) == .orderedSame {
+            return chain.displayName
+        }
+        return nameByChainSymbol["\(chain.rawValue)|\(symbol.uppercased())"]
     }
 }

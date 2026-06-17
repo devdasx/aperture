@@ -1199,15 +1199,21 @@ enum WalletRefreshRegistry {
 
     private static var inFlight: [UUID: Entry] = [:]
 
-    /// **Wedge threshold (2026-06-17 — "24 cancelled RPCs" fix).** A user
-    /// pull cancels an in-flight run ONLY if it has been going longer than
-    /// this. A young, healthy in-flight refresh (a scene/on-appear/periodic
-    /// scan, or a pull that landed seconds ago) is already fetching fresh
-    /// data, so the new pull JOINS it instead of cancelling 20+ in-flight
-    /// RPCs and starting the whole thing over (the wasted cancellations seen
-    /// in the diagnostics log). Past this, the pipeline is probably wedged
-    /// (a stuck endpoint), so the pull replaces it.
-    private static let wedgeThreshold: TimeInterval = 6
+    /// **Wedge threshold (2026-06-18 — "wait for the current run, don't run
+    /// it twice").** A user pull replaces an in-flight run ONLY if that run
+    /// has been going longer than this — i.e. only if it's genuinely stuck.
+    /// Any in-flight refresh that's still within a normal completion window
+    /// (a scene/on-appear/periodic scan, or another pull) is already
+    /// fetching fresh balances + history, so a new request JOINS it and
+    /// awaits its result instead of cancelling ~24 in-flight RPCs and
+    /// re-running the whole scan (which is "running the same job twice" +
+    /// the wasted-cancellation churn the user reported). Raised 6 → 90 s so
+    /// even a slow-but-progressing fan-out (per-chain timeouts + bounded
+    /// retries run in parallel, so a healthy run finishes well under this)
+    /// is waited for, not duplicated; past 90 s the pipeline is treated as
+    /// wedged and a pull may replace it. Backgrounding still cancels in-flight
+    /// runs promptly via `cancelAll()` — this only governs foreground re-triggers.
+    private static let wedgeThreshold: TimeInterval = 90
 
     /// Returns the already-running refresh task for `walletId` when
     /// one exists and is healthy; otherwise starts `operation` as a new

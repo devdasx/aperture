@@ -67,6 +67,21 @@ import TipKit
 /// Hebrew / Persian / Urdu — and the SF Symbols (`arrow.left.arrow.right`
 /// notably) auto-flip when directional. We do not, and must not,
 /// reorder the tabs manually based on layout direction.
+/// Cross-view signal for "the user re-tapped the active tab" (2026-06-18).
+/// `MainTabView` bumps `walletReselectToken` when the already-selected
+/// Wallet tab is tapped again; `WalletHomeView` observes it (via the
+/// Observation framework) and pops its navigation stack to root. A shared
+/// singleton — not an environment object — so `WalletHomeView()` needs no
+/// init change and there's no missing-environment trap.
+@MainActor
+@Observable
+final class TabReselectSignal {
+    static let shared = TabReselectSignal()
+    private init() {}
+    /// Monotonic counter, bumped on each Wallet-tab re-tap.
+    var walletReselectToken: Int = 0
+}
+
 struct MainTabView: View {
     /// Persisted across launches so the user lands on whichever tab
     /// they last had open. Default `.wallet`. Restoration nuance
@@ -122,7 +137,21 @@ struct MainTabView: View {
     private var selectedTab: Binding<MainTab> {
         Binding(
             get: { MainTab(rawValue: selectedTabRaw) ?? .wallet },
-            set: { selectedTabRaw = $0.rawValue }
+            set: { newValue in
+                // Re-tapping the already-selected Wallet tab pops its nav
+                // stack back to the home root — the standard iOS tab gesture,
+                // which `TabView` does NOT perform automatically for a
+                // NavigationStack (2026-06-18 user report). SwiftUI calls
+                // this setter with the SAME value on a re-tap, so detect it
+                // here and bump the shared token; `WalletHomeView` observes
+                // it and clears its path. (Swap / Browser are single screens
+                // with nothing to pop.)
+                if newValue == (MainTab(rawValue: selectedTabRaw) ?? .wallet),
+                   newValue == .wallet {
+                    TabReselectSignal.shared.walletReselectToken &+= 1
+                }
+                selectedTabRaw = newValue.rawValue
+            }
         )
     }
 

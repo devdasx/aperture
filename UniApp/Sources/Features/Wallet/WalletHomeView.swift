@@ -583,6 +583,16 @@ struct WalletHomeView: View {
                 .onChange(of: navigationPath) { _, newPath in
                     ScreenRestoration.saveWalletHomeStack(newPath)
                 }
+                // Re-tapping the Wallet tab (MainTabView bumps this token)
+                // pops the nav stack back to the home root — the standard
+                // iOS tab gesture (2026-06-18 user report). Reading the
+                // token here registers the Observation dependency so the
+                // bump re-evaluates this body and fires the handler.
+                .onChange(of: TabReselectSignal.shared.walletReselectToken) { _, _ in
+                    if !navigationPath.isEmpty {
+                        withAnimation(.snappy) { navigationPath.removeAll() }
+                    }
+                }
                 .onChange(of: currencyCode) { _, _ in
                     // Labels react immediately (the hero + unheld rows
                     // read `currencyCode` directly)…
@@ -862,7 +872,6 @@ struct WalletHomeView: View {
             chromeSection
             holdingsBody
             activityListSection
-            footerSection
         }
         .listStyle(.insetGrouped)
         .scrollContentBackground(.hidden)
@@ -1989,25 +1998,6 @@ struct WalletHomeView: View {
             title: "No activity yet.",
             detail: "Transactions appear here as they confirm on-chain."
         )
-    }
-
-    /// Boundary statement at the foot of the list. Cleared row
-    /// background + hidden separators so it reads as a footer, not as
-    /// a list row.
-    @ViewBuilder
-    private var footerSection: some View {
-        Section {
-            UniFootnote(
-                text: "No accounts. No servers. Aperture lives on your iPhone.",
-                alignment: .center,
-                color: UniColors.Text.tertiary
-            )
-            .frame(maxWidth: .infinity)
-            .padding(.top, UniSpacing.l)
-            .listRowBackground(Color.clear)
-            .listRowSeparator(.hidden)
-            .listRowInsets(EdgeInsets())
-        }
     }
 
     @ToolbarContentBuilder
