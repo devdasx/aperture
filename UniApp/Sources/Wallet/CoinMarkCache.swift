@@ -267,6 +267,29 @@ actor CoinMarkCache {
         }
     }
 
+    /// A canonical Trust Wallet logo URL for `symbol`, sourced from the
+    /// **Ethereum** token registry entry. Trust Wallet's repo reliably
+    /// carries a token's mark on its canonical chain (Ethereum for the
+    /// vast majority of the fungibles we list) but often NOT on every L2
+    /// / alt-chain that token has been bridged to — e.g. FRAX, EURC, and
+    /// FDUSD have a logo on `ethereum` but a bare 404 on `smartchain` /
+    /// `polygon` / `avalanchec` / `solana`. `CoinMark` calls this only
+    /// AFTER the exact `(chain, contract)` mark has already missed, so the
+    /// same token still shows its real brand mark everywhere it lives.
+    /// Returns nil when the chain already tried IS Ethereum, or no
+    /// Ethereum entry exists for the symbol (then the initials chip stands
+    /// — honest, Rule #16).
+    nonisolated static func symbolFallbackURL(
+        symbol: String,
+        excluding chain: SupportedChain
+    ) -> URL? {
+        guard chain != .ethereum else { return nil }
+        let upper = symbol.uppercased()
+        guard let entry = EVMTokenRegistry.tokens(for: .ethereum)
+            .first(where: { $0.symbol.uppercased() == upper }) else { return nil }
+        return trustWalletURL(chain: .ethereum, contract: entry.contract)
+    }
+
     // MARK: - Internals
 
     private func promote(key: String, data: Data) {
