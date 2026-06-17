@@ -49,6 +49,7 @@ struct DAppSignMessageSheet: View {
                         router.rejectPending()
                         dismiss()
                     }
+                        .tint(UniColors.Button.text)
                 }
             }
             .safeAreaInset(edge: .bottom) {

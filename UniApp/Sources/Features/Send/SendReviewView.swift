@@ -852,10 +852,10 @@ private struct SendPassphraseSheet: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    Button("Cancel") { onCancel() }
+                    Button("Cancel") { onCancel() }.tint(UniColors.Button.text)
                 }
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("Sign") { onSubmit(passphrase) }
+                    Button("Sign") { onSubmit(passphrase) }.tint(UniColors.Button.text)
                         .fontWeight(.semibold)
                         .disabled(passphrase.isEmpty)
                 }

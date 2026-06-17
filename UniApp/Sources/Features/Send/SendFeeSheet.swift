@@ -30,10 +30,10 @@ struct SendFeeSheet: View {
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
                     ToolbarItem(placement: .topBarLeading) {
-                        Button("Cancel") { dismiss() }
+                        Button("Cancel") { dismiss() }.tint(UniColors.Button.text)
                     }
                     ToolbarItem(placement: .topBarTrailing) {
-                        Button("Done") { applyCustomIfNeeded(); dismiss() }
+                        Button("Done") { applyCustomIfNeeded(); dismiss() }.tint(UniColors.Button.text)
                             .fontWeight(.semibold)
                     }
                 }

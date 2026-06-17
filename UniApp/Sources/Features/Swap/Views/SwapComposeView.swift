@@ -766,7 +766,7 @@ private struct MaxSlippageSheet: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("Done") { dismiss() }
+                    Button("Done") { dismiss() }.tint(UniColors.Button.text)
                         .fontWeight(.semibold)
                 }
             }
@@ -919,13 +919,13 @@ private struct CustomSlippageSheet: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    Button("Cancel") { dismiss() }
+                    Button("Cancel") { dismiss() }.tint(UniColors.Button.text)
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     // Disabled until the field holds one clean, parseable
                     // decimal — so an empty or malformed value can't be
                     // "Set" (no silent dismiss, no silently-wrong commit).
-                    Button("Set") { onCommit() }
+                    Button("Set") { onCommit() }.tint(UniColors.Button.text)
                         .fontWeight(.semibold)
                         .disabled(SwapComposeModel.parseSlippagePercent(text) == nil)
                 }

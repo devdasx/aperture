@@ -325,10 +325,10 @@ private struct ComposeDataSheetShell<Content: View>: View {
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
                     ToolbarItem(placement: .topBarLeading) {
-                        Button("Cancel", action: onCancel)
+                        Button("Cancel", action: onCancel).tint(UniColors.Button.text)
                     }
                     ToolbarItem(placement: .topBarTrailing) {
-                        Button("Save", action: onSave)
+                        Button("Save", action: onSave).tint(UniColors.Button.text)
                             .fontWeight(.semibold)
                             .disabled(!canSave)
                     }

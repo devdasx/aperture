@@ -93,10 +93,11 @@ struct AddCustomTokenSheet: View {
                         fetchTask?.cancel()
                         dismiss()
                     }
+                        .tint(UniColors.Button.text)
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     if case .preview = phase {
-                        Button("Save") { save() }
+                        Button("Save") { save() }.tint(UniColors.Button.text)
                             .fontWeight(.semibold)
                             .disabled(!canSave)
                     }

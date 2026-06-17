@@ -47,6 +47,7 @@ struct DAppConnectSheet: View {
                         router.rejectPending()
                         dismiss()
                     }
+                        .tint(UniColors.Button.text)
                 }
             }
             .safeAreaInset(edge: .bottom) {

@@ -300,7 +300,7 @@ struct PinSetupFlow: View {
                 Button {
                     isShowingSkipWarning = true
                 } label: {
-                    Text("Skip")
+                    Text("Skip").foregroundStyle(UniColors.Button.text)
                 }
             }
         }

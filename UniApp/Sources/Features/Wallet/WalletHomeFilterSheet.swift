@@ -133,7 +133,7 @@ struct WalletHomeFilterSheet: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    Button("Cancel") { dismiss() }
+                    Button("Cancel") { dismiss() }.tint(UniColors.Button.text)
                 }
             }
             .navigationDestination(for: FilterDestination.self) { destination in

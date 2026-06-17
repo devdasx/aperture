@@ -145,7 +145,7 @@ struct OnboardingSettingsView: View {
             }
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("Done") { dismiss() }
+                    Button("Done") { dismiss() }.tint(UniColors.Button.text)
                         .fontWeight(.semibold)
                 }
             }

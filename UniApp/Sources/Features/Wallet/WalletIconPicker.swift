@@ -117,7 +117,7 @@ struct WalletIconPickerSheet: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    Button("Cancel") { dismiss() }
+                    Button("Cancel") { dismiss() }.tint(UniColors.Button.text)
                 }
             }
             .onAppear { seedIfNeeded() }

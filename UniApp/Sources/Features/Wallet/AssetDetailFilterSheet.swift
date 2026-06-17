@@ -99,7 +99,7 @@ struct AssetDetailFilterSheet: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    Button("Cancel") { dismiss() }
+                    Button("Cancel") { dismiss() }.tint(UniColors.Button.text)
                 }
             }
             .navigationDestination(for: AssetFilterDestination.self) { destination in
