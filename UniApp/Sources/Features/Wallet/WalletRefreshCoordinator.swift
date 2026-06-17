@@ -468,12 +468,17 @@ struct WalletRefreshCoordinator: Sendable {
         return nativeYieldedChains
     }
 
-    /// Coalescing live committer for the balance stream. On a ~120ms
+    /// Coalescing live committer for the balance stream. On a ~300ms
     /// cadence it drains the dirty-chain set, flushes the staged balance
     /// upserts in ONE main-context merge, then rebuilds just those chains'
-    /// aggregate rows — so each chain goes live the instant its balance
-    /// lands while the cadence caps `@Query` invalidations. Exits after a
-    /// final drain once `channel.finish()` is signalled.
+    /// aggregate rows — so each chain goes live shortly after its balance
+    /// lands while the cadence caps `@Query` invalidations. The cadence is
+    /// the main lever against pull-to-refresh UI lag (2026-06-17): every
+    /// commit triggers the home's `@Query` re-fetches + a display-row
+    /// rebuild on the main actor, so coalescing more aggressively (300ms,
+    /// up from 120ms) cuts that main-thread churn ~2.5× while still
+    /// updating balances ~3×/second — imperceptibly less "live", far
+    /// smoother. Exits after a final drain once `channel.finish()` fires.
     private func runLiveBalanceCommitter(
         channel: LiveCommitChannel,
         txRepo: TransactionRepository,
@@ -482,7 +487,7 @@ struct WalletRefreshCoordinator: Sendable {
         fiatCurrencyCode: String
     ) async {
         while !(await channel.isFinished) {
-            try? await Task.sleep(for: .milliseconds(120))
+            try? await Task.sleep(for: .milliseconds(300))
             await commitDirtyChains(
                 channel: channel, txRepo: txRepo, chainStateRepo: chainStateRepo,
                 walletId: walletId, fiatCurrencyCode: fiatCurrencyCode

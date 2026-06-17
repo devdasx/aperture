@@ -110,19 +110,18 @@ final class ImportWalletState {
                 words: mnemonicWords,
                 passphrase: mnemonicPassphrase
             )
-            try SeedVault.storeSeed(seed, for: walletId)
-            // ALSO store the mnemonic encrypted in `MnemonicVault`
-            // so the user can re-view it from Settings → Wallets
-            // → "View recovery phrase" at any time. AES-GCM 256-bit
-            // + Keychain `WhenPasscodeSetThisDeviceOnly` ACL — the
-            // phrase stays on this iPhone and is unreadable while
-            // the device is locked. Matches the create-wallet path.
-            do {
-                try MnemonicVault.storeMnemonic(mnemonicWords, for: walletId)
-            } catch {
-                try? SeedVault.deleteSeed(for: walletId)
-                throw error
-            }
+            // Encrypt + Keychain-write the seed AND the mnemonic OFF the
+            // main actor (2026-06-17). AES-GCM seal + four `SecItemAdd`
+            // writes used to run here on `@MainActor` and hitched the
+            // import commit; they're now on a background task. The
+            // mnemonic copy lets the user re-view the phrase from
+            // Settings → Wallets → "View recovery phrase" (AES-GCM 256
+            // + `WhenPasscodeSetThisDeviceOnly` — device-local, locked).
+            try await Self.storeMnemonicKeyMaterial(
+                seed: seed,
+                mnemonic: mnemonicWords,
+                walletId: walletId
+            )
             do {
                 let addressEntries: [(chainRaw: String, address: String)] =
                     derivedAddressesFromMnemonic.map { (chain, address) in
@@ -155,29 +154,18 @@ final class ImportWalletState {
             // (secp256k1 scalar or ed25519 seed, per the chain's
             // curve), zero-padded to SeedVault's fixed 64-byte slot —
             // bytes 0..<32 are the key, bytes 32..<64 are zero padding.
-            let keyBytes = try WalletCoreKeyImportService.decodePrivateKeyBytes(
-                privateKeyRaw,
-                on: chain
+            // Decode + encrypt + Keychain-write the key material OFF the
+            // main actor (2026-06-17) so the import commit never hitches.
+            // The `MnemonicVault` copy keeps the original key string (hex
+            // / WIF, trimmed) so the user can re-view it from Settings →
+            // Wallets → "View private key"; the SeedVault slot holds only
+            // the decoded raw bytes, which can't render back to WIF /
+            // base58. Both AES-GCM 256 + `WhenPasscodeSetThisDeviceOnly`.
+            try await Self.storePrivateKeyMaterial(
+                privateKeyRaw: privateKeyRaw,
+                chain: chain,
+                walletId: walletId
             )
-            try SeedVault.storeSeed(Self.paddedTo64(bytes: keyBytes), for: walletId)
-            // ALSO store the original key string (hex / WIF, as typed
-            // after trimming) encrypted in `MnemonicVault` so the user
-            // can re-view it from Settings → Wallets → "View private
-            // key" at any time. The SeedVault slot above holds only the
-            // decoded raw bytes — those can't be rendered back to the
-            // WIF/base58 form the user imported. AES-GCM 256-bit +
-            // Keychain `WhenPasscodeSetThisDeviceOnly` ACL — the key
-            // stays on this iPhone and is unreadable while the device
-            // is locked. Matches the mnemonic path below.
-            do {
-                try MnemonicVault.storePrivateKey(
-                    privateKeyRaw.trimmingCharacters(in: .whitespacesAndNewlines),
-                    for: walletId
-                )
-            } catch {
-                try? SeedVault.deleteSeed(for: walletId)
-                throw error
-            }
             do {
                 try await repository.insertImportedKeyWallet(
                     id: walletId,
@@ -241,7 +229,7 @@ final class ImportWalletState {
     /// remainder is zero padding. Inputs longer than 64 bytes are
     /// rejected by the decoder before reaching here, but are truncated
     /// defensively rather than trapping.
-    private static func paddedTo64(bytes: Data) -> Data {
+    nonisolated private static func paddedTo64(bytes: Data) -> Data {
         var padded = bytes
         if padded.count < 64 {
             padded.append(contentsOf: [UInt8](repeating: 0, count: 64 - padded.count))
@@ -249,6 +237,55 @@ final class ImportWalletState {
             padded = padded.prefix(64)
         }
         return padded
+    }
+
+    /// Encrypt the seed + mnemonic and write them to Keychain OFF the
+    /// main actor (2026-06-17). AES-GCM (CryptoKit) plus four `SecItemAdd`
+    /// writes are CPU + I/O that has no business on `@MainActor`; running
+    /// them on a detached task is what keeps the import commit from
+    /// freezing the UI. On a mnemonic-vault failure the just-written seed
+    /// is rolled back, preserving the original all-or-nothing contract.
+    nonisolated private static func storeMnemonicKeyMaterial(
+        seed: Data,
+        mnemonic: [String],
+        walletId: UUID
+    ) async throws {
+        try await Task.detached(priority: .userInitiated) {
+            try SeedVault.storeSeed(seed, for: walletId)
+            do {
+                try MnemonicVault.storeMnemonic(mnemonic, for: walletId)
+            } catch {
+                try? SeedVault.deleteSeed(for: walletId)
+                throw error
+            }
+        }.value
+    }
+
+    /// Decode, encrypt, and Keychain-write a single private key's material
+    /// OFF the main actor (2026-06-17) — same rollback contract as the
+    /// mnemonic path. Key decoding (WalletCore) + AES-GCM + Keychain all
+    /// run on a detached task so the commit never hitches.
+    nonisolated private static func storePrivateKeyMaterial(
+        privateKeyRaw: String,
+        chain: SupportedChain,
+        walletId: UUID
+    ) async throws {
+        try await Task.detached(priority: .userInitiated) {
+            let keyBytes = try WalletCoreKeyImportService.decodePrivateKeyBytes(
+                privateKeyRaw,
+                on: chain
+            )
+            try SeedVault.storeSeed(paddedTo64(bytes: keyBytes), for: walletId)
+            do {
+                try MnemonicVault.storePrivateKey(
+                    privateKeyRaw.trimmingCharacters(in: .whitespacesAndNewlines),
+                    for: walletId
+                )
+            } catch {
+                try? SeedVault.deleteSeed(for: walletId)
+                throw error
+            }
+        }.value
     }
 
     /// Run the PBKDF2-HMAC-SHA512 BIP-39 seed derivation off the main
