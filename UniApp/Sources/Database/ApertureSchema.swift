@@ -37,6 +37,11 @@ enum ApertureSchemaV1: VersionedSchema {
             CustomTokenRecord.self,
             BrowserHistoryRecord.self,
             BrowserBookmarkRecord.self,
+            // 2026-06-17 — persistent in-app-browser dApp connections
+            // (an approved eth_requestAccounts / Solana connect). Surfaced
+            // in Browser settings → "Connected dApps" alongside live
+            // WalletConnect sessions. Adding an entity is additive.
+            ConnectedDAppRecord.self,
             HistoricalPriceRecord.self,
             PriceSnapshotRecord.self,
             WalletChartSnapshotRecord.self,

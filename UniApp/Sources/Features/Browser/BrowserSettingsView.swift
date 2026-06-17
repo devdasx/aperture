@@ -15,8 +15,24 @@ import SwiftData
 /// promotional language; no surprise side-effects.
 struct BrowserSettingsView: View {
     @Query private var history: [BrowserHistoryRecord]
+
+    /// Persisted in-app-browser connections — one row per dApp the user
+    /// granted account access to (an approved `eth_requestAccounts` /
+    /// Solana `connect`). Newest connection first. Surfaced in the
+    /// "Connected dApps" section as a union with live WalletConnect
+    /// sessions. Honesty (Rule #16): a dApp in *history* is NOT
+    /// connected — only an approved session lands a row here.
+    @Query(sort: \ConnectedDAppRecord.connectedAt, order: .reverse)
+    private var connectedDApps: [ConnectedDAppRecord]
+
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
+
+    /// Router that owns the in-app-browser connection allow-set + the
+    /// persisted rows. The swipe-to-disconnect calls
+    /// `router.disconnect(host:)` so the live `connectedHosts` set and
+    /// the SwiftData row are revoked together.
+    private var router: DAppRequestRouter { DAppRequestRouter.shared }
 
     /// Live WalletConnect sessions. Today these come from
     /// `WalletConnectClient.shared.activeSessions` — when the SDK
@@ -114,7 +130,11 @@ struct BrowserSettingsView: View {
     @ViewBuilder
     private var connectedSection: some View {
         Section {
-            if walletConnect.activeSessions.isEmpty {
+            // The union: persisted in-app-browser connections AND live
+            // WalletConnect sessions. The empty state shows only when
+            // BOTH sources are empty — a single connection from either
+            // source replaces it.
+            if connectedDApps.isEmpty && walletConnect.activeSessions.isEmpty {
                 VStack(alignment: .leading, spacing: UniSpacing.xs) {
                     UniBody(
                         text: "No connected dApps",
@@ -128,6 +148,35 @@ struct BrowserSettingsView: View {
                 .padding(.vertical, UniSpacing.xs)
                 .listRowBackground(UniColors.Background.secondary)
             } else {
+                // In-app-browser connections (persisted).
+                ForEach(connectedDApps) { dApp in
+                    HStack(spacing: UniSpacing.m) {
+                        BrowserFaviconView(
+                            url: dApp.iconURL.flatMap(URL.init(string:)),
+                            fallbackLetter: dApp.name,
+                            size: .row
+                        )
+                        VStack(alignment: .leading, spacing: UniSpacing.xxs) {
+                            Text(verbatim: dApp.name)
+                                .font(UniTypography.body)
+                                .foregroundStyle(UniColors.Text.primary)
+                            Text(verbatim: dApp.host)
+                                .font(UniTypography.footnote)
+                                .foregroundStyle(UniColors.Text.secondary)
+                        }
+                        Spacer()
+                    }
+                    .listRowBackground(UniColors.Background.secondary)
+                    .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                        Button(role: .destructive) {
+                            disconnectInApp(dApp)
+                        } label: {
+                            Label("Disconnect", systemImage: "xmark")
+                        }
+                    }
+                }
+
+                // Live WalletConnect sessions.
                 ForEach(walletConnect.activeSessions) { session in
                     HStack(spacing: UniSpacing.m) {
                         BrowserFaviconView(
@@ -170,5 +219,18 @@ struct BrowserSettingsView: View {
             modelContext.delete(record)
         }
         try? modelContext.save()
+    }
+
+    /// Revoke an in-app-browser connection from settings. Deletes the
+    /// persisted row via this view's own context (the router's context
+    /// may be unset when no browser session is alive) AND tells the
+    /// router to drop the host from its live `connectedHosts` allow-set
+    /// so a still-open dApp tab can't read the address until the user
+    /// re-connects. After this, `eth_accounts` returns `[]` for the host.
+    private func disconnectInApp(_ dApp: ConnectedDAppRecord) {
+        let host = dApp.host
+        modelContext.delete(dApp)
+        try? modelContext.save()
+        router.disconnect(host: host)
     }
 }

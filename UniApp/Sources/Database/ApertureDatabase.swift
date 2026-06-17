@@ -58,6 +58,13 @@ final class ApertureDatabase {
             CustomTokenRecord.self,
             BrowserHistoryRecord.self,
             BrowserBookmarkRecord.self,
+            // 2026-06-17 — persistent in-app-browser dApp connections.
+            // Mirrors the `ApertureSchemaV1.models` registration: the
+            // container is built from THIS array, so the entity must be
+            // listed here too for `@Query`/`ModelContext` to resolve it
+            // at runtime. Adding an entity is an additive lightweight
+            // migration.
+            ConnectedDAppRecord.self,
             // 2026-06-13 — `HistoricalPriceRecord` had shipped in
             // `ApertureSchemaV1.models` but was MISSING from this
             // container schema, so the chart's daily-close table was
