@@ -1,18 +1,25 @@
 import SwiftUI
 
 /// Horizontal category chips for the Browser dApp directory (2026-06-17).
-/// Tapping a chip filters the directory below; "All" shows everything. The
-/// selected chip is a filled accent capsule (the app's monochrome accent);
-/// the rest are quiet fills — the same chip register iOS uses in App Store /
-/// News category bars.
+/// Tapping a chip filters the directory below; "All" shows everything.
+///
+/// **Native iOS 26 Liquid Glass (2026-06-17).** The chips are no longer a
+/// custom `Capsule().fill(...)` — they're the system's own Liquid Glass
+/// material via `.glassEffect(_:in:)`, blended together inside a single
+/// `GlassEffectContainer` so adjacent chips share one glass surface (the
+/// same register the system uses for floating control clusters). The
+/// selected chip carries an accent `tint`; the rest are clear, interactive
+/// glass. No hand-rolled fills — the platform paints the material.
 struct BrowserCategoryChips: View {
     @Binding var selected: BrowserDAppCategory
 
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: UniSpacing.xs) {
-                ForEach(BrowserDAppCategory.allCases) { category in
-                    chip(category)
+            GlassEffectContainer(spacing: UniSpacing.xs) {
+                HStack(spacing: UniSpacing.xs) {
+                    ForEach(BrowserDAppCategory.allCases) { category in
+                        chip(category)
+                    }
                 }
             }
             .padding(.horizontal, UniSpacing.m)
@@ -35,13 +42,13 @@ struct BrowserCategoryChips: View {
             .padding(.horizontal, UniSpacing.s)
             .padding(.vertical, UniSpacing.xs)
             .foregroundStyle(isOn ? UniColors.Button.primaryLabel : UniColors.Text.primary)
-            .background(
-                Capsule(style: .continuous)
-                    .fill(isOn ? UniColors.Tint.accent : UniColors.Fill.secondary)
-            )
             .contentShape(Capsule())
         }
         .buttonStyle(.plain)
+        .glassEffect(
+            .regular.tint(isOn ? UniColors.Tint.accent : nil).interactive(),
+            in: Capsule()
+        )
         .accessibilityAddTraits(isOn ? [.isButton, .isSelected] : .isButton)
     }
 }
