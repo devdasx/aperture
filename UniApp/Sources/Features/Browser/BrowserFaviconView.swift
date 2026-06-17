@@ -43,6 +43,13 @@ struct BrowserFaviconView: View {
     /// curvature so the chip's geometry stays concentric.
     let size: Size
 
+    /// Bundled asset name (`dapp-<id>`) to prefer over the network favicon
+    /// (2026-06-17). The curated Favorites ship their logos in the asset
+    /// catalog, so they're ALWAYS visible — instant, offline, and immune to
+    /// the SVG/`.ico` decode failures that `AsyncImage` hits on some dApp
+    /// favicons. `nil` (recents, connected, arbitrary dApps) → network favicon.
+    var assetName: String? = nil
+
     enum Size {
         case row
         case tile
@@ -82,7 +89,15 @@ struct BrowserFaviconView: View {
 
     var body: some View {
         ZStack {
-            if let url {
+            if let assetName, UIImage(named: assetName) != nil {
+                // Bundled curated logo — always present, no network, no
+                // SVG/.ico decode risk.
+                Image(assetName)
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+                    .frame(width: size.dimension, height: size.dimension)
+                    .clipShape(RoundedRectangle(cornerRadius: size.cornerRadius, style: .continuous))
+            } else if let url {
                 AsyncImage(url: url) { phase in
                     switch phase {
                     case .empty:

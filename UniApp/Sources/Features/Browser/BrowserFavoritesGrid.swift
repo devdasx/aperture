@@ -49,7 +49,8 @@ private struct BrowserFavoriteTile: View {
             BrowserFaviconView(
                 url: favorite.iconURL,
                 fallbackLetter: favorite.name,
-                size: .tile
+                size: .tile,
+                assetName: "dapp-\(favorite.id)"
             )
             Text(verbatim: favorite.name)
                 .font(UniTypography.caption1)
