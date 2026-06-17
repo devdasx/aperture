@@ -57,6 +57,22 @@ extension RPCError {
               case .invalidResponse(let message) = rpc else { return false }
         return message.contains("HTTP 404")
     }
+
+    /// `true` when `error` is a cancellation, not a real failure. A per-chain
+    /// `withTimeout` elapsing, a superseded pull-to-refresh, or the user
+    /// navigating away mid-refresh all cancel the in-flight fetch — the data
+    /// is simply unchanged this cycle and the next refresh retries. Callers
+    /// must NOT log this as a failure (it spammed the console with e.g.
+    /// "Transaction fetch failed … : cancelled", Rule #16 honesty) nor surface
+    /// a chain-row error. Catches our own `.cancelled`, Swift's
+    /// `CancellationError`, and `URLError.cancelled` from a cancelled
+    /// URLSession task.
+    static func isCancellation(_ error: any Error) -> Bool {
+        if let rpc = error as? RPCError, case .cancelled = rpc { return true }
+        if error is CancellationError { return true }
+        if let url = error as? URLError, url.code == .cancelled { return true }
+        return false
+    }
 }
 
 // MARK: - User-facing description (for the UI footer / banner)
