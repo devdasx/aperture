@@ -36,6 +36,7 @@ enum SettingsDestination: Hashable, Codable {
     case privacy
     case acknowledgments
     case networkProviders
+    case connectionApprovals
     case advanced
     case hideSmallBalances
 
@@ -60,8 +61,8 @@ enum SettingsDestination: Hashable, Codable {
         case .security:
             return false
         case .wallets, .walletDetail, .autoLock, .privacy, .acknowledgments,
-             .networkProviders, .advanced, .hideSmallBalances, .language,
-             .appearance, .currency, .preferences, .help, .about:
+             .networkProviders, .connectionApprovals, .advanced, .hideSmallBalances,
+             .language, .appearance, .currency, .preferences, .help, .about:
             return true
         }
     }
@@ -226,6 +227,18 @@ struct SettingsView: View {
                     .listRowBackground(UniColors.Background.secondary)
                 }
 
+                // Section 4b — dApps (connections + on-chain approvals)
+                Section {
+                    NavigationLink(value: SettingsDestination.connectionApprovals) {
+                        SettingsRow(
+                            systemImage: "checkmark.shield",
+                            title: "Connection & Approvals",
+                            trailing: nil
+                        )
+                    }
+                    .listRowBackground(UniColors.Background.secondary)
+                }
+
                 // Section 5 — Help & About
                 Section {
                     NavigationLink(value: SettingsDestination.help) {
@@ -291,6 +304,7 @@ struct SettingsView: View {
                 case .privacy:                   PrivacySettingsView()
                 case .acknowledgments:           AcknowledgmentsView()
                 case .networkProviders:          NetworkProvidersView()
+                case .connectionApprovals:       ConnectionApprovalsView()
                 case .advanced:                  AdvancedSettingsView()
                 case .hideSmallBalances:         HideSmallBalancesPicker()
                 case .language:                  LanguagePickerView()
