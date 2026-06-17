@@ -37,6 +37,10 @@ struct TransactionDetailView: View {
     let transactionId: UUID
     @Query private var matches: [TransactionRecord]
 
+    /// The live store — so a pending tx that confirms while this screen is
+    /// open is written back (the activity list + future opens reflect it).
+    @Environment(\.modelContext) private var modelContext
+
     /// The live, fetched detail. `nil` until the fetch lands (or if it
     /// fails — distinguished from "still loading" by `isLoading`).
     @State private var detail: TransactionDetail?
@@ -1024,12 +1028,20 @@ struct TransactionDetailView: View {
             isLoading = true
             didAttempt = false
         }
-        let fetched = await TransactionDetailService.detail(
+
+        // Stable lookup keys — captured once so the poll loop doesn't reach
+        // back into the live record across suspension points.
+        let txHash = tx.txHash
+        let tokenContract = tx.tokenContract
+        let address = tx.address?.address
+        let counterparty = tx.counterparty
+
+        var fetched = await TransactionDetailService.detail(
             chain: chain,
-            txHash: tx.txHash,
-            tokenContract: tx.tokenContract,
-            address: tx.address?.address,
-            counterparty: tx.counterparty
+            txHash: txHash,
+            tokenContract: tokenContract,
+            address: address,
+            counterparty: counterparty
         )
         guard !Task.isCancelled else { return }
         withAnimation(.easeInOut(duration: 0.25)) {
@@ -1037,6 +1049,49 @@ struct TransactionDetailView: View {
             isLoading = false
             didAttempt = true
         }
+
+        // Keep checking while the tx is still pending, so the badge flips to
+        // Confirmed/Failed live (Rule #25) and the confirmation count ticks
+        // up — then persist the terminal status so the activity list agrees.
+        // Honest (Rule #16): a tx that never resolves within the window
+        // simply stays "Pending"; nothing is fabricated.
+        var attempt = 0
+        while currentStatus(fetched, tx: tx) == .pending, attempt < 40 {
+            if Task.isCancelled { return }
+            try? await Task.sleep(for: .seconds(attempt == 0 ? 5 : 8))
+            if Task.isCancelled { return }
+            let refreshed = await TransactionDetailService.detail(
+                chain: chain,
+                txHash: txHash,
+                tokenContract: tokenContract,
+                address: address,
+                counterparty: counterparty
+            )
+            guard !Task.isCancelled else { return }
+            attempt += 1
+            guard let refreshed else { continue }
+            fetched = refreshed
+            withAnimation(.easeInOut(duration: 0.25)) { detail = refreshed }
+            if refreshed.status != .pending {
+                persistStatus(refreshed.status)
+                return
+            }
+        }
+    }
+
+    /// The effective status driving the poll loop — the fetched detail wins,
+    /// falling back to the stored record's status.
+    private func currentStatus(_ fetched: TransactionDetail?, tx: TransactionRecord) -> TransactionStatus? {
+        fetched?.status ?? TransactionStatus(rawValue: tx.statusRaw)
+    }
+
+    /// Write a resolved (confirmed/failed) status back to the live record so
+    /// the activity list and future opens reflect it. Idempotent — a no-op
+    /// when the stored status already matches.
+    private func persistStatus(_ status: TransactionStatus) {
+        guard let tx = matches.first, tx.statusRaw != status.rawValue else { return }
+        tx.statusRaw = status.rawValue
+        try? modelContext.save()
     }
 
     // MARK: - Fiat conversion (off-main, Rule #28; honest, Rule #16)

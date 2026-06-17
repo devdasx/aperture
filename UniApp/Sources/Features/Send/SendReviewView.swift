@@ -84,6 +84,7 @@ struct SendReviewView: View {
                     assetSymbol: assetSymbol,
                     recipient: draft.recipients.first?.name
                         ?? WalletFormatting.shortAddress(draft.recipients.first?.address ?? "", prefix: 8, suffix: 6),
+                    senderAddress: draft.fromAddress,
                     onDone: onClose
                 )
             case .failed(let error):
@@ -528,15 +529,31 @@ private struct SendSentView: View {
     let amount: String
     let assetSymbol: String
     let recipient: String
+    /// The sender's address — needed so the confirmation poll can resolve
+    /// status on the chains whose tx lookup is address-scoped (TON, NEAR,
+    /// XRPL, Stellar). Harmless for the chains that resolve by hash alone.
+    let senderAddress: String
     let onDone: () -> Void
 
     @State private var didCopy: Bool = false
     @State private var copiedAt: Date?
     @State private var copyResetTask: Task<Void, Never>?
 
+    /// The live on-chain verdict, polled after the screen appears so the hero
+    /// moves from "Submitted" to "Sent"/"Failed" the moment the chain reports
+    /// back (Rule #25). Starts `.pending` — broadcast is not confirmation
+    /// (Rule #16).
+    @State private var status: TransactionConfirmation.Outcome = .pending
+    /// Stamped when the poll resolves — drives the success / error haptic.
+    @State private var resolvedAt: Date?
+
     private var explorerURL: URL? {
         TransactionExplorer.url(for: transaction.txHash, chain: transaction.chain)
     }
+
+    private var isConfirmed: Bool { status == .confirmed }
+    private var isFailed: Bool { status == .failed }
+    private var isPending: Bool { status == .pending }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -557,29 +574,76 @@ private struct SendSentView: View {
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(true)
         .uniHaptic(.success, trigger: copiedAt)
+        .uniHaptic(.success, trigger: isConfirmed ? resolvedAt : nil)
+        .uniHaptic(.error, trigger: isFailed ? resolvedAt : nil)
+        .task(id: transaction.txHash) { await pollForConfirmation() }
         .onDisappear { copyResetTask?.cancel() }
+    }
+
+    /// Keep checking the chain until the broadcast tx confirms or reverts,
+    /// then flip the hero from "Submitted" to the real result (Rule #25).
+    /// Honest: a broadcast is never shown as confirmed until the chain says
+    /// so, and a budget timeout leaves the hero on "Submitted" (Rule #16).
+    private func pollForConfirmation() async {
+        guard !transaction.txHash.isEmpty else { return }
+        let outcome = await TransactionConfirmation.awaitResolution(
+            txHash: transaction.txHash,
+            chain: transaction.chain,
+            address: senderAddress
+        )
+        guard !Task.isCancelled else { return }
+        status = outcome
+        if outcome != .pending { resolvedAt = Date() }
     }
 
     private var hero: some View {
         VStack(spacing: UniSpacing.s) {
-            Image(systemName: "checkmark.circle.fill")
+            Image(systemName: heroSymbol)
                 .font(.system(size: 56, weight: .regular))
                 .symbolRenderingMode(.hierarchical)
-                .foregroundStyle(UniColors.Status.successForeground)
+                .foregroundStyle(heroColor)
                 .symbolEffect(.bounce, options: .nonRepeating)
                 .accessibilityHidden(true)
-            UniLargeTitle(text: "Sent", alignment: .center)
+            UniLargeTitle(text: heroTitle, alignment: .center)
             Text(verbatim: "\(amount) \(assetSymbol)")
                 .font(UniTypography.title3.monospacedDigit())
                 .foregroundStyle(UniColors.Text.secondary)
                 .environment(\.layoutDirection, .leftToRight)
             UniBody(
-                text: "Broadcast to the \(transaction.chain.displayName) network. It'll confirm on-chain in a moment.",
+                text: heroBody,
                 alignment: .center,
                 color: UniColors.Text.secondary
             )
             .fixedSize(horizontal: false, vertical: true)
         }
+    }
+
+    private var heroSymbol: String {
+        if isFailed { return "xmark.circle.fill" }
+        if isPending { return "clock.badge.checkmark" }
+        return "checkmark.circle.fill"
+    }
+
+    private var heroColor: Color {
+        if isFailed { return UniColors.Status.warningForeground }
+        if isPending { return UniColors.Brand.mark }
+        return UniColors.Status.successForeground
+    }
+
+    private var heroTitle: LocalizedStringKey {
+        if isFailed { return "Failed" }
+        if isPending { return "Submitted" }
+        return "Sent"
+    }
+
+    private var heroBody: LocalizedStringKey {
+        if isFailed {
+            return "The transaction reverted on-chain. Nothing was sent — your funds did not move."
+        }
+        if isPending {
+            return "Broadcast to the \(transaction.chain.displayName) network. Confirming may take a moment — you can safely leave this screen."
+        }
+        return "Confirmed on the \(transaction.chain.displayName) network."
     }
 
     private var summaryCard: some View {
