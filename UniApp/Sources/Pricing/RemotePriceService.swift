@@ -44,9 +44,23 @@ struct RemotePriceService: Sendable {
 
     /// `GET /api/prices/:currency`. Returns `nil` on any transport/parse
     /// failure (the caller falls back to its local cache).
-    func prices(currency: String) async -> Quote? {
+    ///
+    /// When `symbols` is non-empty, the request asks the server for those
+    /// specific tickers on demand (`?symbols=BTC,ETH,…`) — this is how
+    /// custom/user-added tokens outside the server's default universe get
+    /// priced. When empty (the default), the server returns its full
+    /// universe, preserving the original no-arg behavior exactly.
+    func prices(currency: String, symbols: [String] = []) async -> Quote? {
         let code = currency.uppercased()
-        guard let url = URL(string: "\(Self.baseURL)/api/prices/\(code)"),
+        var urlString = "\(Self.baseURL)/api/prices/\(code)"
+        if !symbols.isEmpty {
+            let joined = symbols.map { $0.uppercased() }.joined(separator: ",")
+            let allowed = CharacterSet.urlQueryAllowed
+            if let encoded = joined.addingPercentEncoding(withAllowedCharacters: allowed) {
+                urlString += "?symbols=\(encoded)"
+            }
+        }
+        guard let url = URL(string: urlString),
               let data = try? await get(url),
               let root = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
               let pricesObj = root["prices"] as? [String: Any]

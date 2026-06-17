@@ -104,7 +104,7 @@ actor TokenPricingEngine {
         // fallback). This replaces the in-app Coinbase + CoinGecko + FX
         // calls — the app's only price source. The local cache rungs below
         // are the offline fallback for when the server is unreachable.
-        if !Task.isCancelled, let remote = await remoteService.prices(currency: code) {
+        if !Task.isCancelled, let remote = await remoteService.prices(currency: code, symbols: unique) {
             for symbol in unique {
                 if let price = remote.prices[symbol], price > 0 {
                     resolved[symbol] = ResolvedPrice(amount: price, source: "neon", isStale: false)
