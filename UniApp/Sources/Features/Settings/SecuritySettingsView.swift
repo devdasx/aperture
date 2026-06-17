@@ -22,17 +22,22 @@ struct SecuritySettingsView: View {
     /// Security itself must be gated behind passcode, the same way
     /// Apple gates Settings → Touch ID & Passcode.
     ///
-    /// **Passcode-ONLY since 2026-06-13 (user direction):** the gate
-    /// passes `allowsBiometrics: false`, so `PinCodeView(.verify)`
-    /// neither auto-fires Face ID nor renders the biometric keypad
-    /// key — even when Face ID is enabled. Face ID-first remains the
-    /// policy everywhere else (app unlock, secret reveals, signing,
-    /// dApps). `isUnlocked` is `false` on first appear; the
-    /// fullScreenCover below shows the verify keypad. On successful
-    /// verify we flip the flag and
-    /// dismiss the cover, revealing the real settings list. If
-    /// the user cancels the verify, the navigation pops back to
-    /// the Settings root.
+    /// **PIN or Face ID since 2026-06-17 (user direction):** the gate
+    /// passes `allowsBiometrics: biometricEnabled`, so `PinCodeView
+    /// (.verify)` offers Face ID (with a passcode fallback) when Face ID
+    /// is enabled, and is passcode-only otherwise. This reverses the
+    /// 2026-06-13 passcode-only gate. `isUnlocked` is `false` on first
+    /// appear; the fullScreenCover below shows the verify keypad. On
+    /// successful verify we flip the flag and dismiss the cover,
+    /// revealing the real settings list. If the user cancels the verify,
+    /// the navigation pops back to the Settings root.
+    ///
+    /// **Cold-launch restoration (2026-06-17):** the Security route is
+    /// excluded from `ScreenRestoration`'s Settings stack
+    /// (`SettingsDestination.isColdLaunchRestorable == false`), so
+    /// closing + reopening the app never lands back inside Security —
+    /// the user returns to the Settings root and re-enters with a fresh
+    /// PIN / Face ID prompt.
     ///
     /// **The flag means "this visit is authorized" (2026-06-13).**
     /// A user who enters with NO passcode set is authorized by
@@ -81,11 +86,13 @@ struct SecuritySettingsView: View {
                         // to the previous Settings level.
                         dismiss()
                     },
-                    // Passcode-only gate per user direction
-                    // 2026-06-13: no Face ID auto-prompt, no
-                    // biometric keypad key — entering the Security
-                    // screen always asks for the passcode itself.
-                    allowsBiometrics: false
+                    // PIN or Face ID per user direction 2026-06-17
+                    // ("i've to enter pin code or face id (if one of
+                    // both enabled)"). When Face ID is enabled the
+                    // verify screen offers it with a passcode fallback;
+                    // otherwise it's passcode-only. Reverses the prior
+                    // 2026-06-13 passcode-only gate.
+                    allowsBiometrics: biometricEnabled
                 )
                 .toolbar {
                     ToolbarItem(placement: .topBarLeading) {

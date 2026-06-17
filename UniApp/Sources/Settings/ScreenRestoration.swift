@@ -115,8 +115,16 @@ enum ScreenRestoration {
 
     // MARK: - Path mirroring (called from `.onChange(of: navigationPath)`)
 
-    static func saveSettingsPath(_ path: NavigationPath) {
-        save(path, forKey: Key.settingsPath)
+    /// Mirror the Settings stack as a typed `[SettingsDestination]` (not
+    /// the opaque `NavigationPath`) so `restoredSettingsStack()` can
+    /// inspect it and refuse to re-open the auth-gated Security screen on
+    /// cold launch — same pattern as `saveWalletHomeStack`.
+    static func saveSettingsStack(_ stack: [SettingsDestination]) {
+        guard let data = try? JSONEncoder().encode(stack) else {
+            UserDefaults.standard.removeObject(forKey: Key.settingsPath)
+            return
+        }
+        UserDefaults.standard.set(data, forKey: Key.settingsPath)
     }
 
     /// Mirror the wallet-home stack. Stored as a typed
@@ -136,8 +144,19 @@ enum ScreenRestoration {
 
     // MARK: - Path consumption (called from the owning views' `init`s)
 
-    static func restoredSettingsPath() -> NavigationPath {
-        restore(forKey: Key.settingsPath)
+    /// The Settings stack to seed on a fresh launch, **truncated at the
+    /// first non-`isColdLaunchRestorable` destination** (2026-06-17). The
+    /// Security screen is PIN / Face-ID-gated, so restoring straight back
+    /// into it would skip the auth challenge (the bug the user reported);
+    /// truncating means the user lands on the Settings root and re-enters
+    /// Security with a fresh prompt. A decode failure (e.g. a
+    /// pre-2026-06-17 `NavigationPath`-format blob still in `UserDefaults`
+    /// on the first launch after the update) degrades safely to root.
+    static func restoredSettingsStack() -> [SettingsDestination] {
+        guard let data = UserDefaults.standard.data(forKey: Key.settingsPath),
+              let stack = try? JSONDecoder().decode([SettingsDestination].self, from: data)
+        else { return [] }
+        return Array(stack.prefix(while: { $0.isColdLaunchRestorable }))
     }
 
     /// The wallet-home stack to seed on a fresh launch, **truncated at
@@ -155,30 +174,4 @@ enum ScreenRestoration {
         return Array(stack.prefix(while: { $0.isColdLaunchRestorable }))
     }
 
-    // MARK: - Codec
-
-    private static func save(_ path: NavigationPath, forKey key: String) {
-        guard let codable = path.codable,
-              let data = try? JSONEncoder().encode(codable)
-        else {
-            // The path contains an entry that isn't Codable (a
-            // view-destination push or a future non-Codable value
-            // type). Restoring a stale earlier snapshot would land the
-            // user somewhere they were NOT — clear instead, so the
-            // worst case degrades to "starts at the stack root".
-            UserDefaults.standard.removeObject(forKey: key)
-            return
-        }
-        UserDefaults.standard.set(data, forKey: key)
-    }
-
-    private static func restore(forKey key: String) -> NavigationPath {
-        guard let data = UserDefaults.standard.data(forKey: key),
-              let codable = try? JSONDecoder().decode(
-                  NavigationPath.CodableRepresentation.self,
-                  from: data
-              )
-        else { return NavigationPath() }
-        return NavigationPath(codable)
-    }
 }
