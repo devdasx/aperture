@@ -1556,6 +1556,50 @@
         }
       }
     },
+    "\\(chain.ticker) activity": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "\\(chain.ticker) activity"
+          }
+        }
+      }
+    },
+    "\\(count) digits": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "\\(count) digits"
+          }
+        }
+      }
+    },
+    "\\(count) flips": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "\\(count) flips"
+          }
+        }
+      }
+    },
+    "\\(count) rolls": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "\\(count) rolls"
+          }
+        }
+      }
+    },
     "\\(currency.symbol) · \\(currency.code)": {
       "extractionState": "manual",
       "localizations": {
@@ -2500,6 +2544,17 @@
         }
       }
     },
+    "\\(identity.symbol) activity": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "\\(identity.symbol) activity"
+          }
+        }
+      }
+    },
     "\\(percent)%": {
       "extractionState": "manual",
       "localizations": {
@@ -2507,6 +2562,28 @@
           "stringUnit": {
             "state": "translated",
             "value": "\\(percent)%"
+          }
+        }
+      }
+    },
+    "\\(quote.toToken.symbol) was added to your tokens.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "\\(quote.toToken.symbol) was added to your tokens."
+          }
+        }
+      }
+    },
+    "\\(receivedSymbol) was added to your tokens.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "\\(receivedSymbol) was added to your tokens."
           }
         }
       }
@@ -4388,6 +4465,17 @@
         }
       }
     },
+    "\\(utxos.count) selected": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "\\(utxos.count) selected"
+          }
+        }
+      }
+    },
     "\\(valid) valid · \\(invalid) invalid": {
       "extractionState": "manual",
       "localizations": {
@@ -5011,6 +5099,7 @@
       }
     },
     "%@": {
+      "extractionState": "stale",
       "localizations": {
         "af": {
           "stringUnit": {
@@ -10573,6 +10662,17 @@
         }
       }
     },
+    "%@ was added to your tokens.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ was added to your tokens."
+          }
+        }
+      }
+    },
     "%@, %@, %@": {
       "extractionState": "manual",
       "localizations": {
@@ -11191,6 +11291,26 @@
           "stringUnit": {
             "state": "translated",
             "value": "%1$@、%2$@、在 %3$@"
+          }
+        }
+      }
+    },
+    "%@%@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "new",
+            "value": "%1$@%2$@"
+          }
+        }
+      }
+    },
+    "%@%@%@%@": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "new",
+            "value": "%1$@%2$@%3$@%4$@"
           }
         }
       }
@@ -14862,6 +14982,28 @@
           "stringUnit": {
             "state": "translated",
             "value": "%1$lld、%2$@"
+          }
+        }
+      }
+    },
+    "••••": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "••••"
+          }
+        }
+      }
+    },
+    "••••••": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "••••••"
           }
         }
       }
@@ -19191,6 +19333,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "0"
+          }
+        }
+      }
+    },
+    "0.5": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "0.5"
           }
         }
       }
@@ -23535,6 +23688,318 @@
         }
       }
     },
+    "A timed log of the last pull-to-refresh — every chain's balance and history API, each RPC round-trip, and every database write, with how long each took. Pull to refresh on the wallet screen, then open this and tap Copy to share it.": {},
+    "A timed log of the last pull-to-refresh — every chain’s balance and history API, each RPC round-trip, and every database write, with how long each took. Pull to refresh on the wallet screen, then open this and tap Copy to share it.": {
+      "extractionState": "manual",
+      "localizations": {
+        "af": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "’n Getydde log van die laaste trek-om-te-verfris — elke ketting se saldo- en geskiedenis-API, elke RPC-heen-en-weer, en elke databasisskryf, met hoe lank elkeen geneem het. Trek af om te verfris op die beursie-skerm, maak dan hierdie oop en tik Kopieer om dit te deel."
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "سجل زمني لآخر عملية تحديث بالسحب — واجهة برمجة الرصيد والسجل لكل سلسلة، وكل دورة RPC، وكل عملية كتابة في قاعدة البيانات، مع الزمن الذي استغرقته كل منها. اسحب للتحديث في شاشة المحفظة، ثم افتح هذه الشاشة وانقر على «نسخ» لمشاركتها."
+          }
+        },
+        "bg": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Хронометриран дневник на последното дръпване за опресняване — API за баланс и история на всяка верига, всяко RPC двупосочно обръщение и всеки запис в базата данни, заедно с времето, което отне всяко от тях. Дръпнете надолу за опресняване на екрана на портфейла, после отворете това и докоснете Копиране, за да го споделите."
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "শেষ পুল-টু-রিফ্রেশের একটি সময়সহ লগ — প্রতিটি চেইনের ব্যালেন্স ও হিস্ট্রি API, প্রতিটি RPC রাউন্ড-ট্রিপ এবং প্রতিটি ডেটাবেস রাইট, প্রতিটিতে কত সময় লেগেছে তা সহ। ওয়ালেট স্ক্রিনে টেনে রিফ্রেশ করুন, তারপর এটি খুলুন এবং শেয়ার করতে কপি-তে ট্যাপ করুন।"
+          }
+        },
+        "ca": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Un registre cronometrat de l’última actualització en estirar: l’API de saldo i historial de cada cadena, cada anada i tornada d’RPC i cada escriptura a la base de dades, amb el temps que ha trigat cadascuna. Estira per actualitzar a la pantalla de la cartera, després obre això i toca Copia per compartir-ho."
+          }
+        },
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Časový protokol posledního obnovení tažením — API zůstatku a historie každého řetězce, každý cyklus RPC a každý zápis do databáze, včetně doby trvání každé operace. Na obrazovce peněženky obnovte tažením, poté otevřete tuto obrazovku a klepnutím na Kopírovat ji sdílejte."
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "En tidsmålt log over den seneste træk-for-at-opdatere — hver kædes saldo- og historik-API, hver RPC-rundtur og hver skrivning til databasen, med hvor lang tid hver enkelt tog. Træk for at opdatere på pungens skærm, åbn derefter denne, og tryk på Kopier for at dele den."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ein Protokoll des letzten Ziehen-zum-Aktualisieren mit Zeitangaben – die Guthaben- und Verlaufs-API jeder Chain, jeder RPC-Roundtrip und jeder Schreibvorgang in der Datenbank, samt der jeweils benötigten Dauer. Ziehen Sie im Wallet-Bildschirm zum Aktualisieren, öffnen Sie anschließend diese Ansicht und tippen Sie auf „Kopieren“, um sie zu teilen."
+          }
+        },
+        "el": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ένα χρονομετρημένο αρχείο καταγραφής της τελευταίας ανανέωσης με τράβηγμα — το API υπολοίπου και ιστορικού κάθε αλυσίδας, κάθε κύκλος RPC και κάθε εγγραφή στη βάση δεδομένων, μαζί με τον χρόνο που χρειάστηκε το καθένα. Τραβήξτε για ανανέωση στην οθόνη του πορτοφολιού, στη συνέχεια ανοίξτε αυτή την οθόνη και πατήστε «Αντιγραφή» για να την κοινοποιήσετε."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "A timed log of the last pull-to-refresh — every chain’s balance and history API, each RPC round-trip, and every database write, with how long each took. Pull to refresh on the wallet screen, then open this and tap Copy to share it."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Un registro cronometrado de la última actualización al deslizar: la API de saldo e historial de cada cadena, cada ida y vuelta de RPC y cada escritura en la base de datos, con el tiempo que tardó cada una. Desliza para actualizar en la pantalla de la cartera, luego abre esto y toca Copiar para compartirlo."
+          }
+        },
+        "et": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Viimase tõmba-värskendamise ajastatud logi — iga ahela saldo- ja ajaloo-API, iga RPC edasi-tagasi päring ja iga andmebaasi kirjutamine koos sellega, kui kaua iga toiming võttis. Tõmba rahakoti ekraanil värskendamiseks, seejärel ava see ja puuduta jagamiseks Kopeeri."
+          }
+        },
+        "fa": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "گزارشی زمان‌بندی‌شده از آخرین کشیدن برای تازه‌سازی — API موجودی و تاریخچهٔ هر زنجیره، هر رفت‌وبرگشت RPC و هر نوشتن در پایگاه داده، همراه با مدت‌زمان هر کدام. در صفحهٔ کیف پول بکشید تا تازه شود، سپس این صفحه را باز کنید و برای هم‌رسانی روی کپی بزنید."
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aikaleimattu loki viimeisimmästä vetäen päivittämisestä — jokaisen ketjun saldo- ja historia-API, jokainen RPC-edestakaisuus ja jokainen tietokantakirjoitus sekä kunkin kesto. Päivitä lompakkonäkymässä vetämällä, avaa sitten tämä näkymä ja jaa se napauttamalla Kopioi."
+          }
+        },
+        "fil": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Isang naka-timing na log ng huling pull-to-refresh — ang balance at history API ng bawat chain, bawat RPC round-trip, at bawat pagsulat sa database, kasama kung gaano katagal ang bawat isa. I-pull pababa para mag-refresh sa screen ng wallet, pagkatapos ay buksan ito at i-tap ang Copy para ibahagi."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Un journal chronométré de la dernière actualisation par tirage — l’API de solde et d’historique de chaque chaîne, chaque aller-retour RPC et chaque écriture en base de données, avec le temps pris par chacun. Tirez pour actualiser sur l’écran du portefeuille, puis ouvrez ceci et touchez Copier pour le partager."
+          }
+        },
+        "he": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "יומן מתוזמן של פעולת המשיכה-לרענון האחרונה — ממשק ה-API של היתרה וההיסטוריה של כל רשת, כל סבב RPC וכל כתיבה למסד הנתונים, יחד עם משך הזמן של כל אחת. משכו לרענון במסך הארנק, לאחר מכן פתחו מסך זה והקישו על העתקה כדי לשתף אותו."
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "पिछले पुल-टू-रिफ़्रेश का एक समयबद्ध लॉग — हर चेन की बैलेंस और हिस्ट्री API, हर RPC राउंड-ट्रिप, और हर डेटाबेस राइट, साथ में हर एक में लगा समय। वॉलेट स्क्रीन पर खींचकर रिफ़्रेश करें, फिर इसे खोलें और साझा करने के लिए कॉपी पर टैप करें।"
+          }
+        },
+        "hr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vremenski zabilježen zapisnik posljednjeg osvježavanja povlačenjem — API stanja i povijesti svakog lanca, svaki ciklus RPC-a i svaki zapis u bazu podataka, zajedno s trajanjem svakoga. Povucite za osvježavanje na zaslonu novčanika, zatim otvorite ovaj zaslon i dodirnite Kopiraj da biste ga podijelili."
+          }
+        },
+        "hu": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Időbélyegzett napló a legutóbbi húzással történő frissítésről – minden lánc egyenleg- és előzmény-API-ja, minden RPC-oda-vissza fordulója és minden adatbázis-írás, az egyes műveletek időtartamával együtt. A tárca képernyőjén húzással frissítsen, majd nyissa meg ezt a képernyőt, és a megosztáshoz koppintson a Másolás gombra."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Catatan berwaktu dari tarik untuk menyegarkan terakhir — API saldo dan riwayat setiap rantai, setiap perjalanan bolak-balik RPC, dan setiap penulisan basis data, beserta waktu yang dibutuhkan masing-masing. Tarik untuk menyegarkan di layar dompet, lalu buka halaman ini dan ketuk Salin untuk membagikannya."
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tímasett skráning af síðustu uppfærslu með því að draga niður — jafnvægis- og ferils-API hverrar keðju, hver RPC umferð og hver skrifun í gagnagrunn, ásamt því hve langan tíma hvert tók. Dragðu niður til að uppfæra á veskisskjánum, opnaðu svo þetta og ýttu á Afrita til að deila því."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Un registro cronometrato dell’ultimo aggiornamento tramite trascinamento: l’API di saldo e cronologia di ogni catena, ogni andata e ritorno RPC e ogni scrittura nel database, con il tempo impiegato da ciascuno. Trascini verso il basso per aggiornare nella schermata del portafoglio, poi apra questa pagina e tocchi Copia per condividerla."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "前回のプルして更新の操作を時間とともに記録したログです。各チェーンの残高および履歴 API、RPC の各往復、そしてデータベースへの各書き込みについて、それぞれの所要時間を記録します。ウォレット画面でプルして更新したあと、この画面を開き、「コピー」をタップして共有してください。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "마지막 당겨서 새로고침의 시간 기록입니다. 각 체인의 잔액 및 내역 API, 모든 RPC 왕복, 모든 데이터베이스 쓰기와 각각에 걸린 시간을 보여줍니다. 지갑 화면에서 당겨 새로고침한 다음, 여기를 열고 복사를 눌러 공유하세요."
+          }
+        },
+        "lt": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Paskutinio patraukimo atnaujinti laiko žurnalas — kiekvienos grandinės balanso ir istorijos API, kiekviena RPC užklausa su atsakymu ir kiekvienas duomenų bazės įrašymas, nurodant, kiek truko kiekvienas iš jų. Piniginės ekrane patraukite žemyn, kad atnaujintumėte, tada atverkite tai ir bakstelėkite Kopijuoti, kad pasidalintumėte."
+          }
+        },
+        "lv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pēdējās vilkšanas atsvaidzināšanai laika žurnāls — katras ķēdes bilances un vēstures API, katra RPC turp un atpakaļ apmaiņa un katra datubāzes ierakstīšana, norādot, cik ilgi tā aizņēma. Maka ekrānā velciet uz leju, lai atsvaidzinātu, pēc tam atveriet šo un pieskarieties Kopēt, lai to kopīgotu."
+          }
+        },
+        "ml": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "അവസാനമായി വലിച്ച് പുതുക്കിയതിന്റെ സമയക്രമത്തിലുള്ള ലോഗ് — ഓരോ ചെയിനിന്റെയും ബാലൻസ്, ഹിസ്റ്ററി API, ഓരോ RPC റൗണ്ട്-ട്രിപ്പ്, ഓരോ database എഴുത്ത് എന്നിവ, ഓരോന്നിനും എടുത്ത സമയത്തോടൊപ്പം. വാലറ്റ് സ്ക്രീനിൽ വലിച്ച് പുതുക്കുക, പിന്നെ ഇത് തുറന്ന് പങ്കിടാൻ പകർത്തുക എന്നതിൽ ടാപ്പ് ചെയ്യുക."
+          }
+        },
+        "mr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "शेवटच्या खेचून-रिफ्रेशची वेळेसह नोंद — प्रत्येक चेनचे शिल्लक व इतिहास API, प्रत्येक RPC फेरफटका आणि प्रत्येक database लेखन, यासह प्रत्येकाला किती वेळ लागला. वॉलेट स्क्रीनवर खेचून रिफ्रेश करा, नंतर हे उघडा आणि शेअर करण्यासाठी कॉपी वर टॅप करा."
+          }
+        },
+        "ms": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Log bermasa bagi tarik untuk segar semula yang terakhir — API baki dan sejarah setiap rantai, setiap pusingan ulang-alik RPC, dan setiap penulisan pangkalan data, beserta tempoh yang diambil oleh setiap satu. Tarik untuk segar semula pada skrin dompet, kemudian buka halaman ini dan ketik Salin untuk berkongsinya."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "En tidsmålt logg over den siste dra-for-å-oppdatere — hver kjedes saldo- og historikk-API, hver RPC-rundtur og hver databaseskriving, med hvor lang tid hver enkelt tok. Dra for å oppdatere på lommebokskjermen, åpne deretter denne og trykk på Kopier for å dele den."
+          }
+        },
+        "nl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Een gedetailleerd tijdslog van de laatste pull-to-refresh — de saldo- en geschiedenis-API van elke keten, elke RPC-aanroep en elke databaseschrijfactie, met hoelang elk duurde. Trek omlaag om te verversen op het walletscherm, open dit vervolgens en tik op Kopiëren om het te delen."
+          }
+        },
+        "pa": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ਆਖ਼ਰੀ ਖਿੱਚ-ਕੇ-ਤਾਜ਼ਾ ਕਰਨ ਦਾ ਸਮੇਂ ਸਮੇਤ ਰਿਕਾਰਡ — ਹਰ ਚੇਨ ਦੀ ਬੈਲੇਂਸ ਅਤੇ ਇਤਿਹਾਸ API, ਹਰ RPC ਗੇੜਾ, ਅਤੇ ਹਰ database ਲਿਖਤ, ਨਾਲ ਹੀ ਹਰੇਕ ਨੂੰ ਕਿੰਨਾ ਸਮਾਂ ਲੱਗਾ। ਵਾਲਿਟ ਸਕਰੀਨ 'ਤੇ ਖਿੱਚ ਕੇ ਤਾਜ਼ਾ ਕਰੋ, ਫਿਰ ਇਸਨੂੰ ਖੋਲ੍ਹੋ ਅਤੇ ਸਾਂਝਾ ਕਰਨ ਲਈ ਕਾਪੀ 'ਤੇ ਟੈਪ ਕਰੋ।"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rejestr czasowy ostatniego odświeżenia gestem przeciągnięcia — interfejs API salda i historii każdego łańcucha, każda wymiana RPC oraz każdy zapis do bazy danych, wraz z czasem trwania każdego z nich. Przeciągnij, aby odświeżyć na ekranie portfela, następnie otwórz ten widok i dotknij Kopiuj, aby go udostępnić."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Um registro cronometrado da última atualização por puxar: a API de saldo e histórico de cada rede, cada ida e volta de RPC e cada gravação no banco de dados, com o tempo que cada uma levou. Puxe para atualizar na tela da carteira, depois abra isto e toque em Copiar para compartilhar."
+          }
+        },
+        "ro": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Un jurnal cronometrat al ultimei reîmprospătări prin tragere — API-ul de sold și istoric al fiecărui lanț, fiecare ciclu RPC și fiecare scriere în baza de date, împreună cu durata fiecăreia. Trageți pentru a reîmprospăta pe ecranul portofelului, apoi deschideți acest ecran și atingeți Copiază pentru a-l partaja."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Хронометрированный журнал последнего обновления жестом: API баланса и истории каждой сети, каждый цикл запроса RPC и каждая запись в базу данных с указанием длительности каждой операции. Потяните для обновления на экране кошелька, затем откройте этот экран и нажмите «Скопировать», чтобы поделиться им."
+          }
+        },
+        "sk": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Časový protokol posledného obnovenia potiahnutím — API zostatku a histórie každej reťaze, každý cyklus RPC a každý zápis do databázy vrátane času trvania každej operácie. Na obrazovke peňaženky obnovte potiahnutím, potom otvorte túto obrazovku a klepnutím na Kopírovať ju zdieľajte."
+          }
+        },
+        "sl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Časovno zabeležen dnevnik zadnjega osveževanja s potegom — API stanja in zgodovine vsake verige, vsak cikel RPC in vsak zapis v zbirko podatkov, skupaj s trajanjem vsakega. Na zaslonu denarnice osvežite s potegom, nato odprite ta zaslon in se dotaknite Kopiraj, da ga delite."
+          }
+        },
+        "sr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Временски забележен дневник последњег освежавања превлачењем — API стања и историје сваког ланца, сваки циклус RPC-а и сваки упис у базу података, заједно са трајањем сваког. На екрану новчаника освежите превлачењем, затим отворите овај екран и додирните Копирај да бисте га поделили."
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "En tidsstämplad logg över den senaste dra-för-att-uppdatera — varje kedjas saldo- och historik-API, varje RPC-tur och retur och varje databasskrivning, med hur lång tid var och en tog. Dra för att uppdatera på plånboksskärmen, öppna sedan den här och tryck på Kopiera för att dela den."
+          }
+        },
+        "sw": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kumbukumbu yenye muda ya kuvuta-kuonyesha-upya kwa mwisho — API ya salio na historia ya kila mnyororo, kila mzunguko wa RPC, na kila uandishi kwenye hifadhidata, pamoja na muda uliotumika kwa kila moja. Vuta ili kuonyesha upya kwenye skrini ya pochi, kisha fungua hapa na uguse Nakili ili kuishiriki."
+          }
+        },
+        "ta": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "கடைசியாக இழுத்துப் புதுப்பித்ததின் நேரப் பதிவு — ஒவ்வொரு செயினின் இருப்பு மற்றும் வரலாறு API, ஒவ்வொரு RPC போக்குவரத்து, மற்றும் ஒவ்வொரு database எழுதுதல், அவை ஒவ்வொன்றும் எடுத்த நேரத்துடன். வாலெட் திரையில் இழுத்துப் புதுப்பித்து, பிறகு இதைத் திறந்து, பகிர நகலெடு என்பதைத் தட்டவும்."
+          }
+        },
+        "te": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "చివరిసారి లాగి-రిఫ్రెష్ చేసిన దాని సమయ-నమోదు — ప్రతి చెయిన్ బ్యాలెన్స్ మరియు చరిత్ర API, ప్రతి RPC రౌండ్-ట్రిప్, మరియు ప్రతి database రాత, ఒక్కొక్కటి తీసుకున్న సమయంతో సహా. వాలెట్ స్క్రీన్‌లో లాగి రిఫ్రెష్ చేసి, ఆపై దీన్ని తెరిచి, షేర్ చేయడానికి కాపీని నొక్కండి."
+          }
+        },
+        "th": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "บันทึกตามเวลาของการดึงเพื่อรีเฟรชครั้งล่าสุด — API ยอดคงเหลือและประวัติของแต่ละเชน การรับส่ง RPC แต่ละรอบ และการเขียนฐานข้อมูลแต่ละครั้ง พร้อมเวลาที่แต่ละรายการใช้ ดึงเพื่อรีเฟรชบนหน้าจอกระเป๋าเงิน จากนั้นเปิดหน้านี้แล้วแตะคัดลอกเพื่อแชร์"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Son çekerek yenilemenin zaman damgalı kaydı — her zincirin bakiye ve geçmiş API’si, her RPC gidiş-dönüşü ve her veritabanı yazımı, her birinin ne kadar sürdüğüyle birlikte. Cüzdan ekranında çekerek yenileyin, ardından bunu açıp paylaşmak için Kopyala’ya dokunun."
+          }
+        },
+        "uk": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Хронометрований журнал останнього оновлення жестом: API балансу та історії кожної мережі, кожен цикл запиту RPC і кожен запис до бази даних із зазначенням тривалості кожної операції. Потягніть для оновлення на екрані гаманця, потім відкрийте цей екран і торкніться «Копіювати», щоб поділитися ним."
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "آخری پُل ٹو ریفریش کا وقت کے ساتھ ریکارڈ — ہر چین کی بیلنس اور ہسٹری API، ہر RPC راؤنڈ ٹرپ، اور ہر database لکھائی، اس کے ساتھ کہ ہر ایک میں کتنا وقت لگا۔ والٹ اسکرین پر کھینچ کر ریفریش کریں، پھر اِسے کھولیں اور شیئر کرنے کے لیے Copy پر ٹیپ کریں۔"
+          }
+        },
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nhật ký theo thời gian của lần kéo để làm mới gần nhất — API số dư và lịch sử của mỗi chuỗi, mỗi lượt gọi RPC khứ hồi và mỗi lần ghi vào cơ sở dữ liệu, kèm theo thời gian của từng mục. Hãy kéo để làm mới trên màn hình ví, rồi mở mục này và chạm Sao chép để chia sẻ."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "上一次下拉刷新的计时日志——每条链的余额和历史 API、每次 RPC 往返以及每次数据库写入，并附上各自的耗时。在钱包界面下拉刷新，然后打开此处并轻点“拷贝”以分享。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "上一次下拉重新整理的計時記錄——每條鏈的餘額與歷史 API、每次 RPC 往返以及每次資料庫寫入，並附上各自所花的時間。在錢包畫面下拉重新整理，然後開啟此處並輕點「拷貝」以分享。"
+          }
+        }
+      }
+    },
     "A wallet built with the care a wallet should be built with.": {
       "comment": "Slide 1 body.",
       "extractionState": "manual",
@@ -27551,6 +28016,17 @@
     },
     "Add an optional note that travels with the transaction.": {},
     "Add comment": {},
+    "Add crypto to get started — receive or transfer it from another wallet.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Add crypto to get started — receive or transfer it from another wallet."
+          }
+        }
+      }
+    },
     "Add custom token": {
       "extractionState": "new",
       "localizations": {
@@ -28174,6 +28650,17 @@
         }
       }
     },
+    "Add funds": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Add funds"
+          }
+        }
+      }
+    },
     "Add funds to see balance.": {
       "extractionState": "manual",
       "localizations": {
@@ -28475,6 +28962,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "入金後查看餘額。"
+          }
+        }
+      }
+    },
+    "Add funds, opens Receive": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Add funds, opens Receive"
           }
         }
       }
@@ -29415,6 +29913,28 @@
           "stringUnit": {
             "state": "translated",
             "value": "加入僅監看錢包"
+          }
+        }
+      }
+    },
+    "Adding a memo on TRON costs an extra 1 TRX.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Adding a memo on TRON costs an extra 1 TRX."
+          }
+        }
+      }
+    },
+    "Adding…": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Adding…"
           }
         }
       }
@@ -36233,6 +36753,17 @@
         }
       }
     },
+    "Amounts (\\(model.amounts.count))": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Amounts (\\(model.amounts.count))"
+          }
+        }
+      }
+    },
     "Amounts (%lld)": {},
     "An optional extra word that combines with your recovery phrase to create a different wallet. You must remember it — it is not stored anywhere, and it cannot be recovered.": {
       "comment": "Passphrase sheet body — honesty about non-recoverability.",
@@ -39373,6 +39904,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Aperture 無法判斷你匯入的金鑰屬於誰,只有你自己知道。除非這把金鑰確實是你的,否則請勿繼續。"
+          }
+        }
+      }
+    },
+    "Aperture couldn't load the swappable tokens for \\(chain.displayName) right now. Check your connection and try again.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aperture couldn't load the swappable tokens for \\(chain.displayName) right now. Check your connection and try again."
           }
         }
       }
@@ -46461,6 +47003,19 @@
         }
       }
     },
+    "Aperture signs this on your iPhone and broadcasts it to the network. A bridge moves funds across chains and can't be reversed once it's sent.": {},
+    "Aperture signs this on your iPhone and broadcasts it to the network. Once it's sent, it can't be reversed.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aperture signs this on your iPhone and broadcasts it to the network. Once it's sent, it can't be reversed."
+          }
+        }
+      }
+    },
+    "Aperture signs this on your iPhone and broadcasts it to the network. Once it's sent, the swap can't be reversed.": {},
     "Aperture uses the camera to scan a recipient's wallet QR code. Enable camera access in Settings, or pick a QR image from your photos.": {
       "extractionState": "manual",
       "localizations": {
@@ -48345,6 +48900,17 @@
         }
       }
     },
+    "Approve": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Approve"
+          }
+        }
+      }
+    },
     "Ascending": {
       "extractionState": "manual",
       "localizations": {
@@ -48962,6 +49528,7 @@
         }
       }
     },
+    "Authenticate to sign this %@.": {},
     "Auto": {
       "extractionState": "manual",
       "localizations": {
@@ -52972,6 +53539,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "餘額"
+          }
+        }
+      }
+    },
+    "Balance changes": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Balance changes"
           }
         }
       }
@@ -59473,6 +60051,34 @@
         }
       }
     },
+    "Bridge": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bridge"
+          }
+        }
+      }
+    },
+    "Bridge fee": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bridge fee"
+          }
+        }
+      }
+    },
+    "Bridge reverted": {},
+    "Bridge submitted": {},
+    "Bridge you submitted": {},
+    "Bridged": {},
+    "Bridging": {},
+    "Bridging — waiting for on-chain confirmation": {},
     "Bring an existing wallet into Aperture.": {
       "extractionState": "manual",
       "localizations": {
@@ -59778,6 +60384,31 @@
         }
       }
     },
+    "Broadcast to %@ and confirmed on-chain.": {},
+    "Broadcast to the \\(transaction.chain.displayName) network. It'll confirm on-chain in a moment.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Broadcast to the \\(transaction.chain.displayName) network. It'll confirm on-chain in a moment."
+          }
+        }
+      }
+    },
+    "Broadcast to the %@ network. It'll confirm on-chain in a moment.": {},
+    "Broadcasting to \\(chainName)": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Broadcasting to \\(chainName)"
+          }
+        }
+      }
+    },
+    "Broadcasting to %@": {},
     "Browser": {
       "extractionState": "manual",
       "localizations": {
@@ -62572,6 +63203,8 @@
         }
       }
     },
+    "Can't send": {},
+    "Can't swap": {},
     "Cancel": {
       "comment": "Create-wallet disclosure secondary CTA (also reused as a generic cancel label).",
       "extractionState": "manual",
@@ -64467,6 +65100,7 @@
         }
       }
     },
+    "characters": {},
     "Check the original phrase you wrote down — this word may be from a different wordlist.": {
       "extractionState": "manual",
       "localizations": {
@@ -64801,6 +65435,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Checking what this send will do…"
+          }
+        }
+      }
+    },
+    "Checkpoint": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Checkpoint"
           }
         }
       }
@@ -72241,6 +72886,17 @@
         }
       }
     },
+    "Coinbase (newly generated)": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Coinbase (newly generated)"
+          }
+        }
+      }
+    },
     "Coins": {
       "extractionState": "manual",
       "localizations": {
@@ -74102,6 +74758,17 @@
         }
       }
     },
+    "Compute units": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Compute units"
+          }
+        }
+      }
+    },
     "Confirm": {
       "extractionState": "manual",
       "localizations": {
@@ -74403,6 +75070,39 @@
           "stringUnit": {
             "state": "translated",
             "value": "確認"
+          }
+        }
+      }
+    },
+    "Confirm on your iPhone": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Confirm on your iPhone"
+          }
+        }
+      }
+    },
+    "Confirm to send this transaction.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Confirm to send this transaction."
+          }
+        }
+      }
+    },
+    "Confirm to swap.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Confirm to swap."
           }
         }
       }
@@ -76271,6 +76971,17 @@
         }
       }
     },
+    "Confirmations": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Confirmations"
+          }
+        }
+      }
+    },
     "Confirmed": {
       "localizations": {
         "af": {
@@ -76571,6 +77282,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "已確認"
+          }
+        }
+      }
+    },
+    "Confirming…": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Confirming…"
           }
         }
       }
@@ -79680,6 +80402,17 @@
         }
       }
     },
+    "Contract created": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Contract created"
+          }
+        }
+      }
+    },
     "Contract data": {
       "extractionState": "manual",
       "localizations": {
@@ -80926,6 +81659,51 @@
         }
       }
     },
+    "Copy \\(accessibilityName)": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Copy \\(accessibilityName)"
+          }
+        }
+      }
+    },
+    "Copy \\(field.label)": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Copy \\(field.label)"
+          }
+        }
+      }
+    },
+    "Copy \\(name)": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Copy \\(name)"
+          }
+        }
+      }
+    },
+    "Copy %@": {},
+    "Copy account": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Copy account"
+          }
+        }
+      }
+    },
     "Copy address": {
       "extractionState": "manual",
       "localizations": {
@@ -81556,6 +82334,28 @@
           "stringUnit": {
             "state": "translated",
             "value": "複製恢復短語"
+          }
+        }
+      }
+    },
+    "Copy token contract": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Copy token contract"
+          }
+        }
+      }
+    },
+    "Copy transaction hash": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Copy transaction hash"
           }
         }
       }
@@ -82821,6 +83621,17 @@
       }
     },
     "Couldn't find %@. Check the spelling, or paste the address.": {},
+    "Couldn't load the full details right now. The summary above is from your device.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Couldn't load the full details right now. The summary above is from your device."
+          }
+        }
+      }
+    },
     "Couldn't load the network fee": {},
     "Couldn't open that photo.": {},
     "Couldn't reach the chain": {
@@ -86806,6 +87617,17 @@
         }
       }
     },
+    "Couldn\\u{2019}t read that file.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Couldn\\u{2019}t read that file."
+          }
+        }
+      }
+    },
     "Counterparty": {
       "extractionState": "manual",
       "localizations": {
@@ -88660,6 +89482,17 @@
         }
       }
     },
+    "Cumulative gas used": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cumulative gas used"
+          }
+        }
+      }
+    },
     "Currency": {
       "comment": "Settings row label — fiat currency picker (replaces Region & currency).",
       "extractionState": "manual",
@@ -89889,6 +90722,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "自訂最低金額"
+          }
+        }
+      }
+    },
+    "Custom slippage": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Custom slippage"
           }
         }
       }
@@ -91137,6 +91981,17 @@
         }
       }
     },
+    "dApp": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "dApp"
+          }
+        }
+      }
+    },
     "Dark": {
       "comment": "Appearance option — Dark.",
       "extractionState": "manual",
@@ -91450,6 +92305,17 @@
       }
     },
     "Data note": {},
+    "Decimal point": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Decimal point"
+          }
+        }
+      }
+    },
     "Decimals": {
       "extractionState": "new",
       "localizations": {
@@ -94239,6 +95105,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "派生進行中"
+          }
+        }
+      }
+    },
+    "Deriving your account…": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Deriving your account…"
           }
         }
       }
@@ -100415,6 +101292,17 @@
         }
       }
     },
+    "down": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "down"
+          }
+        }
+      }
+    },
     "Each word is one of 2,048 standard words. Aperture checks every word you type against that list.": {
       "extractionState": "manual",
       "localizations": {
@@ -101965,6 +102853,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "編輯密語"
+          }
+        }
+      }
+    },
+    "Effective gas price": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Effective gas price"
           }
         }
       }
@@ -104151,6 +105050,17 @@
       }
     },
     "Enter the comment the recipient gave you.": {},
+    "Enter the maximum price movement you'll accept. Lower is safer; higher fills more often.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Enter the maximum price movement you'll accept. Lower is safer; higher fills more often."
+          }
+        }
+      }
+    },
     "Enter the numeric tag the recipient gave you.": {},
     "Enter the same passcode again.": {
       "localizations": {
@@ -107238,6 +108148,17 @@
         }
       }
     },
+    "Error": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Error"
+          }
+        }
+      }
+    },
     "Estimated": {},
     "Estimated at sign time": {
       "extractionState": "manual",
@@ -107551,6 +108472,17 @@
       }
     },
     "Estimated fee": {},
+    "Estimated time": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Estimated time"
+          }
+        }
+      }
+    },
     "Every cached balance and price": {
       "extractionState": "manual",
       "localizations": {
@@ -108523,7 +109455,6 @@
         }
       }
     },
-    "Everything above is ready and real. Signing and broadcasting the transaction is the part we're building next — nothing has been sent.": {},
     "EVM private key (32-byte hex).": {
       "extractionState": "manual",
       "localizations": {
@@ -114079,8 +115010,8 @@
         }
       }
     },
+    "Fee per operation": {},
     "Fee rate": {},
-    "Fetching the current rate…": {},
     "Fetching token info…": {
       "extractionState": "new",
       "localizations": {
@@ -115008,6 +115939,17 @@
         }
       }
     },
+    "File too large \\u{2014} max 50 KB.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "File too large \\u{2014} max 50 KB."
+          }
+        }
+      }
+    },
     "Filter & Sort": {
       "extractionState": "manual",
       "localizations": {
@@ -115630,6 +116572,28 @@
         }
       }
     },
+    "Finding the best bridge route…": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Finding the best bridge route…"
+          }
+        }
+      }
+    },
+    "Finding the best route…": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Finding the best route…"
+          }
+        }
+      }
+    },
     "first send": {
       "extractionState": "manual",
       "localizations": {
@@ -115985,6 +116949,17 @@
         }
       }
     },
+    "Flip": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Flip"
+          }
+        }
+      }
+    },
     "Flip the coin": {
       "extractionState": "manual",
       "localizations": {
@@ -116286,6 +117261,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "拋硬幣"
+          }
+        }
+      }
+    },
+    "Flip the swap direction": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Flip the swap direction"
           }
         }
       }
@@ -118166,6 +119152,17 @@
         }
       }
     },
+    "Gas & fee": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gas & fee"
+          }
+        }
+      }
+    },
     "Gas estimate": {
       "extractionState": "manual",
       "localizations": {
@@ -118789,6 +119786,17 @@
       }
     },
     "Gas price": {},
+    "Gas used": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gas used"
+          }
+        }
+      }
+    },
     "Gas, nonce, hex data": {
       "extractionState": "manual",
       "localizations": {
@@ -127128,6 +128136,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "費用越高確認越快；費用越低成本越省，但等待更久。Aperture 會選擇一個合理的預設值，你可以在審核畫面的\\u{201C}編輯\\u{201D}中變更。"
+          }
+        }
+      }
+    },
+    "Higher slippage can mean you receive noticeably less.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Higher slippage can mean you receive noticeably less."
           }
         }
       }
@@ -135743,6 +136762,17 @@
         }
       }
     },
+    "Importing…": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Importing…"
+          }
+        }
+      }
+    },
     "In a moment, Aperture will show you 12 words. They are your wallet. No one — not Apple, not Aperture, not your bank — can recover them for you.": {
       "comment": "Create-wallet disclosure sheet body.",
       "extractionState": "manual",
@@ -136660,6 +137690,39 @@
           "stringUnit": {
             "state": "translated",
             "value": "PIN 碼錯誤。"
+          }
+        }
+      }
+    },
+    "Input data": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Input data"
+          }
+        }
+      }
+    },
+    "Inputs": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Inputs"
+          }
+        }
+      }
+    },
+    "Instructions": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Instructions"
           }
         }
       }
@@ -138230,6 +139293,17 @@
       }
     },
     "Its address on this iPhone": {},
+    "Its addresses on \\(networkCount) networks": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Its addresses on \\(networkCount) networks"
+          }
+        }
+      }
+    },
     "Its addresses on %lld networks": {},
     "Its encrypted private key in the Keychain": {},
     "Its encrypted recovery phrase in the Keychain": {},
@@ -141020,6 +142094,17 @@
         }
       }
     },
+    "KyberSwap error \\(code)": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "KyberSwap error \\(code)"
+          }
+        }
+      }
+    },
     "Lands fast": {
       "extractionState": "manual",
       "localizations": {
@@ -142880,6 +143965,29 @@
         }
       }
     },
+    "Legacy": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Legacy"
+          }
+        }
+      }
+    },
+    "Less than the network minimum (\\(floor)) remains, so this recipient can't be paid.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Less than the network minimum (\\(floor)) remains, so this recipient can't be paid."
+          }
+        }
+      }
+    },
+    "Less than the network minimum (%@) remains, so this recipient can't be paid.": {},
     "Let Aperture choose the best coins": {},
     "Lets you bump the fee later if it's stuck.": {
       "extractionState": "manual",
@@ -143503,6 +144611,18 @@
         }
       }
     },
+    "Letting the router move your \\(fromSymbol)": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Letting the router move your \\(fromSymbol)"
+          }
+        }
+      }
+    },
+    "Letting the router move your %@": {},
     "Light": {
       "comment": "Appearance option — Light.",
       "extractionState": "manual",
@@ -143816,6 +144936,40 @@
       }
     },
     "Light on": {},
+    "lines": {},
+    "Loading details…": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Loading details…"
+          }
+        }
+      }
+    },
+    "Loading the network fee…": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Loading the network fee…"
+          }
+        }
+      }
+    },
+    "Loading your coins…": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Loading your coins…"
+          }
+        }
+      }
+    },
     "Local database": {
       "extractionState": "manual",
       "localizations": {
@@ -145045,6 +146199,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "由 Face ID 鎖定。"
+          }
+        }
+      }
+    },
+    "Locktime": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Locktime"
           }
         }
       }
@@ -148460,6 +149625,28 @@
         }
       }
     },
+    "Max priority fee": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Max priority fee"
+          }
+        }
+      }
+    },
+    "Max slippage": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Max slippage"
+          }
+        }
+      }
+    },
     "Memo": {},
     "Message": {
       "extractionState": "manual",
@@ -149384,6 +150571,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "最低金額"
+          }
+        }
+      }
+    },
+    "Minimum received": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Minimum received"
           }
         }
       }
@@ -151248,6 +152446,17 @@
         }
       }
     },
+    "More than your remaining balance.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "More than your remaining balance."
+          }
+        }
+      }
+    },
     "Most exchanges REQUIRE a destination tag for XRP deposits. A deposit sent without the right tag can be credited to the wrong account or lost.": {},
     "Move value between networks without leaving the wallet.": {
       "comment": "Slide 8 body.",
@@ -152495,6 +153704,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "原生資產"
+          }
+        }
+      }
+    },
+    "Native coins": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Native coins"
           }
         }
       }
@@ -161154,6 +162374,17 @@
         }
       }
     },
+    "No change today": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No change today"
+          }
+        }
+      }
+    },
     "No close matches found": {
       "extractionState": "manual",
       "localizations": {
@@ -162703,6 +163934,7 @@
         }
       }
     },
+    "No inputs reported.": {},
     "No key is stored for this wallet.": {},
     "No matching results.": {
       "extractionState": "manual",
@@ -163624,6 +164856,7 @@
         }
       }
     },
+    "No outputs reported.": {},
     "No outreach": {
       "extractionState": "manual",
       "localizations": {
@@ -164870,6 +166103,18 @@
       }
     },
     "No spendable coins were found for this address.": {},
+    "No swappable assets.": {},
+    "No swappable networks for this wallet yet.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No swappable networks for this wallet yet."
+          }
+        }
+      }
+    },
     "No telemetry, no event tracking, no crash reports sent back to Aperture.": {
       "extractionState": "manual",
       "localizations": {
@@ -165177,6 +166422,18 @@
           "stringUnit": {
             "state": "translated",
             "value": "無遙測、無事件追蹤、不向 Aperture 傳送當機報告。"
+          }
+        }
+      }
+    },
+    "No token found for “%@”.": {},
+    "No tokens available": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No tokens available"
           }
         }
       }
@@ -166415,6 +167672,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Aperture 的人不會主動聯絡你。Aperture 沒有支援團隊。任何自稱來自 Aperture 的訊息都應視為詐騙。"
+          }
+        }
+      }
+    },
+    "Non-standard script": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Non-standard script"
           }
         }
       }
@@ -172000,6 +173268,17 @@
       }
     },
     "Nothing to paste.": {},
+    "Nothing to swap yet": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nothing to swap yet"
+          }
+        }
+      }
+    },
     "Nothing to watch yet": {
       "localizations": {
         "af": {
@@ -172300,6 +173579,39 @@
           "stringUnit": {
             "state": "translated",
             "value": "尚未有可觀察的內容"
+          }
+        }
+      }
+    },
+    "Nothing was sent — your funds didn't move.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nothing was sent — your funds didn't move."
+          }
+        }
+      }
+    },
+    "Nothing was swapped — your funds didn't move.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nothing was swapped — your funds didn't move."
+          }
+        }
+      }
+    },
+    "Nothing was swapped — your funds didn’t move.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nothing was swapped — your funds didn’t move."
           }
         }
       }
@@ -173531,6 +174843,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "在 \\(chain.displayName) 上"
+          }
+        }
+      }
+    },
+    "On \\(chain.displayName)": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "On \\(chain.displayName)"
           }
         }
       }
@@ -176316,6 +177639,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "寫在紙上。不是截圖。不是備忘錄。"
+          }
+        }
+      }
+    },
+    "On-chain detail": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "On-chain detail"
           }
         }
       }
@@ -181907,6 +183241,17 @@
         }
       }
     },
+    "Opens Receive to pick an address": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Opens Receive to pick an address"
+          }
+        }
+      }
+    },
     "Opens the backup flow to save your phrase.": {
       "extractionState": "manual",
       "localizations": {
@@ -184069,6 +185414,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "支出"
+          }
+        }
+      }
+    },
+    "Outputs": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Outputs"
           }
         }
       }
@@ -191799,6 +193155,17 @@
         }
       }
     },
+    "Pick a network, then the token. Choosing a different network than the other side bridges across chains.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pick a network, then the token. Choosing a different network than the other side bridges across chains."
+          }
+        }
+      }
+    },
     "Pick from photos": {
       "extractionState": "manual",
       "localizations": {
@@ -192423,6 +193790,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "在每個位置選出正確的字詞,以確認你已儲存短語。"
+          }
+        }
+      }
+    },
+    "Picking a different network than the other side bridges across chains.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Picking a different network than the other side bridges across chains."
           }
         }
       }
@@ -193647,6 +195025,17 @@
         }
       }
     },
+    "Playground wallet": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Playground wallet"
+          }
+        }
+      }
+    },
     "Point at a wallet QR code": {
       "extractionState": "manual",
       "localizations": {
@@ -193971,6 +195360,17 @@
       }
     },
     "Polkadot needs 0.01 DOT to remain — dropping below it would close the account and lose the funds.": {},
+    "Position in block": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Position in block"
+          }
+        }
+      }
+    },
     "Preferences": {
       "extractionState": "manual",
       "localizations": {
@@ -194278,6 +195678,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "偏好設定"
+          }
+        }
+      }
+    },
+    "Preparing your key…": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Preparing your key…"
           }
         }
       }
@@ -194593,6 +196004,17 @@
         }
       }
     },
+    "Preparing your phrase…": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Preparing your phrase…"
+          }
+        }
+      }
+    },
     "Previously uploaded": {
       "extractionState": "manual",
       "localizations": {
@@ -194894,6 +196316,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "先前上傳的"
+          }
+        }
+      }
+    },
+    "Price impact": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Price impact"
           }
         }
       }
@@ -196759,6 +198192,7 @@
         }
       }
     },
+    "Priority price": {},
     "Priority tip": {},
     "Privacy": {
       "comment": "Legal footer link — Privacy Policy.",
@@ -197995,6 +199429,28 @@
           "stringUnit": {
             "state": "translated",
             "value": "私鑰"
+          }
+        }
+      }
+    },
+    "Program logs": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Program logs"
+          }
+        }
+      }
+    },
+    "Protocol fee": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Protocol fee"
           }
         }
       }
@@ -199548,6 +201004,7 @@
         }
       }
     },
+    "Quote": {},
     "Range \\(currentRange.shortLabel). From \\(start) to \\(end). Change \\(delta).": {
       "extractionState": "manual",
       "localizations": {
@@ -200170,6 +201627,17 @@
         }
       }
     },
+    "Rate": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rate"
+          }
+        }
+      }
+    },
     "Rate-limited — try again in a moment": {
       "extractionState": "manual",
       "localizations": {
@@ -200477,6 +201945,28 @@
           "stringUnit": {
             "state": "translated",
             "value": "請求過於頻繁 — 請稍後再試"
+          }
+        }
+      }
+    },
+    "Raw amount — token decimals not applied": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Raw amount — token decimals not applied"
+          }
+        }
+      }
+    },
+    "Raw transaction": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Raw transaction"
           }
         }
       }
@@ -203888,6 +205378,17 @@
         }
       }
     },
+    "Receive crypto on a network Aperture can swap on to get started.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Receive crypto on a network Aperture can swap on to get started."
+          }
+        }
+      }
+    },
     "Receive crypto to any of your addresses and it'll show up the moment it lands on-chain.": {
       "extractionState": "manual",
       "localizations": {
@@ -205760,6 +207261,17 @@
         }
       }
     },
+    "Recent blockhash": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Recent blockhash"
+          }
+        }
+      }
+    },
     "Recipient": {
       "extractionState": "manual",
       "localizations": {
@@ -206738,6 +208250,317 @@
         }
       }
     },
+    "Refresh": {
+      "extractionState": "manual",
+      "localizations": {
+        "af": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Verfris"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "تحديث"
+          }
+        },
+        "bg": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Опресняване"
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "রিফ্রেশ করুন"
+          }
+        },
+        "ca": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Actualitza"
+          }
+        },
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Obnovit"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Opdater"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aktualisieren"
+          }
+        },
+        "el": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ανανέωση"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Refresh"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Actualizar"
+          }
+        },
+        "et": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Värskenda"
+          }
+        },
+        "fa": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "تازه‌سازی"
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Päivitä"
+          }
+        },
+        "fil": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "I-refresh"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Actualiser"
+          }
+        },
+        "he": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "רענון"
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "रिफ़्रेश करें"
+          }
+        },
+        "hr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Osvježi"
+          }
+        },
+        "hu": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Frissítés"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Segarkan"
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Endurnýja"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aggiorna"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "更新"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "새로고침"
+          }
+        },
+        "lt": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Atnaujinti"
+          }
+        },
+        "lv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Atsvaidzināt"
+          }
+        },
+        "ml": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "പുതുക്കുക"
+          }
+        },
+        "mr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "रिफ्रेश करा"
+          }
+        },
+        "ms": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Segar semula"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Oppdater"
+          }
+        },
+        "nl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Verversen"
+          }
+        },
+        "pa": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ਤਾਜ਼ਾ ਕਰੋ"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Odśwież"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Atualizar"
+          }
+        },
+        "ro": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Reîmprospătează"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Обновить"
+          }
+        },
+        "sk": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Obnoviť"
+          }
+        },
+        "sl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Osveži"
+          }
+        },
+        "sr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Освежи"
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Uppdatera"
+          }
+        },
+        "sw": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Onyesha upya"
+          }
+        },
+        "ta": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "புதுப்பி"
+          }
+        },
+        "te": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "రిఫ్రెష్ చేయండి"
+          }
+        },
+        "th": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "รีเฟรช"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Yenile"
+          }
+        },
+        "uk": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Оновити"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ریفریش کریں"
+          }
+        },
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Làm mới"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "刷新"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "重新整理"
+          }
+        }
+      }
+    },
     "Refresh complete": {
       "extractionState": "manual",
       "localizations": {
@@ -207039,6 +208862,317 @@
           "stringUnit": {
             "state": "translated",
             "value": "重新整理完成"
+          }
+        }
+      }
+    },
+    "Refresh diagnostics": {
+      "extractionState": "manual",
+      "localizations": {
+        "af": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Verfris diagnostiek"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "تشخيص التحديث"
+          }
+        },
+        "bg": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Опресняване на диагностиката"
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "রিফ্রেশ ডায়াগনস্টিকস"
+          }
+        },
+        "ca": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Diagnòstic d’actualització"
+          }
+        },
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Diagnostika obnovení"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Diagnosticering af opdatering"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aktualisierungsdiagnose"
+          }
+        },
+        "el": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Διαγνωστικά ανανέωσης"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Refresh diagnostics"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Diagnóstico de actualización"
+          }
+        },
+        "et": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Värskenda diagnostikat"
+          }
+        },
+        "fa": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "تازه‌سازی عیب‌یابی"
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Päivityksen diagnostiikka"
+          }
+        },
+        "fil": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "I-refresh ang diagnostics"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Actualiser le diagnostic"
+          }
+        },
+        "he": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "אבחון רענון"
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "रिफ़्रेश डायग्नोस्टिक्स"
+          }
+        },
+        "hr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dijagnostika osvježavanja"
+          }
+        },
+        "hu": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Frissítési diagnosztika"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Segarkan diagnostik"
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Endurnýja greiningu"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aggiorna diagnostica"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "更新の診断"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "진단 새로고침"
+          }
+        },
+        "lt": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Atnaujinti diagnostiką"
+          }
+        },
+        "lv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Atsvaidzināt diagnostiku"
+          }
+        },
+        "ml": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ഡയഗ്നോസ്റ്റിക്സ് പുതുക്കുക"
+          }
+        },
+        "mr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "निदान रिफ्रेश करा"
+          }
+        },
+        "ms": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Segar semula diagnostik"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Oppdateringsdiagnostikk"
+          }
+        },
+        "nl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Diagnostiek verversen"
+          }
+        },
+        "pa": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ਡਾਇਗਨੌਸਟਿਕਸ ਤਾਜ਼ਾ ਕਰੋ"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Odśwież diagnostykę"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Diagnóstico de atualização"
+          }
+        },
+        "ro": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Diagnosticarea reîmprospătării"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Диагностика обновления"
+          }
+        },
+        "sk": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Diagnostika obnovenia"
+          }
+        },
+        "sl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Diagnostika osveževanja"
+          }
+        },
+        "sr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Дијагностика освежавања"
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Uppdateringsdiagnostik"
+          }
+        },
+        "sw": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Onyesha upya uchunguzi"
+          }
+        },
+        "ta": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "கண்டறிதலைப் புதுப்பி"
+          }
+        },
+        "te": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "విశ్లేషణను రిఫ్రెష్ చేయండి"
+          }
+        },
+        "th": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "รีเฟรชการวินิจฉัย"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tanılamayı yenile"
+          }
+        },
+        "uk": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Діагностика оновлення"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "تشخیص ریفریش کریں"
+          }
+        },
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Làm mới chẩn đoán"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "刷新诊断"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "重新整理診斷"
           }
         }
       }
@@ -212045,6 +214179,17 @@
         }
       }
     },
+    "Resolving addresses…": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Resolving addresses…"
+          }
+        }
+      }
+    },
     "Resolving…": {
       "extractionState": "manual",
       "localizations": {
@@ -212671,6 +214816,17 @@
         }
       }
     },
+    "Retrying…": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Retrying…"
+          }
+        }
+      }
+    },
     "Review": {
       "extractionState": "manual",
       "localizations": {
@@ -213283,6 +215439,28 @@
           "stringUnit": {
             "state": "translated",
             "value": "檢查帳戶"
+          }
+        }
+      }
+    },
+    "Review bridge": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Review bridge"
+          }
+        }
+      }
+    },
+    "Review swap": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Review swap"
           }
         }
       }
@@ -215119,6 +217297,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "自己產生…"
+          }
+        }
+      }
+    },
+    "Route": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Route"
           }
         }
       }
@@ -219807,6 +221996,28 @@
         }
       }
     },
+    "Search name or contract": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Search name or contract"
+          }
+        }
+      }
+    },
+    "Search networks": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Search networks"
+          }
+        }
+      }
+    },
     "Search or enter address": {
       "extractionState": "manual",
       "localizations": {
@@ -220118,6 +222329,28 @@
         }
       }
     },
+    "Search results": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Search results"
+          }
+        }
+      }
+    },
+    "Search tokens": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Search tokens"
+          }
+        }
+      }
+    },
     "Search wallets": {
       "extractionState": "manual",
       "localizations": {
@@ -220425,6 +222658,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "搜尋錢包"
+          }
+        }
+      }
+    },
+    "Searching…": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Searching…"
           }
         }
       }
@@ -221646,6 +223890,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "全不選"
+          }
+        }
+      }
+    },
+    "Select token": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Select token"
           }
         }
       }
@@ -226440,6 +228695,28 @@
         }
       }
     },
+    "service temporarily unavailable": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "service temporarily unavailable"
+          }
+        }
+      }
+    },
+    "Set": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Set"
+          }
+        }
+      }
+    },
     "Set a passcode": {
       "extractionState": "manual",
       "localizations": {
@@ -230169,6 +232446,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "顯示所有支援的資產"
+          }
+        }
+      }
+    },
+    "Show balance": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Show balance"
           }
         }
       }
@@ -234531,7 +236819,28 @@
         }
       }
     },
-    "Signing is the next step": {},
+    "Signing is coming next": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Signing is coming next"
+          }
+        }
+      }
+    },
+    "Signing on your iPhone": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Signing on your iPhone"
+          }
+        }
+      }
+    },
     "Signing this data may authorize a token transfer or permit. Only sign typed data from dApps you trust.": {
       "extractionState": "manual",
       "localizations": {
@@ -235150,6 +237459,28 @@
           "stringUnit": {
             "state": "translated",
             "value": "簽署此訊息將證明你掌控該地址。僅對你信任的 dApp 簽署訊息。"
+          }
+        }
+      }
+    },
+    "Signing…": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Signing…"
+          }
+        }
+      }
+    },
+    "Size": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Size"
           }
         }
       }
@@ -237018,6 +239349,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Slide to send"
+          }
+        }
+      }
+    },
+    "Slot": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Slot"
           }
         }
       }
@@ -239852,6 +242194,17 @@
         }
       }
     },
+    "Status": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Status"
+          }
+        }
+      }
+    },
     "Stellar keeps a minimum balance (from 1 XLM) reserved to keep your account active.": {},
     "Still pending · 4 min": {
       "extractionState": "manual",
@@ -242051,6 +244404,40 @@
         }
       }
     },
+    "Submit": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Submit"
+          }
+        }
+      }
+    },
+    "Submitted": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Submitted"
+          }
+        }
+      }
+    },
+    "Submitted to the \\(executed.chain.displayName) network. Confirming may take a moment — check the explorer for the final result.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Submitted to the \\(executed.chain.displayName) network. Confirming may take a moment — check the explorer for the final result."
+          }
+        }
+      }
+    },
+    "Submitted to the %@ network. Confirming may take a moment — check the explorer for the final result.": {},
     "Success · 14 confirmations": {
       "extractionState": "manual",
       "localizations": {
@@ -242983,6 +245370,18 @@
         }
       }
     },
+    "Swap \\(symbol) on this network": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Swap \\(symbol) on this network"
+          }
+        }
+      }
+    },
+    "Swap %@ on this network": {},
     "Swap across chains in one flow.": {
       "comment": "Slide 8 hero title.",
       "extractionState": "manual",
@@ -243291,6 +245690,18 @@
           "stringUnit": {
             "state": "translated",
             "value": "在一個流程裡跨鏈兌換。"
+          }
+        }
+      }
+    },
+    "Swap failed": {},
+    "Swap from": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Swap from"
           }
         }
       }
@@ -243606,6 +246017,44 @@
         }
       }
     },
+    "Swap isn't configured": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Swap isn't configured"
+          }
+        }
+      }
+    },
+    "Swap on this network": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Swap on this network"
+          }
+        }
+      }
+    },
+    "Swap reverted": {},
+    "Swap submitted": {},
+    "Swap to": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Swap to"
+          }
+        }
+      }
+    },
+    "Swap you submitted": {},
+    "Swapped": {},
+    "Swapping": {},
     "Swipe a row in Hidden assets to pin it to the top of your wallet home.": {
       "extractionState": "new",
       "localizations": {
@@ -249819,6 +252268,17 @@
         }
       }
     },
+    "Tap to retry": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tap to retry"
+          }
+        }
+      }
+    },
     "Terms": {
       "comment": "Legal footer link — Terms of Service.",
       "extractionState": "manual",
@@ -252956,6 +255416,17 @@
         }
       }
     },
+    "The earlier recipients use your whole balance — nothing is left for this one.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The earlier recipients use your whole balance — nothing is left for this one."
+          }
+        }
+      }
+    },
     "The key never leaves this iPhone. Aperture does not send it anywhere.": {
       "extractionState": "manual",
       "localizations": {
@@ -253561,6 +256032,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "無法刪除本機資料庫。沒有任何內容被移除 — 你的錢包、助記詞與偏好設定完好如初。請再試一次。"
+          }
+        }
+      }
+    },
+    "The most the price can move before your swap is cancelled. Lower is safer; higher fills more often.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The most the price can move before your swap is cancelled. Lower is safer; higher fills more often."
           }
         }
       }
@@ -254184,6 +256666,17 @@
       }
     },
     "The selected coins don't cover the amount and fee. Select more, or use Automatic.": {},
+    "The swap service isn't set up for this network pair right now. Solana-to-Solana swaps still work.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The swap service isn't set up for this network pair right now. Solana-to-Solana swaps still work."
+          }
+        }
+      }
+    },
     "The Terms of Service haven't been written yet. Aperture is open source — the only thing governing your use of the app today is the MIT license in the repository.": {
       "extractionState": "manual",
       "localizations": {
@@ -254795,6 +257288,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "無法從本機資料庫中移除該代幣。請再試一次。"
+          }
+        }
+      }
+    },
+    "The transaction was submitted but reverted on-chain. Nothing was swapped — your funds didn't move.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The transaction was submitted but reverted on-chain. Nothing was swapped — your funds didn't move."
           }
         }
       }
@@ -258851,6 +261355,17 @@
         }
       }
     },
+    "this hour": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "this hour"
+          }
+        }
+      }
+    },
     "This includes phrases shared in chat, on social media, in support emails, by \"wallet recovery\" services, or generated by a website. There is no legitimate reason another person ever gives you a key.": {
       "extractionState": "manual",
       "localizations": {
@@ -259778,6 +262293,17 @@
         }
       }
     },
+    "This is a real, live quote — but Aperture doesn't sign and broadcast swaps yet. Nothing has been sent. On-device signing + broadcast lands in the next update, the same way sending did.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This is a real, live quote — but Aperture doesn't sign and broadcast swaps yet. Nothing has been sent. On-device signing + broadcast lands in the next update, the same way sending did."
+          }
+        }
+      }
+    },
     "This is an address you've used before.": {
       "extractionState": "manual",
       "localizations": {
@@ -260395,6 +262921,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "這不是有效的 SVG。"
+          }
+        }
+      }
+    },
+    "This isn\\u{2019}t a valid SVG.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This isn\\u{2019}t a valid SVG."
           }
         }
       }
@@ -262915,6 +265452,17 @@
         }
       }
     },
+    "This wallet has a passphrase. Enter it to sign — it never leaves this iPhone, and Aperture can't recover it for you.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This wallet has a passphrase. Enter it to sign — it never leaves this iPhone, and Aperture can't recover it for you."
+          }
+        }
+      }
+    },
     "This wallet has no \\(chain.displayName) address yet, so there's nothing to receive to on this network. Aperture may still be deriving your accounts — try again in a moment.": {
       "extractionState": "manual",
       "localizations": {
@@ -263542,6 +266090,17 @@
       }
     },
     "This wallet has no %@ address yet, so there's nothing to send from on this network. Aperture may still be deriving your accounts — try again in a moment.": {},
+    "This wallet has no balance on a network Aperture can swap on yet. Receive some crypto on Ethereum, Base, Solana, or another supported network to get started.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This wallet has no balance on a network Aperture can swap on yet. Receive some crypto on Ethereum, Base, Solana, or another supported network to get started."
+          }
+        }
+      }
+    },
     "This wallet is no longer in the local store.": {
       "extractionState": "manual",
       "localizations": {
@@ -265443,6 +268002,17 @@
         }
       }
     },
+    "Time": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Time"
+          }
+        }
+      }
+    },
     "Time range": {
       "localizations": {
         "af": {
@@ -266975,6 +269545,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "提示: 保留「\\u{201C}字母\\u{201D}」設定,即可自動使用錢包的首字母。"
+          }
+        }
+      }
+    },
+    "Tip: paste a contract address for an exact match.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tip: paste a contract address for an exact match."
           }
         }
       }
@@ -268538,6 +271119,17 @@
         }
       }
     },
+    "Token transfers": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Token transfers"
+          }
+        }
+      }
+    },
     "Tokens": {
       "extractionState": "manual",
       "localizations": {
@@ -269465,6 +272057,50 @@
         }
       }
     },
+    "Total balance": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Total balance"
+          }
+        }
+      }
+    },
+    "Total balance \\(value), \\(dir) \\(percentText) today": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Total balance \\(value), \\(dir) \\(percentText) today"
+          }
+        }
+      }
+    },
+    "Total balance \\(value), no change today": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Total balance \\(value), no change today"
+          }
+        }
+      }
+    },
+    "Total balance \\(value). Add crypto to get started.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Total balance \\(value). Add crypto to get started."
+          }
+        }
+      }
+    },
     "Total balance \\(WalletFormatting.fiat(totalFiat, currencyCode: currencyCode))": {
       "extractionState": "manual",
       "localizations": {
@@ -270083,6 +272719,40 @@
           "stringUnit": {
             "state": "translated",
             "value": "總餘額 %@"
+          }
+        }
+      }
+    },
+    "Total balance %@, %@ %@ today": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "new",
+            "value": "Total balance %1$@, %2$@ %3$@ today"
+          }
+        }
+      }
+    },
+    "Total balance %@, no change today": {},
+    "Total balance %@. Add crypto to get started.": {},
+    "Total balance hidden, double tap the eye button to reveal": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Total balance hidden, double tap the eye button to reveal"
+          }
+        }
+      }
+    },
+    "Total fee": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Total fee"
           }
         }
       }
@@ -276896,6 +279566,17 @@
       }
     },
     "Unconfirmed": {},
+    "Under \\(value)": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Under \\(value)"
+          }
+        }
+      }
+    },
     "Under %@": {
       "extractionState": "manual",
       "localizations": {
@@ -277514,6 +280195,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "未預期的回應"
+          }
+        }
+      }
+    },
+    "Unknown": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Unknown"
           }
         }
       }
@@ -279045,6 +281737,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "無法辨識的鏈 ID \\(requestedHex) — Aperture 不支援該鏈"
+          }
+        }
+      }
+    },
+    "up": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "up"
           }
         }
       }
@@ -285917,6 +288620,17 @@
         }
       }
     },
+    "View on block explorer": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "View on block explorer"
+          }
+        }
+      }
+    },
     "View on explorer": {
       "extractionState": "manual",
       "localizations": {
@@ -287465,6 +290179,17 @@
         }
       }
     },
+    "Virtual size": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Virtual size"
+          }
+        }
+      }
+    },
     "Visual assets": {
       "extractionState": "manual",
       "localizations": {
@@ -287776,6 +290501,7 @@
         }
       }
     },
+    "Waiting for on-chain confirmation": {},
     "Wallet": {
       "extractionState": "manual",
       "localizations": {
@@ -292101,6 +294827,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "We'll broadcast a replacement that returns the funds to you. If the original confirms first, the send completes — and the cancel fee is still paid."
+          }
+        }
+      }
+    },
+    "Weight": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Weight"
           }
         }
       }
@@ -298289,6 +301026,17 @@
         }
       }
     },
+    "Word \\(index + 1)": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Word \\(index + 1)"
+          }
+        }
+      }
+    },
     "Word %@": {
       "extractionState": "manual",
       "localizations": {
@@ -302965,6 +305713,41 @@
         }
       }
     },
+    "You paid": {},
+    "You pay": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "You pay"
+          }
+        }
+      }
+    },
+    "You receive": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "You receive"
+          }
+        }
+      }
+    },
+    "You receive (estimated)": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "You receive (estimated)"
+          }
+        }
+      }
+    },
+    "You received": {},
     "You're importing the \\(chain.displayName) account at": {
       "extractionState": "manual",
       "localizations": {
@@ -304851,6 +307634,17 @@
         }
       }
     },
+    "Your coins (\\(utxos.count))": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Your coins (\\(utxos.count))"
+          }
+        }
+      }
+    },
     "Your coins (%lld)": {},
     "Your Face ID enrollment changed. Authenticate once to trust this iPhone again.": {
       "extractionState": "manual",
@@ -305163,6 +307957,7 @@
         }
       }
     },
+    "Your funds are on their way. A bridge can take a few minutes to arrive on the destination network.": {},
     "Your holdings will appear here.": {
       "extractionState": "manual",
       "localizations": {
@@ -309849,2728 +312644,624 @@
         }
       }
     },
-    "Adding a memo on TRON costs an extra 1 TRX.": {
+    "Run in the background": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Adding a memo on TRON costs an extra 1 TRX."
-          }
-        }
-      }
-    },
-    "Amounts (\\(model.amounts.count))": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Amounts (\\(model.amounts.count))"
-          }
-        }
-      }
-    },
-    "Your coins (\\(utxos.count))": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Your coins (\\(utxos.count))"
-          }
-        }
-      }
-    },
-    "\\(utxos.count) selected": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "\\(utxos.count) selected"
-          }
-        }
-      }
-    },
-    "Aperture signs this on your iPhone and broadcasts it to the network. Once it's sent, it can't be reversed.": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Aperture signs this on your iPhone and broadcasts it to the network. Once it's sent, it can't be reversed."
-          }
-        }
-      }
-    },
-    "Broadcast to the \\(transaction.chain.displayName) network. It'll confirm on-chain in a moment.": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Broadcast to the \\(transaction.chain.displayName) network. It'll confirm on-chain in a moment."
-          }
-        }
-      }
-    },
-    "Confirm to send this transaction.": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Confirm to send this transaction."
-          }
-        }
-      }
-    },
-    "Copy transaction hash": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Copy transaction hash"
-          }
-        }
-      }
-    },
-    "Nothing was sent — your funds didn't move.": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Nothing was sent — your funds didn't move."
-          }
-        }
-      }
-    },
-    "This wallet has a passphrase. Enter it to sign — it never leaves this iPhone, and Aperture can't recover it for you.": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "This wallet has a passphrase. Enter it to sign — it never leaves this iPhone, and Aperture can't recover it for you."
-          }
-        }
-      }
-    },
-    "Less than the network minimum (\\(floor)) remains, so this recipient can't be paid.": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Less than the network minimum (\\(floor)) remains, so this recipient can't be paid."
-          }
-        }
-      }
-    },
-    "More than your remaining balance.": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "More than your remaining balance."
-          }
-        }
-      }
-    },
-    "Tap to retry": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Tap to retry"
-          }
-        }
-      }
-    },
-    "The earlier recipients use your whole balance — nothing is left for this one.": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "The earlier recipients use your whole balance — nothing is left for this one."
-          }
-        }
-      }
-    },
-    "Adding…": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Adding…"
-          }
-        }
-      }
-    },
-    "Deriving your account…": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Deriving your account…"
-          }
-        }
-      }
-    },
-    "Importing…": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Importing…"
-          }
-        }
-      }
-    },
-    "Loading the network fee…": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Loading the network fee…"
-          }
-        }
-      }
-    },
-    "Loading your coins…": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Loading your coins…"
-          }
-        }
-      }
-    },
-    "Preparing your key…": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Preparing your key…"
-          }
-        }
-      }
-    },
-    "Preparing your phrase…": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Preparing your phrase…"
-          }
-        }
-      }
-    },
-    "Resolving addresses…": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Resolving addresses…"
-          }
-        }
-      }
-    },
-    "Retrying…": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Retrying…"
-          }
-        }
-      }
-    },
-    "Signing…": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Signing…"
-          }
-        }
-      }
-    },
-    "dApp": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "dApp"
-          }
-        }
-      }
-    },
-    "Aperture couldn't load the swappable tokens for \\(chain.displayName) right now. Check your connection and try again.": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Aperture couldn't load the swappable tokens for \\(chain.displayName) right now. Check your connection and try again."
-          }
-        }
-      }
-    },
-    "Flip": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Flip"
-          }
-        }
-      }
-    },
-    "Flip the swap direction": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Flip the swap direction"
-          }
-        }
-      }
-    },
-    "Max slippage": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Max slippage"
-          }
-        }
-      }
-    },
-    "Minimum received": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Minimum received"
-          }
-        }
-      }
-    },
-    "No tokens available": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "No tokens available"
-          }
-        }
-      }
-    },
-    "Nothing to swap yet": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Nothing to swap yet"
-          }
-        }
-      }
-    },
-    "Pick a network, then the token. Choosing a different network than the other side bridges across chains.": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Pick a network, then the token. Choosing a different network than the other side bridges across chains."
-          }
-        }
-      }
-    },
-    "Price impact": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Price impact"
-          }
-        }
-      }
-    },
-    "Rate": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Rate"
-          }
-        }
-      }
-    },
-    "Search networks": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Search networks"
-          }
-        }
-      }
-    },
-    "Search tokens": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Search tokens"
-          }
-        }
-      }
-    },
-    "Select token": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Select token"
-          }
-        }
-      }
-    },
-    "Signing is coming next": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Signing is coming next"
-          }
-        }
-      }
-    },
-    "Swap isn't configured": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Swap isn't configured"
-          }
-        }
-      }
-    },
-    "The swap service isn't set up for this network pair right now. Solana-to-Solana swaps still work.": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "The swap service isn't set up for this network pair right now. Solana-to-Solana swaps still work."
-          }
-        }
-      }
-    },
-    "This is a real, live quote — but Aperture doesn't sign and broadcast swaps yet. Nothing has been sent. On-device signing + broadcast lands in the next update, the same way sending did.": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "This is a real, live quote — but Aperture doesn't sign and broadcast swaps yet. Nothing has been sent. On-device signing + broadcast lands in the next update, the same way sending did."
-          }
-        }
-      }
-    },
-    "This wallet has no balance on a network Aperture can swap on yet. Receive some crypto on Ethereum, Base, Solana, or another supported network to get started.": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "This wallet has no balance on a network Aperture can swap on yet. Receive some crypto on Ethereum, Base, Solana, or another supported network to get started."
-          }
-        }
-      }
-    },
-    "You pay": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "You pay"
-          }
-        }
-      }
-    },
-    "You receive": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "You receive"
-          }
-        }
-      }
-    },
-    "You receive (estimated)": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "You receive (estimated)"
-          }
-        }
-      }
-    },
-    "service temporarily unavailable": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "service temporarily unavailable"
-          }
-        }
-      }
-    },
-    "0.5": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "0.5"
-          }
-        }
-      }
-    },
-    "Custom slippage": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Custom slippage"
-          }
-        }
-      }
-    },
-    "Enter the maximum price movement you'll accept. Lower is safer; higher fills more often.": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Enter the maximum price movement you'll accept. Lower is safer; higher fills more often."
-          }
-        }
-      }
-    },
-    "Higher slippage can mean you receive noticeably less.": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Higher slippage can mean you receive noticeably less."
-          }
-        }
-      }
-    },
-    "Set": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Set"
-          }
-        }
-      }
-    },
-    "Bridge": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Bridge"
-          }
-        }
-      }
-    },
-    "Estimated time": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Estimated time"
-          }
-        }
-      }
-    },
-    "Finding the best bridge route…": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Finding the best bridge route…"
-          }
-        }
-      }
-    },
-    "Finding the best route…": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Finding the best route…"
-          }
-        }
-      }
-    },
-    "Native coins": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Native coins"
-          }
-        }
-      }
-    },
-    "No swappable networks for this wallet yet.": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "No swappable networks for this wallet yet."
-          }
-        }
-      }
-    },
-    "Picking a different network than the other side bridges across chains.": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Picking a different network than the other side bridges across chains."
-          }
-        }
-      }
-    },
-    "Receive crypto on a network Aperture can swap on to get started.": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Receive crypto on a network Aperture can swap on to get started."
-          }
-        }
-      }
-    },
-    "Review bridge": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Review bridge"
-          }
-        }
-      }
-    },
-    "Review swap": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Review swap"
-          }
-        }
-      }
-    },
-    "Route": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Route"
-          }
-        }
-      }
-    },
-    "Search results": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Search results"
-          }
-        }
-      }
-    },
-    "Searching…": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Searching…"
-          }
-        }
-      }
-    },
-    "Swap \\(symbol) on this network": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Swap \\(symbol) on this network"
-          }
-        }
-      }
-    },
-    "Swap from": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Swap from"
-          }
-        }
-      }
-    },
-    "Swap on this network": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Swap on this network"
-          }
-        }
-      }
-    },
-    "Swap to": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Swap to"
-          }
-        }
-      }
-    },
-    "Time": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Time"
-          }
-        }
-      }
-    },
-    "Search name or contract": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Search name or contract"
-          }
-        }
-      }
-    },
-    "Tip: paste a contract address for an exact match.": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Tip: paste a contract address for an exact match."
-          }
-        }
-      }
-    },
-    "Confirm to swap.": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Confirm to swap."
-          }
-        }
-      }
-    },
-    "Nothing was swapped — your funds didn’t move.": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Nothing was swapped — your funds didn’t move."
-          }
-        }
-      }
-    },
-    "\\(receivedSymbol) was added to your tokens.": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "\\(receivedSymbol) was added to your tokens."
-          }
-        }
-      }
-    },
-    "Confirm on your iPhone": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Confirm on your iPhone"
-          }
-        }
-      }
-    },
-    "%@ was added to your tokens.": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%@ was added to your tokens."
-          }
-        }
-      }
-    },
-    "Balance changes": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Balance changes"
-          }
-        }
-      }
-    },
-    "Bridge fee": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Bridge fee"
-          }
-        }
-      }
-    },
-    "Coinbase (newly generated)": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Coinbase (newly generated)"
-          }
-        }
-      }
-    },
-    "Compute units": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Compute units"
-          }
-        }
-      }
-    },
-    "Confirmations": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Confirmations"
-          }
-        }
-      }
-    },
-    "Contract created": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Contract created"
-          }
-        }
-      }
-    },
-    "Copy \\(accessibilityName)": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Copy \\(accessibilityName)"
-          }
-        }
-      }
-    },
-    "Copy \\(field.label)": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Copy \\(field.label)"
-          }
-        }
-      }
-    },
-    "Copy \\(name)": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Copy \\(name)"
-          }
-        }
-      }
-    },
-    "Copy account": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Copy account"
-          }
-        }
-      }
-    },
-    "Copy token contract": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Copy token contract"
-          }
-        }
-      }
-    },
-    "Couldn't load the full details right now. The summary above is from your device.": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Couldn't load the full details right now. The summary above is from your device."
-          }
-        }
-      }
-    },
-    "Cumulative gas used": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Cumulative gas used"
-          }
-        }
-      }
-    },
-    "Effective gas price": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Effective gas price"
-          }
-        }
-      }
-    },
-    "Error": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Error"
-          }
-        }
-      }
-    },
-    "Gas & fee": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Gas & fee"
-          }
-        }
-      }
-    },
-    "Gas used": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Gas used"
-          }
-        }
-      }
-    },
-    "Input data": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Input data"
-          }
-        }
-      }
-    },
-    "Inputs": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Inputs"
-          }
-        }
-      }
-    },
-    "Instructions": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Instructions"
-          }
-        }
-      }
-    },
-    "Loading details…": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Loading details…"
-          }
-        }
-      }
-    },
-    "Locktime": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Locktime"
-          }
-        }
-      }
-    },
-    "Max priority fee": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Max priority fee"
-          }
-        }
-      }
-    },
-    "Non-standard script": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Non-standard script"
-          }
-        }
-      }
-    },
-    "Nothing was swapped — your funds didn't move.": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Nothing was swapped — your funds didn't move."
-          }
-        }
-      }
-    },
-    "On-chain detail": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "On-chain detail"
-          }
-        }
-      }
-    },
-    "Outputs": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Outputs"
-          }
-        }
-      }
-    },
-    "Position in block": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Position in block"
-          }
-        }
-      }
-    },
-    "Program logs": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Program logs"
-          }
-        }
-      }
-    },
-    "Protocol fee": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Protocol fee"
-          }
-        }
-      }
-    },
-    "Raw amount — token decimals not applied": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Raw amount — token decimals not applied"
-          }
-        }
-      }
-    },
-    "Raw transaction": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Raw transaction"
-          }
-        }
-      }
-    },
-    "Recent blockhash": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Recent blockhash"
-          }
-        }
-      }
-    },
-    "Size": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Size"
-          }
-        }
-      }
-    },
-    "Slot": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Slot"
-          }
-        }
-      }
-    },
-    "Status": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Status"
-          }
-        }
-      }
-    },
-    "Token transfers": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Token transfers"
-          }
-        }
-      }
-    },
-    "Total fee": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Total fee"
-          }
-        }
-      }
-    },
-    "View on block explorer": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "View on block explorer"
-          }
-        }
-      }
-    },
-    "Virtual size": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Virtual size"
-          }
-        }
-      }
-    },
-    "Weight": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Weight"
-          }
-        }
-      }
-    },
-    "\\(quote.toToken.symbol) was added to your tokens.": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "\\(quote.toToken.symbol) was added to your tokens."
-          }
-        }
-      }
-    },
-    "The most the price can move before your swap is cancelled. Lower is safer; higher fills more often.": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "The most the price can move before your swap is cancelled. Lower is safer; higher fills more often."
-          }
-        }
-      }
-    },
-    "KyberSwap error \\(code)": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "KyberSwap error \\(code)"
-          }
-        }
-      }
-    },
-    "Add crypto to get started — receive or transfer it from another wallet.": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Add crypto to get started — receive or transfer it from another wallet."
-          }
-        }
-      }
-    },
-    "Add funds": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Add funds"
-          }
-        }
-      }
-    },
-    "Add funds, opens Receive": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Add funds, opens Receive"
-          }
-        }
-      }
-    },
-    "No change today": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "No change today"
-          }
-        }
-      }
-    },
-    "Opens Receive to pick an address": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Opens Receive to pick an address"
-          }
-        }
-      }
-    },
-    "Show balance": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Show balance"
-          }
-        }
-      }
-    },
-    "Total balance": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Total balance"
-          }
-        }
-      }
-    },
-    "Total balance \\(value), \\(dir) \\(percentText) today": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Total balance \\(value), \\(dir) \\(percentText) today"
-          }
-        }
-      }
-    },
-    "Total balance \\(value), no change today": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Total balance \\(value), no change today"
-          }
-        }
-      }
-    },
-    "Total balance \\(value). Add crypto to get started.": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Total balance \\(value). Add crypto to get started."
-          }
-        }
-      }
-    },
-    "Total balance hidden, double tap the eye button to reveal": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Total balance hidden, double tap the eye button to reveal"
-          }
-        }
-      }
-    },
-    "down": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "down"
-          }
-        }
-      }
-    },
-    "up": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "up"
-          }
-        }
-      }
-    },
-    "••••": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "••••"
-          }
-        }
-      }
-    },
-    "••••••": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "••••••"
-          }
-        }
-      }
-    },
-    "Approve": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Approve"
-          }
-        }
-      }
-    },
-    "Broadcasting to \\(chainName)": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Broadcasting to \\(chainName)"
-          }
-        }
-      }
-    },
-    "Checkpoint": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Checkpoint"
-          }
-        }
-      }
-    },
-    "Confirming…": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Confirming…"
-          }
-        }
-      }
-    },
-    "Couldn\\u{2019}t read that file.": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Couldn\\u{2019}t read that file."
-          }
-        }
-      }
-    },
-    "File too large \\u{2014} max 50 KB.": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "File too large \\u{2014} max 50 KB."
-          }
-        }
-      }
-    },
-    "Its addresses on \\(networkCount) networks": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Its addresses on \\(networkCount) networks"
-          }
-        }
-      }
-    },
-    "Letting the router move your \\(fromSymbol)": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Letting the router move your \\(fromSymbol)"
-          }
-        }
-      }
-    },
-    "On \\(chain.displayName)": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "On \\(chain.displayName)"
-          }
-        }
-      }
-    },
-    "Signing on your iPhone": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Signing on your iPhone"
-          }
-        }
-      }
-    },
-    "Submit": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Submit"
-          }
-        }
-      }
-    },
-    "Submitted": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Submitted"
-          }
-        }
-      }
-    },
-    "Submitted to the \\(executed.chain.displayName) network. Confirming may take a moment — check the explorer for the final result.": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Submitted to the \\(executed.chain.displayName) network. Confirming may take a moment — check the explorer for the final result."
-          }
-        }
-      }
-    },
-    "The transaction was submitted but reverted on-chain. Nothing was swapped — your funds didn't move.": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "The transaction was submitted but reverted on-chain. Nothing was swapped — your funds didn't move."
-          }
-        }
-      }
-    },
-    "This isn\\u{2019}t a valid SVG.": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "This isn\\u{2019}t a valid SVG."
-          }
-        }
-      }
-    },
-    "\\(chain.ticker) activity": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "\\(chain.ticker) activity"
-          }
-        }
-      }
-    },
-    "\\(identity.symbol) activity": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "\\(identity.symbol) activity"
-          }
-        }
-      }
-    },
-    "this hour": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "this hour"
-          }
-        }
-      }
-    },
-    "Legacy": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Legacy"
-          }
-        }
-      }
-    },
-    "Playground wallet": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Playground wallet"
-          }
-        }
-      }
-    },
-    "Under \\(value)": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Under \\(value)"
-          }
-        }
-      }
-    },
-    "Unknown": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Unknown"
-          }
-        }
-      }
-    },
-    "Word \\(index + 1)": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Word \\(index + 1)"
-          }
-        }
-      }
-    },
-    "\\(count) digits": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "\\(count) digits"
-          }
-        }
-      }
-    },
-    "\\(count) flips": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "\\(count) flips"
-          }
-        }
-      }
-    },
-    "\\(count) rolls": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "\\(count) rolls"
-          }
-        }
-      }
-    },
-    "Decimal point": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Decimal point"
-          }
-        }
-      }
-    },
-    "Refresh diagnostics": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Refresh diagnostics"
+            "value": "Run in the background"
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Diagnóstico de actualización"
+            "value": "Ejecutar en segundo plano"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "刷新诊断"
+            "value": "在后台运行"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "重新整理診斷"
+            "value": "在背景執行"
           }
         },
         "hi": {
           "stringUnit": {
             "state": "translated",
-            "value": "रिफ़्रेश डायग्नोस्टिक्स"
+            "value": "पृष्ठभूमि में चलाएँ"
           }
         },
         "ar": {
           "stringUnit": {
             "state": "translated",
-            "value": "تشخيص التحديث"
+            "value": "التشغيل في الخلفية"
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "Diagnóstico de atualização"
+            "value": "Executar em segundo plano"
           }
         },
         "bn": {
           "stringUnit": {
             "state": "translated",
-            "value": "রিফ্রেশ ডায়াগনস্টিকস"
+            "value": "ব্যাকগ্রাউন্ডে চালান"
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Диагностика обновления"
+            "value": "Выполнять в фоне"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "更新の診断"
+            "value": "バックグラウンドで実行"
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Aktualisierungsdiagnose"
+            "value": "Im Hintergrund ausführen"
           }
         },
         "uk": {
           "stringUnit": {
             "state": "translated",
-            "value": "Діагностика оновлення"
+            "value": "Виконувати у фоні"
           }
         },
         "el": {
           "stringUnit": {
             "state": "translated",
-            "value": "Διαγνωστικά ανανέωσης"
+            "value": "Εκτέλεση στο παρασκήνιο"
           }
         },
         "ro": {
           "stringUnit": {
             "state": "translated",
-            "value": "Diagnosticarea reîmprospătării"
+            "value": "Rulează în fundal"
           }
         },
         "cs": {
           "stringUnit": {
             "state": "translated",
-            "value": "Diagnostika obnovení"
+            "value": "Spustit na pozadí"
           }
         },
         "hu": {
           "stringUnit": {
             "state": "translated",
-            "value": "Frissítési diagnosztika"
+            "value": "Futtatás a háttérben"
           }
         },
         "sv": {
           "stringUnit": {
             "state": "translated",
-            "value": "Uppdateringsdiagnostik"
+            "value": "Kör i bakgrunden"
           }
         },
         "nb": {
           "stringUnit": {
             "state": "translated",
-            "value": "Oppdateringsdiagnostikk"
+            "value": "Kjør i bakgrunnen"
           }
         },
         "da": {
           "stringUnit": {
             "state": "translated",
-            "value": "Diagnosticering af opdatering"
+            "value": "Kør i baggrunden"
           }
         },
         "fi": {
           "stringUnit": {
             "state": "translated",
-            "value": "Päivityksen diagnostiikka"
+            "value": "Suorita taustalla"
           }
         },
         "he": {
           "stringUnit": {
             "state": "translated",
-            "value": "אבחון רענון"
+            "value": "הפעלה ברקע"
           }
         },
         "ca": {
           "stringUnit": {
             "state": "translated",
-            "value": "Diagnòstic d’actualització"
+            "value": "Executa en segon pla"
           }
         },
         "hr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Dijagnostika osvježavanja"
+            "value": "Pokreni u pozadini"
           }
         },
         "sk": {
           "stringUnit": {
             "state": "translated",
-            "value": "Diagnostika obnovenia"
+            "value": "Spustiť na pozadí"
           }
         },
         "sl": {
           "stringUnit": {
             "state": "translated",
-            "value": "Diagnostika osveževanja"
+            "value": "Zaženi v ozadju"
           }
         },
         "sr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Дијагностика освежавања"
+            "value": "Покрени у позадини"
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Actualiser le diagnostic"
+            "value": "Exécuter en arrière-plan"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "진단 새로고침"
+            "value": "백그라운드에서 실행"
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "Aggiorna diagnostica"
+            "value": "Esegui in background"
           }
         },
         "tr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Tanılamayı yenile"
+            "value": "Arka planda çalıştır"
           }
         },
         "vi": {
           "stringUnit": {
             "state": "translated",
-            "value": "Làm mới chẩn đoán"
+            "value": "Chạy ở chế độ nền"
           }
         },
         "th": {
           "stringUnit": {
             "state": "translated",
-            "value": "รีเฟรชการวินิจฉัย"
+            "value": "ทำงานเบื้องหลัง"
           }
         },
         "id": {
           "stringUnit": {
             "state": "translated",
-            "value": "Segarkan diagnostik"
+            "value": "Jalankan di latar belakang"
           }
         },
         "fa": {
           "stringUnit": {
             "state": "translated",
-            "value": "تازه‌سازی عیب‌یابی"
+            "value": "اجرا در پس‌زمینه"
           }
         },
         "pl": {
           "stringUnit": {
             "state": "translated",
-            "value": "Odśwież diagnostykę"
+            "value": "Uruchom w tle"
           }
         },
         "nl": {
           "stringUnit": {
             "state": "translated",
-            "value": "Diagnostiek verversen"
+            "value": "Op de achtergrond uitvoeren"
           }
         },
         "ur": {
           "stringUnit": {
             "state": "translated",
-            "value": "تشخیص ریفریش کریں"
+            "value": "پس منظر میں چلائیں"
           }
         },
         "bg": {
           "stringUnit": {
             "state": "translated",
-            "value": "Опресняване на диагностиката"
+            "value": "Изпълнение на заден план"
           }
         },
         "et": {
           "stringUnit": {
             "state": "translated",
-            "value": "Värskenda diagnostikat"
+            "value": "Käita taustal"
           }
         },
         "lt": {
           "stringUnit": {
             "state": "translated",
-            "value": "Atnaujinti diagnostiką"
+            "value": "Vykdyti fone"
           }
         },
         "lv": {
           "stringUnit": {
             "state": "translated",
-            "value": "Atsvaidzināt diagnostiku"
+            "value": "Darbināt fonā"
           }
         },
         "is": {
           "stringUnit": {
             "state": "translated",
-            "value": "Endurnýja greiningu"
+            "value": "Keyra í bakgrunni"
           }
         },
         "ms": {
           "stringUnit": {
             "state": "translated",
-            "value": "Segar semula diagnostik"
+            "value": "Jalankan di latar belakang"
           }
         },
         "fil": {
           "stringUnit": {
             "state": "translated",
-            "value": "I-refresh ang diagnostics"
+            "value": "Patakbuhin sa background"
           }
         },
         "sw": {
           "stringUnit": {
             "state": "translated",
-            "value": "Onyesha upya uchunguzi"
+            "value": "Endesha chinichini"
           }
         },
         "af": {
           "stringUnit": {
             "state": "translated",
-            "value": "Verfris diagnostiek"
+            "value": "Voer in die agtergrond uit"
           }
         },
         "ta": {
           "stringUnit": {
             "state": "translated",
-            "value": "கண்டறிதலைப் புதுப்பி"
+            "value": "பின்னணியில் இயக்கு"
           }
         },
         "te": {
           "stringUnit": {
             "state": "translated",
-            "value": "విశ్లేషణను రిఫ్రెష్ చేయండి"
+            "value": "నేపథ్యంలో అమలు చేయండి"
           }
         },
         "ml": {
           "stringUnit": {
             "state": "translated",
-            "value": "ഡയഗ്നോസ്റ്റിക്സ് പുതുക്കുക"
+            "value": "പശ്ചാത്തലത്തിൽ പ്രവർത്തിപ്പിക്കുക"
           }
         },
         "mr": {
           "stringUnit": {
             "state": "translated",
-            "value": "निदान रिफ्रेश करा"
+            "value": "पार्श्वभूमीत चालवा"
           }
         },
         "pa": {
           "stringUnit": {
             "state": "translated",
-            "value": "ਡਾਇਗਨੌਸਟਿਕਸ ਤਾਜ਼ਾ ਕਰੋ"
+            "value": "ਬੈਕਗ੍ਰਾਊਂਡ ਵਿੱਚ ਚਲਾਓ"
           }
         }
       }
     },
-    "Refresh": {
+    "You can leave — we'll finish it and show it on your wallet home.": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Refresh"
+            "value": "You can leave — we'll finish it and show it on your wallet home."
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Actualizar"
+            "value": "Puedes salir: lo terminaremos y lo mostraremos en el inicio de tu monedero."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "刷新"
+            "value": "你可以离开——我们会完成它，并在钱包主页上显示结果。"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "重新整理"
+            "value": "你可以離開——我們會完成它，並在錢包主頁上顯示結果。"
           }
         },
         "hi": {
           "stringUnit": {
             "state": "translated",
-            "value": "रिफ़्रेश करें"
+            "value": "आप जा सकते हैं — हम इसे पूरा करेंगे और इसे आपके वॉलेट होम पर दिखाएँगे।"
           }
         },
         "ar": {
           "stringUnit": {
             "state": "translated",
-            "value": "تحديث"
+            "value": "يمكنك المغادرة، وسنُكمل العملية ونعرضها في الصفحة الرئيسية لمحفظتك."
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "Atualizar"
+            "value": "Você pode sair: nós concluímos e mostramos na tela inicial da sua carteira."
           }
         },
         "bn": {
           "stringUnit": {
             "state": "translated",
-            "value": "রিফ্রেশ করুন"
+            "value": "আপনি চলে যেতে পারেন — আমরা এটি শেষ করব এবং আপনার ওয়ালেট হোমে দেখাব।"
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Обновить"
+            "value": "Можно выйти — мы завершим операцию и покажем её на главном экране кошелька."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "更新"
+            "value": "ここを離れても大丈夫です。完了したら、ウォレットのホームに表示します。"
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Aktualisieren"
+            "value": "Sie können den Bildschirm verlassen – wir schließen den Vorgang ab und zeigen ihn auf Ihrer Wallet-Startseite."
           }
         },
         "uk": {
           "stringUnit": {
             "state": "translated",
-            "value": "Оновити"
+            "value": "Ви можете вийти — ми завершимо операцію й покажемо її на головному екрані гаманця."
           }
         },
         "el": {
           "stringUnit": {
             "state": "translated",
-            "value": "Ανανέωση"
+            "value": "Μπορείτε να φύγετε — θα την ολοκληρώσουμε και θα την εμφανίσουμε στην αρχική του πορτοφολιού σας."
           }
         },
         "ro": {
           "stringUnit": {
             "state": "translated",
-            "value": "Reîmprospătează"
+            "value": "Poți pleca — o finalizăm noi și o afișăm pe ecranul principal al portofelului tău."
           }
         },
         "cs": {
           "stringUnit": {
             "state": "translated",
-            "value": "Obnovit"
+            "value": "Můžete odejít – dokončíme to za vás a zobrazíme to na úvodní obrazovce peněženky."
           }
         },
         "hu": {
           "stringUnit": {
             "state": "translated",
-            "value": "Frissítés"
+            "value": "Nyugodtan kiléphet – befejezzük, és megjelenítjük a tárca kezdőképernyőjén."
           }
         },
         "sv": {
           "stringUnit": {
             "state": "translated",
-            "value": "Uppdatera"
+            "value": "Du kan lämna sidan – vi slutför den och visar den på plånbokens startsida."
           }
         },
         "nb": {
           "stringUnit": {
             "state": "translated",
-            "value": "Oppdater"
+            "value": "Du kan forlate siden – vi fullfører den og viser den på lommebokens startside."
           }
         },
         "da": {
           "stringUnit": {
             "state": "translated",
-            "value": "Opdater"
+            "value": "Du kan forlade siden – vi gør den færdig og viser den på pungens startside."
           }
         },
         "fi": {
           "stringUnit": {
             "state": "translated",
-            "value": "Päivitä"
+            "value": "Voit poistua – viemme sen loppuun ja näytämme sen lompakon aloitusnäytöllä."
           }
         },
         "he": {
           "stringUnit": {
             "state": "translated",
-            "value": "רענון"
+            "value": "אפשר לצאת — נסיים את הפעולה ונציג אותה במסך הבית של הארנק."
           }
         },
         "ca": {
           "stringUnit": {
             "state": "translated",
-            "value": "Actualitza"
+            "value": "Pots sortir: ho acabarem i ho mostrarem a la pantalla d'inici de la teva cartera."
           }
         },
         "hr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Osvježi"
+            "value": "Možete otići – dovršit ćemo to i prikazati na početnom zaslonu novčanika."
           }
         },
         "sk": {
           "stringUnit": {
             "state": "translated",
-            "value": "Obnoviť"
+            "value": "Môžete odísť – dokončíme to a zobrazíme na úvodnej obrazovke peňaženky."
           }
         },
         "sl": {
           "stringUnit": {
             "state": "translated",
-            "value": "Osveži"
+            "value": "Lahko zapustite zaslon – dokončali bomo in prikazali na začetnem zaslonu denarnice."
           }
         },
         "sr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Освежи"
+            "value": "Можете да изађете — завршићемо то и приказати на почетном екрану новчаника."
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Actualiser"
+            "value": "Vous pouvez quitter — nous le terminerons et l’afficherons sur l’accueil de votre portefeuille."
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "새로고침"
+            "value": "나가셔도 돼요. 저희가 마저 끝내서 지갑 홈에 보여 드릴게요."
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "Aggiorna"
+            "value": "Può uscire — completeremo l’operazione e la mostreremo nella home del suo wallet."
           }
         },
         "tr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Yenile"
+            "value": "Ayrılabilirsiniz — işlemi biz tamamlayıp cüzdan ana ekranınızda göstereceğiz."
           }
         },
         "vi": {
           "stringUnit": {
             "state": "translated",
-            "value": "Làm mới"
+            "value": "Bạn có thể rời đi — chúng tôi sẽ hoàn tất và hiển thị trên trang chính của ví."
           }
         },
         "th": {
           "stringUnit": {
             "state": "translated",
-            "value": "รีเฟรช"
+            "value": "ออกไปได้เลย เราจะดำเนินการให้เสร็จและแสดงบนหน้าหลักของกระเป๋าเงิน"
           }
         },
         "id": {
           "stringUnit": {
             "state": "translated",
-            "value": "Segarkan"
+            "value": "Anda bisa meninggalkan layar ini — kami akan menyelesaikannya dan menampilkannya di beranda dompet Anda."
           }
         },
         "fa": {
           "stringUnit": {
             "state": "translated",
-            "value": "تازه‌سازی"
+            "value": "می‌توانید این صفحه را ترک کنید — ما آن را تمام می‌کنیم و در صفحهٔ اصلی کیف پولتان نشان می‌دهیم."
           }
         },
         "pl": {
           "stringUnit": {
             "state": "translated",
-            "value": "Odśwież"
+            "value": "Możesz wyjść — dokończymy operację i pokażemy ją na ekranie głównym portfela."
           }
         },
         "nl": {
           "stringUnit": {
             "state": "translated",
-            "value": "Verversen"
+            "value": "Je kunt dit scherm verlaten — wij maken het af en tonen het op je wallet-startscherm."
           }
         },
         "ur": {
           "stringUnit": {
             "state": "translated",
-            "value": "ریفریش کریں"
+            "value": "آپ یہ اسکرین چھوڑ سکتے ہیں — ہم اسے مکمل کر کے آپ کے والیٹ کے ہوم پر دکھا دیں گے۔"
           }
         },
         "bg": {
           "stringUnit": {
             "state": "translated",
-            "value": "Опресняване"
+            "value": "Можете да напуснете — ние ще го завършим и ще го покажем в началния екран на портфейла ви."
           }
         },
         "et": {
           "stringUnit": {
             "state": "translated",
-            "value": "Värskenda"
+            "value": "Võid lahkuda — viime selle lõpuni ja näitame su rahakoti avalehel."
           }
         },
         "lt": {
           "stringUnit": {
             "state": "translated",
-            "value": "Atnaujinti"
+            "value": "Galite išeiti — užbaigsime ir parodysime jūsų piniginės pradžios ekrane."
           }
         },
         "lv": {
           "stringUnit": {
             "state": "translated",
-            "value": "Atsvaidzināt"
+            "value": "Jūs varat aiziet — mēs to pabeigsim un parādīsim jūsu maka sākumekrānā."
           }
         },
         "is": {
           "stringUnit": {
             "state": "translated",
-            "value": "Endurnýja"
+            "value": "Þú mátt fara — við klárum þetta og sýnum það á heimaskjá veskisins þíns."
           }
         },
         "ms": {
           "stringUnit": {
             "state": "translated",
-            "value": "Segar semula"
+            "value": "Anda boleh pergi — kami akan menyelesaikannya dan memaparkannya di laman utama dompet anda."
           }
         },
         "fil": {
           "stringUnit": {
             "state": "translated",
-            "value": "I-refresh"
+            "value": "Puwede ka nang umalis — tatapusin namin ito at ipapakita sa home ng iyong wallet."
           }
         },
         "sw": {
           "stringUnit": {
             "state": "translated",
-            "value": "Onyesha upya"
+            "value": "Unaweza kuondoka — tutakamilisha na kuionyesha kwenye ukurasa wa nyumbani wa pochi yako."
           }
         },
         "af": {
           "stringUnit": {
             "state": "translated",
-            "value": "Verfris"
+            "value": "Jy kan gerus weggaan — ons sal dit klaarmaak en op jou beursie-tuisblad wys."
           }
         },
         "ta": {
           "stringUnit": {
             "state": "translated",
-            "value": "புதுப்பி"
+            "value": "நீங்கள் வெளியேறலாம் — நாங்கள் இதை முடித்து உங்கள் வாலட் முகப்பில் காண்பிப்போம்."
           }
         },
         "te": {
           "stringUnit": {
             "state": "translated",
-            "value": "రిఫ్రెష్ చేయండి"
+            "value": "మీరు వెళ్లవచ్చు — మేము దీన్ని పూర్తి చేసి మీ వాలెట్ హోమ్‌లో చూపిస్తాం."
           }
         },
         "ml": {
           "stringUnit": {
             "state": "translated",
-            "value": "പുതുക്കുക"
+            "value": "നിങ്ങൾക്ക് പോകാം — ഞങ്ങൾ ഇത് പൂർത്തിയാക്കി നിങ്ങളുടെ വാലറ്റ് ഹോമിൽ കാണിക്കും."
           }
         },
         "mr": {
           "stringUnit": {
             "state": "translated",
-            "value": "रिफ्रेश करा"
+            "value": "तुम्ही बाहेर पडू शकता — आम्ही हे पूर्ण करून तुमच्या वॉलेट होमवर दाखवू."
           }
         },
         "pa": {
           "stringUnit": {
             "state": "translated",
-            "value": "ਤਾਜ਼ਾ ਕਰੋ"
-          }
-        }
-      }
-    },
-    "A timed log of the last pull-to-refresh — every chain’s balance and history API, each RPC round-trip, and every database write, with how long each took. Pull to refresh on the wallet screen, then open this and tap Copy to share it.": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "A timed log of the last pull-to-refresh — every chain’s balance and history API, each RPC round-trip, and every database write, with how long each took. Pull to refresh on the wallet screen, then open this and tap Copy to share it."
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Un registro cronometrado de la última actualización al deslizar: la API de saldo e historial de cada cadena, cada ida y vuelta de RPC y cada escritura en la base de datos, con el tiempo que tardó cada una. Desliza para actualizar en la pantalla de la cartera, luego abre esto y toca Copiar para compartirlo."
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "上一次下拉刷新的计时日志——每条链的余额和历史 API、每次 RPC 往返以及每次数据库写入，并附上各自的耗时。在钱包界面下拉刷新，然后打开此处并轻点“拷贝”以分享。"
-          }
-        },
-        "zh-Hant": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "上一次下拉重新整理的計時記錄——每條鏈的餘額與歷史 API、每次 RPC 往返以及每次資料庫寫入，並附上各自所花的時間。在錢包畫面下拉重新整理，然後開啟此處並輕點「拷貝」以分享。"
-          }
-        },
-        "hi": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "पिछले पुल-टू-रिफ़्रेश का एक समयबद्ध लॉग — हर चेन की बैलेंस और हिस्ट्री API, हर RPC राउंड-ट्रिप, और हर डेटाबेस राइट, साथ में हर एक में लगा समय। वॉलेट स्क्रीन पर खींचकर रिफ़्रेश करें, फिर इसे खोलें और साझा करने के लिए कॉपी पर टैप करें।"
-          }
-        },
-        "ar": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "سجل زمني لآخر عملية تحديث بالسحب — واجهة برمجة الرصيد والسجل لكل سلسلة، وكل دورة RPC، وكل عملية كتابة في قاعدة البيانات، مع الزمن الذي استغرقته كل منها. اسحب للتحديث في شاشة المحفظة، ثم افتح هذه الشاشة وانقر على «نسخ» لمشاركتها."
-          }
-        },
-        "pt-BR": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Um registro cronometrado da última atualização por puxar: a API de saldo e histórico de cada rede, cada ida e volta de RPC e cada gravação no banco de dados, com o tempo que cada uma levou. Puxe para atualizar na tela da carteira, depois abra isto e toque em Copiar para compartilhar."
-          }
-        },
-        "bn": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "শেষ পুল-টু-রিফ্রেশের একটি সময়সহ লগ — প্রতিটি চেইনের ব্যালেন্স ও হিস্ট্রি API, প্রতিটি RPC রাউন্ড-ট্রিপ এবং প্রতিটি ডেটাবেস রাইট, প্রতিটিতে কত সময় লেগেছে তা সহ। ওয়ালেট স্ক্রিনে টেনে রিফ্রেশ করুন, তারপর এটি খুলুন এবং শেয়ার করতে কপি-তে ট্যাপ করুন।"
-          }
-        },
-        "ru": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Хронометрированный журнал последнего обновления жестом: API баланса и истории каждой сети, каждый цикл запроса RPC и каждая запись в базу данных с указанием длительности каждой операции. Потяните для обновления на экране кошелька, затем откройте этот экран и нажмите «Скопировать», чтобы поделиться им."
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "前回のプルして更新の操作を時間とともに記録したログです。各チェーンの残高および履歴 API、RPC の各往復、そしてデータベースへの各書き込みについて、それぞれの所要時間を記録します。ウォレット画面でプルして更新したあと、この画面を開き、「コピー」をタップして共有してください。"
-          }
-        },
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Ein Protokoll des letzten Ziehen-zum-Aktualisieren mit Zeitangaben – die Guthaben- und Verlaufs-API jeder Chain, jeder RPC-Roundtrip und jeder Schreibvorgang in der Datenbank, samt der jeweils benötigten Dauer. Ziehen Sie im Wallet-Bildschirm zum Aktualisieren, öffnen Sie anschließend diese Ansicht und tippen Sie auf „Kopieren“, um sie zu teilen."
-          }
-        },
-        "uk": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Хронометрований журнал останнього оновлення жестом: API балансу та історії кожної мережі, кожен цикл запиту RPC і кожен запис до бази даних із зазначенням тривалості кожної операції. Потягніть для оновлення на екрані гаманця, потім відкрийте цей екран і торкніться «Копіювати», щоб поділитися ним."
-          }
-        },
-        "el": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Ένα χρονομετρημένο αρχείο καταγραφής της τελευταίας ανανέωσης με τράβηγμα — το API υπολοίπου και ιστορικού κάθε αλυσίδας, κάθε κύκλος RPC και κάθε εγγραφή στη βάση δεδομένων, μαζί με τον χρόνο που χρειάστηκε το καθένα. Τραβήξτε για ανανέωση στην οθόνη του πορτοφολιού, στη συνέχεια ανοίξτε αυτή την οθόνη και πατήστε «Αντιγραφή» για να την κοινοποιήσετε."
-          }
-        },
-        "ro": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Un jurnal cronometrat al ultimei reîmprospătări prin tragere — API-ul de sold și istoric al fiecărui lanț, fiecare ciclu RPC și fiecare scriere în baza de date, împreună cu durata fiecăreia. Trageți pentru a reîmprospăta pe ecranul portofelului, apoi deschideți acest ecran și atingeți Copiază pentru a-l partaja."
-          }
-        },
-        "cs": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Časový protokol posledního obnovení tažením — API zůstatku a historie každého řetězce, každý cyklus RPC a každý zápis do databáze, včetně doby trvání každé operace. Na obrazovce peněženky obnovte tažením, poté otevřete tuto obrazovku a klepnutím na Kopírovat ji sdílejte."
-          }
-        },
-        "hu": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Időbélyegzett napló a legutóbbi húzással történő frissítésről – minden lánc egyenleg- és előzmény-API-ja, minden RPC-oda-vissza fordulója és minden adatbázis-írás, az egyes műveletek időtartamával együtt. A tárca képernyőjén húzással frissítsen, majd nyissa meg ezt a képernyőt, és a megosztáshoz koppintson a Másolás gombra."
-          }
-        },
-        "sv": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "En tidsstämplad logg över den senaste dra-för-att-uppdatera — varje kedjas saldo- och historik-API, varje RPC-tur och retur och varje databasskrivning, med hur lång tid var och en tog. Dra för att uppdatera på plånboksskärmen, öppna sedan den här och tryck på Kopiera för att dela den."
-          }
-        },
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "En tidsmålt logg over den siste dra-for-å-oppdatere — hver kjedes saldo- og historikk-API, hver RPC-rundtur og hver databaseskriving, med hvor lang tid hver enkelt tok. Dra for å oppdatere på lommebokskjermen, åpne deretter denne og trykk på Kopier for å dele den."
-          }
-        },
-        "da": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "En tidsmålt log over den seneste træk-for-at-opdatere — hver kædes saldo- og historik-API, hver RPC-rundtur og hver skrivning til databasen, med hvor lang tid hver enkelt tog. Træk for at opdatere på pungens skærm, åbn derefter denne, og tryk på Kopier for at dele den."
-          }
-        },
-        "fi": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Aikaleimattu loki viimeisimmästä vetäen päivittämisestä — jokaisen ketjun saldo- ja historia-API, jokainen RPC-edestakaisuus ja jokainen tietokantakirjoitus sekä kunkin kesto. Päivitä lompakkonäkymässä vetämällä, avaa sitten tämä näkymä ja jaa se napauttamalla Kopioi."
-          }
-        },
-        "he": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "יומן מתוזמן של פעולת המשיכה-לרענון האחרונה — ממשק ה-API של היתרה וההיסטוריה של כל רשת, כל סבב RPC וכל כתיבה למסד הנתונים, יחד עם משך הזמן של כל אחת. משכו לרענון במסך הארנק, לאחר מכן פתחו מסך זה והקישו על העתקה כדי לשתף אותו."
-          }
-        },
-        "ca": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Un registre cronometrat de l’última actualització en estirar: l’API de saldo i historial de cada cadena, cada anada i tornada d’RPC i cada escriptura a la base de dades, amb el temps que ha trigat cadascuna. Estira per actualitzar a la pantalla de la cartera, després obre això i toca Copia per compartir-ho."
-          }
-        },
-        "hr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Vremenski zabilježen zapisnik posljednjeg osvježavanja povlačenjem — API stanja i povijesti svakog lanca, svaki ciklus RPC-a i svaki zapis u bazu podataka, zajedno s trajanjem svakoga. Povucite za osvježavanje na zaslonu novčanika, zatim otvorite ovaj zaslon i dodirnite Kopiraj da biste ga podijelili."
-          }
-        },
-        "sk": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Časový protokol posledného obnovenia potiahnutím — API zostatku a histórie každej reťaze, každý cyklus RPC a každý zápis do databázy vrátane času trvania každej operácie. Na obrazovke peňaženky obnovte potiahnutím, potom otvorte túto obrazovku a klepnutím na Kopírovať ju zdieľajte."
-          }
-        },
-        "sl": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Časovno zabeležen dnevnik zadnjega osveževanja s potegom — API stanja in zgodovine vsake verige, vsak cikel RPC in vsak zapis v zbirko podatkov, skupaj s trajanjem vsakega. Na zaslonu denarnice osvežite s potegom, nato odprite ta zaslon in se dotaknite Kopiraj, da ga delite."
-          }
-        },
-        "sr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Временски забележен дневник последњег освежавања превлачењем — API стања и историје сваког ланца, сваки циклус RPC-а и сваки упис у базу података, заједно са трајањем сваког. На екрану новчаника освежите превлачењем, затим отворите овај екран и додирните Копирај да бисте га поделили."
-          }
-        },
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Un journal chronométré de la dernière actualisation par tirage — l’API de solde et d’historique de chaque chaîne, chaque aller-retour RPC et chaque écriture en base de données, avec le temps pris par chacun. Tirez pour actualiser sur l’écran du portefeuille, puis ouvrez ceci et touchez Copier pour le partager."
-          }
-        },
-        "ko": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "마지막 당겨서 새로고침의 시간 기록입니다. 각 체인의 잔액 및 내역 API, 모든 RPC 왕복, 모든 데이터베이스 쓰기와 각각에 걸린 시간을 보여줍니다. 지갑 화면에서 당겨 새로고침한 다음, 여기를 열고 복사를 눌러 공유하세요."
-          }
-        },
-        "it": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Un registro cronometrato dell’ultimo aggiornamento tramite trascinamento: l’API di saldo e cronologia di ogni catena, ogni andata e ritorno RPC e ogni scrittura nel database, con il tempo impiegato da ciascuno. Trascini verso il basso per aggiornare nella schermata del portafoglio, poi apra questa pagina e tocchi Copia per condividerla."
-          }
-        },
-        "tr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Son çekerek yenilemenin zaman damgalı kaydı — her zincirin bakiye ve geçmiş API’si, her RPC gidiş-dönüşü ve her veritabanı yazımı, her birinin ne kadar sürdüğüyle birlikte. Cüzdan ekranında çekerek yenileyin, ardından bunu açıp paylaşmak için Kopyala’ya dokunun."
-          }
-        },
-        "vi": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Nhật ký theo thời gian của lần kéo để làm mới gần nhất — API số dư và lịch sử của mỗi chuỗi, mỗi lượt gọi RPC khứ hồi và mỗi lần ghi vào cơ sở dữ liệu, kèm theo thời gian của từng mục. Hãy kéo để làm mới trên màn hình ví, rồi mở mục này và chạm Sao chép để chia sẻ."
-          }
-        },
-        "th": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "บันทึกตามเวลาของการดึงเพื่อรีเฟรชครั้งล่าสุด — API ยอดคงเหลือและประวัติของแต่ละเชน การรับส่ง RPC แต่ละรอบ และการเขียนฐานข้อมูลแต่ละครั้ง พร้อมเวลาที่แต่ละรายการใช้ ดึงเพื่อรีเฟรชบนหน้าจอกระเป๋าเงิน จากนั้นเปิดหน้านี้แล้วแตะคัดลอกเพื่อแชร์"
-          }
-        },
-        "id": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Catatan berwaktu dari tarik untuk menyegarkan terakhir — API saldo dan riwayat setiap rantai, setiap perjalanan bolak-balik RPC, dan setiap penulisan basis data, beserta waktu yang dibutuhkan masing-masing. Tarik untuk menyegarkan di layar dompet, lalu buka halaman ini dan ketuk Salin untuk membagikannya."
-          }
-        },
-        "fa": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "گزارشی زمان‌بندی‌شده از آخرین کشیدن برای تازه‌سازی — API موجودی و تاریخچهٔ هر زنجیره، هر رفت‌وبرگشت RPC و هر نوشتن در پایگاه داده، همراه با مدت‌زمان هر کدام. در صفحهٔ کیف پول بکشید تا تازه شود، سپس این صفحه را باز کنید و برای هم‌رسانی روی کپی بزنید."
-          }
-        },
-        "pl": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Rejestr czasowy ostatniego odświeżenia gestem przeciągnięcia — interfejs API salda i historii każdego łańcucha, każda wymiana RPC oraz każdy zapis do bazy danych, wraz z czasem trwania każdego z nich. Przeciągnij, aby odświeżyć na ekranie portfela, następnie otwórz ten widok i dotknij Kopiuj, aby go udostępnić."
-          }
-        },
-        "nl": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Een gedetailleerd tijdslog van de laatste pull-to-refresh — de saldo- en geschiedenis-API van elke keten, elke RPC-aanroep en elke databaseschrijfactie, met hoelang elk duurde. Trek omlaag om te verversen op het walletscherm, open dit vervolgens en tik op Kopiëren om het te delen."
-          }
-        },
-        "ur": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "آخری پُل ٹو ریفریش کا وقت کے ساتھ ریکارڈ — ہر چین کی بیلنس اور ہسٹری API، ہر RPC راؤنڈ ٹرپ، اور ہر database لکھائی، اس کے ساتھ کہ ہر ایک میں کتنا وقت لگا۔ والٹ اسکرین پر کھینچ کر ریفریش کریں، پھر اِسے کھولیں اور شیئر کرنے کے لیے Copy پر ٹیپ کریں۔"
-          }
-        },
-        "bg": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Хронометриран дневник на последното дръпване за опресняване — API за баланс и история на всяка верига, всяко RPC двупосочно обръщение и всеки запис в базата данни, заедно с времето, което отне всяко от тях. Дръпнете надолу за опресняване на екрана на портфейла, после отворете това и докоснете Копиране, за да го споделите."
-          }
-        },
-        "et": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Viimase tõmba-värskendamise ajastatud logi — iga ahela saldo- ja ajaloo-API, iga RPC edasi-tagasi päring ja iga andmebaasi kirjutamine koos sellega, kui kaua iga toiming võttis. Tõmba rahakoti ekraanil värskendamiseks, seejärel ava see ja puuduta jagamiseks Kopeeri."
-          }
-        },
-        "lt": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Paskutinio patraukimo atnaujinti laiko žurnalas — kiekvienos grandinės balanso ir istorijos API, kiekviena RPC užklausa su atsakymu ir kiekvienas duomenų bazės įrašymas, nurodant, kiek truko kiekvienas iš jų. Piniginės ekrane patraukite žemyn, kad atnaujintumėte, tada atverkite tai ir bakstelėkite Kopijuoti, kad pasidalintumėte."
-          }
-        },
-        "lv": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Pēdējās vilkšanas atsvaidzināšanai laika žurnāls — katras ķēdes bilances un vēstures API, katra RPC turp un atpakaļ apmaiņa un katra datubāzes ierakstīšana, norādot, cik ilgi tā aizņēma. Maka ekrānā velciet uz leju, lai atsvaidzinātu, pēc tam atveriet šo un pieskarieties Kopēt, lai to kopīgotu."
-          }
-        },
-        "is": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Tímasett skráning af síðustu uppfærslu með því að draga niður — jafnvægis- og ferils-API hverrar keðju, hver RPC umferð og hver skrifun í gagnagrunn, ásamt því hve langan tíma hvert tók. Dragðu niður til að uppfæra á veskisskjánum, opnaðu svo þetta og ýttu á Afrita til að deila því."
-          }
-        },
-        "ms": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Log bermasa bagi tarik untuk segar semula yang terakhir — API baki dan sejarah setiap rantai, setiap pusingan ulang-alik RPC, dan setiap penulisan pangkalan data, beserta tempoh yang diambil oleh setiap satu. Tarik untuk segar semula pada skrin dompet, kemudian buka halaman ini dan ketik Salin untuk berkongsinya."
-          }
-        },
-        "fil": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Isang naka-timing na log ng huling pull-to-refresh — ang balance at history API ng bawat chain, bawat RPC round-trip, at bawat pagsulat sa database, kasama kung gaano katagal ang bawat isa. I-pull pababa para mag-refresh sa screen ng wallet, pagkatapos ay buksan ito at i-tap ang Copy para ibahagi."
-          }
-        },
-        "sw": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Kumbukumbu yenye muda ya kuvuta-kuonyesha-upya kwa mwisho — API ya salio na historia ya kila mnyororo, kila mzunguko wa RPC, na kila uandishi kwenye hifadhidata, pamoja na muda uliotumika kwa kila moja. Vuta ili kuonyesha upya kwenye skrini ya pochi, kisha fungua hapa na uguse Nakili ili kuishiriki."
-          }
-        },
-        "af": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "’n Getydde log van die laaste trek-om-te-verfris — elke ketting se saldo- en geskiedenis-API, elke RPC-heen-en-weer, en elke databasisskryf, met hoe lank elkeen geneem het. Trek af om te verfris op die beursie-skerm, maak dan hierdie oop en tik Kopieer om dit te deel."
-          }
-        },
-        "ta": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "கடைசியாக இழுத்துப் புதுப்பித்ததின் நேரப் பதிவு — ஒவ்வொரு செயினின் இருப்பு மற்றும் வரலாறு API, ஒவ்வொரு RPC போக்குவரத்து, மற்றும் ஒவ்வொரு database எழுதுதல், அவை ஒவ்வொன்றும் எடுத்த நேரத்துடன். வாலெட் திரையில் இழுத்துப் புதுப்பித்து, பிறகு இதைத் திறந்து, பகிர நகலெடு என்பதைத் தட்டவும்."
-          }
-        },
-        "te": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "చివరిసారి లాగి-రిఫ్రెష్ చేసిన దాని సమయ-నమోదు — ప్రతి చెయిన్ బ్యాలెన్స్ మరియు చరిత్ర API, ప్రతి RPC రౌండ్-ట్రిప్, మరియు ప్రతి database రాత, ఒక్కొక్కటి తీసుకున్న సమయంతో సహా. వాలెట్ స్క్రీన్‌లో లాగి రిఫ్రెష్ చేసి, ఆపై దీన్ని తెరిచి, షేర్ చేయడానికి కాపీని నొక్కండి."
-          }
-        },
-        "ml": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "അവസാനമായി വലിച്ച് പുതുക്കിയതിന്റെ സമയക്രമത്തിലുള്ള ലോഗ് — ഓരോ ചെയിനിന്റെയും ബാലൻസ്, ഹിസ്റ്ററി API, ഓരോ RPC റൗണ്ട്-ട്രിപ്പ്, ഓരോ database എഴുത്ത് എന്നിവ, ഓരോന്നിനും എടുത്ത സമയത്തോടൊപ്പം. വാലറ്റ് സ്ക്രീനിൽ വലിച്ച് പുതുക്കുക, പിന്നെ ഇത് തുറന്ന് പങ്കിടാൻ പകർത്തുക എന്നതിൽ ടാപ്പ് ചെയ്യുക."
-          }
-        },
-        "mr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "शेवटच्या खेचून-रिफ्रेशची वेळेसह नोंद — प्रत्येक चेनचे शिल्लक व इतिहास API, प्रत्येक RPC फेरफटका आणि प्रत्येक database लेखन, यासह प्रत्येकाला किती वेळ लागला. वॉलेट स्क्रीनवर खेचून रिफ्रेश करा, नंतर हे उघडा आणि शेअर करण्यासाठी कॉपी वर टॅप करा."
-          }
-        },
-        "pa": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "ਆਖ਼ਰੀ ਖਿੱਚ-ਕੇ-ਤਾਜ਼ਾ ਕਰਨ ਦਾ ਸਮੇਂ ਸਮੇਤ ਰਿਕਾਰਡ — ਹਰ ਚੇਨ ਦੀ ਬੈਲੇਂਸ ਅਤੇ ਇਤਿਹਾਸ API, ਹਰ RPC ਗੇੜਾ, ਅਤੇ ਹਰ database ਲਿਖਤ, ਨਾਲ ਹੀ ਹਰੇਕ ਨੂੰ ਕਿੰਨਾ ਸਮਾਂ ਲੱਗਾ। ਵਾਲਿਟ ਸਕਰੀਨ 'ਤੇ ਖਿੱਚ ਕੇ ਤਾਜ਼ਾ ਕਰੋ, ਫਿਰ ਇਸਨੂੰ ਖੋਲ੍ਹੋ ਅਤੇ ਸਾਂਝਾ ਕਰਨ ਲਈ ਕਾਪੀ 'ਤੇ ਟੈਪ ਕਰੋ।"
+            "value": "ਤੁਸੀਂ ਛੱਡ ਸਕਦੇ ਹੋ — ਅਸੀਂ ਇਸਨੂੰ ਪੂਰਾ ਕਰ ਕੇ ਤੁਹਾਡੇ ਵਾਲਿਟ ਹੋਮ 'ਤੇ ਦਿਖਾਵਾਂਗੇ।"
           }
         }
       }
