@@ -77,7 +77,7 @@ struct SwapExecutor {
             case .approvalReverted:
                 return "The token approval failed on-chain. Nothing was swapped."
             case .approvalTimeout:
-                return "The token approval is taking longer than expected. Check the approval, then try the swap again."
+                return "Your approval is still pending on-chain after several minutes — the network may be congested. Nothing was swapped and your funds are safe; the approval will still land, then you can swap again."
             case .signingFailed(let detail):
                 return detail
             case .broadcastFailed(let detail):
@@ -381,7 +381,13 @@ struct SwapExecutor {
             return .failure(mapBroadcast(error))
         }
         onPhase(.confirmingApproval)
-        switch await SwapAllowance.awaitReceipt(txHash: approveHash, chain: chain) {
+        // Wait PATIENTLY for the approval (2026-06-17). The old 60s window
+        // (12 × 5s) routinely tripped on a congested chain and hard-failed an
+        // approval that was simply still pending — and would have confirmed.
+        // The swap now runs in `SwapBackgroundManager`, so the user is never
+        // blocked behind this wait; they can leave the screen and watch the
+        // home banner. ~7.5 min covers virtually every real slow inclusion.
+        switch await SwapAllowance.awaitReceipt(txHash: approveHash, chain: chain, attempts: 90, delaySeconds: 5) {
         case .some(true): return .success(nonce)
         case .some(false): return .failure(.approvalReverted)
         case .none: return .failure(.approvalTimeout)

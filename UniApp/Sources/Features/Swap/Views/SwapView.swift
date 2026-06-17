@@ -86,7 +86,14 @@ struct SwapView: View {
                         // user back on compose. In the wallet-home SHEET the
                         // same pop returns to compose-inside-the-sheet, and
                         // the sheet's own leading "Close" still dismisses it.
-                        onClose: { navigationPath = NavigationPath() }
+                        onClose: { navigationPath = NavigationPath() },
+                        // "Run in the background": in the wallet-home SHEET,
+                        // dismiss it so the home's under-actions banner takes
+                        // over; in the Swap TAB (no sheet) pop back to compose.
+                        // Either way the swap keeps running in the manager.
+                        onBackground: {
+                            if isSheet { dismiss() } else { navigationPath = NavigationPath() }
+                        }
                     )
                 }
             }
