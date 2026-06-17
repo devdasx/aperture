@@ -47,18 +47,81 @@ struct AllSupportedAssetsView: View {
     @AppStorage(CurrencyPreference.storageKey) private var currencyCode: String = CurrencyPreference.defaultCode
 
     @State private var searchText: String = ""
+    @State private var isShowingFilter: Bool = false
+
+    // Filter & Sort preferences (Rule shared with the home / asset-detail
+    // filters): the user picks once, the list honors it every visit.
+    @AppStorage(AllSupportedFilterPreferences.sortKeyKey)
+    private var sortKeyRaw: String = AllSupportedFilterPreferences.defaultSortKey.rawValue
+    @AppStorage(AllSupportedFilterPreferences.assetTypeKey)
+    private var assetTypeRaw: String = AllSupportedFilterPreferences.defaultAssetType.rawValue
+    @AppStorage(AllSupportedFilterPreferences.selectedNetworksKey)
+    private var selectedNetworksJSON: String = AllSupportedFilterPreferences.defaultSelectedNetworksJSON
+    @AppStorage(AllSupportedFilterPreferences.onlyWithBalanceKey)
+    private var onlyWithBalance: Bool = AllSupportedFilterPreferences.defaultOnlyWithBalance
+
+    private var sortKey: AllSupportedFilterPreferences.SortKey {
+        AllSupportedFilterPreferences.SortKey(rawValue: sortKeyRaw) ?? AllSupportedFilterPreferences.defaultSortKey
+    }
+    private var assetType: AllSupportedFilterPreferences.AssetType {
+        AllSupportedFilterPreferences.AssetType(rawValue: assetTypeRaw) ?? AllSupportedFilterPreferences.defaultAssetType
+    }
+    private var selectedNetworks: Set<String> {
+        AllSupportedFilterPreferences.decode(selectedNetworksJSON)
+    }
+
+    /// Whether any section currently has rows after the active filter —
+    /// drives the empty-state overlay.
+    private var hasVisibleRows: Bool {
+        (assetType.showsCoins && !filteredCoinRows.isEmpty)
+            || (assetType.showsTokens && !filteredTokenRows.isEmpty)
+    }
 
     var body: some View {
         List {
-            coinsSection
-            tokensSection
+            if assetType.showsCoins { coinsSection }
+            if assetType.showsTokens { tokensSection }
         }
         .listStyle(.insetGrouped)
         .scrollContentBackground(.hidden)
         .background(UniColors.Background.primary.ignoresSafeArea())
+        .overlay { emptyStateOverlay }
         .navigationTitle("All supported assets")
         .navigationBarTitleDisplayMode(.inline)
         .searchable(text: $searchText, prompt: Text("Search"))
+        .toolbar {
+            // Bare `line.3.horizontal.decrease` glyph — the same filter
+            // affordance the wallet home and asset-detail screens use.
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
+                    isShowingFilter = true
+                } label: {
+                    Image(systemName: "line.3.horizontal.decrease")
+                        .accessibilityLabel(Text("Filter and sort"))
+                }
+            }
+        }
+        .sheet(isPresented: $isShowingFilter) {
+            AllSupportedAssetsFilterSheet(
+                totalAssets: allCoinRows.count + allTokenRows.count,
+                visibleAssets: filteredCoinRows.count + filteredTokenRows.count
+            )
+            .uniAppEnvironment()
+            .uniSheetDetents([.large])
+            .presentationDragIndicator(.visible)
+            .presentationBackground(UniColors.Background.primary)
+        }
+    }
+
+    @ViewBuilder
+    private var emptyStateOverlay: some View {
+        if !hasVisibleRows {
+            ContentUnavailableView {
+                Label("No assets", systemImage: "line.3.horizontal.decrease")
+            } description: {
+                Text("No supported assets match your filter.")
+            }
+        }
     }
 
     // MARK: - Sections
@@ -201,14 +264,44 @@ struct AllSupportedAssetsView: View {
         }
     }
 
-    /// Coins rows after applying the search filter. Matches the
-    /// chain's display name, ticker, and asset family verbatim.
+    /// Coins rows after applying the active filter (networks +
+    /// only-with-balance + search) and the chosen sort. Search matches
+    /// the chain's display name and ticker verbatim.
     private var filteredCoinRows: [CoinSupportedRow] {
+        let networks = selectedNetworks
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !query.isEmpty else { return allCoinRows }
-        return allCoinRows.filter { row in
-            row.chain.displayName.localizedStandardContains(query)
-                || row.chain.ticker.localizedStandardContains(query)
+        var rows = allCoinRows.filter { row in
+            networks.isEmpty || networks.contains(row.chain.rawValue)
+        }
+        if onlyWithBalance {
+            rows = rows.filter { ($0.fiatValue ?? 0) > 0 || $0.amount > 0 }
+        }
+        if !query.isEmpty {
+            rows = rows.filter { row in
+                row.chain.displayName.localizedStandardContains(query)
+                    || row.chain.ticker.localizedStandardContains(query)
+            }
+        }
+        return sortCoins(rows)
+    }
+
+    /// Coins sorted per the active `sortKey`. `.balance` puts held coins
+    /// first (largest fiat → smallest), then the rest alphabetically;
+    /// `.name` sorts every coin alphabetically by display name.
+    private func sortCoins(_ rows: [CoinSupportedRow]) -> [CoinSupportedRow] {
+        switch sortKey {
+        case .balance:
+            return rows.sorted { a, b in
+                let aHeld = (a.fiatValue ?? 0) > 0 || a.amount > 0
+                let bHeld = (b.fiatValue ?? 0) > 0 || b.amount > 0
+                if aHeld != bHeld { return aHeld && !bHeld }
+                if aHeld && bHeld { return (a.fiatValue ?? 0) > (b.fiatValue ?? 0) }
+                return a.chain.displayName.localizedStandardCompare(b.chain.displayName) == .orderedAscending
+            }
+        case .name:
+            return rows.sorted {
+                $0.chain.displayName.localizedStandardCompare($1.chain.displayName) == .orderedAscending
+            }
         }
     }
 
@@ -402,30 +495,56 @@ struct AllSupportedAssetsView: View {
             ))
         }
 
-        // Sort: held (fiat > 0) first by fiat desc, then unheld
-        // alphabetically by (symbol, chain). Stable, honest.
-        return rows.sorted { a, b in
-            let aHeld = (a.fiatValue ?? 0) > 0 || a.amount > 0
-            let bHeld = (b.fiatValue ?? 0) > 0 || b.amount > 0
-            if aHeld != bHeld { return aHeld && !bHeld }
-            if aHeld && bHeld {
-                return (a.fiatValue ?? 0) > (b.fiatValue ?? 0)
-            }
-            if a.symbol != b.symbol { return a.symbol < b.symbol }
-            return a.chain.displayName < b.chain.displayName
-        }
+        // Unsorted here — `filteredTokenRows` applies the active sort
+        // (`sortTokens`) after filtering, so the order tracks the user's
+        // Filter & Sort choice rather than being fixed at build time.
+        return rows
     }
 
-    /// Token rows after applying the search filter. Matches symbol,
-    /// full registry name, and the chain's display name (so
+    /// Token rows after applying the active filter (networks +
+    /// only-with-balance + search) and the chosen sort. Search matches
+    /// symbol, full registry name, and the chain's display name (so
     /// searching "Polygon" surfaces every token on Polygon).
     private var filteredTokenRows: [TokenSupportedDisplayRow] {
+        let networks = selectedNetworks
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !query.isEmpty else { return allTokenRows }
-        return allTokenRows.filter { row in
-            row.symbol.localizedStandardContains(query)
-                || row.name.localizedStandardContains(query)
-                || row.chain.displayName.localizedStandardContains(query)
+        var rows = allTokenRows.filter { row in
+            networks.isEmpty || networks.contains(row.chain.rawValue)
+        }
+        if onlyWithBalance {
+            rows = rows.filter { ($0.fiatValue ?? 0) > 0 || $0.amount > 0 }
+        }
+        if !query.isEmpty {
+            rows = rows.filter { row in
+                row.symbol.localizedStandardContains(query)
+                    || row.name.localizedStandardContains(query)
+                    || row.chain.displayName.localizedStandardContains(query)
+            }
+        }
+        return sortTokens(rows)
+    }
+
+    /// Tokens sorted per the active `sortKey`. `.balance` puts held
+    /// tokens first (largest fiat → smallest), then the rest
+    /// alphabetically by `(symbol, chain)`; `.name` sorts every token by
+    /// its full registry name.
+    private func sortTokens(_ rows: [TokenSupportedDisplayRow]) -> [TokenSupportedDisplayRow] {
+        switch sortKey {
+        case .balance:
+            return rows.sorted { a, b in
+                let aHeld = (a.fiatValue ?? 0) > 0 || a.amount > 0
+                let bHeld = (b.fiatValue ?? 0) > 0 || b.amount > 0
+                if aHeld != bHeld { return aHeld && !bHeld }
+                if aHeld && bHeld { return (a.fiatValue ?? 0) > (b.fiatValue ?? 0) }
+                if a.symbol != b.symbol { return a.symbol < b.symbol }
+                return a.chain.displayName < b.chain.displayName
+            }
+        case .name:
+            return rows.sorted { a, b in
+                let byName = a.name.localizedStandardCompare(b.name)
+                if byName != .orderedSame { return byName == .orderedAscending }
+                return a.chain.displayName < b.chain.displayName
+            }
         }
     }
 }
