@@ -115,13 +115,6 @@ struct WalletHomeView: View {
     @AppStorage(CurrencyPreference.storageKey) private var currencyCode: String = CurrencyPreference.defaultCode
     @AppStorage(HideBalancesPreference.hideBalanceOnHomeKey) private var hideBalanceOnHome: Bool = false
 
-    /// 2026-06-09 — toolbar overflow menu reaches `lockNow()` when
-    /// the user taps "Lock wallet". The controller's `lockNow()`
-    /// is a no-op when PIN isn't configured (Rule #17 §C) — the
-    /// menu item is still surfaced; tapping it just doesn't lock
-    /// anything, matching iOS Notes' "Lock Note" behavior when
-    /// no Notes password is set.
-    @Environment(\.autoLockController) private var lockController
     @AppStorage(HideBalancesPreference.thresholdKey) private var hideSmallThreshold: Double = HideBalancesPreference.defaultThreshold
 
     /// **iPad / Mac adaptation (2026-06-16).** Two regular-width-only
@@ -547,16 +540,14 @@ struct WalletHomeView: View {
             listSurface
                 .navigationTitle("")
                 .navigationBarTitleDisplayMode(.inline)
-                // 2026-06-09 — toolbar overflow menu (the 3-dots
-                // ellipsis in `.topBarTrailing`). Native SwiftUI
-                // `Menu` renders as iOS's standard action sheet
-                // with `Toggle` for "Hide balance" (a stateful
-                // switch the user can see at a glance) and a
-                // `Button` for "Lock wallet" that fires
-                // `AutoLockController.lockNow()`. Per Rule #19 §C
-                // the toolbar item is a plain `Button` with an SF
-                // Symbol label — not a `UniButton` — because
-                // toolbar items are navigation affordances, not
+                // 2026-06-17 — the toolbar holds ONLY the Filter & Sort
+                // affordance (user direction). The 3-dots overflow menu
+                // (Hide balance / Lock wallet) was removed: hide-balance
+                // still lives on the balance card's eye toggle, and
+                // auto-lock runs from `AutoLockController` without a manual
+                // toolbar entry. Per Rule #19 §C the toolbar item is a plain
+                // `Button` with an SF Symbol label — not a `UniButton` —
+                // because toolbar items are navigation affordances, not
                 // commit CTAs (the rule's documented exception).
                 .toolbar {
                     // 2026-06-14 — sync has NO UI surface (user
@@ -582,21 +573,6 @@ struct WalletHomeView: View {
                         } label: {
                             Image(systemName: "line.3.horizontal.decrease")
                                 .accessibilityLabel(Text("Filter and sort"))
-                        }
-                    }
-                    ToolbarItem(placement: .topBarTrailing) {
-                        Menu {
-                            UniToggle(isOn: $hideBalanceOnHome) {
-                                Label("Hide balance", systemImage: "eye.slash")
-                            }
-                            Button {
-                                lockController.lockNow()
-                            } label: {
-                                Label("Lock wallet", systemImage: "lock")
-                            }
-                        } label: {
-                            Image(systemName: "ellipsis")
-                                .accessibilityLabel(Text("More options"))
                         }
                     }
                 }
