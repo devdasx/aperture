@@ -196,7 +196,7 @@ struct AllSupportedAssetsFilterSheet: View {
         } header: {
             Text("Show")
         } footer: {
-            Text("Hidden networks stay supported — only this list's view is affected.")
+            Text("Hidden networks stay supported — only this list’s view is affected.")
                 .font(UniTypography.footnote)
                 .foregroundStyle(UniColors.Text.tertiary)
                 .fixedSize(horizontal: false, vertical: true)
