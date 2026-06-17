@@ -28,6 +28,10 @@ enum EVMDAppSigner {
         case mnemonicUnavailable
         case invalidPayload
         case signingFailed
+        /// The tx was signed but the node rejected/failed the broadcast —
+        /// carries the node's honest reason (nonce too low, insufficient
+        /// funds, reverted estimate, …) for the confirmation sheet to show.
+        case broadcastFailed(String)
     }
 
     // MARK: - Public surface (async — preferred)
@@ -75,6 +79,76 @@ enum EVMDAppSigner {
             return .invalidParams
         case .signingFailed:
             return .internalError
+        case .broadcastFailed(let detail):
+            return DAppRequestError(code: -32000, message: detail)
+        }
+    }
+
+    // MARK: - eth_sendTransaction (real sign + broadcast, 2026-06-17)
+
+    /// Build, sign, and BROADCAST a dApp's `eth_sendTransaction` for real —
+    /// returning the on-chain tx hash. Reuses the exact pipeline the in-app
+    /// Swap uses: `SwapEVMSigner` builds + signs the tx (fresh pending nonce,
+    /// live gas price, the dApp's gas limit), the key is derived + scoped by
+    /// `SigningKeyProvider.withPrivateKey` off the main actor, and
+    /// `BroadcastService` submits it. EVM only; custody boundaries match the
+    /// message-signing path (mnemonic-backed, no BIP-39 passphrase) — anything
+    /// else gets an honest error, never a fabricated hash (Rule #16).
+    ///
+    /// The caller (the confirmation sheet) gates this behind the user's
+    /// explicit review + biometric/passcode approval.
+    static func sendTransaction(
+        _ request: DAppRequestRouter.SendTransactionRequest
+    ) async -> Result<String, SignerError> {
+        guard request.chain.family == .evm else { return .failure(.walletCannotSign) }
+        guard let record = activeWallet() else { return .failure(.noActiveWallet) }
+        switch record.kind {
+        case .created, .importedMnemonic: break
+        case .importedKey, .watchOnly:     return .failure(.walletCannotSign)
+        }
+        guard !record.hasPassphrase else { return .failure(.mnemonicUnavailable) }
+
+        let chain = request.chain
+        let fromAddress = request.from
+        guard let nonce = await SwapAllowance.pendingNonce(address: fromAddress, chain: chain) else {
+            return .failure(.broadcastFailed("Couldn't read your account state. Try again in a moment."))
+        }
+        guard let gasPrice = await SwapAllowance.gasPriceWei(chain: chain) else {
+            return .failure(.broadcastFailed("Couldn't fetch the network fee right now. Try again."))
+        }
+        // The dApp supplies the gas LIMIT (hex); fall back to a safe ceiling
+        // if absent/zero so a missing field never signs an intrinsic-gas
+        // revert. A wrong limit reverts on-chain (refunding the unused gas),
+        // never loses the principal.
+        let gasLimit = request.gasHex.flatMap(SwapEVMABI.quantityToUInt64).flatMap { $0 > 0 ? $0 : nil } ?? 500_000
+        let calldata = data(fromHex: SwapEVMABI.strip0x(request.dataHex)) ?? Data()
+
+        let tx = SwapEVMSigner.UnsignedTx(
+            chain: chain, nonce: nonce, to: request.to, valueHex: request.valueHex,
+            data: calldata, gasLimit: gasLimit, gasPriceWei: gasPrice
+        )
+        let descriptor = WalletDescriptor(record: record)
+
+        let signed: SignedTransaction
+        do {
+            signed = try await Task.detached(priority: .userInitiated) {
+                try SigningKeyProvider.withPrivateKey(
+                    wallet: descriptor, chain: chain, passphrase: nil, expectedAddress: fromAddress
+                ) { key in
+                    try SwapEVMSigner.sign(tx, privateKey: key)
+                }
+            }.value
+        } catch let error as SigningError {
+            return .failure(.broadcastFailed(error.userMessage))
+        } catch {
+            return .failure(.signingFailed)
+        }
+
+        do {
+            let hash = try await BroadcastService().broadcast(signed, chain: chain)
+            return .success(hash)
+        } catch {
+            return .failure(.broadcastFailed(error.userMessage))
         }
     }
 
