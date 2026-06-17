@@ -131,9 +131,40 @@ struct CoinMark: View {
         return nil
     }
 
+    /// Symbol-level canonical fallback mark (2026-06-17). Trust Wallet
+    /// hosts a logo for many fungible tokens only on their canonical
+    /// chain (almost always Ethereum) — e.g. FRAX, EURC, and FDUSD live
+    /// on BNB / Polygon / Avalanche / Solana in our registries, but the
+    /// `trustwallet/assets` repo only carries the Ethereum asset for
+    /// them. When the exact `(chain, contract)` mark 404s, the same
+    /// token's Ethereum logo is the honest brand mark to show — it IS
+    /// that token, just on another network. Native coins and custom-icon
+    /// rows (which already carry their own resolved URL) are exempt.
+    private var fallbackURL: URL? {
+        guard !isNativeCoin, (customIconURL ?? "").isEmpty else { return nil }
+        return CoinMarkCache.symbolFallbackURL(symbol: tokenSymbol, excluding: chain)
+    }
+
+    /// Two-stage load: the exact Trust Wallet mark first, then — only if
+    /// that's missing or undecodable — the symbol's canonical
+    /// (`fallbackURL`) mark. The fallback is computed lazily here, so the
+    /// ~99% of rows whose primary mark resolves never pay for it.
     private func loadFromCache(url: URL?) async {
-        guard let url else { return }
-        guard let data = await CoinMarkCache.shared.data(for: url) else { return }
+        if let image = await preparedImage(for: url) {
+            await MainActor.run { self.prepared = image }
+            return
+        }
+        let fallback = fallbackURL
+        guard let fallback, fallback != url,
+              let image = await preparedImage(for: fallback) else { return }
+        await MainActor.run { self.prepared = image }
+    }
+
+    /// Fetch + decode a single mark URL off-main, or `nil` when the URL
+    /// is absent, the download 404s, or the bytes don't decode.
+    private func preparedImage(for url: URL?) async -> UIImage? {
+        guard let url else { return nil }
+        guard let data = await CoinMarkCache.shared.data(for: url) else { return nil }
         // **2026-06-09 perf.** Decode + pre-prepare the image off
         // the main thread. `preparingForDisplay()` returns a
         // bitmap with the pixel format the GPU expects — without
@@ -169,9 +200,9 @@ struct CoinMark: View {
             // log loop. `markUndecodable` stops the retry for hours; the
             // initials chip shows meanwhile (`prepared` stays nil).
             await CoinMarkCache.shared.markUndecodable(url: url)
-            return
+            return nil
         }
-        await MainActor.run { self.prepared = image }
+        return image
     }
 
     // MARK: - Tier 4: initials chip
