@@ -306,6 +306,23 @@ struct RefreshPipelinePersistenceTests {
         #expect((eur["BTC"]?.amount ?? 0) > 0, "BTC unpriced in EUR")
     }
 
+    /// The price chart now sources daily closes from the server too (no more
+    /// direct Coinbase candles). Verifies the app→server history path returns
+    /// candles in USD AND in an exotic currency (JOD) that the old per-fiat
+    /// Coinbase path could never chart.
+    @Test("RemoteHistoricalPriceService returns server candles (USD + exotic currency)")
+    func remoteHistoryFromServer() async throws {
+        let service = RemoteHistoricalPriceService()
+
+        let usd = await service.fetchDailyCloses(symbol: "BTC", fiat: "USD", days: 14)
+        #expect(!usd.isEmpty, "no BTC/USD candles from server")
+        #expect((usd.first?.close ?? 0) > 0, "BTC/USD candle has non-positive close")
+
+        // Exotic currency the old Coinbase per-fiat path could never chart.
+        let jod = await service.fetchDailyCloses(symbol: "BTC", fiat: "JOD", days: 14)
+        #expect(!jod.isEmpty, "no BTC/JOD candles — exotic-currency chart still broken")
+    }
+
     // MARK: - Encryption (the user-chosen "encrypted key blob in DB" path)
 
     @Test("ChainKeyVault seals and opens a private key losslessly")

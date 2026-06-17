@@ -916,7 +916,7 @@ struct WalletRefreshCoordinator: Sendable {
 
     /// The sync layer's sole owner of historical daily-close fetching.
     /// Feature views (`WalletHomeView`, `AssetDetailView`) must NOT call
-    /// `CoinbaseHistoricalPriceService` directly (Rule #27 §A.3 / §E) —
+    /// `RemoteHistoricalPriceService` directly (Rule #27 §A.3 / §E) —
     /// they read `HistoricalPriceRecord` from the store and call this to
     /// fill gaps. `symbols` is the desired set (from held balances + tx
     /// history, all DB-derived); `alreadyHave` is the symbols the store
@@ -937,7 +937,7 @@ struct WalletRefreshCoordinator: Sendable {
         let syncRepo = SyncStatusRepository(modelContainer: container)
         try? await syncRepo.markSyncing(domain: .historical, scopeId: SyncDomain.globalScope)
 
-        let service = CoinbaseHistoricalPriceService()
+        let service = RemoteHistoricalPriceService()
         let repo = HistoricalPriceRepository(modelContainer: container)
         let fiatCode = fiat
 
