@@ -284,6 +284,28 @@ struct RefreshPipelinePersistenceTests {
         #expect(after.nativeFiat == 5000)
     }
 
+    // MARK: - Pricing via the independent Render/neon price server
+
+    /// The app now reads prices ONLY from the Aperture price server (user
+    /// direction 2026-06-17). Verifies a fresh `TokenPricingEngine` (empty
+    /// cache, so no local fallback can mask it) prices core assets from the
+    /// server, in USD and in a non-USD currency (FX applied server-side).
+    @Test("TokenPricingEngine prices from the remote server (USD + EUR)")
+    func remotePricingFromServer() async throws {
+        let container = try makeContainer()
+        let engine = TokenPricingEngine(container: container)
+
+        let usd = await engine.unitPrices(symbols: ["BTC", "ETH", "USDC"], currencyCode: "USD")
+        #expect((usd["BTC"]?.amount ?? 0) > 0, "BTC unpriced from server")
+        #expect((usd["ETH"]?.amount ?? 0) > 0, "ETH unpriced from server")
+        #expect((usd["USDC"]?.amount ?? 0) > 0, "USDC unpriced from server")
+        #expect(usd["BTC"]?.source == "neon", "BTC price should be sourced from the server (got \(usd["BTC"]?.source ?? "nil"))")
+
+        // Non-USD: FX applied server-side, so EUR-BTC differs from USD-BTC.
+        let eur = await engine.unitPrices(symbols: ["BTC"], currencyCode: "EUR")
+        #expect((eur["BTC"]?.amount ?? 0) > 0, "BTC unpriced in EUR")
+    }
+
     // MARK: - Encryption (the user-chosen "encrypted key blob in DB" path)
 
     @Test("ChainKeyVault seals and opens a private key losslessly")

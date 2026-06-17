@@ -64,9 +64,11 @@ actor TokenPricingEngine {
         let isStale: Bool
     }
 
-    private let coinbase: CoinbasePriceService
-    private let coinGecko: CoinGeckoPriceService
-    private let fxService: FXRateService
+    /// The wallet's sole price source (2026-06-17). Replaces the in-app
+    /// Coinbase / CoinGecko / FX calls — all of those (with fallback) now
+    /// live on the independent Render price server, and the app reads only
+    /// from it. The local cache rungs below are the offline fallback.
+    private let remoteService: RemotePriceService
 
     /// Injected for tests; `nil` resolves lazily to
     /// `ApertureDatabase.shared.container` on first cache access.
@@ -77,14 +79,10 @@ actor TokenPricingEngine {
 
     init(
         container: ModelContainer? = nil,
-        coinbase: CoinbasePriceService = CoinbasePriceService(),
-        coinGecko: CoinGeckoPriceService = CoinGeckoPriceService(),
-        fxService: FXRateService = FXRateService()
+        remoteService: RemotePriceService = RemotePriceService()
     ) {
         self.injectedContainer = container
-        self.coinbase = coinbase
-        self.coinGecko = coinGecko
-        self.fxService = fxService
+        self.remoteService = remoteService
     }
 
     // MARK: - Public API
@@ -100,22 +98,17 @@ actor TokenPricingEngine {
 
         var resolved: [String: ResolvedPrice] = [:]
 
-        // Rung 1 — Coinbase USD batch + FX rate, concurrently. The
-        // batch is bounded inside `CoinbasePriceService` (8-wide
-        // chunks, 3 chunks in flight); `rate(fromUSDTo: "USD")`
-        // short-circuits to 1 without a network call.
-        async let usdPricesAsync = coinbase.prices(symbols: unique, fiat: "USD")
-        async let fxAsync = fxService.rate(fromUSDTo: code)
-        let usdPrices = await usdPricesAsync
-        let fxRate = await fxAsync
-
-        if let fxRate, fxRate > 0 {
-            for (symbol, price) in usdPrices where price.amount > 0 {
-                resolved[symbol.uppercased()] = ResolvedPrice(
-                    amount: price.amount * fxRate,
-                    source: "coinbase",
-                    isStale: false
-                )
+        // Rung 1 — the Aperture price server (neon-backed). ONE request
+        // returns every requested symbol already denominated in `code`
+        // (USD price × FX, computed server-side from several providers with
+        // fallback). This replaces the in-app Coinbase + CoinGecko + FX
+        // calls — the app's only price source. The local cache rungs below
+        // are the offline fallback for when the server is unreachable.
+        if !Task.isCancelled, let remote = await remoteService.prices(currency: code) {
+            for symbol in unique {
+                if let price = remote.prices[symbol], price > 0 {
+                    resolved[symbol] = ResolvedPrice(amount: price, source: "neon", isStale: false)
+                }
             }
         }
 
@@ -176,34 +169,11 @@ actor TokenPricingEngine {
             }
         }
 
-        // Rung 3 — CoinGecko, one batched call for everything still
-        // missing (first use of a currency + Coinbase down). Direct
-        // vs_currency value preferred; USD value × FX otherwise.
-        if !missing.isEmpty, !Task.isCancelled {
-            let quotes = await coinGecko.quotes(symbols: Array(missing), fiat: code)
-            for (symbol, quote) in quotes {
-                let upper = symbol.uppercased()
-                guard missing.contains(upper) else { continue }
-                let amount: Decimal?
-                if code == "USD" {
-                    amount = quote.usd
-                } else if let direct = quote.direct {
-                    amount = direct
-                } else if let usd = quote.usd, let fxRate, fxRate > 0 {
-                    amount = usd * fxRate
-                } else {
-                    amount = nil
-                }
-                if let amount, amount > 0 {
-                    resolved[upper] = ResolvedPrice(
-                        amount: amount,
-                        source: "coingecko",
-                        isStale: false
-                    )
-                    missing.remove(upper)
-                }
-            }
-        }
+        // Rung 3 — REMOVED (2026-06-17). The in-app CoinGecko price API is
+        // gone; the price server already aggregates CoinGecko + Coinbase +
+        // CryptoCompare with fallback. Anything the server didn't return is
+        // served from the local cache rungs (offline fallback) or the
+        // historical-close net below.
 
         // Rung 4 — **historical daily-close fallback (2026-06-13).**
         // The final net behind every live + cache + CoinGecko rung. The
@@ -299,8 +269,8 @@ actor TokenPricingEngine {
         let target = targetCode.uppercased()
         guard source != target else { return 1 }
         guard
-            let toTarget = await fxService.rate(fromUSDTo: target),
-            let toSource = await fxService.rate(fromUSDTo: source),
+            let toTarget = await remoteService.fxRate(currency: target),
+            let toSource = await remoteService.fxRate(currency: source),
             toSource > 0, toTarget > 0
         else {
             return nil
