@@ -55,12 +55,22 @@ final class ActiveWalletReader {
     private func activeWallet() -> WalletRecord? {
         let activeId = UserDefaults.standard.string(forKey: "activeWalletId") ?? ""
         let modelContext = ModelContext(ApertureDatabase.shared.container)
-        let descriptor = FetchDescriptor<WalletRecord>()
-        guard let wallets = try? modelContext.fetch(descriptor) else { return nil }
-        if !activeId.isEmpty,
-           let match = wallets.first(where: { $0.id.uuidString == activeId }) {
-            return match
+        // Targeted fetch (2026-06-17): a predicate + `fetchLimit 1` for
+        // the active id, falling back to a `fetchLimit 1` fetch. The old
+        // unbounded `fetch(FetchDescriptor())` materialized EVERY wallet
+        // on the main thread on every dApp address lookup — wasteful and
+        // a UI-hitch source. Matches `EVMDAppSigner.activeWallet()`.
+        if let activeUUID = UUID(uuidString: activeId) {
+            var descriptor = FetchDescriptor<WalletRecord>(
+                predicate: #Predicate { $0.id == activeUUID }
+            )
+            descriptor.fetchLimit = 1
+            if let match = (try? modelContext.fetch(descriptor))?.first {
+                return match
+            }
         }
-        return wallets.first
+        var fallback = FetchDescriptor<WalletRecord>()
+        fallback.fetchLimit = 1
+        return (try? modelContext.fetch(fallback))?.first
     }
 }

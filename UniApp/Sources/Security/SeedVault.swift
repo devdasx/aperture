@@ -26,7 +26,12 @@ import OSLog
 /// For v1 we keep the unlock simple: app-level PIN/biometric gates the
 /// wallet UI, individual seed reads succeed as long as the device is
 /// unlocked.
-@MainActor
+///
+/// **Concurrency (2026-06-17, Rule #28).** No longer `@MainActor` — like
+/// `MnemonicVault`, every member is a pure `static func` over Sendable
+/// inputs (AES-GCM + Keychain `SecItem*`, both thread-safe). Keeping it
+/// off the main actor lets the import/create commit encrypt and write key
+/// material on a background task so the UI never hitches.
 enum SeedVault {
     /// Keychain service name for ciphertext items.
     private static let cipherService = "com.thuglife.aperture.seed.cipher"
