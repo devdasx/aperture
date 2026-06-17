@@ -501,35 +501,21 @@ enum AboutInfo {
 // — visually consistent with the rest of Settings.
 struct PreferencesView: View {
     @AppStorage(HapticPreference.storageKey) private var hapticEnabled: Bool = HapticPreference.defaultValue
-    @AppStorage(PrivacyMaskPreference.storageKey) private var privacyMaskEnabled: Bool = PrivacyMaskPreference.defaultValue
-    @AppStorage(HideBalancesPreference.hideBalanceOnHomeKey) private var hideBalanceOnHome: Bool = false
-    @AppStorage(HideBalancesPreference.thresholdKey) private var hideSmallThreshold: Double = HideBalancesPreference.defaultThreshold
-    @AppStorage(CurrencyPreference.storageKey) private var currencyCode: String = CurrencyPreference.defaultCode
     /// Show transaction-history amounts in the user's local currency
     /// (default) vs. the native coin amount. Read by `ActivityRow` across
     /// every activity surface (2026-06-18 user direction).
     @AppStorage("txAmountsInLocalCurrency") private var txAmountsInLocalCurrency: Bool = true
+    // Privacy-mask / hide-balance-on-home / hide-small-balances rows were
+    // removed from this screen per user direction (2026-06-18). The
+    // underlying preferences still exist (the wallet-home reads its own
+    // @AppStorage for each, keeping whatever the user last set); they're
+    // simply no longer surfaced here.
 
     var body: some View {
         List {
             Section {
                 HapticToggleRow(isOn: $hapticEnabled)
                     .listRowBackground(UniColors.Background.secondary)
-
-                PrivacyMaskToggleRow(isOn: $privacyMaskEnabled)
-                    .listRowBackground(UniColors.Background.secondary)
-
-                HideBalanceToggleRow(isOn: $hideBalanceOnHome)
-                    .listRowBackground(UniColors.Background.secondary)
-
-                NavigationLink(value: SettingsDestination.hideSmallBalances) {
-                    SettingsRow(
-                        systemImage: "eye.slash.circle",
-                        title: "Hide small balances",
-                        trailing: LocalizedStringKey(HideBalancesPreference.option(for: hideSmallThreshold).label(currencyCode: currencyCode))
-                    )
-                }
-                .listRowBackground(UniColors.Background.secondary)
             }
 
             // Transaction-history amount display (2026-06-18). On (default)
