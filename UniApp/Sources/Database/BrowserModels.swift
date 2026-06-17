@@ -152,3 +152,100 @@ final class BrowserBookmarkRecord {
         self.addedAt = addedAt
     }
 }
+
+// MARK: - ConnectedDAppRecord
+
+/// One row per dApp the user has *actively connected* to via the in-app
+/// browser — an approved `eth_requestAccounts` (EVM) or Solana `connect`.
+/// Drives the "Connected dApps" section in `BrowserSettingsView`, shown
+/// as a union with live `WalletConnectClient.activeSessions`.
+///
+/// **Connection ≠ history (Rule #16).** A dApp in `BrowserHistoryRecord`
+/// is one the user *visited*; a dApp here is one the user *granted
+/// account access to*. These are distinct lifecycles and must never be
+/// conflated — visiting Uniswap doesn't mean Uniswap can read your
+/// address, only that you opened the page. A row exists here only after
+/// the user tapped "Connect" in `DAppConnectSheet` and
+/// `DAppRequestRouter.approveConnect(...)` ran.
+///
+/// **Composite uniqueness on `host`.** Re-connecting the same dApp
+/// updates the existing row (`connectedAt = now`, refreshes `name` /
+/// `iconURL` / `chainLabel`) rather than appending a duplicate — the
+/// same upsert-by-host shape as `BrowserHistoryRecord`. The in-memory
+/// `connectedHosts: Set<String>` in the router is keyed by host too, so
+/// the persisted row and the live allow-set stay one-to-one.
+///
+/// **Lifecycle.** Inserted/updated on connect; deleted on disconnect
+/// (the EVM session teardown, the Solana `disconnect` RPC, or the user's
+/// swipe-to-disconnect in settings). When the row is gone the dApp is no
+/// longer listed as connected — an honest reflection of the granted set.
+///
+/// **Privacy.** Like the rest of the browser models, this lives
+/// on-device only — no telemetry, no CloudKit sync. The store directory
+/// is excluded from backups (see `ApertureDatabase.defaultStoreURL()`),
+/// so a restored device starts with zero connected dApps and the user
+/// re-grants honestly.
+@Model
+final class ConnectedDAppRecord {
+    /// Stable identifier.
+    @Attribute(.unique) var id: UUID
+
+    /// Hostname — the "primary key" semantically. Duplicates by host
+    /// collapse into one row via the upsert in
+    /// `DAppRequestRouter.approveConnect(...)`. Matches the router's
+    /// `connectedHosts` set keying so the persisted row and the live
+    /// allow-set never drift.
+    @Attribute(.unique) var host: String
+
+    /// User-facing name — the page `<title>` reported when the user
+    /// connected, falling back to the host when the page hadn't titled
+    /// itself yet. Same human-readable-identity rationale as
+    /// `BrowserHistoryRecord.title`.
+    var name: String
+
+    /// Canonical URL the dApp connected from.
+    var url: String
+
+    /// Published favicon URL when one was known at connect time. `nil`
+    /// → the row renders the letter-chip fallback via
+    /// `BrowserFaviconView`.
+    var iconURL: String?
+
+    /// When the user last connected (or re-connected) this dApp.
+    var connectedAt: Date
+
+    /// Human-readable chain the connection was made on (e.g.
+    /// `"Ethereum"`, `"Solana"`) — `SupportedChain.displayName` at
+    /// connect time. Stored as a display string rather than a chain
+    /// rawValue because this surface only ever *shows* it; it never
+    /// needs to decode back to a `SupportedChain`.
+    var chainLabel: String
+
+    /// How the dApp connected — `"injected"` for the in-app browser's
+    /// EIP-1193 / Solana wallet-adapter bridge, reserved for
+    /// `"walletconnect"` should a future turn persist WC sessions here
+    /// too. Defaults to `"injected"` so this column is an additive
+    /// lightweight migration: any row written before the column existed
+    /// decodes the default.
+    var transport: String
+
+    init(
+        id: UUID = UUID(),
+        host: String,
+        name: String,
+        url: String,
+        iconURL: String? = nil,
+        connectedAt: Date = Date(),
+        chainLabel: String,
+        transport: String = "injected"
+    ) {
+        self.id = id
+        self.host = host
+        self.name = name
+        self.url = url
+        self.iconURL = iconURL
+        self.connectedAt = connectedAt
+        self.chainLabel = chainLabel
+        self.transport = transport
+    }
+}

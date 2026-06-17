@@ -175,6 +175,16 @@ struct BrowserSessionView: View {
             .presentationDragIndicator(.visible)
             .presentationBackground(UniColors.Background.primary)
         }
+        .task {
+            // Hand the router the SwiftData context so an approved
+            // connection (`eth_requestAccounts` / Solana `connect`)
+            // persists a `ConnectedDAppRecord`. The session view is the
+            // surface dApps actually run on, so its
+            // `@Environment(\.modelContext)` is the natural source — the
+            // sheet's `router.approveConnect(...)` call site stays
+            // unchanged.
+            router.setModelContext(modelContext)
+        }
         .onChange(of: liveURL) { _, newURL in
             // URL change is the one canonical "a visit happened"
             // signal — recording on title change too double-counted

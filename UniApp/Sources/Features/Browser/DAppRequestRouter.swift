@@ -1,5 +1,6 @@
 import Foundation
 import OSLog
+import SwiftData
 import SwiftUI
 
 /// Result of a dApp JSON-RPC call. `success` carries any
@@ -58,6 +59,17 @@ final class DAppRequestRouter {
     /// allowed set, `eth_accounts` returns the active wallet's address
     /// without prompting again.
     private var connectedHosts: Set<String> = []
+
+    /// SwiftData context for persisting in-app-browser connections to
+    /// `ConnectedDAppRecord`. Set once from the browser session view's
+    /// `.task` via `setModelContext(_:)` using its
+    /// `@Environment(\.modelContext)`. `nil` until then — every write
+    /// path guards on it, so an unset context degrades to the prior
+    /// in-memory-only behaviour (the connection still works for the
+    /// session; it just isn't surfaced in settings) rather than
+    /// crashing. `@ObservationIgnored` because the context is plumbing,
+    /// not view-observable state.
+    @ObservationIgnored private var modelContext: ModelContext?
 
     /// FIFO queue of awaiting requests. The head is the one currently
     /// presented via `pendingRequest`; later arrivals wait their turn
@@ -311,6 +323,7 @@ final class DAppRequestRouter {
             return await requestSolanaConnect(origin: origin)
         case "disconnect":
             connectedHosts.remove(origin.host)
+            removeConnection(host: origin.host)
             return .success(NSNull())
         case "signMessage":
             guard connectedHosts.contains(origin.host) else { return .failure(.unauthorized) }
@@ -377,10 +390,30 @@ final class DAppRequestRouter {
     // MARK: - User-side responses (called by confirmation sheets)
 
     /// Approve a pending `.connect` request. Adds the origin host to
-    /// the allowed set; returns the address (EVM channel) or
-    /// `{publicKey:...}` (Solana channel) via the continuation.
+    /// the allowed set, persists a `ConnectedDAppRecord` so the
+    /// connection survives app launches and surfaces in Browser
+    /// settings → "Connected dApps", then returns the address (EVM
+    /// channel) or `{publicKey:...}` (Solana channel) via the
+    /// continuation.
     func approveConnect(host: String, channel: ConnectChannel) {
         connectedHosts.insert(host)
+
+        // Persist the connection. The full origin (name / url / icon)
+        // lives on the currently-presented `.connect` request — read it
+        // back so the persisted row carries the dApp's human-readable
+        // identity, not just its host.
+        if case .connect(let request)? = pendingRequest, request.origin.host == host {
+            persistConnection(origin: request.origin, channel: channel)
+        } else {
+            // Defensive: approve was called without a matching presented
+            // request (shouldn't happen via the sheet). Still record a
+            // minimal row so the connection is honestly reflected.
+            persistConnection(
+                origin: DAppOrigin(host: host, url: "", title: host, iconURL: nil),
+                channel: channel
+            )
+        }
+
         let addr: any Sendable
         switch channel {
         case .evm:
@@ -472,6 +505,93 @@ final class DAppRequestRouter {
             guard pendingRequest == nil, let next = pendingQueue.first else { return }
             pendingRequest = next.request
         }
+    }
+
+    // MARK: - Connection persistence
+
+    /// Inject the SwiftData context the router persists connections
+    /// into. Called once from `BrowserSessionView`'s `.task` with its
+    /// `@Environment(\.modelContext)`. Idempotent — re-setting it to the
+    /// same container's context is harmless. Keeping the wiring here
+    /// (rather than threading a context parameter through every approve
+    /// path) is the least invasive shape: the sheet's
+    /// `router.approveConnect(host:channel:)` call site stays unchanged.
+    func setModelContext(_ context: ModelContext) {
+        modelContext = context
+    }
+
+    /// Upsert a `ConnectedDAppRecord` for an approved connection,
+    /// deduped by host: refresh the existing row's `connectedAt` /
+    /// `name` / `iconURL` / `chainLabel` if the host already has one,
+    /// else insert. Best-effort — a persistence failure must never turn
+    /// a successful connection into a user-visible error, so it's logged
+    /// and swallowed (the in-memory `connectedHosts` set already made
+    /// the connection live for this session).
+    private func persistConnection(origin: DAppOrigin, channel: ConnectChannel) {
+        guard let context = modelContext else { return }
+        let host = origin.host
+        let chainLabel: String
+        switch channel {
+        case .evm:    chainLabel = activeChain().displayName
+        case .solana: chainLabel = SupportedChain.solana.displayName
+        }
+        let descriptor = FetchDescriptor<ConnectedDAppRecord>(
+            predicate: #Predicate { $0.host == host }
+        )
+        do {
+            if let existing = try context.fetch(descriptor).first {
+                existing.name = origin.title
+                existing.url = origin.url
+                existing.iconURL = origin.iconURL
+                existing.connectedAt = Date()
+                existing.chainLabel = chainLabel
+            } else {
+                let record = ConnectedDAppRecord(
+                    host: host,
+                    name: origin.title,
+                    url: origin.url,
+                    iconURL: origin.iconURL,
+                    connectedAt: Date(),
+                    chainLabel: chainLabel,
+                    transport: "injected"
+                )
+                context.insert(record)
+            }
+            try context.save()
+        } catch {
+            log.error("Failed to persist dApp connection for \(host, privacy: .public): \(String(describing: error), privacy: .public)")
+        }
+    }
+
+    /// Delete the `ConnectedDAppRecord` for a host on disconnect. Used
+    /// by the Solana `disconnect` RPC path and by `disconnect(host:)`
+    /// (the settings swipe action). Best-effort; logged on failure.
+    private func removeConnection(host: String) {
+        guard let context = modelContext else { return }
+        let descriptor = FetchDescriptor<ConnectedDAppRecord>(
+            predicate: #Predicate { $0.host == host }
+        )
+        do {
+            for record in try context.fetch(descriptor) {
+                context.delete(record)
+            }
+            if context.hasChanges {
+                try context.save()
+            }
+        } catch {
+            log.error("Failed to remove dApp connection for \(host, privacy: .public): \(String(describing: error), privacy: .public)")
+        }
+    }
+
+    /// Disconnect an in-app-browser dApp by host — drops it from the
+    /// live allow-set AND deletes its persisted row. Called from the
+    /// "Connected dApps" swipe-to-disconnect in `BrowserSettingsView`
+    /// so the user can revoke a connection from settings, not only from
+    /// inside the dApp's own UI. After this, `eth_accounts` returns
+    /// `[]` for the host until the user re-connects.
+    func disconnect(host: String) {
+        connectedHosts.remove(host)
+        removeConnection(host: host)
     }
 
     // MARK: - Active wallet helpers
