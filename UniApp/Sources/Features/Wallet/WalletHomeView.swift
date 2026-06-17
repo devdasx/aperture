@@ -1604,10 +1604,13 @@ struct WalletHomeView: View {
                 .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: UniSpacing.xxs) {
-                Text(verbatim: row.symbol)
+                // 2026-06-17 — full NAME is the title, SHORT NAME (symbol)
+                // the subtitle (user direction; matches the asset pickers).
+                Text(verbatim: row.name)
                     .font(UniTypography.bodyEmphasized)
                     .foregroundStyle(UniColors.Text.primary)
-                Text(verbatim: row.chain.displayName)
+                    .lineLimit(1)
+                Text(verbatim: row.symbol)
                     .font(UniTypography.footnote)
                     .foregroundStyle(UniColors.Text.secondary)
                     .lineLimit(1)
