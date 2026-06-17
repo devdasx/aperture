@@ -50,6 +50,14 @@ struct WalletActivityView: View {
     @Query(sort: \TransactionRecord.occurredAt, order: .reverse)
     private var allTransactionRecords: [TransactionRecord]
     @AppStorage("activeWalletId") private var activeWalletIdRaw: String = ""
+    // Local-currency activity amounts (2026-06-18): spot prices feed
+    // `priceMap` (symbol → unit price in `currencyCode`).
+    @AppStorage(CurrencyPreference.storageKey) private var currencyCode: String = CurrencyPreference.defaultCode
+    @Query private var cachedPrices: [CachedPriceRecord]
+
+    private var priceMap: [String: Decimal] {
+        ActivityFiat.priceMap(cachedPrices, currency: currencyCode)
+    }
 
     /// Memoized newest-first feed. Rebuilt only when the feed key
     /// changes (wallet switch or a tx count change) — not per body pass.
@@ -207,7 +215,10 @@ struct WalletActivityView: View {
             tokenSymbol: tx.tokenSymbol,
             counterparty: tx.counterparty,
             occurredAt: tx.occurredAt,
-            status: TransactionStatus(rawValue: tx.statusRaw) ?? .confirmed
+            status: TransactionStatus(rawValue: tx.statusRaw) ?? .confirmed,
+            kind: tx.kind,
+            fiatValue: ActivityFiat.value(amountRaw: tx.amountRaw, symbol: tx.tokenSymbol, map: priceMap),
+            fiatCurrencyCode: currencyCode
         )
     }
 }

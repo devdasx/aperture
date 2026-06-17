@@ -491,6 +491,10 @@ struct PreferencesView: View {
     @AppStorage(HideBalancesPreference.hideBalanceOnHomeKey) private var hideBalanceOnHome: Bool = false
     @AppStorage(HideBalancesPreference.thresholdKey) private var hideSmallThreshold: Double = HideBalancesPreference.defaultThreshold
     @AppStorage(CurrencyPreference.storageKey) private var currencyCode: String = CurrencyPreference.defaultCode
+    /// Show transaction-history amounts in the user's local currency
+    /// (default) vs. the native coin amount. Read by `ActivityRow` across
+    /// every activity surface (2026-06-18 user direction).
+    @AppStorage("txAmountsInLocalCurrency") private var txAmountsInLocalCurrency: Bool = true
 
     var body: some View {
         List {
@@ -512,6 +516,34 @@ struct PreferencesView: View {
                     )
                 }
                 .listRowBackground(UniColors.Background.secondary)
+            }
+
+            // Transaction-history amount display (2026-06-18). On (default)
+            // shows the local-currency value; off shows the native coin
+            // amount. Read by `ActivityRow` everywhere it renders.
+            Section {
+                UniToggle(isOn: $txAmountsInLocalCurrency) {
+                    HStack(spacing: UniSpacing.s) {
+                        Image(systemName: "coloncurrencysign.circle")
+                            .font(.system(size: 18, weight: .regular))
+                            .foregroundStyle(UniColors.Icon.secondary)
+                            .frame(width: 28, alignment: .center)
+                            .accessibilityHidden(true)
+                        Text("Amounts in local currency")
+                            .font(UniTypography.body)
+                            .foregroundStyle(UniColors.Text.primary)
+                    }
+                }
+                .tint(UniColors.Button.primaryTint)
+                .padding(.vertical, UniSpacing.xxs)
+                .listRowBackground(UniColors.Background.secondary)
+            } header: {
+                Text("Transactions")
+            } footer: {
+                Text("Show transaction-history amounts in your local currency. Turn off to show the native coin amount instead.")
+                    .font(UniTypography.footnote)
+                    .foregroundStyle(UniColors.Text.tertiary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
         .listStyle(.insetGrouped)

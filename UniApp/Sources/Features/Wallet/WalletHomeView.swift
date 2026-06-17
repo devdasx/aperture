@@ -282,14 +282,6 @@ struct WalletHomeView: View {
             && allHeldRows.isEmpty
     }
 
-    /// Some chains reported, some didn't — the successful rows render
-    /// normally and one quiet footnote keeps the surface honest.
-    private var showsPartialNetworkFootnote: Bool {
-        refreshOutcomeAppliesToActiveWallet
-            && !refreshState.lastRefreshFailedChains.isEmpty
-            && !allHeldRows.isEmpty
-    }
-
     // MARK: - Long-press wallet switcher (the Telegram / Instagram pattern)
     //
     // 2026-06-09 — the long-press context menu lives on the toolbar
@@ -931,9 +923,6 @@ struct WalletHomeView: View {
             case .combined:
                 combinedSection
             }
-            if showsPartialNetworkFootnote {
-                partialNetworkFootnoteSection
-            }
         }
     }
 
@@ -1570,25 +1559,6 @@ struct WalletHomeView: View {
         }
     }
 
-    /// Partial-failure footnote — some chains reported, some didn't.
-    /// The successful rows render normally above; this single quiet
-    /// line keeps the surface honest without blocking anything. Pull
-    /// (or the next auto-refresh) retries the failed chains.
-    @ViewBuilder
-    private var partialNetworkFootnoteSection: some View {
-        Section {
-            UniFootnote(
-                text: "Some networks didn't respond — pull to retry.",
-                alignment: .center,
-                color: UniColors.Text.tertiary
-            )
-            .frame(maxWidth: .infinity)
-            .listRowBackground(Color.clear)
-            .listRowSeparator(.hidden)
-            .listRowInsets(EdgeInsets())
-        }
-    }
-
     // MARK: - Show all row
 
     /// "Show all" navigation row that lives at the foot of an
@@ -1999,7 +1969,10 @@ struct WalletHomeView: View {
                     tokenSymbol: tx.tokenSymbol,
                     counterparty: tx.counterparty,
                     occurredAt: tx.occurredAt,
-                    status: TransactionStatus(rawValue: tx.statusRaw) ?? .confirmed
+                    status: TransactionStatus(rawValue: tx.statusRaw) ?? .confirmed,
+                    kind: tx.kind,
+                    fiatValue: ActivityFiat.value(amountRaw: tx.amountRaw, symbol: tx.tokenSymbol, map: priceCacheMemo),
+                    fiatCurrencyCode: currencyCode
                 )
             }
             .buttonStyle(.plain)
