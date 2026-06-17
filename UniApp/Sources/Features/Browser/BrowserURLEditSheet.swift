@@ -70,11 +70,13 @@ struct BrowserURLEditSheet: View {
                     Button("Cancel") {
                         dismiss()
                     }
+                        .tint(UniColors.Button.text)
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Go") {
                         submit()
                     }
+                        .tint(UniColors.Button.text)
                     .fontWeight(.semibold)
                     .disabled(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }

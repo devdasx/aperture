@@ -75,7 +75,7 @@ struct SwapTokenPickerSheet: View {
             }
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    Button("Cancel") { dismiss() }
+                    Button("Cancel") { dismiss() }.tint(UniColors.Button.text)
                 }
             }
         }

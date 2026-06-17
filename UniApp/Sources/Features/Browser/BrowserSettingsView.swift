@@ -41,6 +41,7 @@ struct BrowserSettingsView: View {
                     Button("Done") {
                         dismiss()
                     }
+                        .tint(UniColors.Button.text)
                     .fontWeight(.semibold)
                 }
             }

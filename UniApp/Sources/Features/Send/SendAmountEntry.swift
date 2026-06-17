@@ -205,7 +205,7 @@ struct SendAmountHero: View {
                 Text(title)
                     .font(UniTypography.footnote.weight(.semibold))
             }
-            .foregroundStyle(isEnabled ? UniColors.Text.primary : UniColors.Text.disabled)
+            .foregroundStyle(isEnabled ? UniColors.Button.text : UniColors.Text.disabled)
             .padding(.horizontal, UniSpacing.s)
             .frame(height: 34)
             .contentShape(Capsule())

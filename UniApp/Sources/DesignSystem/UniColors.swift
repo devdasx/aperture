@@ -95,8 +95,9 @@ enum UniColors {
         static let onMedia = Color.white
         /// Text inverted against the system background (rare — splash, marketing surfaces).
         static let inverted = Color(uiColor: .systemBackground)
-        /// Link / actionable inline text.
-        static let link = Color.accentColor
+        /// Link / actionable inline text. Apple-blue (2026-06-17) so every
+        /// tappable-text affordance matches — see `UniColors.Button.text`.
+        static let link = Color(uiColor: .systemBlue)
 
         // Status text variants
         static let success = Color(uiColor: .systemGreen)
@@ -198,8 +199,23 @@ enum UniColors {
         static let destructiveLabel = Color.white
         static let destructiveTint = Color(uiColor: .systemRed)
 
-        /// Tertiary / inline text button.
-        static let tertiaryLabel = Color.accentColor
+        /// **Text button (Apple register).** The single Apple-standard
+        /// tappable-text color — iOS `systemBlue` (`#007AFF` light /
+        /// `#0A84FF` dark, adapts automatically). Per direct user direction
+        /// (2026-06-17): EVERY text button in the app reads in this blue —
+        /// "Show all", "View all", inline links, `.tertiary` `UniButton`s,
+        /// "Max" / "Paste" affordances, etc. This is the ONE place the app
+        /// deliberately steps off the monochrome brand (see `Brand` below):
+        /// a text button must read as tappable, and blue is the platform's
+        /// universal "this is a link / action" signal. Filled CTAs
+        /// (`.primary` / `.secondary` / `.destructive`) and system controls
+        /// (Toggle, Picker) stay on the monochrome accent — ONLY plain text
+        /// buttons go blue.
+        static let text = Color(uiColor: .systemBlue)
+
+        /// Tertiary / inline text button. Points at `Button.text` — the
+        /// Apple-blue text-button color (2026-06-17).
+        static let tertiaryLabel = Self.text
 
         /// Disabled state (any variant).
         static let disabledLabel = Color(uiColor: .tertiaryLabel)

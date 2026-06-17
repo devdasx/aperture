@@ -96,7 +96,7 @@ struct SwapView: View {
                 // root is a screen, not a dialog with a cancel affordance).
                 if isSheet {
                     ToolbarItem(placement: .topBarLeading) {
-                        Button("Close") { dismiss() }
+                        Button("Close") { dismiss() }.tint(UniColors.Button.text)
                     }
                 }
             }

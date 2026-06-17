@@ -180,6 +180,7 @@ struct MnemonicEntryView: View {
                 Button("Paste") {
                     pasteFromClipboard()
                 }
+                    .tint(UniColors.Button.text)
             }
         }
         .safeAreaInset(edge: .bottom) {
@@ -330,7 +331,7 @@ struct MnemonicEntryView: View {
                     Text("Paste")
                         .font(UniTypography.subheadline.weight(.semibold))
                 }
-                .foregroundStyle(UniColors.Tint.accent)
+                .foregroundStyle(UniColors.Button.text)
             }
             .buttonStyle(.plain)
         }

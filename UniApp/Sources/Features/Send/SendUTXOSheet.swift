@@ -27,10 +27,10 @@ struct SendUTXOSheet: View {
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
                     ToolbarItem(placement: .topBarLeading) {
-                        Button("Cancel") { dismiss() }
+                        Button("Cancel") { dismiss() }.tint(UniColors.Button.text)
                     }
                     ToolbarItem(placement: .topBarTrailing) {
-                        Button("Done") { apply(); dismiss() }
+                        Button("Done") { apply(); dismiss() }.tint(UniColors.Button.text)
                             .fontWeight(.semibold)
                     }
                 }

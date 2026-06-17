@@ -1720,7 +1720,7 @@ struct WalletHomeView: View {
             HStack(spacing: UniSpacing.s) {
                 Text("Show all")
                     .font(UniTypography.body)
-                    .foregroundStyle(UniColors.Text.primary)
+                    .foregroundStyle(UniColors.Button.text)
                 Spacer(minLength: UniSpacing.s)
             }
             .padding(.vertical, UniSpacing.xs)

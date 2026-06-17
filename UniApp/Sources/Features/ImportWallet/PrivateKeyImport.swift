@@ -86,6 +86,7 @@ struct PrivateKeyEntryView: View {
                         UIPasteboard.general.items = []
                     }
                 }
+                    .tint(UniColors.Button.text)
             }
         }
         .safeAreaInset(edge: .bottom) {

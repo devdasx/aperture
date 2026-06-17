@@ -404,7 +404,7 @@ struct OnboardingView: View {
             Button {
                 // TODO: (T-004) present Terms of Service
             } label: {
-                UniCaption(text: "Terms", color: UniColors.Text.secondary)
+                UniCaption(text: "Terms", color: UniColors.Button.text)
             }
             .buttonStyle(.plain)
 
@@ -413,7 +413,7 @@ struct OnboardingView: View {
             Button {
                 // TODO: (T-005) present Privacy Policy
             } label: {
-                UniCaption(text: "Privacy", color: UniColors.Text.secondary)
+                UniCaption(text: "Privacy", color: UniColors.Button.text)
             }
             .buttonStyle(.plain)
         }
