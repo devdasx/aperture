@@ -509,16 +509,19 @@ struct BalanceCardView: View {
                     .font(UniTypography.BalanceCard.amount)
                     .foregroundStyle(UniColors.BalanceCard.textMuted(colorScheme, boostContrast: boostContrast))
             } else {
-                // Off a zero baseline (funded during the window) the percent
-                // is undefined — suppress the pill and show the amount only
-                // (Bug 4). Otherwise the real per-range percent + arrow.
-                if !baselineIsZero {
-                    changePill(
-                        text: percentText,
-                        systemImage: sign == .up ? "arrow.up" : (sign == .down ? "arrow.down" : nil),
-                        sign: sign
-                    )
-                }
+                // The pill is ALWAYS present so the card never resizes when the
+                // user switches ranges (2026-06-19 fix). Off a zero baseline
+                // (funded during the window) the percent is undefined, so the
+                // pill reads "New" — no fabricated number, no arrow — instead
+                // of being hidden (which made the change row, and the whole
+                // card, shorter on those ranges).
+                changePill(
+                    text: percentText,
+                    systemImage: baselineIsZero
+                        ? nil
+                        : (sign == .up ? "arrow.up" : (sign == .down ? "arrow.down" : nil)),
+                    sign: sign
+                )
                 Text(verbatim: amountText)
                     .font(UniTypography.BalanceCard.amount)
                     .foregroundStyle(UniColors.BalanceCard.textMuted(colorScheme, boostContrast: boostContrast))
@@ -554,6 +557,10 @@ struct BalanceCardView: View {
     /// reads `0.00%` (paired with "No change") — never an em-dash, never a
     /// divide-by-zero.
     private var percentText: String {
+        // Off a zero baseline the percent is undefined (funded during the
+        // window) — show "New" rather than a fabricated/huge number. The pill
+        // stays present either way so the card height is constant across ranges.
+        if baselineIsZero { return String.apertureLocalized("New") }
         let pct = abs(changePercent)
         return String(format: "%.2f%%", pct)
     }
