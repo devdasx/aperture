@@ -401,21 +401,19 @@ struct OnboardingView: View {
         HStack(spacing: UniSpacing.xxs) {
             UniCaption(text: "By continuing, you agree to our")
 
-            Button {
-                // TODO: (T-004) present Terms of Service
-            } label: {
+            // T-004 / T-005 — open the live Terms / Privacy pages on
+            // aperturex.io in the system browser (the same canonical URLs
+            // Settings → About uses). `Link` is the native affordance for an
+            // external destination (Rule #19 §C) — no custom navigation.
+            Link(destination: ApertureWeb.termsURL) {
                 UniCaption(text: "Terms", color: UniColors.Button.text)
             }
-            .buttonStyle(.plain)
 
             UniCaption(text: "and")
 
-            Button {
-                // TODO: (T-005) present Privacy Policy
-            } label: {
+            Link(destination: ApertureWeb.privacyURL) {
                 UniCaption(text: "Privacy", color: UniColors.Button.text)
             }
-            .buttonStyle(.plain)
         }
     }
 }
