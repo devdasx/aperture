@@ -23,6 +23,9 @@ struct AssetNetworkDetailView: View {
     @AppStorage(CurrencyPreference.storageKey) private var currencyCode: String = CurrencyPreference.defaultCode
     // Local-currency activity amounts (2026-06-18).
     @Query private var cachedPrices: [CachedPriceRecord]
+    /// On-disk historical closes — drives the chart's then-price valuation
+    /// (same source the symbol-level screen + wallet home use).
+    @Query private var historicalPrices: [HistoricalPriceRecord]
 
     private var priceMap: [String: Decimal] {
         ActivityFiat.priceMap(cachedPrices, currency: currencyCode)
@@ -54,10 +57,13 @@ struct AssetNetworkDetailView: View {
     @State private var receivePath = NavigationPath()
     @State private var swapPath = NavigationPath()
 
+    /// Chart scrub → hero override, same as the symbol-level screen: while the
+    /// user drags the chart, the hero shows the touched point's value.
+    @State private var scrubModel = ChartScrubModel()
+
     var body: some View {
         List {
-            headerSection
-            balanceSection
+            heroCardSection
             actionsSection
             addressSection
             activitySection
@@ -202,29 +208,101 @@ struct AssetNetworkDetailView: View {
         "\(identity.symbol) on \(chain.displayName)"
     }
 
+    /// Flagship hero card — identity + scrub-aware balance + the
+    /// network-scoped balance-history chart, matching the symbol-level
+    /// `AssetDetailView.heroCardSection` layout (one inset-grouped card).
+    /// Everything here is scoped to THIS network: the balance, the chart's
+    /// transactions, and the held balance it reconstructs from.
     @ViewBuilder
-    private var headerSection: some View {
+    private var heroCardSection: some View {
         Section {
-            HStack(spacing: UniSpacing.s) {
+            // Row 1 — identity (80pt mark + name + ticker + this network).
+            HStack(spacing: UniSpacing.m) {
                 CoinMark(
                     chain: chain,
                     tokenSymbol: identity.symbol,
                     contract: networkRow?.contract
                 )
-                .frame(width: 56, height: 56)
+                .frame(width: 80, height: 80)
                 .accessibilityHidden(true)
 
                 VStack(alignment: .leading, spacing: UniSpacing.xxs) {
                     Text(verbatim: assetDisplayName)
-                        .font(UniTypography.bodyEmphasized)
+                        .font(UniTypography.title2)
                         .foregroundStyle(UniColors.Text.primary)
+                        .lineLimit(2)
+                        .minimumScaleFactor(0.7)
+                    Text(verbatim: identity.symbol)
+                        .font(UniTypography.subheadline)
+                        .foregroundStyle(UniColors.Text.secondary)
                     Text(verbatim: chain.displayName)
                         .font(UniTypography.footnote)
-                        .foregroundStyle(UniColors.Text.secondary)
+                        .foregroundStyle(UniColors.Text.tertiary)
                 }
                 Spacer(minLength: 0)
             }
             .padding(.vertical, UniSpacing.xxs)
+            .listRowSeparator(.hidden)
+            .listRowInsets(EdgeInsets(top: 24, leading: UniSpacing.m, bottom: 0, trailing: UniSpacing.m))
+
+            // Row 2 — hero fiat (scrub-aware) + native rollup.
+            VStack(spacing: 6) {
+                balanceHeroLabel
+                Text(rollupText)
+                    .font(UniTypography.subheadline)
+                    .foregroundStyle(UniColors.Text.secondary)
+                    .monospacedDigit()
+                    .environment(\.layoutDirection, .leftToRight)
+            }
+            .frame(maxWidth: .infinity)
+            .listRowSeparator(.hidden)
+            .listRowInsets(EdgeInsets(top: 12, leading: UniSpacing.m, bottom: 0, trailing: UniSpacing.m))
+
+            // Row 3 — the NETWORK-scoped balance history chart (+ period pills).
+            BalanceHistoryChart(
+                transactions: assetScopedTransactions,
+                currentBalances: networkBalances,
+                ownAddresses: Set(walletAddress.map { [$0.address.lowercased()] } ?? []),
+                priceCache: priceCacheBySymbol(for: currencyCode),
+                priceHistory: priceHistoryBySymbol(for: currencyCode),
+                currencyCode: currencyCode,
+                scrubModel: scrubModel
+            )
+            .listRowSeparator(.hidden)
+            .listRowInsets(EdgeInsets(top: 0, leading: UniSpacing.m, bottom: 24, trailing: UniSpacing.m))
+        }
+    }
+
+    /// Hero fiat label — shows the scrubbed point's value while dragging the
+    /// chart, otherwise this network's balance (honest fallbacks: "Price
+    /// unavailable" for a held-but-unpriced row, "Not held on …" otherwise).
+    @ViewBuilder
+    private var balanceHeroLabel: some View {
+        if let scrubbed = scrubModel.fiat {
+            Text(WalletFormatting.fiat(scrubbed, currencyCode: currencyCode))
+                .font(UniTypography.heroBalance)
+                .foregroundStyle(UniColors.Text.primary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.5)
+                .monospacedDigit()
+                .contentTransition(.numericText())
+                .environment(\.layoutDirection, .leftToRight)
+        } else if let fiat = networkRow?.fiatValue, fiat > 0 {
+            Text(WalletFormatting.fiat(fiat, currencyCode: networkRow?.fiatCurrencyCode ?? currencyCode))
+                .font(UniTypography.heroBalance)
+                .foregroundStyle(UniColors.Text.primary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.5)
+                .monospacedDigit()
+                .environment(\.layoutDirection, .leftToRight)
+        } else if let row = networkRow, row.isHeld {
+            Text("Price unavailable")
+                .font(UniTypography.title3)
+                .foregroundStyle(UniColors.Text.tertiary)
+        } else {
+            Text("Not held on \(chain.displayName)")
+                .font(UniTypography.title3)
+                .foregroundStyle(UniColors.Text.tertiary)
         }
     }
 
@@ -238,38 +316,43 @@ struct AssetNetworkDetailView: View {
         }
     }
 
-    // MARK: - Balance section
+    // MARK: - Chart data (network-scoped)
 
-    @ViewBuilder
-    private var balanceSection: some View {
-        Section {
-            VStack(spacing: 6) {
-                if let fiat = networkRow?.fiatValue, fiat > 0 {
-                    Text(WalletFormatting.fiat(fiat, currencyCode: networkRow?.fiatCurrencyCode ?? currencyCode))
-                        .font(UniTypography.heroBalance)
-                        .foregroundStyle(UniColors.Text.primary)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.5)
-                        .monospacedDigit()
-                } else if let row = networkRow, row.isHeld {
-                    Text("Price unavailable")
-                        .font(UniTypography.title3)
-                        .foregroundStyle(UniColors.Text.tertiary)
-                } else {
-                    Text("Not held on \(chain.displayName)")
-                        .font(UniTypography.title3)
-                        .foregroundStyle(UniColors.Text.tertiary)
-                }
-                Text(rollupText)
-                    .font(UniTypography.subheadline)
-                    .foregroundStyle(UniColors.Text.secondary)
-                    .monospacedDigit()
+    /// The held balance row(s) for THIS token on THIS network — the chart's
+    /// `currentBalances`. Native coins match the chain's ticker with no
+    /// contract; tokens match the symbol with a non-nil contract.
+    private var networkBalances: [TokenBalanceRecord] {
+        guard let balances = walletAddress?.balances else { return [] }
+        if identity.isNativeCoin {
+            return balances.filter {
+                $0.tokenContract == nil
+                    && $0.tokenSymbol.caseInsensitiveCompare(identity.symbol) == .orderedSame
             }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, UniSpacing.s)
-        } header: {
-            Text("Balance")
         }
+        return balances.filter {
+            $0.tokenContract != nil
+                && $0.tokenSymbol.caseInsensitiveCompare(identity.symbol) == .orderedSame
+        }
+    }
+
+    /// `[symbol-uppercased: price]` for `fiat` — the chart's cashed-out
+    /// fallback. Same shape as the symbol-level screen.
+    private func priceCacheBySymbol(for fiat: String) -> [String: Decimal] {
+        var out: [String: Decimal] = [:]
+        for row in cachedPrices where row.fiat == fiat {
+            out[row.symbol.uppercased()] = row.price
+        }
+        return out
+    }
+
+    /// `[symbol-uppercased: [yyyymmdd: close]]` for `fiat` — then-price
+    /// valuation for the chart.
+    private func priceHistoryBySymbol(for fiat: String) -> [String: [Int: Decimal]] {
+        var out: [String: [Int: Decimal]] = [:]
+        for row in historicalPrices where row.fiat == fiat {
+            out[row.symbol.uppercased(), default: [:]][row.dayKey] = row.price
+        }
+        return out
     }
 
     private var rollupText: String {
