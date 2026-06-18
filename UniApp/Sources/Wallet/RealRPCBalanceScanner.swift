@@ -141,7 +141,6 @@ struct RealRPCBalanceScanner: BalanceScanner {
             // currently selected (the 2026-06-13 currency-change
             // contract).
             let pricesTask = Task { [pricing] in
-                let priceToken = RefreshPerfLog.shared.start()
                 let symbols = Self.uniquePriceSymbols(
                     addresses: addresses,
                     customTokens: customTokens,
@@ -151,7 +150,6 @@ struct RealRPCBalanceScanner: BalanceScanner {
                     symbols: symbols,
                     currencyCode: currency.code
                 )
-                RefreshPerfLog.shared.end("price", "price batch (\(symbols.count) symbols)", since: priceToken)
                 return result
             }
             let task = Task {
@@ -159,13 +157,11 @@ struct RealRPCBalanceScanner: BalanceScanner {
                     for (chain, address) in addresses {
                         // Native balance task (one per chain).
                         group.addTask { [client] in
-                            let nativeToken = RefreshPerfLog.shared.start()
                             // Bound the per-chain native read so one slow chain
                             // can't stall the whole stream (and the spinner).
                             let summary = await withTimeout(2.0) {
                                 await Self.fetchNative(chain: chain, address: address, client: client)
                             } ?? nil
-                            RefreshPerfLog.shared.end("balance", "native \(chain.rawValue)\(summary == nil ? " — FAILED" : "")", since: nativeToken)
                             // Scan failure → no row; the refresh
                             // coordinator preserves the persisted
                             // balance via its markScanComplete path.
@@ -215,7 +211,6 @@ struct RealRPCBalanceScanner: BalanceScanner {
                         }
                         let customForChain = customTokens[chain] ?? []
                         group.addTask { [client] in
-                            let tokenToken = RefreshPerfLog.shared.start()
                             // Bound the per-chain token sweep too — rows yielded
                             // before the deadline are kept; a slow chain is
                             // abandoned instead of holding the stream open.
@@ -230,7 +225,6 @@ struct RealRPCBalanceScanner: BalanceScanner {
                                     yield: { row in continuation.yield(row) }
                                 )
                             }
-                            RefreshPerfLog.shared.end("balance", "tokens \(chain.rawValue)", since: tokenToken)
                         }
                     }
                 }

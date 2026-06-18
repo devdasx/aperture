@@ -116,29 +116,7 @@ actor RPCClient {
     ) async throws -> (Data, URLResponse) {
         let release = try await concurrencyGate.acquire(host: host)
         defer { release() }
-        // **Refresh latency log (2026-06-17).** Time the actual network
-        // round-trip per attempt and record host + HTTP status (or the
-        // error), so the diagnostics log shows exactly which provider /
-        // endpoint is slow and how retries stack up.
-        let token = RefreshPerfLog.shared.start()
-        do {
-            let result = try await session.data(for: request)
-            let status = (result.1 as? HTTPURLResponse)?.statusCode ?? 0
-            RefreshPerfLog.shared.end("rpc", "\(host) → HTTP \(status)", since: token)
-            return result
-        } catch {
-            RefreshPerfLog.shared.end("rpc", "\(host) → \(errorTag(error))", since: token)
-            throw error
-        }
-    }
-
-    /// Short tag for the diagnostics log — never includes response bodies
-    /// or any sensitive data, just the failure class.
-    private nonisolated func errorTag(_ error: any Error) -> String {
-        if (error as? URLError)?.code == .timedOut { return "timeout" }
-        if (error as? URLError)?.code == .cancelled || error is CancellationError { return "cancelled" }
-        if let urlError = error as? URLError { return "URLError(\(urlError.code.rawValue))" }
-        return "error"
+        return try await session.data(for: request)
     }
 
     // MARK: - JSON-RPC
