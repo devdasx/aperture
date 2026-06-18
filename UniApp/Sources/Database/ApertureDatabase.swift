@@ -288,6 +288,27 @@ final class ApertureDatabase {
                 self.log.error("Asset-catalog seed failed: \(String(describing: error), privacy: .public)")
             }
 
+            // 2026-06-18 — historical-price UTC day-key migration (Part 4.4).
+            // Existing `HistoricalPriceRecord` rows were keyed with the device-
+            // LOCAL day; the chart now computes UTC day keys on BOTH storage and
+            // lookup, so the old rows would never match (and would mis-value the
+            // curve). Wipe once on upgrade — reproducible cache, re-fetched by
+            // the chart's ensure-loop with UTC keys. Version-gated so it runs
+            // exactly once; bump `currentHistoryVersion` to force a future
+            // re-fetch. (Fresh installs: stored version is 0, table is empty, so
+            // this is a harmless no-op that just stamps the version.)
+            let historyVersionKey = "aperture.historicalPriceCacheVersion"
+            let currentHistoryVersion = 1
+            if UserDefaults.standard.integer(forKey: historyVersionKey) < currentHistoryVersion {
+                do {
+                    try await HistoricalPriceRepository(modelContainer: self.container).clearAll()
+                    UserDefaults.standard.set(currentHistoryVersion, forKey: historyVersionKey)
+                    self.log.info("Historical-price cache wiped for UTC day-key migration (v\(currentHistoryVersion, privacy: .public)).")
+                } catch {
+                    self.log.error("Historical-price UTC migration wipe failed: \(String(describing: error), privacy: .public)")
+                }
+            }
+
             // 2026-06-13 — start the local-first settings sync
             // (Rule #27 §D). Seeds the authoritative AppSettingsRecord
             // from @AppStorage and keeps it live-synced. Main-actor;
