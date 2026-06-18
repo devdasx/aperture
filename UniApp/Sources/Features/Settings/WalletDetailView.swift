@@ -39,6 +39,8 @@ struct WalletDetailView: View {
     @State private var isShowingDeleteConfirm: Bool = false
     @State private var isShowingPhrase: Bool = false
     @State private var isShowingKey: Bool = false
+    /// Presents `ChainKeysRevealSheet` — the per-chain private-key export.
+    @State private var isShowingChainKeys: Bool = false
     @State private var isShowingBackupFlow: Bool = false
     @State private var isShowingIconPicker: Bool = false
     @State private var biometricChallenge: BiometricChallenge?
@@ -231,6 +233,20 @@ struct WalletDetailView: View {
                         .foregroundStyle(UniColors.Text.tertiary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
+
+                // Per-chain private-key export (2026-06-19). Derives each
+                // network's key from the wallet's stored secret — EVM hex,
+                // Bitcoin-family WIF, Solana base58, raw key for the rest.
+                Section {
+                    viewChainKeysRow(wallet)
+                } header: {
+                    Text("Private keys").font(UniTypography.footnote).foregroundStyle(UniColors.Text.tertiary)
+                } footer: {
+                    Text("See the private key for every network this wallet holds — EVM keys, Bitcoin/Litecoin/Dogecoin WIF, Solana, and the rest. Each one controls the funds on its address; never share them.")
+                        .font(UniTypography.footnote)
+                        .foregroundStyle(UniColors.Text.tertiary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
 
             // Custom tokens — Aperture reads what the contract says
@@ -295,6 +311,15 @@ struct WalletDetailView: View {
                 .uniAppEnvironment()
                 .uniSheetDetents([.large])
                 .presentationBackground(UniColors.Background.primary)
+        }
+        .sheet(isPresented: $isShowingChainKeys) {
+            ChainKeysRevealSheet(
+                descriptor: WalletDescriptor(record: wallet),
+                chains: chainEntries(wallet)
+            )
+            .uniAppEnvironment()
+            .uniSheetDetents([.large])
+            .presentationBackground(UniColors.Background.primary)
         }
         .sheet(isPresented: $isShowingBackupFlow) {
             // The `BackupExistingWalletFlow` reads the stored mnemonic
@@ -479,6 +504,65 @@ struct WalletDetailView: View {
         .buttonStyle(.plain)
         .disabled(!hasKey)
         .listRowBackground(UniColors.Background.secondary)
+    }
+
+    /// "View private keys" — the per-chain export row. Enabled iff a usable
+    /// secret is stored on this device (the mnemonic for created / phrase
+    /// wallets, the key string for key wallets); a legacy wallet whose secret
+    /// wasn't kept shows it disabled, with the footer naming why. Same
+    /// biometric gate as the phrase / single-key reveals.
+    private func viewChainKeysRow(_ wallet: WalletRecord) -> some View {
+        let hasSecret = MnemonicVault.hasMnemonic(for: wallet.id)
+            || MnemonicVault.hasPrivateKey(for: wallet.id)
+        return Button {
+            guard hasSecret else { return }
+            if biometricEnabled {
+                biometricChallenge = BiometricChallenge(
+                    reason: LocalizedStringResource("Confirm to view your private keys."),
+                    onSuccess: {
+                        biometricChallenge = nil
+                        isShowingChainKeys = true
+                    }
+                )
+            } else {
+                isShowingChainKeys = true
+            }
+        } label: {
+            HStack(spacing: UniSpacing.s) {
+                Image(systemName: "key.horizontal")
+                    .font(.system(size: 17, weight: .regular))
+                    .foregroundStyle(hasSecret ? UniColors.Icon.accent : UniColors.Icon.disabled)
+                    .frame(width: 28)
+                Text("View private keys")
+                    .font(UniTypography.body)
+                    .foregroundStyle(hasSecret ? UniColors.Text.primary : UniColors.Text.disabled)
+                Spacer()
+                if hasSecret {
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(UniColors.Icon.tertiary)
+                }
+            }
+            .padding(.vertical, UniSpacing.xxs)
+        }
+        .buttonStyle(.plain)
+        .disabled(!hasSecret)
+        .listRowBackground(UniColors.Background.secondary)
+    }
+
+    /// The distinct chains this wallet holds, each paired with its address,
+    /// for the per-chain key export. Deduped by chain (first address wins),
+    /// sorted by display name for a stable list.
+    private func chainEntries(_ wallet: WalletRecord) -> [ChainKeysRevealSheet.ChainEntry] {
+        var seen: Set<SupportedChain> = []
+        var entries: [ChainKeysRevealSheet.ChainEntry] = []
+        for address in wallet.addresses {
+            guard let chain = SupportedChain(rawValue: address.chainRaw),
+                  !seen.contains(chain) else { continue }
+            seen.insert(chain)
+            entries.append(ChainKeysRevealSheet.ChainEntry(chain: chain, address: address.address))
+        }
+        return entries.sorted { $0.chain.displayName.localizedStandardCompare($1.chain.displayName) == .orderedAscending }
     }
 
     private func deleteRow(_ wallet: WalletRecord) -> some View {
