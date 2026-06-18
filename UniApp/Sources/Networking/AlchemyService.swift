@@ -36,6 +36,20 @@ actor AlchemyService {
     private var tokenCache: [String: CachedTokens] = [:]
     private let cacheTTL: TimeInterval = 8
 
+    /// Prefetch entries live longer than a single-network read so the ONE
+    /// batched call (warmed at refresh start) serves EVERY per-chain read in
+    /// that refresh's concurrent balance scan — comfortably longer than one
+    /// refresh's balance phase, but shorter than the 30 s auto-refresh
+    /// interval, so a FAILED prefetch on a later refresh can't serve
+    /// cross-refresh stale data (the prior entries have expired; the per-chain
+    /// reads then miss and fetch individually, preserving the honest-degrade
+    /// contract). Every refresh re-prefetches, overwriting these.
+    static let prefetchCacheTTL: TimeInterval = 20
+
+    /// Bounded pagination — a pathological wallet (or a misbehaving upstream)
+    /// must never loop unbounded following `pageKey`.
+    static let maxPages = 20
+
     init() {
         let config = URLSessionConfiguration.default
         config.httpMaximumConnectionsPerHost = 6
@@ -84,38 +98,132 @@ actor AlchemyService {
         guard let url = URL(string: "\(Self.restBase)/\(key)/assets/tokens/by-address") else {
             throw .invalidResponse("bad Alchemy tokens URL")
         }
-        let body: [String: Any] = [
-            "addresses": [["address": address, "networks": [network]]],
-            "withMetadata": true,
-            "withPrices": false,
-            "includeNativeTokens": true,
-            "includeErc20Tokens": true,
-        ]
-        let data = try await postJSON(url: url, body: body, network: network)
-        let tokens = Self.parseTokens(data)
-        tokenCache[cacheKey] = CachedTokens(expires: Date().addingTimeInterval(cacheTTL), tokens: tokens)
-        return tokens
+
+        // **Pagination (B1 fix, 2026-06-18).** Follow `data.pageKey` until it's
+        // absent so a wallet whose holdings span more than one page loads ALL
+        // of them — the old code read page 1 and silently dropped the overflow.
+        // Bounded by `maxPages` so a misbehaving upstream can't loop forever.
+        var all: [Token] = []
+        var pageKey: String?
+        var pages = 0
+        repeat {
+            var body: [String: Any] = [
+                "addresses": [["address": address, "networks": [network]]],
+                "withMetadata": true,
+                "withPrices": false,
+                "includeNativeTokens": true,
+                "includeErc20Tokens": true,
+            ]
+            if let pk = pageKey { body["pageKey"] = pk }
+            let data = try await postJSON(url: url, body: body, network: network)
+            all.append(contentsOf: Self.parseTokens(data))
+            pageKey = Self.restPageKey(from: data)
+            pages += 1
+        } while pageKey != nil && pages < Self.maxPages
+
+        tokenCache[cacheKey] = CachedTokens(expires: Date().addingTimeInterval(cacheTTL), tokens: all)
+        return all
     }
 
-    private static func parseTokens(_ data: Data) -> [Token] {
+    /// **ONE batched Portfolio call for many networks/addresses (Task 1 — the
+    /// headline speedup, B3 fix).** The Portfolio API accepts ARRAYS of both
+    /// `addresses` and per-address `networks`, so a 10-chain wallet's balances
+    /// come back in ONE request instead of one POST per chain. The grouped
+    /// response is written into `tokenCache`, so the per-chain
+    /// `AlchemyConnector` reads that run immediately after (each calling
+    /// `tokens(network:address:)`) hit the warm cache with zero extra I/O.
+    ///
+    /// **Honest degrade.** On any failure this returns WITHOUT warming the
+    /// cache, so the per-chain reads miss and each fetches individually —
+    /// exactly the pre-batch behavior. Fast path when it works, graceful
+    /// fallback when it doesn't. The `ChainConnector` abstraction is untouched.
+    func prefetchBalances(networks: [String], addresses: [String]) async {
+        let key = Secrets.alchemyAPIKey
+        guard !key.isEmpty, !networks.isEmpty, !addresses.isEmpty,
+              let url = URL(string: "\(Self.restBase)/\(key)/assets/tokens/by-address") else { return }
+
+        let addressEntries = addresses.map { ["address": $0, "networks": networks] }
+        var grouped: [String: [Token]] = [:]
+        var pageKey: String?
+        var pages = 0
+        repeat {
+            var body: [String: Any] = [
+                "addresses": addressEntries,
+                "withMetadata": true,
+                "withPrices": false,
+                "includeNativeTokens": true,
+                "includeErc20Tokens": true,
+            ]
+            if let pk = pageKey { body["pageKey"] = pk }
+            guard let data = try? await postJSON(url: url, body: body, network: "batch") else {
+                return  // honest degrade — leave the cache cold; per-chain falls back
+            }
+            for (k, v) in Self.groupBatchedRows(data) {
+                grouped[k, default: []].append(contentsOf: v)
+            }
+            pageKey = Self.restPageKey(from: data)
+            pages += 1
+        } while pageKey != nil && pages < Self.maxPages
+
+        // Warm the cache for EVERY requested (network,address) — including the
+        // empty slices, so a chain the wallet holds nothing on caches `[]` and
+        // doesn't trigger a redundant individual fetch this refresh.
+        let expires = Date().addingTimeInterval(Self.prefetchCacheTTL)
+        for net in networks {
+            for addr in addresses {
+                let ck = "\(net)|\(addr.lowercased())"
+                tokenCache[ck] = CachedTokens(expires: expires, tokens: grouped[ck] ?? [])
+            }
+        }
+    }
+
+    /// Map one `tokens/by-address` row to a `Token`. Shared by the
+    /// single-network parse and the batched group so both parse identically.
+    /// Native coin = `tokenAddress: null` → `contract == nil`.
+    static func tokenFromRow(_ row: [String: Any]) -> Token? {
+        guard let rawHex = row["tokenBalance"] as? String else { return nil }
+        let contract = row["tokenAddress"] as? String   // null → native
+        let meta = row["tokenMetadata"] as? [String: Any]
+        return Token(
+            contract: contract,
+            rawBalanceHex: rawHex,
+            symbol: meta?["symbol"] as? String,
+            name: meta?["name"] as? String,
+            decimals: meta?["decimals"] as? Int
+        )
+    }
+
+    static func parseTokens(_ data: Data) -> [Token] {
         guard let root = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
               let dataObj = root["data"] as? [String: Any],
               let rows = dataObj["tokens"] as? [[String: Any]] else { return [] }
-        var out: [Token] = []
-        out.reserveCapacity(rows.count)
+        return rows.compactMap(tokenFromRow)
+    }
+
+    /// Group a batched response's rows by `"network|address"` (address
+    /// lowercased — the `tokenCache` key shape). Pure; `prefetchBalances` does
+    /// the cache write.
+    static func groupBatchedRows(_ data: Data) -> [String: [Token]] {
+        guard let root = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
+              let dataObj = root["data"] as? [String: Any],
+              let rows = dataObj["tokens"] as? [[String: Any]] else { return [:] }
+        var grouped: [String: [Token]] = [:]
         for row in rows {
-            guard let rawHex = row["tokenBalance"] as? String else { continue }
-            let contract = row["tokenAddress"] as? String   // null → native
-            let meta = row["tokenMetadata"] as? [String: Any]
-            out.append(Token(
-                contract: contract,
-                rawBalanceHex: rawHex,
-                symbol: meta?["symbol"] as? String,
-                name: meta?["name"] as? String,
-                decimals: meta?["decimals"] as? Int
-            ))
+            guard let net = row["network"] as? String,
+                  let addr = row["address"] as? String,
+                  let token = tokenFromRow(row) else { continue }
+            grouped["\(net)|\(addr.lowercased())", default: []].append(token)
         }
-        return out
+        return grouped
+    }
+
+    /// The REST continuation key (`data.pageKey`), or `nil` when absent/empty
+    /// (no more pages remain).
+    static func restPageKey(from data: Data) -> String? {
+        guard let root = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
+              let dataObj = root["data"] as? [String: Any],
+              let pk = dataObj["pageKey"] as? String, !pk.isEmpty else { return nil }
+        return pk
     }
 
     // MARK: - History (getAssetTransfers, sent + received)
@@ -151,7 +259,12 @@ actor AlchemyService {
     ) async throws(RPCError) -> [Transfer] {
         let params: [String: Any] = [
             addressKey: address,
-            "category": ["external", "erc20"],
+            // H2: include `internal` — contract-initiated native moves (exchange
+            // withdrawals, bridge payouts, DEX native-out) live here on
+            // Ethereum/Polygon; omitting it hid real history at no saving.
+            // NFTs (`erc721`/`erc1155`) are deliberately excluded — this is the
+            // fungibles view; NFT history is a separate feature.
+            "category": ["external", "internal", "erc20"],
             "maxCount": cap,
             "order": "desc",
             "withMetadata": true,
@@ -159,12 +272,25 @@ actor AlchemyService {
         ]
         let body: [String: Any] = ["jsonrpc": "2.0", "id": 1, "method": "alchemy_getAssetTransfers", "params": [params]]
         let data = try await postJSON(url: url, body: body, network: network)
-        return Self.parseTransfers(data)
+        return try Self.parseTransfers(data)
     }
 
-    private static func parseTransfers(_ data: Data) -> [Transfer] {
-        guard let root = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
-              let result = root["result"] as? [String: Any],
+    static func parseTransfers(_ data: Data) throws(RPCError) -> [Transfer] {
+        guard let root = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else {
+            throw .invalidResponse("unparseable getAssetTransfers body")
+        }
+        // **H1 fix — JSON-RPC errors arrive at HTTP 200 with an `error` object.**
+        // The old parser keyed off `result` only, so an error body silently
+        // returned `[]` and surfaced as "no transactions" with zero signal.
+        // Detect it and THROW so the coordinator can tell "errored" from
+        // "no history" (and so a real error isn't buried as an empty list).
+        if let err = root["error"] as? [String: Any] {
+            if (err["code"] as? Int) == 429 {
+                throw .rateLimited(retryAfter: Date().addingTimeInterval(2))
+            }
+            throw .invalidResponse("getAssetTransfers error: \((err["message"] as? String) ?? "unknown")")
+        }
+        guard let result = root["result"] as? [String: Any],
               let rows = result["transfers"] as? [[String: Any]] else { return [] }
         var out: [Transfer] = []
         out.reserveCapacity(rows.count)
@@ -175,16 +301,17 @@ actor AlchemyService {
             let category = (row["category"] as? String) ?? "external"
             let raw = row["rawContract"] as? [String: Any]
             let contract = raw?["address"] as? String   // null for native
-            // Prefer the exact raw value / decimals; fall back to the
-            // already-adjusted `value` number for native rows.
+            // Prefer the EXACT raw value / decimals. Fall back to the
+            // already-adjusted `value` number ONLY via `NSNumber.decimalValue`
+            // — never `Decimal(Double)` (H3: money never routes through Double).
+            // JSONSerialization yields every JSON number as `NSNumber`, so this
+            // single branch covers what the old Double + NSNumber branches did.
             var amount = Decimal(0)
             if let rawValueHex = raw?["value"] as? String,
                let rawDecHex = raw?["decimal"] as? String,
                let rawValue = decimalFromHex(rawValueHex),
                let dec = Int((rawDecHex.hasPrefix("0x") ? String(rawDecHex.dropFirst(2)) : rawDecHex), radix: 16) {
                 amount = rawValue / pow10(dec)
-            } else if let v = row["value"] as? Double {
-                amount = Decimal(v)
             } else if let v = row["value"] as? NSNumber {
                 amount = v.decimalValue
             }
@@ -247,13 +374,19 @@ actor AlchemyService {
         var hex = hexString
         if hex.hasPrefix("0x") || hex.hasPrefix("0X") { hex.removeFirst(2) }
         if hex.isEmpty { return .zero }
+        // **B5 guard.** A full uint256 is 64 hex chars (~78 decimal digits) —
+        // far past Decimal's 38-significant-digit capacity, where the
+        // accumulation below overflows to NaN. Reject over-long input up front,
+        // and NaN-check the result, so a pathological raw balance returns nil
+        // (the caller drops the row) instead of a silently-corrupt amount.
+        guard hex.count <= 64 else { return nil }
         var result = Decimal(0)
         let sixteen = Decimal(16)
         for char in hex {
             guard let digit = char.hexDigitValue else { return nil }
             result = result * sixteen + Decimal(digit)
         }
-        return result
+        return result.isNaN ? nil : result
     }
 
     static func pow10(_ n: Int) -> Decimal {

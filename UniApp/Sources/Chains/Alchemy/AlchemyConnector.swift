@@ -70,8 +70,18 @@ struct AlchemyConnector: ChainConnector {
 
     func fetchNativeBalance(address: String) async throws(RPCError) -> ChainAccountSummary {
         let tokens = try await service.tokens(network: networkSlug, address: address)
-        let native = tokens.first(where: { $0.isNative })
-        let raw = native.flatMap { AlchemyService.decimalFromHex($0.rawBalanceHex) } ?? 0
+        // **B2 fix.** A genuine zero native balance arrives as a PRESENT native
+        // row with `tokenBalance: "0x0"` (Portfolio includes the native coin
+        // when `includeNativeTokens: true`) → balance 0, honestly shown. But an
+        // ABSENT native row (or undecodable hex) is an API anomaly, NOT a zero:
+        // the old `?? 0` returned a real-looking $0 with `isUsed:false`, which
+        // the coordinator upserted OVER the user's last-known balance — a funded
+        // wallet could flash to zero. Throw instead, so the scanner's catch
+        // keeps the last-known balance (it maps a thrown read to "no row").
+        guard let native = tokens.first(where: { $0.isNative }),
+              let raw = AlchemyService.decimalFromHex(native.rawBalanceHex) else {
+            throw .invalidResponse("native row absent for \(networkSlug)")
+        }
         let balance = raw / AlchemyService.pow10(Self.nativeDecimals)
         return ChainAccountSummary(nativeBalance: balance, isUsed: balance > 0)
     }
