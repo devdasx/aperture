@@ -88,26 +88,36 @@ enum FreshInstallGuard {
     /// (`ResetCompletenessTests`). Never used by production code.
     static var knownServicesForAudit: [String] { knownServices }
 
-    /// Every Keychain class Aperture touches across the services
-    /// above. Today everything is `kSecClassGenericPassword`; the
-    /// list is kept open in case a future vault uses a different
-    /// class (`kSecClassKey`, `kSecClassCertificate`). A wipe loops
-    /// across every (class, service) pair to be safe.
+    /// The Keychain classes Aperture's wipe covers, split by HOW they must be
+    /// queried.
     ///
-    /// **Concurrency note.** `CFString` is a reference type — Swift
-    /// 6's strict-concurrency checker won't accept it as `Sendable`
-    /// in a `static let`. The values here are Apple-defined
-    /// constants (immutable at runtime), so we expose them via a
-    /// nonisolated computed property that re-reads each call. Same
-    /// observable behavior; no shared mutable state crossing
+    /// **Why split (2026-06-18 fix).** `kSecAttrService` is an attribute of the
+    /// PASSWORD classes only. Passing it in a delete query for `kSecClassKey` /
+    /// `kSecClassCertificate` / `kSecClassIdentity` returns `errSecNoSuchAttr`
+    /// (-25303) — the harmless-but-noisy warning the user saw, logged once per
+    /// non-password class per service (3× per service). The old code looped all
+    /// four classes per service, so those three NEVER actually matched anything
+    /// AND logged an error every time. Now: password classes are deleted
+    /// PRECISELY by service; the other classes get one CLASS-WIDE delete each
+    /// (no `kSecAttrService`). Today every Aperture vault uses
+    /// `kSecClassGenericPassword`, so the class-wide deletes are harmless
+    /// no-ops (`errSecItemNotFound`) that keep the wipe complete should a future
+    /// vault adopt a key/cert class — without the invalid-attribute noise.
+    ///
+    /// **Concurrency note.** `CFString` is a reference type — Swift 6's
+    /// strict-concurrency checker won't accept it as `Sendable` in a
+    /// `static let`. These are Apple-defined constants (immutable at runtime),
+    /// so we expose them via nonisolated computed properties that re-read each
+    /// call. Same observable behavior; no shared mutable state crossing
     /// isolation boundaries.
-    private static var knownClasses: [CFString] {
-        [
-            kSecClassGenericPassword,
-            kSecClassKey,
-            kSecClassCertificate,
-            kSecClassIdentity,
-        ]
+    private static var serviceScopedClasses: [CFString] {
+        // Password classes carry a `kSecAttrService` attribute → delete by service.
+        [kSecClassGenericPassword, kSecClassInternetPassword]
+    }
+
+    private static var classWideOnlyClasses: [CFString] {
+        // No `kSecAttrService` attribute → one class-wide delete each instead.
+        [kSecClassKey, kSecClassCertificate, kSecClassIdentity]
     }
 
     private static let log = Logger(
@@ -125,11 +135,14 @@ enum FreshInstallGuard {
             return false
         }
 
-        log.log("Fresh install detected — purging Keychain items for \(knownServices.count, privacy: .public) known services across \(knownClasses.count, privacy: .public) classes")
+        log.log("Fresh install detected — purging Keychain items for \(knownServices.count, privacy: .public) known services")
 
         var deletedCount = 0
+
+        // 1) Password items — deleted PRECISELY, one query per (service, class).
+        //    Only password classes accept the `kSecAttrService` match attribute.
         for serviceName in knownServices {
-            for secClass in knownClasses {
+            for secClass in serviceScopedClasses {
                 let query: [String: Any] = [
                     kSecClass as String: secClass,
                     kSecAttrService as String: serviceName,
@@ -138,16 +151,30 @@ enum FreshInstallGuard {
                 switch status {
                 case errSecSuccess:
                     deletedCount += 1
-                    log.log("Deleted Keychain items for service \(serviceName, privacy: .public) class \(String(describing: secClass), privacy: .public)")
+                    log.log("Deleted Keychain items for service \(serviceName, privacy: .public)")
                 case errSecItemNotFound:
-                    // Nothing to delete for this (class, service) — fine.
+                    // Nothing stored for this (service, class) — fine.
                     break
                 default:
-                    // Don't propagate — a single class/service failure shouldn't
-                    // block subsequent ones. The user already wanted a wipe;
-                    // best-effort is honest about partial coverage.
+                    // Best-effort: a single failure shouldn't block the rest.
                     log.error("SecItemDelete failed for service \(serviceName, privacy: .public): OSStatus \(status, privacy: .public)")
                 }
+            }
+        }
+
+        // 2) Non-password classes — one CLASS-WIDE delete each (NO
+        //    `kSecAttrService`, which they don't have → would return -25303).
+        //    A harmless no-op today (no vault uses these); present so the wipe
+        //    stays complete if a future vault ever adopts a key/cert class.
+        for secClass in classWideOnlyClasses {
+            let status = SecItemDelete([kSecClass as String: secClass] as CFDictionary)
+            switch status {
+            case errSecSuccess:
+                deletedCount += 1
+            case errSecItemNotFound:
+                break
+            default:
+                log.error("SecItemDelete (class-wide) failed for class \(String(describing: secClass), privacy: .public): OSStatus \(status, privacy: .public)")
             }
         }
 
@@ -155,7 +182,7 @@ enum FreshInstallGuard {
         // (extremely unlikely on a sync call from init), next launch
         // will re-wipe — which is idempotent on an empty Keychain.
         UserDefaults.standard.set(true, forKey: installedMarkerKey)
-        log.log("Fresh-install Keychain purge complete — \(deletedCount, privacy: .public) (class, service) tuples cleared, marker set")
+        log.log("Fresh-install Keychain purge complete — \(deletedCount, privacy: .public) entries cleared, marker set")
         return true
     }
 
