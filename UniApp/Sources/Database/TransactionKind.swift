@@ -18,7 +18,15 @@ import Foundation
 /// three axes: sending = `direction == .outgoing`, receiving =
 /// `direction == .incoming`, failed = `status == .failed`,
 /// swap / bridge / self = `kind`.
-// TODO: (T-067) Swap / bridge classification — the chain adapters emit only direction today, so every non-self transfer persists as `.transfer` until router/bridge contract recognition lands. See TODO.md.
+// **Swap / bridge classification (T-067, done 2026-06-18).** The chain
+// adapters still emit only direction, so `TransactionRepository.classifyKind`
+// recognizes swap/bridge legs by their counterparty: a transfer whose other
+// party is a known `SwapRouterAllowlist` router resolves to `.swap` (DEX
+// aggregator / LI.FI Diamond) or `.bridge` (dedicated cross-chain router).
+// A nil-kind re-scan UPGRADES a generic `.transfer` to its real class but
+// never downgrades an explicit one, so past activity relabels on the next
+// scan. Only curated allowlist addresses classify — an ordinary send/receive
+// is never mislabeled (Rule #16).
 enum TransactionKind: String, Codable, CaseIterable, Sendable {
     /// Plain value transfer (send / receive). The default for every
     /// non-`.internal` leg until an adapter classifies otherwise.

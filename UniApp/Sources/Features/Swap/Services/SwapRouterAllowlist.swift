@@ -76,4 +76,23 @@ enum SwapRouterAllowlist {
         // allowlisted aggregator/bridge (belt-and-suspenders).
         isTrusted(address)
     }
+
+    // MARK: - Transaction classification (T-067)
+
+    /// `true` if `address` is a known dedicated cross-chain BRIDGE router.
+    /// Drives `.bridge` classification of a persisted transaction whose
+    /// counterparty is this address (so the activity feed reads "Bridged").
+    static func isBridgeRouter(_ address: String) -> Bool {
+        bridges.contains(address.lowercased())
+    }
+
+    /// `true` if `address` is a known same-chain SWAP router — a DEX
+    /// aggregator or the LI.FI Diamond. Drives `.swap` classification (the
+    /// activity feed reads "Swapped"). The LI.FI Diamond also composes
+    /// bridges, so callers check `isBridgeRouter` FIRST; a dedicated bridge
+    /// match wins over this broader swap set.
+    static func isSwapRouter(_ address: String) -> Bool {
+        let lowered = address.lowercased()
+        return aggregators.contains(lowered) || lifi.contains(lowered)
+    }
 }
