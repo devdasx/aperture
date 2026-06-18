@@ -78,6 +78,14 @@ struct UniAppApp: App {
         //    install (idempotent on subsequent launches).
         ApertureDatabase.shared.bootstrap()
 
+        // 2.5) Main-thread responsiveness watchdog (2026-06-18 — diagnose
+        //    the reported lag). Logs every main-thread stall > 120 ms to
+        //    `DebugLog` so Settings → Advanced → Debug logs shows exactly
+        //    when the UI froze, lined up against the background work that
+        //    caused it. Near-zero cost; logs nothing unless a stall happens.
+        MainThreadWatchdog.shared.start()
+        DebugLog.shared.log("app", "launch — diagnostics armed")
+
         // 3) TipKit data store for first-time-feature hints. The
         //    `WalletTabSwitcherTip` reads its eligibility rule against
         //    `MainTabView`'s `@Query` wallet count, then iOS 17+
@@ -376,12 +384,20 @@ private struct AppRoot: View {
               !isShowingSplash,
               !lockController.isLocked,
               let walletId = UUID(uuidString: activeWalletIdRaw)
-        else { return }
+        else {
+            DebugLog.shared.log("loop", "auto-refresh not running — gate closed (scene=\(scenePhase) splash=\(isShowingSplash) locked=\(lockController.isLocked))")
+            return
+        }
 
+        DebugLog.shared.log("loop", "auto-refresh loop started — fires every \(Self.autoRefreshInterval)")
         let container = ApertureDatabase.shared.container
         while !Task.isCancelled {
             try? await Task.sleep(for: Self.autoRefreshInterval)
-            if Task.isCancelled { return }
+            if Task.isCancelled {
+                DebugLog.shared.log("loop", "auto-refresh loop stopped (backgrounded / locked / wallet switch)")
+                return
+            }
+            DebugLog.shared.log("loop", "auto-refresh tick (30s) → scanning wallet in background")
             // Non-user-initiated: joins any in-flight refresh via the
             // registry instead of cancel-and-replacing it.
             await WalletRefreshCoordinator(container: container)

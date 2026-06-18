@@ -460,7 +460,16 @@ struct WalletHomeView: View {
     }
 
     var body: some View {
-        NavigationStack(path: $navigationPath) {
+        // **2026-06-18 diagnostics.** Count every re-evaluation of this big
+        // body (throttled to one log line per ~300 ms window) and record the
+        // live @Query counts that may have driven it — so the copied Debug
+        // log shows whether prices / transactions / balances are re-rendering
+        // the whole home, lined up against the watchdog's main-thread stalls.
+        let _ = DebugLog.shared.renderTick(
+            "WalletHome",
+            detail: "prices=\(cachedPrices.count) history=\(historicalPrices.count) tx=\(allTransactionRecords.count) assets=\(assetRecords.count)"
+        )
+        return NavigationStack(path: $navigationPath) {
             listSurface
                 .navigationTitle("")
                 .navigationBarTitleDisplayMode(.inline)
@@ -1666,6 +1675,7 @@ struct WalletHomeView: View {
     /// pays the O(N) iteration over the price `@Query` results — called
     /// from `.task(id: priceDataFingerprint)`, not from `body`.
     private func rebuildPriceMemos() {
+        let _priceStart = DispatchTime.now().uptimeNanoseconds
         var cache: [String: Decimal] = [:]
         for row in cachedPrices where row.fiat == currencyCode {
             cache[row.symbol.uppercased()] = row.price
@@ -1676,6 +1686,10 @@ struct WalletHomeView: View {
         }
         priceCacheMemo = cache
         priceHistoryMemo = history
+        let _priceMs = Double(DispatchTime.now().uptimeNanoseconds &- _priceStart) / 1_000_000
+        if _priceMs > 2 {
+            DebugLog.shared.log("ui", "rebuildPriceMemos (price dicts, on main)", durationMs: _priceMs)
+        }
     }
 
     // MARK: - Filter & Sort derived state (rebuilt off-body)
@@ -1796,6 +1810,7 @@ struct WalletHomeView: View {
     }
 
     private func rebuildDisplayRows() {
+        let _rebuildStart = DispatchTime.now().uptimeNanoseconds
         rebuildBalanceMemos()
         rebuildTransactionMemos()
         let held = allHeldRows
@@ -1837,6 +1852,10 @@ struct WalletHomeView: View {
             return a.chain.displayName.localizedStandardCompare(b.chain.displayName) == .orderedAscending
         }
         rebuildFilteredRows()
+        let _rebuildMs = Double(DispatchTime.now().uptimeNanoseconds &- _rebuildStart) / 1_000_000
+        if _rebuildMs > 2 {
+            DebugLog.shared.log("ui", "rebuildDisplayRows (build+sort all holdings, on main)", durationMs: _rebuildMs)
+        }
     }
 
     /// Re-derive the filtered + sorted projections from the cached

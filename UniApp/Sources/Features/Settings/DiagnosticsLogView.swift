@@ -1,14 +1,18 @@
 import SwiftUI
 import UIKit
 
-/// Settings → Advanced → Refresh diagnostics (user direction 2026-06-17).
+/// Settings → Advanced → Debug logs (user direction 2026-06-18: "add logs
+/// for all actions running in the background … I should be able to copy them
+/// from Settings and send them, so we can understand what's happening").
 ///
-/// Renders `RefreshPerfLog`'s timeline of the most recent refresh —
-/// every chain's balance + history API, every RPC round-trip, every DB
-/// commit, with millisecond durations and a "slowest actions" summary —
-/// as selectable monospaced text with a one-tap **Copy** so it can be
-/// pasted for latency analysis. **Refresh** re-reads the log (after a
-/// pull-to-refresh on the wallet screen); **Clear** empties it.
+/// Renders `DebugLog`'s SESSION-WIDE timeline — the 30 s background
+/// auto-refresh loop, the full refresh pipeline (every chain scan, RPC
+/// round-trip, price batch, DB commit, with ms), every main-thread `body`
+/// re-render with its cause, and every main-thread stall the watchdog
+/// catches — as selectable monospaced text with a one-tap **Copy** so it can
+/// be pasted and sent for analysis. **Refresh** re-reads the live log;
+/// **Clear** empties it. (Unlike the old per-run view, this keeps the whole
+/// session, so the moments leading up to a hitch are preserved.)
 struct DiagnosticsLogView: View {
 
     @State private var logText: String = ""
@@ -24,7 +28,7 @@ struct DiagnosticsLogView: View {
                 .padding(UniSpacing.m)
         }
         .background(UniColors.Background.primary)
-        .navigationTitle(Text("Refresh diagnostics"))
+        .navigationTitle(Text("Debug logs"))
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
@@ -44,7 +48,7 @@ struct DiagnosticsLogView: View {
             HStack(spacing: UniSpacing.m) {
                 Button {
                     didCopy = false
-                    logText = RefreshPerfLog.shared.snapshotText()
+                    logText = DebugLog.shared.snapshotText()
                 } label: {
                     Label("Refresh", systemImage: "arrow.clockwise")
                         .font(UniTypography.body)
@@ -53,9 +57,9 @@ struct DiagnosticsLogView: View {
                 .buttonStyle(.bordered)
 
                 Button(role: .destructive) {
-                    RefreshPerfLog.shared.clear()
+                    DebugLog.shared.clear()
                     didCopy = false
-                    logText = RefreshPerfLog.shared.snapshotText()
+                    logText = DebugLog.shared.snapshotText()
                 } label: {
                     Label("Clear", systemImage: "trash")
                         .font(UniTypography.body)
@@ -67,7 +71,7 @@ struct DiagnosticsLogView: View {
             .background(.ultraThinMaterial)
         }
         .onAppear {
-            logText = RefreshPerfLog.shared.snapshotText()
+            logText = DebugLog.shared.snapshotText()
         }
     }
 }
