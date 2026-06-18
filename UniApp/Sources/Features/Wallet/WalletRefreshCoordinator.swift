@@ -290,7 +290,7 @@ struct WalletRefreshCoordinator: Sendable {
         // yields — so "no row" means the read failed, not that the
         // wallet is empty.
         let balancePassToken = RefreshPerfLog.shared.start()
-        var nativeYieldedChains = await consumeBalanceStream(
+        let nativeYieldedChains = await consumeBalanceStream(
             stream,
             chainSnapshots: chainSnapshots,
             txRepo: txRepo,
@@ -332,7 +332,7 @@ struct WalletRefreshCoordinator: Sendable {
         // Interim per-chain rebuild — balances have landed, so each chain
         // row lights up live (still `.syncing`) while transaction history
         // is in flight. The final rebuild below fills the tx counts + UTXOs.
-        try? await chainStateRepo.rebuild(
+        _ = try? await chainStateRepo.rebuild(
             walletId: walletId,
             fiatCurrencyCode: currency.code,
             interim: true
@@ -359,7 +359,7 @@ struct WalletRefreshCoordinator: Sendable {
         await utxoTask
         await keyTask
         let finalRebuildToken = RefreshPerfLog.shared.start()
-        try? await chainStateRepo.rebuild(
+        _ = try? await chainStateRepo.rebuild(
             walletId: walletId,
             fiatCurrencyCode: currency.code,
             failedChains: failedChains
@@ -547,7 +547,7 @@ struct WalletRefreshCoordinator: Sendable {
         guard !dirty.isEmpty else { return }
         let token = RefreshPerfLog.shared.start()
         try? await txRepo.flush()
-        try? await chainStateRepo.rebuild(
+        _ = try? await chainStateRepo.rebuild(
             walletId: walletId,
             fiatCurrencyCode: fiatCurrencyCode,
             onlyChains: dirty,
