@@ -471,6 +471,13 @@ final class WalletAddressRecord {
 /// amount + counterparty triple.
 @Model
 final class TransactionRecord {
+    // **2026-06-18 — query indexes (Part 3.3).** Before this the only index was
+    // the unique `id`, so the home's live tx feed (`@Query` sorted by
+    // `occurredAt`, whole table) did a full scan + sort on every save, and the
+    // per-address repository fetches scanned too. These additive, index-only
+    // indexes let SQLite serve the sort and the `addressId` filter from a
+    // b-tree. Index-only schema change = lightweight migration, no data change.
+    #Index<TransactionRecord>([\.occurredAt], [\.addressId, \.occurredAt])
     @Attribute(.unique) var id: UUID
 
     /// On-chain transaction hash (hex for EVM/Bitcoin; base58 for
@@ -585,6 +592,10 @@ enum TransactionStatus: String, Codable, Sendable { case pending, confirmed, fai
 /// One row per (address, token symbol, contract) triple.
 @Model
 final class TokenBalanceRecord {
+    // **2026-06-18 — query index (Part 3.3).** `upsertBalance` and the per-chain
+    // aggregate rebuild fetch by `addressId` dozens of times per refresh; index
+    // it so those stop scanning the whole balance table. Additive, index-only.
+    #Index<TokenBalanceRecord>([\.addressId])
     @Attribute(.unique) var id: UUID
 
     /// Token symbol (e.g. `ETH`, `USDC`). Native coin uses the chain's
@@ -663,6 +674,11 @@ final class TokenBalanceRecord {
 /// fetch completes. The live fetch then updates the row in place.
 @Model
 final class CachedPriceRecord {
+    // **2026-06-18 — query index (Part 3.3).** The wallet home filters cached
+    // prices by `fiat` (active currency) and the chart memo iterates by
+    // `(symbol, fiat)`. `key` is already uniquely indexed; this adds the
+    // currency-scoped lookups. Additive, index-only.
+    #Index<CachedPriceRecord>([\.fiat], [\.symbol, \.fiat])
     /// `"SYMBOL-FIAT"` composite key, e.g. `"BTC-USD"`. Unique so the
     /// upsert is a fetch-then-update by id.
     @Attribute(.unique) var key: String
@@ -919,6 +935,11 @@ final class CustomTokenRecord {
 /// over or when an old gap is discovered.
 @Model
 final class HistoricalPriceRecord {
+    // **2026-06-18 — query index (Part 3.3).** The chart reconstructor looks up
+    // daily closes by `(symbol, fiat, dayKey)` and this table grows unbounded
+    // (one row per symbol×fiat×day). `key` is already uniquely indexed; this
+    // compound index serves symbol/fiat range scans over `dayKey`. Additive.
+    #Index<HistoricalPriceRecord>([\.symbol, \.fiat, \.dayKey])
     /// `"SYMBOL-FIAT-yyyymmdd"` composite key, e.g. `"USDT-USD-20260430"`.
     @Attribute(.unique) var key: String
 

@@ -109,9 +109,16 @@ struct RemoteHistoricalPriceService: Sendable {
             }
 
             let date = Date(timeIntervalSince1970: epoch)
+            // Prefer the server's authoritative `day` string ("yyyy-mm-dd") so
+            // the stored key can never drift with the device timezone; fall back
+            // to the UTC epoch→day computation only when `day` is absent
+            // (2026-06-18 — root cause #3 fix; previously this recomputed with
+            // the LOCAL calendar and ignored `day`, mis-bucketing every candle).
+            let dayKey = (element["day"] as? String).flatMap(DayKey.from(dayString:))
+                ?? DayKey.from(date: date)
             out.append(DailyClose(
                 timestamp: date,
-                dayKey: DayKey.from(date: date),
+                dayKey: dayKey,
                 close: close
             ))
         }

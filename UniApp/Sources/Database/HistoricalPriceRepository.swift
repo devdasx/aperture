@@ -222,9 +222,36 @@ actor HistoricalPriceRepository {
 /// .month, .day], from: date)` once per call.
 enum DayKey {
 
-    /// `2026-04-30` → `20260430`.
-    static func from(date: Date, calendar: Calendar = .current) -> Int {
+    /// Fixed UTC calendar. Daily closes are UTC-day candles, so the stored
+    /// candle key AND the reconstructor's tx-day lookup must BOTH compute the
+    /// key in UTC. Defaulting to `Calendar.current` (device-local) mis-bucketed
+    /// every history row by ±1 day in non-UTC zones — in all of the Americas the
+    /// candle for day D was stored under D−1, so the reconstructor's
+    /// `priceHistory[symbol][dayKey(tx)]` lookup missed, fell through to today's
+    /// spot, and valued history at the CURRENT price — flattening the curve. The
+    /// chart's correctness must not depend on the device timezone (root cause
+    /// #3, 2026-06-18 fix).
+    static let utc: Calendar = {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "UTC")!
+        return calendar
+    }()
+
+    /// `2026-04-30` (interpreted in UTC) → `20260430`.
+    static func from(date: Date, calendar: Calendar = DayKey.utc) -> Int {
         let comps = calendar.dateComponents([.year, .month, .day], from: date)
         return (comps.year ?? 0) * 10_000 + (comps.month ?? 0) * 100 + (comps.day ?? 0)
+    }
+
+    /// Parse the price server's authoritative `"yyyy-mm-dd"` day string into the
+    /// same `yyyymmdd` Int — pure string math, no timezone, so it can never
+    /// drift. Returns `nil` when the string isn't the expected shape (the caller
+    /// falls back to the UTC epoch→day computation above).
+    static func from(dayString: String) -> Int? {
+        let parts = dayString.split(separator: "-")
+        guard parts.count == 3,
+              let year = Int(parts[0]), let month = Int(parts[1]), let day = Int(parts[2]),
+              (1...12).contains(month), (1...31).contains(day) else { return nil }
+        return year * 10_000 + month * 100 + day
     }
 }
