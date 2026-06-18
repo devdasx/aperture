@@ -982,7 +982,8 @@ struct WalletRefreshCoordinator: Sendable {
     func syncHistoricalCloses(
         symbols: [String],
         fiat: String,
-        alreadyHave: Set<String>
+        alreadyHave: Set<String>,
+        days: Int = 400   // Part 4.6 — caller drives depth from the wallet's age
     ) async {
         let wanted = Set(symbols.map { $0.uppercased() })
         let have = Set(alreadyHave.map { $0.uppercased() })
@@ -1005,7 +1006,7 @@ struct WalletRefreshCoordinator: Sendable {
                 }
                 inFlight += 1
                 group.addTask {
-                    let candles = await service.fetchDailyCloses(symbol: symbol, fiat: fiatCode)
+                    let candles = await service.fetchDailyCloses(symbol: symbol, fiat: fiatCode, days: days)
                     guard !candles.isEmpty else { return }
                     let entries = candles.map {
                         (symbol: symbol, fiat: fiatCode, dayKey: $0.dayKey, price: $0.close)

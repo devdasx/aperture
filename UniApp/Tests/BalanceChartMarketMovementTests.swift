@@ -59,6 +59,24 @@ struct BalanceChartMarketMovementTests {
         for i in 1..<points.count { #expect(points[i].timestamp >= points[i - 1].timestamp) }
     }
 
+    @Test("Bought in-window then held → curve rises with the market after the buy (Part 4.2)")
+    func marketMovementAfterInWindowBuy() {
+        let now = date(2026, 1, 31)
+        let tx = incomingBTC(on: date(2026, 1, 5))   // IN the 1-month window
+        let points = BalanceHistoryReconstructor.reconstruct(
+            txSnapshots: [tx],
+            balanceSnapshots: [btcBalance(fiat: 151)],
+            priceCache: ["BTC": 151],
+            priceHistory: risingBTCHistory(),
+            range: .month, now: now
+        )
+        // before/after step at the buy + dense market grid over the hold + now.
+        #expect(points.count > 3, "the post-buy hold must be a dense market segment, not one straight line to now")
+        let fiats = points.map { $0.fiat }
+        #expect((fiats.max() ?? 0) > (fiats.first ?? 0), "curve must rise after the buy as BTC rises")
+        for i in 1..<points.count { #expect(points[i].timestamp >= points[i - 1].timestamp) }
+    }
+
     @Test("No historical prices → no-trade window stays flat (honest, no fabricated wiggle)")
     func noHistoryStaysFlat() {
         let now = date(2026, 1, 31)
