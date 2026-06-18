@@ -49,6 +49,13 @@ actor AlchemyService {
     private var tokenCache: [String: CachedTokens] = [:]
     private let cacheTTL: TimeInterval = 8
 
+    /// `alchemy_getTokenMetadata` results, cached per `(network,contract)` for
+    /// the process — an ERC-20's decimals are immutable, so one lookup is
+    /// enough. Bounds the decimals fallback to one network call per unknown
+    /// contract that's worth resolving (priced, missing Portfolio decimals).
+    private struct CachedMetadata { let decimals: Int?; let symbol: String?; let name: String? }
+    private var metadataCache: [String: CachedMetadata] = [:]
+
     /// Prefetch entries live longer than a single-network read so the ONE
     /// batched call (warmed at refresh start) serves EVERY per-chain read in
     /// that refresh's concurrent balance scan — comfortably longer than one
@@ -80,6 +87,13 @@ actor AlchemyService {
         let symbol: String?
         let name: String?
         let decimals: Int?
+        /// Alchemy's USD unit price for this token (`withPrices: true`).
+        /// Used ONLY as a legitimacy / dust signal in the anti-spam gate —
+        /// NEVER for display. Displayed fiat still comes from the Aperture
+        /// price server, keyed by symbol, in the coordinator. `nil` when
+        /// Alchemy returned no USD price (the strongest spam signal —
+        /// airdrop scam tokens almost never have one).
+        let priceUSD: Decimal?
         var isNative: Bool { contract == nil }
     }
 
@@ -125,12 +139,13 @@ actor AlchemyService {
             var body: [String: Any] = [
                 "addresses": [["address": address, "networks": [network]]],
                 "withMetadata": true,
-                "withPrices": false,
+                "withPrices": true,
                 "includeNativeTokens": true,
                 "includeErc20Tokens": true,
             ]
             if let pk = pageKey { body["pageKey"] = pk }
             let data = try await postJSON(url: url, body: body, network: network)
+            logErc20SamplesOnce(data)
             do {
                 all.append(contentsOf: try Self.parseTokens(data))
             } catch {
@@ -172,7 +187,7 @@ actor AlchemyService {
             var body: [String: Any] = [
                 "addresses": addressEntries,
                 "withMetadata": true,
-                "withPrices": false,
+                "withPrices": true,
                 "includeNativeTokens": true,
                 "includeErc20Tokens": true,
             ]
@@ -180,6 +195,7 @@ actor AlchemyService {
             guard let data = try? await postJSON(url: url, body: body, network: "batch") else {
                 return  // transport failure — leave the cache cold; per-chain falls back
             }
+            logErc20SamplesOnce(data)
             let pageGroups: [String: [Token]]
             do {
                 pageGroups = try Self.groupBatchedRows(data)
@@ -223,6 +239,68 @@ actor AlchemyService {
         didLogRawTokenBody = true
         let body = String(data: data.prefix(2000), encoding: .utf8) ?? "<non-utf8 \(data.count) bytes>"
         Self.log.error("tokens/by-address raw body (first 2KB): \(body, privacy: .public)")
+    }
+
+    /// **EVM-only diagnostic (2026-06-19).** Logs the first few ERC-20 rows of a
+    /// `tokens/by-address` response ONCE per process — `network`, contract,
+    /// `symbol`/`decimals` (so a null-metadata row is visible), raw balance, and
+    /// whether a USD price came back. This is what distinguishes "Alchemy
+    /// returned no ERC-20 rows" from "the filter dropped them" in the captured
+    /// EVM debug logs. One-shot so it doesn't spam (once per chain × refresh).
+    private var didLogErc20Samples = false
+    private func logErc20SamplesOnce(_ data: Data) {
+        guard !didLogErc20Samples,
+              let root = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
+              let dataObj = root["data"] as? [String: Any],
+              let rows = dataObj["tokens"] as? [[String: Any]] else { return }
+        let erc20 = rows.filter {
+            guard let addr = $0["tokenAddress"] as? String else { return false }
+            return !Self.isNativeSentinel(addr)
+        }
+        guard !erc20.isEmpty else { return }
+        didLogErc20Samples = true
+        for row in erc20.prefix(6) {
+            let net = row["network"] as? String ?? "—"
+            let addr = row["tokenAddress"] as? String ?? "—"
+            let meta = row["tokenMetadata"] as? [String: Any]
+            let sym = meta?["symbol"] as? String ?? "nil"
+            let dec = (meta?["decimals"] as? Int).map(String.init) ?? "nil"
+            let bal = row["tokenBalance"] as? String ?? "—"
+            let price = Self.usdPrice(from: row["tokenPrices"])
+            Self.evmLog.debug("erc20 sample ▸ net=\(net, privacy: .public) \(addr, privacy: .public) sym=\(sym, privacy: .public) dec=\(dec, privacy: .public) bal=\(bal, privacy: .public) usd=\(price?.description ?? "nil", privacy: .public)")
+        }
+    }
+
+    /// **Decimals fallback (2026-06-19) — never blind-default to 18.** When a
+    /// Portfolio ERC-20 row carries no `decimals`, resolve it via
+    /// `alchemy_getTokenMetadata` on the per-network JSON-RPC product (same key
+    /// the transfers + native fallback use). Cached per `(network,contract)`.
+    /// Returns `nil` when the lookup fails or the contract has no decimals — the
+    /// caller then SKIPS the row (with a log) rather than guessing a scale that
+    /// would render a wildly wrong amount.
+    func tokenDecimals(network: String, contract: String) async -> Int? {
+        let cacheKey = "\(network)|\(contract.lowercased())"
+        if let cached = metadataCache[cacheKey] { return cached.decimals }
+        let key = Secrets.alchemyAPIKey
+        guard !key.isEmpty, let url = URL(string: "https://\(network).g.alchemy.com/v2/\(key)") else { return nil }
+        let body: [String: Any] = [
+            "jsonrpc": "2.0", "id": 1, "method": "alchemy_getTokenMetadata",
+            "params": [contract],
+        ]
+        guard let data = try? await postJSON(url: url, body: body, network: network),
+              let root = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
+              let result = root["result"] as? [String: Any] else {
+            Self.evmLog.debug("getTokenMetadata ◂ \(network, privacy: .public) [\(Self.addrTail(contract), privacy: .public)] no result")
+            return nil
+        }
+        let decimals = result["decimals"] as? Int
+        metadataCache[cacheKey] = CachedMetadata(
+            decimals: decimals,
+            symbol: result["symbol"] as? String,
+            name: result["name"] as? String
+        )
+        Self.evmLog.debug("getTokenMetadata ◂ \(network, privacy: .public) [\(Self.addrTail(contract), privacy: .public)] decimals=\(decimals.map(String.init) ?? "nil", privacy: .public)")
+        return decimals
     }
 
     /// **BUG 2D — native-only `eth_getBalance` fallback.** Reads the native coin
@@ -277,14 +355,49 @@ actor AlchemyService {
             rawBalanceHex: rawHex,
             symbol: meta?["symbol"] as? String,
             name: meta?["name"] as? String,
-            decimals: meta?["decimals"] as? Int
+            decimals: meta?["decimals"] as? Int,
+            priceUSD: usdPrice(from: row["tokenPrices"])
         )
+    }
+
+    /// Parse the USD unit price from a Portfolio row's `tokenPrices` array
+    /// (`withPrices: true`). Shape: `[{ "currency":"usd", "value":"1.0001", … }]`.
+    /// Decimal-safe — never routes a price through `Double` (H3). Prefers the
+    /// explicit `usd` entry, else falls back to the first entry. Returns `nil`
+    /// when the array is absent/empty or carries no parseable value.
+    static func usdPrice(from raw: Any?) -> Decimal? {
+        guard let arr = raw as? [[String: Any]], !arr.isEmpty else { return nil }
+        func value(_ entry: [String: Any]) -> Decimal? {
+            if let s = entry["value"] as? String, let d = Decimal(string: s) { return d }
+            if let n = entry["value"] as? NSNumber { return n.decimalValue }
+            return nil
+        }
+        if let usd = arr.first(where: { ($0["currency"] as? String)?.lowercased() == "usd" }) {
+            return value(usd)
+        }
+        return value(arr[0])
     }
 
     private static func isNativeSentinel(_ address: String) -> Bool {
         let a = address.lowercased()
         return a == "0x0000000000000000000000000000000000000000"
             || a == "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+    }
+
+    /// **Polygon slug canonicalization (2026-06-19).** The batched
+    /// `tokens/by-address` request sends `"polygon-mainnet"` (Alchemy accepts
+    /// it), but the response rows come back tagged `"matic-mainnet"`. Without
+    /// this, `groupBatchedRows` keys polygon's slice under `matic-mainnet|addr`
+    /// while `AlchemyConnector` reads it as `polygon-mainnet|addr` — so polygon
+    /// always missed the warm batched cache and paid an extra single-network
+    /// call. Normalize the RESPONSE slug to the request slug before it becomes a
+    /// cache key. Requests keep sending `polygon-mainnet`; only the response is
+    /// normalized. Extend here if another chain shows a request≠response slug.
+    static func canonicalNetwork(_ n: String) -> String {
+        switch n {
+        case "matic-mainnet": return "polygon-mainnet"
+        default:              return n
+        }
     }
 
     /// **BUG 2A — mirror the transfers "H1" behavior on the Data API path.**
@@ -340,7 +453,7 @@ actor AlchemyService {
             guard let net = row["network"] as? String,
                   let addr = row["address"] as? String,
                   let token = tokenFromRow(row) else { continue }
-            grouped["\(net)|\(addr.lowercased())", default: []].append(token)
+            grouped["\(canonicalNetwork(net))|\(addr.lowercased())", default: []].append(token)
         }
         return grouped
     }

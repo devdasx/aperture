@@ -135,32 +135,129 @@ struct AlchemyConnector: ChainConnector {
 
         let now = Date()
         var rows: [TokenBalance] = []
+        var drops: [String: Int] = [:]   // drop reason → count, for the per-chain log
         for token in tokens where !token.isNative {
             guard let contract = token.contract else { continue }
             let lc = contract.lowercased()
             let registryEntry = registryByContract[lc]
-            // Anti-spam: only curated registry tokens + the user's customs.
-            guard registryEntry != nil || customSet.contains(lc) else { continue }
-            let decimals = registryEntry?.decimals ?? token.decimals ?? 18
-            guard let raw = AlchemyService.decimalFromHex(token.rawBalanceHex) else { continue }
-            let amount = raw / AlchemyService.pow10(decimals)
-            guard amount > 0 else { continue }
+            let isCustom = customSet.contains(lc)
+            // Registry + user-custom tokens are CANONICAL — always shown (when
+            // funded), never spam-filtered. Everything else faces the heuristic
+            // gate below. This replaces the old 79-entry stablecoin allowlist
+            // that silently dropped every real non-stablecoin holding (LINK,
+            // UNI, ARB, …) along with the spam (2026-06-19).
+            let isCanonical = registryEntry != nil || isCustom
+
+            // **Decimals — never blind-default to 18 for an unknown token.**
+            // registry → Portfolio metadata → (bounded) on-chain metadata lookup
+            // for heuristic tokens worth resolving (priced, missing decimals).
+            var decimals = registryEntry?.decimals ?? token.decimals
+            if decimals == nil, !isCanonical, let price = token.priceUSD, price > 0 {
+                decimals = await service.tokenDecimals(network: networkSlug, contract: contract)
+            }
+            let resolvedDecimals: Int
+            if let d = decimals {
+                resolvedDecimals = d
+            } else if isCanonical {
+                // A user-custom token with no metadata: the scanner re-stamps it
+                // from the user's snapshot decimals, so a consistent placeholder
+                // here is corrected downstream.
+                resolvedDecimals = 18
+            } else {
+                drops["no-decimals", default: 0] += 1
+                continue
+            }
+
+            guard let raw = AlchemyService.decimalFromHex(token.rawBalanceHex) else {
+                drops["bad-hex", default: 0] += 1
+                continue
+            }
+            let amount = raw / AlchemyService.pow10(resolvedDecimals)
+            guard amount > 0 else {
+                drops["zero", default: 0] += 1
+                continue   // honesty: zero balances never surface (Rule #2 §A.7)
+            }
+
+            // Heuristic anti-spam gate — canonical tokens bypass it entirely.
+            if !isCanonical, let reason = Self.heuristicDrop(
+                amount: amount,
+                symbol: token.symbol ?? "",
+                name: token.name ?? "",
+                priceUSD: token.priceUSD
+            ) {
+                drops[reason.rawValue, default: 0] += 1
+                continue
+            }
+
             rows.append(TokenBalance(
                 chain: chain,
                 address: address,
                 contract: contract,
                 symbol: registryEntry?.symbol ?? token.symbol ?? Self.shortContract(contract),
                 name: registryEntry?.name ?? token.name ?? contract,
-                decimals: decimals,
+                decimals: resolvedDecimals,
                 amount: amount,
-                fiatBalance: nil,        // pricing stays in the coordinator
+                fiatBalance: nil,        // pricing stays in the coordinator (Aperture price server)
                 fiatCurrencyCode: "",
                 lastUpdated: now
             ))
         }
         let rawTokenCount = tokens.lazy.filter { !$0.isNative }.count
-        Self.evmLog.debug("tokens ◂ \(self.chain.rawValue, privacy: .public) raw=\(rawTokenCount, privacy: .public) kept=\(rows.count, privacy: .public) [\(rows.map { "\($0.symbol):\($0.amount.description)" }.joined(separator: ", "), privacy: .public)]")
+        let dropSummary = drops.isEmpty ? "—" : drops.sorted { $0.key < $1.key }.map { "\($0.key)=\($0.value)" }.joined(separator: " ")
+        Self.evmLog.debug("tokens ◂ \(self.chain.rawValue, privacy: .public) raw=\(rawTokenCount, privacy: .public) kept=\(rows.count, privacy: .public) dropped[\(dropSummary, privacy: .public)] [\(rows.map { "\($0.symbol):\($0.amount.description)" }.joined(separator: ", "), privacy: .public)]")
         return rows
+    }
+
+    // MARK: - Anti-spam token policy
+
+    /// Smallest USD value a heuristic-admitted token must clear to show — drops
+    /// sub-cent dust (including priced spam dust) without hiding real holdings.
+    static let dustThresholdUSD = Decimal(string: "0.01") ?? Decimal(0)
+
+    /// Reason a heuristic (non-canonical) token was hidden — surfaced in the
+    /// per-chain EVM debug log so "Alchemy returned nothing" is distinguishable
+    /// from "the filter dropped everything."
+    enum TokenDrop: String {
+        case noPrice = "no-price"
+        case dust
+        case spam
+    }
+
+    /// **Real anti-spam policy (2026-06-19) — pure, network-free, testable.**
+    /// Decides whether a NON-canonical (not registry, not user-custom) ERC-20
+    /// should show. Returns `nil` to SHOW, or a `TokenDrop` reason to hide.
+    ///
+    /// A real Alchemy USD price is the single strongest legitimacy signal —
+    /// scam airdrop tokens almost never carry one. We require: a positive USD
+    /// price, a fiat value clearing the dust floor, and a name/symbol free of
+    /// the URL / claim-bait markers spam tokens embed. Canonical tokens never
+    /// reach here (they always show when funded).
+    static func heuristicDrop(
+        amount: Decimal,
+        symbol: String,
+        name: String,
+        priceUSD: Decimal?,
+        dustThresholdUSD: Decimal = AlchemyConnector.dustThresholdUSD
+    ) -> TokenDrop? {
+        guard let price = priceUSD, price > 0 else { return .noPrice }
+        guard price * amount >= dustThresholdUSD else { return .dust }
+        if looksLikeSpam(symbol: symbol, name: name) { return .spam }
+        return nil
+    }
+
+    /// Spam-name heuristic — scam airdrops embed a URL or claim-bait in their
+    /// symbol/name (e.g. "Visit claim-rewards.xyz to redeem"). An empty/garbage
+    /// symbol is treated as spam too. Applies ONLY to heuristic-admitted tokens;
+    /// registry + custom tokens are never name-filtered.
+    static func looksLikeSpam(symbol: String, name: String) -> Bool {
+        if symbol.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return true }
+        let haystack = (symbol + " " + name).lowercased()
+        let markers = [
+            "http", "www.", ".com", ".xyz", ".net", ".org", ".io", ".app",
+            ".site", ".vip", ".club", ".finance", "t.me", "telegram",
+            "claim", "reward", "visit", "airdrop", "voucher", "giveaway", "bonus",
+        ]
+        return markers.contains { haystack.contains($0) }
     }
 
     // MARK: - Transaction history
