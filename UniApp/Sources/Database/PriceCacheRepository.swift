@@ -23,6 +23,15 @@ actor PriceCacheRepository {
         descriptor.fetchLimit = 1
 
         if let existing = try modelContext.fetch(descriptor).first {
+            // **2026-06-18 — skip no-op writes (idle-lag fix).** The ~30s
+            // refresh re-prices every held symbol. Re-assigning the same price
+            // (and bumping `fetchedAt = Date()`) still dirties the row → fires
+            // the wallet-home `cachedPrices` @Query → re-renders the home even
+            // when the price didn't move (stablecoins, flat markets, the idle
+            // re-poll). Only write when the price or source actually changed —
+            // the same idle-churn guard `TransactionRepository.upsertBalance`
+            // uses. `fetchedAt` therefore tracks the last real price move.
+            if existing.price == price && existing.source == source { return }
             existing.price = price
             existing.fetchedAt = Date()
             existing.source = source
@@ -30,7 +39,7 @@ actor PriceCacheRepository {
             let record = CachedPriceRecord(symbol: symbol, fiat: fiat, price: price, source: source)
             modelContext.insert(record)
         }
-        try modelContext.save()
+        if modelContext.hasChanges { try modelContext.save() }
     }
 
     /// Bulk upsert — one fetch + one save for a whole refresh's worth
@@ -54,6 +63,9 @@ actor PriceCacheRepository {
         for entry in entries {
             let key = "\(entry.symbol)-\(entry.fiat)"
             if let record = existingByKey[key] {
+                // Skip no-op writes — see `upsert` above. A flat price must not
+                // dirty the row and churn the `cachedPrices` @Query.
+                if record.price == entry.price && record.source == entry.source { continue }
                 record.price = entry.price
                 record.fetchedAt = now
                 record.source = entry.source
@@ -67,7 +79,8 @@ actor PriceCacheRepository {
                 ))
             }
         }
-        try modelContext.save()
+        // Only one main-context merge, and only when something actually changed.
+        if modelContext.hasChanges { try modelContext.save() }
     }
 
     /// Last-known price for a `(symbol, fiat)` pair. Returns `nil` if

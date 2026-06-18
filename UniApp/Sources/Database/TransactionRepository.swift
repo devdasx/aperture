@@ -545,6 +545,19 @@ actor TransactionRepository {
         )
         descriptor.fetchLimit = 1
         guard let address = try modelContext.fetch(descriptor).first else { return }
+
+        // **2026-06-18 — skip no-op churn (idle-lag fix).** The ~10s re-poll
+        // calls this for every address every scan. Advancing `lastScannedAt`
+        // on an otherwise-unchanged address still dirties the row → fires the
+        // wallet-home `allWallets` @Query (the footer reads
+        // `wallet.addresses.lastScannedAt`) → re-renders the home every poll,
+        // for every address, even when nothing was found. Only write on a real
+        // change: `isUsed` flipping, or the very first scan (no prior
+        // `lastScannedAt`). A balance change advances `lastScannedAt` through
+        // `upsertBalance` instead — so the freshness footer still moves when
+        // holdings move, and a steady-state poll writes nothing.
+        let isFirstScan = address.lastScannedAt == nil
+        guard isFirstScan || address.isUsed != isUsed else { return }
         address.isUsed = isUsed
         address.lastScannedAt = Date()
         if save { try modelContext.save() }

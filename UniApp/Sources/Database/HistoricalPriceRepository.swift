@@ -29,6 +29,13 @@ actor HistoricalPriceRepository {
         descriptor.fetchLimit = 1
 
         if let existing = try modelContext.fetch(descriptor).first {
+            // **2026-06-18 — skip no-op writes (idle-lag fix).** A day's close
+            // is immutable once fetched, so the chart's ensure-loop re-writing
+            // the same candles would only dirty the row (via `fetchedAt`) and
+            // churn the wallet-home `historicalPrices` @Query for no UI change.
+            // Only write when the close actually changed (a same-day candle
+            // still settling).
+            if existing.price == price { return }
             existing.price = price
             existing.fetchedAt = Date()
         } else {
@@ -40,7 +47,7 @@ actor HistoricalPriceRepository {
             )
             modelContext.insert(record)
         }
-        try modelContext.save()
+        if modelContext.hasChanges { try modelContext.save() }
     }
 
     /// Bulk upsert. One transaction commit instead of N. Used by
@@ -69,6 +76,9 @@ actor HistoricalPriceRepository {
         )
         for entry in keyed {
             if let existing = byKey[entry.key] {
+                // Skip no-op writes — see `upsert` above. An unchanged candle
+                // must not dirty the row and churn the `historicalPrices` @Query.
+                if existing.price == entry.price { continue }
                 existing.price = entry.price
                 existing.fetchedAt = now
             } else {
@@ -82,7 +92,7 @@ actor HistoricalPriceRepository {
                 byKey[entry.key] = record  // a later duplicate key updates this row
             }
         }
-        try modelContext.save()
+        if modelContext.hasChanges { try modelContext.save() }
     }
 
     /// All historical prices for one symbol in one fiat, keyed by

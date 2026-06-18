@@ -195,7 +195,47 @@ actor ChainStateRepository {
         let utxoTotal = utxos.reduce(Int64(0)) { $0 + $1.valueSats }
 
         // --- Upsert the aggregate row ---
-        let record = try fetchOrCreateRow(walletId: walletId, chainRaw: chainRaw, address: address)
+        let (record, isNew) = try fetchOrCreateRow(walletId: walletId, chainRaw: chainRaw, address: address)
+        let resolvedIsUsed = isUsed || totalFiat > 0 || !txs.isEmpty
+        let utxoTotalRaw = String(utxoTotal)
+        let txTotalCount = txs.count
+        let utxoCount = utxos.count
+
+        // **2026-06-18 — skip no-op rebuilds (idle-lag fix).** The live
+        // committer rebuilds dirty chains on a ~300ms cadence and the app
+        // re-scans every chain every ~10s. Re-assigning identical aggregates
+        // (and bumping `lastSyncedAt = Date()`) still dirties the SwiftData row
+        // → fires the `chainStateRecords` @Query → re-renders the balance card
+        // on every commit/poll even when nothing moved. This is the same
+        // idle-churn class `TransactionRepository.upsertBalance` already guards.
+        // Only write when an aggregate actually changed; a freshly inserted row
+        // always writes. `lastSyncedAt` therefore advances only on a real
+        // change — so a steady-state poll writes nothing and the UI does zero
+        // work (the freshness ledger lives in `SyncStatusRecord`, stamped once
+        // per refresh, not here).
+        let unchanged = !isNew
+            && record.address == address
+            && record.derivationPath == derivationPath
+            && record.nativeBalanceRaw == nativeBalanceRaw
+            && record.nativeDecimals == nativeDecimals
+            && record.nativeFiat == nativeFiat
+            && record.totalFiat == totalFiat
+            && record.tokenCount == tokenCount
+            && record.fiatCurrencyCode == fiatCurrencyCode
+            && record.txSentCount == sent
+            && record.txReceivedCount == received
+            && record.txSwapCount == swap
+            && record.txSelfTransferCount == selfT
+            && record.txBridgeCount == bridge
+            && record.txFailedCount == failed
+            && record.txPendingCount == pending
+            && record.txTotalCount == txTotalCount
+            && record.utxoCount == utxoCount
+            && record.utxoTotalRaw == utxoTotalRaw
+            && record.isUsed == resolvedIsUsed
+            && record.syncStateRaw == syncState.rawValue
+        if unchanged { return }
+
         record.address = address
         record.derivationPath = derivationPath
         record.nativeBalanceRaw = nativeBalanceRaw
@@ -211,10 +251,10 @@ actor ChainStateRepository {
         record.txBridgeCount = bridge
         record.txFailedCount = failed
         record.txPendingCount = pending
-        record.txTotalCount = txs.count
-        record.utxoCount = utxos.count
-        record.utxoTotalRaw = String(utxoTotal)
-        record.isUsed = isUsed || totalFiat > 0 || !txs.isEmpty
+        record.txTotalCount = txTotalCount
+        record.utxoCount = utxoCount
+        record.utxoTotalRaw = utxoTotalRaw
+        record.isUsed = resolvedIsUsed
         record.lastSyncedAt = Date()
         record.syncStateRaw = syncState.rawValue
 
@@ -267,7 +307,7 @@ actor ChainStateRepository {
     func storeEncryptedKeys(walletId: UUID, blobs: [SupportedChain: Data]) throws {
         guard !blobs.isEmpty else { return }
         for (chain, blob) in blobs {
-            let record = try fetchOrCreateRow(walletId: walletId, chainRaw: chain.rawValue, address: "")
+            let (record, _) = try fetchOrCreateRow(walletId: walletId, chainRaw: chain.rawValue, address: "")
             record.encryptedPrivateKey = blob
             record.keyEncryptionScheme = ChainKeyVault.scheme
         }
@@ -320,18 +360,20 @@ actor ChainStateRepository {
     // MARK: - Helpers
 
     /// Find the `(walletId, chainRaw)` row or create a fresh one. Does NOT
-    /// save — the caller batches the save.
-    private func fetchOrCreateRow(walletId: UUID, chainRaw: String, address: String) throws -> ChainStateRecord {
+    /// save — the caller batches the save. Returns `isNew` so `recomputeRow`
+    /// can force the first write on a freshly inserted row while skipping
+    /// no-op rewrites of an existing one.
+    private func fetchOrCreateRow(walletId: UUID, chainRaw: String, address: String) throws -> (record: ChainStateRecord, isNew: Bool) {
         var descriptor = FetchDescriptor<ChainStateRecord>(
             predicate: #Predicate { $0.walletId == walletId && $0.chainRaw == chainRaw }
         )
         descriptor.fetchLimit = 1
         if let existing = try modelContext.fetch(descriptor).first {
-            return existing
+            return (existing, false)
         }
         let record = ChainStateRecord(walletId: walletId, chainRaw: chainRaw, address: address)
         modelContext.insert(record)
-        return record
+        return (record, true)
     }
 
     private func snapshot(from record: ChainStateRecord) -> ChainStateSnapshot {
