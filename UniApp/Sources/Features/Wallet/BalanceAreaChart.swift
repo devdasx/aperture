@@ -296,7 +296,7 @@ private struct BalanceAreaCurve: View, Equatable {
         Path { path in
             guard let first = canvasPoints.first else { return }
             path.move(to: first)
-            appendCatmullRom(to: &path, points: canvasPoints)
+            appendLinearSegments(to: &path, points: canvasPoints)
         }
     }
 
@@ -304,34 +304,27 @@ private struct BalanceAreaCurve: View, Equatable {
         Path { path in
             guard let first = canvasPoints.first, let last = canvasPoints.last else { return }
             path.move(to: first)
-            appendCatmullRom(to: &path, points: canvasPoints)
+            appendLinearSegments(to: &path, points: canvasPoints)
             path.addLine(to: CGPoint(x: last.x, y: size.height))
             path.addLine(to: CGPoint(x: first.x, y: size.height))
             path.closeSubpath()
         }
     }
 
-    /// Catmull-Rom → cubic Bézier emitter (the reference `chart()`
-    /// algorithm). Endpoints clamp to their own value so the curve enters
-    /// and exits horizontally.
-    private func appendCatmullRom(to path: inout Path, points canvasPoints: [CGPoint]) {
-        let count = canvasPoints.count
-        guard count > 1 else { return }
-        let oneSixth: CGFloat = 1.0 / 6.0
-        for i in 0..<(count - 1) {
-            let previous = i == 0 ? canvasPoints[i] : canvasPoints[i - 1]
-            let current = canvasPoints[i]
-            let next = canvasPoints[i + 1]
-            let afterNext = i + 2 < count ? canvasPoints[i + 2] : next
-            let controlOne = CGPoint(
-                x: current.x + (next.x - previous.x) * oneSixth,
-                y: current.y + (next.y - previous.y) * oneSixth
-            )
-            let controlTwo = CGPoint(
-                x: next.x - (afterNext.x - current.x) * oneSixth,
-                y: next.y - (afterNext.y - current.y) * oneSixth
-            )
-            path.addCurve(to: next, control1: controlOne, control2: controlTwo)
+    /// **Linear step rendering (2026-06-19 Bug 1 fix).** The balance is a
+    /// step function — constant between transactions, a jump at each — so the
+    /// reconstructor emits a near-vertical before/after pair per transaction.
+    /// A smoothing spline (the old uniform Catmull-Rom) overshoots a
+    /// near-vertical pair (control points shoot past the data → the loop at a
+    /// step top) AND assumes equal x spacing, which the time-proportional
+    /// `xFractions` violate (→ waviness). Straight segments draw the step
+    /// EXACTLY: clean horizontal runs, clean vertical risers, zero overshoot.
+    /// The 2.6 pt round caps + joins still soften the corners so it reads
+    /// premium. (A monotone/PCHIP spline is NOT an option — the vertical
+    /// risers share an x, which strictly-increasing-x splines can't represent.)
+    private func appendLinearSegments(to path: inout Path, points canvasPoints: [CGPoint]) {
+        for point in canvasPoints.dropFirst() {
+            path.addLine(to: point)
         }
     }
 }

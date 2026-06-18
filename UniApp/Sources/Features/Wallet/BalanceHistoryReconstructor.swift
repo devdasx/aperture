@@ -92,8 +92,10 @@ enum BalanceHistoryRange: String, CaseIterable, Hashable, Sendable {
 /// token with no spot price contributes 0 (honest about the gap).
 ///
 /// **Step 3 — curve points (step function).** Over the effective window
-/// `[effectiveCutoff, now]` where `effectiveCutoff = max(range.cutoff,
-/// firstTransaction)`:
+/// `[effectiveCutoff, now]` where `effectiveCutoff` is the range's TRUE
+/// cutoff (`range.cutoff(now)`) for every finite range — so 1M/1Y/All are
+/// genuinely distinct — and the first transaction for `.all` (which has no
+/// finite cutoff):
 ///   1. a **leading point** at `effectiveCutoff` valued from the holdings
 ///      accumulated over every transaction BEFORE the window — so the line
 ///      starts at the true balance-as-of-window-start (zero for an account
@@ -218,12 +220,19 @@ enum BalanceHistoryReconstructor {
             return sum
         }
 
-        // Effective window start: clamp the range cutoff to the wallet's
-        // first transaction so a cutoff that predates any activity starts at
-        // the first transaction (no flat-zero lead). `.all`'s `.distantPast`
-        // collapses to the first transaction here.
+        // Effective window start = the range's TRUE cutoff (2026-06-19 Bug 3
+        // fix). The old `max(cutoff, firstTxDate)` clamp collapsed 1M/1Y/All
+        // to `[firstTx, now]` whenever activity was recent — making three
+        // different ranges draw an identical curve + percent. Using the real
+        // cutoff keeps every range distinct: a young wallet's 1Y correctly
+        // shows a long flat-zero lead (no holdings a year ago) then the recent
+        // shape; an older wallet's 1M leads at its genuine one-month-ago
+        // balance. `.all` has no finite cutoff (`.distantPast`), so it — and
+        // ONLY it — anchors to the first transaction (no eon-long lead). The
+        // pre-window walk below values the lead honestly: 0 before any
+        // funding, never fabricated.
         let firstTxDate = sorted[0].occurredAt
-        let effectiveCutoff = max(cutoff, firstTxDate)
+        let effectiveCutoff: Date = (range == .all) ? firstTxDate : cutoff
 
         // Forward walk: accumulate every PRE-window transaction so the
         // leading anchor carries the true balance-as-of-window-start.

@@ -306,6 +306,68 @@ struct BalanceHistoryReconstructorTests {
         }
     }
 
+    // MARK: - Range distinctness (Bug 3 — 1M ≠ 1Y ≠ All)
+
+    @Test("Young wallet (all activity in last 14 days): 1M, 1Y, All have DISTINCT window starts")
+    @MainActor
+    func youngWalletRangesDistinct() throws {
+        let now = Date(timeIntervalSinceReferenceDate: 800_000_000)
+        let txs = [
+            Self.makeTx(symbol: "ETH", contract: nil, amount: "5", direction: .incoming, at: now.addingTimeInterval(-10 * 86_400)),
+            Self.makeTx(symbol: "ETH", contract: nil, amount: "5", direction: .incoming, at: now.addingTimeInterval(-3 * 86_400)),
+        ]
+        func start(_ r: BalanceHistoryRange) -> Date {
+            BalanceHistoryReconstructor.reconstruct(transactions: txs, priceCache: Self.unitPrices, range: r, now: now).first!.timestamp
+        }
+        let month = start(.month), year = start(.year), all = start(.all)
+        // The old `max(cutoff, firstTx)` clamp made all three equal (firstTx).
+        // Now they are genuinely different windows.
+        #expect(month != year && year != all && month != all, "1M/1Y/All windows must differ (got \(month), \(year), \(all))")
+        // All anchors to the first transaction (10 days ago); 1Y/1M lead earlier.
+        #expect(abs(all.timeIntervalSince(now.addingTimeInterval(-10 * 86_400))) < 1)
+        #expect(year < month, "1Y starts before 1M")
+        #expect(month < all, "1M starts before the first tx (flat-zero lead)")
+    }
+
+    @Test("Young wallet: a long range starts at a ZERO baseline (funded during the window)")
+    @MainActor
+    func youngWalletZeroBaseline() throws {
+        let now = Date(timeIntervalSinceReferenceDate: 800_000_000)
+        let txs = [Self.makeTx(symbol: "ETH", contract: nil, amount: "8", direction: .incoming, at: now.addingTimeInterval(-3 * 86_400))]
+        // 1Y / All both predate (or meet) the only transaction → baseline 0,
+        // which drives the pill's percent-suppression (Bug 4).
+        for r in [BalanceHistoryRange.year, .all] {
+            let pts = BalanceHistoryReconstructor.reconstruct(transactions: txs, priceCache: Self.unitPrices, range: r, now: now)
+            #expect(pts.first?.fiat == 0, "\(r) on a young wallet must start at a zero baseline")
+            #expect(pts.last?.fiat == Decimal(8))
+        }
+    }
+
+    @Test("Older wallet: 1M vs 1Y measure from DIFFERENT baselines → different windowed changes")
+    @MainActor
+    func olderWalletPerRangeChange() throws {
+        let now = Date(timeIntervalSinceReferenceDate: 800_000_000)
+        let txs = [
+            Self.makeTx(symbol: "ETH", contract: nil, amount: "100", direction: .incoming, at: now.addingTimeInterval(-2 * 365 * 86_400)), // 2y ago
+            Self.makeTx(symbol: "ETH", contract: nil, amount: "200", direction: .incoming, at: now.addingTimeInterval(-180 * 86_400)),      // 6mo ago (in 1Y, pre 1M)
+            Self.makeTx(symbol: "ETH", contract: nil, amount: "50", direction: .incoming, at: now.addingTimeInterval(-14 * 86_400)),        // 2w ago (in both)
+        ]
+        func curve(_ r: BalanceHistoryRange) -> [BalancePoint] {
+            BalanceHistoryReconstructor.reconstruct(transactions: txs, priceCache: Self.unitPrices, range: r, now: now)
+        }
+        let month = curve(.month), year = curve(.year)
+        // 1M leads at 300 (100+200 held a month ago) → ends 350: +50.
+        #expect(month.first?.fiat == Decimal(300), "1M baseline = pre-month holdings 300")
+        #expect(month.last?.fiat == Decimal(350))
+        // 1Y leads at 100 (only the 2y-ago receive precedes a year ago) → ends 350: +250.
+        #expect(year.first?.fiat == Decimal(100), "1Y baseline = pre-year holdings 100")
+        #expect(year.last?.fiat == Decimal(350))
+        // The windowed change genuinely differs per range.
+        let monthChange = month.last!.fiat - month.first!.fiat
+        let yearChange = year.last!.fiat - year.first!.fiat
+        #expect(monthChange == Decimal(50) && yearChange == Decimal(250) && monthChange != yearChange)
+    }
+
     // MARK: - Key normalization
 
     @Test("Case-divergent contracts fold to one running quantity")
