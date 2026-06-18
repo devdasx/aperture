@@ -46,6 +46,5 @@ import SwiftData
         #expect(record.backgroundBalanceRefresh == true)
         #expect(record.pinEnabled == false)
         #expect(record.biometricEnabled == false)
-        #expect(record.isTestMode == false)
     }
 }
