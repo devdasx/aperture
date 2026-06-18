@@ -110,13 +110,15 @@ struct WalletRefreshCoordinator: Sendable {
         // reads it so per-chain balances render live.
         let chainStateRepo = ChainStateRepository(modelContainer: container)
 
-        // **Local-first freshness ledger (Rule #27 §B).** Stamp this
-        // wallet's balance + transaction domains as syncing now; mark
-        // synced / failed at the end. The wallet-home footer reads these
-        // `SyncStatusRecord` rows via `@Query` to show an honest
-        // "Updated 14:31 · Syncing…" instead of pretending a cached
-        // value is live. Stamps never block the refresh (try?).
+        // **Freshness ledger — writes disabled (2026-06-18 lag fix).** Nothing
+        // reads `SyncStatusRecord` anymore (the "Updated · Syncing…" footer was
+        // removed; the failure surface reads `WalletRefreshState`), so the ~8
+        // stamps a refresh used to write were pure save/@Query churn for a
+        // table no screen observes. The calls below stay (so re-enabling is a
+        // one-line `disableLedger()` removal), but `disableLedger()` makes each
+        // a no-op. See `SyncStatusRepository.ledgerEnabled`.
         let syncRepo = SyncStatusRepository(modelContainer: container)
+        await syncRepo.disableLedger()
         let syncScope = walletId.uuidString
         try? await syncRepo.markSyncing(domain: .balances, scopeId: syncScope)
         try? await syncRepo.markSyncing(domain: .transactions, scopeId: syncScope)
@@ -988,6 +990,7 @@ struct WalletRefreshCoordinator: Sendable {
         guard !missing.isEmpty else { return }
 
         let syncRepo = SyncStatusRepository(modelContainer: container)
+        await syncRepo.disableLedger() // dead ledger — see performRefresh
         try? await syncRepo.markSyncing(domain: .historical, scopeId: SyncDomain.globalScope)
 
         let service = RemoteHistoricalPriceService()

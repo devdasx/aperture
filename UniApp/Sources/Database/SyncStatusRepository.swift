@@ -13,6 +13,24 @@ import SwiftData
 @ModelActor
 actor SyncStatusRepository {
 
+    /// Whether stamps actually persist. Defaults to `true` (so the
+    /// repository's own tests exercise the real write path), but the
+    /// production caller — `WalletRefreshCoordinator` — flips it to `false`
+    /// via `disableLedger()`.
+    ///
+    /// **Why disable in production (2026-06-18 lag fix).** Nothing reads
+    /// `SyncStatusRecord`: the "Updated · Syncing…" footer that consumed it
+    /// via `@Query` was removed per user direction, and the failure surface
+    /// reads `WalletRefreshState`. Yet every refresh stamped this ledger ~8
+    /// times, and each stamp is a `modelContext.save()` → main-context merge —
+    /// pure work (and `@Query` churn) for a table no screen observes. Disabling
+    /// the writes removes those saves; re-enable by not calling
+    /// `disableLedger()` if a freshness UI ever returns.
+    private var ledgerEnabled = true
+
+    /// Stop persisting stamps (production — the ledger has no reader).
+    func disableLedger() { ledgerEnabled = false }
+
     /// Mark a domain/scope as actively syncing. Sets `lastAttemptAt`
     /// and clears any stale error so the UI shows "Syncing…".
     func markSyncing(domain: SyncDomain, scopeId: String) throws {
@@ -50,23 +68,6 @@ actor SyncStatusRepository {
         }
     }
 
-    /// **The freshness ledger has no live reader (2026-06-18).** The
-    /// "Updated · Syncing…" footer that consumed `SyncStatusRecord` via
-    /// `@Query` was removed per user direction ("we don't need it in the UI,
-    /// just run in the background"), and the failure surface reads
-    /// `WalletRefreshState`, not this table — so NOTHING reads it. Yet every
-    /// refresh still stamped it ~8 times (markSyncing × balances/transactions,
-    /// markSynced × 5 domains, markFailed, historical), and each stamp is a
-    /// `modelContext.save()` → main-context merge → `@Query` notification that
-    /// re-rendered whatever screen was visible (the wallet home, a token
-    /// detail). Pure churn for a table nobody reads.
-    ///
-    /// Disabled here (one chokepoint, call sites unchanged) so the writes —
-    /// and their saves — stop. Flip to `true` to re-enable if a freshness UI
-    /// returns. Stored as a `static let` (not an inline `false`) so the build
-    /// keeps type-checking the body without an unreachable-code warning.
-    private static let ledgerEnabled = false
-
     // MARK: - Upsert core
 
     /// Fetch-or-create the row for `(domain, scope)` and apply `mutate`.
@@ -78,8 +79,9 @@ actor SyncStatusRepository {
         scopeId: String,
         _ mutate: (SyncStatusRecord, Date) -> Bool
     ) throws {
-        // No reader → no write. See `ledgerEnabled` above.
-        guard Self.ledgerEnabled else { return }
+        // No reader in production → skip the save (and its @Query churn).
+        // See `ledgerEnabled`. Tests leave it enabled to verify the writes.
+        guard ledgerEnabled else { return }
         let key = SyncStatusRecord.makeKey(domain: domain, scopeId: scopeId)
         var descriptor = FetchDescriptor<SyncStatusRecord>(
             predicate: #Predicate { $0.key == key }
