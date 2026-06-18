@@ -4,8 +4,8 @@ import Foundation
 
 /// One sample on the reconstructed balance curve. `timestamp` is the
 /// moment the wallet was in this state; `fiat` is its total value in the
-/// user's preferred currency, valued at **current** per-unit spot prices
-/// (Mode B — see `BalanceHistoryReconstructor`).
+/// user's preferred currency — valued at the **historical** per-unit price
+/// for that instant (Mode C), with the trailing tip at the current spot.
 struct BalancePoint: Hashable, Sendable {
     let timestamp: Date
     let fiat: Decimal
@@ -61,77 +61,58 @@ enum BalanceHistoryRange: String, CaseIterable, Hashable, Sendable {
 
 // MARK: - BalanceHistoryReconstructor
 
-/// Reconstructs a wallet's balance curve through time from **its
-/// transactions alone** (2026-06-19 rebuild, Mode B — per user direction:
-/// rebuild the chart from scratch, transaction-sourced, deterministic,
-/// real for every range).
+/// Reconstructs a wallet's balance curve through time. **Holdings come
+/// only from transactions; valuation uses the DB's stored historical
+/// prices** (2026-06-19 Mode C — per user direction: make the chart move
+/// with the market across the full window, like Coinbase/Zerion).
 ///
-/// **The principle.** The balance at any instant `T` is a pure function
-/// of the transactions up to `T` — nothing else. No balance snapshots, no
-/// fabricated trailing edge, no balance-derived per-unit fallback, no
-/// reconciliation to a live total. Same transactions in → same curve out,
-/// every time.
+/// **The principle.** Holdings at any instant `T` are a pure function of
+/// the transactions up to `T`. The *value* of those holdings is the
+/// market value at `T` — so the curve moves every day with the market even
+/// when no transaction happened, and a buy/sell shows as a step on top of
+/// the moving curve.
 ///
-/// **Step 1 — holdings ledger (100% from transactions).** Sort the
-/// scoped, filtered transactions ascending by `occurredAt` and walk them,
-/// maintaining `running[tokenKey] += signedAmount` (`+` for incoming, `−`
-/// for outgoing, `0` for internal / self-transfers). After processing
-/// every transaction with `occurredAt ≤ T`, `running` is the exact
-/// quantity of each token held at `T`. Purely amount + timestamp +
-/// direction; no prices involved. Negative residue (precision drift or
-/// pre-history activity the explorers never reported) clamps to zero.
+/// **Step 1 — holdings ledger (100% from transactions, unchanged).**
+/// Forward walk oldest-first, `+in / −out / internal-no-op`, negatives
+/// clamp to zero, self-transfers net out (the `ownAddresses` filter),
+/// failed excluded / pending included, contract casing folded.
 ///
-/// **Step 2 — valuation (Mode B: fiat at current spot price).** `y =
-/// Σ quantity_token(T) × currentSpot_token`, where the spot comes from
-/// `priceCache` (keyed by uppercased symbol — the call sites' canonical
-/// storage). Every *movement* in the curve is a transaction; the current
-/// price only sets the scale. Deterministic, needs no historical-price
-/// series, works on every screen including the multi-asset main total.
-/// Accepted caveat: between transactions the line is **flat** (holdings
-/// didn't change), and historical points are valued at today's price. A
-/// token with no spot price contributes 0 (honest about the gap).
+/// **Step 2 — valuation (Mode C: historical price per instant).** The
+/// window `[effectiveCutoff, now]` is sampled on a time grid (daily, capped
+/// for render perf; weekly for a multi-year `.all`). Each grid instant is
+/// valued `Σ quantity_token(asOf t) × historicalClose(token, UTCday(t))`,
+/// reading `HistoricalPriceRecord` closes keyed by the UTC day. A token
+/// with no close at `t` **carries the nearest prior close forward** (never
+/// zero); spot is the last-resort fallback. The before/after step pair at
+/// each transaction is valued at that day's historical price too, so a
+/// trade is a visible step over the market-driven curve. The leading
+/// anchor at `effectiveCutoff` is the pre-window holdings valued at the
+/// historical price *then* (0 for a wallet that held nothing yet —
+/// honest). The trailing **tip at `now` uses the current spot price** so
+/// the chart's end equals the live hero balance.
 ///
-/// **Step 3 — curve points (step function).** Over the effective window
-/// `[effectiveCutoff, now]` where `effectiveCutoff` is the range's TRUE
-/// cutoff (`range.cutoff(now)`) for every finite range — so 1M/1Y/All are
-/// genuinely distinct — and the first transaction for `.all` (which has no
-/// finite cutoff):
-///   1. a **leading point** at `effectiveCutoff` valued from the holdings
-///      accumulated over every transaction BEFORE the window — so the line
-///      starts at the true balance-as-of-window-start (zero for an account
-///      whose first-ever event is a receive; the genuine non-zero
-///      one-period-ago balance for an older wallet);
-///   2. a **before/after step pair** for every in-window transaction (the
-///      before-point 1 ms earlier carries the pre-tx value, drawing a
-///      vertical step); and
-///   3. a **trailing point at `now`** = the latest running value × current
-///      price. NOT snapped to any live balance snapshot.
-/// Between transactions there are no points and the value is constant → the
-/// renderer draws a correct flat segment.
+/// **Window (every range distinct, unchanged).** `effectiveCutoff` is the
+/// range's TRUE cutoff for finite ranges; `.all` anchors to the first
+/// transaction. A young wallet's 1Y honestly shows a flat-zero lead (no
+/// holdings a year ago) then a living curve once funded.
 ///
-/// **Edge cases.**
-///   • No transactions in the window → a flat line at the running balance
-///     as of `effectiveCutoff` ("the wallet sat here all week").
-///   • No transactions ever → empty; the caller draws the zero baseline.
-///   • A window whose first event is an outgoing send keeps its true
-///     pre-state; an account whose first-ever event is a receive starts at 0.
+/// **Edge cases.** No transactions → empty (the caller draws the zero
+/// baseline). A window with no in-window transactions but held holdings →
+/// a curve that still moves with the market (the Mode C point) rather than
+/// a flat line.
 ///
-/// **Key normalization.** Transaction adapters write `tokenContract`
-/// verbatim (Etherscan-family lowercases EVM contracts) while other code
-/// may use EIP-55 checksummed form; a byte-for-byte key would split the
-/// same token into two running buckets. `TokenKey` folds symbols to
-/// uppercase and contracts to lowercase at construction. Stored records
-/// keep their verbatim casing — folding is internal matching only.
+/// **Key normalization.** `TokenKey` folds symbols to uppercase and
+/// contracts to lowercase so a transaction (explorer-verbatim contract)
+/// and the price/registry reference land under one key.
 ///
-/// **Pure function.** No SwiftUI dependency; safely callable from any
-/// actor (the heavy work runs off-main via the snapshot overload).
+/// **Pure function.** No SwiftUI dependency; the heavy work runs off-main
+/// via the snapshot overload.
 enum BalanceHistoryReconstructor {
 
     /// `Sendable` snapshot of the transaction fields the reconstruction
-    /// reads — lets the walk run OFF the main actor. `TransactionRecord`
-    /// is a main-context `@Model` and isn't `Sendable`; the caller copies
-    /// the few needed fields on the main actor then hands these value
-    /// types to a detached task.
+    /// reads — lets the walk run OFF the main actor. The caller copies the
+    /// few needed fields from the main-context `@Model` then hands these
+    /// value types to a detached task.
     struct HistoryTx: Sendable {
         let occurredAt: Date
         let statusRaw: String
@@ -140,18 +121,17 @@ enum BalanceHistoryReconstructor {
         let amountRaw: String
         let directionRaw: String
         /// The other side of the transfer (receiver for `.out`, sender for
-        /// `.in`). Used to drop self-transfers — see the `ownAddresses`
-        /// filter in `reconstruct`.
+        /// `.in`). Used to drop self-transfers.
         let counterparty: String
     }
 
     /// `@Model` convenience overload — maps the SwiftData records to
-    /// `Sendable` snapshots and calls the core. Kept so call sites and the
-    /// test suite read naturally; off-main callers use the snapshot
-    /// overload directly.
+    /// `Sendable` snapshots and calls the core. Off-main callers use the
+    /// snapshot overload directly.
     static func reconstruct(
         transactions: [TransactionRecord],
         priceCache: [String: Decimal] = [:],
+        priceHistory: [String: [Int: Decimal]] = [:],
         ownAddresses: Set<String> = [],
         range: BalanceHistoryRange,
         now: Date = Date()
@@ -169,6 +149,7 @@ enum BalanceHistoryReconstructor {
                 )
             },
             priceCache: priceCache,
+            priceHistory: priceHistory,
             ownAddresses: ownAddresses,
             range: range,
             now: now
@@ -176,24 +157,21 @@ enum BalanceHistoryReconstructor {
     }
 
     /// Core reconstruction over `Sendable` snapshots — `nonisolated` so it
-    /// can run on a detached background task without touching the main
-    /// actor. Mode B: holdings ledger from transactions, valued at current
-    /// spot. Returns sample points oldest-to-newest, or `[]` when the
-    /// scope has no transactions (the honest "no history yet" state).
+    /// can run on a detached background task. Mode C: holdings ledger from
+    /// transactions, valued at each instant's historical price (tip at
+    /// spot). Returns sample points oldest-to-newest, or `[]` when the
+    /// scope has no transactions.
     nonisolated static func reconstruct(
         txSnapshots: [HistoryTx],
         priceCache: [String: Decimal] = [:],
+        priceHistory: [String: [Int: Decimal]] = [:],
         ownAddresses: Set<String> = [],
         range: BalanceHistoryRange,
         now: Date = Date()
     ) -> [BalancePoint] {
         let cutoff = range.cutoff(from: now)
 
-        // The truth source: non-failed, non-self-transfer transactions,
-        // oldest-first. Pending count (real intent — they flip to confirmed
-        // in place); failed never moved a balance. A self-transfer (to/from
-        // one of the wallet's OWN addresses) nets to zero, so dropping it
-        // keeps the curve flat across a self-send.
+        // Non-failed, non-self-transfer transactions, oldest-first.
         let sorted = txSnapshots
             .filter { $0.statusRaw != TransactionStatus.failed.rawValue }
             .filter { tx in
@@ -202,112 +180,149 @@ enum BalanceHistoryReconstructor {
             }
             .sorted { $0.occurredAt < $1.occurredAt }
 
-        // No transactions at all → empty. Mode B is purely
-        // transaction-sourced: with no transactions there is no balance to
-        // draw (the caller renders the zero baseline). No balance-snapshot
-        // plateau, no fabricated history.
+        // No transactions → empty (the caller renders the zero baseline).
         guard !sorted.isEmpty else { return [] }
 
-        // Valuation — Mode B. Σ quantity × current spot. A token with no
-        // spot price contributes 0 (honest gap, never a guess).
-        func value(_ quantities: [TokenKey: Decimal]) -> Decimal {
+        // Sorted day-keys per symbol for carry-forward (last-known close).
+        var sortedDays: [String: [Int]] = [:]
+        for (sym, series) in priceHistory { sortedDays[sym] = series.keys.sorted() }
+
+        // Historical close for a symbol on a UTC day, carrying the nearest
+        // PRIOR close forward when the exact day is missing (never zero). An
+        // instant before the series begins uses the earliest close.
+        func historicalClose(_ symbol: String, _ dayKey: Int) -> Decimal? {
+            guard let series = priceHistory[symbol],
+                  let days = sortedDays[symbol], let first = days.first else { return nil }
+            if let exact = series[dayKey] { return exact }
+            if dayKey < first { return series[first] }
+            var lo = 0, hi = days.count - 1, best = -1
+            while lo <= hi {
+                let mid = (lo + hi) / 2
+                if days[mid] <= dayKey { best = mid; lo = mid + 1 } else { hi = mid - 1 }
+            }
+            return best >= 0 ? series[days[best]] : nil
+        }
+
+        // Mode C valuation at an instant — holdings × that day's historical
+        // close (carry-forward), spot as the last-resort fallback.
+        func histValue(_ quantities: [TokenKey: Decimal], at date: Date) -> Decimal {
+            let dayKey = DayKey.from(date: date)
             var sum = Decimal.zero
             for (key, qty) in quantities where qty > 0 {
-                if let price = priceCache[key.symbol] {
-                    sum += qty * price
-                }
+                let price = historicalClose(key.symbol, dayKey) ?? priceCache[key.symbol]
+                if let price { sum += qty * price }
             }
             return sum
         }
 
-        // Effective window start = the range's TRUE cutoff (2026-06-19 Bug 3
-        // fix). The old `max(cutoff, firstTxDate)` clamp collapsed 1M/1Y/All
-        // to `[firstTx, now]` whenever activity was recent — making three
-        // different ranges draw an identical curve + percent. Using the real
-        // cutoff keeps every range distinct: a young wallet's 1Y correctly
-        // shows a long flat-zero lead (no holdings a year ago) then the recent
-        // shape; an older wallet's 1M leads at its genuine one-month-ago
-        // balance. `.all` has no finite cutoff (`.distantPast`), so it — and
-        // ONLY it — anchors to the first transaction (no eon-long lead). The
-        // pre-window walk below values the lead honestly: 0 before any
-        // funding, never fabricated.
+        // Spot valuation for the `now` tip so the chart end == the hero.
+        func spotValue(_ quantities: [TokenKey: Decimal]) -> Decimal {
+            var sum = Decimal.zero
+            for (key, qty) in quantities where qty > 0 {
+                if let price = priceCache[key.symbol] { sum += qty * price }
+            }
+            return sum
+        }
+
+        // Window: real cutoff for finite ranges; first transaction for `.all`.
         let firstTxDate = sorted[0].occurredAt
         let effectiveCutoff: Date = (range == .all) ? firstTxDate : cutoff
 
-        // Forward walk: accumulate every PRE-window transaction so the
-        // leading anchor carries the true balance-as-of-window-start.
-        var running: [TokenKey: Decimal] = [:]
-        var index = 0
-        while index < sorted.count, sorted[index].occurredAt < effectiveCutoff {
-            apply(sorted[index], to: &running)
-            index += 1
+        // Pre-window holdings (every transaction strictly before the window).
+        var preWindow: [TokenKey: Decimal] = [:]
+        var idx = 0
+        while idx < sorted.count, sorted[idx].occurredAt < effectiveCutoff {
+            apply(sorted[idx], to: &preWindow)
+            idx += 1
         }
-        let inWindow = sorted[index...]
-
-        // No in-window transactions → flat line at the pre-window value
-        // across `[effectiveCutoff, now]`. The held quantity didn't change
-        // in this window, so under transaction-sourcing the balance is flat
-        // ("the wallet sat here all week"). Mode B values both endpoints at
-        // the same current spot, so the change pill honestly reads 0%.
-        if inWindow.isEmpty {
-            let v = value(running)
-            return [
-                BalancePoint(timestamp: effectiveCutoff, fiat: v),
-                BalancePoint(timestamp: now, fiat: v),
-            ]
-        }
+        let inWindow = Array(sorted[idx...])
 
         var points: [BalancePoint] = []
-        points.reserveCapacity(inWindow.count * 2 + 2)
 
-        // A 1 ms backstep keeps the step pair's timestamps strictly
-        // increasing so the time-proportional renderer draws a vertical step.
-        let step: TimeInterval = 0.001
+        // Leading anchor: pre-window holdings valued at the historical price
+        // AT the window start (0 for a wallet that held nothing yet).
+        points.append(BalancePoint(timestamp: effectiveCutoff, fiat: histValue(preWindow, at: effectiveCutoff)))
 
-        // Leading anchor at the window start carrying the pre-window value.
-        // For a young wallet / `.all` this is `(firstTx, 0)` — the true
-        // pre-state (zero) before the first receive; the step pair below
-        // then lifts the line to the first held balance.
-        points.append(BalancePoint(timestamp: effectiveCutoff, fiat: value(running)))
+        // Sample requests: the market grid (interior), a before/after pair per
+        // in-window transaction (the step), and the `now` tip (spot).
+        let eps: TimeInterval = 0.001
+        var samples: [(time: Date, isTip: Bool)] = []
+        for instant in sampleGrid(from: effectiveCutoff, to: now, range: range)
+        where instant > effectiveCutoff && instant < now {
+            samples.append((instant, false))
+        }
+        for tx in inWindow where Decimal(string: tx.amountRaw) != nil {
+            samples.append((tx.occurredAt.addingTimeInterval(-eps), false))
+            samples.append((tx.occurredAt, false))
+        }
+        samples.append((now, true))
+        samples.sort { $0.time < $1.time }
 
-        for tx in inWindow {
-            // An unparseable amount can't change state — skip the pair.
-            guard Decimal(string: tx.amountRaw) != nil else { continue }
-            let beforeValue = value(running)
-            let lastTs = points[points.count - 1].timestamp
-            // Before-point just before the tx (the pre-tx value). Clamped so
-            // it never precedes the previous point — at the window start the
-            // leading anchor already carries this value, so the before-point
-            // is simply dropped there.
-            let beforeTs = tx.occurredAt.addingTimeInterval(-step)
-            if beforeTs > lastTs {
-                points.append(BalancePoint(timestamp: beforeTs, fiat: beforeValue))
+        // Forward sweep: advance holdings as each transaction's timestamp is
+        // crossed, valuing every sample at its own instant. A before-sample
+        // (occurredAt − ε) sees pre-trade holdings; the after-sample
+        // (occurredAt) sees post-trade — drawing the step.
+        var running = preWindow
+        var txIdx = 0
+        for sample in samples {
+            while txIdx < inWindow.count, inWindow[txIdx].occurredAt <= sample.time {
+                apply(inWindow[txIdx], to: &running)
+                txIdx += 1
             }
-            apply(tx, to: &running)
-            let afterValue = value(running)
-            // After-point at the tx instant, nudged strictly past the last
-            // point so coincident transactions (e.g. a swap's out+in at one
-            // timestamp) and a tx at the window start can't collapse the step.
-            let prevTs = points[points.count - 1].timestamp
-            let afterTs = tx.occurredAt > prevTs ? tx.occurredAt : prevTs.addingTimeInterval(step)
-            points.append(BalancePoint(timestamp: afterTs, fiat: afterValue))
+            let value = sample.isTip ? spotValue(running) : histValue(running, at: sample.time)
+            points.append(BalancePoint(timestamp: sample.time, fiat: value))
         }
 
-        // Trailing anchor at `now` = the latest transaction-derived value.
-        // NEVER snapped to a live balance snapshot (Mode B contract).
-        let lastTs = points[points.count - 1].timestamp
-        if now > lastTs {
-            points.append(BalancePoint(timestamp: now, fiat: value(running)))
+        // Order by time; drop EXACT duplicates (the leading anchor and a first
+        // transaction at the window start can coincide). Keep distinct values
+        // at the same instant — that's the vertical step.
+        points.sort { $0.timestamp < $1.timestamp }
+        var deduped: [BalancePoint] = []
+        deduped.reserveCapacity(points.count)
+        for point in points {
+            if let last = deduped.last, last.timestamp == point.timestamp, last.fiat == point.fiat { continue }
+            deduped.append(point)
         }
-
-        return points
+        return deduped
     }
 
     // MARK: - Helpers
 
+    /// Evenly-spaced sample instants over `[start, end]` at a per-range
+    /// cadence, capped to ~`maxPoints` so a long span stays render-cheap.
+    /// Always includes `start` and `end`. Granularity is **daily** (the
+    /// finest the `HistoricalPriceRecord` close table supports); sub-day
+    /// ranges (1H/1D) therefore collapse to ~2 points at daily closes — we
+    /// do NOT fabricate intraday wiggle. `.all` over a multi-year span
+    /// steps weekly.
+    nonisolated static func sampleGrid(
+        from start: Date, to end: Date, range: BalanceHistoryRange
+    ) -> [Date] {
+        guard end > start else { return [end] }
+        let span = end.timeIntervalSince(start)
+        let day: TimeInterval = 86_400
+        let rawStep: TimeInterval
+        switch range {
+        case .hour, .day, .week, .month, .year:
+            rawStep = day
+        case .all:
+            rawStep = span > day * 400 ? day * 7 : day   // weekly once it's multi-year
+        }
+        let maxPoints = 420
+        let step = max(rawStep, span / Double(maxPoints))
+        var grid: [Date] = []
+        var instant = start
+        while instant < end {
+            grid.append(instant)
+            instant = instant.addingTimeInterval(step)
+        }
+        grid.append(end)
+        return grid
+    }
+
     /// Apply one transaction's effect to the running per-token quantities,
-    /// forward in time: incoming adds, outgoing subtracts, internal
-    /// (own-address shuffle) is a no-op. Negative residue clamps to zero.
+    /// forward in time: incoming adds, outgoing subtracts, internal is a
+    /// no-op. Negative residue clamps to zero.
     private static func apply(
         _ tx: HistoryTx,
         to running: inout [TokenKey: Decimal]
@@ -326,10 +341,8 @@ enum BalanceHistoryReconstructor {
     }
 
     /// Normalized per-token identity. Symbols fold to uppercase; contracts
-    /// fold to lowercase; empty contracts collapse to `nil` (native coins)
-    /// — so a transaction (explorer-verbatim lowercase contract) and a
-    /// registry-cased reference land under one key. Folding is internal
-    /// matching only — stored records keep their verbatim casing.
+    /// fold to lowercase; empty contracts collapse to `nil` (native coins).
+    /// Internal matching only — stored records keep their verbatim casing.
     private struct TokenKey: Hashable {
         let symbol: String
         let contract: String?

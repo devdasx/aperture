@@ -312,11 +312,13 @@ struct BalanceHistoryChart: View {
         // 2026-06-13 fix removed was summing the whole priceCache +
         // priceHistory nest, not the tiny held-balance sum kept here.
         // **Mode B (2026-06-19).** The curve depends ONLY on the
-        // transactions (shape) and the current spot prices (scale). Key on
-        // the transaction set (count + newest timestamp) plus the spot prices
-        // (count + value sum, so a price tick rescales the chart), the range,
-        // and the currency. `currentBalances` / `priceHistory` no longer feed
-        // the curve and are intentionally absent from the key.
+        // transactions (shape) and BOTH the spot prices (tip scale) and the
+        // historical closes (Mode C — the whole curve's valuation). Key on the
+        // transaction set (count + newest timestamp), the spot prices (count +
+        // value sum), the historical series (symbol count + total day-key
+        // count, so a backfill re-triggers without summing thousands of
+        // Decimals), the range, and the currency. `currentBalances` no longer
+        // feeds the curve and is intentionally absent.
         var hasher = Hasher()
         hasher.combine(transactions.count)
         if let newest = transactions.map(\.occurredAt).max() {
@@ -328,6 +330,10 @@ struct BalanceHistoryChart: View {
         var priceSum = Decimal.zero
         for price in priceCache.values { priceSum += price }
         hasher.combine(priceSum)
+        hasher.combine(priceHistory.count)
+        var histDayCount = 0
+        for series in priceHistory.values { histDayCount += series.count }
+        hasher.combine(histDayCount)
         return hasher.finalize()
     }
 
@@ -347,9 +353,10 @@ struct BalanceHistoryChart: View {
     /// freezes.
     private func rebuildPoints() async {
         // Snapshot on the main actor (these are main-context @Models), then
-        // run the Mode B reconstruction OFF the main actor. Mode B needs ONLY
-        // the transactions + the current spot prices — no balance snapshots,
-        // no historical-price series.
+        // run the Mode C reconstruction OFF the main actor. Mode C values the
+        // transaction-derived holdings at each instant's historical close
+        // (tip at spot) — so it needs the transactions, the spot prices, AND
+        // the historical-price series.
         let txSnapshots = transactions.map {
             BalanceHistoryReconstructor.HistoryTx(
                 occurredAt: $0.occurredAt,
@@ -362,6 +369,7 @@ struct BalanceHistoryChart: View {
             )
         }
         let cache = priceCache
+        let history = priceHistory
         let range = currentRange
         let own = ownAddresses
 
@@ -370,6 +378,7 @@ struct BalanceHistoryChart: View {
             BalanceHistoryReconstructor.reconstruct(
                 txSnapshots: txSnapshots,
                 priceCache: cache,
+                priceHistory: history,
                 ownAddresses: own,
                 range: range
             )
