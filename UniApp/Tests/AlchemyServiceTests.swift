@@ -57,6 +57,51 @@ struct AlchemyServiceTests {
         #expect(tokens.first?.isNative == true)   // sentinel → native, not a token
     }
 
+    // MARK: - usdPrice + priceUSD parsing (withPrices, 2026-06-19)
+
+    @Test("usdPrice prefers the USD entry, parses String and NSNumber values, nil when absent")
+    func usdPriceParsing() {
+        #expect(AlchemyService.usdPrice(from: [["currency": "usd", "value": "1.0001"]]) == Decimal(string: "1.0001"))
+        #expect(AlchemyService.usdPrice(from: [["currency": "eur", "value": "0.9"], ["currency": "USD", "value": "1.05"]]) == Decimal(string: "1.05"))
+        #expect(AlchemyService.usdPrice(from: [["currency": "usd", "value": 2.5 as NSNumber]]) == Decimal(string: "2.5"))
+        #expect(AlchemyService.usdPrice(from: []) == nil)
+        #expect(AlchemyService.usdPrice(from: nil) == nil)
+        // No explicit usd entry → falls back to the first entry's value.
+        #expect(AlchemyService.usdPrice(from: [["value": "3.0"]]) == Decimal(string: "3.0"))
+    }
+
+    @Test("parseTokens reads tokenPrices into priceUSD (legitimacy signal)")
+    func parseTokensPrice() throws {
+        let json = """
+        { "data": { "tokens": [
+          { "address":"0xa","network":"eth-mainnet","tokenAddress":"0xLink","tokenBalance":"0xde0b6b3a7640000",
+            "tokenMetadata": { "decimals":18, "symbol":"LINK", "name":"Chainlink Token" },
+            "tokenPrices": [ { "currency":"usd", "value":"14.20" } ] },
+          { "address":"0xa","network":"eth-mainnet","tokenAddress":"0xSpam","tokenBalance":"0x1",
+            "tokenMetadata": { "decimals":18, "symbol":"CLAIM", "name":"claim-rewards.xyz" } }
+        ] } }
+        """
+        let tokens = try AlchemyService.parseTokens(data(json))
+        let link = tokens.first { $0.symbol == "LINK" }
+        #expect(link?.priceUSD == Decimal(string: "14.20"))
+        let spam = tokens.first { $0.symbol == "CLAIM" }
+        #expect(spam?.priceUSD == nil)   // no tokenPrices → unpriced
+    }
+
+    @Test("canonicalNetwork normalizes the matic→polygon response slug")
+    func canonicalSlug() {
+        #expect(AlchemyService.canonicalNetwork("matic-mainnet") == "polygon-mainnet")
+        #expect(AlchemyService.canonicalNetwork("eth-mainnet") == "eth-mainnet")
+    }
+
+    @Test("groupBatchedRows keys a matic-mainnet response row under polygon-mainnet")
+    func groupBatchedPolygonSlug() throws {
+        let json = #"{"data":{"tokens":[{"address":"0xAAA","network":"matic-mainnet","tokenAddress":null,"tokenBalance":"0x1"}]}}"#
+        let grouped = try AlchemyService.groupBatchedRows(data(json))
+        #expect(grouped["polygon-mainnet|0xaaa"]?.count == 1)
+        #expect(grouped["matic-mainnet|0xaaa"] == nil)   // not under the raw slug
+    }
+
     // MARK: - groupBatchedRows (Task 1) — by (network,address)
 
     @Test("groupBatchedRows groups by network and lowercased address across the batch")
