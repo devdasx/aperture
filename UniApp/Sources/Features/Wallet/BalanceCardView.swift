@@ -102,6 +102,9 @@ struct BalanceCardView: View {
 
     @State private var points: [BalancePoint] = []
     @State private var values: [Double] = []
+    /// Per-point horizontal position in `[0, 1]` from each sample's
+    /// timestamp (Mode B real-time x-axis) — parallel to `values`.
+    @State private var xFractions: [Double] = []
     @State private var minValue: Double = 0
     @State private var maxValue: Double = 0
 
@@ -384,6 +387,7 @@ struct BalanceCardView: View {
         // horizontal pad so the curve bleeds to the card edges.
         BalanceAreaChart(
             values: chartValues,
+            xFractions: chartXFractions,
             minValue: chartMin,
             maxValue: chartMax,
             sign: chartSign,
@@ -418,6 +422,11 @@ struct BalanceCardView: View {
     /// hidden state so no value shape is exposed (handoff §Hidden).
     private var chartValues: [Double] {
         isHidden ? Array(repeating: 0, count: max(values.count, 2)) : values
+    }
+    /// Time-proportional x for the real curve; `[]` while hidden so the
+    /// masked flat line falls back to (visually identical) index spacing.
+    private var chartXFractions: [Double] {
+        isHidden ? [] : xFractions
     }
     private var chartMin: Double { isHidden ? 0 : minValue }
     private var chartMax: Double { isHidden ? 0 : maxValue }
@@ -647,21 +656,30 @@ struct BalanceCardView: View {
     /// behind a real change (the 2026-06-13 perf shape).
     private var rebuildKey: Int {
         var hasher = Hasher()
+        // **Mode B (2026-06-19).** The curve depends ONLY on the
+        // transactions (shape) and the current spot prices (scale) — not on
+        // any balance snapshot. Key on the transaction set (count + newest
+        // timestamp) plus the spot prices (count + value sum, so a price
+        // tick rescales the chart), the range, and the currency. `priceCache`
+        // is per-symbol (~tens of entries) so summing it is cheap.
         hasher.combine(transactions.count)
-        hasher.combine(currentBalances.count)
-        var fiatTotal = Decimal.zero
-        for balance in currentBalances { fiatTotal += balance.fiatValueCached }
-        hasher.combine(fiatTotal)
+        if let newest = transactions.map(\.occurredAt).max() {
+            hasher.combine(newest)
+        }
         hasher.combine(selectedRangeRaw)
         hasher.combine(currencyCode)
         hasher.combine(priceCache.count)
-        var histDayCount = 0
-        for series in priceHistory.values { histDayCount += series.count }
-        hasher.combine(histDayCount)
+        var priceSum = Decimal.zero
+        for price in priceCache.values { priceSum += price }
+        hasher.combine(priceSum)
         return hasher.finalize()
     }
 
     private func rebuild() async {
+        // Snapshot the few needed transaction fields on the main actor (these
+        // are main-context @Models), then run the Mode B reconstruction OFF
+        // the main actor. Mode B needs ONLY the transactions + the current
+        // spot prices — no balance snapshots, no historical-price series.
         let txSnapshots = transactions.map {
             BalanceHistoryReconstructor.HistoryTx(
                 occurredAt: $0.occurredAt,
@@ -673,26 +691,14 @@ struct BalanceCardView: View {
                 counterparty: $0.counterparty
             )
         }
-        let balanceSnapshots = currentBalances.map {
-            BalanceHistoryReconstructor.HistoryBalance(
-                tokenSymbol: $0.tokenSymbol,
-                tokenContract: $0.tokenContract,
-                rawBalance: $0.rawBalance,
-                decimals: $0.decimals,
-                fiatValueCached: $0.fiatValueCached
-            )
-        }
         let cache = priceCache
-        let history = priceHistory
         let range = currentRange
         let own = ownAddresses
 
         let reconstructed = await Task.detached(priority: .userInitiated) {
             BalanceHistoryReconstructor.reconstruct(
                 txSnapshots: txSnapshots,
-                balanceSnapshots: balanceSnapshots,
                 priceCache: cache,
-                priceHistory: history,
                 ownAddresses: own,
                 range: range
             )
@@ -702,12 +708,27 @@ struct BalanceCardView: View {
         let resolved = reconstructed.count >= 2 ? reconstructed : Self.zeroBaseline(for: range)
         points = resolved
         let projected = resolved.map { NSDecimalNumber(decimal: $0.fiat).doubleValue }
+        let fractions = Self.timeFractions(for: resolved)
         // Reload chart + pill together — handoff §Interactions ~300ms ease.
         withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.3)) {
             values = projected
+            xFractions = fractions
             minValue = projected.min() ?? 0
             maxValue = projected.max() ?? 0
         }
+    }
+
+    /// Per-point horizontal position in `[0, 1]` from each sample's
+    /// timestamp — `(t − first) / (last − first)`. This is the real-time
+    /// x-axis: a one-hour gap and a one-year gap occupy proportional width.
+    /// Returns `[]` for a degenerate span (≤1 point or all-same-time); the
+    /// renderer then falls back to equal-index spacing.
+    private static func timeFractions(for points: [BalancePoint]) -> [Double] {
+        guard let first = points.first?.timestamp,
+              let last = points.last?.timestamp,
+              last > first else { return [] }
+        let span = last.timeIntervalSince(first)
+        return points.map { max(0, min(1, $0.timestamp.timeIntervalSince(first) / span)) }
     }
 
     /// A 2-point flat baseline at 0 spanning the range — used when the

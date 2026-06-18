@@ -301,23 +301,23 @@ struct BalanceHistoryChart: View {
         // is closed by the next held-balance change. The expensive part the
         // 2026-06-13 fix removed was summing the whole priceCache +
         // priceHistory nest, not the tiny held-balance sum kept here.
+        // **Mode B (2026-06-19).** The curve depends ONLY on the
+        // transactions (shape) and the current spot prices (scale). Key on
+        // the transaction set (count + newest timestamp) plus the spot prices
+        // (count + value sum, so a price tick rescales the chart), the range,
+        // and the currency. `currentBalances` / `priceHistory` no longer feed
+        // the curve and are intentionally absent from the key.
         var hasher = Hasher()
         hasher.combine(transactions.count)
-        hasher.combine(currentBalances.count)
-        // O(balances) — a handful of held rows, not the tx history.
-        var fiatTotal = Decimal.zero
-        for balance in currentBalances {
-            fiatTotal += balance.fiatValueCached
+        if let newest = transactions.map(\.occurredAt).max() {
+            hasher.combine(newest)
         }
-        hasher.combine(fiatTotal)
         hasher.combine(selectedRangeRaw)
         hasher.combine(currencyCode)
         hasher.combine(priceCache.count)
-        hasher.combine(priceHistory.count)
-        // O(symbols) — number of day-keys per symbol, no value summing.
-        var histDayCount = 0
-        for series in priceHistory.values { histDayCount += series.count }
-        hasher.combine(histDayCount)
+        var priceSum = Decimal.zero
+        for price in priceCache.values { priceSum += price }
+        hasher.combine(priceSum)
         return hasher.finalize()
     }
 
@@ -336,7 +336,10 @@ struct BalanceHistoryChart: View {
     /// actor. The chart paints a frame later, but the screen never
     /// freezes.
     private func rebuildPoints() async {
-        // Snapshot on the main actor (these are main-context @Models).
+        // Snapshot on the main actor (these are main-context @Models), then
+        // run the Mode B reconstruction OFF the main actor. Mode B needs ONLY
+        // the transactions + the current spot prices — no balance snapshots,
+        // no historical-price series.
         let txSnapshots = transactions.map {
             BalanceHistoryReconstructor.HistoryTx(
                 occurredAt: $0.occurredAt,
@@ -348,27 +351,15 @@ struct BalanceHistoryChart: View {
                 counterparty: $0.counterparty
             )
         }
-        let balanceSnapshots = currentBalances.map {
-            BalanceHistoryReconstructor.HistoryBalance(
-                tokenSymbol: $0.tokenSymbol,
-                tokenContract: $0.tokenContract,
-                rawBalance: $0.rawBalance,
-                decimals: $0.decimals,
-                fiatValueCached: $0.fiatValueCached
-            )
-        }
         let cache = priceCache
-        let history = priceHistory
         let range = currentRange
         let own = ownAddresses
 
-        // Heavy Decimal reconstruction OFF the main actor.
+        // Reconstruction OFF the main actor.
         let reconstructed = await Task.detached(priority: .userInitiated) {
             BalanceHistoryReconstructor.reconstruct(
                 txSnapshots: txSnapshots,
-                balanceSnapshots: balanceSnapshots,
                 priceCache: cache,
-                priceHistory: history,
                 ownAddresses: own,
                 range: range
             )
