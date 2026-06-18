@@ -79,7 +79,12 @@ struct AllSupportedAssetsView: View {
         // full list mid-render.
         let held = heldRows
         let allCoins = WalletSupportedRowBuilders.coinRows(heldRows: held, currencyCode: currencyCode)
-        let allTokens = WalletSupportedRowBuilders.tokenRows(heldRows: held, currencyCode: currencyCode)
+        // One row per token symbol (USDT once, not per network) — the network
+        // breakdown lives in the asset detail (2026-06-18).
+        let allTokens = WalletSupportedRowBuilders.collapseBySymbol(
+            WalletSupportedRowBuilders.tokenRows(heldRows: held, currencyCode: currencyCode),
+            currencyCode: currencyCode
+        )
         let coinRows = visibleCoins(allCoins)
         let tokenRows = visibleTokens(allTokens)
         let isEmpty = !((assetType.showsCoins && !coinRows.isEmpty)

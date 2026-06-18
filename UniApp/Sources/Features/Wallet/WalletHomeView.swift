@@ -1817,10 +1817,15 @@ struct WalletHomeView: View {
             }
             return a.chain.displayName.localizedStandardCompare(b.chain.displayName) == .orderedAscending
         }
-        let tokenRows = WalletSupportedRowBuilders.tokenRows(
-            heldRows: held,
-            currencyCode: currencyCode,
-            assets: catalogAssets
+        // Collapse to ONE row per token symbol (USDT once, not per network) —
+        // the user picks the network inside the asset detail (2026-06-18).
+        let tokenRows = WalletSupportedRowBuilders.collapseBySymbol(
+            WalletSupportedRowBuilders.tokenRows(
+                heldRows: held,
+                currencyCode: currencyCode,
+                assets: catalogAssets
+            ),
+            currencyCode: currencyCode
         )
         tokenDisplayRows = tokenRows.sorted { a, b in
             if a.isHeld != b.isHeld { return a.isHeld }
