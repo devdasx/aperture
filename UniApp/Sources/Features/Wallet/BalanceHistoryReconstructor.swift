@@ -426,22 +426,62 @@ enum BalanceHistoryReconstructor {
         // raw cutoff (the tx is before the window), so this is the honest
         // "the wallet sat at its pre-window level across this window".
         if inWindow.isEmpty {
-            // The wallet sat still across the whole window — so the line
-            // is flat at the REAL current balance (the hero figure), with
-            // 0% change. This is the common 1H/1D case: no transaction in
-            // the window ⇒ a flat curve at the hero number, NOT a fold to a
-            // different range and NOT a fabricated movement (2026-06-16).
-            // Both endpoints take the same reconciled level so the change
-            // pill honestly reads 0.00 / 0%.
             let trailingFiat = trailingAnchorFiat(
                 quantities: running, now: now,
                 priceHistory: priceHistory, priceCache: priceCache,
                 fiatPerUnit: fiatPerUnit, currentBalanceFiat: currentBalanceFiat
             )
-            return [
-                BalancePoint(timestamp: effectiveCutoff, fiat: trailingFiat),
-                BalancePoint(timestamp: now, fiat: trailingFiat),
-            ]
+
+            // **Sub-day ranges stay flat (1H/1D).** Daily-close price data can't
+            // show intraday shape (the documented data-availability limit), and
+            // the 2026-06-16 direction is an honest flat line at the hero with
+            // 0% change for a window with no transaction — keep exactly that.
+            switch range {
+            case .hour, .day:
+                return [
+                    BalancePoint(timestamp: effectiveCutoff, fiat: trailingFiat),
+                    BalancePoint(timestamp: now, fiat: trailingFiat),
+                ]
+            case .week, .month, .year, .all:
+                break   // fall through to the dense market grid below
+            }
+
+            // **2026-06-19 — market-movement fix (root cause #2), multi-day
+            // ranges.** The wallet held a CONSTANT position across the window
+            // (no in-window trades), but the price of what it holds still moved.
+            // The old code drew a flat 2-point line — a wallet holding BTC all
+            // year showed a straight line even as BTC swung. Sample the window
+            // on a daily grid and value the constant `running` holdings at EACH
+            // day's historical close, so the curve follows the market. Holdings
+            // still come ONLY from the transaction walk (`running`); only the
+            // valuation moves. When no historical prices exist for the held
+            // symbols, every grid point degrades to today's spot via
+            // `totalFiatAt`'s ladder → the same flat line as before (honest: no
+            // data, no fabricated wiggle). The endpoint reconciles to the hero
+            // so the right edge + change pill stay consistent (2026-06-16).
+            // Daily grid points are evenly time-spaced, so this renders
+            // correctly even under the current index-spaced sparkline.
+            let grid = sampleGrid(from: effectiveCutoff, to: now, range: range)
+            guard grid.count >= 2 else {
+                return [
+                    BalancePoint(timestamp: effectiveCutoff, fiat: trailingFiat),
+                    BalancePoint(timestamp: now, fiat: trailingFiat),
+                ]
+            }
+            var marketPoints: [BalancePoint] = []
+            marketPoints.reserveCapacity(grid.count)
+            for (i, instant) in grid.enumerated() {
+                let isLast = i == grid.count - 1
+                let fiat = isLast
+                    ? trailingFiat   // right edge == hero (existing contract)
+                    : totalFiatAt(
+                        quantities: running, timestamp: instant,
+                        priceHistory: priceHistory, priceCache: priceCache,
+                        fiatPerUnit: fiatPerUnit
+                    )
+                marketPoints.append(BalancePoint(timestamp: instant, fiat: fiat))
+            }
+            return marketPoints
         }
 
         var points: [BalancePoint] = []
@@ -568,6 +608,42 @@ enum BalanceHistoryReconstructor {
             break
         }
         if running[key, default: 0] < 0 { running[key] = 0 }
+    }
+
+    /// Evenly-spaced sample instants over `[start, end]` at a per-range cadence,
+    /// capped to ~`maxPoints` so a long span stays render-cheap. Always includes
+    /// `end`. Used to value a constant-held position across a no-trade window so
+    /// the curve follows the MARKET (root cause #2, 2026-06-19).
+    ///
+    /// **Granularity = daily** (the finest the `HistoricalPriceRecord` table
+    /// supports — UTC-day closes). Sub-day ranges (1H/1D) therefore render at
+    /// daily granularity: with daily-only price data we deliberately do NOT
+    /// fabricate intraday wiggle (a short window collapses to ~2 points at one
+    /// day's close — honest). `.all` over a multi-year span steps weekly.
+    nonisolated static func sampleGrid(
+        from start: Date, to end: Date, range: BalanceHistoryRange
+    ) -> [Date] {
+        guard end > start else { return [end] }
+        let span = end.timeIntervalSince(start)
+        let day: TimeInterval = 86_400
+        let rawStep: TimeInterval
+        switch range {
+        case .hour, .day, .week, .month, .year:
+            rawStep = day
+        case .all:
+            rawStep = span > day * 400 ? day * 7 : day   // weekly once it's multi-year
+        }
+        // Cap the point count so a huge span stays cheap to value + render.
+        let maxPoints = 420
+        let step = max(rawStep, span / Double(maxPoints))
+        var grid: [Date] = []
+        var instant = start
+        while instant < end {
+            grid.append(instant)
+            instant = instant.addingTimeInterval(step)
+        }
+        grid.append(end)
+        return grid
     }
 
     /// Timestamp-aware fiat sum. For each token quantity, the price
