@@ -79,8 +79,14 @@ struct CoinMark: View {
         // it doubles as the `.task(id:)` rebuild key AND the fetch
         // target, so the derivation never runs twice for one render.
         let url = resolvedURL
+        // Synchronous decoded-image cache hit → paint immediately with NO
+        // `.task`, no actor hop, no re-decode. `prepared` covers the in-flight
+        // first load on THIS instance; the shared cache covers every later
+        // render of the same mark this session (so scrolling re-uses pixels
+        // instead of re-rendering each time).
+        let cached = url.flatMap { CoinMarkImageCache.shared.image(for: $0) }
         return Group {
-            if let image = prepared {
+            if let image = prepared ?? cached {
                 Image(uiImage: image)
                     .resizable()
                     .scaledToFit()
@@ -90,6 +96,8 @@ struct CoinMark: View {
             }
         }
         .task(id: url) {
+            // Already decoded this session → nothing to do; the cache paints it.
+            if let url, CoinMarkImageCache.shared.image(for: url) != nil { return }
             await loadFromCache(url: url)
         }
     }
@@ -151,12 +159,17 @@ struct CoinMark: View {
     /// ~99% of rows whose primary mark resolves never pay for it.
     private func loadFromCache(url: URL?) async {
         if let image = await preparedImage(for: url) {
+            if let url { CoinMarkImageCache.shared.store(image, for: url) }
             await MainActor.run { self.prepared = image }
             return
         }
         let fallback = fallbackURL
         guard let fallback, fallback != url,
               let image = await preparedImage(for: fallback) else { return }
+        // Cache under BOTH the fallback AND the primary url, so a later render
+        // keyed on the primary url still hits the synchronous cache.
+        CoinMarkImageCache.shared.store(image, for: fallback)
+        if let url { CoinMarkImageCache.shared.store(image, for: url) }
         await MainActor.run { self.prepared = image }
     }
 
@@ -224,5 +237,45 @@ struct CoinMark: View {
         let trimmed = tokenSymbol.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmed.isEmpty { return "—" }
         return String(trimmed.prefix(3)).uppercased()
+    }
+}
+
+// MARK: - Decoded-image cache (native, session-wide)
+
+/// Process-wide cache of DECODED, display-ready coin marks keyed by source
+/// URL.
+///
+/// **Why (2026-06-18, user direction "cache icons once, no re-render each
+/// time").** The on-disk `CoinMarkCache` already persists the PNG *bytes*
+/// across launches (download-once). But SwiftUI re-creates each `CoinMark`'s
+/// `.task` on every lazy row reappearance, so scrolling a list re-ran the
+/// actor hop + image decode for marks it had already shown. This caches the
+/// DECODED `UIImage` (the expensive, display-ready bitmap) for the whole
+/// session: once a mark is decoded off-main, every later render — fast scroll
+/// included — reads it synchronously here and paints with zero per-row work.
+///
+/// `NSCache` is the native choice: thread-safe and memory-pressure-aware, so
+/// iOS evicts it automatically under pressure rather than risking a memory
+/// warning. `@unchecked Sendable` is sound — all access goes through
+/// `NSCache`, which is internally synchronized.
+final class CoinMarkImageCache: @unchecked Sendable {
+    static let shared = CoinMarkImageCache()
+
+    private let cache: NSCache<NSString, UIImage> = {
+        let cache = NSCache<NSString, UIImage>()
+        // Generous ceiling — a wallet with every supported token visible at
+        // once stays well under this; eviction is the system's job.
+        cache.countLimit = 500
+        return cache
+    }()
+
+    private init() {}
+
+    func image(for url: URL) -> UIImage? {
+        cache.object(forKey: url.absoluteString as NSString)
+    }
+
+    func store(_ image: UIImage, for url: URL) {
+        cache.setObject(image, forKey: url.absoluteString as NSString)
     }
 }
