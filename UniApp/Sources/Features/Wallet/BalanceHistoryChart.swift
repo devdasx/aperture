@@ -286,12 +286,16 @@ struct BalanceHistoryChart: View {
         // whole `priceHistory` nest (thousands of slow Decimal adds) and
         // scanned every transaction — hundreds of ms per render once the
         // wallet had deep history, which froze the screen on unlock /
-        // navigation. Now it uses COUNTS only: O(symbols + balances),
-        // all tiny collections. Trade-off: an in-place price-value edit
-        // or a confirmed→failed status flip at an unchanged row count
-        // won't re-trigger the reconstruction until the next count/
-        // balance change — a rare edge the next refresh closes, well
-        // worth a smooth main screen.
+        // navigation. Now it sums ONLY the held balances' cached fiat
+        // (O(balances) — a handful of rows) plus COUNTS for the price
+        // dictionaries (O(symbols), no value summing). So a refresh that
+        // re-prices the held rows DOES re-trigger the reconstruction (the
+        // `fiatTotal` below changes) — the chart stays live — while an
+        // in-place edit to a `priceCache` / `priceHistory` VALUE at an
+        // unchanged dictionary count does NOT (counts only); that rare edge
+        // is closed by the next held-balance change. The expensive part the
+        // 2026-06-13 fix removed was summing the whole priceCache +
+        // priceHistory nest, not the tiny held-balance sum kept here.
         var hasher = Hasher()
         hasher.combine(transactions.count)
         hasher.combine(currentBalances.count)

@@ -102,15 +102,19 @@ struct WalletHomeView: View {
     @Query(sort: \ChainRecord.sortIndex) private var chainRecords: [ChainRecord]
     @Query private var assetRecords: [AssetRecord]
 
-    /// **Per-chain aggregate rows (2026-06-17, user direction "balance
-    /// card should get its balances from each chain from its row").** A
-    /// top-level `@Query` so the hero total recomputes live the instant the
-    /// refresh coordinator rebuilds a chain's `ChainStateRecord` — the same
-    /// liveness mechanism the transaction feed uses. `totalFiat` sums these
-    /// rows (active wallet, active currency); it falls back to the live
-    /// balance-row sum before the first rebuild so a fresh wallet is never
-    /// wrong or blank.
-    @Query private var chainStateRecords: [ChainStateRecord]
+    // **Per-chain aggregate rows (2026-06-17).** The `chainStateRecords`
+    // `@Query` that drives the hero total now lives in the
+    // `BalanceCardLiveSection` leaf (2026-06-18 native perf fix), NOT here.
+    // The refresh coordinator rebuilds a chain's `ChainStateRecord` on a
+    // ~300ms cadence during every scan; a top-level `@Query` here made each
+    // of those commits re-evaluate this entire 2,790-line body (Apple's
+    // documented `@Query`/DynamicProperty invalidation — a declared query
+    // invalidates the owning view's body on ANY result change, read or not).
+    // Moving the query into the small leaf that actually renders the total
+    // localizes that 300ms invalidation to the card alone — the parent body
+    // no longer re-evaluates on balance commits. The parent passes the leaf
+    // the live balance-row sum (`liveBalanceSum`) as the pre-aggregate
+    // fallback so a fresh wallet is never blank.
     @AppStorage("activeWalletId") private var activeWalletIdRaw: String = ""
     @AppStorage(CurrencyPreference.storageKey) private var currencyCode: String = CurrencyPreference.defaultCode
     @AppStorage(HideBalancesPreference.hideBalanceOnHomeKey) private var hideBalanceOnHome: Bool = false
@@ -975,12 +979,19 @@ struct WalletHomeView: View {
         // card draws its own internal padding). This replaces the
         // prior two-row hero + sparkline split.
         Section {
-            BalanceCardView(
+            // 2026-06-18 native perf fix — the balance card is wrapped in a
+            // leaf that OWNS the high-churn `chainStateRecords` @Query, so the
+            // refresh coordinator's ~300ms aggregate commits re-render only
+            // the card, never this whole body (Apple "extract subviews to
+            // localize invalidation"). The parent passes the live balance-row
+            // sum as the pre-aggregate fallback; the leaf computes the hero
+            // total from the per-chain aggregate rows internally.
+            BalanceCardLiveSection(
                 walletId: activeWallet?.id,
                 walletName: activeWallet?.name ?? String.apertureLocalized("Wallet"),
                 avatarSpec: activeWallet?.avatarSpec
                     ?? WalletAvatarSpec.auto(name: activeWallet?.name ?? "Wallet"),
-                totalFiat: totalFiat,
+                liveBalanceSum: liveBalanceSum,
                 currencyCode: currencyCode,
                 transactions: allTransactions,
                 currentBalances: balances.map { $0.balance },
@@ -1016,38 +1027,11 @@ struct WalletHomeView: View {
     // writer still stamps `SyncStatusRecord` so freshness is tracked;
     // nothing renders it.
 
-    /// Hero row factored out so the production card reuses one
-    /// instance — same parameter resolution.
-    private var walletHomeHeaderRow: some View {
-        WalletHomeHeader(
-            walletName: activeWallet?.name ?? String.apertureLocalized("Wallet"),
-            // 2026-06-09 — when scrubbing the chart, the hero
-            // renders the scrubbed point's fiat instead of the
-            // wallet's actual total. The chart's own scrubbing
-            // readout was removed; the hero is the single
-            // source of truth for the displayed number.
-            // `.contentTransition(.numericText())` inside
-            // `WalletHomeHeader.balanceLabel` animates the digits.
-            // Resting total only — the scrubbed value is resolved
-            // INSIDE WalletHomeHeader via `scrubModel` so a drag frame
-            // re-renders only the header, not this whole body
-            // (2026-06-13 perf fix).
-            totalFiat: totalFiat,
-            currencyCode: currencyCode,
-            chainCount: chainsHeldCount,
-            tokenCount: balances.count,
-            totalChainsSupported: WalletFormatting.chainCount(activeWallet?.addresses ?? []),
-            hasAnyBalance: !balances.isEmpty,
-            // Local OR shared — a user pull that replaced a wedged
-            // pipeline keeps the header honest about the replacement
-            // still running (2026-06-12).
-            isRefreshing: isAnyRefreshInFlight,
-            lastSyncedAt: mostRecentScanAt,
-            hideBalance: hideBalanceOnHome,
-            onSwitchWallet: { isShowingSwitcher = true },
-            scrubModel: scrubModel
-        )
-    }
+    // 2026-06-18 — the `walletHomeHeaderRow` helper (a standalone
+    // `WalletHomeHeader`) was DEAD code: never referenced anywhere in the
+    // body. `BalanceCardView` renders its own header, so the production card
+    // never reused this. Removed as part of the native perf fix — it read
+    // the old parent `totalFiat` (now computed inside `BalanceCardLiveSection`).
 
     /// Floating chrome rows — biometric banner, glass action triplet,
     /// Coins/Tokens segmented switcher. Cleared row backgrounds and
@@ -2242,39 +2226,25 @@ struct WalletHomeView: View {
         return result.sorted { $0.1.fiatValueCached > $1.1.fiatValueCached }
     }
 
-    /// Hero total. Sums ONLY rows whose persisted fiat is denominated
-    /// in the ACTIVE currency — the hero formats with `currencyCode`,
-    /// so adding a row still carrying the previous currency's value
-    /// would render 35 JOD as "$35" (the 2026-06-13 currency-change
-    /// bug). Rows in the old currency drop out of the total for the
-    /// brief window until `repriceWallet` re-denominates them.
-    private var totalFiat: Decimal {
-        // The live balance-row sum: the main-context `@Query` TokenBalanceRecord
-        // rows in the active currency. Always correct + current (this is the
-        // context the scanner's priced writes land in). Both this and the
-        // per-chain aggregate read from the SAME database — these are the rows
-        // ChainStateRecord is derived from.
-        let liveSum = balances.reduce(Decimal.zero) { running, entry in
+    /// The live balance-row sum — the pre-aggregate fallback the hero shows
+    /// until the per-chain `ChainStateRecord` rows land. Sums ONLY rows whose
+    /// persisted fiat is denominated in the ACTIVE currency (the hero formats
+    /// with `currencyCode`, so a row still carrying the previous currency's
+    /// value would render 35 JOD as "$35" — the 2026-06-13 currency-change
+    /// bug). Rows in the old currency drop out until `repriceWallet`
+    /// re-denominates them.
+    ///
+    /// **The aggregate (preferred) total is computed inside
+    /// `BalanceCardLiveSection`** (2026-06-18), which owns the
+    /// `chainStateRecords` @Query, so the coordinator's 300ms commits don't
+    /// re-evaluate this whole body. This view only computes the cheap live
+    /// sum and hands it down as the fallback.
+    private var liveBalanceSum: Decimal {
+        balances.reduce(Decimal.zero) { running, entry in
             entry.balance.fiatCurrencyCode == currencyCode
                 ? running + entry.balance.fiatValueCached
                 : running
         }
-        // **Per-chain database is the source of truth (user direction
-        // 2026-06-17).** Prefer the aggregate `ChainStateRecord` rows (active
-        // wallet, active currency) — reading the aggregate is what makes the
-        // hero "the balance from each chain's row", updated live via the
-        // `chainStateRecords` @Query as the coordinator rebuilds.
-        if let walletId = activeWallet?.id {
-            let perChainSum = chainStateRecords
-                .filter { $0.walletId == walletId && $0.fiatCurrencyCode == currencyCode }
-                .reduce(Decimal.zero) { $0 + $1.totalFiat }
-            // Prefer the aggregate, but NEVER let a transiently-zero aggregate
-            // (mid-refresh, or a stale rebuild) hide a real, already-persisted
-            // live balance — that was the "balance shows $0" symptom. The two
-            // converge to the same value once the final rebuild runs.
-            if perChainSum > 0 { return perChainSum }
-        }
-        return liveSum
     }
 
     /// Distinct chains with at least one non-zero balance row. Used by
@@ -2586,6 +2556,81 @@ struct WalletHomeView: View {
             }
         }
         return activeWallet?.id
+    }
+}
+
+// MARK: - BalanceCardLiveSection (native invalidation-localization leaf)
+
+/// The flagship balance card, wrapped in a leaf that **owns** the high-churn
+/// `chainStateRecords` `@Query`.
+///
+/// **Why this exists (2026-06-18 native perf fix).** The refresh coordinator
+/// rebuilds each chain's `ChainStateRecord` aggregate on a ~300ms cadence
+/// during every balance scan. When the `chainStateRecords` `@Query` was
+/// declared on `WalletHomeView`, each of those commits re-evaluated the entire
+/// 2,790-line `WalletHomeView.body` — Apple's documented `@Query` /
+/// `DynamicProperty` behavior is that a *declared* query invalidates the
+/// owning view's body on ANY change to its results, whether or not the body
+/// reads them. That whole-screen re-evaluation, ~3×/second for the duration of
+/// every 30 s auto-refresh, was the periodic main-screen hitch.
+///
+/// Moving the query into this small leaf (Apple's "extract subviews to localize
+/// invalidation zones" guidance) means a 300ms aggregate commit re-renders ONLY
+/// the card — the parent body stays put. Behavior is identical: the hero total
+/// still prefers the per-chain aggregate and falls back to the parent's live
+/// balance-row sum until the first rebuild lands.
+private struct BalanceCardLiveSection: View {
+    let walletId: UUID?
+    let walletName: String
+    let avatarSpec: WalletAvatarSpec
+    /// The parent's live balance-row sum (active currency) — the pre-aggregate
+    /// fallback shown until the per-chain `ChainStateRecord` rows land.
+    let liveBalanceSum: Decimal
+    let currencyCode: String
+    let transactions: [TransactionRecord]
+    let currentBalances: [TokenBalanceRecord]
+    let ownAddresses: Set<String>
+    let priceCache: [String: Decimal]
+    let priceHistory: [String: [Int: Decimal]]
+    let scrubModel: ChartScrubModel
+    let onSwitchWallet: () -> Void
+    let onAddFunds: () -> Void
+
+    /// The high-churn aggregate rows — owned HERE, not on the parent, so their
+    /// 300ms refresh-commits re-render only this card.
+    @Query private var chainStateRecords: [ChainStateRecord]
+
+    /// Hero total. Prefers the per-chain aggregate (active wallet + currency);
+    /// falls back to the parent's live balance-row sum so a transiently-zero
+    /// aggregate (mid-refresh / stale rebuild) never hides a real, already-
+    /// persisted balance — the two converge once the final rebuild runs. This
+    /// is the exact resolution the parent's old `totalFiat` performed.
+    private var totalFiat: Decimal {
+        if let walletId {
+            let perChainSum = chainStateRecords
+                .filter { $0.walletId == walletId && $0.fiatCurrencyCode == currencyCode }
+                .reduce(Decimal.zero) { $0 + $1.totalFiat }
+            if perChainSum > 0 { return perChainSum }
+        }
+        return liveBalanceSum
+    }
+
+    var body: some View {
+        BalanceCardView(
+            walletId: walletId,
+            walletName: walletName,
+            avatarSpec: avatarSpec,
+            totalFiat: totalFiat,
+            currencyCode: currencyCode,
+            transactions: transactions,
+            currentBalances: currentBalances,
+            ownAddresses: ownAddresses,
+            priceCache: priceCache,
+            priceHistory: priceHistory,
+            scrubModel: scrubModel,
+            onSwitchWallet: onSwitchWallet,
+            onAddFunds: onAddFunds
+        )
     }
 }
 
