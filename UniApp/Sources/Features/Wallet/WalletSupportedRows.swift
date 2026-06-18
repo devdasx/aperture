@@ -149,6 +149,57 @@ enum WalletSupportedRowBuilders {
         return rows
     }
 
+    /// Collapse per-`(chain, contract)` token rows into ONE row per symbol,
+    /// so the user sees each token (e.g. USDT) a single time — its total
+    /// across every network — instead of one line per network. Tapping the
+    /// row opens the asset detail, which lists the per-network breakdown and
+    /// lets the user choose where to send/receive (user direction 2026-06-18).
+    ///
+    /// Amount + fiat are summed across the symbol's networks — `1 USDT == 1
+    /// USDT` on any chain, the exact symbol-aggregation `AssetIdentity` /
+    /// `AssetDetailView` already use. Fiat sums only the networks that carry a
+    /// value and is `nil` when none do (honest — Rule #16). The representative
+    /// `chain`/`contract` (for the coin mark) is the largest holding, falling
+    /// back to the first registry entry, so the logo + its symbol-level
+    /// fallback resolve. First-seen symbol order is preserved; the caller
+    /// applies its own sort afterward. The collapsed row's `id` is the symbol,
+    /// so `ForEach` identity is stable and unique.
+    static func collapseBySymbol(
+        _ rows: [WalletTokenSupportedDisplayRow],
+        currencyCode: String
+    ) -> [WalletTokenSupportedDisplayRow] {
+        var order: [String] = []
+        var groups: [String: [WalletTokenSupportedDisplayRow]] = [:]
+        for row in rows {
+            let key = row.symbol.uppercased()
+            if groups[key] == nil { order.append(key) }
+            groups[key, default: []].append(row)
+        }
+        return order.compactMap { key -> WalletTokenSupportedDisplayRow? in
+            guard let members = groups[key], !members.isEmpty else { return nil }
+            let totalAmount = members.reduce(Decimal.zero) { $0 + $1.amount }
+            let priced = members.compactMap { $0.fiatValue }
+            let totalFiat: Decimal? = priced.isEmpty ? nil : priced.reduce(Decimal.zero, +)
+            // Representative for the mark: largest fiat, then largest amount.
+            let representative = members.max { lhs, rhs in
+                let lf = lhs.fiatValue ?? .zero
+                let rf = rhs.fiatValue ?? .zero
+                if lf != rf { return lf < rf }
+                return lhs.amount < rhs.amount
+            } ?? members[0]
+            return WalletTokenSupportedDisplayRow(
+                id: key,
+                chain: representative.chain,
+                symbol: representative.symbol,
+                name: representative.name,
+                contract: representative.contract,
+                amount: totalAmount,
+                fiatValue: totalFiat,
+                fiatCurrencyCode: currencyCode
+            )
+        }
+    }
+
     private static func decimalAmount(balance: TokenBalanceRecord?) -> Decimal {
         balance.map {
             WalletFormatting.decimalAmount(rawBalance: $0.rawBalance, decimals: $0.decimals)
