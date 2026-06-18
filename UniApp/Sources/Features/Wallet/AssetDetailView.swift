@@ -125,6 +125,21 @@ struct AssetDetailView: View {
     /// the whole detail body. `nil` `fiat` → hero shows `totalFiat`.
     @State private var scrubModel = ChartScrubModel()
 
+    // Action flows (2026-06-18). This screen spans networks, so each action
+    // first asks WHICH network (the picker), then dismisses it and opens the
+    // flow pre-filled for the chosen network — reusing the same seeds the
+    // per-network screen uses.
+    private enum PrefillAction { case send, receive, swap }
+    @State private var pendingAction: PrefillAction?
+    @State private var chosenChain: SupportedChain?
+    @State private var isShowingNetworkPicker = false
+    @State private var isShowingSend = false
+    @State private var isShowingReceive = false
+    @State private var isShowingSwap = false
+    @State private var sendPath = NavigationPath()
+    @State private var receivePath = NavigationPath()
+    @State private var swapPath = NavigationPath()
+
     /// Cap on the activity section — same convention the wallet home
     /// uses. When the asset has more than 50 transactions, a "View
     /// all" navigation row appears below the 50 (pushes
@@ -141,6 +156,7 @@ struct AssetDetailView: View {
         let derived = derivedCache ?? computeDerived()
         List {
             heroCardSection(derived)
+            actionsSection
             networksSection(derived)
             activitySection(derived)
             footerSection
@@ -184,12 +200,179 @@ struct AssetDetailView: View {
             .presentationDragIndicator(.visible)
             .presentationBackground(UniColors.Background.primary)
         }
+        // Network picker → on dismiss, open the pending action pre-filled.
+        .sheet(isPresented: $isShowingNetworkPicker, onDismiss: { presentPendingAction() }) {
+            networkPickerSheet
+        }
+        .sheet(isPresented: $isShowingSend, onDismiss: { sendPath = NavigationPath() }) {
+            SendView(navigationPath: $sendPath)
+                .id(sheetDirectionKey)
+                .uniAppEnvironment()
+                .uniSheetDetents([.large])
+                .presentationDragIndicator(.visible)
+                .presentationBackground(UniColors.Background.primary)
+        }
+        .sheet(isPresented: $isShowingReceive, onDismiss: { receivePath = NavigationPath() }) {
+            ReceiveView(navigationPath: $receivePath)
+                .id(sheetDirectionKey)
+                .uniAppEnvironment()
+                .uniSheetDetents([.large])
+                .presentationDragIndicator(.visible)
+                .presentationBackground(UniColors.Background.primary)
+        }
+        .sheet(isPresented: $isShowingSwap, onDismiss: { swapPath = NavigationPath() }) {
+            SwapView(navigationPath: $swapPath, initialFromToken: swapSeedToken)
+                .id(sheetDirectionKey)
+                .uniAppEnvironment()
+                .uniSheetDetents([.large])
+                .presentationDragIndicator(.visible)
+                .presentationBackground(UniColors.Background.primary)
+        }
         .task(id: derivedKey) {
             derivedCache = computeDerived()
         }
         .task(id: historicalEnsureKey) {
             await ensureHistoricalPricesLoaded()
         }
+    }
+
+    // MARK: - Actions (symbol-level → pick a network, then open pre-filled)
+
+    @ViewBuilder
+    private var actionsSection: some View {
+        Section {
+            WalletActionRegion(
+                canSend: activeWallet?.kind != .watchOnly,
+                onSend: { beginAction(.send) },
+                onReceive: { beginAction(.receive) },
+                onSwap: { beginAction(.swap) }
+            )
+            .listRowBackground(Color.clear)
+            .listRowSeparator(.hidden)
+            .listRowInsets(EdgeInsets(top: UniSpacing.s, leading: 0, bottom: UniSpacing.s, trailing: 0))
+        }
+    }
+
+    private func beginAction(_ action: PrefillAction) {
+        chosenChain = nil
+        pendingAction = action
+        isShowingNetworkPicker = true
+    }
+
+    /// Networks offered for the pending action: every supported network for
+    /// Receive (you can receive anywhere), only HELD networks for Send, and
+    /// only held + swappable for Swap (you can't move what you don't hold).
+    private var pickerNetworks: [AssetNetworkRow] {
+        let all = derivedCache?.resolution.networks ?? []
+        switch pendingAction {
+        case .receive: return all
+        case .send:    return all.filter { $0.isHeld }
+        case .swap:    return all.filter { $0.isHeld && SwapChainMap.isSwappable($0.chain) }
+        case .none:    return []
+        }
+    }
+
+    @ViewBuilder
+    private var networkPickerSheet: some View {
+        NavigationStack {
+            List {
+                Section {
+                    ForEach(pickerNetworks) { row in
+                        Button {
+                            chosenChain = row.chain
+                            isShowingNetworkPicker = false
+                        } label: {
+                            HStack(spacing: UniSpacing.m) {
+                                CoinMark(chain: row.chain, tokenSymbol: identity.symbol, contract: row.contract)
+                                    .frame(width: 36, height: 36)
+                                VStack(alignment: .leading, spacing: UniSpacing.xxs) {
+                                    Text(verbatim: row.chain.displayName)
+                                        .font(UniTypography.body)
+                                        .foregroundStyle(UniColors.Text.primary)
+                                    if row.isHeld {
+                                        Text(verbatim: "\(WalletFormatting.native(row.amount, decimals: 8)) \(identity.symbol)")
+                                            .font(UniTypography.footnote)
+                                            .foregroundStyle(UniColors.Text.secondary)
+                                            .environment(\.layoutDirection, .leftToRight)
+                                    }
+                                }
+                                Spacer()
+                            }
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .listRowBackground(UniColors.Background.secondary)
+                    }
+                } header: {
+                    UniCaption(text: "Choose a network", color: UniColors.Text.tertiary)
+                }
+            }
+            .listStyle(.insetGrouped)
+            .scrollContentBackground(.hidden)
+            .background(UniColors.Background.primary)
+            .navigationTitle("Select network")
+            .navigationBarTitleDisplayMode(.inline)
+        }
+        .uniAppEnvironment()
+        .uniSheetDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
+        .presentationBackground(UniColors.Background.primary)
+    }
+
+    /// Open the pending action's flow pre-filled for the chosen network. Runs
+    /// in the network picker's `onDismiss` so we present cleanly AFTER it's
+    /// gone (no sheet-over-sheet). A cancelled pick (no `chosenChain`) is a
+    /// no-op.
+    private func presentPendingAction() {
+        guard let action = pendingAction, let chain = chosenChain else {
+            pendingAction = nil
+            return
+        }
+        pendingAction = nil
+        switch action {
+        case .send:
+            guard let addr = address(for: chain) else { return }
+            var path = NavigationPath()
+            path.append(SendDestination.recipient(chain: chain, tokenSymbol: sendTokenSymbol, fromAddress: addr))
+            sendPath = path
+            isShowingSend = true
+        case .receive:
+            guard let addr = address(for: chain) else { return }
+            var path = NavigationPath()
+            path.append(ReceiveDestination.qr(chain: chain, tokenSymbol: sendTokenSymbol, address: addr))
+            receivePath = path
+            isShowingReceive = true
+        case .swap:
+            isShowingSwap = true
+        }
+    }
+
+    /// Token symbol carried into Send/Receive — `nil` for a native coin.
+    private var sendTokenSymbol: String? {
+        identity.isNativeCoin ? nil : identity.symbol
+    }
+
+    private func address(for chain: SupportedChain) -> String? {
+        activeWallet?.addresses.first { $0.chainRaw == chain.rawValue }?.address
+    }
+
+    /// FROM token to seed Swap with for the chosen network: the chain's native
+    /// sentinel for a coin, else this token's held contract + decimals. `nil`
+    /// falls back to Swap's own default (never a wrong token).
+    private var swapSeedToken: SwapToken? {
+        guard let chain = chosenChain else { return nil }
+        if identity.isNativeCoin { return SwapChainMap.nativeToken(for: chain) }
+        guard let balance = allHeldRows.first(where: {
+            $0.chain == chain
+                && $0.balance.tokenContract != nil
+                && $0.balance.tokenSymbol.caseInsensitiveCompare(identity.symbol) == .orderedSame
+        })?.balance, let contract = balance.tokenContract else {
+            return nil
+        }
+        return SwapToken.swappable(
+            chain: chain, contract: contract, symbol: identity.symbol,
+            name: assetDisplayName, decimals: balance.decimals, logoURI: nil
+        )
     }
 
     /// Re-runs when wallet, currency, or asset identity changes.
