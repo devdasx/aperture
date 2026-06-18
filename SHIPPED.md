@@ -15,3 +15,5 @@
 - aperture-i18n-translator-primary: 3 keys × 25 languages translated.
 - aperture-i18n-translator-primary: 17 keys × 25 languages translated.
 - aperture-i18n-translator-primary: 8 keys × 25 languages translated.
+- aperture-i18n-translator-primary: 2 keys × 25 languages translated.
+- aperture-i18n-translator-secondary: 2 keys × 25 languages translated.
