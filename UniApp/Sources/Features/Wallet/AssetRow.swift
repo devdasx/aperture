@@ -79,17 +79,14 @@ struct AssetRow: View {
         }
     }
 
-    @ViewBuilder
     private var fiatLabel: some View {
-        if let fiatValue, fiatValue > 0 {
-            Text(WalletFormatting.fiat(fiatValue, currencyCode: fiatCurrencyCode))
-                .font(UniTypography.footnote)
-                .foregroundStyle(UniColors.Text.tertiary)
-                .monospacedDigit()
-        } else {
-            Text("Price unavailable")
-                .font(UniTypography.footnote)
-                .foregroundStyle(UniColors.Text.tertiary)
-        }
+        // Zero or unpriced → "US$0.00" (0 units is worth exactly $0.00 —
+        // no price needed; never the "Price unavailable" eyesore, user
+        // direction 2026-06-18). `fiatCurrencyCode` is always the active
+        // currency, even on an unheld row, so the format is correct.
+        Text(WalletFormatting.fiat(fiatValue ?? 0, currencyCode: fiatCurrencyCode))
+            .font(UniTypography.footnote)
+            .foregroundStyle(UniColors.Text.tertiary)
+            .monospacedDigit()
     }
 }

@@ -1470,16 +1470,12 @@ struct WalletHomeView: View {
                 Text(WalletFormatting.native(row.amount, decimals: 6))
                     .font(UniTypography.monoBody)
                     .foregroundStyle(UniColors.Text.primary)
-                if let fiat = row.fiatValue, fiat > 0 {
-                    Text(WalletFormatting.fiat(fiat, currencyCode: row.fiatCurrencyCode))
-                        .font(UniTypography.footnote)
-                        .foregroundStyle(UniColors.Text.tertiary)
-                        .monospacedDigit()
-                } else {
-                    Text("Price unavailable")
-                        .font(UniTypography.footnote)
-                        .foregroundStyle(UniColors.Text.tertiary)
-                }
+                // Zero/unheld → "US$0.00", never "Price unavailable"
+                // (user direction 2026-06-18).
+                Text(WalletFormatting.fiat(row.fiatValue ?? 0, currencyCode: row.fiatCurrencyCode))
+                    .font(UniTypography.footnote)
+                    .foregroundStyle(UniColors.Text.tertiary)
+                    .monospacedDigit()
             }
         }
         .padding(.vertical, UniSpacing.xs)
