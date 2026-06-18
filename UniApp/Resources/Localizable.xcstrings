@@ -463336,6 +463336,628 @@
           }
         }
       }
+    },
+    "A live, session-wide log of everything the app does in the background — the 30-second auto-refresh, every chain scan and RPC call, every database write, every time the main screen re-renders, and every moment the UI stalls — each with how long it took. Use the app for a bit, then open this and tap Copy to send it over.": {
+      "extractionState": "manual",
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "سجلّ حيّ لكامل الجلسة لكلّ ما يقوم به التطبيق في الخلفية — التحديث التلقائي كل 30 ثانية، وكل عملية فحص للسلسلة واستدعاء RPC، وكل عملية كتابة في قاعدة البيانات، وكل مرة تُعاد فيها معالجة الشاشة الرئيسية، وكل لحظة تتوقّف فيها الواجهة — مع المدة التي استغرقها كلّ منها. استخدِم التطبيق قليلاً، ثم افتح هذا وانقر على نسخ لإرساله."
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "অ্যাপটি ব্যাকগ্রাউন্ডে যা কিছু করে তার সম্পূর্ণ সেশন জুড়ে চলমান একটি লগ — প্রতি ৩০ সেকেন্ডের অটো-রিফ্রেশ, প্রতিটি চেইন স্ক্যান ও RPC কল, ডেটাবেসে প্রতিটি রাইট, মূল স্ক্রিন প্রতিবার নতুন করে রেন্ডার হওয়া, এবং UI আটকে যাওয়ার প্রতিটি মুহূর্ত — প্রতিটির সঙ্গে কত সময় লেগেছে তা সহ। অ্যাপটি কিছুক্ষণ ব্যবহার করুন, তারপর এটি খুলে পাঠাতে কপি-তে ট্যাপ করুন।"
+          }
+        },
+        "ca": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Un registre en directe, vàlid per a tota la sessió, de tot el que fa l'app en segon pla: l'actualització automàtica cada 30 segons, cada anàlisi de cadena i crida RPC, cada escriptura a la base de dades, cada vegada que es torna a renderitzar la pantalla principal i cada moment en què la interfície es bloqueja, cadascun amb el temps que ha trigat. Fes servir l'app una estona, després obre això i toca Copia per enviar-lo."
+          }
+        },
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Živý protokol za celou relaci o všem, co aplikace dělá na pozadí — automatickém obnovování každých 30 sekund, každém skenování řetězce a volání RPC, každém zápisu do databáze, každém novém vykreslení hlavní obrazovky a každém okamžiku, kdy rozhraní zamrzne — vždy s tím, jak dlouho to trvalo. Chvíli aplikaci používejte, poté otevřete tuto obrazovku a klepnutím na Kopírovat protokol odešlete."
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "En live-log, for hele sessionen, over alt det appen laver i baggrunden – den automatiske opdatering hvert 30. sekund, hver kædescanning og RPC-kald, hver skrivning til databasen, hver gang hovedskærmen tegnes igen og hvert øjeblik, hvor brugerfladen hænger – hver med hvor lang tid det tog. Brug appen et stykke tid, åbn så dette, og tryk på Kopiér for at sende den."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ein laufendes Protokoll für die gesamte Sitzung über alles, was die App im Hintergrund tut – die automatische Aktualisierung alle 30 Sekunden, jeden Chain-Scan und RPC-Aufruf, jeden Datenbankschreibvorgang, jedes erneute Rendern des Hauptbildschirms und jeden Moment, in dem die Oberfläche hängt – jeweils mit der benötigten Dauer. Verwenden Sie die App eine Weile, öffnen Sie dann diese Ansicht und tippen Sie auf „Kopieren“, um es zu senden."
+          }
+        },
+        "el": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ένα ζωντανό αρχείο καταγραφής, για ολόκληρη τη συνεδρία, όλων όσων κάνει η εφαρμογή στο παρασκήνιο — της αυτόματης ανανέωσης κάθε 30 δευτερόλεπτα, κάθε σάρωσης αλυσίδας και κλήσης RPC, κάθε εγγραφής στη βάση δεδομένων, κάθε επανασχεδίασης της κύριας οθόνης και κάθε στιγμής που κολλάει το περιβάλλον — με τη διάρκεια της καθεμίας. Χρησιμοποιήστε την εφαρμογή για λίγο, μετά ανοίξτε αυτό και πατήστε Αντιγραφή για να το στείλετε."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "A live, session-wide log of everything the app does in the background — the 30-second auto-refresh, every chain scan and RPC call, every database write, every time the main screen re-renders, and every moment the UI stalls — each with how long it took. Use the app for a bit, then open this and tap Copy to send it over."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Un registro en vivo, válido para toda la sesión, de todo lo que la app hace en segundo plano: la actualización automática cada 30 segundos, cada análisis de cadena y llamada RPC, cada escritura en la base de datos, cada vez que se vuelve a renderizar la pantalla principal y cada momento en que la interfaz se bloquea, cada uno con su duración. Usa la app un rato, luego abre esto y toca Copiar para enviarlo."
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Reaaliaikainen, koko istunnon kattava loki kaikesta, mitä sovellus tekee taustalla – 30 sekunnin välein tapahtuvasta automaattisesta päivityksestä, jokaisesta ketjun skannauksesta ja RPC-kutsusta, jokaisesta tietokantakirjoituksesta, jokaisesta päänäytön uudelleenpiirrosta ja jokaisesta hetkestä, jolloin käyttöliittymä jumittaa – kunkin kestoineen. Käytä sovellusta hetki, avaa sitten tämä ja lähetä loki napauttamalla Kopioi."
+          }
+        },
+        "he": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "יומן חי, לכל משך ההפעלה, של כל מה שהאפליקציה עושה ברקע — הרענון האוטומטי כל 30 שניות, כל סריקת שרשרת וקריאת RPC, כל כתיבה למסד הנתונים, כל פעם שהמסך הראשי מצויר מחדש וכל רגע שבו הממשק נתקע — כל אחד עם משך הזמן שלקח. השתמשו באפליקציה זמן מה, ואז פתחו את זה והקישו על העתקה כדי לשלוח אותו."
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ऐप पृष्ठभूमि में जो कुछ भी करता है, उसका पूरे सत्र भर का लाइव लॉग — हर 30 सेकंड में होने वाला ऑटो-रिफ़्रेश, हर चेन स्कैन और RPC कॉल, डेटाबेस में हर राइट, मुख्य स्क्रीन के हर बार फिर से रेंडर होने, और UI के अटकने के हर पल — हर एक के साथ यह भी कि उसमें कितना समय लगा। ऐप को थोड़ी देर इस्तेमाल करें, फिर इसे खोलें और इसे भेजने के लिए कॉपी करें पर टैप करें।"
+          }
+        },
+        "hr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aktivni zapisnik, za cijelu sesiju, svega što aplikacija radi u pozadini — automatskog osvježavanja svakih 30 sekundi, svakog skeniranja lanca i RPC poziva, svakog upisa u bazu podataka, svakog ponovnog iscrtavanja glavnog zaslona i svakog trenutka kad se sučelje zaglavi — svaki uz podatak koliko je trajao. Upotrebljavajte aplikaciju neko vrijeme, zatim otvorite ovo i dodirnite Kopiraj da biste ga poslali."
+          }
+        },
+        "hu": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Élő, a teljes munkamenetre kiterjedő napló mindarról, amit az alkalmazás a háttérben végez — a 30 másodpercenkénti automatikus frissítésről, minden láncvizsgálatról és RPC-hívásról, minden adatbázis-írásról, a főképernyő minden újrarajzolásáról és minden olyan pillanatról, amikor a felület megakad —, mindegyiknél feltüntetve, mennyi ideig tartott. Használja egy ideig az alkalmazást, majd nyissa meg ezt, és koppintson a Másolás gombra az elküldéséhez."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "アプリがバックグラウンドで行うすべての処理を、セッション全体にわたってリアルタイムに記録します。30 秒ごとの自動更新、すべてのチェーンスキャンと RPC 呼び出し、すべてのデータベース書き込み、メイン画面が再描画されるたび、UI が停止するたびを、それぞれの所要時間とともに記録します。アプリをしばらく使ってから、ここを開いて「コピー」をタップして送信してください。"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "En live-logg, for hele økten, over alt appen gjør i bakgrunnen – den automatiske oppdateringen hvert 30. sekund, hver kjedeskanning og RPC-kall, hver databaseskriving, hver gang hovedskjermen tegnes på nytt og hvert øyeblikk grensesnittet henger – hver med hvor lang tid den tok. Bruk appen en stund, åpne så dette og trykk på Kopier for å sende den."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Um registro ao vivo, válido por toda a sessão, de tudo o que o app faz em segundo plano: a atualização automática a cada 30 segundos, cada varredura de cadeia e chamada RPC, cada gravação no banco de dados, cada vez que a tela principal é renderizada de novo e cada momento em que a interface trava, cada um com o tempo que levou. Use o app por um tempo, depois abra isto e toque em Copiar para enviá-lo."
+          }
+        },
+        "ro": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Un jurnal live, valabil pe toată sesiunea, al tot ceea ce face aplicația în fundal — reîmprospătarea automată la fiecare 30 de secunde, fiecare scanare de lanț și apel RPC, fiecare scriere în baza de date, fiecare reredare a ecranului principal și fiecare moment în care interfața se blochează — fiecare cu durata sa. Folosește aplicația o vreme, apoi deschide aceasta și atinge Copiază pentru a-l trimite."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Живой журнал за всю сессию, фиксирующий всё, что приложение делает в фоне, — автообновление каждые 30 секунд, каждое сканирование цепочки и RPC-запрос, каждую запись в базу данных, каждую перерисовку главного экрана и каждый момент подвисания интерфейса, с указанием длительности каждого из них. Поработайте с приложением какое-то время, затем откройте этот раздел и нажмите «Скопировать», чтобы отправить журнал."
+          }
+        },
+        "sk": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Živý protokol za celú reláciu o všetkom, čo aplikácia robí na pozadí — automatickom obnovovaní každých 30 sekúnd, každom skenovaní reťazca a volaní RPC, každom zápise do databázy, každom opätovnom vykreslení hlavnej obrazovky a každom okamihu, keď rozhranie zamrzne — vždy s tým, ako dlho to trvalo. Chvíľu používajte aplikáciu, potom otvorte túto obrazovku a klepnutím na Kopírovať protokol odošlite."
+          }
+        },
+        "sl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Živ dnevnik za celotno sejo vsega, kar aplikacija počne v ozadju — samodejnega osveževanja vsakih 30 sekund, vsakega pregleda verige in klica RPC, vsakega zapisa v zbirko podatkov, vsakega ponovnega izrisa glavnega zaslona in vsakega trenutka, ko se vmesnik zatakne — vsako z navedbo, koliko časa je trajalo. Nekaj časa uporabljajte aplikacijo, nato odprite to in se za pošiljanje dotaknite možnosti Kopiraj."
+          }
+        },
+        "sr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Живи дневник за целу сесију свега што апликација ради у позадини — аутоматског освежавања сваких 30 секунди, сваког скенирања ланца и RPC позива, сваког уписа у базу података, сваког поновног исцртавања главног екрана и сваког тренутка када се интерфејс заглави — сваки уз податак колико је трајао. Користите апликацију неко време, затим отворите ово и додирните Копирај да бисте га послали."
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "En live-logg, för hela sessionen, över allt appen gör i bakgrunden – den automatiska uppdateringen var 30:e sekund, varje kedjegenomsökning och RPC-anrop, varje databasskrivning, varje gång huvudskärmen ritas om och varje stund då gränssnittet hakar upp sig – var och en med hur lång tid den tog. Använd appen en stund, öppna sedan det här och tryck på Kopiera för att skicka loggen."
+          }
+        },
+        "uk": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Живий журнал за весь сеанс усього, що застосунок робить у фоновому режимі, — автооновлення кожні 30 секунд, кожне сканування ланцюга та RPC-виклик, кожен запис до бази даних, кожне повторне відмальовування головного екрана й кожну мить зависання інтерфейсу, із зазначенням тривалості кожної дії. Скористайтеся застосунком якийсь час, потім відкрийте цей розділ і торкніться «Копіювати», щоб надіслати журнал."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "实时记录整个会话期间应用在后台执行的所有操作——每 30 秒一次的自动刷新、每一次链上扫描和 RPC 调用、每一次数据库写入、主屏幕每一次重新渲染，以及界面每一次卡顿——并标注各自的耗时。先用一会儿应用，然后打开此处并轻点“复制”将其发送出去。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "即時記錄整個工作階段期間 app 在背景執行的所有操作——每 30 秒一次的自動重新整理、每一次鏈上掃描與 RPC 呼叫、每一次資料庫寫入、主畫面每一次重新算繪，以及介面每一次卡頓——並標註各自的耗時。先用一會兒 app，然後開啟此處並輕點「拷貝」將其傳送出去。"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Un journal en direct, valable pour toute la session, de tout ce que l’app fait en arrière-plan — l’actualisation automatique toutes les 30 secondes, chaque analyse de chaîne et appel RPC, chaque écriture en base de données, chaque nouveau rendu de l’écran principal et chaque instant où l’interface se fige — chacun avec sa durée. Utilisez l’app un moment, puis ouvrez ceci et touchez Copier pour l’envoyer."
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "앱이 백그라운드에서 하는 모든 작업을 세션 전체에 걸쳐 실시간으로 기록한 로그예요. 30초마다 이루어지는 자동 새로 고침, 모든 체인 스캔과 RPC 호출, 모든 데이터베이스 쓰기, 메인 화면이 다시 그려질 때마다, 그리고 UI가 멈추는 모든 순간을 각각 걸린 시간과 함께 기록해요. 앱을 잠시 사용한 다음 이 화면을 열고 복사를 탭해서 보내 주세요."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Un log in tempo reale, valido per l’intera sessione, di tutto ciò che l’app fa in background: l’aggiornamento automatico ogni 30 secondi, ogni scansione della catena e chiamata RPC, ogni scrittura nel database, ogni nuovo rendering della schermata principale e ogni momento in cui l’interfaccia si blocca, ciascuno con la durata impiegata. Usi l’app per un po’, poi apra questa schermata e tocchi Copia per inviarlo."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Uygulamanın arka planda yaptığı her şeyin, tüm oturum boyunca tutulan canlı bir günlüğü — 30 saniyede bir gerçekleşen otomatik yenileme, her zincir taraması ve RPC çağrısı, her veritabanı yazma işlemi, ana ekranın her yeniden çiziminde ve arayüzün takıldığı her anda — her biri ne kadar sürdüğüyle birlikte. Uygulamayı bir süre kullanın, ardından bunu açıp göndermek için Kopyala’ya dokunun."
+          }
+        },
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Một nhật ký trực tiếp, áp dụng cho toàn bộ phiên, về mọi việc ứng dụng làm ở chế độ nền — đợt tự động làm mới mỗi 30 giây, từng lần quét chuỗi và lệnh gọi RPC, từng lần ghi vào cơ sở dữ liệu, mỗi lần màn hình chính kết xuất lại và mọi thời điểm giao diện bị treo — kèm theo thời gian thực hiện của từng mục. Hãy dùng ứng dụng một lúc, rồi mở phần này và chạm Sao chép để gửi đi."
+          }
+        },
+        "th": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "บันทึกแบบเรียลไทม์ตลอดทั้งเซสชันของทุกสิ่งที่แอปทำในเบื้องหลัง — การรีเฟรชอัตโนมัติทุก 30 วินาที ทุกการสแกนเชนและการเรียก RPC ทุกการเขียนฐานข้อมูล ทุกครั้งที่หน้าจอหลักเรนเดอร์ใหม่ และทุกช่วงที่ UI ค้าง — พร้อมระยะเวลาที่ใช้ของแต่ละรายการ ใช้แอปสักครู่ จากนั้นเปิดหน้านี้แล้วแตะคัดลอกเพื่อส่งออกไป"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Log langsung, mencakup seluruh sesi, dari semua yang dilakukan aplikasi di latar belakang — penyegaran otomatis setiap 30 detik, setiap pemindaian rantai dan panggilan RPC, setiap penulisan basis data, setiap kali layar utama dirender ulang, dan setiap momen antarmuka macet — masing-masing disertai berapa lama waktunya. Gunakan aplikasi sebentar, lalu buka ini dan ketuk Salin untuk mengirimkannya."
+          }
+        },
+        "fa": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "گزارشی زنده برای کل نشست از هر کاری که برنامه در پس‌زمینه انجام می‌دهد — به‌روزرسانی خودکار هر ۳۰ ثانیه، هر پویش زنجیره و فراخوانی RPC، هر نوشتن در پایگاه داده، هر بار بازترسیم صفحهٔ اصلی و هر لحظه‌ای که رابط کاربری گیر می‌کند — هر کدام همراه با مدت‌زمانی که طول کشیده است. مدتی از برنامه استفاده کنید، سپس این را باز کنید و برای ارسال آن روی کپی ضربه بزنید."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aktywny dziennik obejmujący całą sesję wszystkiego, co aplikacja robi w tle — automatycznego odświeżania co 30 sekund, każdego skanowania łańcucha i wywołania RPC, każdego zapisu do bazy danych, każdego ponownego renderowania ekranu głównego i każdej chwili, gdy interfejs się zacina — każde z informacją, ile trwało. Korzystaj przez chwilę z aplikacji, a następnie otwórz ten ekran i dotknij opcji Kopiuj, aby go wysłać."
+          }
+        },
+        "nl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Een live logboek, voor de hele sessie, van alles wat de app op de achtergrond doet — de automatische verversing om de 30 seconden, elke ketenscan en RPC-aanroep, elke databaseschrijfactie, elke keer dat het hoofdscherm opnieuw wordt getekend en elk moment waarop de interface vastloopt — telkens met de duur ervan. Gebruik de app even, open dit daarna en tik op Kopiëren om het te versturen."
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ایپ پس منظر میں جو کچھ کرتی ہے اس سب کا پورے سیشن پر محیط ایک لائیو لاگ — ہر 30 سیکنڈ پر خودکار ریفریش، ہر چین اسکین اور RPC کال، ڈیٹابیس میں ہر تحریر، مرکزی اسکرین کے ہر بار دوبارہ رینڈر ہونے، اور UI کے رُک جانے کے ہر لمحے — ہر ایک کے ساتھ یہ بھی کہ اس میں کتنا وقت لگا۔ ایپ کو تھوڑی دیر استعمال کریں، پھر اِسے کھولیں اور بھیجنے کے لیے کاپی پر تھپتھپائیں۔"
+          }
+        },
+        "bg": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Активен дневник за цялата сесия на всичко, което приложението прави във фонов режим — автоматичното опресняване на всеки 30 секунди, всяко сканиране на веригата и RPC повикване, всеки запис в базата данни, всяко повторно изобразяване на основния екран и всеки момент, в който интерфейсът блокира — всяко с продължителността си. Използвайте приложението известно време, след това отворете това и докоснете Копиране, за да го изпратите."
+          }
+        },
+        "et": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Reaalajas, kogu seanssi hõlmav logi kõigest, mida rakendus taustal teeb — 30 sekundi tagant toimuvast automaatsest värskendamisest, igast ahela skannimisest ja RPC-kõnest, igast andmebaasi kirjutamisest, igast põhikuva uuesti renderdamisest ja igast hetkest, mil liides hangub — igaüks koos sellega, kui kaua see kestis. Kasuta rakendust veidi, seejärel ava see ja puuduta saatmiseks valikut Kopeeri."
+          }
+        },
+        "lt": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tiesioginis viso seanso žurnalas apie viską, ką programa daro fone — automatinis atnaujinimas kas 30 sekundžių, kiekvienas grandinės nuskaitymas ir RPC iškvieta, kiekvienas įrašymas į duomenų bazę, kiekvienas pagrindinio ekrano pakartotinis atvaizdavimas ir kiekviena akimirka, kai sąsaja užstringa — kiekvienas su nurodyta trukme. Šiek tiek panaudokite programą, tada atidarykite šį langą ir palieskite Kopijuoti, kad jį išsiųstumėte."
+          }
+        },
+        "lv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tiešraides žurnāls visai sesijai par visu, ko lietotne dara fonā — automātisko atsvaidzināšanu ik pēc 30 sekundēm, katru ķēdes skenēšanu un RPC izsaukumu, katru ierakstu datubāzē, katru galvenā ekrāna atkārtotu renderēšanu un katru brīdi, kad saskarne uzkaras — katru kopā ar tā ilgumu. Kādu brīdi lietojiet lietotni, pēc tam atveriet šo un pieskarieties Kopēt, lai to nosūtītu."
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lifandi annáll fyrir alla lotuna yfir allt sem forritið gerir í bakgrunni — sjálfvirka endurnýjun á 30 sekúndna fresti, hverja keðjuskönnun og RPC-kall, hverja skrift í gagnagrunninn, í hvert sinn sem aðalskjárinn er teiknaður upp á nýtt og hverja stund sem viðmótið frýs — hvert með þeim tíma sem það tók. Notaðu forritið smástund, opnaðu svo þetta og ýttu á Afrita til að senda hann."
+          }
+        },
+        "ms": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Log secara langsung, untuk keseluruhan sesi, bagi segala yang dilakukan apl di latar belakang — penyegaran automatik setiap 30 saat, setiap imbasan rantaian dan panggilan RPC, setiap tulisan pangkalan data, setiap kali skrin utama dipaparkan semula, dan setiap saat antara muka tersekat — masing-masing disertakan tempoh yang diambil. Gunakan apl seketika, kemudian buka ini dan ketik Salin untuk menghantarnya."
+          }
+        },
+        "fil": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Isang live na log, na sumasaklaw sa buong session, ng lahat ng ginagawa ng app sa background — ang awtomatikong pag-refresh kada 30 segundo, bawat chain scan at RPC call, bawat database write, tuwing muling nire-render ang pangunahing screen, at bawat sandaling huminto ang UI — bawat isa kasama kung gaano ito katagal. Gamitin muna ang app nang ilang sandali, pagkatapos ay buksan ito at i-tap ang Kopyahin para ipadala ito."
+          }
+        },
+        "sw": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kumbukumbu hai, kwa kipindi chote cha matumizi, ya kila kitu ambacho programu hufanya chinichini — uonyeshaji upya otomatiki kila sekunde 30, kila uchanganuzi wa mnyororo na simu ya RPC, kila uandishi kwenye hifadhidata, kila skrini kuu inapochorwa upya, na kila wakati kiolesura kinaposimama — kila kimoja pamoja na muda kilichochukua. Tumia programu kwa muda, kisha fungua hii na ugonge Nakili ili kuituma."
+          }
+        },
+        "af": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "’n Lewendige loglêer, vir die hele sessie, van alles wat die program op die agtergrond doen — die outomatiese verfrissing elke 30 sekondes, elke kettingskandering en RPC-oproep, elke databasisskryf, elke keer wat die hoofskerm weer geteken word, en elke oomblik wat die koppelvlak vashaak — elk met hoe lank dit geneem het. Gebruik die program ’n rukkie, maak dan dit oop en tik Kopieer om dit te stuur."
+          }
+        },
+        "ta": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "பயன்பாடு பின்னணியில் செய்யும் அனைத்தையும் அமர்வு முழுவதும் நேரலையில் பதிவு செய்யும் ஒரு பதிவு — ஒவ்வொரு 30 விநாடிக்கும் நிகழும் தானியங்கி புதுப்பிப்பு, ஒவ்வொரு செயின் ஸ்கேன் மற்றும் RPC அழைப்பு, தரவுத்தளத்தில் ஒவ்வொரு எழுதலும், முதன்மைத் திரை மீண்டும் வழங்கப்படும் ஒவ்வொரு முறையும், UI நிலைகுத்தும் ஒவ்வொரு கணமும் — ஒவ்வொன்றுக்கும் எவ்வளவு நேரம் ஆனது என்பதுடன். பயன்பாட்டைச் சிறிது நேரம் பயன்படுத்தி, பிறகு இதைத் திறந்து அனுப்ப நகலெடு என்பதைத் தட்டவும்."
+          }
+        },
+        "te": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "యాప్ నేపథ్యంలో చేసే ప్రతిదానికీ సెషన్ మొత్తానికి సంబంధించిన ప్రత్యక్ష లాగ్ — ప్రతి 30 సెకన్లకు జరిగే ఆటో-రిఫ్రెష్, ప్రతి చైన్ స్కాన్ మరియు RPC కాల్, డేటాబేస్‌లో ప్రతి రైట్, ప్రధాన స్క్రీన్ ప్రతిసారి మళ్లీ రెండర్ అయినప్పుడు, మరియు UI ఆగిపోయే ప్రతి క్షణం — ఒక్కొక్కటికీ ఎంత సమయం పట్టిందో దానితో సహా. యాప్‌ను కొద్దిసేపు ఉపయోగించి, ఆపై దీన్ని తెరిచి పంపడానికి కాపీ చేయి నొక్కండి."
+          }
+        },
+        "ml": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ആപ്പ് പശ്ചാത്തലത്തിൽ ചെയ്യുന്ന എല്ലാത്തിന്റെയും സെഷൻ മുഴുവനുമുള്ള തത്സമയ ലോഗ് — ഓരോ 30 സെക്കൻഡിലുമുള്ള സ്വയം-പുതുക്കൽ, ഓരോ ചെയിൻ സ്കാനും RPC കോളും, ഡാറ്റാബേസിലെ ഓരോ റൈറ്റും, പ്രധാന സ്ക്രീൻ വീണ്ടും റെൻഡർ ചെയ്യുന്ന ഓരോ തവണയും, UI നിന്നുപോകുന്ന ഓരോ നിമിഷവും — ഓരോന്നിനും എത്ര സമയമെടുത്തു എന്നതോടൊപ്പം. ആപ്പ് കുറച്ചുനേരം ഉപയോഗിക്കുക, എന്നിട്ട് ഇത് തുറന്ന് അയയ്ക്കാൻ പകർത്തുക എന്നതിൽ ടാപ്പ് ചെയ്യുക."
+          }
+        },
+        "mr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ॲप पार्श्वभूमीत जे काही करते त्या सर्वांचा संपूर्ण सत्रभर चालणारा थेट लॉग — दर 30 सेकंदांनी होणारे स्वयं-रिफ्रेश, प्रत्येक चेन स्कॅन आणि RPC कॉल, डेटाबेसमधील प्रत्येक राइट, मुख्य स्क्रीन प्रत्येक वेळी पुन्हा रेंडर होणे, आणि UI अडकण्याचा प्रत्येक क्षण — प्रत्येकाला किती वेळ लागला यासह. ॲप थोडा वेळ वापरा, मग हे उघडा आणि पाठवण्यासाठी कॉपी करा वर टॅप करा."
+          }
+        },
+        "pa": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ਐਪ ਬੈਕਗ੍ਰਾਊਂਡ ਵਿੱਚ ਜੋ ਕੁਝ ਵੀ ਕਰਦੀ ਹੈ, ਉਸ ਸਭ ਦਾ ਪੂਰੇ ਸੈਸ਼ਨ ਦੌਰਾਨ ਚੱਲਦਾ ਲਾਈਵ ਲੌਗ — ਹਰ 30 ਸਕਿੰਟ ਬਾਅਦ ਹੋਣ ਵਾਲਾ ਆਟੋ-ਰਿਫ੍ਰੈਸ਼, ਹਰ ਚੇਨ ਸਕੈਨ ਅਤੇ RPC ਕਾਲ, ਡਾਟਾਬੇਸ ਵਿੱਚ ਹਰ ਰਾਈਟ, ਮੁੱਖ ਸਕ੍ਰੀਨ ਦੇ ਹਰ ਵਾਰ ਮੁੜ ਰੈਂਡਰ ਹੋਣ, ਅਤੇ UI ਦੇ ਅਟਕਣ ਦੇ ਹਰ ਪਲ — ਹਰ ਇੱਕ ਨਾਲ ਇਹ ਵੀ ਕਿ ਉਸ ਵਿੱਚ ਕਿੰਨਾ ਸਮਾਂ ਲੱਗਾ। ਐਪ ਨੂੰ ਕੁਝ ਦੇਰ ਵਰਤੋ, ਫਿਰ ਇਸ ਨੂੰ ਖੋਲ੍ਹੋ ਅਤੇ ਭੇਜਣ ਲਈ ਕਾਪੀ ਕਰੋ 'ਤੇ ਟੈਪ ਕਰੋ।"
+          }
+        }
+      }
+    },
+    "Debug logs": {
+      "extractionState": "manual",
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "سجلات التصحيح"
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ডিবাগ লগ"
+          }
+        },
+        "ca": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Registres de depuració"
+          }
+        },
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Protokoly ladění"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fejlfindingslogfiler"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Debug-Protokolle"
+          }
+        },
+        "el": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Αρχεία καταγραφής εντοπισμού σφαλμάτων"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Debug logs"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Registros de depuración"
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Virheenkorjauslokit"
+          }
+        },
+        "he": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "יומני ניפוי באגים"
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "डीबग लॉग"
+          }
+        },
+        "hr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Zapisi za otklanjanje pogrešaka"
+          }
+        },
+        "hu": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hibakeresési naplók"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "デバッグログ"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Feilsøkingslogger"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Logs de depuração"
+          }
+        },
+        "ro": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Jurnale de depanare"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Журналы отладки"
+          }
+        },
+        "sk": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Protokoly ladenia"
+          }
+        },
+        "sl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dnevniki razhroščevanja"
+          }
+        },
+        "sr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Дневници отклањања грешака"
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Felsökningsloggar"
+          }
+        },
+        "uk": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Журнали налагодження"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "调试日志"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "偵錯記錄"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Journaux de débogage"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "디버그 로그"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Log di debug"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hata ayıklama günlükleri"
+          }
+        },
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nhật ký gỡ lỗi"
+          }
+        },
+        "th": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "บันทึกการดีบัก"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Log debug"
+          }
+        },
+        "fa": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "گزارش‌های اشکال‌زدایی"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dzienniki debugowania"
+          }
+        },
+        "nl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Foutopsporingslogboeken"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ڈیبگ لاگز"
+          }
+        },
+        "bg": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Дневници за отстраняване на грешки"
+          }
+        },
+        "et": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Silumislogid"
+          }
+        },
+        "lt": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Derinimo žurnalai"
+          }
+        },
+        "lv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Atkļūdošanas žurnāli"
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Villuleitarannálar"
+          }
+        },
+        "ms": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Log nyahpepijat"
+          }
+        },
+        "fil": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mga debug log"
+          }
+        },
+        "sw": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kumbukumbu za utatuzi"
+          }
+        },
+        "af": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ontfoutlogboeke"
+          }
+        },
+        "ta": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "பிழைதிருத்த பதிவுகள்"
+          }
+        },
+        "te": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "డీబగ్ లాగ్‌లు"
+          }
+        },
+        "ml": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ഡീബഗ് ലോഗുകൾ"
+          }
+        },
+        "mr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "डीबग लॉग"
+          }
+        },
+        "pa": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ਡੀਬੱਗ ਲੌਗ"
+          }
+        }
+      }
     }
   },
   "version": "1.0"
