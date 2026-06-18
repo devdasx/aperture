@@ -31,6 +31,19 @@ struct AlchemyConnector: ChainConnector {
 
     private static let log = Logger(subsystem: "com.thuglife.aperture", category: "alchemy-connector")
 
+    /// **EVM-only debug log (user direction, 2026-06-19).** A single `evm`
+    /// category dedicated to the EVM chains + EVM tokens balance/token/
+    /// transaction fetch path, so it can be filtered in isolation in Console /
+    /// Xcode (`subsystem:com.thuglife.aperture category:evm`). `.debug` level —
+    /// captured only when EVM debugging is enabled, never persisted in release.
+    private static let evmLog = Logger(subsystem: "com.thuglife.aperture", category: "evm")
+
+    /// Short, non-identifying address tail for the EVM debug log — enough to
+    /// tell two addresses apart without dumping the full string.
+    private static func addrTail(_ a: String) -> String {
+        a.count > 8 ? "…" + a.suffix(6) : a
+    }
+
     init(chain: SupportedChain, service: AlchemyService = .shared) {
         self.chain = chain
         self.service = service
@@ -69,6 +82,7 @@ struct AlchemyConnector: ChainConnector {
     // MARK: - Native balance
 
     func fetchNativeBalance(address: String) async throws(RPCError) -> ChainAccountSummary {
+        Self.evmLog.debug("native ▸ \(self.chain.rawValue, privacy: .public) [\(Self.addrTail(address), privacy: .public)] via \(self.networkSlug, privacy: .public)")
         // Try the Portfolio Data API first (one call serves native + tokens).
         // A genuine zero native balance arrives as a PRESENT native row with
         // `tokenBalance: "0x0"` (Portfolio includes the native coin when
@@ -77,6 +91,7 @@ struct AlchemyConnector: ChainConnector {
            let native = tokens.first(where: { $0.isNative }),
            let raw = AlchemyService.decimalFromHex(native.rawBalanceHex) {
             let balance = raw / AlchemyService.pow10(Self.nativeDecimals)
+            Self.evmLog.debug("native ◂ \(self.chain.rawValue, privacy: .public) = \(balance.description, privacy: .public) (portfolio)")
             return ChainAccountSummary(nativeBalance: balance, isUsed: balance > 0)
         }
 
@@ -94,18 +109,21 @@ struct AlchemyConnector: ChainConnector {
         // returns 0 from `eth_getBalance` — an honest zero, not an anomaly.
         let wei = try await service.nativeBalanceWei(network: networkSlug, address: address)
         let balance = wei / AlchemyService.pow10(Self.nativeDecimals)
+        Self.evmLog.debug("native ◂ \(self.chain.rawValue, privacy: .public) = \(balance.description, privacy: .public) (eth_getBalance fallback)")
         return ChainAccountSummary(nativeBalance: balance, isUsed: balance > 0)
     }
 
     // MARK: - Token balances
 
     func fetchTokenBalances(address: String, customContracts: [String]) async -> [TokenBalance] {
+        Self.evmLog.debug("tokens ▸ \(self.chain.rawValue, privacy: .public) [\(Self.addrTail(address), privacy: .public)] customs=\(customContracts.count, privacy: .public)")
         let tokens: [AlchemyService.Token]
         do {
             tokens = try await service.tokens(network: networkSlug, address: address)
         } catch {
             if case .cancelled = error { return [] }
             Self.log.error("Alchemy token balances failed on \(self.chain.rawValue, privacy: .public): \(String(describing: error), privacy: .public)")
+            Self.evmLog.debug("tokens ◂ \(self.chain.rawValue, privacy: .public) FAILED: \(String(describing: error), privacy: .public)")
             return []
         }
 
@@ -140,12 +158,15 @@ struct AlchemyConnector: ChainConnector {
                 lastUpdated: now
             ))
         }
+        let rawTokenCount = tokens.lazy.filter { !$0.isNative }.count
+        Self.evmLog.debug("tokens ◂ \(self.chain.rawValue, privacy: .public) raw=\(rawTokenCount, privacy: .public) kept=\(rows.count, privacy: .public) [\(rows.map { "\($0.symbol):\($0.amount.description)" }.joined(separator: ", "), privacy: .public)]")
         return rows
     }
 
     // MARK: - Transaction history
 
     func fetchHistory(address: String, limit: Int, customContracts: [String]) async throws -> [TransactionEvent] {
+        Self.evmLog.debug("history ▸ \(self.chain.rawValue, privacy: .public) [\(Self.addrTail(address), privacy: .public)] limit=\(limit, privacy: .public)")
         let transfers = try await service.assetTransfers(chain: chain, network: networkSlug, address: address, maxCount: limit)
 
         var allowed: Set<String> = []
@@ -204,7 +225,9 @@ struct AlchemyConnector: ChainConnector {
                 fee: nil
             ))
         }
-        return Array(events.sorted { $0.occurredAt > $1.occurredAt }.prefix(limit))
+        let result = Array(events.sorted { $0.occurredAt > $1.occurredAt }.prefix(limit))
+        Self.evmLog.debug("history ◂ \(self.chain.rawValue, privacy: .public) transfers=\(transfers.count, privacy: .public) events=\(result.count, privacy: .public)")
+        return result
     }
 
     // MARK: - Helpers
