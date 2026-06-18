@@ -12,8 +12,20 @@ import SwiftData
 /// push to a wallet-detail screen later, T-042).
 struct WalletSwitcherSheet: View {
     @Query(sort: \WalletRecord.sortOrder) private var wallets: [WalletRecord]
+    /// Per-chain aggregate rows — summed per wallet for the row balance
+    /// (the same source the Wallets management screen uses).
+    @Query private var chainStates: [ChainStateRecord]
     @AppStorage("activeWalletId") private var activeWalletIdRaw: String = ""
+    @AppStorage(CurrencyPreference.storageKey) private var currencyCode: String = CurrencyPreference.defaultCode
     @Environment(\.dismiss) private var dismiss
+
+    /// A wallet's total balance in the user's currency, summed from its
+    /// per-chain aggregate rows (mirrors `WalletsListView.fiatBalance`).
+    private func fiatBalance(for wallet: WalletRecord) -> Decimal {
+        chainStates
+            .filter { $0.walletId == wallet.id && $0.fiatCurrencyCode == currencyCode }
+            .reduce(Decimal.zero) { $0 + $1.totalFiat }
+    }
 
     /// Fired when the user picks an existing wallet (after writing the
     /// id to `@AppStorage`). The wallet-home reads `activeWalletIdRaw`
@@ -98,9 +110,13 @@ struct WalletSwitcherSheet: View {
                     Text(wallet.name)
                         .font(UniTypography.body)
                         .foregroundStyle(UniColors.Text.primary)
-                    Text(walletKindLabel(wallet.kind))
+                    // The wallet's balance (the kind/"imported from…" subtitle
+                    // moved to the wallet detail screen's Kind row, 2026-06-19).
+                    Text(WalletFormatting.fiat(fiatBalance(for: wallet), currencyCode: currencyCode))
                         .font(UniTypography.footnote)
                         .foregroundStyle(UniColors.Text.secondary)
+                        .monospacedDigit()
+                        .environment(\.layoutDirection, .leftToRight)
                 }
 
                 Spacer(minLength: UniSpacing.s)
@@ -136,14 +152,5 @@ struct WalletSwitcherSheet: View {
         }
         .padding(.vertical, UniSpacing.xxs)
         .contentShape(Rectangle())
-    }
-
-    private func walletKindLabel(_ kind: WalletKind) -> LocalizedStringKey {
-        switch kind {
-        case .created:          return "Created on this iPhone"
-        case .importedMnemonic: return "Imported from recovery phrase"
-        case .importedKey:      return "Imported from private key"
-        case .watchOnly:        return "Watch-only"
-        }
     }
 }

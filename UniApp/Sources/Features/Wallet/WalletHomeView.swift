@@ -2620,6 +2620,17 @@ private struct BalanceCardLiveSection: View {
         return liveBalanceSum
     }
 
+    /// When the active wallet's balances + history were last refreshed — the
+    /// latest per-chain aggregate `updatedAt` (the rebuild runs after the
+    /// balance + history passes complete). `nil` before the first scan.
+    private var lastUpdated: Date? {
+        guard let walletId else { return nil }
+        return chainStateRecords
+            .filter { $0.walletId == walletId && $0.fiatCurrencyCode == currencyCode }
+            .compactMap(\.lastSyncedAt)
+            .max()
+    }
+
     var body: some View {
         BalanceCardView(
             walletId: walletId,
@@ -2627,6 +2638,7 @@ private struct BalanceCardLiveSection: View {
             avatarSpec: avatarSpec,
             totalFiat: totalFiat,
             currencyCode: currencyCode,
+            lastUpdated: lastUpdated,
             transactions: transactions,
             currentBalances: currentBalances,
             ownAddresses: ownAddresses,

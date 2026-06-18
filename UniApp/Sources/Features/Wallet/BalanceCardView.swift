@@ -55,6 +55,10 @@ struct BalanceCardView: View {
     /// The wallet's resting total fiat (the value when not scrubbing).
     let totalFiat: Decimal
     let currencyCode: String
+    /// When the wallet's balances + history were last refreshed (the latest
+    /// per-chain aggregate `updatedAt`). `nil` before the first scan — the
+    /// "Updated …" caption under the wallet name is hidden then.
+    let lastUpdated: Date?
 
     /// The full transaction history + current balances + price ladders,
     /// fed straight to `BalanceHistoryReconstructor` to build the curve.
@@ -107,6 +111,9 @@ struct BalanceCardView: View {
     @State private var xFractions: [Double] = []
     @State private var minValue: Double = 0
     @State private var maxValue: Double = 0
+    /// Presents `WalletIconPickerSheet` (Customise wallet) when the user taps
+    /// the wallet avatar in the header (2026-06-19).
+    @State private var isShowingIconPicker: Bool = false
 
     init(
         walletId: UUID?,
@@ -114,6 +121,7 @@ struct BalanceCardView: View {
         avatarSpec: WalletAvatarSpec,
         totalFiat: Decimal,
         currencyCode: String,
+        lastUpdated: Date?,
         transactions: [TransactionRecord],
         currentBalances: [TokenBalanceRecord],
         ownAddresses: Set<String>,
@@ -128,6 +136,7 @@ struct BalanceCardView: View {
         self.avatarSpec = avatarSpec
         self.totalFiat = totalFiat
         self.currencyCode = currencyCode
+        self.lastUpdated = lastUpdated
         self.transactions = transactions
         self.currentBalances = currentBalances
         self.ownAddresses = ownAddresses
@@ -253,6 +262,24 @@ struct BalanceCardView: View {
         .accessibilityElement(children: .combine)
         .accessibilityLabel(accessibilityLabel)
         .task(id: rebuildKey) { await rebuild() }
+        .sheet(isPresented: $isShowingIconPicker) {
+            if let walletId {
+                WalletIconPickerSheet(walletId: walletId)
+                    .uniAppEnvironment()
+                    .uniSheetDetents([.large])
+                    .presentationBackground(UniColors.Background.primary)
+            }
+        }
+    }
+
+    /// "Updated 2 min ago" — the localized relative time of the last balance/
+    /// history refresh. Recomputed each render (the card re-renders on every
+    /// refresh + the 30s auto-refresh), so it stays current without a timer.
+    private static func updatedCaption(_ date: Date) -> String {
+        let formatter = RelativeDateTimeFormatter()
+        formatter.unitsStyle = .short
+        let relative = formatter.localizedString(for: date, relativeTo: Date())
+        return String(format: String.apertureLocalized("Updated %@"), relative)
     }
 
     // MARK: - Surface
@@ -331,11 +358,22 @@ struct BalanceCardView: View {
             // the user picked in wallet management, not a fixed black
             // logo (2026-06-17 user direction). `.row` is 36pt; the 1pt
             // ring keeps the card's existing disc treatment.
-            WalletAvatar(spec: avatarSpec, size: .row, walletId: walletId)
-                .overlay(
-                    Circle().stroke(UniColors.BalanceCard.avatarRing(colorScheme), lineWidth: 1)
-                )
-                .accessibilityHidden(true)
+            // Tapping the avatar opens Customise wallet (2026-06-17 logo, now
+            // tappable per 2026-06-19 user direction). A nil walletId (no
+            // active wallet) leaves it inert.
+            Button {
+                guard walletId != nil else { return }
+                isShowingIconPicker = true
+            } label: {
+                WalletAvatar(spec: avatarSpec, size: .row, walletId: walletId)
+                    .overlay(
+                        Circle().stroke(UniColors.BalanceCard.avatarRing(colorScheme), lineWidth: 1)
+                    )
+                    .contentShape(Circle())
+            }
+            .buttonStyle(.plain)
+            .disabled(walletId == nil)
+            .accessibilityLabel(Text("Customise wallet"))
 
             VStack(alignment: .leading, spacing: 1) {
                 // Name + chevron — one ≥44pt tap target → switcher.
@@ -353,6 +391,15 @@ struct BalanceCardView: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(Text("Switch wallet, currently \(walletName)"))
+
+                // Last refresh of balances + history (2026-06-19). Hidden
+                // until the first scan completes.
+                if let lastUpdated {
+                    Text(verbatim: Self.updatedCaption(lastUpdated))
+                        .font(UniTypography.caption2)
+                        .foregroundStyle(UniColors.BalanceCard.textMuted(colorScheme, boostContrast: boostContrast))
+                        .lineLimit(1)
+                }
             }
             // Both header tap targets clear the 44pt floor via the row's
             // intrinsic height + the chevron's vertical reach.
