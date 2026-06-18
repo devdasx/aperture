@@ -2383,11 +2383,24 @@ struct WalletHomeView: View {
         // the sync layer the desired symbols + what the store already
         // has (both DB-derived) and lets the coordinator own the fetch,
         // the store write, and the freshness stamp.
+        // **Part 4.6 — age-driven history depth.** The default 400 days
+        // (~13 months) starves `All` (and the older end of `1Y`) on a wallet
+        // older than that: its early period has no price coverage, so the chart
+        // goes flat/straight there. Drive `days` from the wallet's OLDEST
+        // transaction so the full lifetime is covered. Capped at ~5.5y so a
+        // single request stays bounded (the server's own max also applies);
+        // deeper history beyond the cap is the deferred chunking case.
+        // `allTransactions` is newest-first, so `.last` is the oldest.
+        let oldestTxDate = allTransactions.last?.occurredAt
+        let lifetimeDays = oldestTxDate.map { Int(ceil(Date().timeIntervalSince($0) / 86_400)) + 5 } ?? 400
+        let days = min(max(400, lifetimeDays), 2_000)
+
         let coordinator = WalletRefreshCoordinator(container: modelContext.container)
         await coordinator.syncHistoricalCloses(
             symbols: Array(symbols),
             fiat: currencyCode,
-            alreadyHave: existing
+            alreadyHave: existing,
+            days: days
         )
     }
 

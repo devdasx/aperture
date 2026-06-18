@@ -534,8 +534,22 @@ enum BalanceHistoryReconstructor {
         // when its before-value is 0 (genuine pre-history). Older wallets
         // (a non-zero leading anchor) and any first tx with a non-zero
         // before-value keep their step pair unchanged.
+        // **Part 4.2 — market movement BETWEEN trades.** On multi-day ranges,
+        // after each trade the holdings are CONSTANT until the next event, so we
+        // value that gap on a daily grid (the curve follows the market across a
+        // "bought then held" segment instead of drawing a straight line to the
+        // next trade). Sub-day ranges (1H/1D) add nothing — a daily grid over a
+        // sub-day gap has no interior instants — so they stay pure step pairs.
+        let interleaveMarket: Bool = {
+            switch range {
+            case .hour, .day: return false
+            case .week, .month, .year, .all: return true
+            }
+        }()
         var isFirstInWindow = true
-        for tx in inWindow {
+        let inWindowArray = Array(inWindow)
+        for i in inWindowArray.indices {
+            let tx = inWindowArray[i]
             // An unparseable amount can't change state — skip the
             // pair entirely rather than emitting a phantom flat step.
             guard Decimal(string: tx.amountRaw) != nil else { continue }
@@ -564,6 +578,22 @@ enum BalanceHistoryReconstructor {
             )
             points.append(BalancePoint(timestamp: tx.occurredAt, fiat: afterFiat))
             isFirstInWindow = false
+
+            // Fill the gap to the next event (next tx, or `now`) with daily
+            // market points at the now-constant holdings.
+            if interleaveMarket {
+                let gapEnd = (i + 1 < inWindowArray.count) ? inWindowArray[i + 1].occurredAt : now
+                guard gapEnd > tx.occurredAt else { continue }
+                for instant in sampleGrid(from: tx.occurredAt, to: gapEnd, range: range).dropFirst().dropLast()
+                where instant > tx.occurredAt && instant < gapEnd {
+                    let fiat = totalFiatAt(
+                        quantities: running, timestamp: instant,
+                        priceHistory: priceHistory, priceCache: priceCache,
+                        fiatPerUnit: fiatPerUnit
+                    )
+                    points.append(BalancePoint(timestamp: instant, fiat: fiat))
+                }
+            }
         }
 
         // **Trailing anchor at `now`** — reconciled to the wallet's
