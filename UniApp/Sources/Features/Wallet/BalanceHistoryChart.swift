@@ -21,7 +21,14 @@ final class ChartScrubModel {
     var fiat: Decimal?
 }
 
-/// Custom-drawn sparkline balance-over-time chart for the wallet home.
+/// Balance-over-time chart wrapper for the token detail screens — owns the
+/// data (transaction-sourced reconstruction), the period pill, the scrub
+/// wiring, and accessibility, then renders through the **single canonical
+/// `BalanceAreaChart`** (2026-06-19 Bug 2 fix — the private `SparklineChart`
+/// / `SparklineCurve`, a second divergent renderer, was deleted so a render
+/// fix lands once for every screen). Much of the prose below predates that
+/// unification and is kept for history; the live renderer is `BalanceAreaChart`
+/// (linear step segments, semantic stroke/fill, glow), not a local spline.
 ///
 /// **Design intent (one sentence per Rule #2 §D.1):** show the user
 /// the shape of their balance changing through time — calm,
@@ -240,17 +247,20 @@ struct BalanceHistoryChart: View {
             // to `values`; `[]` for a degenerate span → renderer uses index
             // spacing (a 2-point flat baseline reads the same either way).
             let xFractions = Self.timeFractions(for: points)
-            SparklineChart(
-                points: values,
+            // **One renderer (2026-06-19 Bug 2 fix).** The token screens now
+            // render through the SAME canonical `BalanceAreaChart` the main
+            // card uses — the private `SparklineChart`/`SparklineCurve` (a
+            // second, divergent copy of the spline + scrub + normalization)
+            // is gone, so a render fix is written once and applies everywhere.
+            BalanceAreaChart(
+                values: values,
                 xFractions: xFractions,
                 minValue: chartPoints.isEmpty ? 0 : sparkMin,
                 maxValue: chartPoints.isEmpty ? 0 : sparkMax,
+                sign: Self.chartSign(for: points),
                 onScrub: { index in
                     // Map the scrubbed index → the touched point's fiat
-                    // and publish it to the hero via the @Observable
-                    // model. Called from the gesture; does NOT
-                    // re-evaluate this body (no `scrubIndex` @State here
-                    // anymore — that was the long-scrub freeze).
+                    // and publish it to the hero via the @Observable model.
                     let scrubbed: Decimal? = {
                         guard let idx = index, idx >= 0, idx < points.count else { return nil }
                         return points[idx].fiat
@@ -416,6 +426,16 @@ struct BalanceHistoryChart: View {
         return points.map { max(0, min(1, $0.timestamp.timeIntervalSince(first) / span)) }
     }
 
+    /// Up / down / flat from the windowed curve's endpoints (first vs last) —
+    /// drives `BalanceAreaChart`'s semantic stroke/fill/glow color, the same
+    /// way the main card derives its sign.
+    private static func chartSign(for points: [BalancePoint]) -> UniColors.BalanceCard.Sign {
+        guard let first = points.first?.fiat, let last = points.last?.fiat else { return .flat }
+        if last > first { return .up }
+        if last < first { return .down }
+        return .flat
+    }
+
     // MARK: - Delta caption
 
     /// Signed-delta text for the accessibility readout. (The on-screen
@@ -483,390 +503,6 @@ struct BalanceHistoryChart: View {
     /// for the absolute readout.
     private func fiatAsDouble(_ fiat: Decimal) -> Double {
         NSDecimalNumber(decimal: fiat).doubleValue
-    }
-}
-
-// MARK: - SparklineChart
-
-/// The custom-drawn sparkline — quadratic-Bézier curve, gradient
-/// fill below, scrub gesture with guide line + point + outer ring,
-/// slope-driven Core Haptics on tick changes.
-///
-/// Ported from the Stabro reference (`SparklineChartView.swift`)
-/// with the following adaptations for Aperture's contract:
-///
-/// - Stroke + gradient seed use `UniColors.Text.primary` (Rule #4),
-///   not a green `Color(hex:)`. Aperture's chart is monochrome.
-/// - Scrub guide line uses `UniColors.Text.tertiary` at the Stabro
-///   opacity 0.4. Outer ring uses `UniColors.Text.primary` at the
-///   Stabro opacity 0.3.
-/// - Haptics route through `UniHapticEngine.shared.playScrubTick`
-///   / `playScrubRelease` (Rule #10 §D — Core Haptics imports only
-///   in `UniHapticEngine.swift`).
-/// - `.environment(\.layoutDirection, .leftToRight)` per Rule #11
-///   §C — time-ordered display content stays L→R in every locale.
-private struct SparklineChart: View {
-
-    /// One value per sample point, in the order the curve should
-    /// read left-to-right. The caller is responsible for sorting
-    /// (the `BalanceHistoryReconstructor` already returns oldest-
-    /// to-newest). At least two points required for a meaningful
-    /// curve; fewer renders a flat line.
-    let points: [Double]
-
-    /// Per-point horizontal position in `[0, 1]` from each sample's TIMESTAMP
-    /// (Part 4.3 — real time x-axis). Parallel to `points`; empty / wrong-length
-    /// falls back to equal-index spacing.
-    let xFractions: [Double]
-
-    /// Precomputed `points.min()` / `points.max()`, supplied by the
-    /// parent alongside the memoized series so the per-drag-tick
-    /// normalization + haptic math never rescans the array.
-    let minValue: Double
-    let maxValue: Double
-
-    /// Published per scrub index change (and `nil` on release). The
-    /// parent writes the scrubbed point's fiat into its `ChartScrubModel`
-    /// in this closure — a closure rather than a `@Binding` so a scrub
-    /// tick never re-evaluates the PARENT's body (the 2026-06-13
-    /// long-scrub freeze: the binding invalidated `BalanceHistoryChart`,
-    /// re-running its reconstruction-gating `rebuildKey` + value
-    /// projection ~60×/s).
-    let onScrub: (Int?) -> Void
-
-    /// The scrubbed index — LOCAL `@State`, so a tick invalidates ONLY
-    /// this view, never the parent.
-    @State private var scrubIndex: Int?
-
-    var body: some View {
-        GeometryReader { geo in
-            let size = geo.size
-            ZStack {
-                // **The static curve.** Its inputs (points / min / max)
-                // are INVARIANT during a scrub — only the cursor moves.
-                // Extracting it into an `Equatable` subview makes SwiftUI
-                // skip recomputing the two O(N) Catmull-Rom paths (stroke
-                // + gradient fill) on every drag tick. THIS is the
-                // long-scrub freeze fix: the reconstructor emits up to
-                // ~2,000 points (two per in-window transaction), and the
-                // old body rebuilt both paths over all of them ~60×/s
-                // while scrubbing, saturating the main thread.
-                SparklineCurve(points: points, xFractions: xFractions, minValue: minValue, maxValue: maxValue)
-                    .equatable()
-                    // **2026-06-14 scroll-lag fix.** Flatten the curve into a
-                    // cached Metal-backed bitmap. The reconstructor emits up
-                    // to ~2,000 points (two per in-window transaction), so the
-                    // stroke + gradient-fill are heavy vector paths; without
-                    // this, the GPU re-rasterized them on EVERY scroll frame
-                    // while the chart row was on screen → the "laggy while
-                    // scrolling the list" the user reported. `.drawingGroup()`
-                    // rasterizes once (and only re-rasterizes when `.equatable()`
-                    // lets the data-driven body actually change), so scrolling
-                    // just composites a flat texture. The scrub cursor is a
-                    // SIBLING in the ZStack (not inside this), so it stays live
-                    // vector and is unaffected.
-                    .drawingGroup()
-
-                // **Scrub cursor — the only thing that moves per tick.**
-                // Its position is computed O(1) from the index, never by
-                // rescanning / re-projecting all N points.
-                if let index = scrubIndex,
-                   points.count > 1,
-                   index >= 0,
-                   index < points.count
-                {
-                    let pt = cursorPoint(index: index, in: size)
-                    Rectangle()
-                        .fill(UniColors.Text.tertiary.opacity(0.4))
-                        .frame(width: 1)
-                        .position(x: pt.x, y: size.height / 2)
-                    Circle()
-                        .stroke(UniColors.Text.primary.opacity(0.3), lineWidth: 2)
-                        .frame(width: 18, height: 18)
-                        .position(pt)
-                    Circle()
-                        .fill(UniColors.Text.primary)
-                        .frame(width: 10, height: 10)
-                        .position(pt)
-                }
-            }
-            .contentShape(Rectangle())
-            .gesture(
-                DragGesture(minimumDistance: 0)
-                    .onChanged { value in
-                        let index = indexForX(value.location.x, in: size)
-                        guard index != scrubIndex else { return }
-                        scrubIndex = index
-                        onScrub(index)
-                        UniHapticEngine.shared.playScrubTick(intensity: hapticIntensity(at: index))
-                    }
-                    .onEnded { _ in
-                        scrubIndex = nil
-                        onScrub(nil)
-                        UniHapticEngine.shared.playScrubRelease()
-                    }
-            )
-        }
-        // Time order is data, not language — pin the canvas to L→R
-        // in every locale (Rule #11 §C carve-out).
-        .environment(\.layoutDirection, .leftToRight)
-    }
-
-    /// O(1) cursor point for `index` — x from the index fraction, y from
-    /// the single value's normalization (the same mapping
-    /// `SparklineCurve.normalizedPoints` uses, but for one point so a
-    /// scrub tick never rebuilds the whole projected array).
-    private func cursorPoint(index: Int, in size: CGSize) -> CGPoint {
-        let count = points.count
-        let useTime = xFractions.count == count
-        let x: CGFloat = {
-            if useTime { return CGFloat(xFractions[index]) * size.width }
-            return count > 1 ? CGFloat(index) / CGFloat(count - 1) * size.width : 0
-        }()
-        let range = maxValue - minValue
-        let padding: CGFloat = 0.1
-        let normalized = range > 0 ? (CGFloat(points[index] - minValue) / CGFloat(range)) : 0.5
-        let y = size.height - (normalized * size.height * (1 - 2 * padding) + size.height * padding)
-        return CGPoint(x: x, y: y)
-    }
-
-    // MARK: - Scrub math
-
-    /// Maps a canvas-space x position to the nearest sample index.
-    /// The drag gesture's `value.location.x` arrives in canvas
-    /// space because the chart is wrapped in `GeometryReader`.
-    private func indexForX(_ x: CGFloat, in size: CGSize) -> Int {
-        guard points.count > 1 else { return 0 }
-        let clamped = Double(max(0, min(1, x / size.width)))
-        // Time-spaced hit-test (Part 4.3): pick the sample whose TIME fraction
-        // is nearest the touch — equal-index nearest would mis-map a touch when
-        // points are unevenly spaced in time. Falls back to index when no
-        // fractions were supplied.
-        if xFractions.count == points.count {
-            var best = 0
-            var bestDist = Double.greatestFiniteMagnitude
-            for (i, f) in xFractions.enumerated() {
-                let d = abs(f - clamped)
-                if d < bestDist { bestDist = d; best = i }
-            }
-            return best
-        }
-        return Int(round(clamped * Double(points.count - 1)))
-    }
-
-    /// Computes the haptic intensity for the tick at `index` from
-    /// the local slope between the previous sample and this one.
-    /// Steeper change → stronger tick. The mapping comes from the
-    /// Stabro reference: `intensity = min(0.8, 0.15 + slope*2.2)`
-    /// where `slope = |curr - prev|`. The chart's y-domain has
-    /// already been normalized to its own [min, max] band so the
-    /// slope is unit-free.
-    private func hapticIntensity(at index: Int) -> Float {
-        guard points.count > 1 else { return 0.3 }
-        let safeIndex = max(0, min(points.count - 1, index))
-        let prev = safeIndex > 0 ? points[safeIndex - 1] : points[safeIndex]
-        let curr = points[safeIndex]
-        // Slope is computed in the y-domain's own units; we
-        // normalize to its overall range so the intensity is
-        // comparable across days vs. years vs. flat wallets. The
-        // band comes precomputed from the parent — no per-tick
-        // `min()` / `max()` rescans.
-        let range = max(maxValue - minValue, 0.0001)
-        let normalizedSlope = abs(curr - prev) / range
-        return Float(min(0.8, 0.15 + normalizedSlope * 2.2))
-    }
-
-}
-
-// MARK: - SparklineCurve (static, equatable — skips per-scrub recompute)
-
-/// The INVARIANT part of the sparkline: the gradient fill + the
-/// Catmull-Rom stroke. Split out of `SparklineChart` (2026-06-13
-/// long-scrub freeze fix) so that a scrub tick — which moves only the
-/// cursor — does NOT recompute the two O(N) Bézier paths. Conforming to
-/// `Equatable` and applying `.equatable()` at the call site makes
-/// SwiftUI skip this view's body whenever `(points, minValue, maxValue)`
-/// are unchanged — exactly the case on every drag frame, when the curve
-/// is fixed and only `scrubIndex` (which lives in the parent) changed.
-private struct SparklineCurve: View, Equatable {
-
-    let points: [Double]
-    /// Per-point horizontal position in `[0, 1]`, derived from each sample's
-    /// TIMESTAMP — `(t − windowStart) / (now − windowStart)` (2026-06-19, Part
-    /// 4.3). This replaces equal-index spacing so a one-hour gap and a one-year
-    /// gap occupy proportional width. Empty / wrong-length falls back to index
-    /// spacing (safety).
-    let xFractions: [Double]
-    let minValue: Double
-    let maxValue: Double
-
-    // `nonisolated` — SwiftUI `View` structs are `@MainActor`-isolated
-    // under Swift 6, but `Equatable.==` must be callable off-actor by
-    // the `.equatable()` diffing machinery; the compared values are
-    // immutable `let`s, so it's race-free.
-    nonisolated static func == (lhs: SparklineCurve, rhs: SparklineCurve) -> Bool {
-        lhs.minValue == rhs.minValue
-            && lhs.maxValue == rhs.maxValue
-            && lhs.points == rhs.points
-            && lhs.xFractions == rhs.xFractions
-    }
-
-    var body: some View {
-        GeometryReader { geo in
-            let size = geo.size
-            let canvasPoints = normalizedPoints(in: size)
-            ZStack {
-                // Gradient fill — the Catmull-Rom path closed at the
-                // baseline, top-to-bottom 25%→0% fade so the area reads
-                // as glow, not a hard fill.
-                gradientFill(points: canvasPoints, in: size)
-                // The sparkline stroke — 2pt, rounded caps + joins.
-                sparklinePath(points: canvasPoints)
-                    .stroke(
-                        UniColors.Text.primary,
-                        style: StrokeStyle(lineWidth: 2, lineCap: .round, lineJoin: .round)
-                    )
-            }
-        }
-    }
-
-    // MARK: - Path math
-
-    /// Project the data series into canvas space with a 10% top
-    /// and bottom padding band so the curve never grazes the edges
-    /// of the chart frame. Empty input returns an empty array; the
-    /// caller renders nothing in that case.
-    private func normalizedPoints(in size: CGSize) -> [CGPoint] {
-        guard points.count > 1 else { return [] }
-        let minVal = minValue
-        let range = maxValue - minValue
-        // 10% top + 10% bottom padding — the Stabro `padding: 0.1`
-        // constant ported verbatim. Wallet balance histories sit in
-        // a band; the padding makes the curve breathe.
-        let padding: CGFloat = 0.1
-        let useTime = xFractions.count == points.count
-        return points.enumerated().map { index, value in
-            // Time-spaced x (Part 4.3) when fractions are supplied; otherwise
-            // the legacy equal-index spacing.
-            let x = (useTime ? CGFloat(xFractions[index]) : CGFloat(index) / CGFloat(points.count - 1)) * size.width
-            let normalized = range > 0 ? (CGFloat(value - minVal) / CGFloat(range)) : 0.5
-            // Canvas y is top-down. We map normalized 0 → bottom of
-            // the padded band; normalized 1 → top of the padded
-            // band.
-            let y = size.height - (normalized * size.height * (1 - 2 * padding) + size.height * padding)
-            return CGPoint(x: x, y: y)
-        }
-    }
-
-    /// Smooth interpolating spline through every sample point, drawn
-    /// as a sequence of cubic-Bézier segments derived from a uniform
-    /// Catmull-Rom spline.
-    ///
-    /// **Why Catmull-Rom and not quadratic-midpoint.** The original
-    /// ship used the quadratic-midpoint trick (route each pair via
-    /// its shared midpoint as a control vertex). That algorithm is
-    /// fast and reads silky on dense data — but on sparse data (a
-    /// handful of transactions over the visible range) each adjacent
-    /// pair produces its own arc that bends visibly at the data
-    /// vertex, so the line reads as a series of joined arcs rather
-    /// than as one flowing shape.
-    ///
-    /// Catmull-Rom passes through every data point exactly (no
-    /// smoothing-away of the actual transactions — Rule #2 §A.7
-    /// honesty) AND gives every interior point a tangent derived
-    /// from its neighbors `(p[i+1] − p[i−1]) / 6`, so adjacent
-    /// segments share C¹-continuous tangents. The result reads as
-    /// one continuous curve in the user's hand.
-    ///
-    /// **Endpoint clamp.** At the boundaries we don't have a
-    /// `p[i−1]` (or `p[i+2]`) to compute the tangent from. The clean
-    /// clamp is to substitute the endpoint itself — i.e.
-    /// `p[−1] := p[0]` and `p[n] := p[n−1]` — which yields a zero
-    /// tangent at each end. The curve enters and exits the canvas
-    /// horizontally instead of overshooting; for a balance history
-    /// that reads as "settled at the start, settled at the end."
-    private func sparklinePath(points canvasPoints: [CGPoint]) -> Path {
-        Path { path in
-            guard let first = canvasPoints.first else { return }
-            path.move(to: first)
-            appendCatmullRomSegments(to: &path, points: canvasPoints)
-        }
-    }
-
-    /// Gradient fill — same Catmull-Rom curve as the stroke (so the
-    /// fill sits flush under it), then closed down to the baseline
-    /// at both ends with straight vertical drops so the area between
-    /// the curve and the bottom of the canvas can be filled with a
-    /// vertical fade. The closing drops stay straight on purpose —
-    /// smoothing them would round the bottom corners of the fill and
-    /// break the "this is the area under the curve, baseline is
-    /// flat" reading.
-    private func gradientFill(points canvasPoints: [CGPoint], in size: CGSize) -> some View {
-        Path { path in
-            guard let first = canvasPoints.first, let last = canvasPoints.last else { return }
-            path.move(to: first)
-            appendCatmullRomSegments(to: &path, points: canvasPoints)
-            path.addLine(to: CGPoint(x: last.x, y: size.height))
-            path.addLine(to: CGPoint(x: first.x, y: size.height))
-            path.closeSubpath()
-        }
-        .fill(
-            LinearGradient(
-                colors: [
-                    UniColors.Text.primary.opacity(0.25),
-                    UniColors.Text.primary.opacity(0.0),
-                ],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-        )
-    }
-
-    /// Shared Catmull-Rom-to-cubic-Bézier emitter. The path must
-    /// already be `move(to:)` the first point; this appends one
-    /// `addCurve` segment per consecutive pair.
-    ///
-    /// The conversion from Catmull-Rom to cubic Bézier:
-    /// ```
-    /// For each segment from p[i] to p[i+1] (with p[i−1] and p[i+2]
-    /// as neighbors):
-    ///   tangentAtI  = (p[i+1] − p[i−1]) / 6
-    ///   tangentAtI1 = (p[i+2] − p[i  ]) / 6
-    ///   cp1 = p[i  ] + tangentAtI
-    ///   cp2 = p[i+1] − tangentAtI1
-    ///   path.addCurve(to: p[i+1], control1: cp1, control2: cp2)
-    /// ```
-    /// At the boundaries `p[−1]` and `p[n]` are clamped to `p[0]`
-    /// and `p[n−1]` respectively, producing a zero tangent at each
-    /// end.
-    private func appendCatmullRomSegments(to path: inout Path, points canvasPoints: [CGPoint]) {
-        let count = canvasPoints.count
-        guard count > 1 else { return }
-        for i in 0..<(count - 1) {
-            let previous = i == 0 ? canvasPoints[i] : canvasPoints[i - 1]
-            let current = canvasPoints[i]
-            let next = canvasPoints[i + 1]
-            let afterNext = i + 2 < count ? canvasPoints[i + 2] : next
-
-            let oneSixth: CGFloat = 1.0 / 6.0
-            let tangentAtCurrent = CGPoint(
-                x: (next.x - previous.x) * oneSixth,
-                y: (next.y - previous.y) * oneSixth
-            )
-            let tangentAtNext = CGPoint(
-                x: (afterNext.x - current.x) * oneSixth,
-                y: (afterNext.y - current.y) * oneSixth
-            )
-            let controlOne = CGPoint(
-                x: current.x + tangentAtCurrent.x,
-                y: current.y + tangentAtCurrent.y
-            )
-            let controlTwo = CGPoint(
-                x: next.x - tangentAtNext.x,
-                y: next.y - tangentAtNext.y
-            )
-            path.addCurve(to: next, control1: controlOne, control2: controlTwo)
-        }
     }
 }
 

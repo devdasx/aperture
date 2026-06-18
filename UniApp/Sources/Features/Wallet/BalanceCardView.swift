@@ -150,18 +150,22 @@ struct BalanceCardView: View {
 
     private var boostContrast: Bool { legibilityWeight == .bold }
 
-    /// The pill's baseline — the FIRST point the wallet actually HELD a
-    /// balance at: the first `points` element with `fiat > 0`, falling
-    /// back to `points.first` only when every point is 0 (the degenerate
-    /// "only an outgoing first tx" curve). **2026-06-16 user direction:**
-    /// the percent + amount read from the first balance the wallet held in
-    /// the window — so 1M/1Y/All show a REAL percent like the shorter
-    /// ranges, never a "—". The reconstructor already drops the leading $0
-    /// before-step, so `points.first` is normally the first held balance
-    /// and this fold is just defensive against any residual $0 lead.
+    /// The pill's baseline = the **first point in the window** (2026-06-19
+    /// Bug 4 fix). The change/percent measure from the real range-start value
+    /// to the trailing edge. When the window starts at 0 — the wallet was
+    /// funded DURING the window (a young wallet's 1Y, or `.all` whose first
+    /// event is the funding) — a percent off a zero base is undefined, so the
+    /// pill suppresses the percent (`baselineIsZero`) and shows the absolute
+    /// amount only, never a fabricated/huge number. (The old code skipped to
+    /// the first NON-zero point, which manufactured a baseline and produced
+    /// the +1136.37% the user saw.)
     private var baselineFiat: Decimal {
-        points.first(where: { $0.fiat > 0 })?.fiat ?? points.first?.fiat ?? 0
+        points.first?.fiat ?? 0
     }
+
+    /// `true` when the window starts at a zero balance (funded during the
+    /// window) → the percent is undefined and is suppressed in the pill.
+    private var baselineIsZero: Bool { baselineFiat <= 0 }
 
     /// Gain / loss / flat — measured from the SAME reconstructed `points`
     /// array the chart draws: `baselineFiat` (the first HELD balance in the
@@ -505,11 +509,16 @@ struct BalanceCardView: View {
                     .font(UniTypography.BalanceCard.amount)
                     .foregroundStyle(UniColors.BalanceCard.textMuted(colorScheme, boostContrast: boostContrast))
             } else {
-                changePill(
-                    text: percentText,
-                    systemImage: sign == .up ? "arrow.up" : (sign == .down ? "arrow.down" : nil),
-                    sign: sign
-                )
+                // Off a zero baseline (funded during the window) the percent
+                // is undefined — suppress the pill and show the amount only
+                // (Bug 4). Otherwise the real per-range percent + arrow.
+                if !baselineIsZero {
+                    changePill(
+                        text: percentText,
+                        systemImage: sign == .up ? "arrow.up" : (sign == .down ? "arrow.down" : nil),
+                        sign: sign
+                    )
+                }
                 Text(verbatim: amountText)
                     .font(UniTypography.BalanceCard.amount)
                     .foregroundStyle(UniColors.BalanceCard.textMuted(colorScheme, boostContrast: boostContrast))
@@ -549,20 +558,33 @@ struct BalanceCardView: View {
         return String(format: "%.2f%%", pct)
     }
 
-    /// `+293.10 today` / `−391.20 today` / `No change today`. The minus is
-    /// a true U+2212 (handoff §States: "not a hyphen"). **2026-06-16:** the
-    /// amount reads `last − baselineFiat` (the first held balance), so
-    /// 1M/1Y/All show the real signed amount consistent with the line and
-    /// the percent. `No change today` only when the net delta is exactly 0.
+    /// The range-correct trailing label (2026-06-19 Bug 4 fix) — the old
+    /// code hardcoded "today" on every range (the "+JOD 742.993 today" the
+    /// user saw on All). Each range now reads its own window.
+    private var rangeLabel: String {
+        switch currentRange {
+        case .hour:  return String.apertureLocalized("past hour")
+        case .day:   return String.apertureLocalized("today")
+        case .week:  return String.apertureLocalized("past week")
+        case .month: return String.apertureLocalized("past month")
+        case .year:  return String.apertureLocalized("past year")
+        case .all:   return String.apertureLocalized("all time")
+        }
+    }
+
+    /// `+293.10 past week` / `−391.20 today` / `No change past month`. The
+    /// minus is a true U+2212 (handoff §States: "not a hyphen"). The amount
+    /// reads `last − baselineFiat` over the selected range, so the label and
+    /// the value always describe the same window.
     private var amountText: String {
+        let label = rangeLabel
         if change == 0 {
-            return String.apertureLocalized("No change today")
+            return "\(String.apertureLocalized("No change")) \(label)"
         }
         let magnitude = abs(change)
         let formatted = WalletFormatting.fiat(magnitude, currencyCode: currencyCode)
         let signGlyph = sign == .up ? "+" : "\u{2212}"
-        let today = String.apertureLocalized("today")
-        return "\(signGlyph)\(formatted) \(today)"
+        return "\(signGlyph)\(formatted) \(label)"
     }
 
     // MARK: - Zero state
