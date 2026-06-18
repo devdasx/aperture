@@ -84902,7 +84902,310 @@
         }
       }
     },
-    "Broadcast to the %@ network. Confirming may take a moment — you can safely leave this screen.": {},
+    "Broadcast to the %@ network. Confirming may take a moment — you can safely leave this screen.": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Diffusé sur le réseau %@. La confirmation peut prendre un moment — vous pouvez quitter cet écran en toute sécurité."
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ 네트워크로 전송됐어요. 확인까지 잠시 걸릴 수 있어요 — 이 화면을 나가도 괜찮아요."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Trasmessa sulla rete %@. La conferma può richiedere un momento — puoi uscire da questa schermata senza problemi."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ ağına yayınlandı. Onaylanması biraz sürebilir — bu ekrandan güvenle çıkabilirsiniz."
+          }
+        },
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Đã phát lên mạng %@. Việc xác nhận có thể mất một chút — bạn có thể rời màn hình này một cách an toàn."
+          }
+        },
+        "th": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ส่งออกไปยังเครือข่าย %@ แล้ว การยืนยันอาจใช้เวลาสักครู่ — คุณออกจากหน้าจอนี้ได้อย่างปลอดภัย"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Disiarkan ke jaringan %@. Konfirmasi mungkin perlu beberapa saat — Anda dapat meninggalkan layar ini dengan aman."
+          }
+        },
+        "fa": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "به شبکه ‏%@‏ ارسال شد. تأیید ممکن است کمی طول بکشد — می‌توانید با خیال راحت این صفحه را ترک کنید."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rozesłano do sieci %@. Potwierdzenie może chwilę potrwać — możesz bezpiecznie opuścić ten ekran."
+          }
+        },
+        "nl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Verzonden naar het %@-netwerk. Bevestigen kan even duren — je kunt dit scherm veilig verlaten."
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "‏%@‏ نیٹ ورک پر نشر کر دیا گیا۔ تصدیق میں کچھ لمحے لگ سکتے ہیں — آپ بحفاظت اس اسکرین سے باہر جا سکتے ہیں۔"
+          }
+        },
+        "bg": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Излъчено в мрежата %@. Потвърждаването може да отнеме момент — можете спокойно да напуснете този екран."
+          }
+        },
+        "et": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Saadetud võrku %@. Kinnitamine võib veidi aega võtta — võite selle kuva ohutult sulgeda."
+          }
+        },
+        "lt": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Išsiųsta į tinklą %@. Patvirtinimas gali šiek tiek užtrukti — galite saugiai išeiti iš šio ekrano."
+          }
+        },
+        "lv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pārraidīts %@ tīklā. Apstiprināšana var aizņemt brīdi — varat droši pamest šo ekrānu."
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sent á %@-netið. Staðfesting getur tekið augnablik — þú getur óhætt yfirgefið þennan skjá."
+          }
+        },
+        "ms": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Disiarkan ke rangkaian %@. Pengesahan mungkin mengambil sedikit masa — anda boleh meninggalkan skrin ini dengan selamat."
+          }
+        },
+        "fil": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Naipadala sa %@ network. Maaaring tumagal nang sandali ang pagkumpirma — puwede mo nang iwan nang ligtas ang screen na ito."
+          }
+        },
+        "sw": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Imetangazwa kwenye mtandao wa %@. Uthibitisho unaweza kuchukua muda kidogo — unaweza kuondoka kwenye skrini hii kwa usalama."
+          }
+        },
+        "af": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Uitgesaai na die %@-netwerk. Bevestiging kan 'n oomblik neem — jy kan hierdie skerm veilig verlaat."
+          }
+        },
+        "ta": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ நெட்வொர்க்கிற்கு அனுப்பப்பட்டது. உறுதிப்படுத்த சிறிது நேரம் ஆகலாம் — இந்தத் திரையை நீங்கள் பாதுகாப்பாக விட்டுச் செல்லலாம்."
+          }
+        },
+        "te": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ నెట్‌వర్క్‌కు ప్రసారం చేయబడింది. నిర్ధారణకు కొంత సమయం పట్టవచ్చు — మీరు ఈ స్క్రీన్‌ను సురక్షితంగా వదిలివేయవచ్చు."
+          }
+        },
+        "ml": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ നെറ്റ്‌വർക്കിലേക്ക് പ്രക്ഷേപണം ചെയ്തു. സ്ഥിരീകരണത്തിന് അൽപ്പസമയം എടുത്തേക്കാം — നിങ്ങൾക്ക് ഈ സ്ക്രീൻ സുരക്ഷിതമായി വിട്ടുപോകാം."
+          }
+        },
+        "mr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ नेटवर्कवर प्रसारित केले. पुष्टी होण्यास थोडा वेळ लागू शकतो — तुम्ही ही स्क्रीन सुरक्षितपणे सोडू शकता."
+          }
+        },
+        "pa": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ ਨੈੱਟਵਰਕ ਉੱਤੇ ਪ੍ਰਸਾਰਿਤ ਕੀਤਾ ਗਿਆ। ਪੁਸ਼ਟੀ ਹੋਣ ਵਿੱਚ ਕੁਝ ਪਲ ਲੱਗ ਸਕਦੇ ਹਨ — ਤੁਸੀਂ ਇਸ ਸਕ੍ਰੀਨ ਨੂੰ ਸੁਰੱਖਿਅਤ ਢੰਗ ਨਾਲ ਛੱਡ ਸਕਦੇ ਹੋ।"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Difundido a la red %@. La confirmación puede tardar un momento; puedes salir de esta pantalla con seguridad."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已广播到 %@ 网络。确认可能需要片刻——你可以放心离开此页面。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已廣播至 %@ 網路。確認可能需要片刻——你可以放心離開此畫面。"
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ नेटवर्क पर प्रसारित किया गया. पुष्टि होने में थोड़ा समय लग सकता है — आप यह स्क्रीन सुरक्षित रूप से छोड़ सकते हैं."
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "تم البث إلى شبكة ‏%@‏. قد يستغرق التأكيد لحظة — يمكنك مغادرة هذه الشاشة بأمان."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Transmitido para a rede %@. A confirmação pode levar um momento — você pode sair desta tela com segurança."
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ নেটওয়ার্কে সম্প্রচার করা হয়েছে। নিশ্চিত হতে কিছুটা সময় লাগতে পারে — আপনি নিরাপদে এই স্ক্রিন থেকে বেরিয়ে যেতে পারেন।"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Отправлено в сеть %@. Подтверждение может занять некоторое время — вы можете спокойно покинуть этот экран."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ ネットワークにブロードキャストしました。確認には少し時間がかかる場合があります。この画面を閉じても問題ありません。"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "An das %@-Netzwerk gesendet. Die Bestätigung kann einen Moment dauern – Sie können diesen Bildschirm bedenkenlos verlassen."
+          }
+        },
+        "uk": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Надіслано в мережу %@. Підтвердження може зайняти трохи часу — ви можете безпечно покинути цей екран."
+          }
+        },
+        "el": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Μεταδόθηκε στο δίκτυο %@. Η επιβεβαίωση μπορεί να χρειαστεί λίγη ώρα — μπορείτε να αποχωρήσετε από αυτήν την οθόνη με ασφάλεια."
+          }
+        },
+        "ro": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Difuzat în rețeaua %@. Confirmarea poate dura un moment — puteți părăsi acest ecran în siguranță."
+          }
+        },
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Odesláno do sítě %@. Potvrzení může chvíli trvat — tuto obrazovku můžete bezpečně opustit."
+          }
+        },
+        "hu": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Elküldve a(z) %@ hálózatra. A megerősítés eltarthat egy pillanatig — nyugodtan elhagyhatja ezt a képernyőt."
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sänt till %@-nätverket. Bekräftelsen kan ta en stund – du kan lämna den här skärmen utan risk."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sendt til %@-nettverket. Bekreftelsen kan ta et øyeblikk – du kan trygt forlate denne skjermen."
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sendt til %@-netværket. Bekræftelsen kan tage et øjeblik – du kan trygt forlade denne skærm."
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lähetetty %@-verkkoon. Vahvistus voi kestää hetken — voit poistua tästä näkymästä huoletta."
+          }
+        },
+        "he": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "שודר אל רשת ‏%@‏. האישור עשוי להימשך רגע — אפשר לצאת מהמסך הזה בבטחה."
+          }
+        },
+        "ca": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Difós a la xarxa %@. La confirmació pot trigar un moment; pots sortir d’aquesta pantalla amb seguretat."
+          }
+        },
+        "hr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Poslano u mrežu %@. Potvrda može potrajati trenutak — ovaj zaslon možete sigurno napustiti."
+          }
+        },
+        "sk": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Odoslané do siete %@. Potvrdenie môže chvíľu trvať — túto obrazovku môžete bezpečne opustiť."
+          }
+        },
+        "sl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Poslano v omrežje %@. Potrditev lahko traja trenutek — ta zaslon lahko varno zapustite."
+          }
+        },
+        "sr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Послато у мрежу %@. Потврда може потрајати тренутак — овај екран можете безбедно да напустите."
+          }
+        }
+      }
+    },
     "Broadcast to the %@ network. It'll confirm on-chain in a moment.": {
       "extractionState": "stale",
       "localizations": {
@@ -110570,7 +110873,310 @@
         }
       }
     },
-    "Confirmed on the %@ network.": {},
+    "Confirmed on the %@ network.": {
+      "localizations": {
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Confirmée sur le réseau %@."
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ 네트워크에서 확인됐어요."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Confermata sulla rete %@."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ ağında onaylandı."
+          }
+        },
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Đã xác nhận trên mạng %@."
+          }
+        },
+        "th": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ยืนยันแล้วบนเครือข่าย %@"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dikonfirmasi di jaringan %@."
+          }
+        },
+        "fa": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "در شبکه ‏%@‏ تأیید شد."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Potwierdzono w sieci %@."
+          }
+        },
+        "nl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bevestigd op het %@-netwerk."
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "‏%@‏ نیٹ ورک پر تصدیق ہو گئی۔"
+          }
+        },
+        "bg": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Потвърдено в мрежата %@."
+          }
+        },
+        "et": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kinnitatud võrgus %@."
+          }
+        },
+        "lt": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Patvirtinta tinkle %@."
+          }
+        },
+        "lv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Apstiprināts %@ tīklā."
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Staðfest á %@-netinu."
+          }
+        },
+        "ms": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Disahkan pada rangkaian %@."
+          }
+        },
+        "fil": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nakumpirma sa %@ network."
+          }
+        },
+        "sw": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Imethibitishwa kwenye mtandao wa %@."
+          }
+        },
+        "af": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bevestig op die %@-netwerk."
+          }
+        },
+        "ta": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ நெட்வொர்க்கில் உறுதிப்படுத்தப்பட்டது."
+          }
+        },
+        "te": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ నెట్‌వర్క్‌లో నిర్ధారించబడింది."
+          }
+        },
+        "ml": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ നെറ്റ്‌വർക്കിൽ സ്ഥിരീകരിച്ചു."
+          }
+        },
+        "mr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ नेटवर्कवर पुष्टी झाली."
+          }
+        },
+        "pa": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ ਨੈੱਟਵਰਕ ਉੱਤੇ ਪੁਸ਼ਟੀ ਹੋ ਗਈ।"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Confirmado en la red %@."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已在 %@ 网络确认。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "已在 %@ 網路確認。"
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ नेटवर्क पर पुष्टि हो गई."
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "تم التأكيد على شبكة ‏%@‏."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Confirmado na rede %@."
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ নেটওয়ার্কে নিশ্চিত হয়েছে।"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Подтверждено в сети %@."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ ネットワークで確認されました。"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Im %@-Netzwerk bestätigt."
+          }
+        },
+        "uk": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Підтверджено в мережі %@."
+          }
+        },
+        "el": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Επιβεβαιώθηκε στο δίκτυο %@."
+          }
+        },
+        "ro": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Confirmat în rețeaua %@."
+          }
+        },
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Potvrzeno v síti %@."
+          }
+        },
+        "hu": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Megerősítve a(z) %@ hálózaton."
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bekräftat på %@-nätverket."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bekreftet på %@-nettverket."
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bekræftet på %@-netværket."
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vahvistettu %@-verkossa."
+          }
+        },
+        "he": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "אושר ברשת ‏%@‏."
+          }
+        },
+        "ca": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Confirmat a la xarxa %@."
+          }
+        },
+        "hr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Potvrđeno u mreži %@."
+          }
+        },
+        "sk": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Potvrdené v sieti %@."
+          }
+        },
+        "sl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Potrjeno v omrežju %@."
+          }
+        },
+        "sr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Потврђено у мрежи %@."
+          }
+        }
+      }
+    },
     "Confirming…": {
       "extractionState": "manual",
       "localizations": {
@@ -464893,6 +465499,2805 @@
           "stringUnit": {
             "state": "translated",
             "value": "你的錢包已就緒。"
+          }
+        }
+      }
+    },
+    "Anyone with a key can take the funds on its address. Aperture cannot undo a leak.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Anyone with a key can take the funds on its address. Aperture cannot undo a leak."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cualquiera que tenga una clave puede llevarse los fondos de su dirección. Aperture no puede deshacer una filtración."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "任何人只要拥有密钥，就能取走其地址上的资金。Aperture 无法撤销泄露。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "任何人只要擁有金鑰，就能取走其位址上的資金。Aperture 無法撤銷外洩。"
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "जिसके पास कुंजी होगी वह उसके पते पर मौजूद धनराशि ले सकता है। Aperture किसी लीक को पूर्ववत नहीं कर सकता।"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "يمكن لأي شخص يملك المفتاح أن يأخذ الأموال الموجودة في عنوانه. لا تستطيع Aperture التراجع عن أي تسريب."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Qualquer pessoa com uma chave pode levar os fundos do endereço dela. A Aperture não pode desfazer um vazamento."
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "যার কাছে কী থাকবে সে তার ঠিকানার তহবিল নিয়ে নিতে পারে। Aperture কোনো ফাঁস পূর্বাবস্থায় ফেরাতে পারে না।"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Любой, у кого есть ключ, может забрать средства с его адреса. Aperture не сможет отменить утечку."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "鍵を持つ人は誰でも、そのアドレスにある資金を引き出せます。Aperture は漏洩を取り消すことはできません。"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Wer einen Schlüssel besitzt, kann das Guthaben an dessen Adresse abheben. Aperture kann ein Leck nicht rückgängig machen."
+          }
+        },
+        "uk": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Будь-хто, хто має ключ, може забрати кошти з його адреси. Aperture не може скасувати витік."
+          }
+        },
+        "el": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Όποιος έχει ένα κλειδί μπορεί να πάρει τα κεφάλαια στη διεύθυνσή του. Το Aperture δεν μπορεί να αναιρέσει μια διαρροή."
+          }
+        },
+        "ro": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Oricine deține o cheie poate lua fondurile de la adresa ei. Aperture nu poate anula o scurgere."
+          }
+        },
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kdokoli s klíčem může vybrat prostředky z jeho adresy. Aperture nedokáže únik vrátit zpět."
+          }
+        },
+        "hu": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bárki, akinél a kulcs van, elviheti az adott címen lévő összeget. Az Aperture nem tudja visszavonni a kiszivárgást."
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vem som helst med en nyckel kan ta tillgångarna på dess adress. Aperture kan inte ångra en läcka."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hvem som helst med en nøkkel kan ta midlene på adressen dens. Aperture kan ikke angre en lekkasje."
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Enhver med en nøgle kan tage midlerne på dens adresse. Aperture kan ikke fortryde en lækage."
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kuka tahansa avaimen haltija voi viedä sen osoitteessa olevat varat. Aperture ei voi peruuttaa vuotoa."
+          }
+        },
+        "he": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "כל מי שברשותו מפתח יכול לקחת את הכספים שבכתובת שלו. Aperture אינה יכולה לבטל דליפה."
+          }
+        },
+        "ca": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Qualsevol persona amb una clau pot endur-se els fons de la seva adreça. Aperture no pot desfer una filtració."
+          }
+        },
+        "hr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bilo tko s ključem može uzeti sredstva s njegove adrese. Aperture ne može poništiti curenje."
+          }
+        },
+        "sk": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ktokoľvek s kľúčom môže vybrať prostriedky z jeho adresy. Aperture nedokáže únik vrátiť späť."
+          }
+        },
+        "sl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kdor koli s ključem lahko vzame sredstva na njegovem naslovu. Aperture razkritja ne more razveljaviti."
+          }
+        },
+        "sr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Свако ко има кључ може узети средства са његове адресе. Aperture не може да поништи цурење."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Quiconque possède une clé peut prendre les fonds de son adresse. Aperture ne peut pas annuler une fuite."
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "키를 가진 사람은 누구나 해당 주소의 자금을 가져갈 수 있어요. Aperture는 유출을 되돌릴 수 없어요."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Chiunque possieda una chiave può prelevare i fondi del suo indirizzo. Aperture non può annullare una fuga di dati."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bir anahtara sahip olan herkes, o anahtarın adresindeki fonları alabilir. Aperture bir sızıntıyı geri alamaz."
+          }
+        },
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bất kỳ ai có khóa đều có thể lấy tiền tại địa chỉ của khóa đó. Aperture không thể hoàn tác một vụ rò rỉ."
+          }
+        },
+        "th": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ใครก็ตามที่มีคีย์สามารถนำเงินที่อยู่ของคีย์นั้นไปได้ Aperture ไม่สามารถย้อนกลับการรั่วไหลได้"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Siapa pun yang memiliki kunci dapat mengambil dana di alamatnya. Aperture tidak dapat membatalkan kebocoran."
+          }
+        },
+        "fa": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "هر کسی که یک کلید داشته باشد می‌تواند دارایی‌های نشانی آن را بردارد. ‏Aperture‏ نمی‌تواند یک نشت را جبران کند."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Każdy, kto ma klucz, może zabrać środki z jego adresu. Aperture nie cofnie wycieku."
+          }
+        },
+        "nl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Iedereen met een sleutel kan het tegoed op het bijbehorende adres weghalen. Aperture kan een lek niet ongedaan maken."
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "جس کسی کے پاس کلید ہو وہ اس کے پتے پر موجود رقم لے سکتا ہے۔ ‏Aperture‏ کسی رساؤ کو واپس نہیں کر سکتا۔"
+          }
+        },
+        "bg": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Всеки, който разполага с ключ, може да вземе средствата на неговия адрес. Aperture не може да отмени изтичане."
+          }
+        },
+        "et": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Igaüks, kellel on võti, saab võtta selle aadressil olevad rahalised vahendid. Aperture ei saa leket tagasi võtta."
+          }
+        },
+        "lt": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bet kuris asmuo, turintis raktą, gali pasiimti lėšas iš jo adreso. „Aperture“ negali atšaukti nutekėjimo."
+          }
+        },
+        "lv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ikviens, kuram ir atslēga, var paņemt līdzekļus tās adresē. Aperture nevar atsaukt noplūdi."
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hver sem hefur lykil getur tekið féð á vistfangi hans. Aperture getur ekki afturkallað leka."
+          }
+        },
+        "ms": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sesiapa sahaja yang memiliki kunci boleh mengambil dana di alamatnya. Aperture tidak dapat membatalkan kebocoran."
+          }
+        },
+        "fil": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kahit sino na may hawak ng key ay puwedeng kunin ang pondo sa address nito. Hindi maibabalik ng Aperture ang isang pagtagas."
+          }
+        },
+        "sw": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mtu yeyote aliye na ufunguo anaweza kuchukua fedha zilizo katika anwani yake. Aperture haiwezi kutendua uvujaji."
+          }
+        },
+        "af": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Enigeen met 'n sleutel kan die fondse op die adres daarvan neem. Aperture kan nie 'n lek ongedaan maak nie."
+          }
+        },
+        "ta": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ஒரு கீ உள்ள எவரும் அதன் முகவரியில் உள்ள நிதியை எடுத்துக்கொள்ளலாம். கசிவை Aperture-ஆல் மீட்டெடுக்க முடியாது."
+          }
+        },
+        "te": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "కీ ఉన్న ఎవరైనా దాని చిరునామాలోని నిధులను తీసుకోవచ్చు. లీక్‌ను Aperture రద్దు చేయలేదు."
+          }
+        },
+        "ml": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ഒരു കീ കൈവശമുള്ള ആർക്കും അതിന്റെ വിലാസത്തിലെ ഫണ്ട് എടുക്കാം. ഒരു ചോർച്ച പഴയപടിയാക്കാൻ Aperture-ന് കഴിയില്ല."
+          }
+        },
+        "mr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ज्याच्याकडे की आहे तो कोणीही तिच्या पत्त्यावरील निधी घेऊ शकतो. गळती Aperture पूर्ववत करू शकत नाही."
+          }
+        },
+        "pa": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ਜਿਸ ਕਿਸੇ ਕੋਲ ਕੁੰਜੀ ਹੋਵੇ ਉਹ ਇਸ ਦੇ ਪਤੇ ਉੱਤੇ ਮੌਜੂਦ ਰਕਮ ਲੈ ਸਕਦਾ ਹੈ। Aperture ਕਿਸੇ ਲੀਕ ਨੂੰ ਵਾਪਸ ਨਹੀਂ ਕਰ ਸਕਦਾ।"
+          }
+        }
+      }
+    },
+    "Confirm to view your private keys.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Confirm to view your private keys."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Confirma para ver tus claves privadas."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "确认以查看您的私钥。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "確認以檢視您的私鑰。"
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "अपनी निजी कुंजियाँ देखने के लिए पुष्टि करें।"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "أكِّد لعرض مفاتيحك الخاصة."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Confirme para ver suas chaves privadas."
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "আপনার ব্যক্তিগত কী দেখতে নিশ্চিত করুন।"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Подтвердите, чтобы просмотреть приватные ключи."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "秘密鍵を表示するには確認してください。"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bestätigen Sie, um Ihre privaten Schlüssel anzuzeigen."
+          }
+        },
+        "uk": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Підтвердьте, щоб переглянути приватні ключі."
+          }
+        },
+        "el": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Επιβεβαιώστε για να δείτε τα ιδιωτικά σας κλειδιά."
+          }
+        },
+        "ro": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Confirmă pentru a vedea cheile private."
+          }
+        },
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Potvrďte zobrazení svých soukromých klíčů."
+          }
+        },
+        "hu": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Erősítse meg a privát kulcsai megtekintését."
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bekräfta för att visa dina privata nycklar."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bekreft for å vise de private nøklene dine."
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bekræft for at se dine private nøgler."
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vahvista nähdäksesi yksityiset avaimesi."
+          }
+        },
+        "he": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "אשר כדי להציג את המפתחות הפרטיים שלך."
+          }
+        },
+        "ca": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Confirma per veure les teves claus privades."
+          }
+        },
+        "hr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Potvrdite za prikaz svojih privatnih ključeva."
+          }
+        },
+        "sk": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Potvrďte zobrazenie svojich súkromných kľúčov."
+          }
+        },
+        "sl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Potrdite za prikaz svojih zasebnih ključev."
+          }
+        },
+        "sr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Потврдите да бисте видели своје приватне кључеве."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Confirmez pour afficher vos clés privées."
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "개인 키를 보려면 확인해 주세요."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Conferma per visualizzare le tue chiavi private."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Özel anahtarlarınızı görüntülemek için onaylayın."
+          }
+        },
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Xác nhận để xem khóa riêng tư của bạn."
+          }
+        },
+        "th": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ยืนยันเพื่อดูคีย์ส่วนตัวของคุณ"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Konfirmasikan untuk melihat kunci privat Anda."
+          }
+        },
+        "fa": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "برای مشاهده کلیدهای خصوصی خود تأیید کنید."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Potwierdź, aby wyświetlić swoje klucze prywatne."
+          }
+        },
+        "nl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bevestig om je privésleutels te bekijken."
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "اپنی نجی کلیدیں دیکھنے کے لیے تصدیق کریں۔"
+          }
+        },
+        "bg": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Потвърдете, за да видите частните си ключове."
+          }
+        },
+        "et": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kinnitage oma privaatvõtmete vaatamiseks."
+          }
+        },
+        "lt": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Patvirtinkite, kad peržiūrėtumėte savo privačiuosius raktus."
+          }
+        },
+        "lv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Apstipriniet, lai skatītu savas privātās atslēgas."
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Staðfestu til að skoða einkalyklana þína."
+          }
+        },
+        "ms": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sahkan untuk melihat kunci peribadi anda."
+          }
+        },
+        "fil": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kumpirmahin para makita ang iyong mga private key."
+          }
+        },
+        "sw": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Thibitisha ili kuona funguo zako za faragha."
+          }
+        },
+        "af": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bevestig om jou private sleutels te sien."
+          }
+        },
+        "ta": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "உங்கள் தனிப்பட்ட கீகளைக் காண உறுதிப்படுத்தவும்."
+          }
+        },
+        "te": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "మీ ప్రైవేట్ కీలను చూడటానికి నిర్ధారించండి."
+          }
+        },
+        "ml": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "നിങ്ങളുടെ പ്രൈവറ്റ് കീകൾ കാണാൻ സ്ഥിരീകരിക്കുക."
+          }
+        },
+        "mr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "तुमच्या खाजगी की पाहण्यासाठी पुष्टी करा."
+          }
+        },
+        "pa": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ਆਪਣੀਆਂ ਨਿੱਜੀ ਕੁੰਜੀਆਂ ਦੇਖਣ ਲਈ ਪੁਸ਼ਟੀ ਕਰੋ।"
+          }
+        }
+      }
+    },
+    "Deriving your keys…": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Deriving your keys…"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Derivando tus claves…"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在派生您的密钥…"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在衍生您的金鑰…"
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "आपकी कुंजियाँ व्युत्पन्न की जा रही हैं…"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "جارٍ اشتقاق مفاتيحك…"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Derivando suas chaves…"
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "আপনার কী তৈরি করা হচ্ছে…"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Вычисление ключей…"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "鍵を導出しています…"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Schlüssel werden abgeleitet…"
+          }
+        },
+        "uk": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Обчислення ключів…"
+          }
+        },
+        "el": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Παράγονται τα κλειδιά σας…"
+          }
+        },
+        "ro": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Se derivă cheile…"
+          }
+        },
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Odvozování klíčů…"
+          }
+        },
+        "hu": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kulcsok származtatása…"
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Härleder dina nycklar…"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Utleder nøklene dine…"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Udleder dine nøgler…"
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Johdetaan avaimiasi…"
+          }
+        },
+        "he": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "גוזר את המפתחות שלך…"
+          }
+        },
+        "ca": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "S’estan derivant les teves claus…"
+          }
+        },
+        "hr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Izvođenje vaših ključeva…"
+          }
+        },
+        "sk": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Odvodzovanie kľúčov…"
+          }
+        },
+        "sl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Izpeljevanje ključev…"
+          }
+        },
+        "sr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Извођење ваших кључева…"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dérivation de vos clés…"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "키를 생성하는 중…"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Derivazione delle tue chiavi…"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Anahtarlarınız türetiliyor…"
+          }
+        },
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Đang tạo khóa của bạn…"
+          }
+        },
+        "th": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "กำลังสร้างคีย์ของคุณ…"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Menurunkan kunci Anda…"
+          }
+        },
+        "fa": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "در حال استخراج کلیدهای شما…"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Wyprowadzanie kluczy…"
+          }
+        },
+        "nl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Je sleutels worden afgeleid…"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "آپ کی کلیدیں اخذ کی جا رہی ہیں…"
+          }
+        },
+        "bg": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Извличане на ключовете ви…"
+          }
+        },
+        "et": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Teie võtmete tuletamine…"
+          }
+        },
+        "lt": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Išvedami jūsų raktai…"
+          }
+        },
+        "lv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tiek atvasinātas jūsu atslēgas…"
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Leiði út lyklana þína…"
+          }
+        },
+        "ms": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Menerbitkan kunci anda…"
+          }
+        },
+        "fil": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kinukuha ang iyong mga key…"
+          }
+        },
+        "sw": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Inatengeneza funguo zako…"
+          }
+        },
+        "af": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Jou sleutels word afgelei…"
+          }
+        },
+        "ta": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "உங்கள் கீகள் உருவாக்கப்படுகின்றன…"
+          }
+        },
+        "te": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "మీ కీలను రూపొందిస్తోంది…"
+          }
+        },
+        "ml": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "നിങ്ങളുടെ കീകൾ നിർമ്മിക്കുന്നു…"
+          }
+        },
+        "mr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "तुमच्या की तयार करत आहे…"
+          }
+        },
+        "pa": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ਤੁਹਾਡੀਆਂ ਕੁੰਜੀਆਂ ਤਿਆਰ ਕੀਤੀਆਂ ਜਾ ਰਹੀਆਂ ਹਨ…"
+          }
+        }
+      }
+    },
+    "Private keys": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Private keys"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Claves privadas"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "私钥"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "私鑰"
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "निजी कुंजियाँ"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "المفاتيح الخاصة"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Chaves privadas"
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ব্যক্তিগত কী"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Приватные ключи"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "秘密鍵"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Private Schlüssel"
+          }
+        },
+        "uk": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Приватні ключі"
+          }
+        },
+        "el": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ιδιωτικά κλειδιά"
+          }
+        },
+        "ro": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Chei private"
+          }
+        },
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Soukromé klíče"
+          }
+        },
+        "hu": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Privát kulcsok"
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Privata nycklar"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Private nøkler"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Private nøgler"
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Yksityiset avaimet"
+          }
+        },
+        "he": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "מפתחות פרטיים"
+          }
+        },
+        "ca": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Claus privades"
+          }
+        },
+        "hr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Privatni ključevi"
+          }
+        },
+        "sk": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Súkromné kľúče"
+          }
+        },
+        "sl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Zasebni ključi"
+          }
+        },
+        "sr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Приватни кључеви"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Clés privées"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "개인 키"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Chiavi private"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Özel anahtarlar"
+          }
+        },
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Khóa riêng tư"
+          }
+        },
+        "th": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "คีย์ส่วนตัว"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kunci privat"
+          }
+        },
+        "fa": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "کلیدهای خصوصی"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Klucze prywatne"
+          }
+        },
+        "nl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Privésleutels"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "نجی کلیدیں"
+          }
+        },
+        "bg": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Частни ключове"
+          }
+        },
+        "et": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Privaatvõtmed"
+          }
+        },
+        "lt": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Privatieji raktai"
+          }
+        },
+        "lv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Privātās atslēgas"
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Einkalyklar"
+          }
+        },
+        "ms": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kunci peribadi"
+          }
+        },
+        "fil": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mga private key"
+          }
+        },
+        "sw": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Funguo za faragha"
+          }
+        },
+        "af": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Private sleutels"
+          }
+        },
+        "ta": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "தனிப்பட்ட கீகள்"
+          }
+        },
+        "te": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ప్రైవేట్ కీలు"
+          }
+        },
+        "ml": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "പ്രൈവറ്റ് കീകൾ"
+          }
+        },
+        "mr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "खाजगी की"
+          }
+        },
+        "pa": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ਨਿੱਜੀ ਕੁੰਜੀਆਂ"
+          }
+        }
+      }
+    },
+    "See the private key for every network this wallet holds — EVM keys, Bitcoin/Litecoin/Dogecoin WIF, Solana, and the rest. Each one controls the funds on its address; never share them.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "See the private key for every network this wallet holds — EVM keys, Bitcoin/Litecoin/Dogecoin WIF, Solana, and the rest. Each one controls the funds on its address; never share them."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Consulta la clave privada de cada red que contiene esta cartera: claves EVM, WIF de Bitcoin/Litecoin/Dogecoin, Solana y las demás. Cada una controla los fondos de su dirección; nunca las compartas."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "查看此钱包所持每个网络的私钥——EVM 密钥、Bitcoin/Litecoin/Dogecoin 的 WIF、Solana 等。每个私钥都掌控其地址上的资金，切勿分享。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "檢視此錢包所持每個網路的私鑰——EVM 金鑰、Bitcoin/Litecoin/Dogecoin 的 WIF、Solana 等。每個金鑰都掌控其位址上的資金，切勿分享。"
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "इस वॉलेट में मौजूद हर नेटवर्क की निजी कुंजी देखें — EVM कुंजियाँ, Bitcoin/Litecoin/Dogecoin WIF, Solana, और बाकी सभी। हर कुंजी अपने पते पर मौजूद धनराशि को नियंत्रित करती है; इन्हें कभी साझा न करें।"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "اطّلِع على المفتاح الخاص لكل شبكة يحتفظ بها هذا المحفظة — مفاتيح EVM، وWIF لِـ Bitcoin/Litecoin/Dogecoin، وSolana، وبقية الشبكات. يتحكّم كل مفتاح في الأموال الموجودة في عنوانه؛ لا تُشاركها أبدًا."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Veja a chave privada de cada rede que esta carteira mantém — chaves EVM, WIF de Bitcoin/Litecoin/Dogecoin, Solana e as demais. Cada uma controla os fundos do seu endereço; nunca as compartilhe."
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "এই ওয়ালেট যে প্রতিটি নেটওয়ার্ক ধারণ করে তার ব্যক্তিগত কী দেখুন — EVM কী, Bitcoin/Litecoin/Dogecoin WIF, Solana, এবং বাকিগুলো। প্রতিটি কী তার ঠিকানার তহবিল নিয়ন্ত্রণ করে; এগুলো কখনো শেয়ার করবেন না।"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Просмотрите приватный ключ для каждой сети в этом кошельке — ключи EVM, WIF для Bitcoin/Litecoin/Dogecoin, Solana и остальные. Каждый управляет средствами на своём адресе; никогда не передавайте их."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "このウォレットが保有するすべてのネットワークの秘密鍵を確認できます — EVM 鍵、Bitcoin/Litecoin/Dogecoin の WIF、Solana など。それぞれがそのアドレスの資金を管理します。決して共有しないでください。"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sehen Sie den privaten Schlüssel für jedes Netzwerk, das dieses Wallet enthält — EVM-Schlüssel, WIF für Bitcoin/Litecoin/Dogecoin, Solana und alle weiteren. Jeder steuert das Guthaben an seiner Adresse; geben Sie sie niemals weiter."
+          }
+        },
+        "uk": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Перегляньте приватний ключ для кожної мережі в цьому гаманці — ключі EVM, WIF для Bitcoin/Litecoin/Dogecoin, Solana та інші. Кожен керує коштами на своїй адресі; ніколи їх не передавайте."
+          }
+        },
+        "el": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Δείτε το ιδιωτικό κλειδί για κάθε δίκτυο που περιέχει αυτό το πορτοφόλι — κλειδιά EVM, WIF για Bitcoin/Litecoin/Dogecoin, Solana και τα υπόλοιπα. Καθένα ελέγχει τα κεφάλαια στη διεύθυνσή του· μην τα μοιράζεστε ποτέ."
+          }
+        },
+        "ro": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vezi cheia privată pentru fiecare rețea pe care o conține acest portofel — chei EVM, WIF pentru Bitcoin/Litecoin/Dogecoin, Solana și restul. Fiecare controlează fondurile de la adresa ei; nu le partaja niciodată."
+          }
+        },
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Zobrazte si soukromý klíč pro každou síť, kterou tato peněženka obsahuje — klíče EVM, WIF pro Bitcoin/Litecoin/Dogecoin, Solana a další. Každý ovládá prostředky na své adrese; nikdy je nesdílejte."
+          }
+        },
+        "hu": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tekintse meg a privát kulcsot minden hálózathoz, amelyet ez a tárca tartalmaz — EVM-kulcsok, WIF a Bitcoin/Litecoin/Dogecoin esetében, Solana és a többi. Mindegyik a saját címén lévő összeget kezeli; soha ne ossza meg őket."
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Visa den privata nyckeln för varje nätverk som den här plånboken innehåller — EVM-nycklar, WIF för Bitcoin/Litecoin/Dogecoin, Solana och resten. Var och en styr tillgångarna på sin adress; dela aldrig med dig av dem."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Se den private nøkkelen for hvert nettverk denne lommeboken inneholder — EVM-nøkler, WIF for Bitcoin/Litecoin/Dogecoin, Solana og resten. Hver av dem styrer midlene på adressen sin; del dem aldri."
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Se den private nøgle for hvert netværk, som denne tegnebog indeholder — EVM-nøgler, WIF til Bitcoin/Litecoin/Dogecoin, Solana og resten. Hver enkelt styrer midlerne på sin adresse; del dem aldrig."
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Näe yksityinen avain jokaiselle verkolle, joka tässä lompakossa on — EVM-avaimet, WIF Bitcoinille/Litecoinille/Dogecoinille, Solana ja muut. Jokainen hallitsee osoitteensa varoja; älä koskaan jaa niitä."
+          }
+        },
+        "he": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ראה את המפתח הפרטי לכל רשת שארנק זה מחזיק — מפתחות EVM, ‏WIF של Bitcoin/Litecoin/Dogecoin, ‏Solana והשאר. כל אחד שולט בכספים שבכתובת שלו; לעולם אל תשתף אותם."
+          }
+        },
+        "ca": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Consulta la clau privada de cada xarxa que conté aquesta cartera: claus EVM, WIF de Bitcoin/Litecoin/Dogecoin, Solana i la resta. Cadascuna controla els fons de la seva adreça; no les comparteixis mai."
+          }
+        },
+        "hr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pogledajte privatni ključ za svaku mrežu koju ovaj novčanik sadrži — EVM ključeve, WIF za Bitcoin/Litecoin/Dogecoin, Solanu i ostalo. Svaki upravlja sredstvima na svojoj adresi; nikada ih nemojte dijeliti."
+          }
+        },
+        "sk": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Zobrazte si súkromný kľúč pre každú sieť, ktorú táto peňaženka obsahuje — kľúče EVM, WIF pre Bitcoin/Litecoin/Dogecoin, Solana a ostatné. Každý ovláda prostriedky na svojej adrese; nikdy ich nezdieľajte."
+          }
+        },
+        "sl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Oglejte si zasebni ključ za vsako omrežje, ki ga vsebuje ta denarnica — ključe EVM, WIF za Bitcoin/Litecoin/Dogecoin, Solana in druge. Vsak upravlja sredstva na svojem naslovu; nikoli jih ne delite."
+          }
+        },
+        "sr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Погледајте приватни кључ за сваку мрежу коју овај новчаник садржи — EVM кључеве, WIF за Bitcoin/Litecoin/Dogecoin, Solana и остале. Сваки управља средствима на својој адреси; никада их немојте делити."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Affichez la clé privée de chaque réseau que contient ce portefeuille — clés EVM, WIF pour Bitcoin/Litecoin/Dogecoin, Solana et les autres. Chacune contrôle les fonds de son adresse ; ne les partagez jamais."
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "이 지갑이 보유한 모든 네트워크의 개인 키를 확인해 보세요 — EVM 키, Bitcoin/Litecoin/Dogecoin WIF, Solana 등이 있어요. 각 키는 해당 주소의 자금을 통제하니, 절대 공유하지 마세요."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Visualizza la chiave privata di ogni rete contenuta in questo portafoglio — chiavi EVM, WIF per Bitcoin/Litecoin/Dogecoin, Solana e tutte le altre. Ciascuna controlla i fondi del suo indirizzo; non condividerle mai."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bu cüzdanın içerdiği her ağın özel anahtarını görüntüleyin — EVM anahtarları, Bitcoin/Litecoin/Dogecoin WIF, Solana ve diğerleri. Her biri kendi adresindeki fonları denetler; bunları asla paylaşmayın."
+          }
+        },
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Xem khóa riêng tư cho mọi mạng mà ví này nắm giữ — khóa EVM, WIF của Bitcoin/Litecoin/Dogecoin, Solana và phần còn lại. Mỗi khóa kiểm soát tiền tại địa chỉ của nó; đừng bao giờ chia sẻ chúng."
+          }
+        },
+        "th": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ดูคีย์ส่วนตัวของทุกเครือข่ายที่กระเป๋านี้ถืออยู่ — คีย์ EVM, WIF ของ Bitcoin/Litecoin/Dogecoin, Solana และอื่น ๆ แต่ละคีย์ควบคุมเงินที่อยู่ของคีย์นั้น อย่าแชร์ให้ใครเด็ดขาด"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lihat kunci privat untuk setiap jaringan yang dimiliki dompet ini — kunci EVM, WIF Bitcoin/Litecoin/Dogecoin, Solana, dan lainnya. Masing-masing mengendalikan dana di alamatnya; jangan pernah membagikannya."
+          }
+        },
+        "fa": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "کلید خصوصی هر شبکه‌ای را که این کیف پول نگه می‌دارد ببینید — کلیدهای ‏EVM‏، ‏WIF‏ برای ‏Bitcoin/Litecoin/Dogecoin‏، ‏Solana‏ و بقیه. هر کدام دارایی‌های نشانی خود را کنترل می‌کند؛ هرگز آن‌ها را به اشتراک نگذارید."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Wyświetl klucz prywatny dla każdej sieci w tym portfelu — klucze EVM, WIF dla Bitcoin/Litecoin/Dogecoin, Solana i pozostałe. Każdy kontroluje środki na swoim adresie; nigdy ich nie udostępniaj."
+          }
+        },
+        "nl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bekijk de privésleutel voor elk netwerk in deze portemonnee — EVM-sleutels, WIF voor Bitcoin/Litecoin/Dogecoin, Solana en de rest. Elke sleutel beheert het tegoed op het bijbehorende adres; deel ze nooit."
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "اس بٹوے میں موجود ہر نیٹ ورک کی نجی کلید دیکھیں — ‏EVM‏ کلیدیں، ‏Bitcoin/Litecoin/Dogecoin‏ ‏WIF‏، ‏Solana‏ اور باقی۔ ہر ایک اپنے پتے پر موجود رقم کو کنٹرول کرتی ہے؛ انہیں کبھی کسی کے ساتھ شیئر نہ کریں۔"
+          }
+        },
+        "bg": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Вижте частния ключ за всяка мрежа в този портфейл — EVM ключове, WIF за Bitcoin/Litecoin/Dogecoin, Solana и останалите. Всеки управлява средствата на своя адрес; никога не ги споделяйте."
+          }
+        },
+        "et": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vaadake selle rahakoti iga võrgu privaatvõtit — EVM-võtmed, Bitcoin/Litecoin/Dogecoin WIF, Solana ja ülejäänud. Igaüks kontrollib oma aadressil olevaid rahalisi vahendeid; ärge neid kunagi jagage."
+          }
+        },
+        "lt": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Peržiūrėkite kiekvieno šios piniginės tinklo privatųjį raktą — EVM raktai, Bitcoin/Litecoin/Dogecoin WIF, Solana ir kiti. Kiekvienas valdo lėšas savo adrese; niekada jų neatskleiskite."
+          }
+        },
+        "lv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Skatiet katra šajā makā esošā tīkla privāto atslēgu — EVM atslēgas, Bitcoin/Litecoin/Dogecoin WIF, Solana un pārējās. Katra pārvalda līdzekļus savā adresē; nekad tās nekopīgojiet."
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Skoðaðu einkalykilinn fyrir hvert net sem þetta veski geymir — EVM-lyklar, WIF fyrir Bitcoin/Litecoin/Dogecoin, Solana og hin. Hver og einn stýrir fénu á vistfangi sínu; deildu þeim aldrei."
+          }
+        },
+        "ms": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lihat kunci peribadi untuk setiap rangkaian yang dipegang dompet ini — kunci EVM, WIF Bitcoin/Litecoin/Dogecoin, Solana dan selebihnya. Setiap satu mengawal dana di alamatnya; jangan sekali-kali berkongsinya."
+          }
+        },
+        "fil": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tingnan ang private key para sa bawat network na hawak ng wallet na ito — mga EVM key, WIF ng Bitcoin/Litecoin/Dogecoin, Solana, at iba pa. Kinokontrol ng bawat isa ang pondo sa address nito; huwag na huwag itong ibahagi."
+          }
+        },
+        "sw": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tazama ufunguo wa faragha kwa kila mtandao ulio katika pochi hii — funguo za EVM, WIF za Bitcoin/Litecoin/Dogecoin, Solana na nyinginezo. Kila kimoja hudhibiti fedha katika anwani yake; usizishiriki kamwe."
+          }
+        },
+        "af": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sien die private sleutel vir elke netwerk wat hierdie beursie hou — EVM-sleutels, WIF vir Bitcoin/Litecoin/Dogecoin, Solana en die res. Elkeen beheer die fondse op die adres daarvan; deel hulle nooit nie."
+          }
+        },
+        "ta": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "இந்த வாலெட் வைத்திருக்கும் ஒவ்வொரு நெட்வொர்க்கின் தனிப்பட்ட கீயையும் பாருங்கள் — EVM கீகள், Bitcoin/Litecoin/Dogecoin WIF, Solana மற்றும் பிற. ஒவ்வொன்றும் அதன் முகவரியில் உள்ள நிதியைக் கட்டுப்படுத்துகிறது; அவற்றை ஒருபோதும் பகிர வேண்டாம்."
+          }
+        },
+        "te": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ఈ వాలెట్ కలిగి ఉన్న ప్రతి నెట్‌వర్క్‌కు సంబంధించిన ప్రైవేట్ కీని చూడండి — EVM కీలు, Bitcoin/Litecoin/Dogecoin WIF, Solana మరియు మిగతావి. ప్రతి ఒక్కటి దాని చిరునామాలోని నిధులను నియంత్రిస్తుంది; వాటిని ఎప్పుడూ షేర్ చేయవద్దు."
+          }
+        },
+        "ml": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ഈ വാലറ്റ് സൂക്ഷിക്കുന്ന ഓരോ നെറ്റ്‌വർക്കിന്റെയും പ്രൈവറ്റ് കീ കാണുക — EVM കീകൾ, Bitcoin/Litecoin/Dogecoin WIF, Solana, ബാക്കിയുള്ളവ. ഓരോന്നും അതിന്റെ വിലാസത്തിലെ ഫണ്ട് നിയന്ത്രിക്കുന്നു; അവ ഒരിക്കലും പങ്കിടരുത്."
+          }
+        },
+        "mr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "हे वॉलेट असलेल्या प्रत्येक नेटवर्कची खाजगी की पाहा — EVM की, Bitcoin/Litecoin/Dogecoin WIF, Solana आणि इतर. प्रत्येक की तिच्या पत्त्यावरील निधी नियंत्रित करते; त्या कधीही शेअर करू नका."
+          }
+        },
+        "pa": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ਇਸ ਵਾਲਿਟ ਵਿੱਚ ਮੌਜੂਦ ਹਰ ਨੈੱਟਵਰਕ ਦੀ ਨਿੱਜੀ ਕੁੰਜੀ ਦੇਖੋ — EVM ਕੁੰਜੀਆਂ, Bitcoin/Litecoin/Dogecoin WIF, Solana ਅਤੇ ਬਾਕੀ। ਹਰ ਇੱਕ ਆਪਣੇ ਪਤੇ ਉੱਤੇ ਮੌਜੂਦ ਰਕਮ ਨੂੰ ਕੰਟਰੋਲ ਕਰਦੀ ਹੈ; ਇਹਨਾਂ ਨੂੰ ਕਦੇ ਵੀ ਸਾਂਝਾ ਨਾ ਕਰੋ।"
+          }
+        }
+      }
+    },
+    "These keys are derived from your wallet's secret, encrypted in this iPhone’s Keychain — they never leave this device. Each key controls the funds on its address. Never share one, and never type it into a site or app you don’t fully trust.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "These keys are derived from your wallet's secret, encrypted in this iPhone’s Keychain — they never leave this device. Each key controls the funds on its address. Never share one, and never type it into a site or app you don’t fully trust."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Estas claves se derivan del secreto de tu cartera, cifrado en el Keychain de este iPhone: nunca salen de este dispositivo. Cada clave controla los fondos de su dirección. No compartas ninguna y nunca la escribas en un sitio o una app en los que no confíes plenamente."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "这些密钥派生自您钱包的密钥种子，加密保存在此 iPhone 的 Keychain 中——它们从不离开本设备。每个密钥都掌控其地址上的资金。切勿分享任何一个，也绝不要将其输入到您并不完全信任的网站或应用中。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "這些金鑰衍生自您錢包的金鑰種子，加密保存在此 iPhone 的 Keychain 中——它們從不離開本裝置。每個金鑰都掌控其位址上的資金。切勿分享任何一個，也絕不要將其輸入到您並不完全信任的網站或 app 中。"
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ये कुंजियाँ आपके वॉलेट के गुप्त बीज से व्युत्पन्न होती हैं, जो इस iPhone के Keychain में एन्क्रिप्ट की गई हैं — ये कभी इस डिवाइस से बाहर नहीं जातीं। हर कुंजी अपने पते पर मौजूद धनराशि को नियंत्रित करती है। किसी को भी साझा न करें, और इसे कभी ऐसी किसी साइट या ऐप में न लिखें जिस पर आप पूरी तरह भरोसा नहीं करते।"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "تُشتَقّ هذه المفاتيح من السرّ الخاص بمحفظتك، وهي مُشفّرة في Keychain الخاص بهذا iPhone — ولا تغادر هذا الجهاز أبدًا. يتحكّم كل مفتاح في الأموال الموجودة في عنوانه. لا تُشارك أيًّا منها، ولا تكتبها أبدًا في موقع أو تطبيق لا تثق به ثقة كاملة."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Estas chaves são derivadas do segredo da sua carteira, criptografado no Keychain deste iPhone — elas nunca saem deste dispositivo. Cada chave controla os fundos do seu endereço. Não compartilhe nenhuma e nunca a digite em um site ou app em que você não confie plenamente."
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "এই কী আপনার ওয়ালেটের গোপন বীজ থেকে তৈরি, যা এই iPhone-এর Keychain-এ এনক্রিপ্ট করা — এগুলো কখনো এই ডিভাইস ছাড়ে না। প্রতিটি কী তার ঠিকানার তহবিল নিয়ন্ত্রণ করে। কোনোটিই শেয়ার করবেন না, এবং এমন কোনো সাইট বা অ্যাপে কখনো টাইপ করবেন না যেটিকে আপনি পুরোপুরি বিশ্বাস করেন না।"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Эти ключи получены из секрета вашего кошелька, зашифрованного в Keychain этого iPhone, — они никогда не покидают это устройство. Каждый ключ управляет средствами на своём адресе. Не передавайте ни один из них и никогда не вводите его на сайте или в приложении, которым вы не полностью доверяете."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "これらの鍵は、この iPhone の Keychain に暗号化して保存されたウォレットのシークレットから導出されたもので、このデバイスから外に出ることはありません。各鍵はそのアドレスの資金を管理します。いずれも共有せず、完全には信頼できないサイトやアプリに入力しないでください。"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Diese Schlüssel werden aus dem Geheimnis Ihres Wallets abgeleitet, das im Keychain dieses iPhone verschlüsselt ist — sie verlassen dieses Gerät nie. Jeder Schlüssel steuert das Guthaben an seiner Adresse. Geben Sie keinen weiter und tippen Sie ihn niemals auf einer Website oder in einer App ein, der Sie nicht vollständig vertrauen."
+          }
+        },
+        "uk": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ці ключі отримані із секрету вашого гаманця, зашифрованого в Keychain цього iPhone, — вони ніколи не залишають цей пристрій. Кожен ключ керує коштами на своїй адресі. Не передавайте жодного з них і ніколи не вводьте його на сайті чи в застосунку, якому ви не довіряєте повністю."
+          }
+        },
+        "el": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Αυτά τα κλειδιά παράγονται από το μυστικό του πορτοφολιού σας, κρυπτογραφημένο στο Keychain αυτού του iPhone — δεν φεύγουν ποτέ από αυτή τη συσκευή. Κάθε κλειδί ελέγχει τα κεφάλαια στη διεύθυνσή του. Μην μοιραστείτε κανένα και μην το πληκτρολογήσετε ποτέ σε ιστότοπο ή εφαρμογή που δεν εμπιστεύεστε πλήρως."
+          }
+        },
+        "ro": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aceste chei sunt derivate din secretul portofelului tău, criptat în Keychain-ul acestui iPhone — nu părăsesc niciodată acest dispozitiv. Fiecare cheie controlează fondurile de la adresa ei. Nu împărtăși niciuna și nu o tasta niciodată pe un site sau într-o aplicație în care nu ai încredere deplină."
+          }
+        },
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tyto klíče jsou odvozeny z tajemství vaší peněženky, zašifrovaného v Keychainu tohoto iPhonu — toto zařízení nikdy neopustí. Každý klíč ovládá prostředky na své adrese. Žádný nesdílejte a nikdy jej nezadávejte na webu ani v aplikaci, které plně nedůvěřujete."
+          }
+        },
+        "hu": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ezek a kulcsok a tárcája titkából származnak, amely ennek az iPhone-nak a Keychainjében van titkosítva — soha nem hagyják el ezt az eszközt. Minden kulcs a saját címén lévő összeget kezeli. Egyiket se ossza meg, és soha ne írja be olyan webhelyen vagy alkalmazásban, amelyben nem bízik teljesen."
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "De här nycklarna härleds från din plånboks hemlighet, krypterad i den här iPhonens Keychain — de lämnar aldrig den här enheten. Varje nyckel styr tillgångarna på sin adress. Dela aldrig med dig av någon, och skriv aldrig in den på en webbplats eller i en app som du inte litar helt på."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Disse nøklene utledes fra hemmeligheten til lommeboken din, kryptert i Keychain på denne iPhonen — de forlater aldri denne enheten. Hver nøkkel styrer midlene på adressen sin. Del aldri noen av dem, og skriv dem aldri inn på et nettsted eller i en app du ikke stoler helt på."
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Disse nøgler udledes af din tegnebogs hemmelighed, krypteret i denne iPhones Keychain — de forlader aldrig denne enhed. Hver nøgle styrer midlerne på sin adresse. Del aldrig nogen af dem, og indtast dem aldrig på et websted eller i en app, du ikke stoler fuldt ud på."
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nämä avaimet johdetaan lompakkosi salaisuudesta, joka on salattuna tämän iPhonen Keychainissa — ne eivät koskaan poistu tältä laitteelta. Jokainen avain hallitsee osoitteensa varoja. Älä jaa yhtäkään äläkä koskaan kirjoita sitä sivustolle tai sovellukseen, johon et täysin luota."
+          }
+        },
+        "he": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "מפתחות אלה נגזרים מהסוד של הארנק שלך, המוצפן ב‑Keychain של ה‑iPhone הזה — הם לעולם אינם עוזבים מכשיר זה. כל מפתח שולט בכספים שבכתובת שלו. אל תשתף אף אחד מהם, ולעולם אל תקליד אותו באתר או באפליקציה שאינך בוטח בהם באופן מלא."
+          }
+        },
+        "ca": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aquestes claus es deriven del secret de la teva cartera, xifrat al Keychain d’aquest iPhone: no surten mai d’aquest dispositiu. Cada clau controla els fons de la seva adreça. No en comparteixis cap i no l’escriguis mai en un lloc o una app en què no confiïs plenament."
+          }
+        },
+        "hr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ovi se ključevi izvode iz tajne vašeg novčanika, šifrirane u Keychainu ovog iPhonea — nikada ne napuštaju ovaj uređaj. Svaki ključ upravlja sredstvima na svojoj adresi. Nemojte dijeliti nijedan i nikada ga nemojte upisivati na stranicu ili u aplikaciju kojoj ne vjerujete u potpunosti."
+          }
+        },
+        "sk": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tieto kľúče sú odvodené z tajomstva vašej peňaženky, zašifrovaného v Keychaine tohto iPhonu — toto zariadenie nikdy neopustia. Každý kľúč ovláda prostriedky na svojej adrese. Žiadny nezdieľajte a nikdy ho nezadávajte na stránke ani v aplikácii, ktorej úplne nedôverujete."
+          }
+        },
+        "sl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ti ključi so izpeljani iz skrivnosti vaše denarnice, šifrirane v Keychainu tega iPhona — te naprave nikoli ne zapustijo. Vsak ključ upravlja sredstva na svojem naslovu. Nobenega ne delite in ga nikoli ne vnašajte na spletnem mestu ali v aplikaciji, ki ji ne zaupate povsem."
+          }
+        },
+        "sr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ови кључеви се изводе из тајне вашег новчаника, шифроване у Keychain-у овог iPhone-а — никада не напуштају овај уређај. Сваки кључ управља средствима на својој адреси. Немојте делити ниједан и никада га немојте уносити на сајту или у апликацији којој не верујете у потпуности."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ces clés sont dérivées du secret de votre portefeuille, chiffré dans le trousseau Keychain de cet iPhone — elles ne quittent jamais cet appareil. Chaque clé contrôle les fonds de son adresse. N'en partagez aucune et ne la saisissez jamais sur un site ou dans une application en lesquels vous n'avez pas pleine confiance."
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "이 키들은 지갑의 비밀에서 생성되어 이 iPhone의 Keychain에 암호화되어 있어요 — 절대 이 기기를 벗어나지 않아요. 각 키는 해당 주소의 자금을 통제해요. 어떤 키도 공유하지 말고, 완전히 신뢰하지 않는 사이트나 앱에는 절대 입력하지 마세요."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Queste chiavi sono derivate dal segreto del tuo portafoglio, cifrato nel Keychain di questo iPhone — non lasciano mai questo dispositivo. Ogni chiave controlla i fondi del suo indirizzo. Non condividerne nessuna e non digitarla mai in un sito o un'app di cui non ti fidi pienamente."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bu anahtarlar, bu iPhone'un Keychain'inde şifrelenmiş olan cüzdanınızın gizli bilgisinden türetilir — bu cihazdan asla çıkmazlar. Her anahtar kendi adresindeki fonları denetler. Hiçbirini paylaşmayın ve tamamen güvenmediğiniz bir siteye ya da uygulamaya asla girmeyin."
+          }
+        },
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Những khóa này được tạo ra từ bí mật của ví, được mã hóa trong Keychain của chiếc iPhone này — chúng không bao giờ rời khỏi thiết bị này. Mỗi khóa kiểm soát tiền tại địa chỉ của nó. Đừng chia sẻ bất kỳ khóa nào, và đừng bao giờ nhập nó vào một trang web hay ứng dụng mà bạn không hoàn toàn tin tưởng."
+          }
+        },
+        "th": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "คีย์เหล่านี้ได้มาจากข้อมูลลับของกระเป๋าของคุณ ซึ่งเข้ารหัสไว้ใน Keychain ของ iPhone เครื่องนี้ — คีย์เหล่านี้จะไม่ออกจากอุปกรณ์นี้เลย แต่ละคีย์ควบคุมเงินที่อยู่ของคีย์นั้น อย่าแชร์คีย์ใด ๆ และอย่าพิมพ์ลงในเว็บไซต์หรือแอปที่คุณไม่ไว้วางใจอย่างเต็มที่"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kunci-kunci ini diturunkan dari rahasia dompet Anda, dienkripsi dalam Keychain iPhone ini — semuanya tidak pernah meninggalkan perangkat ini. Setiap kunci mengendalikan dana di alamatnya. Jangan pernah membagikan satu pun, dan jangan pernah mengetiknya di situs atau aplikasi yang tidak sepenuhnya Anda percayai."
+          }
+        },
+        "fa": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "این کلیدها از راز کیف پول شما استخراج می‌شوند و در زنجیره‌کلید ‏Keychain‏ این ‏iPhone‏ رمزگذاری شده‌اند — آن‌ها هرگز این دستگاه را ترک نمی‌کنند. هر کلید دارایی‌های نشانی خود را کنترل می‌کند. هیچ‌کدام را به اشتراک نگذارید و هرگز آن را در سایت یا برنامه‌ای که کاملاً به آن اعتماد ندارید وارد نکنید."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Te klucze są wyprowadzane z sekretu Twojego portfela, zaszyfrowanego w Keychain tego iPhone'a — nigdy nie opuszczają tego urządzenia. Każdy klucz kontroluje środki na swoim adresie. Nie udostępniaj żadnego i nigdy nie wpisuj go w witrynie ani aplikacji, której nie ufasz w pełni."
+          }
+        },
+        "nl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Deze sleutels worden afgeleid van het geheim van je portemonnee, versleuteld in de Keychain van deze iPhone — ze verlaten dit apparaat nooit. Elke sleutel beheert het tegoed op het bijbehorende adres. Deel er nooit een en typ hem nooit in op een website of app die je niet volledig vertrouwt."
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "یہ کلیدیں آپ کے بٹوے کے راز سے اخذ کی جاتی ہیں، جو اس ‏iPhone‏ کی ‏Keychain‏ میں خفیہ کردہ ہے — یہ کبھی اس آلے سے باہر نہیں جاتیں۔ ہر کلید اپنے پتے پر موجود رقم کو کنٹرول کرتی ہے۔ کسی کو بھی شیئر نہ کریں، اور اسے کبھی کسی ایسی سائٹ یا ایپ میں ٹائپ نہ کریں جس پر آپ کو مکمل بھروسہ نہ ہو۔"
+          }
+        },
+        "bg": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Тези ключове се извличат от тайната на портфейла ви, шифрована в Keychain на този iPhone — те никога не напускат това устройство. Всеки ключ управлява средствата на своя адрес. Не споделяйте нито един и никога не го въвеждайте в сайт или приложение, на което не се доверявате напълно."
+          }
+        },
+        "et": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Need võtmed tuletatakse teie rahakoti saladusest, mis on selle iPhone'i Keychainis krüptitud — need ei lahku kunagi sellest seadmest. Iga võti kontrollib oma aadressil olevaid rahalisi vahendeid. Ärge jagage ühtegi ega sisestage seda kunagi saidile või rakendusse, mida te täielikult ei usalda."
+          }
+        },
+        "lt": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Šie raktai išvedami iš jūsų piniginės paslapties, užšifruotos šio „iPhone“ „Keychain“ — jie niekada nepalieka šio įrenginio. Kiekvienas raktas valdo lėšas savo adrese. Neatskleiskite nė vieno ir niekada jo neįveskite svetainėje ar programėlėje, kuria nevisiškai pasitikite."
+          }
+        },
+        "lv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Šīs atslēgas tiek atvasinātas no jūsu maka noslēpuma, kas šifrēts šī iPhone Keychain — tās nekad neatstāj šo ierīci. Katra atslēga pārvalda līdzekļus savā adresē. Nekopīgojiet nevienu un nekad neievadiet to vietnē vai lietotnē, kurai pilnībā neuzticaties."
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Þessir lyklar eru leiddir út frá leyndarmáli veskisins þíns, dulkóðaðir í Keychain þessa iPhone — þeir fara aldrei af þessu tæki. Hver lykill stýrir fénu á vistfangi sínu. Deildu engum þeirra og sláðu hann aldrei inn á vefsvæði eða í forrit sem þú treystir ekki fullkomlega."
+          }
+        },
+        "ms": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kunci ini diterbitkan daripada rahsia dompet anda, disulitkan dalam Keychain iPhone ini — kunci ini tidak pernah meninggalkan peranti ini. Setiap kunci mengawal dana di alamatnya. Jangan kongsi mana-mana satu, dan jangan sekali-kali menaipnya di tapak atau apl yang tidak anda percayai sepenuhnya."
+          }
+        },
+        "fil": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ang mga key na ito ay kinuha mula sa sekreto ng iyong wallet, naka-encrypt sa Keychain ng iPhone na ito — hindi ito kailanman umaalis sa device na ito. Kinokontrol ng bawat key ang pondo sa address nito. Huwag ibahagi kahit isa, at huwag na huwag itong ita-type sa isang site o app na hindi mo lubos na pinagkakatiwalaan."
+          }
+        },
+        "sw": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Funguo hizi hutokana na siri ya pochi yako, iliyosimbwa kwa njia fiche katika Keychain ya iPhone hii — hazitoki kamwe katika kifaa hiki. Kila ufunguo hudhibiti fedha katika anwani yake. Usishiriki hata mmoja, na usiuandike kamwe katika tovuti au programu usiyoiamini kikamilifu."
+          }
+        },
+        "af": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hierdie sleutels word afgelei van jou beursie se geheim, geënkripteer in hierdie iPhone se Keychain — hulle verlaat nooit hierdie toestel nie. Elke sleutel beheer die fondse op die adres daarvan. Deel nooit een nie, en tik dit nooit in op 'n webwerf of app wat jy nie ten volle vertrou nie."
+          }
+        },
+        "ta": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "இந்தக் கீகள் உங்கள் வாலெட்டின் ரகசியத்திலிருந்து உருவாக்கப்பட்டு, இந்த iPhone-இன் Keychain-இல் என்க்ரிப்ட் செய்யப்பட்டுள்ளன — அவை இந்தச் சாதனத்தை விட்டு ஒருபோதும் வெளியேறாது. ஒவ்வொரு கீயும் அதன் முகவரியில் உள்ள நிதியைக் கட்டுப்படுத்துகிறது. எதையும் பகிர வேண்டாம், நீங்கள் முழுமையாக நம்பாத தளம் அல்லது ஆப்பில் ஒருபோதும் அதை உள்ளிட வேண்டாம்."
+          }
+        },
+        "te": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ఈ కీలు మీ వాలెట్ రహస్యం నుండి రూపొందించబడ్డాయి, ఈ iPhone యొక్క Keychainలో ఎన్‌క్రిప్ట్ చేయబడ్డాయి — అవి ఎప్పుడూ ఈ పరికరాన్ని విడిచిపెట్టవు. ప్రతి కీ దాని చిరునామాలోని నిధులను నియంత్రిస్తుంది. ఏ ఒక్కటీ షేర్ చేయవద్దు, మీరు పూర్తిగా విశ్వసించని సైట్ లేదా యాప్‌లో దాన్ని ఎప్పుడూ టైప్ చేయవద్దు."
+          }
+        },
+        "ml": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ഈ കീകൾ നിങ്ങളുടെ വാലറ്റിന്റെ രഹസ്യത്തിൽ നിന്ന് നിർമ്മിക്കപ്പെടുന്നു, ഈ iPhone-ന്റെ Keychain-ൽ എൻക്രിപ്റ്റ് ചെയ്തിരിക്കുന്നു — അവ ഒരിക്കലും ഈ ഉപകരണം വിട്ടുപോകില്ല. ഓരോ കീയും അതിന്റെ വിലാസത്തിലെ ഫണ്ട് നിയന്ത്രിക്കുന്നു. ഒന്നും പങ്കിടരുത്, നിങ്ങൾ പൂർണ്ണമായി വിശ്വസിക്കാത്ത ഒരു സൈറ്റിലോ ആപ്പിലോ അത് ഒരിക്കലും ടൈപ്പ് ചെയ്യരുത്."
+          }
+        },
+        "mr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "या की तुमच्या वॉलेटच्या गुप्त माहितीतून तयार केल्या जातात, या iPhone च्या Keychain मध्ये एन्क्रिप्ट केलेल्या असतात — त्या कधीही हे डिव्हाइस सोडत नाहीत. प्रत्येक की तिच्या पत्त्यावरील निधी नियंत्रित करते. कोणतीही की शेअर करू नका, आणि तुमचा पूर्ण विश्वास नसलेल्या साइटवर किंवा अॅपमध्ये ती कधीही टाइप करू नका."
+          }
+        },
+        "pa": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ਇਹ ਕੁੰਜੀਆਂ ਤੁਹਾਡੇ ਵਾਲਿਟ ਦੇ ਗੁਪਤ ਡੇਟੇ ਤੋਂ ਅਖ਼ਜ਼ ਕੀਤੀਆਂ ਜਾਂਦੀਆਂ ਹਨ, ਜੋ ਇਸ iPhone ਦੀ Keychain ਵਿੱਚ ਐਨਕ੍ਰਿਪਟ ਕੀਤੀਆਂ ਹੁੰਦੀਆਂ ਹਨ — ਇਹ ਕਦੇ ਵੀ ਇਸ ਡਿਵਾਈਸ ਨੂੰ ਨਹੀਂ ਛੱਡਦੀਆਂ। ਹਰ ਕੁੰਜੀ ਆਪਣੇ ਪਤੇ ਉੱਤੇ ਮੌਜੂਦ ਰਕਮ ਨੂੰ ਕੰਟਰੋਲ ਕਰਦੀ ਹੈ। ਕੋਈ ਵੀ ਕੁੰਜੀ ਸਾਂਝੀ ਨਾ ਕਰੋ, ਅਤੇ ਜਿਸ ਸਾਈਟ ਜਾਂ ਐਪ ਉੱਤੇ ਤੁਹਾਨੂੰ ਪੂਰਾ ਭਰੋਸਾ ਨਾ ਹੋਵੇ, ਉੱਥੇ ਇਸ ਨੂੰ ਕਦੇ ਟਾਈਪ ਨਾ ਕਰੋ।"
+          }
+        }
+      }
+    },
+    "Unavailable on this device.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Unavailable on this device."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No disponible en este dispositivo."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在此设备上不可用。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "在此裝置上無法使用。"
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "इस डिवाइस पर उपलब्ध नहीं है।"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "غير متاح على هذا الجهاز."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Indisponível neste dispositivo."
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "এই ডিভাইসে উপলব্ধ নয়।"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Недоступно на этом устройстве."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "このデバイスでは利用できません。"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Auf diesem Gerät nicht verfügbar."
+          }
+        },
+        "uk": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Недоступно на цьому пристрої."
+          }
+        },
+        "el": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Μη διαθέσιμο σε αυτή τη συσκευή."
+          }
+        },
+        "ro": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Indisponibil pe acest dispozitiv."
+          }
+        },
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Na tomto zařízení není k dispozici."
+          }
+        },
+        "hu": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ezen az eszközön nem érhető el."
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Inte tillgängligt på den här enheten."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ikke tilgjengelig på denne enheten."
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ikke tilgængelig på denne enhed."
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ei käytettävissä tällä laitteella."
+          }
+        },
+        "he": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "לא זמין במכשיר זה."
+          }
+        },
+        "ca": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No disponible en aquest dispositiu."
+          }
+        },
+        "hr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nije dostupno na ovom uređaju."
+          }
+        },
+        "sk": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Na tomto zariadení nie je k dispozícii."
+          }
+        },
+        "sl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ni na voljo v tej napravi."
+          }
+        },
+        "sr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Није доступно на овом уређају."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Indisponible sur cet appareil."
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "이 기기에서는 사용할 수 없어요."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Non disponibile su questo dispositivo."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bu cihazda kullanılamıyor."
+          }
+        },
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Không khả dụng trên thiết bị này."
+          }
+        },
+        "th": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ไม่พร้อมใช้งานบนอุปกรณ์นี้"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tidak tersedia di perangkat ini."
+          }
+        },
+        "fa": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "در این دستگاه در دسترس نیست."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Niedostępne na tym urządzeniu."
+          }
+        },
+        "nl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Niet beschikbaar op dit apparaat."
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "اس آلے پر دستیاب نہیں ہے۔"
+          }
+        },
+        "bg": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Недостъпно на това устройство."
+          }
+        },
+        "et": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Selles seadmes pole saadaval."
+          }
+        },
+        "lt": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Šiame įrenginyje nepasiekiama."
+          }
+        },
+        "lv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Šajā ierīcē nav pieejams."
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ekki tiltækt á þessu tæki."
+          }
+        },
+        "ms": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tidak tersedia pada peranti ini."
+          }
+        },
+        "fil": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hindi available sa device na ito."
+          }
+        },
+        "sw": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hakipatikani kwenye kifaa hiki."
+          }
+        },
+        "af": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nie op hierdie toestel beskikbaar nie."
+          }
+        },
+        "ta": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "இந்தச் சாதனத்தில் கிடைக்கவில்லை."
+          }
+        },
+        "te": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ఈ పరికరంలో అందుబాటులో లేదు."
+          }
+        },
+        "ml": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ഈ ഉപകരണത്തിൽ ലഭ്യമല്ല."
+          }
+        },
+        "mr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "या डिव्हाइसवर उपलब्ध नाही."
+          }
+        },
+        "pa": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ਇਸ ਡਿਵਾਈਸ ਉੱਤੇ ਉਪਲਬਧ ਨਹੀਂ ਹੈ।"
+          }
+        }
+      }
+    },
+    "View private keys": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "View private keys"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ver claves privadas"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "查看私钥"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "檢視私鑰"
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "निजी कुंजियाँ देखें"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "عرض المفاتيح الخاصة"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ver chaves privadas"
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ব্যক্তিগত কী দেখুন"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Просмотреть приватные ключи"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "秘密鍵を表示"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Private Schlüssel anzeigen"
+          }
+        },
+        "uk": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Переглянути приватні ключі"
+          }
+        },
+        "el": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Προβολή ιδιωτικών κλειδιών"
+          }
+        },
+        "ro": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vezi cheile private"
+          }
+        },
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Zobrazit soukromé klíče"
+          }
+        },
+        "hu": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Privát kulcsok megtekintése"
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Visa privata nycklar"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vis private nøkler"
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vis private nøgler"
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Näytä yksityiset avaimet"
+          }
+        },
+        "he": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "הצג מפתחות פרטיים"
+          }
+        },
+        "ca": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mostra les claus privades"
+          }
+        },
+        "hr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Prikaži privatne ključeve"
+          }
+        },
+        "sk": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Zobraziť súkromné kľúče"
+          }
+        },
+        "sl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pokaži zasebne ključe"
+          }
+        },
+        "sr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Прикажи приватне кључеве"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Afficher les clés privées"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "개인 키 보기"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mostra chiavi private"
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Özel anahtarları görüntüle"
+          }
+        },
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Xem khóa riêng tư"
+          }
+        },
+        "th": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ดูคีย์ส่วนตัว"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lihat kunci privat"
+          }
+        },
+        "fa": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "مشاهده کلیدهای خصوصی"
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Wyświetl klucze prywatne"
+          }
+        },
+        "nl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Privésleutels bekijken"
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "نجی کلیدیں دیکھیں"
+          }
+        },
+        "bg": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Преглед на частните ключове"
+          }
+        },
+        "et": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kuva privaatvõtmed"
+          }
+        },
+        "lt": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Peržiūrėti privačiuosius raktus"
+          }
+        },
+        "lv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Skatīt privātās atslēgas"
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Skoða einkalykla"
+          }
+        },
+        "ms": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lihat kunci peribadi"
+          }
+        },
+        "fil": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tingnan ang mga private key"
+          }
+        },
+        "sw": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tazama funguo za faragha"
+          }
+        },
+        "af": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bekyk private sleutels"
+          }
+        },
+        "ta": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "தனிப்பட்ட கீகளைக் காண்க"
+          }
+        },
+        "te": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ప్రైవేట్ కీలను చూడండి"
+          }
+        },
+        "ml": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "പ്രൈവറ്റ് കീകൾ കാണുക"
+          }
+        },
+        "mr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "खाजगी की पाहा"
+          }
+        },
+        "pa": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ਨਿੱਜੀ ਕੁੰਜੀਆਂ ਦੇਖੋ"
+          }
+        }
+      }
+    },
+    "Your private keys, per network.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Your private keys, per network."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tus claves privadas, por red."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "您的私钥，按网络分列。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "您的私鑰，按網路分列。"
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "आपकी निजी कुंजियाँ, हर नेटवर्क के लिए।"
+          }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "مفاتيحك الخاصة، لكل شبكة."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Suas chaves privadas, por rede."
+          }
+        },
+        "bn": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "আপনার ব্যক্তিগত কী, প্রতিটি নেটওয়ার্ক অনুযায়ী।"
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ваши приватные ключи, по сетям."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ネットワークごとの秘密鍵。"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ihre privaten Schlüssel, pro Netzwerk."
+          }
+        },
+        "uk": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ваші приватні ключі, за мережами."
+          }
+        },
+        "el": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Τα ιδιωτικά σας κλειδιά, ανά δίκτυο."
+          }
+        },
+        "ro": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cheile tale private, pe rețele."
+          }
+        },
+        "cs": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vaše soukromé klíče, podle sítí."
+          }
+        },
+        "hu": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "A privát kulcsai, hálózatonként."
+          }
+        },
+        "sv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dina privata nycklar, per nätverk."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "De private nøklene dine, per nettverk."
+          }
+        },
+        "da": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dine private nøgler, pr. netværk."
+          }
+        },
+        "fi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Yksityiset avaimesi, verkoittain."
+          }
+        },
+        "he": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "המפתחות הפרטיים שלך, לכל רשת."
+          }
+        },
+        "ca": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Les teves claus privades, per xarxa."
+          }
+        },
+        "hr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vaši privatni ključevi, po mreži."
+          }
+        },
+        "sk": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vaše súkromné kľúče, podľa sietí."
+          }
+        },
+        "sl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vaši zasebni ključi, po omrežjih."
+          }
+        },
+        "sr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ваши приватни кључеви, по мрежама."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vos clés privées, par réseau."
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "네트워크별 개인 키."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Le tue chiavi private, per rete."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ağ başına özel anahtarlarınız."
+          }
+        },
+        "vi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Khóa riêng tư của bạn, theo từng mạng."
+          }
+        },
+        "th": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "คีย์ส่วนตัวของคุณ แยกตามเครือข่าย"
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kunci privat Anda, per jaringan."
+          }
+        },
+        "fa": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "کلیدهای خصوصی شما، به‌تفکیک شبکه."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Twoje klucze prywatne, dla każdej sieci."
+          }
+        },
+        "nl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Je privésleutels, per netwerk."
+          }
+        },
+        "ur": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "آپ کی نجی کلیدیں، فی نیٹ ورک۔"
+          }
+        },
+        "bg": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Вашите частни ключове, за всяка мрежа."
+          }
+        },
+        "et": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Teie privaatvõtmed, võrkude kaupa."
+          }
+        },
+        "lt": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Jūsų privatieji raktai pagal tinklą."
+          }
+        },
+        "lv": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Jūsu privātās atslēgas pa tīkliem."
+          }
+        },
+        "is": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Einkalyklarnir þínir, eftir neti."
+          }
+        },
+        "ms": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kunci peribadi anda, mengikut rangkaian."
+          }
+        },
+        "fil": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ang iyong mga private key, bawat network."
+          }
+        },
+        "sw": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Funguo zako za faragha, kwa kila mtandao."
+          }
+        },
+        "af": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Jou private sleutels, per netwerk."
+          }
+        },
+        "ta": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "உங்கள் தனிப்பட்ட கீகள், ஒவ்வொரு நெட்வொர்க்கிற்கும்."
+          }
+        },
+        "te": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "మీ ప్రైవేట్ కీలు, నెట్‌వర్క్ వారీగా."
+          }
+        },
+        "ml": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "നിങ്ങളുടെ പ്രൈവറ്റ് കീകൾ, ഓരോ നെറ്റ്‌വർക്കിനും."
+          }
+        },
+        "mr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "तुमच्या खाजगी की, प्रत्येक नेटवर्कनुसार."
+          }
+        },
+        "pa": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ਤੁਹਾਡੀਆਂ ਨਿੱਜੀ ਕੁੰਜੀਆਂ, ਹਰ ਨੈੱਟਵਰਕ ਲਈ।"
           }
         }
       }
