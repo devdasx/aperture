@@ -685,12 +685,13 @@ struct BalanceCardView: View {
     /// behind a real change (the 2026-06-13 perf shape).
     private var rebuildKey: Int {
         var hasher = Hasher()
-        // **Mode B (2026-06-19).** The curve depends ONLY on the
-        // transactions (shape) and the current spot prices (scale) — not on
-        // any balance snapshot. Key on the transaction set (count + newest
-        // timestamp) plus the spot prices (count + value sum, so a price
-        // tick rescales the chart), the range, and the currency. `priceCache`
-        // is per-symbol (~tens of entries) so summing it is cheap.
+        // **Mode C (2026-06-19).** The curve depends on the transactions
+        // (shape) and BOTH the spot prices (tip scale) and the historical
+        // closes (the whole curve's valuation). Key on the transaction set
+        // (count + newest timestamp), the spot prices (count + value sum), the
+        // historical series (symbol count + total day-key count — so a
+        // backfill that deepens coverage re-triggers, without summing thousands
+        // of Decimals), the range, and the currency.
         hasher.combine(transactions.count)
         if let newest = transactions.map(\.occurredAt).max() {
             hasher.combine(newest)
@@ -701,6 +702,10 @@ struct BalanceCardView: View {
         var priceSum = Decimal.zero
         for price in priceCache.values { priceSum += price }
         hasher.combine(priceSum)
+        hasher.combine(priceHistory.count)
+        var histDayCount = 0
+        for series in priceHistory.values { histDayCount += series.count }
+        hasher.combine(histDayCount)
         return hasher.finalize()
     }
 
@@ -721,6 +726,7 @@ struct BalanceCardView: View {
             )
         }
         let cache = priceCache
+        let history = priceHistory
         let range = currentRange
         let own = ownAddresses
 
@@ -728,6 +734,7 @@ struct BalanceCardView: View {
             BalanceHistoryReconstructor.reconstruct(
                 txSnapshots: txSnapshots,
                 priceCache: cache,
+                priceHistory: history,
                 ownAddresses: own,
                 range: range
             )

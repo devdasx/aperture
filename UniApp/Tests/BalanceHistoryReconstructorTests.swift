@@ -2,16 +2,21 @@ import Testing
 import Foundation
 @testable import Aperture
 
-/// Tests for `BalanceHistoryReconstructor` — the **2026-06-19 Mode B
-/// rebuild** ("transaction-sourced, deterministic, real for every range").
+/// Tests for `BalanceHistoryReconstructor` — the **2026-06-19 Mode C
+/// rebuild** ("transaction-sourced holdings, historical-price valuation,
+/// real and alive for every range").
 ///
 /// Contract under test:
 /// - **Holdings ledger** is a pure function of transactions: forward walk
 ///   oldest-first from ZERO, `+incoming / −outgoing / internal-no-op`,
 ///   negatives clamp to zero.
-/// - **Valuation (Mode B)**: `y = Σ quantity × current spot`. Using a spot
-///   of 1 makes the curve's fiat equal the quantity, so these tests assert
-///   the ledger directly; a non-1 spot only rescales (determinism test).
+/// - **Valuation (Mode C)**: each instant is `Σ quantity × historical
+///   close(token, UTCday)` with carry-forward on gaps; the `now` tip uses
+///   current spot. The ledger tests below pass NO `priceHistory`, so
+///   valuation falls back to spot — `Σ quantity × spot` — and a spot of 1
+///   makes the curve's fiat equal the quantity (asserting the ledger
+///   directly). The dedicated Mode C section exercises the historical
+///   valuation (market movement, step-on-top, carry-forward, tip=spot).
 /// - **Curve**: leading point at `effectiveCutoff` (pre-window value), a
 ///   before/after step pair per in-window transaction, trailing point at
 ///   `now` = the latest transaction-derived value (never a snapshot).
@@ -366,6 +371,102 @@ struct BalanceHistoryReconstructorTests {
         let monthChange = month.last!.fiat - month.first!.fiat
         let yearChange = year.last!.fiat - year.first!.fiat
         #expect(monthChange == Decimal(50) && yearChange == Decimal(250) && monthChange != yearChange)
+    }
+
+    // MARK: - Mode C (historical-price valuation)
+
+    /// Build a daily historical-close series for `symbol` spanning `daysBack`
+    /// days before `now`, with a per-day value from `close(dayIndex)`.
+    static func dailyHistory(symbol: String, now: Date, daysBack: Int, close: (Int) -> Decimal) -> [String: [Int: Decimal]] {
+        var series: [Int: Decimal] = [:]
+        for d in 0...daysBack {
+            let date = now.addingTimeInterval(-Double(d) * 86_400)
+            series[DayKey.from(date: date)] = close(d)
+        }
+        return [symbol: series]
+    }
+
+    @Test("Mode C: constant holdings + a varying historical price → the curve MOVES (not flat)")
+    @MainActor
+    func marketMovementVaries() throws {
+        let now = Date(timeIntervalSinceReferenceDate: 800_000_000)
+        // 1 BTC acquired 60 days ago — held constant across the whole 1M window.
+        let txs = [Self.makeTx(symbol: "BTC", contract: nil, amount: "1", direction: .incoming, at: now.addingTimeInterval(-60 * 86_400))]
+        let history = Self.dailyHistory(symbol: "BTC", now: now, daysBack: 40) { Decimal(100 + $0) } // 100…140
+        let pts = BalanceHistoryReconstructor.reconstruct(
+            transactions: txs, priceCache: ["BTC": 100], priceHistory: history, range: .month, now: now
+        )
+        let fiats = pts.map(\.fiat)
+        #expect(fiats.count >= 3, "1M should sample a daily grid, got \(fiats.count)")
+        // The whole point of Mode C: no transactions in the window, yet the
+        // value changes day to day with the market.
+        #expect(Set(fiats).count > 1, "constant holdings must still move with the market: \(fiats)")
+        #expect(fiats.allSatisfy { $0 > 0 })
+    }
+
+    @Test("Mode C: a mid-window buy is a visible step ON TOP of the moving curve")
+    @MainActor
+    func stepOnTopOfCurve() throws {
+        let now = Date(timeIntervalSinceReferenceDate: 800_000_000)
+        let txs = [
+            Self.makeTx(symbol: "BTC", contract: nil, amount: "1", direction: .incoming, at: now.addingTimeInterval(-60 * 86_400)), // pre-window 1 BTC
+            Self.makeTx(symbol: "BTC", contract: nil, amount: "1", direction: .incoming, at: now.addingTimeInterval(-15 * 86_400)), // buy → 2 BTC
+        ]
+        let history = Self.dailyHistory(symbol: "BTC", now: now, daysBack: 40) { Decimal(100 + $0) }
+        let pts = BalanceHistoryReconstructor.reconstruct(
+            transactions: txs, priceCache: ["BTC": 100], priceHistory: history, range: .month, now: now
+        )
+        // Before the buy holdings are 1 BTC (~100–115); after, 2 BTC (~200–230).
+        // The doubling shows as a clear jump in the max vs min positive value.
+        let positives = pts.map(\.fiat).filter { $0 > 0 }
+        let maxFiat = positives.max() ?? 0
+        let minFiat = positives.min() ?? 0
+        #expect(maxFiat >= minFiat * Decimal(string: "1.8")!, "the buy must roughly double the curve: min \(minFiat), max \(maxFiat)")
+    }
+
+    @Test("Mode C: a missing daily close carries the prior close forward (no zero dip)")
+    @MainActor
+    func carryForwardNoZeroDip() throws {
+        let now = Date(timeIntervalSinceReferenceDate: 800_000_000)
+        let txs = [Self.makeTx(symbol: "BTC", contract: nil, amount: "1", direction: .incoming, at: now.addingTimeInterval(-60 * 86_400))]
+        // ONE close, 40 days ago (before the 1M window) — the window itself has
+        // no closes, so every in-window instant must carry the 500 forward.
+        let history = ["BTC": [DayKey.from(date: now.addingTimeInterval(-40 * 86_400)): Decimal(500)]]
+        let pts = BalanceHistoryReconstructor.reconstruct(
+            transactions: txs, priceCache: ["BTC": 999], priceHistory: history, range: .month, now: now
+        )
+        // Every non-tip point carries 500 (1 BTC × 500); none dip to zero.
+        let nonTip = pts.dropLast()
+        #expect(!nonTip.isEmpty)
+        #expect(nonTip.allSatisfy { $0.fiat == Decimal(500) }, "carry-forward should hold 500: \(nonTip.map(\.fiat))")
+        // The tip uses the live spot, not the stale close.
+        #expect(pts.last?.fiat == Decimal(999))
+    }
+
+    @Test("Mode C: the now tip equals the current spot-valued holdings (matches the hero)")
+    @MainActor
+    func tipEqualsSpot() throws {
+        let now = Date(timeIntervalSinceReferenceDate: 800_000_000)
+        let txs = [Self.makeTx(symbol: "ETH", contract: nil, amount: "3", direction: .incoming, at: now.addingTimeInterval(-5 * 86_400))]
+        let history = Self.dailyHistory(symbol: "ETH", now: now, daysBack: 10) { _ in Decimal(1500) } // historical 1500
+        let pts = BalanceHistoryReconstructor.reconstruct(
+            transactions: txs, priceCache: ["ETH": 2000], priceHistory: history, range: .week, now: now
+        )
+        // 3 ETH × 2000 spot = 6000 at the tip, even though history closes were 1500.
+        #expect(pts.last?.fiat == Decimal(6000))
+    }
+
+    @Test("Mode C: with no historical series, valuation falls back to spot (degrades to Mode B)")
+    @MainActor
+    func fallbackToSpotWhenNoHistory() throws {
+        let now = Date(timeIntervalSinceReferenceDate: 800_000_000)
+        let txs = [Self.makeTx(symbol: "ETH", contract: nil, amount: "2", direction: .incoming, at: now.addingTimeInterval(-3 * 86_400))]
+        let pts = BalanceHistoryReconstructor.reconstruct(
+            transactions: txs, priceCache: ["ETH": 1000], priceHistory: [:], range: .week, now: now
+        )
+        // No history → every point values 2 ETH at spot 1000 → flat at 2000.
+        #expect(pts.last?.fiat == Decimal(2000))
+        #expect(pts.allSatisfy { $0.fiat == 0 || $0.fiat == Decimal(2000) })
     }
 
     // MARK: - Key normalization
