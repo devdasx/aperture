@@ -64,14 +64,14 @@ actor TransactionRepository {
     /// row — distinguishing those needs a per-leg log index the
     /// adapters don't surface yet.)
     ///
-    /// **Taxonomy (2026-06-13).** `kind` persists the transaction
-    /// taxonomy (`TransactionKind`). When the caller passes `nil` —
-    /// every adapter today; swap/bridge classification is T-067 — the
-    /// kind derives from the direction: `.internal` → `.selfTransfer`,
-    /// everything else → `.transfer`. An explicit non-nil `kind`
-    /// overwrites an existing row's stored value (a later, smarter
-    /// scan may reclassify a `.transfer` as `.swap`); legacy rows
-    /// whose `kindRaw` is `nil` are backfilled on touch.
+    /// **Taxonomy (2026-06-13; T-067 classification 2026-06-18).** `kind`
+    /// persists the transaction taxonomy (`TransactionKind`). When the caller
+    /// passes `nil` — every chain adapter — `classifyKind` derives it from the
+    /// counterparty: a known swap/bridge router → `.swap` / `.bridge`, a
+    /// `.internal` leg → `.selfTransfer`, everything else → `.transfer`. An
+    /// explicit non-nil `kind` overwrites the stored value; a nil-kind re-scan
+    /// backfills a `nil` row AND upgrades a generic `.transfer` to its real
+    /// `.swap` / `.bridge` class (never a downgrade).
     func upsertTransaction(
         addressId: UUID,
         txHash: String,
@@ -183,7 +183,11 @@ actor TransactionRepository {
             }
         }
 
-        let resolvedKind = kind ?? TransactionKind.defaultKind(for: direction)
+        // T-067 — when the adapter doesn't supply a kind, classify from the
+        // counterparty: a transfer whose other party is a known swap/bridge
+        // router is a swap/bridge leg, so the feed reads "Swapped"/"Bridged"
+        // instead of a bare "Sent"/"Received".
+        let resolvedKind = kind ?? Self.classifyKind(direction: direction, counterparty: counterparty)
 
         if let existing {
             // **2026-06-13 — skip no-op writes.** The 10s poll re-finds
@@ -192,9 +196,21 @@ actor TransactionRepository {
             // UI re-render every 10s. Mutate only when status / block /
             // fee / kind actually changed (a pending tx confirming, a
             // backfill). Everything else is immutable once on-chain.
-            let kindWouldChange = kind != nil
-                ? existing.kindRaw != kind!.rawValue
-                : existing.kindRaw == nil
+            // The kind this upsert settles on for the existing row: an
+            // explicit caller kind reclassifies; a nil-kind touch backfills a
+            // pre-column row, and UPGRADES a generic `.transfer` to its real
+            // `.swap` / `.bridge` class once the counterparty is recognized
+            // (T-067) — but never downgrades an existing explicit classification.
+            let targetKindRaw: String? = {
+                if let kind { return kind.rawValue }
+                if existing.kindRaw == nil { return resolvedKind.rawValue }
+                if existing.kindRaw == TransactionKind.transfer.rawValue,
+                   resolvedKind == .swap || resolvedKind == .bridge {
+                    return resolvedKind.rawValue
+                }
+                return existing.kindRaw
+            }()
+            let kindWouldChange = existing.kindRaw != targetKindRaw
             let unchanged = existing.statusRaw == status.rawValue
                 && existing.blockNumber == blockNumber
                 && existing.feeRaw == feeRaw
@@ -211,15 +227,10 @@ actor TransactionRepository {
             existing.statusRaw = status.rawValue
             existing.blockNumber = blockNumber
             existing.feeRaw = feeRaw
-            // Taxonomy: an explicit kind from the caller reclassifies;
-            // a nil-kind touch only backfills rows that pre-date the
-            // column (never downgrades an adapter's classification to
-            // the direction-derived default).
-            if let kind {
-                existing.kindRaw = kind.rawValue
-            } else if existing.kindRaw == nil {
-                existing.kindRaw = resolvedKind.rawValue
-            }
+            // Taxonomy: settle on the kind computed above (explicit caller
+            // kind, backfill, or the T-067 transfer→swap/bridge upgrade —
+            // never a downgrade).
+            existing.kindRaw = targetKindRaw
             // Don't touch direction / amount / counterparty / occurredAt —
             // those are immutable once a tx is on-chain.
         } else {
@@ -248,6 +259,34 @@ actor TransactionRepository {
         // froze the UI). Default `true` keeps every other caller's
         // save-per-call semantics unchanged.
         if save { try modelContext.save() }
+    }
+
+    /// Classify a transaction's `TransactionKind` from its counterparty when
+    /// the adapter didn't supply one (T-067 — chain history adapters emit only
+    /// direction). A transfer whose counterparty is a known swap/bridge router
+    /// is a swap/bridge leg, so the activity feed reads "Swapped" / "Bridged"
+    /// instead of the bare "Sent" / "Received".
+    ///
+    /// - A dedicated cross-chain bridge router → `.bridge`. Checked FIRST,
+    ///   because the LI.FI Diamond composes both swaps and bridges and also
+    ///   appears in the broader swap-router set.
+    /// - A same-chain DEX aggregator / LI.FI Diamond → `.swap`.
+    /// - A self-transfer stays `.selfTransfer`; anything else falls back to the
+    ///   direction default (`.transfer`).
+    ///
+    /// Honest by construction: only the curated `SwapRouterAllowlist` addresses
+    /// classify, so an ordinary send/receive is never mislabeled as a swap.
+    static func classifyKind(
+        direction: TransactionDirection,
+        counterparty: String
+    ) -> TransactionKind {
+        if direction == .internal { return .selfTransfer }
+        let cp = counterparty.lowercased()
+        if !cp.isEmpty {
+            if SwapRouterAllowlist.isBridgeRouter(cp) { return .bridge }
+            if SwapRouterAllowlist.isSwapRouter(cp) { return .swap }
+        }
+        return TransactionKind.defaultKind(for: direction)
     }
 
     // MARK: - Transaction queries (2026-06-13 taxonomy surface)

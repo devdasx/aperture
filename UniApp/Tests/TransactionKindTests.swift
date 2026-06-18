@@ -59,6 +59,7 @@ import SwiftData
         kind: TransactionKind? = nil,
         status: TransactionStatus = .confirmed,
         symbol: String = "ETH",
+        counterparty: String = "0xdead",
         occurredAt: Date = Date()
     ) async throws {
         try await fixture.repo.upsertTransaction(
@@ -72,9 +73,77 @@ import SwiftData
             blockNumber: 1,
             occurredAt: occurredAt,
             status: status,
-            counterparty: "0xdead",
+            counterparty: counterparty,
             feeRaw: nil
         )
+    }
+
+    // MARK: - T-067 counterparty classification
+
+    // Real `SwapRouterAllowlist` addresses (lowercased, as stored).
+    private static let uniswapRouter = "0xe592427a0aece92de3edee1f18e0157c05861564" // aggregator → swap
+    private static let lifiDiamond = "0x1231deb6f5749ef6ce6943a275a1d3e7486f4eae"  // LI.FI → swap
+    private static let acrossBridge = "0x5c7bcd6e7de5423a257d81b442095a1a6ced35c5" // bridge
+
+    @Test("classifyKind maps router counterparties to swap/bridge, others to the default")
+    func classifyKindMapping() {
+        // Swap routers (aggregator + LI.FI Diamond) → .swap.
+        #expect(TransactionRepository.classifyKind(direction: .outgoing, counterparty: Self.uniswapRouter) == .swap)
+        #expect(TransactionRepository.classifyKind(direction: .incoming, counterparty: Self.lifiDiamond) == .swap)
+        // Case-insensitive (the scanner may surface mixed-case addresses).
+        #expect(TransactionRepository.classifyKind(direction: .outgoing, counterparty: Self.uniswapRouter.uppercased()) == .swap)
+        // Dedicated bridge router → .bridge.
+        #expect(TransactionRepository.classifyKind(direction: .outgoing, counterparty: Self.acrossBridge) == .bridge)
+        // An ordinary counterparty is never mislabeled.
+        #expect(TransactionRepository.classifyKind(direction: .outgoing, counterparty: "0xdead") == .transfer)
+        #expect(TransactionRepository.classifyKind(direction: .incoming, counterparty: "") == .transfer)
+        // A self-transfer stays a self-transfer regardless of counterparty.
+        #expect(TransactionRepository.classifyKind(direction: .internal, counterparty: Self.uniswapRouter) == .selfTransfer)
+    }
+
+    @Test("an unclassified leg to a swap router persists as .swap")
+    func upsertClassifiesSwap() async throws {
+        let fixture = try makeFixture()
+        try await upsert(fixture, txHash: "0x1", direction: .outgoing, counterparty: Self.uniswapRouter)
+        let rows = try await fixture.repo.transactions(walletId: fixture.walletId)
+        #expect(rows.first?.kind == .swap)
+    }
+
+    @Test("an unclassified leg to a bridge router persists as .bridge")
+    func upsertClassifiesBridge() async throws {
+        let fixture = try makeFixture()
+        try await upsert(fixture, txHash: "0x1", direction: .outgoing, counterparty: Self.acrossBridge)
+        let rows = try await fixture.repo.transactions(walletId: fixture.walletId)
+        #expect(rows.first?.kind == .bridge)
+    }
+
+    @Test("a re-scan UPGRADES a stored .transfer to .swap once the router is recognized")
+    func rescanUpgradesTransferToSwap() async throws {
+        let fixture = try makeFixture()
+        let when = Date()
+        // First scan: a plain transfer (counterparty not yet a known router).
+        try await upsert(fixture, txHash: "0x1", direction: .outgoing, counterparty: "0xdead", occurredAt: when)
+        var rows = try await fixture.repo.transactions(walletId: fixture.walletId)
+        #expect(rows.first?.kind == .transfer)
+        // Re-scan of the SAME leg now carrying the swap-router counterparty —
+        // an unclassified (nil-kind) touch must UPGRADE it to .swap.
+        try await upsert(fixture, txHash: "0x1", direction: .outgoing, counterparty: Self.uniswapRouter, occurredAt: when)
+        rows = try await fixture.repo.transactions(walletId: fixture.walletId)
+        #expect(rows.count == 1, "same leg identity upserts in place")
+        #expect(rows.first?.kind == .swap)
+    }
+
+    @Test("a nil-kind re-scan NEVER downgrades an explicit .swap/.bridge")
+    func rescanNeverDowngrades() async throws {
+        let fixture = try makeFixture()
+        let when = Date()
+        // Explicit bridge classification from the app's own swap path.
+        try await upsert(fixture, txHash: "0x1", direction: .outgoing, kind: .bridge, counterparty: "0xdead", occurredAt: when)
+        // A later unclassified poll whose counterparty would classify as .swap
+        // must not overwrite the stronger explicit .bridge.
+        try await upsert(fixture, txHash: "0x1", direction: .outgoing, counterparty: Self.uniswapRouter, occurredAt: when)
+        let rows = try await fixture.repo.transactions(walletId: fixture.walletId)
+        #expect(rows.first?.kind == .bridge)
     }
 
     // MARK: - Raw-value stability (schema contract)
