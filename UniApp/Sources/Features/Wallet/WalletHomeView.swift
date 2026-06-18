@@ -433,6 +433,28 @@ struct WalletHomeView: View {
         Array(allTransactions.prefix(5))
     }
 
+    /// Value-typed snapshot of `recentTransactions` for the `RecentActivityRows`
+    /// leaf (2026-06-18, Part 3.5) — precomputes each row's chain, decoded
+    /// amount, and fiat value so the leaf is `Equatable` and can skip re-render
+    /// when nothing it shows has changed. Cheap (≤5 rows); built in `body`,
+    /// compared by the leaf's `==`.
+    private var recentActivityModels: [ActivityRowModel] {
+        recentTransactions.map { tx in
+            ActivityRowModel(
+                id: tx.id,
+                chain: chainFor(tx),
+                direction: TransactionDirection(rawValue: tx.directionRaw) ?? .outgoing,
+                amount: Decimal(string: tx.amountRaw) ?? .zero,
+                tokenSymbol: tx.tokenSymbol,
+                counterparty: tx.counterparty,
+                occurredAt: tx.occurredAt,
+                status: TransactionStatus(rawValue: tx.statusRaw) ?? .confirmed,
+                kind: tx.kind,
+                fiatValue: ActivityFiat.value(amountRaw: tx.amountRaw, symbol: tx.tokenSymbol, map: priceCacheMemo)
+            )
+        }
+    }
+
     /// Follow-up action staged by the wallet-switcher sheet's
     /// create/import rows. Consumed in the sheet's `onDismiss` so
     /// the full-screen cover presents only after the sheet has
@@ -1969,27 +1991,20 @@ struct WalletHomeView: View {
     /// one tappable list row. The `Button` carries the navigation
     /// dispatch; the row's tap target is the row itself thanks to
     /// `.contentShape` on `ActivityRow` and `.buttonStyle(.plain)`.
+    /// Production activity rows — extracted into the value-typed, `.equatable()`
+    /// `RecentActivityRows` leaf (2026-06-18, Part 3.5). The parent maps the 5
+    /// recent transactions into a small `ActivityRowModel` snapshot; the leaf
+    /// then skips rebuilding the `ActivityRow` subtrees whenever that snapshot +
+    /// currency are unchanged — so an unrelated SwiftData merge that re-evaluates
+    /// this body no longer reconstructs the activity rows.
     @ViewBuilder
     private var productionActivityRows: some View {
-        ForEach(recentTransactions, id: \.id) { tx in
-            Button {
-                navigationPath.append(WalletHomeDestination.transaction(tx.id))
-            } label: {
-                ActivityRow(
-                    chain: chainFor(tx),
-                    direction: TransactionDirection(rawValue: tx.directionRaw) ?? .outgoing,
-                    amount: Decimal(string: tx.amountRaw) ?? .zero,
-                    tokenSymbol: tx.tokenSymbol,
-                    counterparty: tx.counterparty,
-                    occurredAt: tx.occurredAt,
-                    status: TransactionStatus(rawValue: tx.statusRaw) ?? .confirmed,
-                    kind: tx.kind,
-                    fiatValue: ActivityFiat.value(amountRaw: tx.amountRaw, symbol: tx.tokenSymbol, map: priceCacheMemo),
-                    fiatCurrencyCode: currencyCode
-                )
-            }
-            .buttonStyle(.plain)
-        }
+        RecentActivityRows(
+            rows: recentActivityModels,
+            currencyCode: currencyCode,
+            onSelect: { navigationPath.append(WalletHomeDestination.transaction($0)) }
+        )
+        .equatable()
     }
 
     /// **Activity empty state.** Sibling to `emptyHoldingsSection` — same
@@ -2651,6 +2666,66 @@ private struct BalanceCardLiveSection: View {
             onSwitchWallet: onSwitchWallet,
             onAddFunds: onAddFunds
         )
+    }
+}
+
+// MARK: - RecentActivityRows (value-typed, equatable leaf)
+
+/// Value-typed snapshot of one recent-activity row. `Equatable` so its
+/// containing leaf can skip re-render when the visible rows are unchanged.
+private struct ActivityRowModel: Identifiable, Equatable {
+    let id: UUID
+    let chain: SupportedChain
+    let direction: TransactionDirection
+    let amount: Decimal
+    let tokenSymbol: String
+    let counterparty: String
+    let occurredAt: Date
+    let status: TransactionStatus
+    let kind: TransactionKind
+    let fiatValue: Decimal?
+}
+
+/// The recent-activity `ForEach`, extracted from `WalletHomeView.body` into a
+/// value-typed `Equatable` leaf (2026-06-18, Part 3.5). Applied with
+/// `.equatable()` so an unrelated parent re-evaluation (a SwiftData merge the
+/// activity rows don't depend on) does NOT rebuild these `ActivityRow`
+/// subtrees — they rebuild only when the row snapshot or the currency changes.
+/// `onSelect` is excluded from equality (identity-stable per parent render, no
+/// comparable state).
+private struct RecentActivityRows: View, Equatable {
+    let rows: [ActivityRowModel]
+    let currencyCode: String
+    let onSelect: (UUID) -> Void
+
+    // `nonisolated` because `Equatable.==` is a nonisolated requirement but a
+    // SwiftUI `View` is main-actor-isolated under Swift 6. It reads only the
+    // Sendable `rows` + `currencyCode` (never the non-Sendable `onSelect`), so
+    // the cross-isolation access is race-free.
+    nonisolated static func == (lhs: RecentActivityRows, rhs: RecentActivityRows) -> Bool {
+        lhs.currencyCode == rhs.currencyCode && lhs.rows == rhs.rows
+    }
+
+    var body: some View {
+        ForEach(rows) { row in
+            Button {
+                onSelect(row.id)
+            } label: {
+                ActivityRow(
+                    chain: row.chain,
+                    direction: row.direction,
+                    amount: row.amount,
+                    tokenSymbol: row.tokenSymbol,
+                    counterparty: row.counterparty,
+                    occurredAt: row.occurredAt,
+                    status: row.status,
+                    kind: row.kind,
+                    fiatValue: row.fiatValue,
+                    fiatCurrencyCode: currencyCode
+                )
+            }
+            .buttonStyle(.plain)
+        }
     }
 }
 
