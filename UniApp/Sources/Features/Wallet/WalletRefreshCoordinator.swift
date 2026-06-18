@@ -67,7 +67,12 @@ struct WalletRefreshCoordinator: Sendable {
             walletId: walletId,
             cancelExisting: userInitiated
         ) {
-            await self.performRefresh(walletId: walletId, fiatCode: fiatCode, triggerLabel: triggerLabel)
+            await self.performRefresh(
+                walletId: walletId,
+                fiatCode: fiatCode,
+                triggerLabel: triggerLabel,
+                liveCommit: userInitiated
+            )
         }
         return await task.value
     }
@@ -76,7 +81,19 @@ struct WalletRefreshCoordinator: Sendable {
     /// registry above, so at most one instance runs per wallet at a
     /// time. Returns the chains whose balance scan yielded nothing
     /// even after the bounded retry pass below.
-    private func performRefresh(walletId: UUID, fiatCode: String, triggerLabel: String = "refresh") async -> Set<SupportedChain> {
+    ///
+    /// `liveCommit` — only a USER-initiated pull-to-refresh streams balances
+    /// to the UI per-chain (the user is watching the numbers tick). The silent
+    /// background 30s auto-refresh sets this `false` so it accumulates every
+    /// balance write and commits ONCE at the end: a user just reading the
+    /// screen sees a single smooth update, not ~20 per-commit `@Query`
+    /// re-renders mid-scan (the "laggy while idle" report, 2026-06-18).
+    private func performRefresh(
+        walletId: UUID,
+        fiatCode: String,
+        triggerLabel: String = "refresh",
+        liveCommit: Bool = false
+    ) async -> Set<SupportedChain> {
         // **Latency log (2026-06-17).** Reset + stamp the run here — the
         // single chokepoint every trigger (pull-to-refresh, open-wallet,
         // import, app-launch, periodic) funnels through — so the
@@ -261,7 +278,8 @@ struct WalletRefreshCoordinator: Sendable {
             txRepo: txRepo,
             chainStateRepo: chainStateRepo,
             walletId: walletId,
-            fiatCurrencyCode: currency.code
+            fiatCurrencyCode: currency.code,
+            liveCommit: liveCommit
         )
         RefreshPerfLog.shared.end("balance", "balance pass — \(nativeYieldedChains.count)/\(chainAddresses.count) chains landed", since: balancePassToken)
 
@@ -411,7 +429,8 @@ struct WalletRefreshCoordinator: Sendable {
         txRepo: TransactionRepository,
         chainStateRepo: ChainStateRepository,
         walletId: UUID,
-        fiatCurrencyCode: String
+        fiatCurrencyCode: String,
+        liveCommit: Bool
     ) async -> Set<SupportedChain> {
         // **Live per-chain commit (2026-06-17, user direction).** Each
         // yielded row stages its upsert (`save: false`) and marks its chain
@@ -424,7 +443,8 @@ struct WalletRefreshCoordinator: Sendable {
         let channel = LiveCommitChannel()
         async let committer: Void = runLiveBalanceCommitter(
             channel: channel, txRepo: txRepo, chainStateRepo: chainStateRepo,
-            walletId: walletId, fiatCurrencyCode: fiatCurrencyCode
+            walletId: walletId, fiatCurrencyCode: fiatCurrencyCode,
+            liveCommit: liveCommit
         )
 
         var nativeYieldedChains: Set<SupportedChain> = []
@@ -484,15 +504,35 @@ struct WalletRefreshCoordinator: Sendable {
         txRepo: TransactionRepository,
         chainStateRepo: ChainStateRepository,
         walletId: UUID,
-        fiatCurrencyCode: String
+        fiatCurrencyCode: String,
+        liveCommit: Bool
     ) async {
-        while !(await channel.isFinished) {
-            try? await Task.sleep(for: .milliseconds(300))
-            await commitDirtyChains(
-                channel: channel, txRepo: txRepo, chainStateRepo: chainStateRepo,
-                walletId: walletId, fiatCurrencyCode: fiatCurrencyCode
-            )
+        // **Background refresh commits ONCE (2026-06-18 lag fix).** A silent
+        // 30s auto-refresh isn't being watched — streaming per-chain commits
+        // just fires a `@Query` notification every interval, re-rendering /
+        // recomputing whatever screen the user is reading (the wallet home,
+        // an asset detail). So for a background run we DON'T commit mid-scan:
+        // we wait for the stream to drain, then do the single final
+        // `commitDirtyChains` below — one save, one re-render. A user pull
+        // still streams live (they're watching the numbers land).
+        if liveCommit {
+            while !(await channel.isFinished) {
+                try? await Task.sleep(for: .milliseconds(300))
+                await commitDirtyChains(
+                    channel: channel, txRepo: txRepo, chainStateRepo: chainStateRepo,
+                    walletId: walletId, fiatCurrencyCode: fiatCurrencyCode
+                )
+            }
+        } else {
+            // Idle until the scan finishes; the staged upserts (save: false)
+            // accumulate and land in the single final commit. Poll the
+            // finished flag without committing so the UI stays still.
+            while !(await channel.isFinished) {
+                try? await Task.sleep(for: .milliseconds(500))
+            }
         }
+        // Final drain — the live path's last delta, or the background path's
+        // ONE and only commit for the whole scan.
         await commitDirtyChains(
             channel: channel, txRepo: txRepo, chainStateRepo: chainStateRepo,
             walletId: walletId, fiatCurrencyCode: fiatCurrencyCode
