@@ -61,6 +61,11 @@ struct AssetNetworkDetailView: View {
     /// user drags the chart, the hero shows the touched point's value.
     @State private var scrubModel = ChartScrubModel()
 
+    /// USD unit prices for this (asset, network)'s symbol, used ONLY for
+    /// the $0.01-USD dust gate (2026-06-19 user direction). Loaded async
+    /// on appear; until it arrives every row shows.
+    @State private var usdPrices: [String: Decimal] = [:]
+
     var body: some View {
         List {
             heroCardSection
@@ -94,7 +99,7 @@ struct AssetNetworkDetailView: View {
                 identity: identity,
                 availableNetworks: networkRow.map { [$0] } ?? [],
                 totalTransactions: assetScopedTransactions.count,
-                visibleTransactions: filteredTransactions.count
+                visibleTransactions: visibleRows.count
             )
             .id(sheetDirectionKey)
             .uniAppEnvironment()
@@ -128,6 +133,11 @@ struct AssetNetworkDetailView: View {
                 .uniSheetDetents([.large])
                 .presentationDragIndicator(.visible)
                 .presentationBackground(UniColors.Background.primary)
+        }
+        .task(id: identity.symbol) {
+            // USD prices for the $0.01-USD dust gate — engine-cached,
+            // off-body, re-keyed if the asset identity changes (2026-06-19).
+            await loadDustPrices()
         }
     }
 
@@ -393,7 +403,7 @@ struct AssetNetworkDetailView: View {
 
     @ViewBuilder
     private var activitySection: some View {
-        let rows = filteredTransactions
+        let rows = visibleRows
         Section {
             if rows.isEmpty {
                 UniEmptyState(
@@ -492,6 +502,23 @@ struct AssetNetworkDetailView: View {
             transactions: assetScopedTransactions,
             with: filterInputs
         )
+    }
+
+    /// `filteredTransactions` with sub-$0.01-USD dust removed (2026-06-19
+    /// user direction). The single source for the activity list and the
+    /// filter sheet's "visible" tally, so they agree.
+    private var visibleRows: [TransactionRecord] {
+        filteredTransactions.filter { tx in
+            !ActivityFiat.isDust(amountRaw: tx.amountRaw, symbol: tx.tokenSymbol, usdMap: usdPrices)
+        }
+    }
+
+    /// Resolve USD unit prices for this asset's symbol so the $0.01-USD
+    /// dust gate can run. Engine-cached and cancellation-safe.
+    private func loadDustPrices() async {
+        let map = await ActivityFiat.usdPriceMap(symbols: assetScopedTransactions.map(\.tokenSymbol))
+        guard !Task.isCancelled else { return }
+        usdPrices = map
     }
 
     // MARK: - Wallet plumbing

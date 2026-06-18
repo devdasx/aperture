@@ -279,6 +279,38 @@ enum ActivityFiat {
               let amount = Decimal(string: amountRaw) else { return nil }
         return amount * price
     }
+
+    // MARK: - Dust filter (2026-06-19 user direction)
+
+    /// The dust threshold — a transaction worth LESS than this is hidden from
+    /// every activity surface. **Always in US dollars**, never the user's
+    /// display currency (explicit user direction): a half-cent airdrop is dust
+    /// to a JOD user just as much as to a USD user, so the bar must not move
+    /// with the chosen currency.
+    static let usdDustThreshold = Decimal(string: "0.01")!
+
+    /// `true` when a leg is KNOWN to be worth less than $0.01 USD. The USD
+    /// value comes from `usdMap` (USD unit prices — see `usdPriceMap`). When
+    /// the USD price is unknown the leg is NOT dust: we never hide what we
+    /// cannot measure in dollars (honesty over a guessed hide).
+    static func isDust(amountRaw: String, symbol: String, usdMap: [String: Decimal]) -> Bool {
+        guard let usd = value(amountRaw: amountRaw, symbol: symbol, map: usdMap) else { return false }
+        return usd < usdDustThreshold
+    }
+
+    /// USD unit prices for `symbols`, resolved through `TokenPricingEngine`.
+    /// The engine's rung 1 is the Aperture price server, which computes every
+    /// quote from a USD base × FX — so USD is the server's native, most
+    /// reliable denomination regardless of the user's chosen currency. Used
+    /// ONLY for the $0.01-USD dust check — displayed amounts still use the
+    /// active-currency `priceMap`. The engine caches the result after the
+    /// first call (its persisted rungs back it offline).
+    static func usdPriceMap(symbols: [String]) async -> [String: Decimal] {
+        let unique = Array(Set(symbols.map { $0.uppercased() }))
+        guard !unique.isEmpty else { return [:] }
+        let resolved = await TokenPricingEngine.shared.unitPrices(symbols: unique, currencyCode: "USD")
+        return resolved.mapValues { $0.amount }
+    }
 }
 
 // MARK: - ActivityTokenName

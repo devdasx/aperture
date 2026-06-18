@@ -118,6 +118,11 @@ struct AssetDetailView: View {
 
     @State private var isShowingFilter: Bool = false
 
+    /// USD unit prices for this asset's symbols, used ONLY for the
+    /// $0.01-USD dust gate (2026-06-19 user direction). Loaded async after
+    /// each `computeDerived()`; until it arrives every row shows.
+    @State private var usdPrices: [String: Decimal] = [:]
+
     /// 2026-06-09 — `BalanceHistoryChart` writes the scrubbed point's
     /// fiat here so the hero renders it (animated via
     /// `.contentTransition(.numericText())`). `@Observable` model
@@ -192,7 +197,7 @@ struct AssetDetailView: View {
                 identity: identity,
                 availableNetworks: derived.resolution.networks,
                 totalTransactions: derived.assetScopedTransactions.count,
-                visibleTransactions: derived.filteredTransactions.count
+                visibleTransactions: visibleRows(derived).count
             )
             .id(sheetDirectionKey)
             .uniAppEnvironment()
@@ -229,11 +234,31 @@ struct AssetDetailView: View {
                 .presentationBackground(UniColors.Background.primary)
         }
         .task(id: derivedKey) {
-            derivedCache = computeDerived()
+            let computed = computeDerived()
+            derivedCache = computed
+            await loadDustPrices(symbols: computed.assetScopedTransactions.map(\.tokenSymbol))
         }
         .task(id: historicalEnsureKey) {
             await ensureHistoricalPricesLoaded()
         }
+    }
+
+    /// This asset's filtered transactions with sub-$0.01-USD dust removed
+    /// (2026-06-19 user direction). The single source for the activity
+    /// list, its count, and the filter sheet's "visible" tally, so they
+    /// always agree. Cheap (already a small, filtered set).
+    private func visibleRows(_ derived: DerivedState) -> [TransactionRecord] {
+        derived.filteredTransactions.filter { tx in
+            !ActivityFiat.isDust(amountRaw: tx.amountRaw, symbol: tx.tokenSymbol, usdMap: usdPrices)
+        }
+    }
+
+    /// Resolve USD unit prices for this asset's symbols so the $0.01-USD
+    /// dust gate can run. Engine-cached and cancellation-safe.
+    private func loadDustPrices(symbols: [String]) async {
+        let map = await ActivityFiat.usdPriceMap(symbols: symbols)
+        guard !Task.isCancelled else { return }
+        usdPrices = map
     }
 
     // MARK: - Actions (symbol-level → pick a network, then open pre-filled)
@@ -634,7 +659,7 @@ struct AssetDetailView: View {
 
     @ViewBuilder
     private func activitySection(_ derived: DerivedState) -> some View {
-        let rows = derived.filteredTransactions
+        let rows = visibleRows(derived)
         let displayed = Array(rows.prefix(activityDisplayCap))
         let hasMore = rows.count > activityDisplayCap
 

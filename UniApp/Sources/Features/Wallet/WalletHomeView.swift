@@ -377,6 +377,11 @@ struct WalletHomeView: View {
     @State private var balancesMemo: [(chain: SupportedChain, balance: TokenBalanceRecord)]? = nil
     @State private var allHeldRowsMemo: [(chain: SupportedChain, balance: TokenBalanceRecord)]? = nil
     @State private var allTransactionsMemo: [TransactionRecord]? = nil
+    /// USD unit prices for the feed's symbols, used ONLY for the $0.01-USD
+    /// dust gate on the Recent-activity preview (2026-06-19 user direction:
+    /// "never show transactions with less than $0.01, always in dollars").
+    /// Loaded async (see `loadDustPrices`); until it arrives every row shows.
+    @State private var usdActivityPrices: [String: Decimal] = [:]
     /// **Live transaction feed (2026-06-13).** A TOP-LEVEL `@Query`,
     /// NOT a `wallet.addresses[].transactions` relationship traversal.
     /// SwiftData merges scalar UPDATES to already-materialized rows
@@ -424,11 +429,19 @@ struct WalletHomeView: View {
     }
 
     /// The five newest transactions for the home's Recent activity
-    /// window. `allTransactions` is already newest-first, so this is a
-    /// cheap prefix — the "View all" affordance routes to the unbounded
-    /// `WalletActivityView`.
+    /// window. `allTransactions` is already newest-first; sub-$0.01-USD
+    /// dust is dropped FIRST (2026-06-19 user direction) so the preview
+    /// shows five real transactions, not five dust rows — then the cheap
+    /// prefix. The "View all" affordance routes to the unbounded
+    /// `WalletActivityView` (which applies the same gate).
     private var recentTransactions: [TransactionRecord] {
-        Array(allTransactions.prefix(5))
+        Array(
+            allTransactions
+                .filter { tx in
+                    !ActivityFiat.isDust(amountRaw: tx.amountRaw, symbol: tx.tokenSymbol, usdMap: usdActivityPrices)
+                }
+                .prefix(5)
+        )
     }
 
     /// Value-typed, TRANSACTION-only snapshot of `recentTransactions` for the
@@ -581,6 +594,12 @@ struct WalletHomeView: View {
                     // when the price tables / currency change — never
                     // per render (2026-06-13 perf fix).
                     rebuildPriceMemos()
+                }
+                .task(id: dustPriceKey) {
+                    // USD unit prices for the $0.01-USD dust gate on the
+                    // Recent-activity preview. Off-body, engine-cached;
+                    // re-fires on wallet switch / new tx (2026-06-19).
+                    await loadDustPrices()
                 }
                 .task(id: historicalEnsureKey) {
                     // Historical-price ensure-loop. Per the
@@ -1780,6 +1799,23 @@ struct WalletHomeView: View {
     /// and triggered directly on `allTransactionRecords` count changes.
     private func rebuildTransactionMemos() {
         allTransactionsMemo = computeAllTransactions()
+    }
+
+    /// O(1) key for the dust-price load — re-fires on wallet switch or a
+    /// tx count change, the only moments the feed's symbol set can grow.
+    private var dustPriceKey: String {
+        "\(activeWalletIdRaw)|\(allTransactionRecords.count)"
+    }
+
+    /// Resolve USD unit prices for the recent feed's distinct symbols so
+    /// the $0.01-USD dust gate can run on the home preview. Cheap after
+    /// the first call (engine-cached) and cancellation-safe — a wallet
+    /// switch re-keys the task, cancelling this before a stale write.
+    private func loadDustPrices() async {
+        let symbols = allTransactions.map(\.tokenSymbol)
+        let map = await ActivityFiat.usdPriceMap(symbols: symbols)
+        guard !Task.isCancelled else { return }
+        usdActivityPrices = map
     }
 
     private func rebuildDisplayRows() {

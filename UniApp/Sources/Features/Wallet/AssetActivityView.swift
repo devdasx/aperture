@@ -51,14 +51,24 @@ struct AssetActivityView: View {
 
     @State private var isShowingFilter: Bool = false
 
+    /// USD unit prices for the asset's symbols, used ONLY for the $0.01-USD
+    /// dust gate (2026-06-19 user direction). Loaded async after each
+    /// `computeDerived()`; until it arrives every row shows.
+    @State private var usdPrices: [String: Decimal] = [:]
+
     var body: some View {
         // Memoized derived snapshot (resolver-per-body fix): resolve
         // + scope + filter run ONCE per input change via
         // `.task(id:)`, and the filtered list is evaluated once —
         // not separately for the list and the filter sheet.
         let derived = derivedCache ?? computeDerived()
+        // Sub-$0.01-USD dust removed on top of the asset filter — a
+        // cheap render-time pass over the already-filtered set, so the
+        // list, header, and filter-sheet count all agree (2026-06-19).
+        let rows = derived.filteredTransactions.filter { tx in
+            !ActivityFiat.isDust(amountRaw: tx.amountRaw, symbol: tx.tokenSymbol, usdMap: usdPrices)
+        }
         List {
-            let rows = derived.filteredTransactions
             if rows.isEmpty {
                 Section {
                     UniEmptyState(
@@ -116,7 +126,7 @@ struct AssetActivityView: View {
                 identity: identity,
                 availableNetworks: derived.resolution.networks,
                 totalTransactions: derived.assetScopedTransactions.count,
-                visibleTransactions: derived.filteredTransactions.count
+                visibleTransactions: rows.count
             )
             .id(sheetDirectionKey)
             .uniAppEnvironment()
@@ -125,8 +135,19 @@ struct AssetActivityView: View {
             .presentationBackground(UniColors.Background.primary)
         }
         .task(id: derivedKey) {
-            derivedCache = computeDerived()
+            let computed = computeDerived()
+            derivedCache = computed
+            await loadDustPrices(symbols: computed.assetScopedTransactions.map(\.tokenSymbol))
         }
+    }
+
+    /// Resolve USD unit prices for the asset's symbols so the $0.01-USD
+    /// dust gate can run. Cheap after the first call (engine-cached) and
+    /// cancellation-safe — a re-key cancels this before a stale write.
+    private func loadDustPrices(symbols: [String]) async {
+        let map = await ActivityFiat.usdPriceMap(symbols: symbols)
+        guard !Task.isCancelled else { return }
+        usdPrices = map
     }
 
     // MARK: - Title
