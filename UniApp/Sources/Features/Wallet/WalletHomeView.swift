@@ -77,14 +77,12 @@ struct WalletHomeView: View {
     /// dismissal here is the same dismissal `MainTabView` would see.
     private let walletSwitcherTip = WalletTabSwitcherTip()
     @Query private var metadataRows: [AppMetadataRecord]
-    /// On-disk price cache, read by the `BalanceHistoryChart` so the
-    /// reconstruction can value past holdings of fully cashed-out
-    /// tokens (e.g., a user who received 747 USDT then sent every
-    /// unit — currentBalances has no USDT row, so without this
-    /// cached price the chart would value the historical USDT
-    /// position at zero). The chart filters by the active fiat in
-    /// its `priceCacheBySymbol` helper.
-    @Query private var cachedPrices: [CachedPriceRecord]
+    // **2026-06-18 Part 3.1.** The spot-price `cachedPrices` @Query was MOVED
+    // off this parent and into the two leaves that consume it —
+    // `BalanceCardLiveSection` (the chart map) and `RecentActivityRows` (row
+    // fiat). The per-refresh price-batch commit is the most frequent merge, so
+    // owning the query in the leaves means that commit re-renders only those
+    // small leaves, never this whole body.
     /// On-disk historical-price cache. Each row is one day's close
     /// for one `(symbol, fiat)` pair. The chart uses this to value
     /// past holdings at their **then-price** instead of today's
@@ -433,11 +431,11 @@ struct WalletHomeView: View {
         Array(allTransactions.prefix(5))
     }
 
-    /// Value-typed snapshot of `recentTransactions` for the `RecentActivityRows`
-    /// leaf (2026-06-18, Part 3.5) — precomputes each row's chain, decoded
-    /// amount, and fiat value so the leaf is `Equatable` and can skip re-render
-    /// when nothing it shows has changed. Cheap (≤5 rows); built in `body`,
-    /// compared by the leaf's `==`.
+    /// Value-typed, TRANSACTION-only snapshot of `recentTransactions` for the
+    /// `RecentActivityRows` leaf (2026-06-18) — chain + decoded/raw amount +
+    /// symbol, NO fiat (the leaf computes fiat from the prices it now owns, so
+    /// this snapshot has no price dependency and the parent no longer needs the
+    /// `cachedPrices` query). Cheap (≤5 rows).
     private var recentActivityModels: [ActivityRowModel] {
         recentTransactions.map { tx in
             ActivityRowModel(
@@ -445,12 +443,12 @@ struct WalletHomeView: View {
                 chain: chainFor(tx),
                 direction: TransactionDirection(rawValue: tx.directionRaw) ?? .outgoing,
                 amount: Decimal(string: tx.amountRaw) ?? .zero,
+                amountRaw: tx.amountRaw,
                 tokenSymbol: tx.tokenSymbol,
                 counterparty: tx.counterparty,
                 occurredAt: tx.occurredAt,
                 status: TransactionStatus(rawValue: tx.statusRaw) ?? .confirmed,
-                kind: tx.kind,
-                fiatValue: ActivityFiat.value(amountRaw: tx.amountRaw, symbol: tx.tokenSymbol, map: priceCacheMemo)
+                kind: tx.kind
             )
         }
     }
@@ -489,7 +487,7 @@ struct WalletHomeView: View {
         // the whole home, lined up against the watchdog's main-thread stalls.
         let _ = DebugLog.shared.renderTick(
             "WalletHome",
-            detail: "prices=\(cachedPrices.count) history=\(historicalPrices.count) tx=\(allTransactionRecords.count) assets=\(assetRecords.count)"
+            detail: "history=\(historicalPrices.count) tx=\(allTransactionRecords.count) assets=\(assetRecords.count)"
         )
         return NavigationStack(path: $navigationPath) {
             listSurface
@@ -1029,7 +1027,6 @@ struct WalletHomeView: View {
                 // The wallet's own addresses (lowercased) so the chart can
                 // drop self-transfers (counterparty == one of these).
                 ownAddresses: Set((activeWallet?.addresses ?? []).map { $0.address.lowercased() }),
-                priceCache: priceCacheMemo,
                 priceHistory: priceHistoryMemo,
                 scrubModel: scrubModel,
                 onSwitchWallet: { isShowingSwitcher = true },
@@ -1655,14 +1652,15 @@ struct WalletHomeView: View {
     /// Now they live in `@State`, rebuilt only when the underlying
     /// price data actually changes (see `priceDataFingerprint` +
     /// `rebuildPriceMemos()`), so `body` just reads the cached dicts.
-    @State private var priceCacheMemo: [String: Decimal] = [:]
     @State private var priceHistoryMemo: [String: [Int: Decimal]] = [:]
 
     /// Cheap (O(1)) fingerprint that flips whenever the price tables or
     /// the active currency change — gates `rebuildPriceMemos()` via
     /// `.task(id:)`. Counts only; no per-row iteration here.
     private var priceDataFingerprint: String {
-        "\(cachedPrices.count)|\(historicalPrices.count)|\(currencyCode)"
+        // `cachedPrices` moved to the leaves (Part 3.1); the parent now only
+        // memoizes the historical close series the chart needs.
+        "\(historicalPrices.count)|\(currencyCode)"
     }
 
     /// Rebuild the two memoized price dictionaries. The only place that
@@ -1670,19 +1668,14 @@ struct WalletHomeView: View {
     /// from `.task(id: priceDataFingerprint)`, not from `body`.
     private func rebuildPriceMemos() {
         let _priceStart = DispatchTime.now().uptimeNanoseconds
-        var cache: [String: Decimal] = [:]
-        for row in cachedPrices where row.fiat == currencyCode {
-            cache[row.symbol.uppercased()] = row.price
-        }
         var history: [String: [Int: Decimal]] = [:]
         for row in historicalPrices where row.fiat == currencyCode {
             history[row.symbol.uppercased(), default: [:]][row.dayKey] = row.price
         }
-        priceCacheMemo = cache
         priceHistoryMemo = history
         let _priceMs = Double(DispatchTime.now().uptimeNanoseconds &- _priceStart) / 1_000_000
         if _priceMs > 2 {
-            DebugLog.shared.log("ui", "rebuildPriceMemos (price dicts, on main)", durationMs: _priceMs)
+            DebugLog.shared.log("ui", "rebuildPriceMemos (history dict, on main)", durationMs: _priceMs)
         }
     }
 
@@ -1976,7 +1969,6 @@ struct WalletHomeView: View {
             currencyCode: currencyCode,
             onSelect: { navigationPath.append(WalletHomeDestination.transaction($0)) }
         )
-        .equatable()
     }
 
     /// **Activity empty state.** Sibling to `emptyHoldingsSection` — same
@@ -2597,7 +2589,6 @@ private struct BalanceCardLiveSection: View {
     let transactions: [TransactionRecord]
     let currentBalances: [TokenBalanceRecord]
     let ownAddresses: Set<String>
-    let priceCache: [String: Decimal]
     let priceHistory: [String: [Int: Decimal]]
     let scrubModel: ChartScrubModel
     let onSwitchWallet: () -> Void
@@ -2606,6 +2597,21 @@ private struct BalanceCardLiveSection: View {
     /// The high-churn aggregate rows — owned HERE, not on the parent, so their
     /// 300ms refresh-commits re-render only this card.
     @Query private var chainStateRecords: [ChainStateRecord]
+
+    /// On-disk spot prices — owned HERE (2026-06-18, Part 3.1) instead of on
+    /// the parent, so the per-refresh price-batch commit re-renders only this
+    /// card, not the whole `WalletHomeView` body. Filtered to the active fiat
+    /// into the `[symbol: price]` map the chart consumes (the exact shape the
+    /// parent's old `priceCacheMemo` produced).
+    @Query private var cachedPrices: [CachedPriceRecord]
+
+    private var priceCacheMap: [String: Decimal] {
+        var map: [String: Decimal] = [:]
+        for row in cachedPrices where row.fiat == currencyCode {
+            map[row.symbol.uppercased()] = row.price
+        }
+        return map
+    }
 
     /// Hero total. Prefers the per-chain aggregate (active wallet + currency);
     /// falls back to the parent's live balance-row sum so a transiently-zero
@@ -2632,7 +2638,7 @@ private struct BalanceCardLiveSection: View {
             transactions: transactions,
             currentBalances: currentBalances,
             ownAddresses: ownAddresses,
-            priceCache: priceCache,
+            priceCache: priceCacheMap,
             priceHistory: priceHistory,
             scrubModel: scrubModel,
             onSwitchWallet: onSwitchWallet,
@@ -2643,42 +2649,47 @@ private struct BalanceCardLiveSection: View {
 
 // MARK: - RecentActivityRows (value-typed, equatable leaf)
 
-/// Value-typed snapshot of one recent-activity row. `Equatable` so its
-/// containing leaf can skip re-render when the visible rows are unchanged.
+/// Value-typed snapshot of one recent-activity row's TRANSACTION-derived
+/// fields (2026-06-18). Fiat is intentionally NOT here — it's computed inside
+/// `RecentActivityRows` from the prices that leaf now owns (Part 3.1), so the
+/// snapshot has no dependency on the price table.
 private struct ActivityRowModel: Identifiable, Equatable {
     let id: UUID
     let chain: SupportedChain
     let direction: TransactionDirection
     let amount: Decimal
+    let amountRaw: String
     let tokenSymbol: String
     let counterparty: String
     let occurredAt: Date
     let status: TransactionStatus
     let kind: TransactionKind
-    let fiatValue: Decimal?
 }
 
 /// The recent-activity `ForEach`, extracted from `WalletHomeView.body` into a
-/// value-typed `Equatable` leaf (2026-06-18, Part 3.5). Applied with
-/// `.equatable()` so an unrelated parent re-evaluation (a SwiftData merge the
-/// activity rows don't depend on) does NOT rebuild these `ActivityRow`
-/// subtrees — they rebuild only when the row snapshot or the currency changes.
-/// `onSelect` is excluded from equality (identity-stable per parent render, no
-/// comparable state).
-private struct RecentActivityRows: View, Equatable {
+/// leaf that OWNS the spot-price `@Query` (2026-06-18, Part 3.1). Because
+/// `cachedPrices` lives here, a price-batch commit re-renders only this leaf —
+/// never the parent body — and each row's fiat is computed from the leaf's own
+/// prices. The transaction-derived rows arrive as a value-typed snapshot from
+/// the parent (which still owns the tx query for the chart + ensure-loop), so
+/// this leaf invalidates on exactly two things: those rows, and the prices.
+private struct RecentActivityRows: View {
     let rows: [ActivityRowModel]
     let currencyCode: String
     let onSelect: (UUID) -> Void
 
-    // `nonisolated` because `Equatable.==` is a nonisolated requirement but a
-    // SwiftUI `View` is main-actor-isolated under Swift 6. It reads only the
-    // Sendable `rows` + `currencyCode` (never the non-Sendable `onSelect`), so
-    // the cross-isolation access is race-free.
-    nonisolated static func == (lhs: RecentActivityRows, rhs: RecentActivityRows) -> Bool {
-        lhs.currencyCode == rhs.currencyCode && lhs.rows == rhs.rows
+    @Query private var cachedPrices: [CachedPriceRecord]
+
+    private var priceMap: [String: Decimal] {
+        var map: [String: Decimal] = [:]
+        for row in cachedPrices where row.fiat == currencyCode {
+            map[row.symbol.uppercased()] = row.price
+        }
+        return map
     }
 
     var body: some View {
+        let map = priceMap
         ForEach(rows) { row in
             Button {
                 onSelect(row.id)
@@ -2692,7 +2703,7 @@ private struct RecentActivityRows: View, Equatable {
                     occurredAt: row.occurredAt,
                     status: row.status,
                     kind: row.kind,
-                    fiatValue: row.fiatValue,
+                    fiatValue: ActivityFiat.value(amountRaw: row.amountRaw, symbol: row.tokenSymbol, map: map),
                     fiatCurrencyCode: currencyCode
                 )
             }
