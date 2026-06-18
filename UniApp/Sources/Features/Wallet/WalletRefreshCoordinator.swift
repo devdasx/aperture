@@ -238,6 +238,41 @@ struct WalletRefreshCoordinator: Sendable {
         let heldSymbols: Set<String> =
             Set(fetchBalanceRowSnapshot(walletId: walletId).map { $0.symbol.uppercased() })
 
+        // **2026-06-18 — batched Alchemy balance prefetch (Task 1/B3).**
+        // Collapse all Alchemy-covered EVM balances into ONE Portfolio request
+        // BEFORE the per-chain stream scans run. `streamScan` →
+        // `ChainConnectorRegistry` → `AlchemyConnector` → `AlchemyService.tokens`
+        // then hit the warmed cache (zero extra requests) instead of firing one
+        // POST per chain. If the prefetch fails it warms nothing, so the
+        // per-chain reads simply miss cache and fetch individually — identical
+        // to the pre-batch behavior, just without the speedup. All EVM chains
+        // share one EOA, so `evmAddresses` is normally a single address serving
+        // every network in one batched entry.
+        if Secrets.hasAlchemyKey {
+            let alchemyNetworks = Array(Set(
+                chainAddresses.keys
+                    .filter { AlchemyConnector.supportedChains.contains($0) }
+                    .compactMap { AlchemyConnector.network(for: $0) }
+            ))
+            let evmAddresses = Array(Set(
+                chainAddresses
+                    .filter { AlchemyConnector.supportedChains.contains($0.key) }
+                    .map { $0.value }
+            ))
+            if !alchemyNetworks.isEmpty, !evmAddresses.isEmpty {
+                let prefetchToken = RefreshPerfLog.shared.start()
+                await AlchemyService.shared.prefetchBalances(
+                    networks: alchemyNetworks,
+                    addresses: evmAddresses
+                )
+                RefreshPerfLog.shared.end(
+                    "balance",
+                    "Alchemy batched prefetch (\(alchemyNetworks.count) nets × \(evmAddresses.count) addr → 1 request)",
+                    since: prefetchToken
+                )
+            }
+        }
+
         let scanner = RealRPCBalanceScanner(client: RPCClient.shared)
         let stream = scanner.streamScan(
             addresses: chainAddresses,
