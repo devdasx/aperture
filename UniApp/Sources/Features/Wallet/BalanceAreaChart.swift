@@ -53,6 +53,11 @@ import SwiftUI
 struct BalanceAreaChart: View {
     /// One value per sample, oldest → newest (the caller sorts).
     let values: [Double]
+    /// Per-point horizontal position in `[0, 1]` from each sample's
+    /// TIMESTAMP (Mode B real-time x-axis) — parallel to `values`. A one-hour
+    /// gap and a one-year gap occupy proportional width. Empty / wrong-length
+    /// falls back to equal-index spacing (a flat baseline looks the same).
+    var xFractions: [Double] = []
     /// Precomputed min / max so the per-drag normalization never rescans.
     let minValue: Double
     let maxValue: Double
@@ -85,6 +90,7 @@ struct BalanceAreaChart: View {
                 // re-stroking up to ~2,000 points per frame.
                 BalanceAreaCurve(
                     values: values,
+                    xFractions: xFractions,
                     minValue: minValue,
                     maxValue: maxValue,
                     sign: sign,
@@ -146,7 +152,11 @@ struct BalanceAreaChart: View {
 
     private func cursorPoint(index: Int, in size: CGSize) -> CGPoint {
         let count = values.count
-        let x = count > 1 ? CGFloat(index) / CGFloat(count - 1) * size.width : 0
+        let useTime = xFractions.count == count
+        let x: CGFloat = {
+            if useTime { return CGFloat(xFractions[index]) * size.width }
+            return count > 1 ? CGFloat(index) / CGFloat(count - 1) * size.width : 0
+        }()
         let range = maxValue - minValue
         let normalized = range > 0 ? (CGFloat(values[index] - minValue) / CGFloat(range)) : 0.5
         let y = size.height - (normalized * size.height * (1 - 2 * padding) + size.height * padding)
@@ -155,9 +165,20 @@ struct BalanceAreaChart: View {
 
     private func indexForX(_ x: CGFloat, in size: CGSize) -> Int {
         guard values.count > 1 else { return 0 }
-        let fraction = x / max(size.width, 1)
-        let clamped = max(0, min(1, fraction))
-        return Int(round(clamped * CGFloat(values.count - 1)))
+        let clamped = Double(max(0, min(1, x / max(size.width, 1))))
+        // Time-spaced hit-test: pick the sample whose TIME fraction is nearest
+        // the touch, so an unevenly-spaced curve maps the finger correctly.
+        // Falls back to index spacing when no fractions were supplied.
+        if xFractions.count == values.count {
+            var best = 0
+            var bestDist = Double.greatestFiniteMagnitude
+            for (i, f) in xFractions.enumerated() {
+                let d = abs(f - clamped)
+                if d < bestDist { bestDist = d; best = i }
+            }
+            return best
+        }
+        return Int(round(clamped * Double(values.count - 1)))
     }
 
     /// Slope-driven scrub-tick intensity (steeper change → stronger
@@ -182,6 +203,9 @@ struct BalanceAreaChart: View {
 /// data actually changes). Conforms to the exact handoff geometry.
 private struct BalanceAreaCurve: View, Equatable {
     let values: [Double]
+    /// Per-point horizontal position in `[0, 1]` from each sample's TIMESTAMP
+    /// (real-time x-axis). Empty / wrong-length falls back to index spacing.
+    let xFractions: [Double]
     let minValue: Double
     let maxValue: Double
     let sign: UniColors.BalanceCard.Sign
@@ -194,6 +218,7 @@ private struct BalanceAreaCurve: View, Equatable {
             && lhs.sign == rhs.sign
             && lhs.scheme == rhs.scheme
             && lhs.values == rhs.values
+            && lhs.xFractions == rhs.xFractions
     }
 
     var body: some View {
@@ -248,15 +273,19 @@ private struct BalanceAreaCurve: View, Equatable {
                 CGPoint(x: size.width, y: size.height / 2)
             ]
         }
+        let useTime = xFractions.count == values.count
+        func xPosition(_ index: Int) -> CGFloat {
+            (useTime ? CGFloat(xFractions[index]) : CGFloat(index) / CGFloat(values.count - 1)) * size.width
+        }
         if sign == .flat {
             let y = size.height / 2
-            return values.enumerated().map { index, _ in
-                CGPoint(x: CGFloat(index) / CGFloat(values.count - 1) * size.width, y: y)
+            return values.indices.map { index in
+                CGPoint(x: xPosition(index), y: y)
             }
         }
         let range = maxValue - minValue
         return values.enumerated().map { index, value in
-            let x = CGFloat(index) / CGFloat(values.count - 1) * size.width
+            let x = xPosition(index)
             let normalized = range > 0 ? (CGFloat(value - minValue) / CGFloat(range)) : 0.5
             let y = size.height - (normalized * size.height * (1 - 2 * padding) + size.height * padding)
             return CGPoint(x: x, y: y)
