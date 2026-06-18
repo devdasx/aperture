@@ -69,20 +69,31 @@ struct AlchemyConnector: ChainConnector {
     // MARK: - Native balance
 
     func fetchNativeBalance(address: String) async throws(RPCError) -> ChainAccountSummary {
-        let tokens = try await service.tokens(network: networkSlug, address: address)
-        // **B2 fix.** A genuine zero native balance arrives as a PRESENT native
-        // row with `tokenBalance: "0x0"` (Portfolio includes the native coin
-        // when `includeNativeTokens: true`) → balance 0, honestly shown. But an
-        // ABSENT native row (or undecodable hex) is an API anomaly, NOT a zero:
-        // the old `?? 0` returned a real-looking $0 with `isUsed:false`, which
-        // the coordinator upserted OVER the user's last-known balance — a funded
-        // wallet could flash to zero. Throw instead, so the scanner's catch
-        // keeps the last-known balance (it maps a thrown read to "no row").
-        guard let native = tokens.first(where: { $0.isNative }),
-              let raw = AlchemyService.decimalFromHex(native.rawBalanceHex) else {
-            throw .invalidResponse("native row absent for \(networkSlug)")
+        // Try the Portfolio Data API first (one call serves native + tokens).
+        // A genuine zero native balance arrives as a PRESENT native row with
+        // `tokenBalance: "0x0"` (Portfolio includes the native coin when
+        // `includeNativeTokens: true`) → balance 0, honestly shown (B2).
+        if let tokens = try? await service.tokens(network: networkSlug, address: address),
+           let native = tokens.first(where: { $0.isNative }),
+           let raw = AlchemyService.decimalFromHex(native.rawBalanceHex) {
+            let balance = raw / AlchemyService.pow10(Self.nativeDecimals)
+            return ChainAccountSummary(nativeBalance: balance, isUsed: balance > 0)
         }
-        let balance = raw / AlchemyService.pow10(Self.nativeDecimals)
+
+        // **BUG 2D — DELIBERATE no-fallback exception (2026-06-18).** The
+        // Portfolio Data API either failed (its real error is logged once by
+        // `AlchemyService.tokens`) or returned no native row. Rather than throw
+        // "native row absent" — which blanks / keeps-last-known the native
+        // balance and made a funded wallet look stale on all 10 EVM chains —
+        // fall back to a single `eth_getBalance` against Alchemy's JSON-RPC
+        // product (same key, confirmed working since transactions load). This is
+        // NATIVE-ONLY; token balances still depend on the Data API. It is a
+        // conscious deviation from the 2026-06-17 "no fallback" direction,
+        // chosen because a Portfolio-API outage should degrade gracefully (real
+        // native balances) instead of wiping them. A genuinely-unfunded address
+        // returns 0 from `eth_getBalance` — an honest zero, not an anomaly.
+        let wei = try await service.nativeBalanceWei(network: networkSlug, address: address)
+        let balance = wei / AlchemyService.pow10(Self.nativeDecimals)
         return ChainAccountSummary(nativeBalance: balance, isUsed: balance > 0)
     }
 
@@ -135,7 +146,7 @@ struct AlchemyConnector: ChainConnector {
     // MARK: - Transaction history
 
     func fetchHistory(address: String, limit: Int, customContracts: [String]) async throws -> [TransactionEvent] {
-        let transfers = try await service.assetTransfers(network: networkSlug, address: address, maxCount: limit)
+        let transfers = try await service.assetTransfers(chain: chain, network: networkSlug, address: address, maxCount: limit)
 
         var allowed: Set<String> = []
         for token in EVMTokenRegistry.tokens(for: chain) { allowed.insert(token.contract.lowercased()) }

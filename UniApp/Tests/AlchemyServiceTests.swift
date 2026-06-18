@@ -16,7 +16,7 @@ struct AlchemyServiceTests {
     // MARK: - parseTokens (single-network) — native + erc20, decimals
 
     @Test("parseTokens reads the native row (contract nil) and an erc20 row with metadata decimals")
-    func parseTokensNativeAndToken() {
+    func parseTokensNativeAndToken() throws {
         let json = """
         { "data": { "tokens": [
           { "address":"0xabc", "network":"eth-mainnet", "tokenAddress": null,
@@ -27,7 +27,7 @@ struct AlchemyServiceTests {
             "tokenMetadata": { "decimals":6, "symbol":"USDC", "name":"USD Coin" } }
         ] } }
         """
-        let tokens = AlchemyService.parseTokens(data(json))
+        let tokens = try AlchemyService.parseTokens(data(json))
         #expect(tokens.count == 2)
         let native = tokens.first { $0.isNative }
         #expect(native != nil)
@@ -38,16 +38,29 @@ struct AlchemyServiceTests {
         #expect(usdc?.symbol == "USDC")
     }
 
-    @Test("parseTokens returns empty (never throws) on a malformed body")
-    func parseTokensMalformed() {
-        #expect(AlchemyService.parseTokens(data("{}")).isEmpty)
-        #expect(AlchemyService.parseTokens(data("not json")).isEmpty)
+    @Test("parseTokens THROWS on an error envelope or a missing data.tokens (BUG 2A)")
+    func parseTokensErrors() {
+        // No `data.tokens` — was a silent `[]` that became "native row absent".
+        #expect(throws: RPCError.self) { _ = try AlchemyService.parseTokens(data("{}")) }
+        #expect(throws: RPCError.self) { _ = try AlchemyService.parseTokens(data("not json")) }
+        // An Alchemy error envelope at HTTP 200 surfaces the real message.
+        let errBody = #"{"error":{"code":-32000,"message":"data product not enabled"}}"#
+        #expect(throws: RPCError.self) { _ = try AlchemyService.parseTokens(data(errBody)) }
+    }
+
+    @Test("tokenFromRow treats a native-sentinel tokenAddress as native (BUG 2C)")
+    func nativeSentinel() throws {
+        // Some providers return native with a 0xeee… sentinel instead of null.
+        let json = #"{"data":{"tokens":[{"address":"0xa","network":"eth-mainnet","tokenAddress":"0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE","tokenBalance":"0xde0b6b3a7640000"}]}}"#
+        let tokens = try AlchemyService.parseTokens(data(json))
+        #expect(tokens.count == 1)
+        #expect(tokens.first?.isNative == true)   // sentinel → native, not a token
     }
 
     // MARK: - groupBatchedRows (Task 1) — by (network,address)
 
     @Test("groupBatchedRows groups by network and lowercased address across the batch")
-    func groupBatched() {
+    func groupBatched() throws {
         let json = """
         { "data": { "tokens": [
           { "address":"0xAAA", "network":"eth-mainnet", "tokenAddress":null, "tokenBalance":"0x1" },
@@ -56,13 +69,19 @@ struct AlchemyServiceTests {
           { "address":"0xBBB", "network":"eth-mainnet", "tokenAddress":null, "tokenBalance":"0x4" }
         ] } }
         """
-        let grouped = AlchemyService.groupBatchedRows(data(json))
+        let grouped = try AlchemyService.groupBatchedRows(data(json))
         #expect(grouped["eth-mainnet|0xaaa"]?.count == 2)
         #expect(grouped["base-mainnet|0xaaa"]?.count == 1)
         #expect(grouped["eth-mainnet|0xbbb"]?.count == 1)
         // A (network,address) the batch had no rows for is simply absent here —
-        // `prefetchBalances` fills it with [] when warming the cache.
+        // `prefetchBalances` (2B) only caches the slices actually present.
         #expect(grouped["base-mainnet|0xbbb"] == nil)
+    }
+
+    @Test("groupBatchedRows THROWS on an error envelope (BUG 2A/2B)")
+    func groupBatchedThrowsOnError() {
+        let errBody = #"{"error":{"message":"unsupported"}}"#
+        #expect(throws: RPCError.self) { _ = try AlchemyService.groupBatchedRows(data(errBody)) }
     }
 
     // MARK: - restPageKey (pagination, B1)
