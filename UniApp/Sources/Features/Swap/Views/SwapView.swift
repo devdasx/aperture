@@ -33,6 +33,13 @@ struct SwapView: View {
     /// with no change.
     var isSheet: Bool = true
 
+    /// Optional pre-selected FROM token — set when Swap is launched from an
+    /// asset-detail screen for a specific token + network (2026-06-18). When
+    /// present it seeds the compose model instead of `defaultFromToken`, so the
+    /// user lands on Swap with the token + network already chosen. Default
+    /// `nil` preserves every existing call site.
+    var initialFromToken: SwapToken? = nil
+
     @Environment(\.dismiss) private var dismiss
 
     @State private var model: SwapComposeModel?
@@ -144,7 +151,10 @@ struct SwapView: View {
     /// Build the model once, seeded with the default FROM token. Re-runs
     /// after a wallet switch resets `model` to nil.
     private func buildModelIfNeeded() {
-        guard model == nil, let from = defaultFromToken else { return }
+        // Prefer a caller-supplied FROM token (asset-detail launch) over the
+        // wallet's default; both fall through to nil only when nothing is
+        // swappable, leaving the honest empty state.
+        guard model == nil, let from = initialFromToken ?? defaultFromToken else { return }
         model = SwapComposeModel(fromToken: from, currencyCode: currencyCode)
         // Seed the from-address + balances immediately so the first quote
         // can fire as soon as the user picks a to-token + amount.

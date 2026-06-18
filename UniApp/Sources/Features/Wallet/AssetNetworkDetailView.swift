@@ -44,10 +44,21 @@ struct AssetNetworkDetailView: View {
 
     @State private var isShowingFilter: Bool = false
 
+    // Action flows — the token + network are ALREADY chosen on this screen,
+    // so each opens pre-filled (2026-06-18). Send/Receive seed the flow's own
+    // NavigationPath (no change to those flows); Swap seeds its FROM token.
+    @State private var isShowingSend = false
+    @State private var isShowingReceive = false
+    @State private var isShowingSwap = false
+    @State private var sendPath = NavigationPath()
+    @State private var receivePath = NavigationPath()
+    @State private var swapPath = NavigationPath()
+
     var body: some View {
         List {
             headerSection
             balanceSection
+            actionsSection
             addressSection
             activitySection
             footerSection
@@ -85,6 +96,104 @@ struct AssetNetworkDetailView: View {
             .presentationDragIndicator(.visible)
             .presentationBackground(UniColors.Background.primary)
         }
+        // Send — pre-seeded to the recipient step for THIS token + network.
+        .sheet(isPresented: $isShowingSend, onDismiss: { sendPath = NavigationPath() }) {
+            SendView(navigationPath: $sendPath)
+                .id(sheetDirectionKey)
+                .uniAppEnvironment()
+                .uniSheetDetents([.large])
+                .presentationDragIndicator(.visible)
+                .presentationBackground(UniColors.Background.primary)
+        }
+        // Receive — pre-seeded to the QR/address screen for THIS network.
+        .sheet(isPresented: $isShowingReceive, onDismiss: { receivePath = NavigationPath() }) {
+            ReceiveView(navigationPath: $receivePath)
+                .id(sheetDirectionKey)
+                .uniAppEnvironment()
+                .uniSheetDetents([.large])
+                .presentationDragIndicator(.visible)
+                .presentationBackground(UniColors.Background.primary)
+        }
+        // Swap — pre-seeded with THIS token + network as the FROM side.
+        .sheet(isPresented: $isShowingSwap, onDismiss: { swapPath = NavigationPath() }) {
+            SwapView(navigationPath: $swapPath, initialFromToken: swapSeedToken)
+                .id(sheetDirectionKey)
+                .uniAppEnvironment()
+                .uniSheetDetents([.large])
+                .presentationDragIndicator(.visible)
+                .presentationBackground(UniColors.Background.primary)
+        }
+    }
+
+    // MARK: - Actions (token + network already chosen → pre-filled flows)
+
+    @ViewBuilder
+    private var actionsSection: some View {
+        Section {
+            WalletActionRegion(
+                canSend: activeWallet?.kind != .watchOnly,
+                onSend: { presentSend() },
+                onReceive: { presentReceive() },
+                onSwap: { isShowingSwap = true }
+            )
+            .listRowBackground(Color.clear)
+            .listRowSeparator(.hidden)
+            .listRowInsets(EdgeInsets(top: UniSpacing.s, leading: 0, bottom: UniSpacing.s, trailing: 0))
+        }
+    }
+
+    /// Token symbol to carry into Send/Receive — `nil` for a native coin
+    /// (the chain IS the asset), the symbol for a token.
+    private var sendTokenSymbol: String? {
+        identity.isNativeCoin ? nil : identity.symbol
+    }
+
+    private func presentSend() {
+        guard let address = walletAddress?.address else { return }
+        var path = NavigationPath()
+        path.append(SendDestination.recipient(
+            chain: chain,
+            tokenSymbol: sendTokenSymbol,
+            fromAddress: address
+        ))
+        sendPath = path
+        isShowingSend = true
+    }
+
+    private func presentReceive() {
+        guard let address = walletAddress?.address else { return }
+        var path = NavigationPath()
+        path.append(ReceiveDestination.qr(
+            chain: chain,
+            tokenSymbol: sendTokenSymbol,
+            address: address
+        ))
+        receivePath = path
+        isShowingReceive = true
+    }
+
+    /// The FROM token to seed Swap with: the chain's native sentinel for a
+    /// coin, or this token's held contract + decimals on this chain. `nil`
+    /// when the chain isn't swappable or the token isn't held here — Swap then
+    /// falls back to its own default (honest, never a wrong token).
+    private var swapSeedToken: SwapToken? {
+        if let nativeChain = identity.nativeChain {
+            return SwapChainMap.nativeToken(for: nativeChain)
+        }
+        guard let balance = walletAddress?.balances.first(where: {
+            $0.tokenContract != nil
+                && $0.tokenSymbol.caseInsensitiveCompare(identity.symbol) == .orderedSame
+        }), let contract = balance.tokenContract else {
+            return nil
+        }
+        return SwapToken.swappable(
+            chain: chain,
+            contract: contract,
+            symbol: identity.symbol,
+            name: assetDisplayName,
+            decimals: balance.decimals,
+            logoURI: nil
+        )
     }
 
     // MARK: - Header
