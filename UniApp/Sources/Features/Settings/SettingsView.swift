@@ -396,15 +396,9 @@ private struct SettingsRow: View {
 private struct AboutView: View {
     @Environment(\.openURL) private var openURL
 
-    /// Canonical web destinations on aperturex.io. The legal + support
-    /// pages live on the site (not bundled) so they stay current without
-    /// shipping an app update; each row opens in the system browser.
-    private enum Web {
-        static let terms = "https://aperturex.io/terms"
-        static let privacy = "https://aperturex.io/privacy"
-        static let privacyChoices = "https://aperturex.io/privacy-choices"
-        static let support = "https://aperturex.io/support"
-    }
+    /// Canonical web destinations live in the shared `ApertureWeb` constant
+    /// (also used by the onboarding legal footer) so the URLs never drift.
+    private typealias Web = ApertureWeb
 
     var body: some View {
         List {
