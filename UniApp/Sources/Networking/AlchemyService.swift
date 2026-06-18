@@ -374,12 +374,16 @@ actor AlchemyService {
         var hex = hexString
         if hex.hasPrefix("0x") || hex.hasPrefix("0X") { hex.removeFirst(2) }
         if hex.isEmpty { return .zero }
-        // **B5 guard.** A full uint256 is 64 hex chars (~78 decimal digits) —
-        // far past Decimal's 38-significant-digit capacity, where the
-        // accumulation below overflows to NaN. Reject over-long input up front,
-        // and NaN-check the result, so a pathological raw balance returns nil
-        // (the caller drops the row) instead of a silently-corrupt amount.
-        guard hex.count <= 64 else { return nil }
+        // **B5 guard.** `Decimal`'s mantissa is 128-bit, so it represents
+        // integers exactly only up to 2^128-1 = 32 hex chars. Beyond that it
+        // does NOT overflow to NaN — it silently TRUNCATES to ~38 significant
+        // digits (e.g. a uint256 came back as `…907828000…0`), a corrupt amount
+        // that would render a wrong balance. Reject anything wider than 128 bits
+        // up front so the caller drops the row instead (no real token balance
+        // needs >2^128 base units; spam contracts that report uint256 max are
+        // dropped here as defense-in-depth on top of the registry filter). The
+        // `isNaN` check stays as belt-and-suspenders.
+        guard hex.count <= 32 else { return nil }
         var result = Decimal(0)
         let sixteen = Decimal(16)
         for char in hex {

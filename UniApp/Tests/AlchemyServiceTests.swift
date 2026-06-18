@@ -138,9 +138,11 @@ struct AlchemyServiceTests {
         #expect(AlchemyService.decimalFromHex("0x0") == .zero)
         #expect(AlchemyService.decimalFromHex("0xff") == Decimal(255))
         #expect(AlchemyService.decimalFromHex("0xZZ") == nil)              // invalid digit
-        // 65 hex chars — past uint256, rejected by the length guard.
-        #expect(AlchemyService.decimalFromHex("0x" + String(repeating: "f", count: 65)) == nil)
-        // 64 hex chars all-f = uint256 max — overflows Decimal → nil (NaN guard).
+        // 32 hex chars = 2^128-1 fits Decimal's 128-bit mantissa exactly.
+        #expect(AlchemyService.decimalFromHex("0x" + String(repeating: "f", count: 32)) != nil)
+        // 33+ hex chars exceed 2^128 — Decimal would silently truncate to ~38
+        // significant digits (a corrupt amount), so the guard rejects them.
+        #expect(AlchemyService.decimalFromHex("0x" + String(repeating: "f", count: 33)) == nil)
         #expect(AlchemyService.decimalFromHex("0x" + String(repeating: "f", count: 64)) == nil)
     }
 }
