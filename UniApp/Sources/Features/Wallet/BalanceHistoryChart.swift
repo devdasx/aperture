@@ -236,8 +236,13 @@ struct BalanceHistoryChart: View {
             let values = chartPoints.isEmpty
                 ? points.map { fiatAsDouble($0.fiat) }
                 : sparkValues
+            // Per-point time fractions (Part 4.3 — real time x-axis). Parallel
+            // to `values`; `[]` for a degenerate span → renderer uses index
+            // spacing (a 2-point flat baseline reads the same either way).
+            let xFractions = Self.timeFractions(for: points)
             SparklineChart(
                 points: values,
+                xFractions: xFractions,
                 minValue: chartPoints.isEmpty ? 0 : sparkMin,
                 maxValue: chartPoints.isEmpty ? 0 : sparkMax,
                 onScrub: { index in
@@ -405,6 +410,21 @@ struct BalanceHistoryChart: View {
         ]
     }
 
+    /// Per-point horizontal position in `[0, 1]` from each sample's timestamp —
+    /// `(t − first) / (last − first)` (Part 4.3, 2026-06-19). This is the real
+    /// time x-axis: samples sit at their true time, so sparse-then-dense history
+    /// is spaced honestly instead of every sample getting equal width. Returns
+    /// `[]` for a degenerate span (≤1 point or all-same-time) — the renderer
+    /// then falls back to index spacing (a flat 2-point baseline looks the same
+    /// either way).
+    private static func timeFractions(for points: [BalancePoint]) -> [Double] {
+        guard let first = points.first?.timestamp,
+              let last = points.last?.timestamp,
+              last > first else { return [] }
+        let span = last.timeIntervalSince(first)
+        return points.map { max(0, min(1, $0.timestamp.timeIntervalSince(first) / span)) }
+    }
+
     // MARK: - Delta caption
 
     /// Signed-delta text for the accessibility readout. (The on-screen
@@ -503,6 +523,11 @@ private struct SparklineChart: View {
     /// curve; fewer renders a flat line.
     let points: [Double]
 
+    /// Per-point horizontal position in `[0, 1]` from each sample's TIMESTAMP
+    /// (Part 4.3 — real time x-axis). Parallel to `points`; empty / wrong-length
+    /// falls back to equal-index spacing.
+    let xFractions: [Double]
+
     /// Precomputed `points.min()` / `points.max()`, supplied by the
     /// parent alongside the memoized series so the per-drag-tick
     /// normalization + haptic math never rescans the array.
@@ -535,7 +560,7 @@ private struct SparklineChart: View {
                 // ~2,000 points (two per in-window transaction), and the
                 // old body rebuilt both paths over all of them ~60×/s
                 // while scrubbing, saturating the main thread.
-                SparklineCurve(points: points, minValue: minValue, maxValue: maxValue)
+                SparklineCurve(points: points, xFractions: xFractions, minValue: minValue, maxValue: maxValue)
                     .equatable()
                     // **2026-06-14 scroll-lag fix.** Flatten the curve into a
                     // cached Metal-backed bitmap. The reconstructor emits up
@@ -602,7 +627,11 @@ private struct SparklineChart: View {
     /// scrub tick never rebuilds the whole projected array).
     private func cursorPoint(index: Int, in size: CGSize) -> CGPoint {
         let count = points.count
-        let x = count > 1 ? CGFloat(index) / CGFloat(count - 1) * size.width : 0
+        let useTime = xFractions.count == count
+        let x: CGFloat = {
+            if useTime { return CGFloat(xFractions[index]) * size.width }
+            return count > 1 ? CGFloat(index) / CGFloat(count - 1) * size.width : 0
+        }()
         let range = maxValue - minValue
         let padding: CGFloat = 0.1
         let normalized = range > 0 ? (CGFloat(points[index] - minValue) / CGFloat(range)) : 0.5
@@ -617,9 +646,21 @@ private struct SparklineChart: View {
     /// space because the chart is wrapped in `GeometryReader`.
     private func indexForX(_ x: CGFloat, in size: CGSize) -> Int {
         guard points.count > 1 else { return 0 }
-        let fraction = x / size.width
-        let clamped = max(0, min(1, fraction))
-        return Int(round(clamped * CGFloat(points.count - 1)))
+        let clamped = Double(max(0, min(1, x / size.width)))
+        // Time-spaced hit-test (Part 4.3): pick the sample whose TIME fraction
+        // is nearest the touch — equal-index nearest would mis-map a touch when
+        // points are unevenly spaced in time. Falls back to index when no
+        // fractions were supplied.
+        if xFractions.count == points.count {
+            var best = 0
+            var bestDist = Double.greatestFiniteMagnitude
+            for (i, f) in xFractions.enumerated() {
+                let d = abs(f - clamped)
+                if d < bestDist { bestDist = d; best = i }
+            }
+            return best
+        }
+        return Int(round(clamped * Double(points.count - 1)))
     }
 
     /// Computes the haptic intensity for the tick at `index` from
@@ -659,6 +700,12 @@ private struct SparklineChart: View {
 private struct SparklineCurve: View, Equatable {
 
     let points: [Double]
+    /// Per-point horizontal position in `[0, 1]`, derived from each sample's
+    /// TIMESTAMP — `(t − windowStart) / (now − windowStart)` (2026-06-19, Part
+    /// 4.3). This replaces equal-index spacing so a one-hour gap and a one-year
+    /// gap occupy proportional width. Empty / wrong-length falls back to index
+    /// spacing (safety).
+    let xFractions: [Double]
     let minValue: Double
     let maxValue: Double
 
@@ -670,6 +717,7 @@ private struct SparklineCurve: View, Equatable {
         lhs.minValue == rhs.minValue
             && lhs.maxValue == rhs.maxValue
             && lhs.points == rhs.points
+            && lhs.xFractions == rhs.xFractions
     }
 
     var body: some View {
@@ -705,8 +753,11 @@ private struct SparklineCurve: View, Equatable {
         // constant ported verbatim. Wallet balance histories sit in
         // a band; the padding makes the curve breathe.
         let padding: CGFloat = 0.1
+        let useTime = xFractions.count == points.count
         return points.enumerated().map { index, value in
-            let x = CGFloat(index) / CGFloat(points.count - 1) * size.width
+            // Time-spaced x (Part 4.3) when fractions are supplied; otherwise
+            // the legacy equal-index spacing.
+            let x = (useTime ? CGFloat(xFractions[index]) : CGFloat(index) / CGFloat(points.count - 1)) * size.width
             let normalized = range > 0 ? (CGFloat(value - minVal) / CGFloat(range)) : 0.5
             // Canvas y is top-down. We map normalized 0 → bottom of
             // the padded band; normalized 1 → top of the padded
