@@ -396,12 +396,13 @@ struct BalanceCardView: View {
             maxValue: chartMax,
             sign: chartSign,
             onScrub: { index in
-                let scrubbed: Decimal? = {
+                let scrubbed: BalancePoint? = {
                     guard let index, index >= 0, index < points.count else { return nil }
-                    return points[index].fiat
+                    return points[index]
                 }()
                 withAnimation(reduceMotion ? nil : .snappy(duration: 0.18)) {
-                    scrubModel.fiat = scrubbed
+                    scrubModel.fiat = scrubbed?.fiat
+                    scrubModel.timestamp = scrubbed?.timestamp
                 }
             },
             onScrubBegin: {
@@ -508,6 +509,17 @@ struct BalanceCardView: View {
                 Text("Balance hidden")
                     .font(UniTypography.BalanceCard.amount)
                     .foregroundStyle(UniColors.BalanceCard.textMuted(colorScheme, boostContrast: boostContrast))
+            } else if let scrubbedAt = scrubModel.timestamp {
+                // **Scrubbing (2026-06-19).** Hide the PnL + percent and show
+                // the touched point's date & time instead (the hero shows that
+                // point's value). The time reuses `changePill` (a neutral
+                // chip) so the row height — and the card — stays identical to
+                // the resting [percent pill][amount] layout; no resize on drag.
+                changePill(text: scrubTimeText(scrubbedAt), systemImage: nil, sign: .flat)
+                Text(verbatim: scrubDateText(scrubbedAt))
+                    .font(UniTypography.BalanceCard.amount)
+                    .foregroundStyle(UniColors.BalanceCard.textMuted(colorScheme, boostContrast: boostContrast))
+                    .environment(\.layoutDirection, .leftToRight) // date reads LTR with the time chip
             } else {
                 // The pill is ALWAYS present so the card never resizes when the
                 // user switches ranges (2026-06-19 fix). Off a zero baseline
@@ -592,6 +604,21 @@ struct BalanceCardView: View {
         let formatted = WalletFormatting.fiat(magnitude, currencyCode: currencyCode)
         let signGlyph = sign == .up ? "+" : "\u{2212}"
         return "\(signGlyph)\(formatted) \(label)"
+    }
+
+    // MARK: - Scrub readout (date & time of the touched point)
+
+    /// The scrubbed point's clock time in the device locale + timezone, e.g.
+    /// "3:45 PM" — shown in the neutral pill while dragging. `FormatStyle`
+    /// localizes it; no catalog string needed.
+    private func scrubTimeText(_ date: Date) -> String {
+        date.formatted(date: .omitted, time: .shortened)
+    }
+
+    /// The scrubbed point's date in the device locale, e.g. "Jun 18, 2026" —
+    /// shown beside the time chip while dragging.
+    private func scrubDateText(_ date: Date) -> String {
+        date.formatted(date: .abbreviated, time: .omitted)
     }
 
     // MARK: - Zero state
