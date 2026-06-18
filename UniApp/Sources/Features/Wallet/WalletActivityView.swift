@@ -63,6 +63,13 @@ struct WalletActivityView: View {
     /// changes (wallet switch or a tx count change) — not per body pass.
     @State private var sortedTransactions: [TransactionRecord] = []
 
+    /// USD unit prices for the feed's symbols, used ONLY for the $0.01-USD
+    /// dust gate (see `ActivityFiat.usdPriceMap`). Loaded async after each
+    /// rebuild; until it arrives every row shows (we never hide what we
+    /// can't yet measure in dollars). Mutating it re-renders, which
+    /// re-applies `displayedTransactions`.
+    @State private var usdPrices: [String: Decimal] = [:]
+
     /// Cheap rebuild key — O(1). Replaces the O(all-tx) data fingerprint.
     /// Wallet switch changes `activeWalletIdRaw`; a new/removed tx changes
     /// the @Query count. A status change (pending→confirmed, same count)
@@ -73,9 +80,20 @@ struct WalletActivityView: View {
         "\(activeWalletIdRaw)|\(allTransactionRecords.count)"
     }
 
+    /// The rows actually shown — the wallet feed with sub-$0.01-USD dust
+    /// removed (2026-06-19 user direction: "never show transactions with
+    /// less than $0.01 amount, always in dollars"). A leg with no known
+    /// USD price is kept (honesty over a guessed hide). Re-derived each
+    /// body pass off `usdPrices`, which loads async after `rebuild()`.
+    private var displayedTransactions: [TransactionRecord] {
+        sortedTransactions.filter { tx in
+            !ActivityFiat.isDust(amountRaw: tx.amountRaw, symbol: tx.tokenSymbol, usdMap: usdPrices)
+        }
+    }
+
     var body: some View {
         List {
-            if sortedTransactions.isEmpty {
+            if displayedTransactions.isEmpty {
                 Section {
                     emptyState
                         .listRowBackground(Color.clear)
@@ -84,7 +102,7 @@ struct WalletActivityView: View {
                 }
             } else {
                 Section {
-                    ForEach(sortedTransactions, id: \.id) { tx in
+                    ForEach(displayedTransactions, id: \.id) { tx in
                         if let chain = chainFor(tx) {
                             NavigationLink(value: WalletHomeDestination.transaction(tx.id)) {
                                 activityRow(tx, chain: chain)
@@ -101,7 +119,7 @@ struct WalletActivityView: View {
                         }
                     }
                 } header: {
-                    Text(headerLabel(count: sortedTransactions.count))
+                    Text(headerLabel(count: displayedTransactions.count))
                 }
             }
         }
@@ -112,6 +130,7 @@ struct WalletActivityView: View {
         .navigationBarTitleDisplayMode(.inline)
         .task(id: feedKey) {
             rebuild()
+            await loadDustPrices()
         }
     }
 
@@ -162,6 +181,17 @@ struct WalletActivityView: View {
             guard let aid = tx.addressId else { return false }
             return ids.contains(aid)
         }
+    }
+
+    /// Resolve USD unit prices for the feed's distinct symbols so the
+    /// $0.01-USD dust gate can run. Cheap after the first call (the engine
+    /// caches), and cancellation-safe — a wallet switch re-keys the task,
+    /// cancelling this before it writes a stale wallet's prices.
+    private func loadDustPrices() async {
+        let symbols = sortedTransactions.map(\.tokenSymbol)
+        let map = await ActivityFiat.usdPriceMap(symbols: symbols)
+        guard !Task.isCancelled else { return }
+        usdPrices = map
     }
 
     // MARK: - Wallet plumbing (store-truth, matches WalletHomeView)
