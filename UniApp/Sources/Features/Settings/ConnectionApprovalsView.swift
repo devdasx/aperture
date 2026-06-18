@@ -68,15 +68,18 @@ struct ConnectionApprovalsView: View {
     private var connectedSection: some View {
         Section {
             if connectedDApps.isEmpty && walletConnect.activeSessions.isEmpty {
-                VStack(alignment: .leading, spacing: UniSpacing.xs) {
-                    UniBody(text: "No connected dApps", color: UniColors.Text.primary)
-                    UniFootnote(
-                        text: "Connect a dApp via WalletConnect or the in-app browser to see active sessions here.",
-                        color: UniColors.Text.secondary
-                    )
-                }
-                .padding(.vertical, UniSpacing.xs)
-                .listRowBackground(UniColors.Background.secondary)
+                // Modern empty state — the app's canonical `UniEmptyState`
+                // (soft elliptical lift + breathing watermark + two-line copy),
+                // matching the Holdings / Activity empties. Clear row + zero
+                // insets so it floats as one calm surface, not a boxed cell.
+                UniEmptyState(
+                    title: "No connected dApps",
+                    detail: "Connect a dApp via WalletConnect or the in-app browser to see active sessions here.",
+                    mark: .icon(systemName: "app.connected.to.app.below.fill")
+                )
+                .listRowBackground(Color.clear)
+                .listRowSeparator(.hidden)
+                .listRowInsets(EdgeInsets())
             } else {
                 // In-app-browser connections (persisted).
                 ForEach(connectedDApps) { dApp in
@@ -151,12 +154,17 @@ struct ConnectionApprovalsView: View {
         Section {
             switch scanState {
             case .idle, .scanning:
-                HStack(spacing: UniSpacing.s) {
+                // Centered, breathing-room loading — reads as a calm "working
+                // on it" surface rather than a cramped inline row.
+                VStack(spacing: UniSpacing.s) {
                     ProgressView()
                     UniFootnote(text: "Scanning your approvals on-chain…", color: UniColors.Text.secondary)
                 }
-                .padding(.vertical, UniSpacing.xs)
-                .listRowBackground(UniColors.Background.secondary)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, UniSpacing.xl)
+                .listRowBackground(Color.clear)
+                .listRowSeparator(.hidden)
+                .listRowInsets(EdgeInsets())
 
             case .failed(let reason):
                 VStack(alignment: .leading, spacing: UniSpacing.xs) {
@@ -178,15 +186,16 @@ struct ConnectionApprovalsView: View {
 
             case .loaded(let approvals):
                 if approvals.isEmpty {
-                    VStack(alignment: .leading, spacing: UniSpacing.xs) {
-                        UniBody(text: "No token approvals", color: UniColors.Text.primary)
-                        UniFootnote(
-                            text: "This wallet has no active ERC-20 approvals on the scanned EVM chains.",
-                            color: UniColors.Text.secondary
-                        )
-                    }
-                    .padding(.vertical, UniSpacing.xs)
-                    .listRowBackground(UniColors.Background.secondary)
+                    // Security-positive empty state — a shield-check watermark
+                    // reads "you're safe, nothing to revoke," not "void."
+                    UniEmptyState(
+                        title: "No token approvals",
+                        detail: "This wallet has no active ERC-20 approvals on the scanned EVM chains.",
+                        mark: .icon(systemName: "checkmark.shield")
+                    )
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
+                    .listRowInsets(EdgeInsets())
                 } else {
                     ForEach(approvals) { approval in
                         approvalRow(approval)
