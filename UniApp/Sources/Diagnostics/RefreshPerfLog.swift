@@ -146,6 +146,12 @@ final class RefreshPerfLog: @unchecked Sendable {
         if entries.count > maxEntries {
             entries.removeFirst(entries.count - maxEntries)
         }
+        // **2026-06-18 — mirror into the persistent session log.** This
+        // per-run buffer resets on every `beginRun`, so it only ever holds
+        // the last refresh. Forwarding every entry to `DebugLog` (its own
+        // lock; no reverse nesting → no deadlock) gives a copy-pasteable
+        // timeline of ALL refreshes + background work the user can send.
+        DebugLog.shared.log(category, note, durationMs: durationMs)
     }
 
     private static let timeFormatter: DateFormatter = {
