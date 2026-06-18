@@ -27,9 +27,12 @@ import Foundation
 /// - Anvil / Foundry default mnemonic (book.getfoundry.sh)
 /// - Ethereum's documented "well-known" test keys
 ///
-/// TODO: (T-032) Expand the blocklist over time as new tutorial seeds
-/// surface — file open GitHub issues asking the community to flag
-/// public mnemonics for inclusion.
+/// **Living list (T-032).** The blocklist grows by code edit as new public
+/// tutorial seeds surface — it is intentionally NOT an exhaustive scam
+/// database (the goal is the obvious "copied from a tutorial" case, while
+/// `ImportSecurityWarningSheet` catches adversarial reuse, Rule #18). Current
+/// coverage: the BIP-39 spec vectors, the Hardhat / Anvil / Foundry / Ganache
+/// default dev mnemonics + accounts, and the widely-circulated demo seeds.
 enum KnownLeakedSeeds {
 
     /// Normalized form of every known-leaked mnemonic. Stored as a
@@ -47,6 +50,9 @@ enum KnownLeakedSeeds {
         normalize("zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo vote"),
         // Hardhat default — the most-used dev mnemonic in Ethereum.
         normalize("test test test test test test test test test test test junk"),
+        // Ganache's documented default mnemonic (still the first seed
+        // millions of devs ever generated; widely copy-pasted into testnets).
+        normalize("myth like bonus scare over problem client lizard pioneer submit female collect"),
         // A widely-shared MetaMask/Ledger/Trezor demo seed.
         normalize("army van defense carry jealous true garbage claim echo media make crunch"),
     ]
@@ -62,6 +68,11 @@ enum KnownLeakedSeeds {
         "59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d",
         // Anvil / Foundry default account #2.
         "5de4111afa1a4b94908f83103eb1f1706367c2e68ca870fc3fb9a804cdab365a",
+        // Hardhat / Anvil default accounts #3–#5 (all documented in their
+        // books; every dev who ran `npx hardhat node` / `anvil` saw these).
+        "7c852118294e51e653712a81e05800f419141751be58f605c371e15141b007a6",
+        "47e179ec197488593b187f80a00eb0da91f1b9d0b13f8733639f19c30a34926a",
+        "8b3a350cf5c34c9194ca85829a2df0ec3153be0318b5e2d3348e872092edffba",
         // Ganache default mnemonic-derived #0 (historical, still seen).
         "4f3edf983ac636a65a842ce7c78d9aa706d3b113bce9c46f30d7d21715b23b1d",
     ]

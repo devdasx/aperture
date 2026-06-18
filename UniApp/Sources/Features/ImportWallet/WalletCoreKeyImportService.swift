@@ -288,20 +288,74 @@ struct WalletCoreKeyImportService: KeyImportService {
         return coin.validate(address: trimmed)
     }
 
+    /// Number of external-chain receive addresses derived from a watch-only
+    /// extended public key for the review screen / scanner.
+    private static let extendedKeyAddressCount = 5
+
+    /// Real extended-public-key (xpub / ypub / zpub) → first N receive
+    /// addresses, via WalletCore (`HDWallet.getPublicKeyFromExtended` +
+    /// `DerivationPath`), replacing the old `[STUB …]` placeholder fallback
+    /// (2026-06-18, T-024 closure). The version-byte prefix selects BOTH the
+    /// BIP purpose AND the receive-script type — `xpub` → 44' legacy P2PKH,
+    /// `ypub` → 49' P2SH-wrapped SegWit, `zpub` → 84' native SegWit — so the
+    /// derived addresses match exactly what Bitcoin Core / Electrum / Trust
+    /// Wallet show for the same key. Public-key-only: only the non-hardened
+    /// external chain (`.../0/i`) is reachable, which is exactly the receive
+    /// path. Watch-only (no signing), so this can never move funds — a wrong
+    /// key throws an honest error instead of inventing an address (Rule #16).
     func deriveAddresses(
         fromExtendedKey raw: String,
         on chain: SupportedChain
     ) async throws -> [String] {
-        // Extended-public-key (xpub / ypub / zpub) → first 5 addresses
-        // path lands in a follow-up entry. WalletCore supports it via
-        // `HDWallet.getAddressFromExtended(...)` plus the per-purpose
-        // derivation path, but the wiring needs the chain → purpose
-        // (44'/49'/84') mapping. For v1 we fall back to the existing
-        // stub so the watch-only-by-xpub flow continues to function.
-        return try await StubKeyImportService().deriveAddresses(
-            fromExtendedKey: raw,
-            on: chain
-        )
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        // Only the Bitcoin family has extended public keys.
+        guard chain.supportsExtendedPublicKey,
+              let coinId = Self.coinIdForChain[chain],
+              let coin = CoinType(rawValue: coinId) else {
+            throw KeyImportError.unsupported
+        }
+        // Prefix → BIP purpose. Covers the standard mainnet version bytes for
+        // BTC (x/y/z) and the LTC variants (Ltub/Mtub) that share the family.
+        let purpose: Purpose
+        switch String(trimmed.prefix(4)).lowercased() {
+        case "xpub", "ltub", "dgub": purpose = .bip44   // legacy P2PKH
+        case "ypub", "mtub":         purpose = .bip49   // P2SH-wrapped SegWit
+        case "zpub":                 purpose = .bip84   // native SegWit
+        default:                     throw KeyImportError.invalidFormat
+        }
+        var addresses: [String] = []
+        for index in 0..<Self.extendedKeyAddressCount {
+            let path = DerivationPath(
+                purpose: purpose,
+                coin: coin.slip44Id,
+                account: 0,
+                change: 0,
+                address: UInt32(index)
+            ).description
+            guard let pubkey = HDWallet.getPublicKeyFromExtended(
+                extended: trimmed, coin: coin, derivationPath: path
+            ) else {
+                // Malformed / wrong-network key, or a path the key can't reach.
+                throw KeyImportError.invalidFormat
+            }
+            let address: String
+            switch purpose {
+            case .bip44:
+                guard let addr = BitcoinAddress(publicKey: pubkey, prefix: coin.p2pkhPrefix) else {
+                    throw KeyImportError.invalidFormat
+                }
+                address = addr.description
+            case .bip49:
+                address = BitcoinAddress.compatibleAddress(
+                    publicKey: pubkey, prefix: coin.p2shPrefix
+                ).description
+            default: // .bip84 (native SegWit) — the coin's default encoder
+                address = coin.deriveAddressFromPublicKey(publicKey: pubkey)
+            }
+            addresses.append(address)
+        }
+        guard !addresses.isEmpty else { throw KeyImportError.invalidFormat }
+        return addresses
     }
 
     func deriveAddresses(fromSeed seed: Data) async throws -> [SupportedChain: String] {

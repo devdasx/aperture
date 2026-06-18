@@ -62,12 +62,23 @@ enum KeyImportError: Error, Hashable, Sendable {
     case derivationFailed
 }
 
-/// **Stub** implementation per the jony-ive 2026-06-05 design audit
-/// ("stub-first" — the UI ships today; real per-family cryptography
-/// lands as T-024..T-031). Returns deterministic, clearly-mock
-/// addresses so the review steps show *something honest* — every
-/// derived value is prefixed with a recognizable mock marker so the
-/// user (and reviewer) can never confuse it with a real address.
+/// Detection-only `KeyImportService` conformance.
+///
+/// **2026-06-18 — derivation is now REAL via `WalletCoreKeyImportService`.**
+/// The original "stub-first" plan (T-024..T-031: hand-roll per-family
+/// secp256k1 / ed25519 / bech32 / StrKey) was superseded by integrating Trust
+/// Wallet Core, which ships all of it battle-tested (Rule #3 §B). The
+/// production path is `WalletCoreKeyImportService` for EVERY family —
+/// mnemonic, single private key, AND watch-only xpub/ypub/zpub.
+///
+/// What survives here and is still used in production is `detectFormat` — pure
+/// shape heuristics (no crypto) that WalletCoreKeyImportService delegates to
+/// for input classification — plus `validateAddress` and the `stubAddressPrefix`
+/// sentinel the scanners filter on. The `deriveAddress(...)` / `deriveAddresses(...)`
+/// bodies remain only to satisfy the protocol and return clearly-marked mock
+/// values (never real); nothing in the live import flow calls them, and any
+/// address carrying `stubAddressPrefix` is skipped before it ever hits the
+/// network (Rule #16 — a placeholder can never masquerade as a real address).
 struct StubKeyImportService: KeyImportService {
 
     // MARK: - Format detection (shape-only heuristics)
@@ -122,16 +133,16 @@ struct StubKeyImportService: KeyImportService {
         return .unknown
     }
 
-    // MARK: - Address derivation (stub)
+    // MARK: - Address derivation (non-production mock — see type doc)
 
-    // TODO: (T-024) Bitcoin family secp256k1 + BIP-32 + base58check.
-    // TODO: (T-025) EVM secp256k1 + keccak256 + EIP-55.
-    // TODO: (T-026) Solana ed25519 + base58.
-    // TODO: (T-027) XRP family seed parsing + base58check (XRP alphabet).
-    // TODO: (T-028) Cosmos / Kava secp256k1 + bech32.
-    // TODO: (T-029) NEAR ed25519 + implicit / named accounts.
-    // TODO: (T-030) TON ed25519 + wallet-contract address encoding.
-    // TODO: (T-031) Aptos / Sui / Stellar / Polkadot / TRON — per-family parsers.
+    // T-024..T-031 (real per-family derivation) are DONE — delivered by
+    // `WalletCoreKeyImportService` via Trust Wallet Core (secp256k1 + BIP-32/44
+    // + base58check for Bitcoin/EVM/Cosmos/TRON, ed25519/SCALE/StrKey for
+    // Solana/NEAR/Aptos/Sui/Stellar/TON/Polkadot, and getPublicKeyFromExtended
+    // for watch-only xpub/ypub/zpub). The bodies below are not on any live
+    // path; they return clearly-marked mock values only to satisfy the
+    // protocol, and `stubAddressPrefix` keeps any such value out of the
+    // network (Rule #16).
     func deriveAddress(fromPrivateKey raw: String, on chain: SupportedChain) async throws -> String {
         guard detectFormat(raw, on: chain) != nil else {
             throw KeyImportError.invalidFormat
