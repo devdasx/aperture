@@ -18,13 +18,27 @@ import SwiftUI
 /// This is the same fallback Safari and Chrome use when a favicon
 /// 404s.
 ///
-/// **Caching.** SwiftUI's `AsyncImage` caches network responses in
-/// `URLCache.shared`. Aperture's default URLSession config installs
-/// a 10MB in-memory + 50MB on-disk cache (the iOS default) — first
-/// fetch hits the network, second fetch is local. Per Rule #16 §A.5
-/// the user's browsing history doesn't get uploaded; favicon
-/// fetches are direct GETs to the dApp's host, equivalent to mobile
-/// Safari's behavior.
+/// **Caching — the SAME path coins/tokens use (2026-06-18).** Favicons
+/// resolve through `CoinMarkImageCache.resolveImage(for:)`, the one
+/// fetch→cache→persist→decode path that `CoinMark` uses for token/coin
+/// marks. So a dApp logo caches and persists exactly the way a token icon
+/// does: downloaded once, written to the durable Application Support disk
+/// cache (`CoinMarkCache`, never evicted under disk pressure — unlike the
+/// old `AsyncImage`/`URLCache.shared` path), decoded off-main, and held as
+/// a ready bitmap in the session image cache so re-appearing rows (Favorites
+/// grid, Recent/Connected lists) paint synchronously with no re-download and
+/// no re-decode. Misses are negative-cached so scrolling a list never
+/// re-fires a request per missing favicon on every row reappearance.
+///
+/// **Privacy is unchanged.** This view fetches whatever URL the call site
+/// hands it — and the call sites already encode Aperture's stance: the
+/// user's own browsing history / connected sessions use the site's *own*
+/// `https://<host>/favicon.ico`, never a third-party favicon service that
+/// would learn every host the user visits; only the curated public dApp
+/// directory uses a shared favicon endpoint. Routing those same URLs
+/// through the durable cache changes only WHERE bytes are stored, not WHO
+/// they're requested from. Per Rule #16 §A.5 the user's browsing history is
+/// never uploaded.
 ///
 /// **Sizes.** Three preset sizes match the call sites:
 ///   - `.tile` (52pt) — Favorites grid + Connected list row hero.
@@ -87,8 +101,18 @@ struct BrowserFaviconView: View {
         }
     }
 
+    /// Decoded, display-ready favicon resolved for `url`. Stays `nil`
+    /// until the durable cache / network produces an image; the letter
+    /// chip shows meanwhile. Mirrors `CoinMark`'s `prepared` field.
+    @State private var resolved: UIImage?
+
     var body: some View {
-        ZStack {
+        // Synchronous session-cache hit → paint immediately with no `.task`
+        // work and no re-decode, exactly like `CoinMark.networkMark`. A
+        // re-appearing list row whose favicon was decoded earlier this
+        // session repaints instantly here.
+        let cached = url.flatMap { CoinMarkImageCache.shared.image(for: $0) }
+        return ZStack {
             if let assetName, UIImage(named: assetName) != nil {
                 // Bundled curated logo — always present, no network, no
                 // SVG/.ico decode risk.
@@ -97,28 +121,15 @@ struct BrowserFaviconView: View {
                     .aspectRatio(contentMode: .fill)
                     .frame(width: size.dimension, height: size.dimension)
                     .clipShape(RoundedRectangle(cornerRadius: size.cornerRadius, style: .continuous))
-            } else if let url {
-                AsyncImage(url: url) { phase in
-                    switch phase {
-                    case .empty:
-                        // First-frame placeholder — letter chip
-                        // while the network is in flight. Reads as
-                        // a calm wait, not as "broken".
-                        letterChip
-                    case .success(let image):
-                        image
-                            .resizable()
-                            .aspectRatio(contentMode: .fill)
-                            .frame(width: size.dimension, height: size.dimension)
-                            .clipShape(RoundedRectangle(cornerRadius: size.cornerRadius, style: .continuous))
-                    case .failure:
-                        // 404 / DNS / TLS — the chip stays.
-                        letterChip
-                    @unknown default:
-                        letterChip
-                    }
-                }
+            } else if let image = resolved ?? cached {
+                Image(uiImage: image)
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+                    .frame(width: size.dimension, height: size.dimension)
+                    .clipShape(RoundedRectangle(cornerRadius: size.cornerRadius, style: .continuous))
             } else {
+                // No source, fetch in flight, 404 / DNS / TLS, or
+                // undecodable bytes (e.g. an SVG favicon) — the chip stays.
                 letterChip
             }
         }
@@ -132,6 +143,18 @@ struct BrowserFaviconView: View {
                 .strokeBorder(UniColors.Separator.regular, lineWidth: 0.5)
         )
         .accessibilityHidden(true)
+        .task(id: url) {
+            // Drop any image resolved for a previous `url` so a recycled
+            // list row never shows the prior dApp's logo.
+            resolved = nil
+            // Bundled curated logo wins — no network needed.
+            if let assetName, UIImage(named: assetName) != nil { return }
+            guard let url else { return }
+            // Already decoded this session → the synchronous `cached` read
+            // above paints it; nothing to do.
+            if CoinMarkImageCache.shared.image(for: url) != nil { return }
+            resolved = await CoinMarkImageCache.shared.resolveImage(for: url)
+        }
     }
 
     /// Letter chip fallback — a single uppercased letter on the
