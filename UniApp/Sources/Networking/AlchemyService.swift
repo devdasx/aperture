@@ -26,6 +26,19 @@ actor AlchemyService {
     static let shared = AlchemyService()
 
     private static let log = Logger(subsystem: "com.thuglife.aperture", category: "alchemy")
+
+    /// **EVM-only debug log (user direction, 2026-06-19).** Shares the single
+    /// `evm` category with `AlchemyConnector` so every EVM chain + EVM token
+    /// balance/token/transaction log line filters together in Console / Xcode
+    /// (`subsystem:com.thuglife.aperture category:evm`). `.debug` level — only
+    /// when EVM debugging is enabled, never persisted in release.
+    private static let evmLog = Logger(subsystem: "com.thuglife.aperture", category: "evm")
+
+    /// Short, non-identifying address tail for the EVM debug log.
+    private static func addrTail(_ a: String) -> String {
+        a.count > 8 ? "…" + a.suffix(6) : a
+    }
+
     private static let restBase = "https://api.g.alchemy.com/data/v1"
 
     private let session: URLSession
@@ -92,8 +105,10 @@ actor AlchemyService {
 
         let cacheKey = "\(network)|\(address.lowercased())"
         if let cached = tokenCache[cacheKey], cached.expires > Date() {
+            Self.evmLog.debug("tokens/by-address ◂ \(network, privacy: .public) [\(Self.addrTail(address), privacy: .public)] cache hit (\(cached.tokens.count, privacy: .public) rows)")
             return cached.tokens
         }
+        Self.evmLog.debug("tokens/by-address ▸ \(network, privacy: .public) [\(Self.addrTail(address), privacy: .public)] cache miss — fetching")
 
         guard let url = URL(string: "\(Self.restBase)/\(key)/assets/tokens/by-address") else {
             throw .invalidResponse("bad Alchemy tokens URL")
@@ -127,6 +142,7 @@ actor AlchemyService {
         } while pageKey != nil && pages < Self.maxPages
 
         tokenCache[cacheKey] = CachedTokens(expires: Date().addingTimeInterval(cacheTTL), tokens: all)
+        Self.evmLog.debug("tokens/by-address ◂ \(network, privacy: .public) [\(Self.addrTail(address), privacy: .public)] \(all.count, privacy: .public) rows over \(pages, privacy: .public) page(s)")
         return all
     }
 
@@ -147,6 +163,7 @@ actor AlchemyService {
         guard !key.isEmpty, !networks.isEmpty, !addresses.isEmpty,
               let url = URL(string: "\(Self.restBase)/\(key)/assets/tokens/by-address") else { return }
 
+        Self.evmLog.debug("prefetch ▸ batched tokens/by-address — \(networks.count, privacy: .public) net × \(addresses.count, privacy: .public) addr → 1 request [\(networks.joined(separator: ","), privacy: .public)]")
         let addressEntries = addresses.map { ["address": $0, "networks": networks] }
         var grouped: [String: [Token]] = [:]
         var pageKey: String?
@@ -194,6 +211,7 @@ actor AlchemyService {
         for (ck, tokens) in grouped {
             tokenCache[ck] = CachedTokens(expires: expires, tokens: tokens)
         }
+        Self.evmLog.debug("prefetch ◂ warmed \(grouped.count, privacy: .public) (network,address) slice(s) over \(pages, privacy: .public) page(s)")
     }
 
     /// **BUG 2A — one-shot raw-body log.** Prints the raw `tokens/by-address`
@@ -234,6 +252,7 @@ actor AlchemyService {
         guard let hex = root["result"] as? String, let wei = Self.decimalFromHex(hex) else {
             throw .invalidResponse("eth_getBalance: no result for \(network)")
         }
+        Self.evmLog.debug("eth_getBalance ◂ \(network, privacy: .public) [\(Self.addrTail(address), privacy: .public)] = \(wei.description, privacy: .public) wei")
         return wei
     }
 
@@ -350,6 +369,7 @@ actor AlchemyService {
             throw .invalidResponse("bad Alchemy RPC URL")
         }
         let cap = "0x" + String(max(1, min(maxCount, 1000)), radix: 16)
+        Self.evmLog.debug("getAssetTransfers ▸ \(chain.rawValue, privacy: .public) \(network, privacy: .public) [\(Self.addrTail(address), privacy: .public)] maxCount=\(maxCount, privacy: .public)")
 
         // Two directions in parallel — sent (fromAddress) + received (toAddress).
         async let sent = transfers(url: url, network: network, addressKey: "fromAddress", address: address, cap: cap)
@@ -362,10 +382,12 @@ actor AlchemyService {
         let sentResult = try? await sent
         let recvResult = try? await received
         guard sentResult != nil || recvResult != nil else {
+            Self.evmLog.debug("getAssetTransfers ◂ \(network, privacy: .public) [\(Self.addrTail(address), privacy: .public)] BOTH directions failed")
             throw .allEndpointsFailed(chain)
         }
         var merged: [String: Transfer] = [:]
         for t in (sentResult ?? []) + (recvResult ?? []) { merged[t.uniqueId] = t }
+        Self.evmLog.debug("getAssetTransfers ◂ \(network, privacy: .public) [\(Self.addrTail(address), privacy: .public)] sent=\(sentResult?.count ?? -1, privacy: .public) recv=\(recvResult?.count ?? -1, privacy: .public) merged=\(merged.count, privacy: .public)")
         return merged.values.sorted {
             ($0.blockNumber ?? 0) > ($1.blockNumber ?? 0)
         }
