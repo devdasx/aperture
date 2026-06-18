@@ -554,10 +554,9 @@ struct AssetDetailView: View {
         let displayedFiat: Decimal? = scrubModel.fiat ?? derived.resolution.totalFiat
         let display: String = {
             if hideBalance { return "••••••" }
-            if let fiat = displayedFiat {
-                return WalletFormatting.fiat(fiat, currencyCode: derived.resolution.fiatCurrencyCode)
-            }
-            return String.apertureLocalized("Price unavailable")
+            // Zero/unpriced → "US$0.00", never "Price unavailable"
+            // (user direction 2026-06-18).
+            return WalletFormatting.fiat(displayedFiat ?? 0, currencyCode: derived.resolution.fiatCurrencyCode)
         }()
         Text(display)
             .font(UniTypography.heroBalance)
@@ -1029,9 +1028,12 @@ private struct AssetNetworkRowView: View {
                 .foregroundStyle(UniColors.Text.primary)
                 .monospacedDigit()
         } else if row.isHeld {
-            Text("Price unavailable")
-                .font(UniTypography.footnote)
-                .foregroundStyle(UniColors.Text.tertiary)
+            // Held but the value rounds to / is zero → "US$0.00", never
+            // "Price unavailable" (user direction 2026-06-18).
+            Text(WalletFormatting.fiat(row.fiatValue ?? 0, currencyCode: row.fiatCurrencyCode))
+                .font(UniTypography.bodyEmphasized)
+                .foregroundStyle(UniColors.Text.primary)
+                .monospacedDigit()
         } else {
             Text("Not held")
                 .font(UniTypography.footnote)

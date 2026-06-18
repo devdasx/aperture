@@ -296,9 +296,15 @@ struct AssetNetworkDetailView: View {
                 .monospacedDigit()
                 .environment(\.layoutDirection, .leftToRight)
         } else if let row = networkRow, row.isHeld {
-            Text("Price unavailable")
-                .font(UniTypography.title3)
-                .foregroundStyle(UniColors.Text.tertiary)
+            // Held on this network but the value rounds to / is zero →
+            // "US$0.00", never "Price unavailable" (user direction 2026-06-18).
+            Text(WalletFormatting.fiat(row.fiatValue ?? 0, currencyCode: row.fiatCurrencyCode))
+                .font(UniTypography.heroBalance)
+                .foregroundStyle(UniColors.Text.primary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.5)
+                .monospacedDigit()
+                .environment(\.layoutDirection, .leftToRight)
         } else {
             Text("Not held on \(chain.displayName)")
                 .font(UniTypography.title3)

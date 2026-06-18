@@ -92,20 +92,15 @@ struct HoldingsTokenRow: View {
         balance.tokenSymbol.prefix(1).uppercased()
     }
 
-    @ViewBuilder
     private var fiatLabel: some View {
-        if balance.fiatValueCached > 0 {
-            Text(WalletFormatting.fiat(
-                balance.fiatValueCached,
-                currencyCode: balance.fiatCurrencyCode
-            ))
-            .font(UniTypography.footnote)
-            .foregroundStyle(UniColors.Text.tertiary)
-            .monospacedDigit()
-        } else {
-            Text("Price unavailable")
-                .font(UniTypography.footnote)
-                .foregroundStyle(UniColors.Text.tertiary)
-        }
+        // Always render the fiat value — a zero renders "US$0.00", never
+        // "Price unavailable" (user direction 2026-06-18).
+        Text(WalletFormatting.fiat(
+            balance.fiatValueCached,
+            currencyCode: balance.fiatCurrencyCode
+        ))
+        .font(UniTypography.footnote)
+        .foregroundStyle(UniColors.Text.tertiary)
+        .monospacedDigit()
     }
 }

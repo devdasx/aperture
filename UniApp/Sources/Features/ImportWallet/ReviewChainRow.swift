@@ -103,22 +103,13 @@ struct ReviewChainRow: View {
                     Text(verbatim: BalanceFormatter.native(balance.nativeBalance, chain: chain))
                         .font(UniTypography.callout.monospacedDigit())
                         .foregroundStyle(UniColors.Text.primary)
-                    if let fiat = balance.fiatBalance {
-                        // Price IS available — render the converted
-                        // amount even when it rounds to the currency
-                        // zero (a $0.00 row is still honest data, not
-                        // a missing-price condition).
-                        Text(verbatim: BalanceFormatter.fiat(fiat, currencyCode: balance.fiatCurrencyCode))
-                            .font(UniTypography.caption1.monospacedDigit())
-                            .foregroundStyle(UniColors.Text.tertiary)
-                    } else {
-                        // Price genuinely missing (Coinbase nil +
-                        // stablecoin proxy nil + FX nil). Rule #16 §A.6
-                        // honesty surface.
-                        Text("Price unavailable")
-                            .font(UniTypography.caption1)
-                            .foregroundStyle(UniColors.Text.tertiary)
-                    }
+                    // Render the fiat value, defaulting an unknown price to
+                    // zero → "US$0.00", never "Price unavailable" (user
+                    // direction 2026-06-18). A $0.00 row is honest data; the
+                    // value refines as the price batch resolves.
+                    Text(verbatim: BalanceFormatter.fiat(balance.fiatBalance ?? 0, currencyCode: balance.fiatCurrencyCode))
+                        .font(UniTypography.caption1.monospacedDigit())
+                        .foregroundStyle(UniColors.Text.tertiary)
                 }
             }
         } else {

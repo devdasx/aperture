@@ -94,15 +94,11 @@ struct ReviewTokenRow: View {
             Text(verbatim: nativeAmountText)
                 .font(UniTypography.callout.monospacedDigit())
                 .foregroundStyle(UniColors.Text.primary)
-            if let fiat = token.fiatBalance {
-                Text(verbatim: BalanceFormatter.fiat(fiat, currencyCode: token.fiatCurrencyCode))
-                    .font(UniTypography.caption1.monospacedDigit())
-                    .foregroundStyle(UniColors.Text.tertiary)
-            } else {
-                Text("Price unavailable")
-                    .font(UniTypography.caption1)
-                    .foregroundStyle(UniColors.Text.tertiary)
-            }
+            // Unknown price → "US$0.00", never "Price unavailable" (user
+            // direction 2026-06-18). Refines as the price batch resolves.
+            Text(verbatim: BalanceFormatter.fiat(token.fiatBalance ?? 0, currencyCode: token.fiatCurrencyCode))
+                .font(UniTypography.caption1.monospacedDigit())
+                .foregroundStyle(UniColors.Text.tertiary)
         }
     }
 
