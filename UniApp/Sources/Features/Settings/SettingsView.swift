@@ -34,10 +34,7 @@ enum SettingsDestination: Hashable, Codable {
     case security
     case autoLock
     case privacy
-    case acknowledgments
-    case networkProviders
     case connectionApprovals
-    case advanced
     case hideSmallBalances
 
     case language
@@ -60,8 +57,8 @@ enum SettingsDestination: Hashable, Codable {
         switch self {
         case .security:
             return false
-        case .wallets, .walletDetail, .autoLock, .privacy, .acknowledgments,
-             .networkProviders, .connectionApprovals, .advanced, .hideSmallBalances,
+        case .wallets, .walletDetail, .autoLock, .privacy,
+             .connectionApprovals, .hideSmallBalances,
              .language, .appearance, .currency, .preferences, .help, .about:
             return true
         }
@@ -258,37 +255,11 @@ struct SettingsView: View {
                         )
                     }
                     .listRowBackground(UniColors.Background.secondary)
-
-                    NavigationLink(value: SettingsDestination.acknowledgments) {
-                        SettingsRow(
-                            systemImage: "text.book.closed",
-                            title: "Acknowledgments",
-                            trailing: nil
-                        )
-                    }
-                    .listRowBackground(UniColors.Background.secondary)
-
-                    NavigationLink(value: SettingsDestination.networkProviders) {
-                        SettingsRow(
-                            systemImage: "network",
-                            title: "Network providers",
-                            trailing: nil
-                        )
-                    }
-                    .listRowBackground(UniColors.Background.secondary)
                 }
 
-                // Section 6 — Advanced (terminal nuclear hatch)
-                Section {
-                    NavigationLink(value: SettingsDestination.advanced) {
-                        SettingsRow(
-                            systemImage: "wrench.and.screwdriver",
-                            title: "Advanced",
-                            trailing: nil
-                        )
-                    }
-                    .listRowBackground(UniColors.Background.secondary)
-                }
+                // Section 6 — Reset Aperture (terminal nuclear hatch). Moved
+                // here from the removed Advanced screen (2026-06-19).
+                ResetApertureSection()
             }
             .listStyle(.insetGrouped)
             .scrollContentBackground(.hidden)
@@ -302,10 +273,7 @@ struct SettingsView: View {
                 case .security:                  SecuritySettingsView()
                 case .autoLock:                  AutoLockPickerView()
                 case .privacy:                   PrivacySettingsView()
-                case .acknowledgments:           AcknowledgmentsView()
-                case .networkProviders:          NetworkProvidersView()
                 case .connectionApprovals:       ConnectionApprovalsView()
-                case .advanced:                  AdvancedSettingsView()
                 case .hideSmallBalances:         HideSmallBalancesPicker()
                 case .language:                  LanguagePickerView()
                 case .appearance:                AppearancePickerView()
