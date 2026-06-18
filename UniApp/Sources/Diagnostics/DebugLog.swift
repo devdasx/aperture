@@ -1,5 +1,4 @@
 import Foundation
-import UIKit
 
 /// **Session-wide rolling debug log** (user direction 2026-06-18: "add logs
 /// for all actions running in the background … I should be able to copy them
@@ -184,7 +183,10 @@ final class DebugLog: @unchecked Sendable {
     // MARK: - Header helpers (computed on the main thread in snapshotText)
 
     private static var deviceLine: String {
-        "\(UIDevice.current.systemName) \(UIDevice.current.systemVersion) · \(deviceModelIdentifier)"
+        // `ProcessInfo` (not `UIDevice`) so this stays nonisolated — `UIDevice`
+        // is @MainActor under Swift 6 and `snapshotText()` runs off any actor.
+        // `operatingSystemVersionString` → e.g. "Version 18.5 (Build 22F76)".
+        "iOS \(ProcessInfo.processInfo.operatingSystemVersionString) · \(deviceModelIdentifier)"
     }
 
     private static var deviceModelIdentifier: String {
