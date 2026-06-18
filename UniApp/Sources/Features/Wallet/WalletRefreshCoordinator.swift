@@ -503,17 +503,24 @@ struct WalletRefreshCoordinator: Sendable {
         return nativeYieldedChains
     }
 
-    /// Coalescing live committer for the balance stream. On a ~300ms
-    /// cadence it drains the dirty-chain set, flushes the staged balance
-    /// upserts in ONE main-context merge, then rebuilds just those chains'
-    /// aggregate rows — so each chain goes live shortly after its balance
-    /// lands while the cadence caps `@Query` invalidations. The cadence is
-    /// the main lever against pull-to-refresh UI lag (2026-06-17): every
-    /// commit triggers the home's `@Query` re-fetches + a display-row
-    /// rebuild on the main actor, so coalescing more aggressively (300ms,
-    /// up from 120ms) cuts that main-thread churn ~2.5× while still
-    /// updating balances ~3×/second — imperceptibly less "live", far
-    /// smoother. Exits after a final drain once `channel.finish()` fires.
+    /// Coalescing live committer for the balance stream. On the
+    /// `liveCommitCadence` it drains the dirty-chain set, flushes the staged
+    /// balance upserts in ONE main-context merge, then rebuilds just those
+    /// chains' aggregate rows — so each chain goes live shortly after its
+    /// balance lands while the cadence caps `@Query` invalidations. The cadence
+    /// is the main lever against pull-to-refresh UI lag (2026-06-17): every
+    /// commit triggers a `ChainStateRecord` merge, and even though that now only
+    /// re-renders the `BalanceCardLiveSection` leaf (Part 3.1, not the whole
+    /// body), a wider cadence still cuts main-thread merge work.
+    ///
+    /// **2026-06-19 — Part 3.4: 300 → 800 ms.** A deliberate INTERVAL bump only
+    /// (the cadence constant), NOT the control-flow change that batched commits
+    /// into one end-flush — that crashed on a flush-timing issue and was
+    /// reverted (see `MISTAKES`). 800 ms still updates balances >1×/second (the
+    /// "appear as they land" feel survives) while ~2.7× fewer merges fire than
+    /// at 300 ms. Exits after a final drain once `channel.finish()` fires.
+    private static let liveCommitCadence: Duration = .milliseconds(800)
+
     private func runLiveBalanceCommitter(
         channel: LiveCommitChannel,
         txRepo: TransactionRepository,
@@ -522,7 +529,7 @@ struct WalletRefreshCoordinator: Sendable {
         fiatCurrencyCode: String
     ) async {
         while !(await channel.isFinished) {
-            try? await Task.sleep(for: .milliseconds(300))
+            try? await Task.sleep(for: Self.liveCommitCadence)
             await commitDirtyChains(
                 channel: channel, txRepo: txRepo, chainStateRepo: chainStateRepo,
                 walletId: walletId, fiatCurrencyCode: fiatCurrencyCode
