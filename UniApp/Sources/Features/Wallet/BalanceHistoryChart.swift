@@ -19,6 +19,11 @@ final class ChartScrubModel {
     /// The touched point's fiat value, or `nil` at rest (hero shows the
     /// wallet's real total).
     var fiat: Decimal?
+    /// The touched point's timestamp, or `nil` at rest. While scrubbing, the
+    /// change row hides the PnL + percent and shows this date & time instead
+    /// (the hero shows the point's value). `nil` on release → the row returns
+    /// to the resting percent + amount.
+    var timestamp: Date?
 }
 
 /// Balance-over-time chart wrapper for the token detail screens — owns the
