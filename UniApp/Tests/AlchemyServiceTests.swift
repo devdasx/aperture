@@ -204,9 +204,26 @@ struct AlchemyServiceTests {
         #expect(AlchemyService.decimalFromHex("0xZZ") == nil)              // invalid digit
         // 32 hex chars = 2^128-1 fits Decimal's 128-bit mantissa exactly.
         #expect(AlchemyService.decimalFromHex("0x" + String(repeating: "f", count: 32)) != nil)
-        // 33+ hex chars exceed 2^128 — Decimal would silently truncate to ~38
-        // significant digits (a corrupt amount), so the guard rejects them.
+        // 33+ SIGNIFICANT hex chars exceed 2^128 — Decimal would silently
+        // truncate to ~38 significant digits (a corrupt amount); rejected.
         #expect(AlchemyService.decimalFromHex("0x" + String(repeating: "f", count: 33)) == nil)
         #expect(AlchemyService.decimalFromHex("0x" + String(repeating: "f", count: 64)) == nil)
+    }
+
+    @Test("decimalFromHex strips ABI 32-byte zero-padding (the missing-balances fix)")
+    func hexDecimalPadding() {
+        // Portfolio `tokenBalance` is a 64-hex-char (32-byte) left-zero-padded
+        // value. 10 USDC = 0x…000989680; the padding must not trip the guard.
+        let tenUSDC = "0x" + String(repeating: "0", count: 58) + "989680"
+        #expect(AlchemyService.decimalFromHex(tenUSDC) == Decimal(10_000_000))
+        // A real ETH balance the API returned, fully padded to 64 chars.
+        let eth = "0x" + String(repeating: "0", count: 50) + "4367a98c3e0a63"
+        #expect(AlchemyService.decimalFromHex(eth) == Decimal(string: "18972801339624035"))
+        // A padded zero decodes to zero, not nil.
+        #expect(AlchemyService.decimalFromHex("0x" + String(repeating: "0", count: 64)) == .zero)
+        // 32 significant chars padded out to 64 still fits 128 bits → parses.
+        #expect(AlchemyService.decimalFromHex("0x" + String(repeating: "0", count: 32) + String(repeating: "f", count: 32)) != nil)
+        // 33 significant chars (even if total ≤ 64) still exceed 2^128 → nil.
+        #expect(AlchemyService.decimalFromHex("0x" + String(repeating: "0", count: 31) + String(repeating: "f", count: 33)) == nil)
     }
 }

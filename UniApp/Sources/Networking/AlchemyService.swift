@@ -632,16 +632,28 @@ actor AlchemyService {
     static func decimalFromHex(_ hexString: String) -> Decimal? {
         var hex = hexString
         if hex.hasPrefix("0x") || hex.hasPrefix("0X") { hex.removeFirst(2) }
+        // **Strip ABI zero-padding (2026-06-19 — the real "missing balances"
+        // bug).** The Portfolio `tokens/by-address` API returns `tokenBalance`
+        // ABI-encoded as a 32-byte (64 hex char) LEFT-ZERO-PADDED value — e.g.
+        // 10 USDC = `0x0000…000989680`. The 128-bit guard below must measure the
+        // SIGNIFICANT width, not the padding, or every real balance (and the
+        // native row) is rejected as "bad hex" — which is exactly what wiped all
+        // EVM token balances and forced native through the `eth_getBalance`
+        // fallback. Stripping leading zeros first makes a padded small value
+        // (≤128 bits of actual magnitude) parse, while a genuinely >2^128 value
+        // still has >32 significant hex chars and is correctly rejected below.
+        while hex.first == "0" { hex.removeFirst() }
         if hex.isEmpty { return .zero }
         // **B5 guard.** `Decimal`'s mantissa is 128-bit, so it represents
         // integers exactly only up to 2^128-1 = 32 hex chars. Beyond that it
         // does NOT overflow to NaN — it silently TRUNCATES to ~38 significant
         // digits (e.g. a uint256 came back as `…907828000…0`), a corrupt amount
         // that would render a wrong balance. Reject anything wider than 128 bits
-        // up front so the caller drops the row instead (no real token balance
-        // needs >2^128 base units; spam contracts that report uint256 max are
-        // dropped here as defense-in-depth on top of the registry filter). The
-        // `isNaN` check stays as belt-and-suspenders.
+        // (measured AFTER stripping the zero-padding above) so the caller drops
+        // the row instead (no real token balance needs >2^128 base units; spam
+        // contracts that report uint256 max are dropped here as defense-in-depth
+        // on top of the registry filter). The `isNaN` check stays as
+        // belt-and-suspenders.
         guard hex.count <= 32 else { return nil }
         var result = Decimal(0)
         let sixteen = Decimal(16)
