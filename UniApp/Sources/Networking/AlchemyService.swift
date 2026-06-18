@@ -116,7 +116,12 @@ actor AlchemyService {
             ]
             if let pk = pageKey { body["pageKey"] = pk }
             let data = try await postJSON(url: url, body: body, network: network)
-            all.append(contentsOf: Self.parseTokens(data))
+            do {
+                all.append(contentsOf: try Self.parseTokens(data))
+            } catch {
+                logRawTokenBodyOnce(data)   // 2A — make the real Data-API error visible
+                throw error
+            }
             pageKey = Self.restPageKey(from: data)
             pages += 1
         } while pageKey != nil && pages < Self.maxPages
@@ -156,25 +161,80 @@ actor AlchemyService {
             ]
             if let pk = pageKey { body["pageKey"] = pk }
             guard let data = try? await postJSON(url: url, body: body, network: "batch") else {
-                return  // honest degrade — leave the cache cold; per-chain falls back
+                return  // transport failure — leave the cache cold; per-chain falls back
             }
-            for (k, v) in Self.groupBatchedRows(data) {
+            let pageGroups: [String: [Token]]
+            do {
+                pageGroups = try Self.groupBatchedRows(data)
+            } catch {
+                // 2A — the batched Data-API call errored (or had no `data.tokens`).
+                // Log the real body once and leave the cache COLD so each
+                // per-chain `tokens(...)` runs and surfaces / falls back on its
+                // own, instead of poisoning all slices with `[]` (2B).
+                logRawTokenBodyOnce(data)
+                return
+            }
+            for (k, v) in pageGroups {
                 grouped[k, default: []].append(contentsOf: v)
             }
             pageKey = Self.restPageKey(from: data)
             pages += 1
         } while pageKey != nil && pages < Self.maxPages
 
-        // Warm the cache for EVERY requested (network,address) — including the
-        // empty slices, so a chain the wallet holds nothing on caches `[]` and
-        // doesn't trigger a redundant individual fetch this refresh.
+        // **BUG 2B fix.** Warm the cache ONLY for slices the verified-good
+        // batched response actually returned. The old code cached `[]` for
+        // EVERY requested (network,address) via `grouped[ck] ?? []` — so any
+        // failed/empty batch poisoned all 10 chains with an empty cache, and the
+        // per-chain `tokens(...)` then returned that `[]` before making a call →
+        // uniform "native row absent" with no retry. An absent slice is now left
+        // cold so its per-chain read runs. A chain the wallet truly holds
+        // nothing on still appears here (Alchemy returns its native `0x0` row),
+        // so it is legitimately cached.
         let expires = Date().addingTimeInterval(Self.prefetchCacheTTL)
-        for net in networks {
-            for addr in addresses {
-                let ck = "\(net)|\(addr.lowercased())"
-                tokenCache[ck] = CachedTokens(expires: expires, tokens: grouped[ck] ?? [])
-            }
+        for (ck, tokens) in grouped {
+            tokenCache[ck] = CachedTokens(expires: expires, tokens: tokens)
         }
+    }
+
+    /// **BUG 2A — one-shot raw-body log.** Prints the raw `tokens/by-address`
+    /// response (first 2 KB) ONCE per process so the real Data-API shape / error
+    /// is visible in Xcode, without spamming it 10× (once per chain).
+    private var didLogRawTokenBody = false
+    private func logRawTokenBodyOnce(_ data: Data) {
+        guard !didLogRawTokenBody else { return }
+        didLogRawTokenBody = true
+        let body = String(data: data.prefix(2000), encoding: .utf8) ?? "<non-utf8 \(data.count) bytes>"
+        Self.log.error("tokens/by-address raw body (first 2KB): \(body, privacy: .public)")
+    }
+
+    /// **BUG 2D — native-only `eth_getBalance` fallback.** Reads the native coin
+    /// balance (raw wei) via Alchemy's per-network JSON-RPC product — the SAME
+    /// endpoint `getAssetTransfers` uses (confirmed working) — so a Portfolio
+    /// Data-API outage degrades gracefully to real native balances instead of
+    /// wiping them. The caller divides by 10^decimals. A genuinely-unfunded
+    /// address returns 0 (an honest zero).
+    func nativeBalanceWei(network: String, address: String) async throws(RPCError) -> Decimal {
+        let key = Secrets.alchemyAPIKey
+        guard !key.isEmpty else { throw .invalidResponse("Alchemy key not configured") }
+        guard let url = URL(string: "https://\(network).g.alchemy.com/v2/\(key)") else {
+            throw .invalidResponse("bad Alchemy RPC URL")
+        }
+        let body: [String: Any] = [
+            "jsonrpc": "2.0", "id": 1, "method": "eth_getBalance",
+            "params": [address, "latest"],
+        ]
+        let data = try await postJSON(url: url, body: body, network: network)
+        guard let root = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else {
+            throw .invalidResponse("unparseable eth_getBalance body")
+        }
+        if let err = root["error"] as? [String: Any] {
+            if (err["code"] as? Int) == 429 { throw .rateLimited(retryAfter: Date().addingTimeInterval(2)) }
+            throw .invalidResponse("eth_getBalance error: \((err["message"] as? String) ?? "unknown")")
+        }
+        guard let hex = root["result"] as? String, let wei = Self.decimalFromHex(hex) else {
+            throw .invalidResponse("eth_getBalance: no result for \(network)")
+        }
+        return wei
     }
 
     /// Map one `tokens/by-address` row to a `Token`. Shared by the
@@ -182,7 +242,16 @@ actor AlchemyService {
     /// Native coin = `tokenAddress: null` → `contract == nil`.
     static func tokenFromRow(_ row: [String: Any]) -> Token? {
         guard let rawHex = row["tokenBalance"] as? String else { return nil }
-        let contract = row["tokenAddress"] as? String   // null → native
+        // **BUG 2C.** Native = JSON `null`, OR a native-sentinel address some
+        // providers return instead of null (`0x0…0` / `0xeee…eee`). Treat both
+        // as native so `isNative` (contract == nil) is true and the native row
+        // is never mis-parsed as a normal token (which would make
+        // `fetchNativeBalance` report "native row absent" on a funded wallet).
+        let rawContract = row["tokenAddress"] as? String
+        let contract: String? = {
+            guard let c = rawContract, !isNativeSentinel(c) else { return nil }
+            return c
+        }()
         let meta = row["tokenMetadata"] as? [String: Any]
         return Token(
             contract: contract,
@@ -193,20 +262,60 @@ actor AlchemyService {
         )
     }
 
-    static func parseTokens(_ data: Data) -> [Token] {
-        guard let root = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
-              let dataObj = root["data"] as? [String: Any],
-              let rows = dataObj["tokens"] as? [[String: Any]] else { return [] }
+    private static func isNativeSentinel(_ address: String) -> Bool {
+        let a = address.lowercased()
+        return a == "0x0000000000000000000000000000000000000000"
+            || a == "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+    }
+
+    /// **BUG 2A — mirror the transfers "H1" behavior on the Data API path.**
+    /// Detects an Alchemy `tokens/by-address` error envelope (returned at HTTP
+    /// 200) so a not-enabled product / auth error / shape change throws the REAL
+    /// message instead of collapsing into a bare "native row absent". Returns
+    /// `nil` when the body is a normal success.
+    private static func tokenResponseError(_ root: [String: Any]) -> RPCError? {
+        if let err = root["error"] as? [String: Any] {
+            if (err["code"] as? Int) == 429 { return .rateLimited(retryAfter: Date().addingTimeInterval(2)) }
+            return .invalidResponse("tokens/by-address error: \((err["message"] as? String) ?? "unknown")")
+        }
+        if let errString = root["error"] as? String {
+            return .invalidResponse("tokens/by-address error: \(errString)")
+        }
+        // Some error shapes carry a top-level message with no `data` object.
+        if root["data"] == nil, let message = root["message"] as? String {
+            return .invalidResponse("tokens/by-address: \(message)")
+        }
+        return nil
+    }
+
+    /// Parse the single-network `tokens/by-address` response. THROWS the real
+    /// error (2A) instead of returning `[]` on an error envelope or a missing
+    /// `data.tokens` — the caller logs the raw body once and surfaces it.
+    static func parseTokens(_ data: Data) throws(RPCError) -> [Token] {
+        guard let root = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else {
+            throw .invalidResponse("unparseable tokens/by-address body")
+        }
+        if let err = tokenResponseError(root) { throw err }
+        guard let dataObj = root["data"] as? [String: Any],
+              let rows = dataObj["tokens"] as? [[String: Any]] else {
+            throw .invalidResponse("tokens/by-address: response had no `data.tokens`")
+        }
         return rows.compactMap(tokenFromRow)
     }
 
     /// Group a batched response's rows by `"network|address"` (address
-    /// lowercased — the `tokenCache` key shape). Pure; `prefetchBalances` does
-    /// the cache write.
-    static func groupBatchedRows(_ data: Data) -> [String: [Token]] {
-        guard let root = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
-              let dataObj = root["data"] as? [String: Any],
-              let rows = dataObj["tokens"] as? [[String: Any]] else { return [:] }
+    /// lowercased — the `tokenCache` key shape). THROWS the real error (2A) on
+    /// an error envelope / missing `data.tokens` so `prefetchBalances` can leave
+    /// the cache cold rather than poison every slice with `[]`.
+    static func groupBatchedRows(_ data: Data) throws(RPCError) -> [String: [Token]] {
+        guard let root = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else {
+            throw .invalidResponse("unparseable tokens/by-address body")
+        }
+        if let err = tokenResponseError(root) { throw err }
+        guard let dataObj = root["data"] as? [String: Any],
+              let rows = dataObj["tokens"] as? [[String: Any]] else {
+            throw .invalidResponse("tokens/by-address: response had no `data.tokens`")
+        }
         var grouped: [String: [Token]] = [:]
         for row in rows {
             guard let net = row["network"] as? String,
@@ -228,7 +337,13 @@ actor AlchemyService {
 
     // MARK: - History (getAssetTransfers, sent + received)
 
-    func assetTransfers(network: String, address: String, maxCount: Int) async throws(RPCError) -> [Transfer] {
+    /// Alchemy supports the `internal` transfer category ONLY on Ethereum and
+    /// Polygon (BUG 1) — single source of truth for that constraint.
+    static func supportsInternalCategory(_ network: String) -> Bool {
+        network == "eth-mainnet" || network == "polygon-mainnet"
+    }
+
+    func assetTransfers(chain: SupportedChain, network: String, address: String, maxCount: Int) async throws(RPCError) -> [Transfer] {
         let key = Secrets.alchemyAPIKey
         guard !key.isEmpty else { throw .invalidResponse("Alchemy key not configured") }
         guard let url = URL(string: "https://\(network).g.alchemy.com/v2/\(key)") else {
@@ -241,11 +356,13 @@ actor AlchemyService {
         async let received = transfers(url: url, network: network, addressKey: "toAddress", address: address, cap: cap)
 
         // Either direction may legitimately be empty; only a double transport
-        // failure is a real error.
+        // failure is a real error. Thread the REAL chain into the error so the
+        // log names the chain that actually failed (was hard-coded `.ethereum`,
+        // which is why Celo logged `…SupportedChain.ethereum`).
         let sentResult = try? await sent
         let recvResult = try? await received
         guard sentResult != nil || recvResult != nil else {
-            throw .allEndpointsFailed(.ethereum)  // chain is cosmetic here; connector logs the real one
+            throw .allEndpointsFailed(chain)
         }
         var merged: [String: Transfer] = [:]
         for t in (sentResult ?? []) + (recvResult ?? []) { merged[t.uniqueId] = t }
@@ -257,14 +374,21 @@ actor AlchemyService {
     private func transfers(
         url: URL, network: String, addressKey: String, address: String, cap: String
     ) async throws(RPCError) -> [Transfer] {
+        // **BUG 1 fix (2026-06-18).** Alchemy supports the `internal` transfer
+        // category ONLY on Ethereum and Polygon; including it on any other
+        // Alchemy chain makes `alchemy_getAssetTransfers` reject the WHOLE
+        // request with `-32602` ("The 'internal' category is only supported for
+        // ETH and MATIC."), which `parseTransfers` correctly throws on — so
+        // BOTH directions failed and history broke on the other 8 EVM chains.
+        // `internal` = contract-initiated native moves (exchange withdrawals,
+        // bridge payouts, DEX native-out), which only matter on ETH/Polygon
+        // anyway. NFTs (`erc721`/`erc1155`) stay excluded — fungibles view only.
+        let categories: [String] = Self.supportsInternalCategory(network)
+            ? ["external", "internal", "erc20"]
+            : ["external", "erc20"]
         let params: [String: Any] = [
             addressKey: address,
-            // H2: include `internal` — contract-initiated native moves (exchange
-            // withdrawals, bridge payouts, DEX native-out) live here on
-            // Ethereum/Polygon; omitting it hid real history at no saving.
-            // NFTs (`erc721`/`erc1155`) are deliberately excluded — this is the
-            // fungibles view; NFT history is a separate feature.
-            "category": ["external", "internal", "erc20"],
+            "category": categories,
             "maxCount": cap,
             "order": "desc",
             "withMetadata": true,
