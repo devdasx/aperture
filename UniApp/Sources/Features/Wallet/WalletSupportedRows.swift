@@ -24,7 +24,7 @@ struct WalletCoinSupportedRow {
 /// rationale as `WalletCoinSupportedRow`: the home screen and the
 /// "all supported" screen share the row shape so the components and
 /// builders are reusable.
-struct WalletTokenSupportedDisplayRow: Identifiable {
+struct WalletTokenSupportedDisplayRow: Identifiable, Equatable {
     let id: String
     let chain: SupportedChain
     let symbol: String

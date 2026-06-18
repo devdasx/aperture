@@ -1313,6 +1313,9 @@ struct WalletHomeView: View {
                 fiatValue: row.fiatValue,
                 fiatCurrencyCode: row.fiatCurrencyCode
             )
+            // 2026-06-18 Part 3.5 — skip the row's body re-eval when its
+            // value inputs are unchanged (most parent re-evals during refresh).
+            .equatable()
         }
         .accessibilityLabel(Text("\(row.chain.displayName) details"))
     }
@@ -1477,40 +1480,9 @@ struct WalletHomeView: View {
     /// specific.
     @ViewBuilder
     private func supportedTokenRow(_ row: WalletTokenSupportedDisplayRow) -> some View {
-        HStack(spacing: UniSpacing.s) {
-            CoinMark(chain: row.chain, tokenSymbol: row.symbol, contract: row.contract)
-                .frame(width: 44, height: 44)
-                .accessibilityHidden(true)
-
-            VStack(alignment: .leading, spacing: UniSpacing.xxs) {
-                // 2026-06-17 — full NAME is the title, SHORT NAME (symbol)
-                // the subtitle (user direction; matches the asset pickers).
-                Text(verbatim: row.name)
-                    .font(UniTypography.bodyEmphasized)
-                    .foregroundStyle(UniColors.Text.primary)
-                    .lineLimit(1)
-                Text(verbatim: row.symbol)
-                    .font(UniTypography.footnote)
-                    .foregroundStyle(UniColors.Text.secondary)
-                    .lineLimit(1)
-            }
-
-            Spacer(minLength: UniSpacing.s)
-
-            VStack(alignment: .trailing, spacing: UniSpacing.xxs) {
-                Text(WalletFormatting.native(row.amount, decimals: 6))
-                    .font(UniTypography.monoBody)
-                    .foregroundStyle(UniColors.Text.primary)
-                // Zero/unheld → "US$0.00", never "Price unavailable"
-                // (user direction 2026-06-18).
-                Text(WalletFormatting.fiat(row.fiatValue ?? 0, currencyCode: row.fiatCurrencyCode))
-                    .font(UniTypography.footnote)
-                    .foregroundStyle(UniColors.Text.tertiary)
-                    .monospacedDigit()
-            }
-        }
-        .padding(.vertical, UniSpacing.xs)
-        .contentShape(Rectangle())
+        // 2026-06-18 Part 3.5 — the value-typed, `.equatable()` row leaf so its
+        // body (CoinMark + labels) is skipped when the row model is unchanged.
+        SupportedTokenRow(row: row).equatable()
     }
 
     // MARK: - Empty holdings section
@@ -2726,6 +2698,60 @@ private struct RecentActivityRows: View, Equatable {
             }
             .buttonStyle(.plain)
         }
+    }
+}
+
+// MARK: - SupportedTokenRow (value-typed, equatable holdings row)
+
+/// One token holdings row — the logo (`CoinMark`), name/symbol, amount, and
+/// fiat — extracted from `WalletHomeView` into a value-typed `Equatable` leaf
+/// (2026-06-18, Part 3.5). Rendered via `.equatable()` so a parent body
+/// re-evaluation (a SwiftData merge the row doesn't depend on) skips rebuilding
+/// the row's body + its `CoinMark` when the row model is unchanged. `==` is
+/// `nonisolated` (Equatable requirement vs main-actor `View`) and reads only
+/// the Sendable value-typed row.
+private struct SupportedTokenRow: View, Equatable {
+    let row: WalletTokenSupportedDisplayRow
+
+    nonisolated static func == (lhs: SupportedTokenRow, rhs: SupportedTokenRow) -> Bool {
+        lhs.row == rhs.row
+    }
+
+    var body: some View {
+        HStack(spacing: UniSpacing.s) {
+            CoinMark(chain: row.chain, tokenSymbol: row.symbol, contract: row.contract)
+                .frame(width: 44, height: 44)
+                .accessibilityHidden(true)
+
+            VStack(alignment: .leading, spacing: UniSpacing.xxs) {
+                // 2026-06-17 — full NAME is the title, SHORT NAME (symbol)
+                // the subtitle (user direction; matches the asset pickers).
+                Text(verbatim: row.name)
+                    .font(UniTypography.bodyEmphasized)
+                    .foregroundStyle(UniColors.Text.primary)
+                    .lineLimit(1)
+                Text(verbatim: row.symbol)
+                    .font(UniTypography.footnote)
+                    .foregroundStyle(UniColors.Text.secondary)
+                    .lineLimit(1)
+            }
+
+            Spacer(minLength: UniSpacing.s)
+
+            VStack(alignment: .trailing, spacing: UniSpacing.xxs) {
+                Text(WalletFormatting.native(row.amount, decimals: 6))
+                    .font(UniTypography.monoBody)
+                    .foregroundStyle(UniColors.Text.primary)
+                // Zero/unheld → "US$0.00", never "Price unavailable"
+                // (user direction 2026-06-18).
+                Text(WalletFormatting.fiat(row.fiatValue ?? 0, currencyCode: row.fiatCurrencyCode))
+                    .font(UniTypography.footnote)
+                    .foregroundStyle(UniColors.Text.tertiary)
+                    .monospacedDigit()
+            }
+        }
+        .padding(.vertical, UniSpacing.xs)
+        .contentShape(Rectangle())
     }
 }
 
