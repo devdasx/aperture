@@ -174,48 +174,13 @@ struct CoinMark: View {
     }
 
     /// Fetch + decode a single mark URL off-main, or `nil` when the URL
-    /// is absent, the download 404s, or the bytes don't decode.
+    /// is absent, the download 404s, or the bytes don't decode. Delegates
+    /// to `CoinMarkImageCache.resolveImage(for:)` — the one shared
+    /// fetch→cache→persist→decode path used by BOTH coin/token marks and
+    /// browser dApp logos, so the two cache + persist identically.
     private func preparedImage(for url: URL?) async -> UIImage? {
         guard let url else { return nil }
-        guard let data = await CoinMarkCache.shared.data(for: url) else { return nil }
-        // **2026-06-09 perf.** Decode + pre-prepare the image off
-        // the main thread. `preparingForDisplay()` returns a
-        // bitmap with the pixel format the GPU expects — without
-        // it, SwiftUI defers the decode to the first render frame,
-        // which is exactly the wrong moment (scroll). Detached task
-        // so the decode doesn't run on the actor that owns the
-        // cache. Cooperative cancellation when the view goes away.
-        let image: UIImage? = await Task.detached(priority: .userInitiated) {
-            // **2026-06-16 — validate the container BEFORE decoding pixels.**
-            // The "-17102 decompressing image — possibly corrupt" log is
-            // emitted by ImageIO DURING a pixel decode of truncated/corrupt
-            // bytes — so the only way to avoid it is to never hand bad bytes
-            // to the decoder. `CGImageSourceGetStatus` reports whether the
-            // container is COMPLETE from the header/structure WITHOUT
-            // running the decompressor; a truncated download (the common
-            // cause) reports `.statusIncomplete`/`.statusInvalidData` and is
-            // rejected here, before any decode. Only a complete, decodable
-            // container proceeds to `preparingForDisplay()`.
-            guard let source = CGImageSourceCreateWithData(data as CFData, nil),
-                  CGImageSourceGetStatus(source) == .statusComplete,
-                  CGImageSourceGetCount(source) > 0,
-                  let cgImage = CGImageSourceCreateImageAtIndex(source, 0, nil) else {
-                return nil
-            }
-            let decoded = UIImage(cgImage: cgImage)
-            return decoded.preparingForDisplay() ?? decoded
-        }.value
-        guard let image else {
-            // Undecodable bytes (-17102). Drop the bad local copy AND
-            // negative-cache the URL: the corruption is upstream, so a
-            // bare re-download would fetch the same bad bytes and
-            // re-throw -17102 on the next row reappearance — an endless
-            // log loop. `markUndecodable` stops the retry for hours; the
-            // initials chip shows meanwhile (`prepared` stays nil).
-            await CoinMarkCache.shared.markUndecodable(url: url)
-            return nil
-        }
-        return image
+        return await CoinMarkImageCache.shared.resolveImage(for: url)
     }
 
     // MARK: - Tier 4: initials chip
@@ -277,5 +242,52 @@ final class CoinMarkImageCache: @unchecked Sendable {
 
     func store(_ image: UIImage, for url: URL) {
         cache.setObject(image, forKey: url.absoluteString as NSString)
+    }
+
+    /// Resolve a display-ready, decoded image for `url` using the ONE
+    /// fetch→cache→persist path coin/token marks use — shared verbatim by
+    /// `CoinMark` (coins/tokens) and `BrowserFaviconView` (browser dApp
+    /// logos) so both cache + persist identically (2026-06-18, user
+    /// direction: "get the icons for tokens and coins in same way … cache
+    /// and persist them in same way, and same for the browser dapps logos").
+    ///
+    /// The path, in order:
+    ///   1. **This session's decoded cache** (synchronous, zero work) — a
+    ///      hit returns the ready bitmap with no actor hop and no re-decode,
+    ///      so scrolling re-uses pixels instead of re-rendering each row.
+    ///   2. **`CoinMarkCache` durable bytes** — memory → Application Support
+    ///      disk (never evicted) → network. Download-once: the network is
+    ///      hit at most ONCE per URL across the device's lifetime; misses
+    ///      are negative-cached so a list scroll doesn't re-fire a request
+    ///      per missing logo on every row reappearance.
+    ///   3. **Off-main decode** — `CGImageSource` validates the container is
+    ///      COMPLETE before `preparingForDisplay()` runs the decompressor,
+    ///      so truncated/corrupt bytes never hit ImageIO's "-17102" path and
+    ///      the decode never lands on the main thread during scroll.
+    ///
+    /// The decoded result is stored back into the session cache (step 1) so
+    /// later renders paint synchronously. Returns `nil` when the URL 404s or
+    /// serves undecodable bytes (caller shows its own fallback — initials
+    /// chip / letter chip); undecodable bytes are negative-cached upstream
+    /// via `markUndecodable` so they don't refetch-and-re-throw in a loop.
+    func resolveImage(for url: URL) async -> UIImage? {
+        if let cached = image(for: url) { return cached }
+        guard let data = await CoinMarkCache.shared.data(for: url) else { return nil }
+        let decoded: UIImage? = await Task.detached(priority: .userInitiated) {
+            guard let source = CGImageSourceCreateWithData(data as CFData, nil),
+                  CGImageSourceGetStatus(source) == .statusComplete,
+                  CGImageSourceGetCount(source) > 0,
+                  let cgImage = CGImageSourceCreateImageAtIndex(source, 0, nil) else {
+                return nil
+            }
+            let image = UIImage(cgImage: cgImage)
+            return image.preparingForDisplay() ?? image
+        }.value
+        guard let decoded else {
+            await CoinMarkCache.shared.markUndecodable(url: url)
+            return nil
+        }
+        store(decoded, for: url)
+        return decoded
     }
 }
