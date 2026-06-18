@@ -65,7 +65,7 @@ struct BalanceHistoryReconstructorTests {
 
     // MARK: - Quantity correctness (ledger)
 
-    @Test("Four USDT receives (12,10,500,300) step 0→12→22→522→822; first event is a receive so it starts at 0")
+    @Test("Four USDT receives (12,10,500,300) step 12→22→522→822; trimmed to the first tx, starts at the first held balance")
     @MainActor
     func fourReceivesStepUp() throws {
         let now = Date(timeIntervalSinceReferenceDate: 800_000_000)
@@ -78,9 +78,11 @@ struct BalanceHistoryReconstructorTests {
         let points = BalanceHistoryReconstructor.reconstruct(
             transactions: txs, priceCache: Self.unitPrices, range: .all, now: now
         )
-        #expect(points.first?.fiat == 0, "first event is a receive → true pre-state is 0")
+        // FIX 2 trims to the first transaction; FIX 1a samples holdings as-of
+        // each instant — so the curve starts at the first held balance (12).
+        #expect(points.first?.fiat == Decimal(12), "trimmed to first tx → starts at the first held balance")
         #expect(points.last?.fiat == Decimal(822))
-        #expect(Self.valueProgression(points) == [0, 12, 22, 522, 822])
+        #expect(Self.valueProgression(points) == [12, 22, 522, 822])
     }
 
     @Test("Mixed in/out steps the running balance exactly")
@@ -96,8 +98,8 @@ struct BalanceHistoryReconstructorTests {
         let points = BalanceHistoryReconstructor.reconstruct(
             transactions: txs, priceCache: Self.unitPrices, range: .all, now: now
         )
-        // 0 (pre-state) → 5 → 3 → 13 → 10.
-        #expect(Self.valueProgression(points) == [0, 5, 3, 13, 10])
+        // Trimmed to the first tx → starts at the first held balance: 5 → 3 → 13 → 10.
+        #expect(Self.valueProgression(points) == [5, 3, 13, 10])
         #expect(points.last?.fiat == Decimal(10))
     }
 
@@ -134,7 +136,7 @@ struct BalanceHistoryReconstructorTests {
         )
         // Only the receive counts → flat at 4 across the self-send.
         #expect(points.last?.fiat == Decimal(4))
-        #expect(Self.valueProgression(points) == [0, 4])
+        #expect(Self.valueProgression(points) == [4])
     }
 
     @Test("Failed transactions are excluded; pending are included")
@@ -151,7 +153,7 @@ struct BalanceHistoryReconstructorTests {
         )
         // 3 (confirmed) + 2 (pending) = 5; the failed 99 never moved anything.
         #expect(points.last?.fiat == Decimal(5))
-        #expect(Self.valueProgression(points) == [0, 3, 5])
+        #expect(Self.valueProgression(points) == [3, 5])
     }
 
     // MARK: - Multi-asset total (main-screen Mode B)
@@ -169,7 +171,7 @@ struct BalanceHistoryReconstructorTests {
         let points = BalanceHistoryReconstructor.reconstruct(
             transactions: txs, priceCache: prices, range: .all, now: now
         )
-        #expect(Self.valueProgression(points) == [0, 2000, 2100])
+        #expect(Self.valueProgression(points) == [2000, 2100])
         #expect(points.last?.fiat == Decimal(2100))
     }
 
@@ -311,39 +313,38 @@ struct BalanceHistoryReconstructorTests {
         }
     }
 
-    // MARK: - Range distinctness (Bug 3 — 1M ≠ 1Y ≠ All)
+    // MARK: - Window trim (FIX 2 — fill the width, converge when history is short)
 
-    @Test("Young wallet (all activity in last 14 days): 1M, 1Y, All have DISTINCT window starts")
+    @Test("Young wallet (all activity in last 10 days): 1M/1Y/All trim to the first tx and CONVERGE")
     @MainActor
-    func youngWalletRangesDistinct() throws {
+    func youngWalletRangesConverge() throws {
         let now = Date(timeIntervalSinceReferenceDate: 800_000_000)
+        let firstTx = now.addingTimeInterval(-10 * 86_400)
         let txs = [
-            Self.makeTx(symbol: "ETH", contract: nil, amount: "5", direction: .incoming, at: now.addingTimeInterval(-10 * 86_400)),
+            Self.makeTx(symbol: "ETH", contract: nil, amount: "5", direction: .incoming, at: firstTx),
             Self.makeTx(symbol: "ETH", contract: nil, amount: "5", direction: .incoming, at: now.addingTimeInterval(-3 * 86_400)),
         ]
         func start(_ r: BalanceHistoryRange) -> Date {
             BalanceHistoryReconstructor.reconstruct(transactions: txs, priceCache: Self.unitPrices, range: r, now: now).first!.timestamp
         }
         let month = start(.month), year = start(.year), all = start(.all)
-        // The old `max(cutoff, firstTx)` clamp made all three equal (firstTx).
-        // Now they are genuinely different windows.
-        #expect(month != year && year != all && month != all, "1M/1Y/All windows must differ (got \(month), \(year), \(all))")
-        // All anchors to the first transaction (10 days ago); 1Y/1M lead earlier.
-        #expect(abs(all.timeIntervalSince(now.addingTimeInterval(-10 * 86_400))) < 1)
-        #expect(year < month, "1Y starts before 1M")
-        #expect(month < all, "1M starts before the first tx (flat-zero lead)")
+        // FIX 2: a range longer than the wallet's history trims to the first tx
+        // and fills the width — so all three start at the first transaction.
+        #expect(abs(month.timeIntervalSince(firstTx)) < 1, "1M trims to first tx")
+        #expect(abs(year.timeIntervalSince(firstTx)) < 1, "1Y trims to first tx")
+        #expect(abs(all.timeIntervalSince(firstTx)) < 1, "All anchors at first tx")
     }
 
-    @Test("Young wallet: a long range starts at a ZERO baseline (funded during the window)")
+    @Test("Young wallet: a trimmed long range starts at the first HELD balance (not an empty zero lead)")
     @MainActor
-    func youngWalletZeroBaseline() throws {
+    func youngWalletStartsAtFirstHeldBalance() throws {
         let now = Date(timeIntervalSinceReferenceDate: 800_000_000)
         let txs = [Self.makeTx(symbol: "ETH", contract: nil, amount: "8", direction: .incoming, at: now.addingTimeInterval(-3 * 86_400))]
-        // 1Y / All both predate (or meet) the only transaction → baseline 0,
-        // which drives the pill's percent-suppression (Bug 4).
+        // 1Y / All trim to the only transaction → no empty lead; the curve
+        // starts at the first held balance (8), not a flat-zero stretch.
         for r in [BalanceHistoryRange.year, .all] {
             let pts = BalanceHistoryReconstructor.reconstruct(transactions: txs, priceCache: Self.unitPrices, range: r, now: now)
-            #expect(pts.first?.fiat == 0, "\(r) on a young wallet must start at a zero baseline")
+            #expect(pts.first?.fiat == Decimal(8), "\(r) trims to first tx → starts at the first held balance")
             #expect(pts.last?.fiat == Decimal(8))
         }
     }
