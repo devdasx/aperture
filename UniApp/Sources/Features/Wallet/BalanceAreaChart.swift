@@ -296,7 +296,7 @@ private struct BalanceAreaCurve: View, Equatable {
         Path { path in
             guard let first = canvasPoints.first else { return }
             path.move(to: first)
-            appendLinearSegments(to: &path, points: canvasPoints)
+            appendMonotoneCubic(to: &path, points: canvasPoints)
         }
     }
 
@@ -304,27 +304,25 @@ private struct BalanceAreaCurve: View, Equatable {
         Path { path in
             guard let first = canvasPoints.first, let last = canvasPoints.last else { return }
             path.move(to: first)
-            appendLinearSegments(to: &path, points: canvasPoints)
+            appendMonotoneCubic(to: &path, points: canvasPoints)
             path.addLine(to: CGPoint(x: last.x, y: size.height))
             path.addLine(to: CGPoint(x: first.x, y: size.height))
             path.closeSubpath()
         }
     }
 
-    /// **Linear step rendering (2026-06-19 Bug 1 fix).** The balance is a
-    /// step function — constant between transactions, a jump at each — so the
-    /// reconstructor emits a near-vertical before/after pair per transaction.
-    /// A smoothing spline (the old uniform Catmull-Rom) overshoots a
-    /// near-vertical pair (control points shoot past the data → the loop at a
-    /// step top) AND assumes equal x spacing, which the time-proportional
-    /// `xFractions` violate (→ waviness). Straight segments draw the step
-    /// EXACTLY: clean horizontal runs, clean vertical risers, zero overshoot.
-    /// The 2.6 pt round caps + joins still soften the corners so it reads
-    /// premium. (A monotone/PCHIP spline is NOT an option — the vertical
-    /// risers share an x, which strictly-increasing-x splines can't represent.)
-    private func appendLinearSegments(to path: inout Path, points canvasPoints: [CGPoint]) {
-        for point in canvasPoints.dropFirst() {
-            path.addLine(to: point)
+    /// **Monotone cubic rendering (2026-06-19).** Mode C samples a dense,
+    /// strictly-x-increasing grid (no zero-width step risers anymore), so a
+    /// smooth spline is now well-defined. We use a **Fritsch–Carlson monotone
+    /// cubic** (PCHIP): it's curvy AND mathematically cannot overshoot — it
+    /// never introduces a peak or dip absent from the data, so there are no
+    /// loops / V's (the uniform Catmull-Rom's failure). A transaction renders
+    /// as a smooth steep S-ramp into its new level instead of a hard corner.
+    /// On flat data (constant value) every tangent is 0 → a straight line, so
+    /// the `.flat` centered state stays a clean horizontal line.
+    private func appendMonotoneCubic(to path: inout Path, points canvasPoints: [CGPoint]) {
+        for segment in MonotoneCubic.bezierSegments(canvasPoints) {
+            path.addCurve(to: segment.to, control1: segment.c1, control2: segment.c2)
         }
     }
 }

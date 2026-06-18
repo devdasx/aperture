@@ -83,18 +83,19 @@ enum BalanceHistoryRange: String, CaseIterable, Hashable, Sendable {
 /// valued `Σ quantity_token(asOf t) × historicalClose(token, UTCday(t))`,
 /// reading `HistoricalPriceRecord` closes keyed by the UTC day. A token
 /// with no close at `t` **carries the nearest prior close forward** (never
-/// zero); spot is the last-resort fallback. The before/after step pair at
-/// each transaction is valued at that day's historical price too, so a
-/// trade is a visible step over the market-driven curve. The leading
-/// anchor at `effectiveCutoff` is the pre-window holdings valued at the
-/// historical price *then* (0 for a wallet that held nothing yet —
-/// honest). The trailing **tip at `now` uses the current spot price** so
-/// the chart's end equals the live hero balance.
+/// zero); spot is the last-resort fallback. Holdings are sampled at one
+/// distinct timestamp per grid instant AND per in-window transaction (no
+/// zero-width step pair), so a trade shows as a smooth steep RAMP from the
+/// prior grid point into its new level — which the monotone-cubic renderer
+/// draws curvy and overshoot-free. The trailing **tip at `now` uses the
+/// current spot price** so the chart's end equals the live hero balance.
 ///
-/// **Window (every range distinct, unchanged).** `effectiveCutoff` is the
-/// range's TRUE cutoff for finite ranges; `.all` anchors to the first
-/// transaction. A young wallet's 1Y honestly shows a flat-zero lead (no
-/// holdings a year ago) then a living curve once funded.
+/// **Window — trim the empty lead.** `effectiveStart = max(range cutoff,
+/// first transaction)`. Where the wallet has a full range of history the
+/// ranges differ (1M = a month, 1Y = a year); where a range is longer than
+/// the wallet's history it trims to the available data and fills the width,
+/// so a very young wallet's 1M/1Y/All converge on the same filled, alive
+/// curve rather than showing an empty flat-zero lead.
 ///
 /// **Edge cases.** No transactions → empty (the caller draws the zero
 /// baseline). A window with no in-window transactions but held holdings →
@@ -224,66 +225,57 @@ enum BalanceHistoryReconstructor {
             return sum
         }
 
-        // Window: real cutoff for finite ranges; first transaction for `.all`.
+        // **Window — trim the empty lead (FIX 2).** `effectiveStart =
+        // max(range cutoff, first transaction)`. A range longer than the
+        // wallet's history trims to the available data and fills the width
+        // (a very young wallet's 1M/1Y/All converge on the same filled, alive
+        // curve) instead of pinning flat-zero at the bottom for most of the
+        // range. `.all`'s `.distantPast` cutoff collapses to the first
+        // transaction here too.
         let firstTxDate = sorted[0].occurredAt
-        let effectiveCutoff: Date = (range == .all) ? firstTxDate : cutoff
+        let effectiveStart = max(cutoff, firstTxDate)
 
         // Pre-window holdings (every transaction strictly before the window).
         var preWindow: [TokenKey: Decimal] = [:]
         var idx = 0
-        while idx < sorted.count, sorted[idx].occurredAt < effectiveCutoff {
+        while idx < sorted.count, sorted[idx].occurredAt < effectiveStart {
             apply(sorted[idx], to: &preWindow)
             idx += 1
         }
         let inWindow = Array(sorted[idx...])
 
-        var points: [BalancePoint] = []
-
-        // Leading anchor: pre-window holdings valued at the historical price
-        // AT the window start (0 for a wallet that held nothing yet).
-        points.append(BalancePoint(timestamp: effectiveCutoff, fiat: histValue(preWindow, at: effectiveCutoff)))
-
-        // Sample requests: the market grid (interior), a before/after pair per
-        // in-window transaction (the step), and the `now` tip (spot).
-        let eps: TimeInterval = 0.001
-        var samples: [(time: Date, isTip: Bool)] = []
-        for instant in sampleGrid(from: effectiveCutoff, to: now, range: range)
-        where instant > effectiveCutoff && instant < now {
-            samples.append((instant, false))
-        }
+        // **Distinct sample timestamps (FIX 1a — no zero-width step pair).** The
+        // market grid (which already includes `effectiveStart` and `now`) plus
+        // ONE timestamp per in-window transaction. Every x is distinct and well
+        // separated, so the monotone-cubic renderer is well-defined; a
+        // transaction shows as a smooth steep RAMP from the prior grid point
+        // into its new level, not a vertical riser.
+        var timeSet = Set(sampleGrid(from: effectiveStart, to: now, range: range))
         for tx in inWindow where Decimal(string: tx.amountRaw) != nil {
-            samples.append((tx.occurredAt.addingTimeInterval(-eps), false))
-            samples.append((tx.occurredAt, false))
+            if tx.occurredAt >= effectiveStart, tx.occurredAt <= now {
+                timeSet.insert(tx.occurredAt)
+            }
         }
-        samples.append((now, true))
-        samples.sort { $0.time < $1.time }
+        let times = timeSet.sorted()
 
-        // Forward sweep: advance holdings as each transaction's timestamp is
-        // crossed, valuing every sample at its own instant. A before-sample
-        // (occurredAt − ε) sees pre-trade holdings; the after-sample
-        // (occurredAt) sees post-trade — drawing the step.
+        // Forward sweep: at each instant the holdings are the pre-window state
+        // plus every in-window transaction at or before it (so a transaction's
+        // effect appears from its own timestamp onward). Value historically,
+        // except the `now` tip which uses current spot — so the chart's right
+        // edge equals the live hero balance.
         var running = preWindow
         var txIdx = 0
-        for sample in samples {
-            while txIdx < inWindow.count, inWindow[txIdx].occurredAt <= sample.time {
+        var points: [BalancePoint] = []
+        points.reserveCapacity(times.count)
+        for t in times {
+            while txIdx < inWindow.count, inWindow[txIdx].occurredAt <= t {
                 apply(inWindow[txIdx], to: &running)
                 txIdx += 1
             }
-            let value = sample.isTip ? spotValue(running) : histValue(running, at: sample.time)
-            points.append(BalancePoint(timestamp: sample.time, fiat: value))
+            let value = (t == now) ? spotValue(running) : histValue(running, at: t)
+            points.append(BalancePoint(timestamp: t, fiat: value))
         }
-
-        // Order by time; drop EXACT duplicates (the leading anchor and a first
-        // transaction at the window start can coincide). Keep distinct values
-        // at the same instant — that's the vertical step.
-        points.sort { $0.timestamp < $1.timestamp }
-        var deduped: [BalancePoint] = []
-        deduped.reserveCapacity(points.count)
-        for point in points {
-            if let last = deduped.last, last.timestamp == point.timestamp, last.fiat == point.fiat { continue }
-            deduped.append(point)
-        }
-        return deduped
+        return points
     }
 
     // MARK: - Helpers
