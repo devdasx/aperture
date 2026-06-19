@@ -72,6 +72,7 @@ struct SwapReviewView: View {
     var onBackground: () -> Void = {}
 
     @AppStorage("biometricEnabled") private var biometricEnabled: Bool = false
+    @AppStorage("requireBiometricForSwap") private var requireForSwap: Bool = true
 
     /// The swap state machine. `.review` is the resting state.
     @State private var phase: Phase = .review
@@ -363,7 +364,7 @@ struct SwapReviewView: View {
         // landing fire via the body's `.uniHaptic(...)` triggers.
         phase = .authenticating
 
-        if biometricEnabled {
+        if biometricEnabled && requireForSwap {
             authTask?.cancel()
             authTask = Task { @MainActor in
                 let outcome = await BiometricService().authenticate(

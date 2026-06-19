@@ -27,6 +27,9 @@ struct DAppSendTransactionSheet: View {
 
     @Environment(\.dismiss) private var dismiss
 
+    /// Per-action Face ID gate (2026-06-20, Security settings). Default ON.
+    @AppStorage("requireBiometricForDApp") private var requireForDApp: Bool = true
+
     @State private var isShowingFullAddress: Bool = false
     @State private var isSending: Bool = false
     @State private var sendError: String?
@@ -261,7 +264,7 @@ struct DAppSendTransactionSheet: View {
         Task { @MainActor in
             defer { isSending = false }
             let biometrics = BiometricService()
-            if biometrics.isAvailable {
+            if biometrics.isAvailable && requireForDApp {
                 let outcome = await biometrics.authenticate(reason: "Confirm sending this transaction")
                 if case .failure = outcome {
                     sendError = String.apertureLocalized("Authentication failed — the transaction wasn’t sent.")
