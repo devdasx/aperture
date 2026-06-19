@@ -116,6 +116,18 @@ targets:
         ONERPC_API_KEY: "$(ONERPC_API_KEY)"
         INFURA_API_KEY: "$(INFURA_API_KEY)"
         ALCHEMY_API_KEY: "$(ALCHEMY_API_KEY)"
+    # iCloud → CloudKit, for the encrypted wallet-backup feature (the blob
+    # store in CloudKitBackupStore). Container auto-creates under the team's
+    # account when the capability is enabled in signing; record types
+    # auto-create in the Development environment on first save. Deploy the
+    # schema to Production before App Store release.
+    entitlements:
+      path: UniApp/Aperture.entitlements
+      properties:
+        com.apple.developer.icloud-container-identifiers:
+          - iCloud.com.aperture.wallet
+        com.apple.developer.icloud-services:
+          - CloudKit
     settings:
       base:
         PRODUCT_NAME: Aperture
