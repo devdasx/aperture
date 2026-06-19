@@ -10,15 +10,21 @@ import OSLog
 ///
 /// **Cipher.** AES-GCM (CryptoKit). 256-bit key generated fresh per
 /// wallet via `SymmetricKey(size: .bits256)`. Key material stored as a
-/// dedicated Keychain item alongside the ciphertext so a Keychain dump
-/// without the device passcode does not reveal the seed.
+/// dedicated Keychain item alongside the ciphertext, encrypted at rest,
+/// readable only while the device is unlocked.
 ///
-/// **ACL.** `kSecAttrAccessibleWhenPasscodeSetThisDeviceOnly` on both
-/// items — Aperture requires the device to have a passcode set and
-/// items don't sync to iCloud Keychain (per Rule #16 — self-custody,
-/// device-local). The `ThisDeviceOnly` suffix is what blocks iCloud
-/// sync; the `WhenPasscodeSet` prefix means the items become
-/// inaccessible if the user removes their device passcode.
+/// **ACL.** `kSecAttrAccessibleWhenUnlockedThisDeviceOnly` on both items
+/// — readable only while the device is unlocked, and the `ThisDeviceOnly`
+/// suffix blocks iCloud-Keychain sync / device-backup restore (Rule #16 —
+/// self-custody, device-local).
+///
+/// **Why not `WhenPasscodeSetThisDeviceOnly` (changed 2026-06-20).** That
+/// stricter class **cannot be written on a device with no passcode**
+/// (`errSecNotAvailable` / -25291 — the real cause of "Couldn't save your
+/// wallet"), and worse, iOS **deletes** those items if the user later
+/// removes their device passcode — silently destroying the seed. For a
+/// self-custody wallet that's an unacceptable data-loss footgun; the app's
+/// own PIN / Face ID layer gates sensitive reveals instead.
 ///
 /// **Per-wallet key separation.** A future feature can attach an
 /// additional `SecAccessControl` with `.biometryCurrentSet` for
@@ -142,7 +148,7 @@ enum SeedVault {
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
             kSecAttrAccount as String: account,
-            kSecAttrAccessible as String: kSecAttrAccessibleWhenPasscodeSetThisDeviceOnly,
+            kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly,
             kSecValueData as String: data
         ]
         let status = SecItemAdd(query as CFDictionary, nil)

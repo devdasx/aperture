@@ -188,7 +188,7 @@ final class CreateWalletState {
         // can re-view it from Settings → Wallets → "View recovery
         // phrase" at any time. The vault uses AES-GCM 256-bit with
         // the per-wallet symmetric key in Keychain under
-        // `kSecAttrAccessibleWhenPasscodeSetThisDeviceOnly` — the
+        // `kSecAttrAccessibleWhenUnlockedThisDeviceOnly` — the
         // phrase is encrypted at rest, accessible only when the
         // device is unlocked, and never leaves the iPhone. The
         // earlier contract (delete after backup verification) was
