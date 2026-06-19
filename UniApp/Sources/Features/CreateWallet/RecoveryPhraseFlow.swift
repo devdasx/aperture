@@ -60,6 +60,12 @@ struct RecoveryPhraseFlow: View {
 
     @State private var isShowingSkipWarning: Bool = false
 
+    /// Presents the unified backup chooser (iCloud / Manual) — the same
+    /// WalletBackupFlow used from Wallet Management (2026-06-20 user
+    /// direction). In creation it runs in `isNewWallet` mode (no
+    /// markBackupComplete; advances the flow on success).
+    @State private var isShowingBackupChooser: Bool = false
+
     /// Tracks whether the user reached PinSetup / WalletReady via the
     /// skip-backup branch or via the verify branch. Passed to
     /// `WalletReadyView` so the persisted `WalletRecord.requiresBackup`
@@ -72,7 +78,12 @@ struct RecoveryPhraseFlow: View {
                 state: state,
                 onClose: onDismiss,
                 onBackUpNow: {
-                    navigationPath.append(RecoveryPhraseDestination.verify)
+                    // Open the unified iCloud / Manual chooser, same as Wallet
+                    // Management (2026-06-20). Manual routes through the same
+                    // BackupVerifyView the create flow always used; iCloud does
+                    // the encrypted CloudKit backup against this wallet's
+                    // pending id. Either way, on success the flow advances.
+                    isShowingBackupChooser = true
                 },
                 onSkipForNow: {
                     isShowingSkipWarning = true
@@ -144,14 +155,32 @@ struct RecoveryPhraseFlow: View {
         // `NavigationStack` itself prevents the bleed without touching
         // the inner view layouts.
         .background(UniColors.Background.primary.ignoresSafeArea())
+        .fullScreenCover(isPresented: $isShowingBackupChooser) {
+            WalletBackupFlow(
+                walletId: state.pendingWalletId,
+                walletName: String.apertureLocalized("Wallet"),
+                words: state.words,
+                onClose: { isShowingBackupChooser = false },
+                isNewWallet: true,
+                onBackedUp: {
+                    // Backed up (iCloud or manual verify) — advance exactly as
+                    // the old verify path did. didSkipBackup stays false, so
+                    // WalletReadyView persists requiresBackup = false.
+                    isShowingBackupChooser = false
+                    navigationPath.append(nextStepAfterVerify())
+                }
+            )
+            .uniAppEnvironment()
+            .presentationBackground(UniColors.Background.primary)
+        }
         .sheet(isPresented: $isShowingSkipWarning) {
             SkipBackupWarningSheet(
                 onBackUpNow: {
-                    // User changed their mind — dismiss the warning and
-                    // route into verify, same as the primary CTA on the
-                    // recovery view.
+                    // User changed their mind — dismiss the warning and open
+                    // the same backup chooser as the primary CTA. Defer a
+                    // runloop so the sheet-dismiss doesn't race the cover.
                     isShowingSkipWarning = false
-                    navigationPath.append(RecoveryPhraseDestination.verify)
+                    DispatchQueue.main.async { isShowingBackupChooser = true }
                 },
                 onSkipAnyway: {
                     // Persist the unbacked-up flag (T-016), dismiss the

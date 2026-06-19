@@ -97,10 +97,6 @@ struct RecoveryPhraseView: View {
     /// delay so the confirmation does not linger.
     @State private var isShowingCopiedConfirmation: Bool = false
 
-    /// Trigger counter for the copy-success haptic. Incremented on each
-    /// successful copy so `.uniHaptic` observes a change and fires.
-    @State private var copyTickCount: Int = 0
-
     /// Tap-to-reveal state (2026-06-20 redesign). The grid is blurred until
     /// the user taps; re-blurs on backgrounding and whenever the word count
     /// changes. Copy is locked until revealed.
@@ -309,7 +305,7 @@ struct RecoveryPhraseView: View {
             options: [.expirationDate: Date().addingTimeInterval(20)]
         )
 #endif
-        copyTickCount &+= 1
+        UniHapticEngine.shared.play(.success)
         withAnimation(.easeOut(duration: 0.2)) { isShowingCopiedConfirmation = true }
         // Green "Copied" reverts after 1.8s (handoff); the clipboard still
         // expires on the OS-managed schedule.
@@ -337,34 +333,27 @@ struct RecoveryPhraseView: View {
         }
     }
 
-    /// Compact Copy, locked until the phrase is revealed: while blurred it's
+    /// Compact Copy — the unified `.secondary` button (matches Back up now's
+    /// height/register, 2026-06-20 user direction), hugged to its label via
+    /// `.fixedSize()`. Locked until the phrase is revealed: while blurred it's
     /// dimmed and a tap reveals the grid instead of copying (handoff).
     private var copyButton: some View {
-        Button {
+        UniButton(
+            title: isShowingCopiedConfirmation ? "Copied" : "Copy",
+            variant: .secondary,
+            systemImage: isShowingCopiedConfirmation ? "checkmark" : "doc.on.doc"
+        ) {
             if revealed {
                 copyPhrase()
             } else {
                 UniHapticEngine.shared.play(.contextualImpact(.tap))
                 withAnimation(.easeOut(duration: 0.25)) { revealed = true }
             }
-        } label: {
-            HStack(spacing: UniSpacing.xs) {
-                Image(systemName: isShowingCopiedConfirmation ? "checkmark" : "doc.on.doc")
-                    .font(.system(size: 15, weight: .regular))
-                Text(isShowingCopiedConfirmation ? "Copied" : "Copy")
-                    .font(UniTypography.bodyEmphasized)
-            }
-            .foregroundStyle(isShowingCopiedConfirmation ? UniColors.Status.successForeground : UniColors.Text.primary)
-            .padding(.horizontal, UniSpacing.l)
-            .frame(height: 47)
-            .background(Capsule().fill(UniColors.Background.secondary))
-            .opacity(revealed ? 1 : 0.45)
-            .contentShape(Capsule())
-            .animation(.easeInOut(duration: 0.2), value: isShowingCopiedConfirmation)
         }
-        .buttonStyle(.plain)
+        .fixedSize()
+        .opacity(revealed ? 1 : 0.5)
+        .animation(.easeInOut(duration: 0.2), value: isShowingCopiedConfirmation)
         .accessibilityLabel(Text("Copy recovery phrase"))
-        .uniHaptic(.success, trigger: copyTickCount)
     }
 }
 
