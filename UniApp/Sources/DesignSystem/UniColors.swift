@@ -261,6 +261,24 @@ enum UniColors {
         static let neutralStroke = Color(uiColor: .separator)
     }
 
+    /// Import-success seal colours (design handoff). Two one-off brand
+    /// hues that no other role carries: **secured** green for a
+    /// key-holding import, **watching** blue for a watch-only import.
+    /// Defined here because Rule #4 §B confines hex construction to this
+    /// file; feature code reads these named roles. Scheme-parameterised
+    /// (the caller passes its `colorScheme`) so each renders its
+    /// light/dark variant.
+    enum Seal {
+        /// Green seal — key-holding import (recovery phrase / private key).
+        static func secured(_ scheme: ColorScheme) -> Color {
+            scheme == .dark ? (Color(hex: "#2FD07F") ?? .green) : (Color(hex: "#179A5B") ?? .green)
+        }
+        /// Blue seal — watch-only import (view-only address).
+        static func watching(_ scheme: ColorScheme) -> Color {
+            scheme == .dark ? (Color(hex: "#5A93F6") ?? .blue) : (Color(hex: "#2F6BD6") ?? .blue)
+        }
+    }
+
     /// Per-word validation feedback on the mnemonic editor surface.
     /// Status (success/warning/error) reads as "operation finished
     /// with this outcome"; per-word Validation reads as "mid-input
