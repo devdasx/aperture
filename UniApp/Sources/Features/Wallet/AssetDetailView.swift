@@ -302,7 +302,12 @@ struct AssetDetailView: View {
     /// (you can receive anywhere), only HELD networks for Send, and only
     /// held + swappable for Swap (you can't move what you don't hold).
     private func networkChoices(for action: PrefillAction) -> [AssetNetworkRow] {
-        let all = derivedCache?.resolution.networks ?? []
+        // Use the SAME resolution the body renders — `derivedCache` may
+        // still be nil if the user taps an action before the `.task`
+        // lands it, which left the picker empty for multi-network tokens
+        // (2026-06-19 fix). The `computeDerived()` fallback guarantees the
+        // networks are present.
+        let all = (derivedCache ?? computeDerived()).resolution.networks
         switch action {
         case .receive: return all
         case .send:    return all.filter { $0.isHeld }
