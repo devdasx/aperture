@@ -16,6 +16,24 @@ struct ScreenshotWarningSheet: View {
     var onRegeneratePhrase: (() -> Void)? = nil
     let onKeepScreenshot: () -> Void
 
+    /// Which secret was on screen — drives the body wording so the sheet
+    /// reads correctly whether it fired over a recovery phrase or a single
+    /// chain's private key (2026-06-19 user direction).
+    enum Secret {
+        case recoveryPhrase
+        case privateKey
+
+        var bodyCopy: LocalizedStringKey {
+            switch self {
+            case .recoveryPhrase:
+                return "Saving your recovery phrase as a screenshot is risky. Screenshots sync to iCloud, appear in your photo library and Recents, and can be read by anyone with your unlocked phone."
+            case .privateKey:
+                return "Saving your private key as a screenshot is risky. Screenshots sync to iCloud, appear in your photo library and Recents, and can be read by anyone with your unlocked phone."
+            }
+        }
+    }
+    var secret: Secret = .recoveryPhrase
+
     /// Toggle for the nested open-source sheet (Rule #16 §A.4).
     @State private var isShowingOpenSource: Bool = false
 
@@ -25,7 +43,11 @@ struct ScreenshotWarningSheet: View {
                 hero
                 bodyCopy
                 betterMethods
-                openSourceFootnote
+                // The open-source footnote explains how recovery *phrases*
+                // are generated — only relevant in the phrase context.
+                if case .recoveryPhrase = secret {
+                    openSourceFootnote
+                }
             }
         } actions: {
             GlassEffectContainer(spacing: UniSpacing.s) {
@@ -68,7 +90,7 @@ struct ScreenshotWarningSheet: View {
 
     private var bodyCopy: some View {
         UniBody(
-            text: "Saving your recovery phrase as a screenshot is risky. Screenshots sync to iCloud, appear in your photo library and Recents, and can be read by anyone with your unlocked phone.",
+            text: secret.bodyCopy,
             color: UniColors.Text.secondary
         )
         .fixedSize(horizontal: false, vertical: true)
