@@ -107,16 +107,34 @@ private struct RecoveryPhraseRevealScreen: View {
     @State private var loadError: String?
     @State private var revealed = false
     @State private var copied = false
+    @State private var isShowingQR = false
+
+    /// "Write these 12 words down…" — the count is the wallet's real word
+    /// count (12 or 24), never hard-coded (2026-06-19 user direction).
+    private var subtitle: String {
+        String(
+            format: String.apertureLocalized("Write these %lld words down in order and keep them somewhere only you can reach."),
+            Int64(words.count)
+        )
+    }
 
     var body: some View {
         VStack(spacing: 0) {
             ScrollView {
                 VStack(spacing: UniSpacing.l) {
-                    Text("Your recovery phrase")
-                        .font(.system(size: 25, weight: .bold))
-                        .foregroundStyle(UniColors.Text.primary)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.top, UniSpacing.s)
+                    VStack(alignment: .leading, spacing: UniSpacing.xs) {
+                        Text("Your recovery phrase")
+                            .font(.system(size: 25, weight: .bold))
+                            .foregroundStyle(UniColors.Text.primary)
+                        if !words.isEmpty && loadError == nil {
+                            Text(verbatim: subtitle)
+                                .font(UniTypography.subheadline)
+                                .foregroundStyle(UniColors.Text.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.top, UniSpacing.s)
 
                     if let loadError {
                         UniBody(text: LocalizedStringKey(loadError), alignment: .center, color: UniColors.Status.errorForeground)
@@ -137,11 +155,17 @@ private struct RecoveryPhraseRevealScreen: View {
             if !words.isEmpty && loadError == nil {
                 ExportActionBar(
                     copyTitle: "Copy phrase",
+                    doneTitle: "Backup Now",
                     copied: $copied,
                     showClipboardCaption: revealed,
                     onCopy: {
                         ExportClipboard.copy(words.joined(separator: " "))
                     },
+                    // TODO(backup-flow): "Backup Now" should launch the real
+                    // verify-your-phrase challenge (BackupExistingWalletFlow /
+                    // BackupVerifyView already exist for the unbacked-wallet
+                    // case) instead of just closing — wire it once the
+                    // export→backup hand-off is designed. For now it dismisses.
                     onDone: onDone
                 )
             }
@@ -149,6 +173,32 @@ private struct RecoveryPhraseRevealScreen: View {
         .background(UniColors.Background.primary.ignoresSafeArea())
         .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                if !words.isEmpty && loadError == nil {
+                    Button { isShowingQR = true } label: {
+                        Image(systemName: "qrcode").font(.system(size: 17, weight: .regular))
+                    }
+                    .accessibilityLabel(Text("Show QR code"))
+                }
+            }
+        }
+        .sheet(isPresented: $isShowingQR) {
+            if !words.isEmpty {
+                ExportQRSheet(
+                    navTitle: String.apertureLocalized("Recovery phrase QR"),
+                    caption: "Scan or save your recovery phrase. Anyone who scans it can restore your wallet and take your funds.",
+                    payload: words.joined(separator: " ")
+                ) {
+                    // The app mark centres the phrase QR (there's no single
+                    // coin for a whole wallet).
+                    Image("LogoCircle").resizable().scaledToFit()
+                }
+                .uniAppEnvironment()
+                .uniSheetDetents([.large])
+                .presentationBackground(UniColors.Background.primary)
+            }
+        }
         .task { await load() }
         .onDisappear { words = [] }
     }
@@ -174,10 +224,8 @@ private struct RecoveryPhraseRevealScreen: View {
             RoundedRectangle(cornerRadius: UniRadius.card, style: .continuous)
                 .fill(UniColors.Background.secondary)
         )
-        .overlay(
-            RoundedRectangle(cornerRadius: UniRadius.card, style: .continuous)
-                .stroke(UniColors.Separator.regular, lineWidth: 1)
-        )
+        // No border (2026-06-19 user direction) — the soft fill alone
+        // defines the card.
         .environment(\.layoutDirection, .leftToRight)
     }
 
@@ -361,15 +409,34 @@ private struct KeyRevealScreen: View {
 
     private var keyValue: String? { row?.value }
 
+    /// The honest one-line scope of this key (2026-06-19 user direction):
+    /// an EVM key is the same account across every EVM chain; a non-EVM key
+    /// controls exactly its own chain's account.
+    private var keySubtitle: String {
+        if entry.chain.family == .evm {
+            return String.apertureLocalized("This single key controls your Ethereum account on every EVM chain. Never share it.")
+        }
+        return String(
+            format: String.apertureLocalized("This single key controls your %@ account. Never share it."),
+            entry.chain.displayName
+        )
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             ScrollView {
                 VStack(spacing: UniSpacing.l) {
-                    Text("\(entry.chain.displayName) private key")
-                        .font(.system(size: 25, weight: .bold))
-                        .foregroundStyle(UniColors.Text.primary)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.top, UniSpacing.s)
+                    VStack(alignment: .leading, spacing: UniSpacing.xs) {
+                        Text("\(entry.chain.displayName) private key")
+                            .font(.system(size: 25, weight: .bold))
+                            .foregroundStyle(UniColors.Text.primary)
+                        Text(verbatim: keySubtitle)
+                            .font(UniTypography.subheadline)
+                            .foregroundStyle(UniColors.Text.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.top, UniSpacing.s)
 
                     if !loaded {
                         UniLoadingState(caption: "Deriving your key…")
@@ -394,6 +461,7 @@ private struct KeyRevealScreen: View {
             if keyValue != nil {
                 ExportActionBar(
                     copyTitle: "Copy key",
+                    doneTitle: "Done",
                     copied: $copied,
                     showClipboardCaption: revealed,
                     onCopy: { if let v = keyValue { ExportClipboard.copy(v) } },
@@ -416,10 +484,17 @@ private struct KeyRevealScreen: View {
         }
         .sheet(isPresented: $isShowingQR) {
             if let value = keyValue {
-                KeyQRSheet(chain: entry.chain, keyString: value)
-                    .uniAppEnvironment()
-                    .uniSheetDetents([.large])
-                    .presentationBackground(UniColors.Background.primary)
+                ExportQRSheet(
+                    navTitle: String(format: String.apertureLocalized("%@ key QR"), entry.chain.displayName),
+                    caption: "Scan or save this private key. Anyone who scans it gets full control of the account.",
+                    payload: value
+                ) {
+                    // The coin centres the key QR (2026-06-19 user direction).
+                    CoinMark(chain: entry.chain, tokenSymbol: entry.chain.ticker)
+                }
+                .uniAppEnvironment()
+                .uniSheetDetents([.large])
+                .presentationBackground(UniColors.Background.primary)
             }
         }
         .task { await load() }
@@ -459,10 +534,7 @@ private struct KeyRevealScreen: View {
             RoundedRectangle(cornerRadius: UniRadius.card, style: .continuous)
                 .fill(UniColors.Background.secondary)
         )
-        .overlay(
-            RoundedRectangle(cornerRadius: UniRadius.card, style: .continuous)
-                .stroke(UniColors.Separator.regular, lineWidth: 1)
-        )
+        // No border (2026-06-19 user direction).
     }
 
     private func load() async {
@@ -477,11 +549,20 @@ private struct KeyRevealScreen: View {
     }
 }
 
-// MARK: - QR sheet (Flow B)
+// MARK: - QR sheet (shared by both flows)
 
-private struct KeyQRSheet: View {
-    let chain: SupportedChain
-    let keyString: String
+/// A QR sheet with a centred mark — the coin for a private key, the app
+/// mark for a recovery phrase (2026-06-19 user direction). The mark is a
+/// view overlay (the same recipe `ReceiveQRCard` uses); the QR is rendered
+/// at error-correction level "H" so the centred plate never defeats a scan.
+/// The image saved to Photos is the plain (logo-free) QR — maximally
+/// scannable — which is the standard for transferable key/phrase QRs.
+private struct ExportQRSheet<Center: View>: View {
+    let navTitle: String
+    let caption: LocalizedStringKey
+    let payload: String
+    @ViewBuilder var center: () -> Center
+
     @Environment(\.dismiss) private var dismiss
     @Environment(\.displayScale) private var displayScale
 
@@ -493,7 +574,7 @@ private struct KeyQRSheet: View {
     var body: some View {
         NavigationStack {
             VStack(spacing: UniSpacing.l) {
-                Text("Scan or save this private key. Anyone who scans it gets full control of the account.")
+                Text(caption)
                     .font(UniTypography.footnote)
                     .foregroundStyle(UniColors.Text.secondary)
                     .multilineTextAlignment(.center)
@@ -506,6 +587,7 @@ private struct KeyQRSheet: View {
                             .resizable()
                             .interpolation(.none)
                             .scaledToFit()
+                            .overlay(alignment: .center) { centreMark }
                     } else {
                         UniLoadingState(caption: "Building QR…")
                     }
@@ -534,7 +616,7 @@ private struct KeyQRSheet: View {
             .padding(.top, UniSpacing.l)
             .frame(maxWidth: .infinity)
             .background(UniColors.Background.primary.ignoresSafeArea())
-            .navigationTitle("\(chain.displayName) key QR")
+            .navigationTitle(Text(verbatim: navTitle))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
@@ -546,7 +628,21 @@ private struct KeyQRSheet: View {
             }
         }
         .task {
-            qr = await QRCodeGenerator.shared.image(for: keyString, scale: 12, displayScale: displayScale)
+            qr = await QRCodeGenerator.shared.image(for: payload, scale: 12, displayScale: displayScale)
+        }
+    }
+
+    /// White rounded plate + the caller's centred mark, sized at 20% of the
+    /// QR — comfortably inside the "H" recovery budget.
+    private var centreMark: some View {
+        let plate: CGFloat = 48
+        return ZStack {
+            RoundedRectangle(cornerRadius: UniRadius.s, style: .continuous)
+                .fill(Color.white)
+                .frame(width: plate, height: plate)
+            center()
+                .frame(width: plate - 14, height: plate - 14)
+                .clipShape(RoundedRectangle(cornerRadius: UniRadius.xs, style: .continuous))
         }
     }
 
@@ -638,6 +734,9 @@ private struct ExportRevealGate<Content: View>: View {
 
 private struct ExportActionBar: View {
     let copyTitle: LocalizedStringKey
+    /// The trailing primary button's label — "Backup Now" on the recovery
+    /// flow, "Done" on the key flow (2026-06-19 user direction).
+    let doneTitle: LocalizedStringKey
     @Binding var copied: Bool
     /// Show the "clipboard clears in Ns" caption (only meaningful after a
     /// copy; gated on `revealed` so it doesn't show under the blur).
@@ -648,6 +747,10 @@ private struct ExportActionBar: View {
     @State private var secondsLeft: Int = 0
 
     var body: some View {
+        // No pinned bar, no hairline, no separate surface (2026-06-19 user
+        // direction) — the actions sit flush on the screen. Copy takes the
+        // flexible width; Done is a fixed, narrower trailing button so Copy
+        // always reads as the wider of the two.
         VStack(spacing: UniSpacing.xs) {
             if secondsLeft > 0 {
                 Text(verbatim: clipboardCaption)
@@ -663,19 +766,15 @@ private struct ExportActionBar: View {
                     onCopy()
                     startCountdown()
                 }
-                UniButton(title: "Done", variant: .primary) { onDone() }
+                .frame(maxWidth: .infinity)
+
+                UniButton(title: doneTitle, variant: .primary) { onDone() }
+                    .frame(width: 132)
             }
         }
         .padding(.horizontal, UniSpacing.l)
         .padding(.top, UniSpacing.s)
         .padding(.bottom, UniSpacing.m)
-        .background(
-            UniColors.Background.primary
-                .overlay(alignment: .top) {
-                    Rectangle().fill(UniColors.Separator.regular).frame(height: 1)
-                }
-                .ignoresSafeArea(edges: .bottom)
-        )
         .onReceive(Timer.publish(every: 1, on: .main, in: .common).autoconnect()) { _ in
             guard secondsLeft > 0 else { return }
             secondsLeft -= 1
