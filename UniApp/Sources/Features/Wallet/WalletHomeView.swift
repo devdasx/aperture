@@ -463,6 +463,7 @@ struct WalletHomeView: View {
                 amount: Decimal(string: tx.amountRaw) ?? .zero,
                 amountRaw: tx.amountRaw,
                 tokenSymbol: tx.tokenSymbol,
+                tokenContract: tx.tokenContract,
                 counterparty: tx.counterparty,
                 occurredAt: tx.occurredAt,
                 status: TransactionStatus(rawValue: tx.statusRaw) ?? .confirmed,
@@ -2733,6 +2734,9 @@ private struct ActivityRowModel: Identifiable, Equatable {
     let amount: Decimal
     let amountRaw: String
     let tokenSymbol: String
+    /// Token contract (nil for a native coin) — passed to `CoinMark` so a
+    /// token row resolves its exact logo by contract (2026-06-19).
+    let tokenContract: String?
     let counterparty: String
     let occurredAt: Date
     let status: TransactionStatus
@@ -2777,7 +2781,8 @@ private struct RecentActivityRows: View {
                     status: row.status,
                     kind: row.kind,
                     fiatValue: ActivityFiat.value(amountRaw: row.amountRaw, symbol: row.tokenSymbol, map: map),
-                    fiatCurrencyCode: currencyCode
+                    fiatCurrencyCode: currencyCode,
+                    tokenContract: row.tokenContract
                 )
             }
             .buttonStyle(.plain)
