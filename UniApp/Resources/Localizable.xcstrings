@@ -538148,6 +538148,72 @@
           }
         }
       }
+    },
+    "Erase Data": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Erase Data"
+          }
+        }
+      }
+    },
+    "Turn on Erase Data?": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Turn on Erase Data?"
+          }
+        }
+      }
+    },
+    "Turn On": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Turn On"
+          }
+        }
+      }
+    },
+    "After 10 failed passcode attempts, every wallet and all data on this iPhone will be erased. Make sure your recovery phrases are backed up — a wallet you didn't back up can't be recovered.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "After 10 failed passcode attempts, every wallet and all data on this iPhone will be erased. Make sure your recovery phrases are backed up — a wallet you didn't back up can't be recovered."
+          }
+        }
+      }
+    },
+    "Erase all wallets and data on this iPhone after 10 failed passcode attempts. A wallet you backed up can be restored from its recovery phrase — one you didn't is gone for good.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Erase all wallets and data on this iPhone after 10 failed passcode attempts. A wallet you backed up can be restored from its recovery phrase — one you didn't is gone for good."
+          }
+        }
+      }
+    },
+    "Without a passcode, your wallet is only protected by your iPhone's lock screen. Turn on a passcode to require authentication every time you open Aperture — and to use Face ID.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Without a passcode, your wallet is only protected by your iPhone's lock screen. Turn on a passcode to require authentication every time you open Aperture — and to use Face ID."
+          }
+        }
+      }
     }
   },
   "version": "1.0"
