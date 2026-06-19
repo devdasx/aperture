@@ -25,5 +25,9 @@
 - aperture-i18n-translator-primary: 9 keys × 25 languages translated.
 - aperture-i18n-translator-secondary: 11 keys × 25 languages translated.
 - aperture-i18n-translator-primary: 2 keys × 25 languages translated.
+- aperture-i18n-translator-primary: 34 keys × 25 languages translated.
+- aperture-i18n-translator-secondary: 43 keys × 25 languages translated.
+- aperture-i18n-translator-primary: 30 keys × 25 languages translated.
+- aperture-i18n-translator-secondary: 21 keys × 25 languages translated.
 
 - 2026-06-19 dead-code (Part 5): removed the orphaned transaction-adapter layer — 8 files, 3,969 LOC (EVMTransactionAdapter, LongTailTransactionAdapters, Bitcoin/Solana/Tron/XRPL/Stellar transaction adapters, BitcoinFamilyAdapter). Zero code references (only "ported from" doc-comments in the live connectors); EVMChainAdapter retained (used by AddCustomTokenSheet). Build + test-build green.
