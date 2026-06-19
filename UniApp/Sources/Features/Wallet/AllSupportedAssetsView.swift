@@ -108,7 +108,7 @@ struct AllSupportedAssetsView: View {
                 }
             }
         }
-        .navigationTitle("All supported assets")
+        .navigationTitle("Coins & tokens")
         .navigationBarTitleDisplayMode(.inline)
         .searchable(text: $searchText, prompt: Text("Search"))
         .toolbar {
@@ -334,14 +334,16 @@ private struct TokenSupportedRow: View {
                 .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: UniSpacing.xxs) {
-                // 2026-06-17 — full NAME is the title, SHORT NAME (symbol)
-                // the subtitle (user direction); the chain stays in the
-                // subtitle since the all-supported list spans every chain.
+                // Full NAME is the title, SYMBOL the subtitle. The chain
+                // is intentionally dropped (2026-06-19 user direction) —
+                // a token can live on many networks, so naming one here is
+                // misleading; the per-network breakdown lives in the asset
+                // detail.
                 Text(verbatim: row.name)
                     .font(UniTypography.bodyEmphasized)
                     .foregroundStyle(UniColors.Text.primary)
                     .lineLimit(1)
-                Text("\(row.symbol) · \(row.chain.displayName)")
+                Text(verbatim: row.symbol)
                     .font(UniTypography.footnote)
                     .foregroundStyle(UniColors.Text.secondary)
                     .lineLimit(1)
