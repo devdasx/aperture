@@ -54,7 +54,10 @@ enum TrustWalletAssetURL {
     /// isn't in `slug(for:)` — caller falls back to a monogram.
     static func tokenLogoURL(chain: SupportedChain, contract: String) -> URL? {
         guard let slug = slug(for: chain) else { return nil }
-        let urlString = "https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/\(slug)/assets/\(contract)/logo.png"
+        // Trust Wallet's production CDN (2026-06-19) — same source the
+        // Trust Wallet app uses, reliable where `raw.githubusercontent.com`
+        // rate-limits. Matches `CoinMarkCache.trustWalletURL`.
+        let urlString = "https://assets-cdn.trustwallet.com/blockchains/\(slug)/assets/\(contract)/logo.png"
         return URL(string: urlString)
     }
 }

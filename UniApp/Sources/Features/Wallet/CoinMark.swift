@@ -7,10 +7,12 @@ import ImageIO
 /// **Trust Wallet ONLY (2026-06-15 user direction).**
 /// > *"we'll use only trust wallet icons, we'll never use any other
 /// > icons for coins & tokens."*
-/// Every coin and token mark resolves from the `trustwallet/assets`
-/// repo (MIT, Rule #7 §B priority 1) via `CoinMarkCache.shared` —
-/// native coins from `…/blockchains/<slug>/info/logo.png`, tokens
-/// from `…/blockchains/<slug>/assets/<contract>/logo.png`. There is
+/// Every coin and token mark resolves from Trust Wallet's production
+/// asset CDN (`assets-cdn.trustwallet.com`, built from the MIT
+/// `trustwallet/assets` repo — Rule #7 §B priority 1) via
+/// `CoinMarkCache.shared` — native coins from
+/// `…/blockchains/<slug>/info/logo.png`, tokens from
+/// `…/blockchains/<slug>/assets/<contract>/logo.png`. There is
 /// no bundled-asset path anymore (the old tiers 1+2 — `chain.logoAssetName`
 /// and the bundled USDC/USDT marks — were removed so the source is a
 /// single, consistent one). Marks are cached to disk on first download;

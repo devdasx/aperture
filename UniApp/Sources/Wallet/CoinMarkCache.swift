@@ -22,7 +22,9 @@ import CryptoKit
 /// Wallet repo Rule #7 §B already names as priority #1 for crypto
 /// brand assets.
 ///
-/// **Trust Wallet URL convention** (verified against the live repo):
+/// **Trust Wallet URL convention** — served from the production CDN
+/// `assets-cdn.trustwallet.com` (the same source the Trust Wallet app
+/// uses; reliable where `raw.githubusercontent.com` rate-limits):
 /// - Native coins:  `…/blockchains/<chain-slug>/info/logo.png`
 /// - On-chain tokens: `…/blockchains/<chain-slug>/assets/<contract>/logo.png`
 ///
@@ -123,7 +125,7 @@ actor CoinMarkCache {
         }
 
         // Negative-cache hit — a recent attempt already failed;
-        // don't hammer raw.githubusercontent.com until the TTL lapses.
+        // don't hammer the Trust Wallet CDN until the TTL lapses.
         if let until = negativeUntil[key] {
             if Date() < until { return nil }
             negativeUntil[key] = nil
@@ -233,7 +235,15 @@ actor CoinMarkCache {
         } else {
             path = "blockchains/\(slug)/info/logo.png"
         }
-        return URL(string: "https://raw.githubusercontent.com/trustwallet/assets/master/\(path)")
+        // Trust Wallet's production asset CDN — the SAME source the Trust
+        // Wallet app itself uses (2026-06-19, learned from the Stabro
+        // build). Switched off `raw.githubusercontent.com/.../master`,
+        // which is rate-limited + occasionally 403/429s under load — the
+        // cause of icons intermittently falling back to the text chip. The
+        // CDN is built from the same `trustwallet/assets` repo (verified
+        // byte-identical for every chain we bundle), so coverage is
+        // identical, just reliable + fast.
+        return URL(string: "https://assets-cdn.trustwallet.com/\(path)")
     }
 
     /// Trust Wallet's chain slug. NOT always the lowercase ticker:
