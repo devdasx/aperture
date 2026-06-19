@@ -533,11 +533,20 @@ private struct ICloudProgressScreen: View {
                 return String.apertureLocalized("Your iCloud storage is full. Free up space and try again.")
             case .notFound:
                 return String.apertureLocalized("The backup couldn't be verified. Try again.")
-            case .cloudKit, .unknown:
-                return String.apertureLocalized("Something went wrong talking to iCloud. Try again.")
+            case .cloudKit(let code, let message):
+                // 5 badContainer · 8 missingEntitlement · 10 permissionFailure
+                // · 15 serverRejectedRequest → the CloudKit container / the
+                // iCloud→CloudKit capability isn't provisioned for this build.
+                if [5, 8, 10, 15].contains(code) {
+                    return String(format: String.apertureLocalized("iCloud backup isn't set up for this build yet. In Xcode → Signing & Capabilities, add iCloud → CloudKit and the iCloud.com.aperture.wallet container, then try again. (CloudKit %lld)"), Int64(code))
+                }
+                // Surface the real CloudKit reason so the cause is never hidden.
+                return String(format: String.apertureLocalized("Couldn't back up to iCloud (CloudKit %lld): %@"), Int64(code), message)
+            case .unknown(let message):
+                return String(format: String.apertureLocalized("Couldn't back up to iCloud: %@"), message)
             }
         }
-        return String.apertureLocalized("Couldn't complete the backup. Try again.")
+        return String(format: String.apertureLocalized("Couldn't complete the backup: %@"), error.localizedDescription)
     }
 }
 
