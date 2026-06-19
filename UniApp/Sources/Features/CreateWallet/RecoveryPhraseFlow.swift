@@ -87,7 +87,12 @@ struct RecoveryPhraseFlow: View {
                 },
                 onSkipForNow: {
                     isShowingSkipWarning = true
-                }
+                },
+                // While the full-screen backup chooser/flow covers this view,
+                // suppress its screenshot warning — that cover shows no phrase,
+                // and a `.fullScreenCover` doesn't fire the covered view's
+                // `.onDisappear` to clear `isVisible` (2026-06-20 user report).
+                coveredByChild: isShowingBackupChooser
             )
             .navigationDestination(for: RecoveryPhraseDestination.self) { destination in
                 switch destination {

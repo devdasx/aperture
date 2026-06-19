@@ -59,6 +59,18 @@ struct RecoveryPhraseView: View {
     /// `SkipBackupWarningSheet`.
     let onSkipForNow: () -> Void
 
+    /// `true` while a full-screen child (the iCloud/Manual backup flow) is
+    /// covering this view. A `.fullScreenCover` does NOT fire this view's
+    /// `.onDisappear`, so `isVisible` stays `true` and the global screenshot
+    /// observer would keep firing for screenshots taken on the covering
+    /// screen — which shows NO phrase (e.g. "Backing up to iCloud"). The
+    /// parent (`RecoveryPhraseFlow`) owns the cover, so it tells us when it's
+    /// up and we suppress the warning then. (2026-06-20 user report: the
+    /// warning must fire ONLY on the seed-phrase screen.) This mirrors the
+    /// `!isShowingBackup` guard the Export flow already uses for the same
+    /// cover-over-phrase case.
+    var coveredByChild: Bool = false
+
     /// Toggle for the passphrase sheet. Local state — the sheet does not
     /// need to survive a `.id`-driven rebuild because it is incidental
     /// to the flow.
@@ -201,7 +213,10 @@ struct RecoveryPhraseView: View {
             // PinSetup) or backward (closed the cover), a screenshot
             // taken elsewhere should NOT surface this sheet — the
             // sensitive content (the 12/24 words) is no longer visible.
-            guard isVisible else { return }
+            // `coveredByChild` handles the one case `.onDisappear` misses:
+            // a full-screen backup cover presented by the parent, which
+            // leaves this view "visible" but shows no phrase.
+            guard isVisible, !coveredByChild else { return }
             isShowingScreenshotWarning = true
         }
     }

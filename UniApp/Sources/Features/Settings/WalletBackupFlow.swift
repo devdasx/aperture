@@ -35,15 +35,21 @@ struct WalletBackupFlow: View {
     private var finish: () -> Void { onBackedUp ?? onClose }
 
     @State private var path: [Step] = []
-    /// In-memory only; set by the password screen, consumed by the upload.
-    @State private var backupPassword = ""
     /// Built once for the manual verify challenge (BackupVerifyView needs a
     /// stable CreateWalletState carrying the phrase).
     @State private var verifyState: CreateWalletState?
 
     enum Step: Hashable {
         case iCloudPassword
-        case iCloudProgress
+        /// The backup password travels WITH the navigation value — never via a
+        /// separate `@State` that the destination reads after the push. Setting
+        /// a value-type `@State` and appending to the path in the same closure
+        /// races SwiftUI's destination build, which read the *old* (empty)
+        /// password → "the backup password is empty" (2026-06-20 fix). As an
+        /// associated value it's bound to the pushed step and can't be stale.
+        /// `[Step]` is only `Hashable` (not `Codable`), so it is never
+        /// persisted — the password stays in memory only.
+        case iCloudProgress(password: String)
         case manualWriteDown
         case manualVerify
         case manualConfirmed
@@ -72,15 +78,14 @@ struct WalletBackupFlow: View {
         switch step {
         case .iCloudPassword:
             ICloudPasswordScreen { password in
-                backupPassword = password
-                path.append(.iCloudProgress)
+                path.append(.iCloudProgress(password: password))
             }
-        case .iCloudProgress:
+        case .iCloudProgress(let password):
             ICloudProgressScreen(
                 walletId: walletId,
                 walletName: walletName,
                 words: words,
-                password: backupPassword,
+                password: password,
                 onDone: finish
             )
         case .manualWriteDown:
