@@ -14,6 +14,10 @@ enum ImportDestination: Hashable, Codable, Identifiable {
     case watchOnlyChainPicker
     case watchOnlyEntry(SupportedChain)
     case watchOnlyReview(SupportedChain)
+    /// Terminal success step — pushed after a successful commit, carrying
+    /// the persisted wallet id + what was imported so the success screen
+    /// can render the right variant and read the wallet's real networks.
+    case success(walletId: UUID, result: ImportResult)
 
     var id: Self { self }
 }
@@ -130,6 +134,12 @@ struct ImportWalletFlow: View {
                             persistThen(.watchOnly(chain))
                         }
                     )
+                case .success(let walletId, let result):
+                    ImportSuccessView(
+                        walletId: walletId,
+                        result: result,
+                        onContinue: { onCompleted(result) }
+                    )
                 }
             }
         }
@@ -182,7 +192,14 @@ struct ImportWalletFlow: View {
                     await WalletRefreshCoordinator(container: container)
                         .refreshWallet(walletId: walletId, fiatCode: fiatCode)
                 }
-                onCompleted(result)
+                // Show the success screen as the terminal step instead of
+                // dismissing straight onto the (still-scanning) wallet —
+                // the first refresh above runs in the background while the
+                // user reads the result, and its "Continue to wallet" CTA
+                // fires `onCompleted`, dismissing the cover (2026-06-19).
+                navigationPath.append(
+                    ImportDestination.success(walletId: walletId, result: result)
+                )
             } catch {
                 Self.log.error(
                     "Wallet import persist failed: \(String(describing: error), privacy: .public)"
@@ -196,7 +213,7 @@ struct ImportWalletFlow: View {
 /// Summary of what the user imported. Returned to the presenter via
 /// `onCompleted` so the parent can react appropriately (e.g. show a
 /// different confirmation per method).
-enum ImportResult: Hashable, Sendable {
+enum ImportResult: Hashable, Sendable, Codable {
     case mnemonic
     case privateKey(SupportedChain)
     case watchOnly(SupportedChain)

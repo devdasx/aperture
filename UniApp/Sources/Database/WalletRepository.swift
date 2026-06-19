@@ -154,14 +154,20 @@ actor WalletRepository {
         return record.persistentModelID
     }
 
-    /// Insert a wallet from a private-key import (single chain).
+    /// Insert a single-private-key wallet. `addresses` carries one entry
+    /// per chain the key is valid on: a single pair for a single-chain key
+    /// (Solana, a Bitcoin-family WIF), or — for an EVM key — the SAME
+    /// address on every supported EVM chain (one secp256k1 key derives one
+    /// 0x address that is valid across all EVM networks, the identical
+    /// shape the mnemonic importer already writes). The signing layer
+    /// resolves the wallet's one stored key for whichever EVM chain a tx
+    /// targets, so every row signs correctly.
     @discardableResult
     func insertImportedKeyWallet(
         id: UUID,
         name: String,
         colorTag: String,
-        chainRaw: String,
-        address: String
+        addresses: [(chainRaw: String, address: String)]
     ) throws -> PersistentIdentifier {
         try ensureDurableStore()
         let record = WalletRecord(
@@ -175,23 +181,28 @@ actor WalletRepository {
             requiresBackup: false
         )
         modelContext.insert(record)
-        let addr = WalletAddressRecord(chainRaw: chainRaw, address: address)
-        addr.wallet = record
-        modelContext.insert(addr)
+        for entry in addresses {
+            let addr = WalletAddressRecord(chainRaw: entry.chainRaw, address: entry.address)
+            addr.wallet = record
+            modelContext.insert(addr)
+        }
         try modelContext.save()
         syncManifestIfDurable()
         return record.persistentModelID
     }
 
-    /// Insert a watch-only wallet (one or more addresses on a single
-    /// chain, derived from an extended key or supplied directly).
+    /// Insert a watch-only wallet. `addresses` carries one `(chainRaw,
+    /// address)` per (chain, address) the import covers: a single chain
+    /// for a Bitcoin / non-EVM address (or its xpub-derived set), or —
+    /// for an EVM address — the SAME address on every supported EVM chain
+    /// (an 0x address is valid across all EVM networks). View-only: no
+    /// key material is stored.
     @discardableResult
     func insertWatchOnlyWallet(
         id: UUID,
         name: String,
         colorTag: String,
-        chainRaw: String,
-        addresses: [String]
+        addresses: [(chainRaw: String, address: String)]
     ) throws -> PersistentIdentifier {
         try ensureDurableStore()
         let record = WalletRecord(
@@ -205,8 +216,8 @@ actor WalletRepository {
             requiresBackup: false
         )
         modelContext.insert(record)
-        for address in addresses {
-            let addr = WalletAddressRecord(chainRaw: chainRaw, address: address)
+        for entry in addresses {
+            let addr = WalletAddressRecord(chainRaw: entry.chainRaw, address: entry.address)
             addr.wallet = record
             modelContext.insert(addr)
         }

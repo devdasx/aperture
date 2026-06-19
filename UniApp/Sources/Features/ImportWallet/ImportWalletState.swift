@@ -167,12 +167,24 @@ final class ImportWalletState {
                 walletId: walletId
             )
             do {
+                // An EVM key derives one 0x address valid on EVERY EVM
+                // chain, so light them all up (the same shape the mnemonic
+                // importer writes — identical address across EVM rows). A
+                // single-chain key (Solana, Bitcoin WIF) stays on its one
+                // chain. The stored key signs any of these chains.
+                let keyAddresses: [(chainRaw: String, address: String)]
+                if chain.family == .evm {
+                    keyAddresses = Self.evmChains.map {
+                        (chainRaw: $0.rawValue, address: derivedAddressFromKey)
+                    }
+                } else {
+                    keyAddresses = [(chainRaw: chain.rawValue, address: derivedAddressFromKey)]
+                }
                 try await repository.insertImportedKeyWallet(
                     id: walletId,
                     name: resolvedName,
                     colorTag: "default",
-                    chainRaw: chain.rawValue,
-                    address: derivedAddressFromKey
+                    addresses: keyAddresses
                 )
             } catch {
                 try? SeedVault.deleteSeed(for: walletId)
@@ -190,12 +202,25 @@ final class ImportWalletState {
             guard !watchOnlyAddresses.isEmpty else {
                 throw KeyImportError.invalidFormat
             }
+            // An EVM address is watchable on EVERY EVM chain, so follow it
+            // across all of them (each address × each EVM chain). A
+            // non-EVM address (Bitcoin, or an xpub-derived set) stays on
+            // its one chain.
+            let watchEntries: [(chainRaw: String, address: String)]
+            if chain.family == .evm {
+                watchEntries = watchOnlyAddresses.flatMap { address in
+                    Self.evmChains.map { (chainRaw: $0.rawValue, address: address) }
+                }
+            } else {
+                watchEntries = watchOnlyAddresses.map {
+                    (chainRaw: chain.rawValue, address: $0)
+                }
+            }
             try await repository.insertWatchOnlyWallet(
                 id: walletId,
                 name: resolvedName,
                 colorTag: "default",
-                chainRaw: chain.rawValue,
-                addresses: watchOnlyAddresses
+                addresses: watchEntries
             )
         }
 
@@ -212,6 +237,12 @@ final class ImportWalletState {
         )
         return walletId
     }
+
+    /// Every supported EVM chain, in declaration order (ethereum first).
+    /// An EVM key/address is valid on all of them, so EVM imports fan out
+    /// across this set.
+    nonisolated static let evmChains: [SupportedChain] =
+        SupportedChain.allCases.filter { $0.family == .evm }
 
     /// Zero the sensitive in-memory inputs once persistence has
     /// succeeded (or the entry surface is abandoned). The seed / key
