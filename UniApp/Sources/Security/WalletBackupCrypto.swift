@@ -47,30 +47,27 @@ enum WalletBackupCrypto {
     // MARK: - Key derivation
 
     /// Derive the 256-bit AES key from `password` + `salt` via PBKDF2.
+    ///
+    /// Uses the canonical bridging form: the password `String` and the salt /
+    /// output `[UInt8]` arrays are passed straight to `CCKeyDerivationPBKDF`,
+    /// which Swift converts to the C pointers for the call's lifetime. (The
+    /// earlier nested-`withUnsafeBytes` + `assumingMemoryBound(to: CChar.self)`
+    /// form returned `kCCParamError` on device — 2026-06-20 fix.)
     static func deriveKey(password: String, salt: Data, iterations: Int) throws -> SymmetricKey {
         guard !password.isEmpty else { throw CryptoError.emptyPassword }
-        let passwordData = Data(password.utf8)
-        var derived = Data(count: derivedKeyByteCount)
+        let saltBytes = [UInt8](salt)
+        var derived = [UInt8](repeating: 0, count: derivedKeyByteCount)
 
-        let status: Int32 = derived.withUnsafeMutableBytes { derivedPtr in
-            salt.withUnsafeBytes { saltPtr in
-                passwordData.withUnsafeBytes { pwPtr in
-                    CCKeyDerivationPBKDF(
-                        CCPBKDFAlgorithm(kCCPBKDF2),
-                        pwPtr.baseAddress?.assumingMemoryBound(to: CChar.self),
-                        passwordData.count,
-                        saltPtr.baseAddress?.assumingMemoryBound(to: UInt8.self),
-                        salt.count,
-                        CCPseudoRandomAlgorithm(kCCPRFHmacAlgSHA256),
-                        UInt32(iterations),
-                        derivedPtr.baseAddress?.assumingMemoryBound(to: UInt8.self),
-                        derivedKeyByteCount
-                    )
-                }
-            }
-        }
+        let status = CCKeyDerivationPBKDF(
+            CCPBKDFAlgorithm(kCCPBKDF2),
+            password, password.utf8.count,
+            saltBytes, saltBytes.count,
+            CCPseudoRandomAlgorithm(kCCPRFHmacAlgSHA256),
+            UInt32(iterations),
+            &derived, derived.count
+        )
         guard status == Int32(kCCSuccess) else { throw CryptoError.kdfFailed(status) }
-        return SymmetricKey(data: derived)
+        return SymmetricKey(data: Data(derived))
     }
 
     // MARK: - Seal / open
@@ -131,5 +128,28 @@ enum WalletBackupCrypto {
         }
         guard status == errSecSuccess else { throw CryptoError.randomGenerationFailed(status) }
         return data
+    }
+}
+
+// MARK: - Honest error text
+
+/// Human, diagnosable messages — so a backup failure never collapses to a
+/// bare "(CryptoError error 2.)" again; the real CommonCrypto status shows.
+extension WalletBackupCrypto.CryptoError: LocalizedError {
+    public var errorDescription: String? {
+        switch self {
+        case .emptyPassword:
+            return "The backup password is empty."
+        case .randomGenerationFailed(let status):
+            return "Couldn't generate a secure salt (status \(status))."
+        case .kdfFailed(let status):
+            return "Couldn't derive the encryption key (PBKDF2 status \(status))."
+        case .sealFailed:
+            return "Couldn't encrypt the backup."
+        case .openFailed:
+            return "Wrong password, or the backup is corrupted."
+        case .encodingFailed:
+            return "Couldn't encode the backup."
+        }
     }
 }
