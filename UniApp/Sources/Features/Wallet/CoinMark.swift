@@ -67,7 +67,14 @@ struct CoinMark: View {
         if let bundled = bundledNativeAssetName {
             Image(bundled)
                 .resizable()
-                .scaledToFit()
+                // `.fill`, not `.fit` (2026-06-19, learned from the Stabro
+                // build) — Trust Wallet marks ship with transparent padding
+                // (e.g. the Base blue square sits small in its canvas).
+                // `.fit` left that padding so the mark floated tiny inside
+                // the circle; `.fill` scales it to cover, so the logo fills
+                // the disc exactly as Trust Wallet's app renders it. The
+                // `.clipShape(Circle())` crops the overflow.
+                .scaledToFill()
                 .clipShape(Circle())
         } else {
             networkMark
@@ -91,7 +98,10 @@ struct CoinMark: View {
             if let image = prepared ?? cached {
                 Image(uiImage: image)
                     .resizable()
-                    .scaledToFit()
+                    // `.fill` so padded Trust Wallet marks cover the disc
+                    // (see the bundled-native branch above) — matches the
+                    // Trust Wallet app's rendering. Circle-clipped to crop.
+                    .scaledToFill()
                     .clipShape(Circle())
             } else {
                 initialsChip
