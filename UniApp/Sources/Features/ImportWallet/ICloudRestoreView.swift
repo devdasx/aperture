@@ -302,10 +302,12 @@ struct ICloudRestoreView: View {
                 return String.apertureLocalized("Your iCloud storage is full.")
             case .notFound:
                 return String.apertureLocalized("That backup is no longer in iCloud.")
-            case .cloudKit, .unknown:
-                return String.apertureLocalized("Something went wrong talking to iCloud. Try again.")
+            case .cloudKit(let code, let message):
+                return String(format: String.apertureLocalized("Couldn't reach iCloud (CloudKit %lld): %@"), Int64(code), message)
+            case .unknown(let message):
+                return String(format: String.apertureLocalized("Couldn't reach iCloud: %@"), message)
             }
         }
-        return String.apertureLocalized("Something went wrong. Try again.")
+        return String(format: String.apertureLocalized("Something went wrong: %@"), error.localizedDescription)
     }
 }
