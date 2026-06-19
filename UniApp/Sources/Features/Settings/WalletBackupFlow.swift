@@ -35,9 +35,29 @@ struct WalletBackupFlow: View {
     private var finish: () -> Void { onBackedUp ?? onClose }
 
     @State private var path: [Step] = []
-    /// Built once for the manual verify challenge (BackupVerifyView needs a
-    /// stable CreateWalletState carrying the phrase).
-    @State private var verifyState: CreateWalletState?
+    /// The manual-verify challenge state, built ONCE up front from the phrase
+    /// this flow already holds — never nil, so the verify screen is instant
+    /// (no "Preparing…"). Previously this was an optional set on navigation,
+    /// which raced the destination build and left the screen stuck loading
+    /// (2026-06-20 user report). `CreateWalletState(words:)` skips entropy.
+    @State private var verifyState: CreateWalletState
+
+    init(
+        walletId: UUID,
+        walletName: String,
+        words: [String],
+        onClose: @escaping () -> Void,
+        isNewWallet: Bool = false,
+        onBackedUp: (() -> Void)? = nil
+    ) {
+        self.walletId = walletId
+        self.walletName = walletName
+        self.words = words
+        self.onClose = onClose
+        self.isNewWallet = isNewWallet
+        self.onBackedUp = onBackedUp
+        _verifyState = State(initialValue: CreateWalletState(words: words))
+    }
 
     enum Step: Hashable {
         case iCloudPassword
@@ -90,9 +110,6 @@ struct WalletBackupFlow: View {
             )
         case .manualWriteDown:
             ManualWriteDownScreen(words: words) {
-                let state = CreateWalletState(wordCount: words.count == 24 ? .twentyFour : .twelve)
-                state.commit(words: words)
-                verifyState = state
                 path.append(.manualVerify)
             }
         case .manualVerify:
@@ -692,7 +709,9 @@ private struct ManualWriteDownScreen: View {
 // MARK: - Manual · 3 · Verify
 
 private struct ManualVerifyScreen: View {
-    let state: CreateWalletState?
+    /// Always present — built once up front by the flow from the phrase it
+    /// already holds, so this screen is instant (no "Preparing…").
+    let state: CreateWalletState
     let walletId: UUID
     /// `true` during wallet creation — the wallet isn't persisted yet, so
     /// there's no record to `markBackupComplete`; the create flow records
@@ -704,14 +723,8 @@ private struct ManualVerifyScreen: View {
     @State private var isShowingError = false
 
     var body: some View {
-        Group {
-            if let state {
-                BackupVerifyView(state: state) {
-                    Task { await complete() }
-                }
-            } else {
-                UniLoadingState(caption: "Preparing…")
-            }
+        BackupVerifyView(state: state) {
+            Task { await complete() }
         }
         .background(UniColors.Background.primary.ignoresSafeArea())
         .alert(Text("Couldn't record the backup"), isPresented: $isShowingError) {

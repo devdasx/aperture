@@ -60,6 +60,18 @@ final class CreateWalletState {
         self.words = BIP39.generateMnemonic(wordCount: wordCount)
     }
 
+    /// Build directly from an **already-known** phrase, WITHOUT drawing fresh
+    /// entropy. Used by the backup-verify challenge, which only needs `words`
+    /// to build its cards — `generateMnemonic` there would be pure waste and
+    /// (when done lazily on navigation) caused a stuck "Preparing…" screen.
+    /// Setting `wordCount` in `init` does not fire its `didSet`, so no
+    /// regeneration happens. Instant by construction. (2026-06-20 fix.)
+    init(words: [String]) {
+        self.wordCount = words.count == 24 ? .twentyFour : .twelve
+        self.passphrase = ""
+        self.words = words
+    }
+
     /// Discards the current mnemonic and draws a fresh one from CSPRNG
     /// entropy. Called automatically when `wordCount` changes; safe to
     /// call externally for "Show me a new phrase" flows in the future
