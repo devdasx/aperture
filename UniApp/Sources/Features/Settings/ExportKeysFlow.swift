@@ -108,6 +108,11 @@ private struct RecoveryPhraseRevealScreen: View {
     @State private var revealed = false
     @State private var copied = false
     @State private var isShowingQR = false
+    @State private var isShowingScreenshotWarning = false
+    /// Gates the screenshot notification to when this screen is actually on
+    /// top — the notification is global and keeps firing under pushed/
+    /// presented screens otherwise.
+    @State private var isVisible = false
 
     /// "Write these 12 words down…" — the count is the wallet's real word
     /// count (12 or 24), never hard-coded (2026-06-19 user direction).
@@ -199,8 +204,28 @@ private struct RecoveryPhraseRevealScreen: View {
                 .presentationBackground(UniColors.Background.primary)
             }
         }
+        .sheet(isPresented: $isShowingScreenshotWarning) {
+            // Same warning sheet as wallet creation, in export mode (no
+            // "generate new phrase" — this wallet already exists). We do NOT
+            // block the screenshot; per the export security model the user
+            // is always allowed to capture their own backup.
+            ScreenshotWarningSheet(
+                onKeepScreenshot: { isShowingScreenshotWarning = false }
+            )
+            .uniAppEnvironment()
+            .intrinsicHeightSheet()
+            .presentationBackground(UniColors.Background.primary)
+        }
         .task { await load() }
-        .onDisappear { words = [] }
+        .onAppear { isVisible = true }
+        .onDisappear {
+            isVisible = false
+            words = []
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.userDidTakeScreenshotNotification)) { _ in
+            guard isVisible else { return }
+            isShowingScreenshotWarning = true
+        }
     }
 
     /// 12/24 words in ONE grouped container — two columns, subtle index
