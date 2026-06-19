@@ -115,7 +115,8 @@ enum WalletSupportedRowBuilders {
     static func tokenRows(
         heldRows: [(chain: SupportedChain, balance: TokenBalanceRecord)],
         currencyCode: String,
-        assets: [CatalogAsset] = AssetCatalog.allAssets
+        assets: [CatalogAsset] = AssetCatalog.allAssets,
+        customTokens: [CustomTokenSnapshot] = []
     ) -> [WalletTokenSupportedDisplayRow] {
         // **2026-06-09 perf.** Build the (chain, contract) → balance
         // index ONCE up front, then every per-asset lookup below is
@@ -132,7 +133,8 @@ enum WalletSupportedRowBuilders {
         // (`AssetCatalogTests` pins the equivalence).
         let index = HeldRowIndex(heldRows)
         var rows: [WalletTokenSupportedDisplayRow] = []
-        rows.reserveCapacity(assets.count)
+        rows.reserveCapacity(assets.count + customTokens.count)
+        var seen = Set<String>()
         for asset in assets {
             let balance = index.lookup(chain: asset.chain, contract: asset.contract)
             rows.append(WalletTokenSupportedDisplayRow(
@@ -141,6 +143,31 @@ enum WalletSupportedRowBuilders {
                 symbol: asset.symbol,
                 name: asset.name,
                 contract: asset.contract,
+                amount: decimalAmount(balance: balance),
+                fiatValue: positiveFiat(balance),
+                fiatCurrencyCode: balance?.fiatCurrencyCode ?? currencyCode
+            ))
+            seen.insert("\(asset.chain.rawValue)|\(asset.contract.lowercased())")
+        }
+        // **User-added custom tokens (2026-06-19).** A token the user
+        // pasted into "Add custom token" lives in `CustomTokenRecord`, NOT
+        // the curated catalog — so it never appeared in this list, even
+        // when held + scanned (the scanner DOES fetch its balance; it's in
+        // `customTokensByChain`). Append one row per custom token that the
+        // catalog doesn't already cover (dedup by chain+contract), matched
+        // to the held balance the same way — so it shows everywhere the
+        // catalog tokens do, with its real balance or a 0 placeholder.
+        for token in customTokens {
+            let key = "\(token.chain.rawValue)|\(token.contract.lowercased())"
+            guard !seen.contains(key) else { continue }
+            seen.insert(key)
+            let balance = index.lookup(chain: token.chain, contract: token.contract)
+            rows.append(WalletTokenSupportedDisplayRow(
+                id: "custom:\(key)",
+                chain: token.chain,
+                symbol: token.symbol,
+                name: token.name,
+                contract: token.contract,
                 amount: decimalAmount(balance: balance),
                 fiatValue: positiveFiat(balance),
                 fiatCurrencyCode: balance?.fiatCurrencyCode ?? currencyCode
