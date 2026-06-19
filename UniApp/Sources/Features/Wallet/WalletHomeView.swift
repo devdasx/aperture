@@ -2626,6 +2626,15 @@ private struct BalanceCardLiveSection: View {
     /// 300ms refresh-commits re-render only this card.
     @Query private var chainStateRecords: [ChainStateRecord]
 
+    /// The freshness ledger (Rule #27) — the source for the "Updated …"
+    /// caption. `ChainStateRecord.lastSyncedAt` is deliberately NOT used:
+    /// it advances only when an aggregate actually changes AND is
+    /// currency-scoped, so a zero-balance wallet (or one whose rows were
+    /// last priced in another currency) would never surface a stamp.
+    /// `SyncStatusRecord` is stamped once per refresh, per wallet,
+    /// regardless of balance or currency (2026-06-19 fix).
+    @Query private var syncStatuses: [SyncStatusRecord]
+
     /// On-disk spot prices — owned HERE (2026-06-18, Part 3.1) instead of on
     /// the parent, so the per-refresh price-batch commit re-renders only this
     /// card, not the whole `WalletHomeView` body. Filtered to the active fiat
@@ -2656,13 +2665,20 @@ private struct BalanceCardLiveSection: View {
         return liveBalanceSum
     }
 
-    /// When the active wallet's balances + history were last refreshed — the
-    /// latest per-chain aggregate `updatedAt` (the rebuild runs after the
-    /// balance + history passes complete). `nil` before the first scan.
+    /// When the active wallet's balances + history were last refreshed —
+    /// the latest successful sync of the wallet's `balances` /
+    /// `transactions` domains in the freshness ledger. Stamped on every
+    /// refresh by `WalletRefreshCoordinator` (scope = wallet UUID), so it
+    /// shows even for a zero-balance wallet. `nil` before the first scan.
     private var lastUpdated: Date? {
         guard let walletId else { return nil }
-        return chainStateRecords
-            .filter { $0.walletId == walletId && $0.fiatCurrencyCode == currencyCode }
+        let scope = walletId.uuidString
+        let domains: Set<String> = [
+            SyncDomain.balances.rawValue,
+            SyncDomain.transactions.rawValue
+        ]
+        return syncStatuses
+            .filter { $0.scopeId == scope && domains.contains($0.domainRaw) }
             .compactMap(\.lastSyncedAt)
             .max()
     }

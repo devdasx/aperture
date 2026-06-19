@@ -153,9 +153,16 @@ struct WalletsListView: View {
                             )
                     }
                 }
-                Text(kindLabel(for: wallet.kind))
+                // Balance as the subtitle — same layout as the wallet
+                // switcher sheet (2026-06-19 user direction): footnote /
+                // secondary / monospaced-digit / forced-LTR. The
+                // "imported from…" kind subtitle was removed; it lives on
+                // the wallet detail screen's Kind row.
+                Text(WalletFormatting.fiat(fiatBalance(for: wallet), currencyCode: currencyCode))
                     .font(UniTypography.footnote)
                     .foregroundStyle(UniColors.Text.secondary)
+                    .monospacedDigit()
+                    .environment(\.layoutDirection, .leftToRight)
                 if wallet.requiresBackup {
                     Text("Not backed up")
                         .font(UniTypography.caption1)
@@ -164,14 +171,6 @@ struct WalletsListView: View {
             }
 
             Spacer(minLength: UniSpacing.s)
-
-            // Each wallet's total balance in the user's currency
-            // (2026-06-17 user direction) — not just the name.
-            Text(WalletFormatting.fiat(fiatBalance(for: wallet), currencyCode: currencyCode))
-                .font(UniTypography.bodyEmphasized)
-                .foregroundStyle(UniColors.Text.primary)
-                .monospacedDigit()
-                .lineLimit(1)
         }
         .padding(.vertical, UniSpacing.xxs)
     }
@@ -192,15 +191,6 @@ struct WalletsListView: View {
         }
         .padding(.vertical, UniSpacing.xxs)
         .contentShape(Rectangle())
-    }
-
-    private func kindLabel(for kind: WalletKind) -> LocalizedStringKey {
-        switch kind {
-        case .created:          return "Created on this iPhone"
-        case .importedMnemonic: return "Imported from recovery phrase"
-        case .importedKey:      return "Imported from private key"
-        case .watchOnly:        return "Watch-only"
-        }
     }
 
     // MARK: - Reorder
