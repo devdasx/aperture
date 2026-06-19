@@ -102,6 +102,10 @@ struct RecoveryPhraseView: View {
     /// changes. Copy is locked until revealed.
     @State private var revealed: Bool = false
 
+    /// Set when Copy is tapped before the phrase is revealed — flashes the
+    /// button red + a "Tap to reveal first" hint, matching the Export flow.
+    @State private var needsReveal: Bool = false
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: UniSpacing.l) {
@@ -320,6 +324,11 @@ struct RecoveryPhraseView: View {
     /// Footer: [Copy | Back up now] on one row, Skip for now full-width below.
     private var actionRegion: some View {
         VStack(spacing: UniSpacing.s) {
+            if needsReveal {
+                Text("Tap to reveal first")
+                    .font(UniTypography.caption1)
+                    .foregroundStyle(UniColors.Status.errorForeground)
+            }
             HStack(spacing: UniSpacing.s) {
                 copyButton
                 UniButton(title: "Back up now", variant: .primary) {
@@ -331,27 +340,40 @@ struct RecoveryPhraseView: View {
                 onSkipForNow()
             }
         }
+        .onChange(of: revealed) { _, isRevealed in
+            if isRevealed { needsReveal = false }
+        }
+        .task(id: needsReveal) {
+            guard needsReveal else { return }
+            try? await Task.sleep(for: .seconds(2.5))
+            if !Task.isCancelled {
+                withAnimation(.easeInOut(duration: 0.2)) { needsReveal = false }
+            }
+        }
     }
 
-    /// Compact Copy — the unified `.secondary` button (matches Back up now's
-    /// height/register, 2026-06-20 user direction), hugged to its label via
-    /// `.fixedSize()`. Locked until the phrase is revealed: while blurred it's
-    /// dimmed and a tap reveals the grid instead of copying (handoff).
+    /// Copy — the unified `.secondary` button, matching the Export flow's Copy
+    /// exactly (2026-06-20 user direction): locked until the phrase is
+    /// revealed; tapping it while blurred flashes it red (`.destructive`) with
+    /// a "Tap to reveal first" hint and a warning haptic — it does NOT copy or
+    /// auto-reveal. +4pt each side of breathing room.
     private var copyButton: some View {
         UniButton(
             title: isShowingCopiedConfirmation ? "Copied" : "Copy",
-            variant: .secondary,
+            variant: needsReveal ? .destructive : .secondary,
             systemImage: isShowingCopiedConfirmation ? "checkmark" : "doc.on.doc"
         ) {
             if revealed {
                 copyPhrase()
             } else {
-                UniHapticEngine.shared.play(.contextualImpact(.tap))
-                withAnimation(.easeOut(duration: 0.25)) { revealed = true }
+                UniHapticEngine.shared.play(.warning)
+                withAnimation(.easeOut(duration: 0.2)) { needsReveal = true }
             }
         }
         .fixedSize()
-        .opacity(revealed ? 1 : 0.5)
+        .padding(.horizontal, 4)
+        .opacity(revealed || needsReveal ? 1 : 0.5)
+        .animation(.easeInOut(duration: 0.2), value: needsReveal)
         .animation(.easeInOut(duration: 0.2), value: isShowingCopiedConfirmation)
         .accessibilityLabel(Text("Copy recovery phrase"))
     }
