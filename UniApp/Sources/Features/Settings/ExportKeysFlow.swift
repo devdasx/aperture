@@ -55,6 +55,7 @@ enum ExportClipboard {
 
 struct ExportRecoveryPhraseFlow: View {
     let walletId: UUID
+    let walletName: String
     let onClose: () -> Void
 
     @State private var isShowingReveal = false
@@ -90,7 +91,7 @@ struct ExportRecoveryPhraseFlow: View {
                 }
             }
             .navigationDestination(isPresented: $isShowingReveal) {
-                RecoveryPhraseRevealScreen(walletId: walletId, onDone: onClose)
+                RecoveryPhraseRevealScreen(walletId: walletId, walletName: walletName, onDone: onClose)
             }
         }
         .background(UniColors.Background.primary.ignoresSafeArea())
@@ -101,6 +102,7 @@ struct ExportRecoveryPhraseFlow: View {
 
 private struct RecoveryPhraseRevealScreen: View {
     let walletId: UUID
+    let walletName: String
     let onDone: () -> Void
 
     @State private var words: [String] = []
@@ -108,6 +110,7 @@ private struct RecoveryPhraseRevealScreen: View {
     @State private var revealed = false
     @State private var copied = false
     @State private var isShowingQR = false
+    @State private var isShowingBackup = false
     @State private var isShowingScreenshotWarning = false
     /// Gates the screenshot notification to when this screen is actually on
     /// top — the notification is global and keeps firing under pushed/
@@ -166,12 +169,10 @@ private struct RecoveryPhraseRevealScreen: View {
                     onCopy: {
                         ExportClipboard.copy(words.joined(separator: " "))
                     },
-                    // TODO(backup-flow): "Backup Now" should launch the real
-                    // verify-your-phrase challenge (BackupExistingWalletFlow /
-                    // BackupVerifyView already exist for the unbacked-wallet
-                    // case) instead of just closing — wire it once the
-                    // export→backup hand-off is designed. For now it dismisses.
-                    onDone: onDone
+                    // "Backup Now" launches the real backup flow (iCloud
+                    // encrypted backup or manual verify) against this wallet's
+                    // already-decrypted phrase.
+                    onDone: { isShowingBackup = true }
                 )
             }
         }
@@ -214,6 +215,19 @@ private struct RecoveryPhraseRevealScreen: View {
             )
             .uniAppEnvironment()
             .intrinsicHeightSheet()
+            .presentationBackground(UniColors.Background.primary)
+        }
+        .fullScreenCover(isPresented: $isShowingBackup) {
+            WalletBackupFlow(
+                walletId: walletId,
+                walletName: walletName,
+                words: words,
+                onClose: {
+                    isShowingBackup = false
+                    onDone()
+                }
+            )
+            .uniAppEnvironment()
             .presentationBackground(UniColors.Background.primary)
         }
         .task { await load() }
