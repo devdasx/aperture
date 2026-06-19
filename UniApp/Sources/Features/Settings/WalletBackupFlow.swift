@@ -22,6 +22,17 @@ struct WalletBackupFlow: View {
     let walletName: String
     let words: [String]
     let onClose: () -> Void
+    /// `true` when run from wallet CREATION (the wallet isn't persisted yet):
+    /// the manual path skips `markBackupComplete` (there's no record to mark —
+    /// the create flow records backup state when it persists), and a finished
+    /// backup calls `onBackedUp` to advance the create flow instead of just
+    /// closing. Default `false` = management (existing, persisted wallet).
+    var isNewWallet: Bool = false
+    var onBackedUp: (() -> Void)? = nil
+
+    /// Where a finished backup goes: advance the create flow if provided,
+    /// else just close (management).
+    private var finish: () -> Void { onBackedUp ?? onClose }
 
     @State private var path: [Step] = []
     /// In-memory only; set by the password screen, consumed by the upload.
@@ -70,7 +81,7 @@ struct WalletBackupFlow: View {
                 walletName: walletName,
                 words: words,
                 password: backupPassword,
-                onDone: onClose
+                onDone: finish
             )
         case .manualWriteDown:
             ManualWriteDownScreen(words: words) {
@@ -83,10 +94,11 @@ struct WalletBackupFlow: View {
             ManualVerifyScreen(
                 state: verifyState,
                 walletId: walletId,
+                skipPersist: isNewWallet,
                 onConfirmed: { path.append(.manualConfirmed) }
             )
         case .manualConfirmed:
-            BackupConfirmedScreen(onDone: onClose)
+            BackupConfirmedScreen(onDone: finish)
         }
     }
 }
@@ -677,6 +689,10 @@ private struct ManualWriteDownScreen: View {
 private struct ManualVerifyScreen: View {
     let state: CreateWalletState?
     let walletId: UUID
+    /// `true` during wallet creation — the wallet isn't persisted yet, so
+    /// there's no record to `markBackupComplete`; the create flow records
+    /// the backup state when it persists. Just advance on verify success.
+    var skipPersist: Bool = false
     let onConfirmed: () -> Void
 
     @Environment(\.modelContext) private var modelContext
@@ -702,6 +718,11 @@ private struct ManualVerifyScreen: View {
 
     @MainActor
     private func complete() async {
+        // Creation flow: nothing persisted yet to mark — just advance.
+        if skipPersist {
+            onConfirmed()
+            return
+        }
         let repo = WalletRepository(modelContainer: modelContext.container)
         do {
             try await repo.markBackupComplete(id: walletId)
