@@ -431,6 +431,9 @@ private struct KeyRevealScreen: View {
     @State private var revealed = false
     @State private var copied = false
     @State private var isShowingQR = false
+    @State private var isShowingScreenshotWarning = false
+    /// Gates the global screenshot notification to when this screen is on top.
+    @State private var isVisible = false
 
     private var keyValue: String? { row?.value }
 
@@ -522,8 +525,27 @@ private struct KeyRevealScreen: View {
                 .presentationBackground(UniColors.Background.primary)
             }
         }
+        .sheet(isPresented: $isShowingScreenshotWarning) {
+            // Same warning sheet as the recovery-phrase reveal, in the
+            // private-key wording. Screenshots are not blocked — user choice.
+            ScreenshotWarningSheet(
+                onKeepScreenshot: { isShowingScreenshotWarning = false },
+                secret: .privateKey
+            )
+            .uniAppEnvironment()
+            .intrinsicHeightSheet()
+            .presentationBackground(UniColors.Background.primary)
+        }
         .task { await load() }
-        .onDisappear { row = nil }
+        .onAppear { isVisible = true }
+        .onDisappear {
+            isVisible = false
+            row = nil
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.userDidTakeScreenshotNotification)) { _ in
+            guard isVisible else { return }
+            isShowingScreenshotWarning = true
+        }
     }
 
     private func keyPanel(value: String, format: String) -> some View {
