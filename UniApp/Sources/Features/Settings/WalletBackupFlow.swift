@@ -111,63 +111,60 @@ private struct ChooseMethodScreen: View {
     let onClose: () -> Void
 
     var body: some View {
-        VStack(spacing: 0) {
-            ScrollView {
-                VStack(spacing: UniSpacing.l) {
+        List {
+            // Hero — clear background so it reads as a header above the
+            // grouped options, not a list row.
+            Section {
+                VStack(spacing: UniSpacing.xs) {
                     Image("LogoCircle")
                         .resizable().scaledToFit()
                         .frame(width: 64, height: 64)
-                        .padding(.top, UniSpacing.l)
+                        .frame(maxWidth: .infinity)
+                        .padding(.top, UniSpacing.s)
                         .accessibilityHidden(true)
-
-                    VStack(spacing: UniSpacing.xs) {
-                        Text("Back up your wallet")
-                            .font(.system(size: 25, weight: .bold))
-                            .foregroundStyle(UniColors.Text.primary)
-                            .multilineTextAlignment(.center)
-                        Text("Choose how to keep a copy of your recovery phrase. You can always do the other later.")
-                            .font(UniTypography.body)
-                            .foregroundStyle(UniColors.Text.secondary)
-                            .multilineTextAlignment(.center)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-
-                    VStack(spacing: UniSpacing.m) {
-                        MethodCard(
-                            icon: "icloud.fill",
-                            iconTint: UniColors.Text.primary,
-                            title: "iCloud Backup",
-                            detail: "An encrypted copy syncs to iCloud. Restore on any device by signing in.",
-                            action: { UniHapticEngine.shared.play(.selection); onICloud() }
-                        )
-                        MethodCard(
-                            icon: "pencil.and.list.clipboard",
-                            iconTint: UniColors.Text.secondary,
-                            title: "Manual Backup",
-                            detail: "Write the words down and store them offline yourself.",
-                            action: { UniHapticEngine.shared.play(.selection); onManual() }
-                        )
-                    }
-                    .padding(.top, UniSpacing.s)
-
-                    Label {
-                        Text("Both keep your phrase end-to-end encrypted. Aperture can never read it.")
-                            .font(UniTypography.footnote)
-                            .foregroundStyle(UniColors.Text.tertiary)
-                            .fixedSize(horizontal: false, vertical: true)
-                    } icon: {
-                        Image(systemName: "lock.shield")
-                            .font(.system(size: 13))
-                            .foregroundStyle(UniColors.Text.tertiary)
-                    }
-                    .padding(.top, UniSpacing.s)
+                    Text("Back up your wallet")
+                        .font(.system(size: 25, weight: .bold))
+                        .foregroundStyle(UniColors.Text.primary)
+                        .multilineTextAlignment(.center)
+                    Text("Choose how to keep a copy of your recovery phrase. You can always do the other later.")
+                        .font(UniTypography.body)
+                        .foregroundStyle(UniColors.Text.secondary)
+                        .multilineTextAlignment(.center)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
-                .padding(.horizontal, UniSpacing.l)
-                .padding(.bottom, UniSpacing.l)
                 .frame(maxWidth: .infinity)
+                .padding(.bottom, UniSpacing.s)
+                .listRowBackground(Color.clear)
+                .listRowSeparator(.hidden)
+                .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
+            }
+
+            // Both methods in ONE grouped section — connected rows with the
+            // system hairline divider between them (2026-06-20 user direction).
+            Section {
+                methodRow(
+                    icon: "icloud.fill",
+                    iconTint: UniColors.Text.primary,
+                    title: "iCloud Backup",
+                    detail: "An encrypted copy syncs to iCloud. Restore on any device by signing in."
+                ) { UniHapticEngine.shared.play(.selection); onICloud() }
+
+                methodRow(
+                    icon: "pencil.and.list.clipboard",
+                    iconTint: UniColors.Text.secondary,
+                    title: "Manual Backup",
+                    detail: "Write the words down and store them offline yourself."
+                ) { UniHapticEngine.shared.play(.selection); onManual() }
+            } footer: {
+                Text("Both keep your phrase end-to-end encrypted. Aperture can never read it.")
+                    .font(UniTypography.footnote)
+                    .foregroundStyle(UniColors.Text.tertiary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
-        .background(UniColors.Background.primary.ignoresSafeArea())
+        .listStyle(.insetGrouped)
+        .scrollContentBackground(.hidden)
+        .background(UniColors.Background.primary)
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
                 Button { onClose() } label: {
@@ -177,16 +174,14 @@ private struct ChooseMethodScreen: View {
             }
         }
     }
-}
 
-private struct MethodCard: View {
-    let icon: String
-    let iconTint: Color
-    let title: LocalizedStringKey
-    let detail: LocalizedStringKey
-    let action: () -> Void
-
-    var body: some View {
+    private func methodRow(
+        icon: String,
+        iconTint: Color,
+        title: LocalizedStringKey,
+        detail: LocalizedStringKey,
+        action: @escaping () -> Void
+    ) -> some View {
         Button(action: action) {
             HStack(spacing: UniSpacing.m) {
                 Image(systemName: icon)
@@ -208,15 +203,11 @@ private struct MethodCard: View {
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(UniColors.Icon.tertiary)
             }
-            .padding(UniSpacing.m)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(
-                RoundedRectangle(cornerRadius: UniRadius.card, style: .continuous)
-                    .fill(UniColors.Background.secondary)
-            )
-            .contentShape(RoundedRectangle(cornerRadius: UniRadius.card, style: .continuous))
+            .padding(.vertical, UniSpacing.xs)
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .listRowBackground(UniColors.Background.secondary)
     }
 }
 
