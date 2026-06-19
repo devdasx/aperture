@@ -63,37 +63,7 @@ struct WalletReadyView: View {
     var body: some View {
         VStack(spacing: UniSpacing.l) {
             Spacer()
-
-            Image(systemName: "checkmark.seal.fill")
-                .font(.system(size: 96, weight: .regular))
-                .symbolRenderingMode(.hierarchical)
-                .foregroundStyle(UniColors.Status.successForeground)
-                .accessibilityHidden(true)
-
-            VStack(spacing: UniSpacing.s) {
-                UniLargeTitle(
-                    text: "Your wallet is ready.",
-                    alignment: .center
-                )
-                UniBody(
-                    text: "Your recovery phrase is saved. You can find your wallet on the main screen.",
-                    alignment: .center,
-                    color: UniColors.Text.secondary
-                )
-            }
-            .padding(.horizontal, UniSpacing.l)
-
-            // Rule #16 §A.5 — the boundary statement anchored to the
-            // success moment. The user has just taken responsibility
-            // for their keys; the calm reminder of what we *don't* do
-            // is what makes that responsibility feel earned, not
-            // imposed.
-            UniFootnote(
-                text: "No accounts. No servers. Your wallet lives on your iPhone.",
-                alignment: .center
-            )
-            .padding(.horizontal, UniSpacing.l)
-
+            heroContent
             Spacer()
         }
         .safeAreaInset(edge: .bottom) {
@@ -110,12 +80,64 @@ struct WalletReadyView: View {
         // `UniHapticEngine`.
         .uniHapticSignature(.walletSealed, trigger: walletSealedTrigger)
         .onAppear {
-            walletSealedTrigger = UUID()
+            // The "sealed" haptic now fires on real persist success (below),
+            // not merely on appear — so it never celebrates a failed save.
             persistIfNeeded()
         }
     }
 
     @State private var walletSealedTrigger: UUID = UUID()
+
+    /// State-driven hero — the success seal + "ready" copy show ONLY once the
+    /// wallet is actually persisted. While saving it's a neutral spinner; on
+    /// failure it's an honest error hero (never a green "ready" over an error).
+    @ViewBuilder
+    private var heroContent: some View {
+        switch persistState {
+        case .persisted:
+            Image(systemName: "checkmark.seal.fill")
+                .font(.system(size: 96, weight: .regular))
+                .symbolRenderingMode(.hierarchical)
+                .foregroundStyle(UniColors.Status.successForeground)
+                .accessibilityHidden(true)
+            VStack(spacing: UniSpacing.s) {
+                UniLargeTitle(text: "Your wallet is ready.", alignment: .center)
+                UniBody(
+                    text: "Your recovery phrase is saved. You can find your wallet on the main screen.",
+                    alignment: .center,
+                    color: UniColors.Text.secondary
+                )
+            }
+            .padding(.horizontal, UniSpacing.l)
+            UniFootnote(
+                text: "No accounts. No servers. Your wallet lives on your iPhone.",
+                alignment: .center
+            )
+            .padding(.horizontal, UniSpacing.l)
+
+        case .failed:
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.system(size: 84, weight: .regular))
+                .symbolRenderingMode(.hierarchical)
+                .foregroundStyle(UniColors.Status.errorForeground)
+                .accessibilityHidden(true)
+            VStack(spacing: UniSpacing.s) {
+                UniLargeTitle(text: "Couldn't save your wallet.", alignment: .center)
+                UniBody(
+                    text: "Nothing was saved to this iPhone and your phrase isn't lost. Tap Retry to try again.",
+                    alignment: .center,
+                    color: UniColors.Text.secondary
+                )
+            }
+            .padding(.horizontal, UniSpacing.l)
+
+        case .idle, .persisting:
+            ProgressView()
+                .controlSize(.large)
+            UniLargeTitle(text: "Saving your wallet…", alignment: .center)
+                .padding(.horizontal, UniSpacing.l)
+        }
+    }
 
     private var actionRegion: some View {
         VStack(spacing: UniSpacing.s) {
@@ -179,6 +201,9 @@ struct WalletReadyView: View {
                     requiresBackup: requiresBackupFlag
                 )
                 persistState = .persisted
+                // Fire the once-per-wallet "sealed" haptic only now, on real
+                // success.
+                walletSealedTrigger = UUID()
                 // The seed + encrypted mnemonic are in Keychain —
                 // wipe the plaintext secrets before the user moves
                 // on to the PIN flow.
@@ -187,9 +212,33 @@ struct WalletReadyView: View {
                 Self.log.error(
                     "Create-wallet persist failed: \(String(describing: error), privacy: .public)"
                 )
-                persistState = .failed("Couldn't save your wallet. Tap Retry.")
+                persistState = .failed(Self.failureMessage(for: error))
             }
         }
+    }
+
+    /// Turn the real persist error into an honest, diagnosable message — so a
+    /// "couldn't save" never hides WHY (Keychain code, missing entitlement,
+    /// no device passcode, etc.). Keeps the friendly lead + the real cause.
+    private static func failureMessage(for error: Error) -> String {
+        if let vault = error as? SeedVault.VaultError {
+            switch vault {
+            case .keychainWriteFailed(let status):
+                switch status {
+                case -34018:
+                    return String.apertureLocalized("Couldn't save to the Keychain (missing entitlement). This usually means the app needs a fresh signed install — rebuild and reinstall from Xcode, then tap Retry.")
+                case -25308, -25293:
+                    return String.apertureLocalized("Couldn't save securely — your iPhone needs a passcode. Set one in iOS Settings → Face ID & Passcode, then tap Retry.")
+                default:
+                    return String(format: String.apertureLocalized("Couldn't save your wallet to the Keychain (code %lld). Tap Retry."), Int64(status))
+                }
+            case .invalidSeedLength:
+                return String.apertureLocalized("The wallet's key material looked invalid. Tap Retry.")
+            default:
+                return String.apertureLocalized("Couldn't save your wallet to the Keychain. Tap Retry.")
+            }
+        }
+        return String(format: String.apertureLocalized("Couldn't save your wallet: %@. Tap Retry."), error.localizedDescription)
     }
 }
 
