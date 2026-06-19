@@ -77,6 +77,10 @@ struct AssetDetailView: View {
     /// received 747 USDT then sent every unit, because USDT no
     /// longer appeared in `currentBalances`.
     @Query private var cachedPrices: [CachedPriceRecord]
+    /// User-added custom tokens — so a custom token's networks include
+    /// every chain the user explicitly added it on (e.g. LINK on both
+    /// Ethereum and Polygon), even ones with a 0 balance (2026-06-19).
+    @Query private var customTokenRecords: [CustomTokenRecord]
     /// On-disk historical-price cache — drives the
     /// `BalanceHistoryChart`'s per-day pricing so the asset's chart
     /// values past holdings at their then-price (e.g. an asset
@@ -805,8 +809,20 @@ struct AssetDetailView: View {
             filterSelectedNetworksJSON,
             filterTimeRangeRaw,
             String(filterHideZeroNetworks),
-            walletDataSignal
+            walletDataSignal,
+            // Re-resolve when the user adds/removes a custom token for
+            // this symbol — its networks may grow/shrink (2026-06-19).
+            String(customTokenSnapshots.count)
         ].joined(separator: "|")
+    }
+
+    /// User-added custom tokens as value snapshots (known-chain only),
+    /// fed to the resolver so a custom token's networks reflect exactly
+    /// what the user added — not a guessed name match.
+    private var customTokenSnapshots: [CustomTokenSnapshot] {
+        customTokenRecords
+            .filter { $0.hasKnownChain }
+            .map { CustomTokenSnapshot(from: $0) }
     }
 
     /// Cheap data-change signal replacing `WalletDataFingerprint.make`
@@ -833,7 +849,8 @@ struct AssetDetailView: View {
         let resolution = AssetDetailResolver.resolve(
             identity: identity,
             heldRows: heldRows,
-            fallbackCurrencyCode: currencyCode
+            fallbackCurrencyCode: currencyCode,
+            customTokens: customTokenSnapshots
         )
         let scoped = AssetDetailFilterApply.scope(transactions: allTransactions, to: identity)
         return DerivedState(
