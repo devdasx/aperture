@@ -8,7 +8,12 @@ import SwiftUI
 ///
 /// **Sheet shape.** Uses the unified `UniSheet` shell.
 struct ScreenshotWarningSheet: View {
-    let onRegeneratePhrase: () -> Void
+    /// Wallet **creation** passes this so the user can invalidate the
+    /// just-screenshotted phrase by generating fresh entropy. Wallet
+    /// **export** (an existing, funded wallet) leaves it `nil` —
+    /// regenerating there would mean a different wallet, not a safer one —
+    /// so the sheet collapses to a single acknowledge button.
+    var onRegeneratePhrase: (() -> Void)? = nil
     let onKeepScreenshot: () -> Void
 
     /// Toggle for the nested open-source sheet (Rule #16 §A.4).
@@ -25,11 +30,18 @@ struct ScreenshotWarningSheet: View {
         } actions: {
             GlassEffectContainer(spacing: UniSpacing.s) {
                 VStack(spacing: UniSpacing.s) {
-                    UniButton(title: "Generate new phrase", variant: .primary) {
-                        onRegeneratePhrase()
-                    }
-                    UniButton(title: "Keep current phrase", variant: .secondary) {
-                        onKeepScreenshot()
+                    if let onRegeneratePhrase {
+                        UniButton(title: "Generate new phrase", variant: .primary) {
+                            onRegeneratePhrase()
+                        }
+                        UniButton(title: "Keep current phrase", variant: .secondary) {
+                            onKeepScreenshot()
+                        }
+                    } else {
+                        // Export of an existing wallet — only an acknowledge.
+                        UniButton(title: "I understand", variant: .primary) {
+                            onKeepScreenshot()
+                        }
                     }
                 }
             }
