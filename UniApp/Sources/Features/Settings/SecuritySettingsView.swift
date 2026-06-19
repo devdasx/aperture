@@ -150,41 +150,41 @@ struct SecuritySettingsView: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
 
-                Section {
-                    Button {
-                        isShowingPinChange = true
-                    } label: {
-                        SettingsRowShared(
-                            systemImage: "pencil",
-                            title: "Change passcode",
-                            trailing: nil
-                        )
-                    }
-                    .buttonStyle(.plain)
-                    .listRowBackground(UniColors.Background.secondary)
-                }
-
+                // iOS groups "Turn Passcode Off" + "Change Passcode" in one
+                // rounded block, both as plain blue action rows (no icons,
+                // not red) — 2026-06-20 user direction to match Apple exactly.
                 Section {
                     Button {
                         isShowingDisableVerify = true
                     } label: {
-                        HStack(spacing: UniSpacing.s) {
-                            Image(systemName: "lock.open")
-                                .font(.system(size: 18, weight: .regular))
-                                .foregroundStyle(UniColors.Status.errorForeground)
-                                .frame(width: 28, alignment: .center)
-                                .accessibilityHidden(true)
-                            Text("Disable passcode")
+                        HStack {
+                            Text("Turn Passcode Off")
                                 .font(UniTypography.body)
-                                .foregroundStyle(UniColors.Status.errorForeground)
+                                .foregroundStyle(UniColors.Button.text)
                             Spacer()
                         }
                         .padding(.vertical, UniSpacing.xxs)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .listRowBackground(UniColors.Background.secondary)
+
+                    Button {
+                        isShowingPinChange = true
+                    } label: {
+                        HStack {
+                            Text("Change Passcode")
+                                .font(UniTypography.body)
+                                .foregroundStyle(UniColors.Button.text)
+                            Spacer()
+                        }
+                        .padding(.vertical, UniSpacing.xxs)
+                        .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
                     .listRowBackground(UniColors.Background.secondary)
                 } footer: {
-                    Text("Disabling the passcode removes the lock from this iPhone's copy of your wallets. Your seed and mnemonic stay encrypted in Keychain — but anyone with this phone unlocked will be able to open Aperture without proving they own it.")
+                    Text("Turning off the passcode removes the lock from this iPhone's copy of your wallets. Your seed and mnemonic stay encrypted in Keychain — but anyone with this phone unlocked can open Aperture without proving they own it.")
                         .font(UniTypography.footnote)
                         .foregroundStyle(UniColors.Text.tertiary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -289,50 +289,24 @@ struct SecuritySettingsView: View {
 
     // MARK: - Rows
 
+    /// iOS "Face ID & Passcode" register: a single blue "Turn Passcode On"
+    /// action row, no leading icon, no status pill (2026-06-20 user
+    /// direction — match Apple's exact wording + style). The On state's
+    /// Change / Turn-Off actions live in their own section below.
     private var pinRow: some View {
-        HStack(spacing: UniSpacing.s) {
-            Image(systemName: "lock")
-                .font(.system(size: 18, weight: .regular))
-                .foregroundStyle(UniColors.Icon.secondary)
-                .frame(width: 28, alignment: .center)
-                .accessibilityHidden(true)
-            Text("Passcode")
-                .font(UniTypography.body)
-                .foregroundStyle(UniColors.Text.primary)
-            Spacer()
-            if pinEnabled {
-                Menu {
-                    Button {
-                        isShowingPinChange = true
-                    } label: {
-                        Label("Change passcode", systemImage: "pencil")
-                    }
-                    Button(role: .destructive) {
-                        isShowingDisableVerify = true
-                    } label: {
-                        Label("Disable passcode", systemImage: "lock.open")
-                    }
-                } label: {
-                    HStack(spacing: UniSpacing.xxs) {
-                        Text("On")
-                            .font(UniTypography.subheadlineEmphasized)
-                            .foregroundStyle(UniColors.Status.successForeground)
-                        Image(systemName: "ellipsis")
-                            .font(.system(size: 14, weight: .semibold))
-                            .foregroundStyle(UniColors.Icon.tertiary)
-                    }
-                }
-            } else {
-                Button {
-                    isShowingPinSetup = true
-                } label: {
-                    Text("Set up")
-                        .font(UniTypography.subheadlineEmphasized)
-                        .foregroundStyle(UniColors.Tint.accent)
-                }
+        Button {
+            isShowingPinSetup = true
+        } label: {
+            HStack(spacing: UniSpacing.s) {
+                Text("Turn Passcode On")
+                    .font(UniTypography.body)
+                    .foregroundStyle(UniColors.Button.text)
+                Spacer()
             }
+            .padding(.vertical, UniSpacing.xxs)
+            .contentShape(Rectangle())
         }
-        .padding(.vertical, UniSpacing.xxs)
+        .buttonStyle(.plain)
         .listRowBackground(UniColors.Background.secondary)
     }
 
