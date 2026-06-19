@@ -157,7 +157,7 @@ private struct RecoveryPhraseRevealScreen: View {
                     copyTitle: "Copy phrase",
                     doneTitle: "Backup Now",
                     copied: $copied,
-                    showClipboardCaption: revealed,
+                    isRevealed: revealed,
                     onCopy: {
                         ExportClipboard.copy(words.joined(separator: " "))
                     },
@@ -463,7 +463,7 @@ private struct KeyRevealScreen: View {
                     copyTitle: "Copy key",
                     doneTitle: "Done",
                     copied: $copied,
-                    showClipboardCaption: revealed,
+                    isRevealed: revealed,
                     onCopy: { if let v = keyValue { ExportClipboard.copy(v) } },
                     onDone: onDone
                 )
@@ -738,13 +738,17 @@ private struct ExportActionBar: View {
     /// flow, "Done" on the key flow (2026-06-19 user direction).
     let doneTitle: LocalizedStringKey
     @Binding var copied: Bool
-    /// Show the "clipboard clears in Ns" caption (only meaningful after a
-    /// copy; gated on `revealed` so it doesn't show under the blur).
-    let showClipboardCaption: Bool
+    /// Whether the secret is currently revealed. Copy is disabled until the
+    /// user lifts the blur (2026-06-19 user direction) — tapping it while
+    /// hidden flashes the button red and asks them to reveal first.
+    let isRevealed: Bool
     let onCopy: () -> Void
     let onDone: () -> Void
 
     @State private var secondsLeft: Int = 0
+    /// Set when the user taps Copy before revealing — turns the button red
+    /// and shows the "tap to reveal first" hint, then auto-clears.
+    @State private var needsReveal = false
 
     var body: some View {
         // No pinned bar, no hairline, no separate surface (2026-06-19 user
@@ -752,21 +756,36 @@ private struct ExportActionBar: View {
         // flexible width; Done is a fixed, narrower trailing button so Copy
         // always reads as the wider of the two.
         VStack(spacing: UniSpacing.xs) {
-            if secondsLeft > 0 {
+            if needsReveal {
+                Text("Tap to reveal first")
+                    .font(UniTypography.caption1)
+                    .foregroundStyle(UniColors.Status.errorForeground)
+            } else if secondsLeft > 0 {
                 Text(verbatim: clipboardCaption)
                     .font(UniTypography.caption1)
                     .foregroundStyle(UniColors.Text.tertiary)
             }
             HStack(spacing: UniSpacing.s) {
+                // Copy is disabled until the secret is revealed. We keep the
+                // button tappable while hidden so the tap can flash it red
+                // and prompt "tap to reveal first" — a silently-dead button
+                // would just read as broken.
                 UniButton(
                     title: copied ? "Copied" : copyTitle,
-                    variant: .secondary,
+                    variant: needsReveal ? .destructive : .secondary,
                     systemImage: copied ? "checkmark" : "doc.on.doc"
                 ) {
-                    onCopy()
-                    startCountdown()
+                    if isRevealed {
+                        onCopy()
+                        startCountdown()
+                    } else {
+                        promptReveal()
+                    }
                 }
                 .frame(maxWidth: .infinity)
+                .opacity(isRevealed || needsReveal ? 1 : 0.45)
+                .animation(.easeInOut(duration: 0.2), value: needsReveal)
+                .accessibilityHint(isRevealed ? Text("") : Text("Reveal the phrase before copying"))
 
                 UniButton(title: doneTitle, variant: .primary) { onDone() }
                     .frame(width: 132)
@@ -775,11 +794,27 @@ private struct ExportActionBar: View {
         .padding(.horizontal, UniSpacing.l)
         .padding(.top, UniSpacing.s)
         .padding(.bottom, UniSpacing.m)
+        .onChange(of: isRevealed) { _, revealed in
+            if revealed { needsReveal = false }
+        }
+        .task(id: needsReveal) {
+            guard needsReveal else { return }
+            try? await Task.sleep(for: .seconds(2.5))
+            if !Task.isCancelled {
+                withAnimation(.easeInOut(duration: 0.2)) { needsReveal = false }
+            }
+        }
         .onReceive(Timer.publish(every: 1, on: .main, in: .common).autoconnect()) { _ in
             guard secondsLeft > 0 else { return }
             secondsLeft -= 1
             if secondsLeft == 0 { copied = false }
         }
+    }
+
+    /// User tapped Copy before revealing — warn + flash red.
+    private func promptReveal() {
+        UniHapticEngine.shared.play(.warning)
+        withAnimation(.easeOut(duration: 0.2)) { needsReveal = true }
     }
 
     private var clipboardCaption: String {
