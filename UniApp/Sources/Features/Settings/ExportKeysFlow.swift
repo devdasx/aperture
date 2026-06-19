@@ -237,7 +237,10 @@ private struct RecoveryPhraseRevealScreen: View {
             words = []
         }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.userDidTakeScreenshotNotification)) { _ in
-            guard isVisible else { return }
+            // Don't fire while the backup flow is covering this screen — the
+            // phrase isn't visible there (e.g. the "create backup password"
+            // screen). The backup flow's own phrase screen warns separately.
+            guard isVisible, !isShowingBackup else { return }
             isShowingScreenshotWarning = true
         }
     }

@@ -25,36 +25,43 @@ struct PasswordStrength: Equatable, Sendable {
     /// 8-character floor regardless of class mix.
     var meetsMinimum: Bool { score >= Rating.good.rawValue }
 
-    /// Estimate strength for `password`.
+    /// Estimate strength for `password`. Scored on **length + character-class
+    /// diversity**, which is what users expect from a meter — an 8+ character
+    /// password mixing 3+ character types (lower/upper/digit/symbol) reads as
+    /// Strong, and 12+ with 3+ types reads Very strong. There's no dictionary
+    /// model, so it's deliberately generous rather than punishing a clearly
+    /// fine password like `Bitq2323@`. Entropy `bits` is kept for the readout.
     static func estimate(_ password: String) -> PasswordStrength {
         guard !password.isEmpty else { return PasswordStrength(score: 0, bits: 0) }
 
-        var pool = 0
-        if password.contains(where: { $0.isLowercase }) { pool += 26 }
-        if password.contains(where: { $0.isUppercase }) { pool += 26 }
-        if password.contains(where: { $0.isNumber }) { pool += 10 }
+        let length = password.count
+        let hasLower = password.contains { $0.isLowercase }
+        let hasUpper = password.contains { $0.isUppercase }
+        let hasDigit = password.contains { $0.isNumber }
         // Anything not a letter/number — symbols, punctuation, whitespace.
-        if password.contains(where: { !$0.isLetter && !$0.isNumber }) { pool += 33 }
-        pool = max(pool, 1)
+        let hasSymbol = password.contains { !$0.isLetter && !$0.isNumber }
+        let classes = (hasLower ? 1 : 0) + (hasUpper ? 1 : 0) + (hasDigit ? 1 : 0) + (hasSymbol ? 1 : 0)
 
-        let length = Double(password.count)
-        // Variety factor: ratio of unique characters to total, floored so a
-        // long but repetitive password ("aaaaaaaaaa") doesn't read as strong.
-        let unique = Double(Set(password).count)
-        let variety = max(0.35, unique / length)
+        var pool = 0
+        if hasLower { pool += 26 }
+        if hasUpper { pool += 26 }
+        if hasDigit { pool += 10 }
+        if hasSymbol { pool += 33 }
+        let bits = Double(length) * log2(Double(max(pool, 1)))
 
-        let bits = length * log2(Double(pool)) * variety
-
-        let score: Int
-        switch bits {
-        case ..<30:        score = 1   // any non-empty password is at least "weak"
-        case 30..<50:      score = 1
-        case 50..<70:      score = 2
-        case 70..<100:     score = 3
-        default:           score = 4
+        var score: Int
+        switch (length, classes) {
+        case let (l, c) where l >= 12 && c >= 3: score = 4   // very strong
+        case let (l, c) where l >= 8 && c >= 3:  score = 3   // strong
+        case let (l, c) where l >= 12 && c >= 2: score = 3   // long + mixed
+        case let (l, c) where l >= 8 && c >= 2:  score = 2   // fair
+        default:                                 score = 1   // weak
         }
+        // A password with very few distinct characters can't be strong.
+        if Set(password).count < 5 { score = min(score, 1) }
         // Hard length floor: nothing under 8 characters reads above "weak".
-        let floored = password.count < 8 ? min(score, 1) : score
-        return PasswordStrength(score: floored, bits: bits)
+        if length < 8 { score = min(score, 1) }
+
+        return PasswordStrength(score: score, bits: bits)
     }
 }

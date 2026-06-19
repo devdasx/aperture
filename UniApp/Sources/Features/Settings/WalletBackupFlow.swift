@@ -548,26 +548,23 @@ private struct BackupRing: View {
 
     var body: some View {
         ZStack {
-            Circle().stroke(UniColors.Separator.regular, lineWidth: 6)
-            Circle()
-                .trim(from: 0, to: isDone ? 1 : max(0.02, progress))
-                .stroke(
-                    isDone ? UniColors.Status.successForeground : UniColors.Text.primary,
-                    style: StrokeStyle(lineWidth: 6, lineCap: .round)
-                )
-                .rotationEffect(.degrees(-90))
-
             if isDone {
+                // Solid green seal + white check (2026-06-20 user direction —
+                // a filled seal, not a thin ring), scaling in where the ring was.
                 Circle()
-                    .fill(UniColors.Status.successForeground.opacity(0.12))
+                    .fill(UniColors.Status.successForeground)
                     .overlay {
                         Image(systemName: "checkmark")
-                            .font(.system(size: 42, weight: .bold))
-                            .foregroundStyle(UniColors.Status.successForeground)
+                            .font(.system(size: 52, weight: .bold))
+                            .foregroundStyle(.white)
                     }
-                    .padding(10)
                     .transition(reduceMotion ? .opacity : .scale.combined(with: .opacity))
             } else {
+                Circle().stroke(UniColors.Separator.regular, lineWidth: 6)
+                Circle()
+                    .trim(from: 0, to: max(0.02, progress))
+                    .stroke(UniColors.Text.primary, style: StrokeStyle(lineWidth: 6, lineCap: .round))
+                    .rotationEffect(.degrees(-90))
                 Image("LogoCircle")
                     .resizable().scaledToFit()
                     .frame(width: 60, height: 60)
@@ -620,6 +617,9 @@ private struct ManualWriteDownScreen: View {
     let words: [String]
     let onWrittenDown: () -> Void
 
+    @State private var isShowingScreenshotWarning = false
+    @State private var isVisible = false
+
     var body: some View {
         VStack(spacing: 0) {
             ScrollView {
@@ -651,6 +651,22 @@ private struct ManualWriteDownScreen: View {
             .padding(.bottom, UniSpacing.m)
         }
         .background(UniColors.Background.primary.ignoresSafeArea())
+        // This IS a seed-phrase screen, so a screenshot here warns (the
+        // password / progress / success screens don't — they show no phrase).
+        .sheet(isPresented: $isShowingScreenshotWarning) {
+            ScreenshotWarningSheet(
+                onKeepScreenshot: { isShowingScreenshotWarning = false }
+            )
+            .uniAppEnvironment()
+            .intrinsicHeightSheet()
+            .presentationBackground(UniColors.Background.primary)
+        }
+        .onAppear { isVisible = true }
+        .onDisappear { isVisible = false }
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.userDidTakeScreenshotNotification)) { _ in
+            guard isVisible else { return }
+            isShowingScreenshotWarning = true
+        }
     }
 }
 
@@ -755,12 +771,12 @@ private struct BackupConfirmedScreen: View {
             Spacer()
             VStack(spacing: UniSpacing.l) {
                 Circle()
-                    .fill(UniColors.Status.successForeground.opacity(0.12))
+                    .fill(UniColors.Status.successForeground)
                     .frame(width: 96, height: 96)
                     .overlay {
                         Image(systemName: "checkmark")
                             .font(.system(size: 44, weight: .bold))
-                            .foregroundStyle(UniColors.Status.successForeground)
+                            .foregroundStyle(.white)
                     }
                     .scaleEffect(appeared || reduceMotion ? 1 : 0.6)
                     .opacity(appeared || reduceMotion ? 1 : 0)
