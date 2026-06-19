@@ -13,6 +13,16 @@ enum ApertureWeb {
     static let privacyChoices = "https://aperturex.io/privacy-choices"
     static let support = "https://aperturex.io/support"
 
+    /// The App Store numeric ID for Aperture. The single source of truth
+    /// for every "download the app" affordance (today: the Activity PDF
+    /// export's QR; future: share/invite flows).
+    static let appStoreID = "6780187283"
+    /// Canonical App Store listing URL, built from `appStoreID`.
+    static let appStore = "https://apps.apple.com/app/id\(appStoreID)"
+    /// Host + path shown as the QR's human-readable caption (no scheme,
+    /// to keep it compact on the page).
+    static let appStoreDisplay = "apps.apple.com/app/id\(appStoreID)"
+
     /// The legal-footer destinations as ready-to-open `URL`s. Force-unwrap is
     /// safe: these are fixed, compile-time-known valid absolute URLs.
     static let termsURL = URL(string: terms)!
