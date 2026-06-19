@@ -309,25 +309,36 @@ struct WalletDetailView: View {
             .uniSheetDetents([.large])
             .presentationBackground(UniColors.Background.primary)
         }
-        .sheet(isPresented: $isShowingPhrase) {
-            RecoveryPhraseRevealSheet(walletId: wallet.id)
-                .uniAppEnvironment()
-                .uniSheetDetents([.large])
-                .presentationBackground(UniColors.Background.primary)
-        }
-        .sheet(isPresented: $isShowingKey) {
-            PrivateKeyRevealSheet(walletId: wallet.id)
-                .uniAppEnvironment()
-                .uniSheetDetents([.large])
-                .presentationBackground(UniColors.Background.primary)
-        }
-        .sheet(isPresented: $isShowingChainKeys) {
-            ChainKeysRevealSheet(
-                descriptor: WalletDescriptor(record: wallet),
-                chains: chainEntries(wallet)
+        // Full-screen export flows (2026-06-19 handoff) — replaced the
+        // bottom-sheet reveals. Auth already ran via `requestReveal`
+        // before these present.
+        .fullScreenCover(isPresented: $isShowingPhrase) {
+            ExportRecoveryPhraseFlow(
+                walletId: wallet.id,
+                onClose: { isShowingPhrase = false }
             )
             .uniAppEnvironment()
-            .uniSheetDetents([.large])
+            .presentationBackground(UniColors.Background.primary)
+        }
+        .fullScreenCover(isPresented: $isShowingKey) {
+            // An imported single-key wallet routes to the same per-chain
+            // export flow — its picker lists the chains the key covers
+            // (one for a single-chain key, all EVM chains for an EVM key).
+            ExportPrivateKeyFlow(
+                descriptor: WalletDescriptor(record: wallet),
+                chains: chainEntries(wallet),
+                onClose: { isShowingKey = false }
+            )
+            .uniAppEnvironment()
+            .presentationBackground(UniColors.Background.primary)
+        }
+        .fullScreenCover(isPresented: $isShowingChainKeys) {
+            ExportPrivateKeyFlow(
+                descriptor: WalletDescriptor(record: wallet),
+                chains: chainEntries(wallet),
+                onClose: { isShowingChainKeys = false }
+            )
+            .uniAppEnvironment()
             .presentationBackground(UniColors.Background.primary)
         }
         .sheet(isPresented: $isShowingBackupFlow) {
@@ -591,14 +602,14 @@ struct WalletDetailView: View {
     /// The distinct chains this wallet holds, each paired with its address,
     /// for the per-chain key export. Deduped by chain (first address wins),
     /// sorted by display name for a stable list.
-    private func chainEntries(_ wallet: WalletRecord) -> [ChainKeysRevealSheet.ChainEntry] {
+    private func chainEntries(_ wallet: WalletRecord) -> [ExportChainEntry] {
         var seen: Set<SupportedChain> = []
-        var entries: [ChainKeysRevealSheet.ChainEntry] = []
+        var entries: [ExportChainEntry] = []
         for address in wallet.addresses {
             guard let chain = SupportedChain(rawValue: address.chainRaw),
                   !seen.contains(chain) else { continue }
             seen.insert(chain)
-            entries.append(ChainKeysRevealSheet.ChainEntry(chain: chain, address: address.address))
+            entries.append(ExportChainEntry(chain: chain, address: address.address))
         }
         return entries.sorted { $0.chain.displayName.localizedStandardCompare($1.chain.displayName) == .orderedAscending }
     }
