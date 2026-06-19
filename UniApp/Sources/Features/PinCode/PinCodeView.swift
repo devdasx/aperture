@@ -50,6 +50,11 @@ struct PinCodeView: View {
     /// Optional. For `.verify` mode, presents a "Forgot PIN?" affordance
     /// at the bottom of the keypad. Tapping invokes this closure.
     var onForgotPin: (() -> Void)? = nil
+    /// Optional. For `.verify` mode, fires after each FAILED attempt (the
+    /// wrong-PIN path, after the failure is recorded). The app-unlock gate
+    /// uses it to drive the optional "Erase Data" wipe; other gates leave it
+    /// nil. It carries no count — the caller owns its own attempt policy.
+    var onFailedAttempt: (() -> Void)? = nil
     /// Optional. For `.confirm` mode, fires after a mismatch has been
     /// shown to the user (shake + inline error + brief pause). The parent
     /// is expected to revert to the `.set` step so the user re-enters
@@ -630,6 +635,10 @@ struct PinCodeView: View {
                 onComplete("")
             } else {
                 PinCodeStorage.recordFailure()
+                // Notify the caller of a failed verify (app-unlock uses this
+                // for the optional Erase-Data wipe). Fired BEFORE the shake so
+                // an erase decision isn't delayed behind the clear animation.
+                onFailedAttempt?()
                 failWith(.incorrect)
                 refreshLockout()
             }

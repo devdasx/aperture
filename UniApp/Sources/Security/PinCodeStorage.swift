@@ -43,6 +43,17 @@ enum PinCodeStorage {
     /// the same accessibility class, so the brute-force counter survives
     /// app kill and reinstall just like the PIN material it protects.
     private static let failureAccount: String = "pin.failures"
+    /// Account for the **app-unlock** failure counter used by the optional
+    /// "Erase Data" feature (4-byte count). DELIBERATELY separate from
+    /// `failureAccount` (which counts failures across EVERY passcode gate to
+    /// drive the escalating lockout): only LOCK-SCREEN attempts increment
+    /// this, so an in-app reveal / Settings fumble can never push toward a
+    /// destructive wipe. Same accessibility class → survives app kill, so
+    /// force-quitting between attempts can't dodge the counter.
+    private static let unlockFailureAccount: String = "pin.unlockFailures"
+    /// Failed app-unlock attempts that trigger "Erase Data" when the user
+    /// has it on — mirrors iOS's lock-screen behavior (10 attempts).
+    static let eraseDataThreshold: Int = 10
     /// Attempts 1–4 carry no delay; the escalating lockout starts at 5.
     private static let lockoutThreshold: Int = 5
     /// Escalation cap: 960 s = 16 minutes per attempt.
@@ -100,6 +111,38 @@ enum PinCodeStorage {
         delete(account: hashAccount)
         delete(account: saltAccount)
         delete(account: failureAccount)
+        delete(account: unlockFailureAccount)
+    }
+
+    // MARK: - Erase-Data app-unlock counter
+
+    /// Current consecutive app-unlock failure count (0 if none). Separate
+    /// from the lockout counter — only the lock screen increments it.
+    static func unlockFailureCount() -> Int {
+        guard let data = read(account: unlockFailureAccount), data.count == 4 else { return 0 }
+        let bytes = [UInt8](data)
+        var count: UInt32 = 0
+        for byte in bytes { count = (count << 8) | UInt32(byte) }
+        return Int(count)
+    }
+
+    /// Record one failed app-unlock attempt; returns the new count. Drives
+    /// the optional "Erase Data" wipe once it reaches `eraseDataThreshold`.
+    @discardableResult
+    static func recordUnlockFailure() -> Int {
+        let newCount = unlockFailureCount() + 1
+        let value = UInt32(clamping: newCount)
+        var data = Data(capacity: 4)
+        for shift in stride(from: 24, through: 0, by: -8) {
+            data.append(UInt8((value >> UInt32(shift)) & 0xff))
+        }
+        write(data, account: unlockFailureAccount)
+        return newCount
+    }
+
+    /// Reset the app-unlock failure count — on every successful unlock.
+    static func clearUnlockFailures() {
+        delete(account: unlockFailureAccount)
     }
 
     // MARK: - Failed-attempt rate limiting

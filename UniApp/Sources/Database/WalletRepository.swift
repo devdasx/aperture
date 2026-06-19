@@ -86,6 +86,7 @@ actor WalletRepository {
         hasPassphrase: Bool,
         colorTag: String,
         requiresBackup: Bool,
+        manualBackupCompleted: Bool = false,
         addresses: [(chainRaw: String, address: String)] = []
     ) throws -> PersistentIdentifier {
         try ensureDurableStore()
@@ -97,7 +98,8 @@ actor WalletRepository {
             hasPassphrase: hasPassphrase,
             colorTag: colorTag,
             sortOrder: try nextSortOrder(),
-            requiresBackup: requiresBackup
+            requiresBackup: requiresBackup,
+            manualBackupCompleted: manualBackupCompleted
         )
         modelContext.insert(record)
         // Persist per-chain addresses (same shape as the import path).
@@ -548,6 +550,25 @@ actor WalletRepository {
         )
         descriptor.fetchLimit = 1
         guard let record = try modelContext.fetch(descriptor).first else { return }
+        record.requiresBackup = false
+        record.updatedAt = Date()
+        try modelContext.save()
+        syncManifestIfDurable()
+    }
+
+    /// Mark a **manual** backup complete — the user wrote the recovery
+    /// phrase down and passed the `BackupVerifyView` challenge. Sets
+    /// `manualBackupCompleted` AND clears `requiresBackup` (the wallet now
+    /// has a backup). The iCloud path does NOT call this — its status is
+    /// resolved live from CloudKit — so the two methods report
+    /// independently in Settings → Wallet (2026-06-20 user report).
+    func markManualBackupComplete(id: UUID) throws {
+        var descriptor = FetchDescriptor<WalletRecord>(
+            predicate: #Predicate { $0.id == id }
+        )
+        descriptor.fetchLimit = 1
+        guard let record = try modelContext.fetch(descriptor).first else { return }
+        record.manualBackupCompleted = true
         record.requiresBackup = false
         record.updatedAt = Date()
         try modelContext.save()

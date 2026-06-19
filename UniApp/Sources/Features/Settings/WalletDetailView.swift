@@ -239,7 +239,12 @@ struct WalletDetailView: View {
                     backupStatusRow(
                         icon: "square.and.pencil",
                         title: "Manual backup",
-                        status: wallet.requiresBackup ? .notDone : .done,
+                        // Driven by the dedicated manual flag — NOT
+                        // requiresBackup, which an iCloud backup also clears
+                        // (that's what falsely marked this "Backed up" after an
+                        // iCloud-only backup, 2026-06-20). nil (migrated rows)
+                        // reads as not-yet-manually-backed-up.
+                        status: (wallet.manualBackupCompleted ?? false) ? .done : .notDone,
                         onTap: { startWalletBackup() }
                     )
                 } header: {
@@ -835,9 +840,11 @@ struct WalletDetailView: View {
 
     // MARK: - Backup section helpers
 
-    /// One backup-status row. Tappable only when the backup isn't done yet
-    /// (so it reads as an action to create it); otherwise it shows a static
-    /// status badge.
+    /// One backup-status row. ALWAYS tappable (except while the iCloud status
+    /// is still resolving) so the user can back up — or re-back-up — at any
+    /// time (2026-06-20 user direction: "manual backup should never be
+    /// disabled"). The trailing badge shows the current status; the chevron
+    /// signals the row is actionable in every non-checking state.
     private func backupStatusRow(
         icon: String,
         title: LocalizedStringKey,
@@ -866,24 +873,35 @@ struct WalletDetailView: View {
                             .font(UniTypography.subheadline)
                             .foregroundStyle(UniColors.Status.successForeground)
                     }
+                    chevron
                 case .notDone:
                     Text("Not backed up")
                         .font(UniTypography.subheadline)
                         .foregroundStyle(UniColors.Text.secondary)
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(UniColors.Icon.tertiary)
+                    chevron
                 case .unavailable:
                     Text("Unavailable")
                         .font(UniTypography.subheadline)
                         .foregroundStyle(UniColors.Text.tertiary)
+                    chevron
                 }
             }
             .padding(.vertical, UniSpacing.xxs)
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .disabled(status != .notDone)
+        // Only blocked while the iCloud status is still resolving — never
+        // permanently disabled, so a backed-up wallet can still be backed up
+        // again (e.g. add the other method, or re-upload to iCloud).
+        .disabled(status == .checking)
         .listRowBackground(UniColors.Background.secondary)
+    }
+
+    /// Trailing disclosure chevron shared by the backup rows.
+    private var chevron: some View {
+        Image(systemName: "chevron.right")
+            .font(.system(size: 13, weight: .semibold))
+            .foregroundStyle(UniColors.Icon.tertiary)
     }
 
     /// Auth-gate → decrypt → present the backup flow (iCloud / manual chooser).

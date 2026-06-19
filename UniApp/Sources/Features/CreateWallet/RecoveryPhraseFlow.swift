@@ -72,6 +72,12 @@ struct RecoveryPhraseFlow: View {
     /// flag is honest (T-016).
     @State private var didSkipBackup: Bool = false
 
+    /// `true` when the user finished a MANUAL backup (write-down + verify)
+    /// via the chooser during creation — threaded to `WalletReadyView` so
+    /// the persisted `WalletRecord.manualBackupCompleted` is accurate for
+    /// create-flow manual backups, not just management ones (2026-06-20).
+    @State private var didManualBackup: Bool = false
+
     var body: some View {
         NavigationStack(path: $navigationPath) {
             RecoveryPhraseView(
@@ -145,7 +151,8 @@ struct RecoveryPhraseFlow: View {
                 case .walletReady:
                     WalletReadyView(
                         state: state,
-                        requiresBackup: didSkipBackup
+                        requiresBackup: didSkipBackup,
+                        manualBackup: didManualBackup
                     ) {
                         onUserCompletedBackup()
                         onDismiss()
@@ -167,11 +174,15 @@ struct RecoveryPhraseFlow: View {
                 words: state.words,
                 onClose: { isShowingBackupChooser = false },
                 isNewWallet: true,
-                onBackedUp: {
-                    // Backed up (iCloud or manual verify) — advance exactly as
-                    // the old verify path did. didSkipBackup stays false, so
-                    // WalletReadyView persists requiresBackup = false.
+                onBackedUp: { method in
+                    // Backed up — advance exactly as the old verify path did.
+                    // didSkipBackup stays false, so WalletReadyView persists
+                    // requiresBackup = false. Record WHICH method so the manual
+                    // row is accurate: manual verify → manualBackupCompleted
+                    // true; iCloud → false (its status is the live CloudKit
+                    // query, never the manual flag).
                     isShowingBackupChooser = false
+                    didManualBackup = (method == .manual)
                     navigationPath.append(nextStepAfterVerify())
                 }
             )
