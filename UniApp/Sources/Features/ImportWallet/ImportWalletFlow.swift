@@ -8,6 +8,7 @@ import OSLog
 enum ImportDestination: Hashable, Codable, Identifiable {
     case mnemonicEntry
     case mnemonicReview
+    case iCloudRestore
     case keyChainPicker
     case keyEntry(SupportedChain)
     case keyReview(SupportedChain)
@@ -88,6 +89,17 @@ struct ImportWalletFlow: View {
                         isCommitting: isCommitting,
                         onCommit: {
                             persistThen(.mnemonic)
+                        }
+                    )
+                case .iCloudRestore:
+                    // Restore reuses the canonical mnemonic-import path
+                    // internally, then routes to the shared success screen.
+                    ICloudRestoreView(
+                        state: state,
+                        onImported: { walletId in
+                            navigationPath.append(
+                                ImportDestination.success(walletId: walletId, result: .mnemonic)
+                            )
                         }
                     )
                 case .keyChainPicker:
@@ -252,6 +264,21 @@ private struct ImportMethodSelectionView: View {
             }
 
             Section {
+                // Restore an end-to-end-encrypted iCloud backup (2026-06-19).
+                // No warning gate — the secret never leaves iCloud in the
+                // clear, and the password is required to decrypt it.
+                Button {
+                    onPick(.iCloudRestore)
+                } label: {
+                    methodRow(
+                        systemImage: "icloud.and.arrow.down",
+                        title: "Restore from iCloud",
+                        trailing: "Encrypted backup"
+                    )
+                }
+                .buttonStyle(.plain)
+                .listRowBackground(UniColors.Background.secondary)
+
                 // Recovery phrase + Private key go through the security
                 // warning gate (unless the user previously suppressed).
                 Button {
