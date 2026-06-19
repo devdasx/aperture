@@ -670,53 +670,7 @@ private struct ManualWriteDownScreen: View {
     }
 }
 
-/// The shared two-column phrase grid (same shape as the Export reveal): one
-/// grouped container, tabular index numbers, hairline dividers, forced LTR.
-private struct PhraseGrid: View {
-    let words: [String]
-
-    var body: some View {
-        let rowsCount = (words.count + 1) / 2
-        VStack(spacing: 0) {
-            ForEach(0..<rowsCount, id: \.self) { r in
-                HStack(spacing: 0) {
-                    cell(index: r)
-                    Rectangle().fill(UniColors.Separator.regular).frame(width: 1)
-                    cell(index: r + rowsCount)
-                }
-                if r < rowsCount - 1 {
-                    Rectangle().fill(UniColors.Separator.regular).frame(height: 1)
-                }
-            }
-        }
-        .background(
-            RoundedRectangle(cornerRadius: UniRadius.card, style: .continuous)
-                .fill(UniColors.Background.secondary)
-        )
-        .environment(\.layoutDirection, .leftToRight)
-    }
-
-    @ViewBuilder
-    private func cell(index: Int) -> some View {
-        if index < words.count {
-            HStack(spacing: UniSpacing.xs) {
-                Text(String(format: "%02d", index + 1))
-                    .font(.system(size: 13, weight: .regular, design: .rounded).monospacedDigit())
-                    .foregroundStyle(UniColors.Text.tertiary)
-                    .frame(width: 24, alignment: .leading)
-                Text(words[index])
-                    .font(.system(.body, design: .monospaced))
-                    .foregroundStyle(UniColors.Text.primary)
-                Spacer(minLength: 0)
-            }
-            .padding(.horizontal, UniSpacing.m)
-            .padding(.vertical, UniSpacing.s)
-            .frame(maxWidth: .infinity, alignment: .leading)
-        } else {
-            Color.clear.frame(maxWidth: .infinity)
-        }
-    }
-}
+// (PhraseGrid now lives in the shared Features/Wallet/PhraseGrid.swift.)
 
 // MARK: - Manual · 3 · Verify
 
