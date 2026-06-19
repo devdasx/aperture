@@ -90,6 +90,13 @@ struct WalletActivityView: View {
     @State private var isShowingFilter: Bool = false
     @State private var searchText: String = ""
 
+    // MARK: - PDF export (Part 3, 2026-06-19)
+
+    @Environment(\.displayScale) private var displayScale
+    @State private var isGeneratingPDF: Bool = false
+    @State private var exportedPDF: ExportedActivityPDF?
+    @State private var exportFailed: Bool = false
+
     /// Memoized newest-first feed. Rebuilt only when the feed key
     /// changes (wallet switch or a tx count change) — not per body pass.
     @State private var sortedTransactions: [TransactionRecord] = []
@@ -255,6 +262,16 @@ struct WalletActivityView: View {
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
+                    exportPDF()
+                } label: {
+                    Image(systemName: "square.and.arrow.up")
+                        .accessibilityLabel(Text("Export PDF"))
+                }
+                .tint(UniColors.Icon.accent)
+                .disabled(displayedTransactions.isEmpty || isGeneratingPDF)
+            }
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
                     isShowingFilter = true
                 } label: {
                     Image(systemName: isFilterActive
@@ -279,10 +296,39 @@ struct WalletActivityView: View {
             .presentationDragIndicator(.visible)
             .presentationBackground(UniColors.Background.primary)
         }
+        .sheet(item: $exportedPDF) { pdf in
+            ActivityPDFShareSheet(url: pdf.url)
+        }
+        .overlay {
+            if isGeneratingPDF {
+                pdfGeneratingOverlay
+            }
+        }
+        .alert("Couldn't create the PDF.", isPresented: $exportFailed) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("Something went wrong preparing the export. Please try again.")
+        }
         .task(id: feedKey) {
             rebuild()
             await loadDustPrices()
         }
+    }
+
+    /// Dimmed "Preparing PDF…" overlay shown while the document renders.
+    private var pdfGeneratingOverlay: some View {
+        ZStack {
+            UniColors.Background.primary.opacity(0.6).ignoresSafeArea()
+            VStack(spacing: UniSpacing.s) {
+                ProgressView()
+                Text("Preparing PDF…")
+                    .font(UniTypography.subheadline)
+                    .foregroundStyle(UniColors.Text.secondary)
+            }
+            .padding(UniSpacing.l)
+            .background(UniColors.Background.secondary, in: RoundedRectangle(cornerRadius: UniRadius.l))
+        }
+        .transition(.opacity)
     }
 
     // MARK: - Empty state
@@ -412,4 +458,240 @@ struct WalletActivityView: View {
             fiatCurrencyCode: currencyCode
         )
     }
+
+    // MARK: - PDF export (Part 3)
+
+    /// Snapshot the currently-shown rows + a localized document model on
+    /// the main actor, then render + write the PDF off the hot path and
+    /// present the system share sheet. The user drives every share
+    /// destination — the app only produces a local file.
+    private func exportPDF() {
+        guard !displayedTransactions.isEmpty, !isGeneratingPDF else { return }
+        let rows = pdfRows()
+        let document = pdfDocument(rowCount: rows.count)
+        let fileName = pdfFileName()
+        let scale = displayScale
+        isGeneratingPDF = true
+        Task {
+            let url = await ActivityPDFExporter.makeFile(
+                rows: rows,
+                document: document,
+                fileName: fileName,
+                displayScale: scale
+            )
+            isGeneratingPDF = false
+            if let url {
+                exportedPDF = ExportedActivityPDF(url: url)
+            } else {
+                exportFailed = true
+            }
+        }
+    }
+
+    /// Build the value-typed PDF rows from the displayed transactions —
+    /// amounts and fiat formatted exactly as the on-screen rows show them
+    /// (signed native amount; unsigned fiat value, the colour + type carry
+    /// direction).
+    private func pdfRows() -> [ActivityPDFRow] {
+        let map = priceMap
+        return displayedTransactions.map { tx in
+            let direction = TransactionDirection(rawValue: tx.directionRaw) ?? .outgoing
+            let amount = Decimal(string: tx.amountRaw) ?? .zero
+            let fiat = ActivityFiat.value(amountRaw: tx.amountRaw, symbol: tx.tokenSymbol, map: map)
+            let sign: String
+            switch direction {
+            case .incoming: sign = "+"
+            case .outgoing: sign = "−"
+            case .internal: sign = ""
+            }
+            let status = TransactionStatus(rawValue: tx.statusRaw) ?? .confirmed
+            return ActivityPDFRow(
+                dateText: Self.rowDateFormatter.string(from: tx.occurredAt),
+                assetSymbol: tx.tokenSymbol,
+                networkName: chainFor(tx)?.displayName ?? "—",
+                typeText: pdfTypeLabel(direction),
+                isIncoming: direction == .incoming,
+                amountText: "\(sign)\(WalletFormatting.native(amount, decimals: 6)) \(tx.tokenSymbol)",
+                fiatText: fiat.map { WalletFormatting.fiat($0, currencyCode: currencyCode) } ?? "—",
+                statusText: pdfStatusLabel(status),
+                status: pdfStatusKind(status)
+            )
+        }
+    }
+
+    /// The localized document metadata + column labels.
+    private func pdfDocument(rowCount: Int) -> ActivityPDFDocument {
+        let isRTL = LanguagePreference.layoutDirection(for: sheetLanguageCode) == .rightToLeft
+        let summary: String
+        if rowCount == dustFreeTransactions.count {
+            summary = String(format: String(localized: "All %lld transactions"), Int64(rowCount))
+        } else {
+            summary = String(
+                format: String(localized: "Showing %lld of %lld transactions"),
+                Int64(rowCount), Int64(dustFreeTransactions.count)
+            )
+        }
+        return ActivityPDFDocument(
+            appName: "Aperture",
+            title: String(localized: "Activity Statement"),
+            walletName: activeWallet?.name ?? String(localized: "Wallet"),
+            generatedText: String(
+                format: String(localized: "Generated %@"),
+                Self.generatedDateFormatter.string(from: Date())
+            ),
+            summaryText: summary,
+            filterLines: pdfFilterLines(),
+            downloadCaption: String(localized: "Scan to download Aperture"),
+            appStoreURLText: ApertureWeb.appStoreDisplay,
+            footerText: "aperturex.io",
+            pageLabelFormat: String(localized: "Page %1$lld of %2$lld"),
+            emptyText: String(localized: "No transactions to show."),
+            colDate: String(localized: "Date"),
+            colAsset: String(localized: "Asset"),
+            colType: String(localized: "Type"),
+            colAmount: String(localized: "Amount"),
+            colValue: String(localized: "Value"),
+            colStatus: String(localized: "Status"),
+            isRTL: isRTL
+        )
+    }
+
+    /// Localized one-line descriptions of each active filter, for the PDF
+    /// header band. Empty when nothing is narrowing the list.
+    private func pdfFilterLines() -> [String] {
+        let inputs = filterInputs
+        var lines: [String] = []
+
+        switch inputs.direction {
+        case .all: break
+        case .incoming:
+            lines.append(String(format: String(localized: "Direction: %@"), String(localized: "Received")))
+        case .outgoing:
+            lines.append(String(format: String(localized: "Direction: %@"), String(localized: "Sent")))
+        }
+
+        switch inputs.status {
+        case .all: break
+        case .confirmed:
+            lines.append(String(format: String(localized: "Status: %@"), String(localized: "Confirmed")))
+        case .pending:
+            lines.append(String(format: String(localized: "Status: %@"), String(localized: "Pending")))
+        case .failed:
+            lines.append(String(format: String(localized: "Status: %@"), String(localized: "Failed")))
+        }
+
+        if !inputs.selectedNetworks.isEmpty {
+            let names = inputs.selectedNetworks
+                .compactMap { SupportedChain(rawValue: $0)?.displayName }
+                .sorted()
+                .joined(separator: ", ")
+            if !names.isEmpty {
+                lines.append(String(format: String(localized: "Networks: %@"), names))
+            }
+        }
+
+        if !inputs.selectedSymbols.isEmpty {
+            let names = inputs.selectedSymbols.sorted().joined(separator: ", ")
+            lines.append(String(format: String(localized: "Assets: %@"), names))
+        }
+
+        if inputs.timeRange != .all {
+            lines.append(String(format: String(localized: "Period: %@"), pdfPeriodText(inputs)))
+        }
+
+        if let amountText = pdfAmountText(inputs) {
+            lines.append(String(format: String(localized: "Amount: %@"), amountText))
+        }
+
+        let query = inputs.searchText
+        if !query.isEmpty {
+            lines.append(String(format: String(localized: "Search: %@"), query))
+        }
+
+        return lines
+    }
+
+    private func pdfPeriodText(_ inputs: WalletActivityFilterInputs) -> String {
+        switch inputs.timeRange {
+        case .day:   return String(localized: "Last 24 hours")
+        case .week:  return String(localized: "Last 7 days")
+        case .month: return String(localized: "Last 30 days")
+        case .year:  return String(localized: "Last year")
+        case .all:   return String(localized: "All time")
+        case .custom:
+            let from = inputs.customStart.map { Self.rowDateFormatter.string(from: $0) }
+            let to = inputs.customEnd.map { Self.rowDateFormatter.string(from: $0) }
+            switch (from, to) {
+            case let (f?, t?): return "\(f) – \(t)"
+            case let (f?, nil): return String(format: String(localized: "From %@"), f)
+            case let (nil, t?): return String(format: String(localized: "Until %@"), t)
+            case (nil, nil): return String(localized: "Custom")
+            }
+        }
+    }
+
+    private func pdfAmountText(_ inputs: WalletActivityFilterInputs) -> String? {
+        let min = inputs.minFiat.map { WalletFormatting.fiat($0, currencyCode: currencyCode) }
+        let max = inputs.maxFiat.map { WalletFormatting.fiat($0, currencyCode: currencyCode) }
+        switch (min, max) {
+        case let (lo?, hi?): return "\(lo) – \(hi)"
+        case let (lo?, nil): return "≥ \(lo)"
+        case let (nil, hi?): return "≤ \(hi)"
+        case (nil, nil): return nil
+        }
+    }
+
+    private func pdfTypeLabel(_ direction: TransactionDirection) -> String {
+        switch direction {
+        case .incoming: return String(localized: "Received")
+        case .outgoing: return String(localized: "Sent")
+        case .internal: return String(localized: "Internal")
+        }
+    }
+
+    private func pdfStatusLabel(_ status: TransactionStatus) -> String {
+        switch status {
+        case .confirmed: return String(localized: "Confirmed")
+        case .pending:   return String(localized: "Pending")
+        case .failed:    return String(localized: "Failed")
+        }
+    }
+
+    private func pdfStatusKind(_ status: TransactionStatus) -> ActivityPDFRow.Status {
+        switch status {
+        case .confirmed: return .confirmed
+        case .pending:   return .pending
+        case .failed:    return .failed
+        }
+    }
+
+    private func pdfFileName() -> String {
+        let date = Self.fileDateFormatter.string(from: Date())
+        let wallet = activeWallet?.name ?? "Wallet"
+        return "Aperture Activity - \(wallet) - \(date).pdf"
+    }
+
+    /// Compact per-row date+time, in the user's locale.
+    private static let rowDateFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateStyle = .short
+        f.timeStyle = .short
+        return f
+    }()
+
+    /// Long "generated on" timestamp for the header.
+    private static let generatedDateFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateStyle = .long
+        f.timeStyle = .short
+        return f
+    }()
+
+    /// `yyyy-MM-dd` for the export filename (stable, sortable).
+    private static let fileDateFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.dateFormat = "yyyy-MM-dd"
+        return f
+    }()
 }
