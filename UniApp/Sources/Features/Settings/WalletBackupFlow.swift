@@ -17,22 +17,34 @@ import SwiftUI
 /// reveal screen (no second Keychain hit); the backup password lives only
 /// in this flow's memory and is never stored. Everything is real — no
 /// stubbed timers, no placeholder success (handoff requirement).
+/// Which method a finished backup used — reported to the create flow so it
+/// can record `manualBackupCompleted` accurately. (iCloud status itself is
+/// resolved live from CloudKit; only the manual flag is persisted locally.)
+enum WalletBackupMethod: Sendable { case iCloud, manual }
+
 struct WalletBackupFlow: View {
     let walletId: UUID
     let walletName: String
     let words: [String]
     let onClose: () -> Void
     /// `true` when run from wallet CREATION (the wallet isn't persisted yet):
-    /// the manual path skips `markBackupComplete` (there's no record to mark —
-    /// the create flow records backup state when it persists), and a finished
-    /// backup calls `onBackedUp` to advance the create flow instead of just
-    /// closing. Default `false` = management (existing, persisted wallet).
+    /// the manual path skips `markManualBackupComplete` (there's no record to
+    /// mark — the create flow records backup state when it persists), and a
+    /// finished backup calls `onBackedUp` to advance the create flow instead of
+    /// just closing. Default `false` = management (existing, persisted wallet).
     var isNewWallet: Bool = false
-    var onBackedUp: (() -> Void)? = nil
+    /// Called when a backup finishes, with WHICH method completed — so the
+    /// create flow can persist `manualBackupCompleted` accurately (a manual
+    /// backup during creation must mark the manual row done, an iCloud one
+    /// must not). When nil (management), a finished backup just closes.
+    var onBackedUp: ((WalletBackupMethod) -> Void)? = nil
 
-    /// Where a finished backup goes: advance the create flow if provided,
-    /// else just close (management).
-    private var finish: () -> Void { onBackedUp ?? onClose }
+    /// Where a finished backup goes: advance the create flow with the method
+    /// if provided, else just close (management — the per-method DB flips
+    /// happen in `ManualVerifyScreen` / the live CloudKit query).
+    private func complete(_ method: WalletBackupMethod) {
+        if let onBackedUp { onBackedUp(method) } else { onClose() }
+    }
 
     @State private var path: [Step] = []
     /// The manual-verify challenge state, built ONCE up front from the phrase
@@ -48,7 +60,7 @@ struct WalletBackupFlow: View {
         words: [String],
         onClose: @escaping () -> Void,
         isNewWallet: Bool = false,
-        onBackedUp: (() -> Void)? = nil
+        onBackedUp: ((WalletBackupMethod) -> Void)? = nil
     ) {
         self.walletId = walletId
         self.walletName = walletName
@@ -106,7 +118,7 @@ struct WalletBackupFlow: View {
                 walletName: walletName,
                 words: words,
                 password: password,
-                onDone: finish
+                onDone: { complete(.iCloud) }
             )
         case .manualWriteDown:
             ManualWriteDownScreen(words: words) {
@@ -120,7 +132,7 @@ struct WalletBackupFlow: View {
                 onConfirmed: { path.append(.manualConfirmed) }
             )
         case .manualConfirmed:
-            BackupConfirmedScreen(onDone: finish)
+            BackupConfirmedScreen(onDone: { complete(.manual) })
         }
     }
 }
@@ -743,7 +755,7 @@ private struct ManualVerifyScreen: View {
         }
         let repo = WalletRepository(modelContainer: modelContext.container)
         do {
-            try await repo.markBackupComplete(id: walletId)
+            try await repo.markManualBackupComplete(id: walletId)
         } catch {
             isShowingError = true
             return

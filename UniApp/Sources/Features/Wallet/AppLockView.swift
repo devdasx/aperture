@@ -30,8 +30,15 @@ struct AppLockView: View {
     @Environment(\.autoLockController) private var lockController
     @Environment(\.modelContext) private var modelContext
     @AppStorage("biometricEnabled") private var biometricEnabled: Bool = false
+    /// Optional iOS-style "Erase Data": wipe the app after
+    /// `PinCodeStorage.eraseDataThreshold` failed LOCK-SCREEN attempts.
+    /// Off by default; the user arms it in Settings → Security.
+    @AppStorage("eraseDataAfterFailedAttempts") private var eraseDataEnabled: Bool = false
 
     @State private var isShowingForgotSheet: Bool = false
+    /// Guards the wipe so it runs at most once even if a queued attempt
+    /// races the threshold crossing.
+    @State private var isErasing: Bool = false
 
     var body: some View {
         PinCodeView(
@@ -53,6 +60,9 @@ struct AppLockView: View {
                 if biometricEnabled {
                     BiometricEnrollmentTracker.captureSnapshot(in: modelContext.container)
                 }
+                // A successful unlock clears the Erase-Data counter — the
+                // threshold counts only CONSECUTIVE lock-screen failures.
+                PinCodeStorage.clearUnlockFailures()
             },
             onCancel: {
                 // Cancel from a verify-mode PIN keeps the wallet
@@ -60,7 +70,8 @@ struct AppLockView: View {
             },
             onForgotPin: {
                 isShowingForgotSheet = true
-            }
+            },
+            onFailedAttempt: { handleFailedUnlock() }
         )
         // Opaque backing. `AppLockView` used to ship inside a
         // `.fullScreenCover`, which provided window-level opacity
@@ -79,6 +90,34 @@ struct AppLockView: View {
                 .uniAppEnvironment()
                 .intrinsicHeightSheet()
                 .presentationBackground(UniColors.Background.primary)
+        }
+    }
+
+    // MARK: - Erase Data (optional, off by default)
+
+    /// Called after each failed LOCK-SCREEN attempt. Records it in the
+    /// dedicated unlock counter and, when the user has armed "Erase Data"
+    /// and the count reaches the threshold, performs the full factory wipe.
+    private func handleFailedUnlock() {
+        let count = PinCodeStorage.recordUnlockFailure()
+        guard eraseDataEnabled,
+              !isErasing,
+              count >= PinCodeStorage.eraseDataThreshold
+        else { return }
+        isErasing = true
+        Task { await eraseEverything() }
+    }
+
+    /// The destructive wipe — the SAME routine "Reset Aperture" runs. After
+    /// it returns there are zero wallets, so `RootGate` routes to onboarding;
+    /// we also drop the lock overlay so the user isn't left staring at a
+    /// keypad for an app that no longer has anything to unlock.
+    @MainActor
+    private func eraseEverything() async {
+        try? await FactoryReset.performFullWipe(modelContext: modelContext)
+        PinCodeStorage.clearUnlockFailures()
+        withAnimation(.smooth(duration: 0.4)) {
+            lockController.unlock()
         }
     }
 }

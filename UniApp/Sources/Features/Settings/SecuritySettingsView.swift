@@ -14,6 +14,10 @@ struct SecuritySettingsView: View {
     @AppStorage("requireBiometricForSend") private var requireForSend: Bool = true
     @AppStorage("requireBiometricForSwap") private var requireForSwap: Bool = true
     @AppStorage("requireBiometricForDApp") private var requireForDApp: Bool = true
+    // iOS-style "Erase Data": wipe the app after N failed lock-screen passcode
+    // attempts. OFF by default; arming it shows a confirmation first. Enforced
+    // in `AppLockView` against `PinCodeStorage`'s dedicated unlock counter.
+    @AppStorage("eraseDataAfterFailedAttempts") private var eraseDataEnabled: Bool = false
     @AppStorage(AutoLockPreference.storageKey) private var autoLockRaw: Int = AutoLockPreference.defaultValue
     @AppStorage("hideImportKeyWarning") private var hideImportKeyWarning: Bool = false
     @Environment(\.modelContext) private var modelContext
@@ -23,6 +27,9 @@ struct SecuritySettingsView: View {
     @State private var isShowingPinChange: Bool = false
     @State private var isShowingDisableVerify: Bool = false
     @State private var biometricAvailable: Bool = false
+    /// Confirms ARMING "Erase Data" — a destructive auto-wipe, so it's never
+    /// turned on by a single stray tap. Turning it OFF needs no confirm.
+    @State private var isShowingEraseDataConfirm: Bool = false
 
     /// Per the user's 2026-06-06 direction: entering Settings →
     /// Security itself must be gated behind passcode, the same way
@@ -136,47 +143,54 @@ struct SecuritySettingsView: View {
 
     private var content: some View {
         List {
-            if pinEnabled {
-                // When the passcode is set up, the row that used to
-                // surface "Passcode: On •••" is gone (per the user's
-                // 2026-06-06 direction — the Menu-with-ellipsis was
-                // off-pattern for iOS settings). Change + Disable are
-                // each their own section now, with the Face ID toggle
-                // grouped under the existing Lock section above them.
+            // LOCK — passcode + Face ID master toggle. BOTH are always
+            // visible so the user can always find Face ID (2026-06-20 user
+            // report: "I don't see Face ID to enable"). When no passcode is
+            // set, the Face ID toggle is greyed with a footer hint — exactly
+            // how iOS gates Face ID behind a passcode — instead of hiding it.
+            Section {
+                if !pinEnabled {
+                    pinRow // "Turn Passcode On"
+                }
+                if biometricAvailable {
+                    // Disabled (greyed, non-interactive) until a passcode
+                    // exists — Face ID needs the passcode as its fallback.
+                    biometricRow
+                        .disabled(!pinEnabled)
+                        .opacity(pinEnabled ? 1 : 0.5)
+                }
+            } header: {
+                Text("Lock").font(UniTypography.footnote).foregroundStyle(UniColors.Text.tertiary)
+            } footer: {
+                Text(lockFooter)
+                    .font(UniTypography.footnote)
+                    .foregroundStyle(UniColors.Text.tertiary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            // "Use Face ID For:" — iOS register. Shown whenever the device
+            // has Face ID; rows are greyed until Face ID is on (which needs a
+            // passcode), the same way iOS greys these until the master is on.
+            if biometricAvailable {
                 Section {
-                    if biometricAvailable {
-                        biometricRow
-                    }
+                    faceIDActionRow("Sending transactions", isOn: $requireForSend)
+                    faceIDActionRow("Signing in dApps", isOn: $requireForDApp)
+                    faceIDActionRow("Swapping tokens", isOn: $requireForSwap)
                 } header: {
-                    Text("Lock").font(UniTypography.footnote).foregroundStyle(UniColors.Text.tertiary)
+                    Text("Use Face ID For").font(UniTypography.footnote).foregroundStyle(UniColors.Text.tertiary)
                 } footer: {
-                    Text(pinFooter)
+                    Text("Require Face ID before each of these actions. If Face ID fails, you can fall back to your passcode.")
                         .font(UniTypography.footnote)
                         .foregroundStyle(UniColors.Text.tertiary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
+            }
 
-                // "Use Face ID For:" — iOS register (2026-06-20). Per-action
-                // gates; rows are disabled (greyed) until Face ID is on, the
-                // same way iOS greys these until the master is enabled.
-                if biometricAvailable {
-                    Section {
-                        faceIDActionRow("Sending transactions", isOn: $requireForSend)
-                        faceIDActionRow("Signing in dApps", isOn: $requireForDApp)
-                        faceIDActionRow("Swapping tokens", isOn: $requireForSwap)
-                    } header: {
-                        Text("Use Face ID For").font(UniTypography.footnote).foregroundStyle(UniColors.Text.tertiary)
-                    } footer: {
-                        Text("Require Face ID before each of these actions. If Face ID fails, you can fall back to your passcode.")
-                            .font(UniTypography.footnote)
-                            .foregroundStyle(UniColors.Text.tertiary)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                }
-
-                // iOS groups "Turn Passcode Off" + "Change Passcode" in one
-                // rounded block, both as plain blue action rows (no icons,
-                // not red) — 2026-06-20 user direction to match Apple exactly.
+            // iOS groups "Turn Passcode Off" + "Change Passcode" in one
+            // rounded block, both as plain blue action rows (no icons,
+            // not red) — 2026-06-20 user direction to match Apple exactly.
+            // Only present once a passcode is set.
+            if pinEnabled {
                 Section {
                     Button {
                         isShowingDisableVerify = true
@@ -213,17 +227,11 @@ struct SecuritySettingsView: View {
                         .foregroundStyle(UniColors.Text.tertiary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
-            } else {
-                Section {
-                    pinRow
-                } header: {
-                    Text("Lock").font(UniTypography.footnote).foregroundStyle(UniColors.Text.tertiary)
-                } footer: {
-                    Text(pinFooter)
-                        .font(UniTypography.footnote)
-                        .foregroundStyle(UniColors.Text.tertiary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
+
+                // ERASE DATA — iOS-style auto-wipe after repeated wrong
+                // passcodes. Only offered once a passcode is set (there's
+                // nothing to fail without one). Disableable.
+                eraseDataSection
             }
 
             if pinEnabled {
@@ -264,6 +272,13 @@ struct SecuritySettingsView: View {
         }
         .listStyle(.insetGrouped)
         .scrollContentBackground(.hidden)
+        // Arming Erase Data is destructive — confirm before turning it on.
+        .alert(Text("Turn on Erase Data?"), isPresented: $isShowingEraseDataConfirm) {
+            Button("Cancel", role: .cancel) {}
+            Button("Turn On", role: .destructive) { eraseDataEnabled = true }
+        } message: {
+            Text("After 10 failed passcode attempts, every wallet and all data on this iPhone will be erased. Make sure your recovery phrases are backed up — a wallet you didn't back up can't be recovered.")
+        }
         // navigationTitle / navigationBarTitleDisplayMode /
         // background / onAppear / Security-gate fullScreenCover are
         // all attached to the outer Group above. The per-action
@@ -375,11 +390,49 @@ struct SecuritySettingsView: View {
         .listRowBackground(UniColors.Background.secondary)
     }
 
-    private var pinFooter: LocalizedStringKey {
+    /// Footer under the Lock section. Names what the passcode does and, when
+    /// no passcode is set, that Face ID needs one first (so the greyed Face ID
+    /// toggle above is explained rather than mysterious — 2026-06-20).
+    private var lockFooter: LocalizedStringKey {
         if pinEnabled {
             return "Your passcode unlocks Aperture. Face ID is a faster shortcut to the same lock — you can always fall back to passcode."
+        } else if biometricAvailable {
+            return "Without a passcode, your wallet is only protected by your iPhone's lock screen. Turn on a passcode to require authentication every time you open Aperture — and to use Face ID."
         } else {
-            return "Without a passcode, your wallet is only protected by your iPhone's lock screen. Set one to require authentication every time you open Aperture."
+            return "Without a passcode, your wallet is only protected by your iPhone's lock screen. Turn on a passcode to require authentication every time you open Aperture."
+        }
+    }
+
+    // MARK: - Erase Data section
+
+    /// iOS-style "Erase Data" — auto-wipe after repeated wrong passcodes.
+    /// Destructive accent; arming it routes through a confirmation. The
+    /// threshold (`PinCodeStorage.eraseDataThreshold` = 10) is named in the
+    /// footer; keep the two in sync if the constant ever changes.
+    private var eraseDataSection: some View {
+        Section {
+            UniToggle(isOn: Binding(
+                get: { eraseDataEnabled },
+                set: { newValue in
+                    if newValue {
+                        isShowingEraseDataConfirm = true // confirm before arming
+                    } else {
+                        eraseDataEnabled = false
+                    }
+                }
+            )) {
+                Text("Erase Data")
+                    .font(UniTypography.body)
+                    .foregroundStyle(UniColors.Status.errorForeground)
+            }
+            .tint(UniColors.Status.errorForeground)
+            .padding(.vertical, UniSpacing.xxs)
+            .listRowBackground(UniColors.Background.secondary)
+        } footer: {
+            Text("Erase all wallets and data on this iPhone after 10 failed passcode attempts. A wallet you backed up can be restored from its recovery phrase — one you didn't is gone for good.")
+                .font(UniTypography.footnote)
+                .foregroundStyle(UniColors.Text.tertiary)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 

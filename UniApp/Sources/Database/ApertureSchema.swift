@@ -226,8 +226,23 @@ final class WalletRecord {
     /// `true` until the user proves they backed up the recovery phrase.
     /// Mirrors `@AppStorage("hasUnbackedupWallet")` per-wallet — once
     /// multi-wallet ships, the per-wallet flag is the source of truth and
-    /// the AppStorage one becomes a derived rollup.
+    /// the AppStorage one becomes a derived rollup. Any backup (iCloud OR
+    /// manual) clears it.
     var requiresBackup: Bool
+
+    /// `true` once the user has completed a **manual** backup — wrote the
+    /// words down and passed the `BackupVerifyView` challenge. Distinct
+    /// from `requiresBackup` (which any backup clears) and from the iCloud
+    /// status (resolved live from CloudKit). This lets Settings → Wallet
+    /// report the two backup methods independently. (2026-06-20 user report:
+    /// an iCloud backup was falsely marking the manual row "Backed up".)
+    ///
+    /// **Optional on purpose.** Adding a *non*-Optional attribute to a model
+    /// that already has rows breaks SwiftData lightweight migration with
+    /// CoreData 134110 (see `ApertureDatabase`'s recovery path) and would
+    /// reset the on-disk store. An Optional attribute migrates cleanly —
+    /// existing rows get `nil`, which reads as "not manually backed up".
+    var manualBackupCompleted: Bool?
 
     /// Wall-clock at create / import time.
     var createdAt: Date
@@ -248,6 +263,7 @@ final class WalletRecord {
         colorTag: String,
         sortOrder: Int,
         requiresBackup: Bool,
+        manualBackupCompleted: Bool = false,
         iconSymbol: String = WalletAvatarDefaults.legacySymbol,
         iconColorHex: String = WalletAvatarDefaults.legacyColorHex,
         avatarGradient: String? = nil,
@@ -269,6 +285,7 @@ final class WalletRecord {
         self.sortOrder = sortOrder
         self.isHidden = false
         self.requiresBackup = requiresBackup
+        self.manualBackupCompleted = manualBackupCompleted
         let now = Date()
         self.createdAt = now
         self.updatedAt = now

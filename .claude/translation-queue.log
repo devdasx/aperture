@@ -250,3 +250,330 @@
 2026-06-19T23:28:45Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletBackupFlow.swift	Write these words down
 2026-06-19T23:28:45Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletBackupFlow.swift	Your encrypted recovery phrase is safe in your iCloud. Restore it on any device by signing in and entering this password.
 2026-06-19T23:28:45Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletBackupFlow.swift	Your written phrase is the only copy. Aperture has no copy of it — keep it safe.
+2026-06-19T23:40:08Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletBackupFlow.swift	Aperture can't reset this password. If you lose it, the iCloud backup can't be opened — store it in a password manager.
+2026-06-19T23:40:08Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletBackupFlow.swift	Aperture couldn't save the backup confirmation. Your phrase is still on this iPhone. Try again.
+2026-06-19T23:40:08Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletBackupFlow.swift	Back up your wallet
+2026-06-19T23:40:08Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletBackupFlow.swift	Backed up to iCloud
+2026-06-19T23:40:08Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletBackupFlow.swift	Backup confirmed
+2026-06-19T23:40:08Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletBackupFlow.swift	Both keep your phrase end-to-end encrypted. Aperture can never read it.
+2026-06-19T23:40:08Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletBackupFlow.swift	Choose how to keep a copy of your recovery phrase. You can always do the other later.
+2026-06-19T23:40:08Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletBackupFlow.swift	Close
+2026-06-19T23:40:08Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletBackupFlow.swift	Continue
+2026-06-19T23:40:08Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletBackupFlow.swift	Copy all \(words.count) words onto paper, in order, and store them somewhere only you can reach.
+2026-06-19T23:40:08Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletBackupFlow.swift	Couldn't record the backup
+2026-06-19T23:40:08Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletBackupFlow.swift	Create a backup password
+2026-06-19T23:40:08Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletBackupFlow.swift	Done
+2026-06-19T23:40:08Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletBackupFlow.swift	Hide password
+2026-06-19T23:40:08Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletBackupFlow.swift	I've written it down
+2026-06-19T23:40:08Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletBackupFlow.swift	OK
+2026-06-19T23:40:08Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletBackupFlow.swift	Passwords don't match.
+2026-06-19T23:40:08Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletBackupFlow.swift	This password encrypts your backup. You'll need it to restore on another device.
+2026-06-19T23:40:08Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletBackupFlow.swift	Try again
+2026-06-19T23:40:08Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletBackupFlow.swift	Write these words down
+2026-06-19T23:40:08Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletBackupFlow.swift	Your encrypted recovery phrase is safe in your iCloud. Restore it on any device by signing in and entering this password.
+2026-06-19T23:40:08Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletBackupFlow.swift	Your written phrase is the only copy. Aperture has no copy of it — keep it safe.
+2026-06-19T23:40:20Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletBackupFlow.swift	Aperture can't reset this password. If you lose it, the iCloud backup can't be opened — store it in a password manager.
+2026-06-19T23:40:20Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletBackupFlow.swift	Aperture couldn't save the backup confirmation. Your phrase is still on this iPhone. Try again.
+2026-06-19T23:40:20Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletBackupFlow.swift	Back up your wallet
+2026-06-19T23:40:20Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletBackupFlow.swift	Backed up to iCloud
+2026-06-19T23:40:20Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletBackupFlow.swift	Backup confirmed
+2026-06-19T23:40:20Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletBackupFlow.swift	Both keep your phrase end-to-end encrypted. Aperture can never read it.
+2026-06-19T23:40:20Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletBackupFlow.swift	Choose how to keep a copy of your recovery phrase. You can always do the other later.
+2026-06-19T23:40:20Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletBackupFlow.swift	Close
+2026-06-19T23:40:20Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletBackupFlow.swift	Continue
+2026-06-19T23:40:20Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletBackupFlow.swift	Copy all \(words.count) words onto paper, in order, and store them somewhere only you can reach.
+2026-06-19T23:40:20Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletBackupFlow.swift	Couldn't record the backup
+2026-06-19T23:40:20Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletBackupFlow.swift	Create a backup password
+2026-06-19T23:40:20Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletBackupFlow.swift	Done
+2026-06-19T23:40:20Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletBackupFlow.swift	Hide password
+2026-06-19T23:40:20Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletBackupFlow.swift	I've written it down
+2026-06-19T23:40:20Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletBackupFlow.swift	OK
+2026-06-19T23:40:20Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletBackupFlow.swift	Passwords don't match.
+2026-06-19T23:40:20Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletBackupFlow.swift	This password encrypts your backup. You'll need it to restore on another device.
+2026-06-19T23:40:20Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletBackupFlow.swift	Try again
+2026-06-19T23:40:20Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletBackupFlow.swift	Write these words down
+2026-06-19T23:40:20Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletBackupFlow.swift	Your encrypted recovery phrase is safe in your iCloud. Restore it on any device by signing in and entering this password.
+2026-06-19T23:40:20Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletBackupFlow.swift	Your written phrase is the only copy. Aperture has no copy of it — keep it safe.
+2026-06-19T23:40:27Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletBackupFlow.swift	Aperture can't reset this password. If you lose it, the iCloud backup can't be opened — store it in a password manager.
+2026-06-19T23:40:27Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletBackupFlow.swift	Aperture couldn't save the backup confirmation. Your phrase is still on this iPhone. Try again.
+2026-06-19T23:40:27Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletBackupFlow.swift	Back up your wallet
+2026-06-19T23:40:27Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletBackupFlow.swift	Backed up to iCloud
+2026-06-19T23:40:27Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletBackupFlow.swift	Backup confirmed
+2026-06-19T23:40:27Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletBackupFlow.swift	Both keep your phrase end-to-end encrypted. Aperture can never read it.
+2026-06-19T23:40:27Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletBackupFlow.swift	Choose how to keep a copy of your recovery phrase. You can always do the other later.
+2026-06-19T23:40:27Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletBackupFlow.swift	Close
+2026-06-19T23:40:27Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletBackupFlow.swift	Continue
+2026-06-19T23:40:27Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletBackupFlow.swift	Copy all \(words.count) words onto paper, in order, and store them somewhere only you can reach.
+2026-06-19T23:40:27Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletBackupFlow.swift	Couldn't record the backup
+2026-06-19T23:40:27Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletBackupFlow.swift	Create a backup password
+2026-06-19T23:40:27Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletBackupFlow.swift	Done
+2026-06-19T23:40:27Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletBackupFlow.swift	Hide password
+2026-06-19T23:40:27Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletBackupFlow.swift	I've written it down
+2026-06-19T23:40:27Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletBackupFlow.swift	OK
+2026-06-19T23:40:27Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletBackupFlow.swift	Passwords don't match.
+2026-06-19T23:40:27Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletBackupFlow.swift	This password encrypts your backup. You'll need it to restore on another device.
+2026-06-19T23:40:27Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletBackupFlow.swift	Try again
+2026-06-19T23:40:27Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletBackupFlow.swift	Write these words down
+2026-06-19T23:40:27Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletBackupFlow.swift	Your encrypted recovery phrase is safe in your iCloud. Restore it on any device by signing in and entering this password.
+2026-06-19T23:40:27Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletBackupFlow.swift	Your written phrase is the only copy. Aperture has no copy of it — keep it safe.
+2026-06-19T23:40:34Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletBackupFlow.swift	Aperture can't reset this password. If you lose it, the iCloud backup can't be opened — store it in a password manager.
+2026-06-19T23:40:34Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletBackupFlow.swift	Aperture couldn't save the backup confirmation. Your phrase is still on this iPhone. Try again.
+2026-06-19T23:40:34Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletBackupFlow.swift	Back up your wallet
+2026-06-19T23:40:34Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletBackupFlow.swift	Backed up to iCloud
+2026-06-19T23:40:34Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletBackupFlow.swift	Backup confirmed
+2026-06-19T23:40:34Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletBackupFlow.swift	Both keep your phrase end-to-end encrypted. Aperture can never read it.
+2026-06-19T23:40:34Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletBackupFlow.swift	Choose how to keep a copy of your recovery phrase. You can always do the other later.
+2026-06-19T23:40:34Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletBackupFlow.swift	Close
+2026-06-19T23:40:34Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletBackupFlow.swift	Continue
+2026-06-19T23:40:34Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletBackupFlow.swift	Copy all \(words.count) words onto paper, in order, and store them somewhere only you can reach.
+2026-06-19T23:40:34Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletBackupFlow.swift	Couldn't record the backup
+2026-06-19T23:40:34Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletBackupFlow.swift	Create a backup password
+2026-06-19T23:40:34Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletBackupFlow.swift	Done
+2026-06-19T23:40:34Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletBackupFlow.swift	Hide password
+2026-06-19T23:40:34Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletBackupFlow.swift	I've written it down
+2026-06-19T23:40:34Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletBackupFlow.swift	OK
+2026-06-19T23:40:34Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletBackupFlow.swift	Passwords don't match.
+2026-06-19T23:40:34Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletBackupFlow.swift	This password encrypts your backup. You'll need it to restore on another device.
+2026-06-19T23:40:34Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletBackupFlow.swift	Try again
+2026-06-19T23:40:34Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletBackupFlow.swift	Write these words down
+2026-06-19T23:40:34Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletBackupFlow.swift	Your encrypted recovery phrase is safe in your iCloud. Restore it on any device by signing in and entering this password.
+2026-06-19T23:40:34Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletBackupFlow.swift	Your written phrase is the only copy. Aperture has no copy of it — keep it safe.
+2026-06-19T23:40:40Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletBackupFlow.swift	Aperture can't reset this password. If you lose it, the iCloud backup can't be opened — store it in a password manager.
+2026-06-19T23:40:40Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletBackupFlow.swift	Aperture couldn't save the backup confirmation. Your phrase is still on this iPhone. Try again.
+2026-06-19T23:40:40Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletBackupFlow.swift	Back up your wallet
+2026-06-19T23:40:40Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletBackupFlow.swift	Backed up to iCloud
+2026-06-19T23:40:40Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletBackupFlow.swift	Backup confirmed
+2026-06-19T23:40:40Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletBackupFlow.swift	Both keep your phrase end-to-end encrypted. Aperture can never read it.
+2026-06-19T23:40:40Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletBackupFlow.swift	Choose how to keep a copy of your recovery phrase. You can always do the other later.
+2026-06-19T23:40:40Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletBackupFlow.swift	Close
+2026-06-19T23:40:40Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletBackupFlow.swift	Continue
+2026-06-19T23:40:40Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletBackupFlow.swift	Copy all \(words.count) words onto paper, in order, and store them somewhere only you can reach.
+2026-06-19T23:40:40Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletBackupFlow.swift	Couldn't record the backup
+2026-06-19T23:40:40Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletBackupFlow.swift	Create a backup password
+2026-06-19T23:40:40Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletBackupFlow.swift	Done
+2026-06-19T23:40:40Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletBackupFlow.swift	Hide password
+2026-06-19T23:40:40Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletBackupFlow.swift	I've written it down
+2026-06-19T23:40:40Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletBackupFlow.swift	OK
+2026-06-19T23:40:40Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletBackupFlow.swift	Passwords don't match.
+2026-06-19T23:40:40Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletBackupFlow.swift	This password encrypts your backup. You'll need it to restore on another device.
+2026-06-19T23:40:40Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletBackupFlow.swift	Try again
+2026-06-19T23:40:40Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletBackupFlow.swift	Write these words down
+2026-06-19T23:40:40Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletBackupFlow.swift	Your encrypted recovery phrase is safe in your iCloud. Restore it on any device by signing in and entering this password.
+2026-06-19T23:40:40Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletBackupFlow.swift	Your written phrase is the only copy. Aperture has no copy of it — keep it safe.
+2026-06-19T23:40:50Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletBackupFlow.swift	Aperture can't reset this password. If you lose it, the iCloud backup can't be opened — store it in a password manager.
+2026-06-19T23:40:50Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletBackupFlow.swift	Aperture couldn't save the backup confirmation. Your phrase is still on this iPhone. Try again.
+2026-06-19T23:40:50Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletBackupFlow.swift	Back up your wallet
+2026-06-19T23:40:50Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletBackupFlow.swift	Backed up to iCloud
+2026-06-19T23:40:50Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletBackupFlow.swift	Backup confirmed
+2026-06-19T23:40:50Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletBackupFlow.swift	Both keep your phrase end-to-end encrypted. Aperture can never read it.
+2026-06-19T23:40:50Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletBackupFlow.swift	Choose how to keep a copy of your recovery phrase. You can always do the other later.
+2026-06-19T23:40:50Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletBackupFlow.swift	Close
+2026-06-19T23:40:50Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletBackupFlow.swift	Continue
+2026-06-19T23:40:50Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletBackupFlow.swift	Copy all \(words.count) words onto paper, in order, and store them somewhere only you can reach.
+2026-06-19T23:40:50Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletBackupFlow.swift	Couldn't record the backup
+2026-06-19T23:40:50Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletBackupFlow.swift	Create a backup password
+2026-06-19T23:40:50Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletBackupFlow.swift	Done
+2026-06-19T23:40:50Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletBackupFlow.swift	Hide password
+2026-06-19T23:40:50Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletBackupFlow.swift	I've written it down
+2026-06-19T23:40:50Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletBackupFlow.swift	OK
+2026-06-19T23:40:50Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletBackupFlow.swift	Passwords don't match.
+2026-06-19T23:40:50Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletBackupFlow.swift	This password encrypts your backup. You'll need it to restore on another device.
+2026-06-19T23:40:50Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletBackupFlow.swift	Try again
+2026-06-19T23:40:50Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletBackupFlow.swift	Write these words down
+2026-06-19T23:40:50Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletBackupFlow.swift	Your encrypted recovery phrase is safe in your iCloud. Restore it on any device by signing in and entering this password.
+2026-06-19T23:40:50Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletBackupFlow.swift	Your written phrase is the only copy. Aperture has no copy of it — keep it safe.
+2026-06-19T23:41:44Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Add ERC-20 / SPL tokens by pasting their contract or mint address. Aperture reads name, symbol, and decimals from chain.
+2026-06-19T23:41:44Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	An iCloud backup keeps an encrypted copy of your recovery phrase in your private iCloud, so you can restore on another device. A manual backup means you've written the words down yourself. Doing both is the safest.
+2026-06-19T23:41:44Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Back up now
+2026-06-19T23:41:44Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Backed up
+2026-06-19T23:41:44Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Backup
+2026-06-19T23:41:44Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Cancel
+2026-06-19T23:41:44Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Confirm
+2026-06-19T23:41:44Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Confirm to back up your wallet.
+2026-06-19T23:41:44Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Confirm to view your private key.
+2026-06-19T23:41:44Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Confirm to view your private keys.
+2026-06-19T23:41:44Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Confirm to view your recovery phrase.
+2026-06-19T23:41:44Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Custom tokens
+2026-06-19T23:41:44Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Customize
+2026-06-19T23:41:44Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Delete wallet
+2026-06-19T23:41:44Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Deleting this wallet removes it from this iPhone and erases its encrypted seed from Keychain. Your recovery phrase, if you wrote it down, is still yours — you can restore the wallet later by importing it.
+2026-06-19T23:41:44Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Details
+2026-06-19T23:41:44Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Kind
+2026-06-19T23:41:44Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Name
+2026-06-19T23:41:44Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Not backed up
+2026-06-19T23:41:44Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	OK
+2026-06-19T23:41:44Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Recovery & keys
+2026-06-19T23:41:44Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Save
+2026-06-19T23:41:44Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Something went wrong
+2026-06-19T23:41:44Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	This wallet watches an address. There is no recovery phrase or private key on this iPhone — nothing secret is stored.
+2026-06-19T23:41:44Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Tokens
+2026-06-19T23:41:44Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Unavailable
+2026-06-19T23:41:44Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	View anyway
+2026-06-19T23:41:44Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	View private key
+2026-06-19T23:41:44Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	View private keys
+2026-06-19T23:41:44Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	View recovery phrase
+2026-06-19T23:41:44Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Wallet
+2026-06-19T23:42:05Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Add ERC-20 / SPL tokens by pasting their contract or mint address. Aperture reads name, symbol, and decimals from chain.
+2026-06-19T23:42:05Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	An iCloud backup keeps an encrypted copy of your recovery phrase in your private iCloud, so you can restore on another device. A manual backup means you've written the words down yourself. Doing both is the safest.
+2026-06-19T23:42:05Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Back up now
+2026-06-19T23:42:05Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Backed up
+2026-06-19T23:42:05Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Backup
+2026-06-19T23:42:05Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Cancel
+2026-06-19T23:42:05Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Confirm
+2026-06-19T23:42:05Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Confirm to back up your wallet.
+2026-06-19T23:42:05Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Confirm to view your private key.
+2026-06-19T23:42:05Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Confirm to view your private keys.
+2026-06-19T23:42:05Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Confirm to view your recovery phrase.
+2026-06-19T23:42:05Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Custom tokens
+2026-06-19T23:42:05Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Customize
+2026-06-19T23:42:05Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Delete wallet
+2026-06-19T23:42:05Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Deleting this wallet removes it from this iPhone and erases its encrypted seed from Keychain. Your recovery phrase, if you wrote it down, is still yours — you can restore the wallet later by importing it.
+2026-06-19T23:42:05Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Details
+2026-06-19T23:42:05Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Kind
+2026-06-19T23:42:05Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Name
+2026-06-19T23:42:05Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Not backed up
+2026-06-19T23:42:05Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	OK
+2026-06-19T23:42:05Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Recovery & keys
+2026-06-19T23:42:05Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Save
+2026-06-19T23:42:05Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Something went wrong
+2026-06-19T23:42:05Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	This wallet watches an address. There is no recovery phrase or private key on this iPhone — nothing secret is stored.
+2026-06-19T23:42:05Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Tokens
+2026-06-19T23:42:05Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Unavailable
+2026-06-19T23:42:05Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	View anyway
+2026-06-19T23:42:05Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	View private key
+2026-06-19T23:42:05Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	View private keys
+2026-06-19T23:42:05Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	View recovery phrase
+2026-06-19T23:42:05Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Wallet
+2026-06-19T23:43:32Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SecuritySettingsView.swift	Aperture locks when this much time has passed in the background. Re-opening requires PIN or Face ID.
+2026-06-19T23:43:32Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SecuritySettingsView.swift	Auto-lock
+2026-06-19T23:43:32Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SecuritySettingsView.swift	Back
+2026-06-19T23:43:32Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SecuritySettingsView.swift	Cancel
+2026-06-19T23:43:32Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SecuritySettingsView.swift	Change Passcode
+2026-06-19T23:43:32Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SecuritySettingsView.swift	Enable Face ID for Aperture.
+2026-06-19T23:43:32Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SecuritySettingsView.swift	Face ID
+2026-06-19T23:43:32Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SecuritySettingsView.swift	Lock
+2026-06-19T23:43:32Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SecuritySettingsView.swift	Re-enables the security warning that appears before you import a recovery phrase or private key.
+2026-06-19T23:43:32Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SecuritySettingsView.swift	Require Face ID before each of these actions. If Face ID fails, you can fall back to your passcode.
+2026-06-19T23:43:32Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SecuritySettingsView.swift	Security
+2026-06-19T23:43:32Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SecuritySettingsView.swift	Timing
+2026-06-19T23:43:32Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SecuritySettingsView.swift	Turn Passcode Off
+2026-06-19T23:43:32Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SecuritySettingsView.swift	Turn Passcode On
+2026-06-19T23:43:32Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SecuritySettingsView.swift	Turning off the passcode removes the lock from this iPhone's copy of your wallets. Your seed and mnemonic stay encrypted in Keychain — but anyone with this phone unlocked can open Aperture without proving they own it.
+2026-06-19T23:43:32Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SecuritySettingsView.swift	Use Face ID For
+2026-06-19T23:49:18Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/ResetApertureSection.swift	Couldn't reset Aperture
+2026-06-19T23:49:18Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/ResetApertureSection.swift	Deletes every wallet, every encrypted seed, every cached balance, every preference. This cannot be undone — back up any recovery phrases first.
+2026-06-19T23:49:18Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/ResetApertureSection.swift	OK
+2026-06-19T23:49:18Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/ResetApertureSection.swift	Reset Aperture
+2026-06-19T23:49:18Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/ResetApertureSection.swift	The local database couldn't be deleted. Nothing was removed — your wallets, seeds, and preferences are untouched. Try again.
+2026-06-19T23:49:53Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/PinCode/PinCodeView.swift	 
+2026-06-19T23:49:53Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/PinCode/PinCodeView.swift	Delete last digit
+2026-06-19T23:49:53Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/PinCode/PinCodeView.swift	Forgot PIN?
+2026-06-19T23:50:03Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/PinCode/PinCodeView.swift	 
+2026-06-19T23:50:03Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/PinCode/PinCodeView.swift	Delete last digit
+2026-06-19T23:50:03Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/PinCode/PinCodeView.swift	Forgot PIN?
+2026-06-19T23:50:12Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/AppLockView.swift	Got it
+2026-06-19T23:50:24Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/AppLockView.swift	Got it
+2026-06-19T23:50:36Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/AppLockView.swift	Got it
+2026-06-19T23:50:50Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SecuritySettingsView.swift	Aperture locks when this much time has passed in the background. Re-opening requires PIN or Face ID.
+2026-06-19T23:50:50Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SecuritySettingsView.swift	Auto-lock
+2026-06-19T23:50:50Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SecuritySettingsView.swift	Back
+2026-06-19T23:50:50Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SecuritySettingsView.swift	Cancel
+2026-06-19T23:50:50Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SecuritySettingsView.swift	Change Passcode
+2026-06-19T23:50:50Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SecuritySettingsView.swift	Enable Face ID for Aperture.
+2026-06-19T23:50:50Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SecuritySettingsView.swift	Face ID
+2026-06-19T23:50:50Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SecuritySettingsView.swift	Lock
+2026-06-19T23:50:50Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SecuritySettingsView.swift	Re-enables the security warning that appears before you import a recovery phrase or private key.
+2026-06-19T23:50:50Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SecuritySettingsView.swift	Require Face ID before each of these actions. If Face ID fails, you can fall back to your passcode.
+2026-06-19T23:50:50Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SecuritySettingsView.swift	Security
+2026-06-19T23:50:50Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SecuritySettingsView.swift	Timing
+2026-06-19T23:50:50Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SecuritySettingsView.swift	Turn Passcode Off
+2026-06-19T23:50:50Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SecuritySettingsView.swift	Turn Passcode On
+2026-06-19T23:50:50Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SecuritySettingsView.swift	Turning off the passcode removes the lock from this iPhone's copy of your wallets. Your seed and mnemonic stay encrypted in Keychain — but anyone with this phone unlocked can open Aperture without proving they own it.
+2026-06-19T23:50:50Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SecuritySettingsView.swift	Use Face ID For
+2026-06-19T23:51:02Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SecuritySettingsView.swift	Aperture locks when this much time has passed in the background. Re-opening requires PIN or Face ID.
+2026-06-19T23:51:02Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SecuritySettingsView.swift	Auto-lock
+2026-06-19T23:51:02Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SecuritySettingsView.swift	Back
+2026-06-19T23:51:02Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SecuritySettingsView.swift	Cancel
+2026-06-19T23:51:02Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SecuritySettingsView.swift	Change Passcode
+2026-06-19T23:51:02Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SecuritySettingsView.swift	Enable Face ID for Aperture.
+2026-06-19T23:51:02Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SecuritySettingsView.swift	Face ID
+2026-06-19T23:51:02Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SecuritySettingsView.swift	Lock
+2026-06-19T23:51:02Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SecuritySettingsView.swift	Re-enables the security warning that appears before you import a recovery phrase or private key.
+2026-06-19T23:51:02Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SecuritySettingsView.swift	Require Face ID before each of these actions. If Face ID fails, you can fall back to your passcode.
+2026-06-19T23:51:02Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SecuritySettingsView.swift	Security
+2026-06-19T23:51:02Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SecuritySettingsView.swift	Timing
+2026-06-19T23:51:02Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SecuritySettingsView.swift	Turn Passcode Off
+2026-06-19T23:51:02Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SecuritySettingsView.swift	Turn Passcode On
+2026-06-19T23:51:02Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SecuritySettingsView.swift	Turning off the passcode removes the lock from this iPhone's copy of your wallets. Your seed and mnemonic stay encrypted in Keychain — but anyone with this phone unlocked can open Aperture without proving they own it.
+2026-06-19T23:51:02Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SecuritySettingsView.swift	Use Face ID For
+2026-06-19T23:51:16Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SecuritySettingsView.swift	After 10 failed passcode attempts, every wallet and all data on this iPhone will be erased. Make sure your recovery phrases are backed up — a wallet you didn't back up can't be recovered.
+2026-06-19T23:51:16Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SecuritySettingsView.swift	Aperture locks when this much time has passed in the background. Re-opening requires PIN or Face ID.
+2026-06-19T23:51:16Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SecuritySettingsView.swift	Auto-lock
+2026-06-19T23:51:16Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SecuritySettingsView.swift	Back
+2026-06-19T23:51:16Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SecuritySettingsView.swift	Cancel
+2026-06-19T23:51:16Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SecuritySettingsView.swift	Change Passcode
+2026-06-19T23:51:16Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SecuritySettingsView.swift	Enable Face ID for Aperture.
+2026-06-19T23:51:16Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SecuritySettingsView.swift	Face ID
+2026-06-19T23:51:16Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SecuritySettingsView.swift	Lock
+2026-06-19T23:51:16Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SecuritySettingsView.swift	Re-enables the security warning that appears before you import a recovery phrase or private key.
+2026-06-19T23:51:16Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SecuritySettingsView.swift	Require Face ID before each of these actions. If Face ID fails, you can fall back to your passcode.
+2026-06-19T23:51:16Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SecuritySettingsView.swift	Security
+2026-06-19T23:51:16Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SecuritySettingsView.swift	Timing
+2026-06-19T23:51:16Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SecuritySettingsView.swift	Turn On
+2026-06-19T23:51:16Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SecuritySettingsView.swift	Turn Passcode Off
+2026-06-19T23:51:16Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SecuritySettingsView.swift	Turn Passcode On
+2026-06-19T23:51:16Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SecuritySettingsView.swift	Turn on Erase Data?
+2026-06-19T23:51:16Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SecuritySettingsView.swift	Turning off the passcode removes the lock from this iPhone's copy of your wallets. Your seed and mnemonic stay encrypted in Keychain — but anyone with this phone unlocked can open Aperture without proving they own it.
+2026-06-19T23:51:16Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SecuritySettingsView.swift	Use Face ID For
+2026-06-19T23:51:32Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SecuritySettingsView.swift	After 10 failed passcode attempts, every wallet and all data on this iPhone will be erased. Make sure your recovery phrases are backed up — a wallet you didn't back up can't be recovered.
+2026-06-19T23:51:32Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SecuritySettingsView.swift	Aperture locks when this much time has passed in the background. Re-opening requires PIN or Face ID.
+2026-06-19T23:51:32Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SecuritySettingsView.swift	Auto-lock
+2026-06-19T23:51:32Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SecuritySettingsView.swift	Back
+2026-06-19T23:51:32Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SecuritySettingsView.swift	Cancel
+2026-06-19T23:51:32Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SecuritySettingsView.swift	Change Passcode
+2026-06-19T23:51:32Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SecuritySettingsView.swift	Enable Face ID for Aperture.
+2026-06-19T23:51:32Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SecuritySettingsView.swift	Erase Data
+2026-06-19T23:51:32Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SecuritySettingsView.swift	Erase all wallets and data on this iPhone after 10 failed passcode attempts. A wallet you backed up can be restored from its recovery phrase — one you didn't is gone for good.
+2026-06-19T23:51:32Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SecuritySettingsView.swift	Face ID
+2026-06-19T23:51:32Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SecuritySettingsView.swift	Lock
+2026-06-19T23:51:32Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SecuritySettingsView.swift	Re-enables the security warning that appears before you import a recovery phrase or private key.
+2026-06-19T23:51:32Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SecuritySettingsView.swift	Require Face ID before each of these actions. If Face ID fails, you can fall back to your passcode.
+2026-06-19T23:51:32Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SecuritySettingsView.swift	Security
+2026-06-19T23:51:32Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SecuritySettingsView.swift	Timing
+2026-06-19T23:51:32Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SecuritySettingsView.swift	Turn On
+2026-06-19T23:51:32Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SecuritySettingsView.swift	Turn Passcode Off
+2026-06-19T23:51:32Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SecuritySettingsView.swift	Turn Passcode On
+2026-06-19T23:51:32Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SecuritySettingsView.swift	Turn on Erase Data?
+2026-06-19T23:51:32Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SecuritySettingsView.swift	Turning off the passcode removes the lock from this iPhone's copy of your wallets. Your seed and mnemonic stay encrypted in Keychain — but anyone with this phone unlocked can open Aperture without proving they own it.
+2026-06-19T23:51:32Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SecuritySettingsView.swift	Use Face ID For
+2026-06-19T23:53:07Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Add ERC-20 / SPL tokens by pasting their contract or mint address. Aperture reads name, symbol, and decimals from chain.
+2026-06-19T23:53:07Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	An iCloud backup keeps an encrypted copy of your recovery phrase in your private iCloud, so you can restore on another device. A manual backup means you've written the words down yourself. Doing both is the safest.
+2026-06-19T23:53:07Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Back up now
+2026-06-19T23:53:07Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Backed up
+2026-06-19T23:53:07Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Backup
+2026-06-19T23:53:07Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Cancel
+2026-06-19T23:53:07Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Confirm
+2026-06-19T23:53:07Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Confirm to back up your wallet.
+2026-06-19T23:53:07Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Confirm to view your private key.
+2026-06-19T23:53:07Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Confirm to view your private keys.
+2026-06-19T23:53:07Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Confirm to view your recovery phrase.
+2026-06-19T23:53:07Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Custom tokens
+2026-06-19T23:53:07Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Customize
+2026-06-19T23:53:07Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Delete wallet
+2026-06-19T23:53:07Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Deleting this wallet removes it from this iPhone and erases its encrypted seed from Keychain. Your recovery phrase, if you wrote it down, is still yours — you can restore the wallet later by importing it.
+2026-06-19T23:53:07Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Details
+2026-06-19T23:53:07Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Kind
+2026-06-19T23:53:07Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Name
+2026-06-19T23:53:07Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Not backed up
+2026-06-19T23:53:07Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	OK
+2026-06-19T23:53:07Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Recovery & keys
+2026-06-19T23:53:07Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Save
+2026-06-19T23:53:07Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Something went wrong
+2026-06-19T23:53:07Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	This wallet watches an address. There is no recovery phrase or private key on this iPhone — nothing secret is stored.
+2026-06-19T23:53:07Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Tokens
+2026-06-19T23:53:07Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Unavailable
+2026-06-19T23:53:07Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	View anyway
+2026-06-19T23:53:07Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	View private key
+2026-06-19T23:53:07Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	View private keys
+2026-06-19T23:53:07Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	View recovery phrase
+2026-06-19T23:53:07Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Wallet

@@ -1,5 +1,12 @@
 import Foundation
 import SwiftData
+import OSLog
+// WebKit + TipKit are imported ONLY for `performFullWipe`: the dApp browser
+// persists cookies/storage in the default `WKWebsiteDataStore`, and TipKit
+// persists "shown once" counters in its own datastore — both must go for a
+// reset to equal a first install.
+import WebKit
+import TipKit
 
 // MARK: - FactoryReset
 
@@ -44,6 +51,74 @@ import SwiftData
 /// store, the TipKit datastore, and the `CoinMarkCache` disk cache.
 /// `ResetCompletenessTests` pins this type's contract.
 enum FactoryReset {
+
+    /// The **complete** factory wipe — the single routine behind BOTH
+    /// "Reset Aperture" (Settings) and "Erase Data" (auto-wipe after
+    /// repeated wrong passcodes). After it returns, the app's persistent
+    /// state is indistinguishable from a first install: every SwiftData
+    /// table empty, every Aperture Keychain item gone, the full
+    /// `UserDefaults` domain removed, the dApp browser's website data
+    /// cleared, the TipKit datastore reset, and the token-logo disk cache
+    /// deleted. `RootGate` observes the wallet count flip to zero and routes
+    /// back to onboarding.
+    ///
+    /// **Order is the safety contract.** The SwiftData wallet deletion runs
+    /// FIRST and is the ONLY step that throws — if it fails, NOTHING has been
+    /// destroyed (the caller surfaces an error and the user keeps a working
+    /// app). Every step after it is best-effort so a single failure never
+    /// strands a half-reset device.
+    @MainActor
+    static func performFullWipe(modelContext: ModelContext) async throws {
+        let log = Logger(subsystem: "com.thuglife.aperture", category: "reset")
+        let repo = WalletRepository(modelContainer: modelContext.container)
+        // Capture ids up front so Keychain items can be wiped after the
+        // SwiftData rows are gone (once the rows go, the ids are lost).
+        let walletIds = (try? await repo.allWalletIds()) ?? []
+        // Database first — the custody gate. `deleteAllWallets()` refuses the
+        // in-memory fallback store, drops every wallet (with cascades) plus
+        // the primitive-keyed chart snapshots, and clears the Keychain wallet
+        // manifest. Throws ⇒ nothing destroyed yet.
+        try await repo.deleteAllWallets()
+        // Structural wipe of EVERY model in `ApertureSchemaV1.models`.
+        do { try wipeAllModels(in: modelContext) }
+        catch { log.error("Full wipe: structural model wipe failed: \(String(describing: error), privacy: .public)") }
+        // Per-wallet Keychain material. Idempotent: missing items are success.
+        for id in walletIds {
+            try? SeedVault.deleteSeed(for: id)
+            try? MnemonicVault.deleteMnemonic(for: id)
+            try? MnemonicVault.deletePrivateKey(for: id)
+        }
+        // Keychain — PIN hash + salt + both failure records.
+        PinCodeStorage.clear()
+        // dApp-browser website data: cookies, local/session storage, caches.
+        await WKWebsiteDataStore.default().removeData(
+            ofTypes: WKWebsiteDataStore.allWebsiteDataTypes(),
+            modifiedSince: .distantPast
+        )
+        // Foundation-level network residue outside WKWebView.
+        URLCache.shared.removeAllCachedResponses()
+        HTTPCookieStorage.shared.removeCookies(since: .distantPast)
+        // Token-logo disk cache (Caches/AperturePaint/CoinMarks).
+        await CoinMarkCache.shared.clearAll()
+        // TipKit datastore — best-effort reset + reconfigure.
+        do {
+            try Tips.resetDatastore()
+            try Tips.configure([
+                .displayFrequency(.immediate),
+                .datastoreLocation(.applicationDefault)
+            ])
+        } catch {
+            log.error("Full wipe: TipKit datastore reset failed: \(String(describing: error), privacy: .public)")
+        }
+        // Wipe every @AppStorage key (active-wallet pointer, tab, theme/
+        // language/currency, pin/biometric/erase flags, restoration stamps,
+        // and the fresh-install marker — so the NEXT launch re-runs the
+        // fresh-install Keychain purge as a second idempotent sweep).
+        if let bundleId = Bundle.main.bundleIdentifier {
+            UserDefaults.standard.removePersistentDomain(forName: bundleId)
+        }
+        log.notice("Full wipe completed: \(walletIds.count, privacy: .public) wallets purged.")
+    }
 
     /// Empty every table named by `ApertureSchemaV1.models`, committing
     /// all deletions in one save. Throws if a fetch or the final save

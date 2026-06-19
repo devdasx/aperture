@@ -33,6 +33,14 @@ struct WalletReadyView: View {
     /// row later (T-016).
     let requiresBackup: Bool
 
+    /// `true` when the user reached this screen having completed a
+    /// **manual** backup (write-down + verify) during creation. Threaded
+    /// to `WalletRecord.manualBackupCompleted` so Settings → Wallet's
+    /// manual-backup row is accurate for create-flow manual backups too,
+    /// not just management ones (2026-06-20). Default `false` (iCloud
+    /// backup or skip → manual not done).
+    var manualBackup: Bool = false
+
     /// Fires when the user taps Done. The caller dismisses the
     /// `fullScreenCover` and clears the unbacked-up flag.
     let onDone: () -> Void
@@ -194,11 +202,13 @@ struct WalletReadyView: View {
         persistState = .persisting
         let repository = WalletRepository(modelContainer: modelContext.container)
         let requiresBackupFlag = requiresBackup
+        let manualBackupFlag = manualBackup
         persistTask = Task { @MainActor in
             do {
                 _ = try await state.persist(
                     into: repository,
-                    requiresBackup: requiresBackupFlag
+                    requiresBackup: requiresBackupFlag,
+                    manualBackup: manualBackupFlag
                 )
                 persistState = .persisted
                 // Fire the once-per-wallet "sealed" haptic only now, on real

@@ -163,6 +163,7 @@ final class CreateWalletState {
     func persist(
         into repository: WalletRepository,
         requiresBackup: Bool,
+        manualBackup: Bool = false,
         defaultName: String? = nil
     ) async throws -> UUID {
         let walletId = pendingWalletId
@@ -248,6 +249,7 @@ final class CreateWalletState {
                 hasPassphrase: !passphrase.isEmpty,
                 colorTag: "default",
                 requiresBackup: requiresBackup,
+                manualBackupCompleted: manualBackup,
                 addresses: addressEntries
             )
         } catch {
