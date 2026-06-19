@@ -44,6 +44,16 @@ struct WalletDetailView: View {
     @State private var isShowingIconPicker: Bool = false
     @State private var biometricChallenge: BiometricChallenge?
 
+    // MARK: - Backup status section (2026-06-20)
+    /// Presents the full backup flow (iCloud / manual chooser) once the
+    /// phrase has been decrypted behind the auth gate.
+    @State private var isShowingWalletBackup: Bool = false
+    @State private var backupWords: [String] = []
+    /// Live iCloud-backup status for this wallet, resolved from CloudKit.
+    @State private var iCloudStatus: BackupRowStatus = .checking
+
+    enum BackupRowStatus: Equatable { case checking, done, notDone, unavailable }
+
     // MARK: - Sensitive-reveal auth gate (2026-06-19)
     //
     // One unified resolution for "view recovery phrase / private key(s)":
@@ -55,7 +65,7 @@ struct WalletDetailView: View {
     //      biometric still guards the secret).
     //   3. Else (no app passcode, no device biometric) → a professional
     //      warning sheet, then allow (nothing on the device can gate it).
-    private enum SensitiveReveal { case phrase, key, chainKeys }
+    private enum SensitiveReveal { case phrase, key, chainKeys, backup }
     @State private var pendingReveal: SensitiveReveal?
     @State private var isShowingPasscodeGate: Bool = false
     @State private var isShowingNoAuthWarning: Bool = false
@@ -144,23 +154,10 @@ struct WalletDetailView: View {
             // reveal section covers it), and a watch-only wallet holds no
             // secret — claiming "Backed up. You have the recovery phrase"
             // for either would be false (Rule #16).
-            if wallet.kind == .created || wallet.kind == .importedMnemonic {
-                Section {
-                    BackupStateCard(
-                        requiresBackup: wallet.requiresBackup,
-                        onBackUpNow: { isShowingBackupFlow = true }
-                    )
-                    .listRowBackground(Color.clear)
-                    .listRowInsets(EdgeInsets(
-                        top: 0,
-                        leading: 0,
-                        bottom: 0,
-                        trailing: 0
-                    ))
-                    .listRowSeparator(.hidden)
-                    .animation(.smooth(duration: 0.4), value: wallet.requiresBackup)
-                }
-            }
+            // The top "Backed up." card was removed 2026-06-20 — its
+            // status now lives in the dedicated Backup section below
+            // (iCloud + manual), so a lead card restating it read as
+            // redundant chrome.
 
             // 2026-06-13 — wallet-identity hero. The `.preview`-sized
             // `WalletAvatar` is the identity hero; beneath it sits a
@@ -226,9 +223,38 @@ struct WalletDetailView: View {
                 }
             }
 
-            // Secret-reveal section. Watch-only wallets hold no secret
-            // — no row at all (an enabled-looking row that can't ever
-            // reveal anything would be dishonest chrome).
+            // Backup status — iCloud + manual, for phrase wallets (the only
+            // kind with a recovery phrase to back up). Two connected rows so
+            // the related statuses read as one group; tapping either (when not
+            // yet done) opens the backup flow (2026-06-20 user direction —
+            // replaces the old top backup-state card).
+            if wallet.kind == .created || wallet.kind == .importedMnemonic {
+                Section {
+                    backupStatusRow(
+                        icon: "icloud",
+                        title: "iCloud backup",
+                        status: iCloudStatus,
+                        onTap: { startWalletBackup() }
+                    )
+                    backupStatusRow(
+                        icon: "square.and.pencil",
+                        title: "Manual backup",
+                        status: wallet.requiresBackup ? .notDone : .done,
+                        onTap: { startWalletBackup() }
+                    )
+                } header: {
+                    Text("Backup").font(UniTypography.footnote).foregroundStyle(UniColors.Text.tertiary)
+                } footer: {
+                    Text("An iCloud backup keeps an encrypted copy of your recovery phrase in your private iCloud, so you can restore on another device. A manual backup means you've written the words down yourself. Doing both is the safest.")
+                        .font(UniTypography.footnote)
+                        .foregroundStyle(UniColors.Text.tertiary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+
+            // Reveal secrets — recovery phrase + per-chain private keys in ONE
+            // connected group (2026-06-20 user direction). Watch-only wallets
+            // hold no secret, so no section at all.
             if wallet.kind != .watchOnly {
                 Section {
                     if wallet.kind == .importedKey {
@@ -236,22 +262,11 @@ struct WalletDetailView: View {
                     } else {
                         viewPhraseRow(wallet)
                     }
-                } footer: {
-                    Text(secretFooter(wallet))
-                        .font(UniTypography.footnote)
-                        .foregroundStyle(UniColors.Text.tertiary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-
-                // Per-chain private-key export (2026-06-19). Derives each
-                // network's key from the wallet's stored secret — EVM hex,
-                // Bitcoin-family WIF, Solana base58, raw key for the rest.
-                Section {
                     viewChainKeysRow(wallet)
                 } header: {
-                    Text("Private keys").font(UniTypography.footnote).foregroundStyle(UniColors.Text.tertiary)
+                    Text("Recovery & keys").font(UniTypography.footnote).foregroundStyle(UniColors.Text.tertiary)
                 } footer: {
-                    Text("See the private key for every network this wallet holds — EVM keys, Bitcoin/Litecoin/Dogecoin WIF, Solana, and the rest. Each one controls the funds on its address; never share them.")
+                    Text(secretFooter(wallet))
                         .font(UniTypography.footnote)
                         .foregroundStyle(UniColors.Text.tertiary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -286,6 +301,12 @@ struct WalletDetailView: View {
         .listStyle(.insetGrouped)
         .scrollContentBackground(.hidden)
         .background(UniColors.Background.primary)
+        .task(id: walletId) {
+            // Resolve the iCloud-backup status for phrase wallets (the only
+            // kind with a recovery phrase to back up).
+            guard wallet.kind == .created || wallet.kind == .importedMnemonic else { return }
+            await refreshICloudBackupStatus()
+        }
         .sheet(isPresented: $isShowingDeleteConfirm) {
             // Wallet-scoped sibling of `ResetApertureSheet` (user
             // direction 2026-06-13: "it should match resetting the
@@ -338,6 +359,22 @@ struct WalletDetailView: View {
                 descriptor: WalletDescriptor(record: wallet),
                 chains: chainEntries(wallet),
                 onClose: { isShowingChainKeys = false }
+            )
+            .uniAppEnvironment()
+            .presentationBackground(UniColors.Background.primary)
+        }
+        .fullScreenCover(isPresented: $isShowingWalletBackup) {
+            // The full backup chooser (iCloud / manual), against the phrase
+            // decrypted behind the auth gate. On close, re-check iCloud status.
+            WalletBackupFlow(
+                walletId: wallet.id,
+                walletName: wallet.name,
+                words: backupWords,
+                onClose: {
+                    isShowingWalletBackup = false
+                    backupWords = []
+                    Task { await refreshICloudBackupStatus() }
+                }
             )
             .uniAppEnvironment()
             .presentationBackground(UniColors.Background.primary)
@@ -464,10 +501,10 @@ struct WalletDetailView: View {
         } label: {
             HStack(spacing: UniSpacing.s) {
                 WalletAvatar(spec: wallet.avatarSpec, size: .row, walletId: wallet.id)
-                Spacer()
                 Text("Customize")
                     .font(UniTypography.body)
-                    .foregroundStyle(UniColors.Text.secondary)
+                    .foregroundStyle(UniColors.Text.primary)
+                Spacer()
                 Image(systemName: "chevron.right")
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(UniColors.Icon.tertiary)
@@ -783,6 +820,7 @@ struct WalletDetailView: View {
         case .phrase:    isShowingPhrase = true
         case .key:       isShowingKey = true
         case .chainKeys: isShowingChainKeys = true
+        case .backup:    Task { await loadWordsAndPresentBackup() }
         }
     }
 
@@ -791,6 +829,95 @@ struct WalletDetailView: View {
         case .phrase:    return LocalizedStringResource("Confirm to view your recovery phrase.")
         case .key:       return LocalizedStringResource("Confirm to view your private key.")
         case .chainKeys: return LocalizedStringResource("Confirm to view your private keys.")
+        case .backup:    return LocalizedStringResource("Confirm to back up your wallet.")
+        }
+    }
+
+    // MARK: - Backup section helpers
+
+    /// One backup-status row. Tappable only when the backup isn't done yet
+    /// (so it reads as an action to create it); otherwise it shows a static
+    /// status badge.
+    private func backupStatusRow(
+        icon: String,
+        title: LocalizedStringKey,
+        status: BackupRowStatus,
+        onTap: @escaping () -> Void
+    ) -> some View {
+        Button(action: onTap) {
+            HStack(spacing: UniSpacing.s) {
+                Image(systemName: icon)
+                    .font(.system(size: 17, weight: .regular))
+                    .foregroundStyle(UniColors.Icon.accent)
+                    .frame(width: 28)
+                Text(title)
+                    .font(UniTypography.body)
+                    .foregroundStyle(UniColors.Text.primary)
+                Spacer()
+                switch status {
+                case .checking:
+                    ProgressView().controlSize(.small)
+                case .done:
+                    HStack(spacing: 4) {
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.system(size: 15))
+                            .foregroundStyle(UniColors.Status.successForeground)
+                        Text("Backed up")
+                            .font(UniTypography.subheadline)
+                            .foregroundStyle(UniColors.Status.successForeground)
+                    }
+                case .notDone:
+                    Text("Not backed up")
+                        .font(UniTypography.subheadline)
+                        .foregroundStyle(UniColors.Text.secondary)
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(UniColors.Icon.tertiary)
+                case .unavailable:
+                    Text("Unavailable")
+                        .font(UniTypography.subheadline)
+                        .foregroundStyle(UniColors.Text.tertiary)
+                }
+            }
+            .padding(.vertical, UniSpacing.xxs)
+        }
+        .buttonStyle(.plain)
+        .disabled(status != .notDone)
+        .listRowBackground(UniColors.Background.secondary)
+    }
+
+    /// Auth-gate → decrypt → present the backup flow (iCloud / manual chooser).
+    private func startWalletBackup() {
+        requestReveal(.backup)
+    }
+
+    @MainActor
+    private func loadWordsAndPresentBackup() async {
+        let id = walletId
+        let loaded = try? await Task.detached(priority: .userInitiated) {
+            try MnemonicVault.loadMnemonic(for: id)
+        }.value
+        guard let words = loaded ?? nil, !words.isEmpty else {
+            errorAlertMessage = String.apertureLocalized("Couldn't read this wallet's phrase to back it up. Try restarting Aperture.")
+            return
+        }
+        backupWords = words
+        isShowingWalletBackup = true
+    }
+
+    /// Resolve this wallet's iCloud-backup status from CloudKit.
+    @MainActor
+    private func refreshICloudBackupStatus() async {
+        iCloudStatus = .checking
+        let store = CloudKitBackupStore()
+        do {
+            try await store.ensureAccountAvailable()
+            _ = try await store.fetch(walletId: walletId)
+            iCloudStatus = .done
+        } catch let error as CloudKitBackupStore.StoreError {
+            iCloudStatus = (error == .notFound) ? .notDone : .unavailable
+        } catch {
+            iCloudStatus = .unavailable
         }
     }
 }
