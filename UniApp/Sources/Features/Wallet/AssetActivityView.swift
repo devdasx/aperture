@@ -28,6 +28,9 @@ struct AssetActivityView: View {
     @AppStorage(CurrencyPreference.storageKey) private var currencyCode: String = CurrencyPreference.defaultCode
     // Local-currency activity amounts (2026-06-18).
     @Query private var cachedPrices: [CachedPriceRecord]
+    // User-added custom tokens — so the network filter lists every
+    // network the user added this asset on (2026-06-19).
+    @Query private var customTokenRecords: [CustomTokenRecord]
 
     private var priceMap: [String: Decimal] {
         ActivityFiat.priceMap(cachedPrices, currency: currencyCode)
@@ -203,8 +206,18 @@ struct AssetActivityView: View {
             // Cheap data-change signal — O(1) — replacing the O(all-tx)
             // WalletDataFingerprint.make that ran on every body pass.
             activeWalletIdRaw,
-            String(allTransactionRecords.count)
+            String(allTransactionRecords.count),
+            String(customTokenRecords.count)
         ].joined(separator: "|")
+    }
+
+    /// User-added custom tokens as snapshots (known-chain only) — fed to
+    /// the resolver so this asset's network filter lists every network
+    /// the user added it on (2026-06-19).
+    private var customTokenSnapshots: [CustomTokenSnapshot] {
+        customTokenRecords
+            .filter { $0.hasKnownChain }
+            .map { CustomTokenSnapshot(from: $0) }
     }
 
     private func computeDerived() -> DerivedState {
@@ -212,7 +225,8 @@ struct AssetActivityView: View {
         let resolution = AssetDetailResolver.resolve(
             identity: identity,
             heldRows: allHeldRows,
-            fallbackCurrencyCode: currencyCode
+            fallbackCurrencyCode: currencyCode,
+            customTokens: customTokenSnapshots
         )
         let scoped = AssetDetailFilterApply.scope(transactions: allTransactions, to: identity)
         return DerivedState(

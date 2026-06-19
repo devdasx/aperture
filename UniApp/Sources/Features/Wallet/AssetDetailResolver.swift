@@ -126,7 +126,8 @@ enum AssetDetailResolver {
     static func resolve(
         identity: AssetIdentity,
         heldRows: [(chain: SupportedChain, balance: TokenBalanceRecord)],
-        fallbackCurrencyCode: String
+        fallbackCurrencyCode: String,
+        customTokens: [CustomTokenSnapshot] = []
     ) -> AssetResolution {
         switch identity.kind {
         case .nativeCoin(let chain):
@@ -140,7 +141,8 @@ enum AssetDetailResolver {
             return resolveToken(
                 identity: identity,
                 heldRows: heldRows,
-                fallbackCurrencyCode: fallbackCurrencyCode
+                fallbackCurrencyCode: fallbackCurrencyCode,
+                customTokens: customTokens
             )
         }
     }
@@ -212,7 +214,8 @@ enum AssetDetailResolver {
     private static func resolveToken(
         identity: AssetIdentity,
         heldRows: [(chain: SupportedChain, balance: TokenBalanceRecord)],
-        fallbackCurrencyCode: String
+        fallbackCurrencyCode: String,
+        customTokens: [CustomTokenSnapshot] = []
     ) -> AssetResolution {
         let index = HeldRowIndex(heldRows)
         let target = identity.symbol.uppercased()
@@ -326,6 +329,29 @@ enum AssetDetailResolver {
                 chain: entry.chain,
                 contract: contract,
                 balance: entry.balance,
+                fallbackCurrencyCode: fallbackCurrencyCode
+            ))
+        }
+
+        // **User-added custom tokens for this symbol (2026-06-19).** A
+        // custom token the user added but does NOT yet hold (0 balance —
+        // e.g. LINK added on Polygon, never received) isn't in `heldRows`,
+        // so the loop above misses it and the asset showed only one
+        // network. This is the honest, real fix the user asked for: the
+        // networks shown are the registry's networks for the symbol UNION
+        // the networks the USER explicitly added a custom token for — never
+        // a guessed name match. Each row carries that network's own real
+        // contract; balance is the held amount or 0. (Symbol collisions
+        // collapse the same way the catalog does — and the per-network
+        // contract is shown on the network detail for verification.)
+        for token in customTokens where token.symbol.uppercased() == target {
+            let key = "\(token.chain.rawValue)|\(token.contract.lowercased())"
+            guard !emittedKeys.contains(key) else { continue }
+            emittedKeys.insert(key)
+            rows.append(makeRow(
+                chain: token.chain,
+                contract: token.contract,
+                balance: index.lookup(chain: token.chain, contract: token.contract),
                 fallbackCurrencyCode: fallbackCurrencyCode
             ))
         }
