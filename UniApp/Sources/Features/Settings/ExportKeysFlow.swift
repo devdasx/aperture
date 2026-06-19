@@ -844,12 +844,14 @@ private struct ExportWarnScreen: View {
         VStack(spacing: 0) {
             ScrollView {
                 VStack(spacing: UniSpacing.l) {
+                    // Bare warning glyph — no circular plate behind it
+                    // (2026-06-19 user direction). Sized up so it still reads
+                    // as the hero now that the red disc is gone. Shared by the
+                    // recovery-phrase AND private-key warning screens.
                     Image(systemName: "exclamationmark.triangle.fill")
-                        .font(.system(size: 34, weight: .regular))
+                        .font(.system(size: 52, weight: .regular))
                         .symbolRenderingMode(.hierarchical)
                         .foregroundStyle(UniColors.Status.errorForeground)
-                        .frame(width: 84, height: 84)
-                        .background(Circle().fill(UniColors.Status.errorBackground))
                         .padding(.top, UniSpacing.l)
                         .accessibilityHidden(true)
 
