@@ -383,29 +383,28 @@ private struct ImportMethodSelectionView: View {
                         .font(UniTypography.body)
                         .foregroundStyle(UniColors.Text.primary)
                     Spacer(minLength: 0)
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(UniColors.Icon.tertiary)
-                        .accessibilityHidden(true)
                 }
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
 
+            // Info icon only (no label), placed BEFORE the chevron
+            // (2026-06-20 user direction).
             Button { infoMethod = info } label: {
-                HStack(spacing: 3) {
-                    Image(systemName: "info.circle")
-                        .font(.system(size: 15, weight: .regular))
-                    Text("Info")
-                        .font(UniTypography.subheadline)
-                }
-                .foregroundStyle(UniColors.Text.secondary)
-                .padding(.vertical, 6)
-                .padding(.leading, UniSpacing.s)
-                .contentShape(Rectangle())
+                Image(systemName: "info.circle")
+                    .font(.system(size: 18, weight: .regular))
+                    .foregroundStyle(UniColors.Icon.secondary)
+                    .padding(.vertical, 6)
+                    .padding(.leading, UniSpacing.xs)
+                    .contentShape(Rectangle())
             }
             .buttonStyle(.borderless)
             .accessibilityLabel(Text("About \(Text(title))"))
+
+            Image(systemName: "chevron.right")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(UniColors.Icon.tertiary)
+                .accessibilityHidden(true)
         }
         .padding(.vertical, UniSpacing.xxs)
     }
