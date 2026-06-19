@@ -26,7 +26,6 @@ struct WalletDetailView: View {
     // `deleteWalletAndActivateNext` owns the post-delete pointer move
     // (2026-06-13). The old `@AppStorage("activeWalletId")` clobber is gone
     // (see `deleteWallet`).
-    @AppStorage("biometricEnabled") private var biometricEnabled: Bool = false
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
 
@@ -44,6 +43,23 @@ struct WalletDetailView: View {
     @State private var isShowingBackupFlow: Bool = false
     @State private var isShowingIconPicker: Bool = false
     @State private var biometricChallenge: BiometricChallenge?
+
+    // MARK: - Sensitive-reveal auth gate (2026-06-19)
+    //
+    // One unified resolution for "view recovery phrase / private key(s)":
+    //   1. App passcode set  → the unified `PinCodeView` verify screen,
+    //      which auto-prompts Face ID when the in-app Face ID toggle is on
+    //      (no longer a raw Face ID prompt when only a passcode is set).
+    //   2. Else device biometric enrolled → a direct Face ID/Touch ID
+    //      prompt, even when both in-app toggles are off (the device's own
+    //      biometric still guards the secret).
+    //   3. Else (no app passcode, no device biometric) → a professional
+    //      warning sheet, then allow (nothing on the device can gate it).
+    private enum SensitiveReveal { case phrase, key, chainKeys }
+    @State private var pendingReveal: SensitiveReveal?
+    @State private var isShowingPasscodeGate: Bool = false
+    @State private var isShowingNoAuthWarning: Bool = false
+
     /// Already-localized message for the shared error alert. Non-nil
     /// presents the alert; dismissing it clears the value.
     @State private var errorAlertMessage: String?
@@ -121,20 +137,29 @@ struct WalletDetailView: View {
             // Content-layer per Rule #2 §B.3 (no glass on long-form
             // content), monochrome per the brand handoff (Rule #2
             // §A.5).
-            Section {
-                BackupStateCard(
-                    requiresBackup: wallet.requiresBackup,
-                    onBackUpNow: { isShowingBackupFlow = true }
-                )
-                .listRowBackground(Color.clear)
-                .listRowInsets(EdgeInsets(
-                    top: 0,
-                    leading: 0,
-                    bottom: 0,
-                    trailing: 0
-                ))
-                .listRowSeparator(.hidden)
-                .animation(.smooth(duration: 0.4), value: wallet.requiresBackup)
+            // Shown ONLY for phrase-based wallets — they're the only kind
+            // with a "recovery phrase" to back up, so the card's truth
+            // ("you have the phrase" / "back it up") actually applies
+            // (2026-06-19). A private-key import's backup IS its key (the
+            // reveal section covers it), and a watch-only wallet holds no
+            // secret — claiming "Backed up. You have the recovery phrase"
+            // for either would be false (Rule #16).
+            if wallet.kind == .created || wallet.kind == .importedMnemonic {
+                Section {
+                    BackupStateCard(
+                        requiresBackup: wallet.requiresBackup,
+                        onBackUpNow: { isShowingBackupFlow = true }
+                    )
+                    .listRowBackground(Color.clear)
+                    .listRowInsets(EdgeInsets(
+                        top: 0,
+                        leading: 0,
+                        bottom: 0,
+                        trailing: 0
+                    ))
+                    .listRowSeparator(.hidden)
+                    .animation(.smooth(duration: 0.4), value: wallet.requiresBackup)
+                }
             }
 
             // 2026-06-13 — wallet-identity hero. The `.preview`-sized
@@ -165,28 +190,13 @@ struct WalletDetailView: View {
             // element. Stripped the "Identity" section header (Rule #2
             // §D.5) — the avatar already IS the identity; a label
             // naming it restated the hero.
+            // Customize row — a standard inset row like the others
+            // (2026-06-19 user direction): the wallet's avatar on the
+            // leading edge, "Customize" + chevron trailing, opening
+            // `WalletIconPickerSheet`. The avatar updates live via
+            // `@Query` the moment the picker writes through the repo.
             Section {
-                VStack(spacing: UniSpacing.m) {
-                    // Gradient-disc avatar per the design handoff.
-                    // `wallet.avatarSpec` hydrates the persisted columns
-                    // with auto(name) fallback; the picker writes through
-                    // the same hydrate path so this hero preview updates
-                    // live the moment the user taps Save.
-                    WalletAvatar(spec: wallet.avatarSpec, size: .preview, walletId: wallet.id)
-
-                    UniButton(
-                        title: "Customise wallet",
-                        variant: .secondary,
-                        systemImage: "paintpalette"
-                    ) {
-                        isShowingIconPicker = true
-                    }
-                    .fixedSize()
-                }
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, UniSpacing.m)
-                .listRowBackground(Color.clear)
-                .listRowSeparator(.hidden)
+                customizeRow(wallet)
             }
 
             Section {
@@ -202,7 +212,6 @@ struct WalletDetailView: View {
             // weight on its own.
             Section {
                 kindRow(wallet)
-                addressesRow(wallet)
             } header: {
                 Text("Details").font(UniTypography.footnote).foregroundStyle(UniColors.Text.tertiary)
             } footer: {
@@ -347,6 +356,57 @@ struct WalletDetailView: View {
             .intrinsicHeightSheet()
             .presentationBackground(UniColors.Background.primary)
         }
+        // App passcode set → the unified passcode verify screen. It
+        // auto-prompts Face ID when the in-app Face ID toggle is on
+        // (`allowsBiometrics: true`), so a passcode-only user is NOT shown
+        // a raw Face ID prompt — they see the keypad and may use Face ID
+        // only if they enabled it (2026-06-19 user direction).
+        .fullScreenCover(isPresented: $isShowingPasscodeGate) {
+            NavigationStack {
+                PinCodeView(
+                    mode: .verify,
+                    onComplete: { _ in
+                        isShowingPasscodeGate = false
+                        let target = pendingReveal
+                        // Defer one runloop so the cover finishes
+                        // dismissing before the reveal sheet presents.
+                        DispatchQueue.main.async {
+                            if let target { performReveal(target) }
+                        }
+                    },
+                    onCancel: { isShowingPasscodeGate = false },
+                    allowsBiometrics: true
+                )
+                .toolbar {
+                    ToolbarItem(placement: .topBarLeading) {
+                        Button { isShowingPasscodeGate = false } label: {
+                            Image(systemName: "xmark")
+                                .font(.system(size: 17, weight: .semibold))
+                        }
+                        .accessibilityLabel(Text("Cancel"))
+                    }
+                }
+            }
+            .uniAppEnvironment()
+            .presentationBackground(UniColors.Background.primary)
+        }
+        // No app passcode AND no device biometric → nothing on the device
+        // can gate the secret. Allow, but warn honestly first.
+        .sheet(isPresented: $isShowingNoAuthWarning) {
+            NoDeviceLockWarningSheet(
+                onContinue: {
+                    isShowingNoAuthWarning = false
+                    let target = pendingReveal
+                    DispatchQueue.main.async {
+                        if let target { performReveal(target) }
+                    }
+                },
+                onCancel: { isShowingNoAuthWarning = false }
+            )
+            .uniAppEnvironment()
+            .intrinsicHeightSheet()
+            .presentationBackground(UniColors.Background.primary)
+        }
         .sheet(isPresented: $isShowingIconPicker) {
             WalletIconPickerSheet(walletId: wallet.id)
                 .uniAppEnvironment()
@@ -382,13 +442,27 @@ struct WalletDetailView: View {
         .listRowBackground(UniColors.Background.secondary)
     }
 
-    private func addressesRow(_ wallet: WalletRecord) -> some View {
-        HStack {
-            Text("Addresses").font(UniTypography.body).foregroundStyle(UniColors.Text.primary)
-            Spacer()
-            Text("\(wallet.addresses.count)").font(UniTypography.subheadline).foregroundStyle(UniColors.Text.secondary).monospacedDigit()
+    /// Customize row — the wallet's avatar on the leading edge,
+    /// "Customize" + chevron trailing, opening the icon picker. Reads as
+    /// a standard inset row (2026-06-19 user direction), replacing the
+    /// old centered avatar hero.
+    private func customizeRow(_ wallet: WalletRecord) -> some View {
+        Button {
+            isShowingIconPicker = true
+        } label: {
+            HStack(spacing: UniSpacing.s) {
+                WalletAvatar(spec: wallet.avatarSpec, size: .row, walletId: wallet.id)
+                Spacer()
+                Text("Customize")
+                    .font(UniTypography.body)
+                    .foregroundStyle(UniColors.Text.secondary)
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(UniColors.Icon.tertiary)
+            }
+            .padding(.vertical, UniSpacing.xxs)
         }
-        .padding(.vertical, UniSpacing.xxs)
+        .buttonStyle(.plain)
         .listRowBackground(UniColors.Background.secondary)
     }
 
@@ -396,6 +470,9 @@ struct WalletDetailView: View {
     /// the live count of user-added tokens via `@Query` inside that
     /// view; this row just opens it.
     private var customTokensRow: some View {
+        // NavigationLink supplies its OWN trailing disclosure chevron in
+        // an inset-grouped List — so the row carries NO manual chevron
+        // (a second one was the "two arrows" the user saw, 2026-06-19).
         NavigationLink {
             CustomTokensListView()
         } label: {
@@ -408,9 +485,6 @@ struct WalletDetailView: View {
                     .font(UniTypography.body)
                     .foregroundStyle(UniColors.Text.primary)
                 Spacer()
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(UniColors.Icon.tertiary)
             }
             .padding(.vertical, UniSpacing.xxs)
         }
@@ -423,20 +497,7 @@ struct WalletDetailView: View {
         let hasMnemonic = MnemonicVault.hasMnemonic(for: wallet.id)
         return Button {
             guard hasMnemonic else { return }
-            // Gate the reveal behind a biometric prompt when biometric
-            // is enabled — keeps the phrase from being trivially
-            // viewable by anyone with the unlocked phone (Rule #16).
-            if biometricEnabled {
-                biometricChallenge = BiometricChallenge(
-                    reason: LocalizedStringResource("Confirm to view your recovery phrase."),
-                    onSuccess: {
-                        biometricChallenge = nil
-                        isShowingPhrase = true
-                    }
-                )
-            } else {
-                isShowingPhrase = true
-            }
+            requestReveal(.phrase)
         } label: {
             HStack(spacing: UniSpacing.s) {
                 Image(systemName: "text.book.closed")
@@ -469,20 +530,7 @@ struct WalletDetailView: View {
         let hasKey = MnemonicVault.hasPrivateKey(for: wallet.id)
         return Button {
             guard hasKey else { return }
-            // Same gate as the phrase reveal — the key must not be
-            // trivially viewable by anyone holding the unlocked phone
-            // (Rule #16).
-            if biometricEnabled {
-                biometricChallenge = BiometricChallenge(
-                    reason: LocalizedStringResource("Confirm to view your private key."),
-                    onSuccess: {
-                        biometricChallenge = nil
-                        isShowingKey = true
-                    }
-                )
-            } else {
-                isShowingKey = true
-            }
+            requestReveal(.key)
         } label: {
             HStack(spacing: UniSpacing.s) {
                 Image(systemName: "key.horizontal")
@@ -516,17 +564,7 @@ struct WalletDetailView: View {
             || MnemonicVault.hasPrivateKey(for: wallet.id)
         return Button {
             guard hasSecret else { return }
-            if biometricEnabled {
-                biometricChallenge = BiometricChallenge(
-                    reason: LocalizedStringResource("Confirm to view your private keys."),
-                    onSuccess: {
-                        biometricChallenge = nil
-                        isShowingChainKeys = true
-                    }
-                )
-            } else {
-                isShowingChainKeys = true
-            }
+            requestReveal(.chainKeys)
         } label: {
             HStack(spacing: UniSpacing.s) {
                 Image(systemName: "key.horizontal")
@@ -700,6 +738,49 @@ struct WalletDetailView: View {
             return false
         }
     }
+
+    // MARK: - Sensitive-reveal auth resolution
+
+    /// Resolve how to gate a sensitive reveal, then present the right
+    /// surface. See the `SensitiveReveal` state block for the priority.
+    private func requestReveal(_ target: SensitiveReveal) {
+        pendingReveal = target
+        if PinCodeStorage.hasPin {
+            // App passcode set → unified passcode screen (auto Face ID
+            // if the in-app Face ID toggle is on).
+            isShowingPasscodeGate = true
+        } else if BiometricService().isAvailable {
+            // No app passcode, but the device has Face ID/Touch ID
+            // enrolled → prompt it directly, even with both in-app
+            // toggles off.
+            biometricChallenge = BiometricChallenge(
+                reason: revealReason(target),
+                onSuccess: {
+                    biometricChallenge = nil
+                    performReveal(target)
+                }
+            )
+        } else {
+            // Nothing on the device can gate it → warn, then allow.
+            isShowingNoAuthWarning = true
+        }
+    }
+
+    private func performReveal(_ target: SensitiveReveal) {
+        switch target {
+        case .phrase:    isShowingPhrase = true
+        case .key:       isShowingKey = true
+        case .chainKeys: isShowingChainKeys = true
+        }
+    }
+
+    private func revealReason(_ target: SensitiveReveal) -> LocalizedStringResource {
+        switch target {
+        case .phrase:    return LocalizedStringResource("Confirm to view your recovery phrase.")
+        case .key:       return LocalizedStringResource("Confirm to view your private key.")
+        case .chainKeys: return LocalizedStringResource("Confirm to view your private keys.")
+        }
+    }
 }
 
 // MARK: - Biometric challenge shim
@@ -755,6 +836,38 @@ private struct BiometricChallengeSheet: View {
         guard !hasCompleted else { return }
         hasCompleted = true
         if case .success = outcome { onSuccess() } else { onFailure() }
+    }
+}
+
+// MARK: - No-device-lock warning sheet
+
+/// Shown before a sensitive reveal when this iPhone has neither an
+/// in-app passcode nor an enrolled biometric — nothing can gate the
+/// secret, so we say so honestly (Rule #16) and let the user decide.
+/// Recommends turning on a lock, but never blocks: the user owns the
+/// device and the choice.
+private struct NoDeviceLockWarningSheet: View {
+    let onContinue: () -> Void
+    let onCancel: () -> Void
+
+    var body: some View {
+        UniSheet(title: "No lock is set") {
+            VStack(spacing: UniSpacing.m) {
+                Image(systemName: "exclamationmark.shield")
+                    .font(.system(size: 44, weight: .light))
+                    .symbolRenderingMode(.hierarchical)
+                    .foregroundStyle(UniColors.Status.warningForeground)
+                    .accessibilityHidden(true)
+                UniBody(
+                    text: "This iPhone has no passcode or Face ID set, so anyone holding it unlocked could view this secret. Turn on a passcode or Face ID in Settings for real protection.",
+                    alignment: .center,
+                    color: UniColors.Text.secondary
+                )
+            }
+        } actions: {
+            UniButton(title: "View anyway", variant: .primary) { onContinue() }
+            UniButton(title: "Cancel", variant: .secondary) { onCancel() }
+        }
     }
 }
 

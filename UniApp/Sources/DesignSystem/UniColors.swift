@@ -516,6 +516,55 @@ enum UniColors {
             ]
         }
 
+        /// Spec-aware gradient stops (2026-06-19). A user-picked custom
+        /// colour (`spec.customColorHex`) overrides the preset gradient;
+        /// otherwise the preset key resolves as before. The single
+        /// resolver every `WalletAvatar` render should call.
+        static func gradientStops(for spec: WalletAvatarSpec) -> [Color] {
+            if let hex = spec.customColorHex {
+                return gradientStops(forCustomHex: hex)
+            }
+            return gradientStops(for: spec.gradient)
+        }
+
+        /// A two-stop gradient derived from a single user-picked colour:
+        /// the colour itself on top, a ~38%-darkened shade beneath, so a
+        /// custom disc reads with the same lit-from-above depth as the
+        /// curated presets. Malformed hex → `Brand.mark` (Rule #4 §B).
+        static func gradientStops(forCustomHex hex: String) -> [Color] {
+            guard let top = Color(hex: hex) else { return [Brand.mark, Brand.mark] }
+            return [top, darkened(hex: hex, by: 0.38) ?? top]
+        }
+
+        /// `#RRGGBB` for a SwiftUI `Color` (Rule #4 §B keeps colour ↔ hex
+        /// inside `UniColors`). Used by the icon picker to persist the
+        /// native colour-picker selection.
+        static func hex(from color: Color) -> String {
+            let ui = UIColor(color)
+            var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+            ui.getRed(&r, green: &g, blue: &b, alpha: &a)
+            let clamp: (CGFloat) -> Int = { Int((max(0, min(1, $0)) * 255).rounded()) }
+            return String(format: "#%02X%02X%02X", clamp(r), clamp(g), clamp(b))
+        }
+
+        /// A `Color` for a `#RRGGBB` string, falling back to the neutral
+        /// brand mark on malformed input. The icon picker seeds its
+        /// colour-picker state from a persisted custom hex through this.
+        static func color(fromHex hex: String) -> Color {
+            Color(hex: hex) ?? Brand.mark
+        }
+
+        /// `hex` scaled toward black by `fraction` (0…1), returned as a
+        /// `Color`. `nil` on malformed input.
+        private static func darkened(hex: String, by fraction: CGFloat) -> Color? {
+            guard let base = Color(hex: hex) else { return nil }
+            let ui = UIColor(base)
+            var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+            ui.getRed(&r, green: &g, blue: &b, alpha: &a)
+            let k = max(0, min(1, 1 - fraction))
+            return Color(.sRGB, red: Double(r * k), green: Double(g * k), blue: Double(b * k), opacity: Double(a))
+        }
+
         /// Inner-disc fill color for a wallet-avatar badge. The three
         /// badges (watch / hardware / shared) have fixed hex values per
         /// the design handoff. Same Rule #4 §B exception — hex →

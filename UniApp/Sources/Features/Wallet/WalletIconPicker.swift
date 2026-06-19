@@ -50,6 +50,12 @@ struct WalletIconPickerSheet: View {
 
     /// The gradient the user is currently previewing.
     @State private var stagedGradient: WalletAvatarGradient = .graphite
+    /// Whether the user picked a custom colour via the native colour
+    /// picker (2026-06-19) — overrides `stagedGradient` when true.
+    @State private var usesCustomColor: Bool = false
+    /// The native colour-picker selection. Only meaningful when
+    /// `usesCustomColor` is true; seeded from a persisted custom hex.
+    @State private var stagedCustomColor: Color = .blue
     /// Whether the user is currently editing the glyph grid, the
     /// letter grid, or the upload sheet.
     @State private var stagedSymbolType: WalletAvatarSpec.WalletAvatarSymbolType = .mono
@@ -214,14 +220,43 @@ struct WalletIconPickerSheet: View {
                 .padding(.horizontal, 4) // breathing room for the selection ring
                 .padding(.vertical, 4)
             }
+
+            // Native colour picker (2026-06-19) — pick any colour beyond
+            // the curated presets. Selecting one overrides the preset
+            // swatch; tapping a preset above clears it. The trailing tick
+            // marks when a custom colour is the active choice.
+            ColorPicker(selection: $stagedCustomColor, supportsOpacity: false) {
+                HStack(spacing: UniSpacing.s) {
+                    Image(systemName: "eyedropper.halffull")
+                        .font(.system(size: 16, weight: .regular))
+                        .foregroundStyle(UniColors.Icon.secondary)
+                        .frame(width: 28)
+                    Text("Custom colour")
+                        .font(UniTypography.body)
+                        .foregroundStyle(UniColors.Text.primary)
+                    if usesCustomColor {
+                        Image(systemName: "checkmark")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(UniColors.Tint.accent)
+                    }
+                }
+            }
+            .onChange(of: stagedCustomColor) { _, _ in
+                // Any movement of the colour well means the user wants
+                // their custom colour (seed assigns before this fires
+                // only when a custom hex existed, which is also correct).
+                usesCustomColor = true
+            }
         }
     }
 
     @ViewBuilder
     private func gradientSwatch(_ gradient: WalletAvatarGradient) -> some View {
-        let isActive = (gradient == stagedGradient)
+        // A preset is "active" only when no custom colour is in play.
+        let isActive = (gradient == stagedGradient) && !usesCustomColor
         Button {
             stagedGradient = gradient
+            usesCustomColor = false // picking a preset clears the custom colour
         } label: {
             ZStack {
                 Circle()
@@ -254,25 +289,16 @@ struct WalletIconPickerSheet: View {
     /// The segmented Symbol / Letter / Upload switcher + the body
     /// underneath. The body flips when the user changes the
     /// segmented control — glyph grid, letter grid, or upload area.
+    /// Symbol-only (2026-06-19 user direction). The Letter / Upload
+    /// segments were removed; the avatar's symbol is always a glyph from
+    /// the curated set, so the section is just the section label + the
+    /// glyph grid — no segmented switcher. `stagedSymbolType` is pinned
+    /// to `.glyph` in `seedIfNeeded`.
     @ViewBuilder
     private var symbolSection: some View {
         VStack(alignment: .leading, spacing: UniSpacing.m) {
-            Picker("Symbol or Letter or Upload", selection: $stagedSymbolType) {
-                Text("Symbol").tag(WalletAvatarSpec.WalletAvatarSymbolType.glyph)
-                Text("Letter").tag(WalletAvatarSpec.WalletAvatarSymbolType.mono)
-                Text("Upload").tag(WalletAvatarSpec.WalletAvatarSymbolType.custom)
-            }
-            .pickerStyle(.segmented)
-            .uniHaptic(.selection, trigger: stagedSymbolType)
-
-            switch stagedSymbolType {
-            case .glyph:
-                glyphGrid
-            case .mono:
-                letterGrid
-            case .custom:
-                uploadArea
-            }
+            sectionLabel("Symbol")
+            glyphGrid
         }
     }
 
@@ -610,7 +636,16 @@ struct WalletIconPickerSheet: View {
         guard !didSeed, let wallet else { return }
         let current = wallet.avatarSpec
         stagedGradient = current.gradient
-        stagedSymbolType = current.symbolType
+        // Restore a previously-picked custom colour so re-opening the
+        // picker shows it selected (2026-06-19).
+        if let hex = current.customColorHex {
+            usesCustomColor = true
+            stagedCustomColor = UniColors.WalletAvatar.color(fromHex: hex)
+        }
+        // Symbol is the only mode now (Letter / Upload removed) — pin to
+        // `.glyph`. A wallet previously on mono/custom opens on the glyph
+        // grid and converts to a glyph only if the user taps Save.
+        stagedSymbolType = .glyph
         stagedGlyph = current.glyph ?? .iris
         stagedMonogram = current.monogram ?? String(wallet.name.prefix(1)).uppercased()
         if stagedMonogram.isEmpty { stagedMonogram = "W" }
@@ -643,7 +678,8 @@ struct WalletIconPickerSheet: View {
                 monogram: nil,
                 customSvg: nil,
                 customTint: nil,
-                badge: WalletAvatarBadge.derive(from: wallet.kind)
+                badge: WalletAvatarBadge.derive(from: wallet.kind),
+                customColorHex: usesCustomColor ? UniColors.WalletAvatar.hex(from: stagedCustomColor) : nil
             )
         case .mono:
             return WalletAvatarSpec(
@@ -718,7 +754,10 @@ struct WalletIconPickerSheet: View {
     /// `CustomSvgCachedView`'s `.task(id:)`.
     private func commit(_ wallet: WalletRecord) {
         let spec = stagedSpec(for: wallet)
-        wallet.avatarGradient = spec.gradient.rawValue
+        // A custom colour is persisted into the SAME `avatarGradient`
+        // column as a `#RRGGBB` hex (a leading `#` distinguishes it from
+        // a preset key — no schema migration; `hydrate` routes it back).
+        wallet.avatarGradient = spec.customColorHex ?? spec.gradient.rawValue
         wallet.avatarSymbolType = spec.symbolType.rawValue
         wallet.avatarGlyph = spec.glyph?.rawValue
         wallet.avatarMonogram = spec.monogram

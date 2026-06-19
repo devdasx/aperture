@@ -117,7 +117,7 @@ struct WalletAvatar: View {
             Circle()
                 .fill(
                     LinearGradient(
-                        colors: UniColors.WalletAvatar.gradientStops(for: spec.gradient),
+                        colors: UniColors.WalletAvatar.gradientStops(for: spec),
                         startPoint: .top,
                         endPoint: .bottom
                     )

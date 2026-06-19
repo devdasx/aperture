@@ -67,6 +67,13 @@ struct WalletAvatarSpec: Hashable, Sendable, Codable {
     /// `importedKey` wallet shows the chip; future shared / multisig
     /// wallets will show the people glyph.
     let badge: WalletAvatarBadge?
+    /// A user-picked custom background colour (`#RRGGBB`), set via the
+    /// icon picker's native colour picker (2026-06-19). When non-nil it
+    /// OVERRIDES `gradient` — the disc renders a gradient derived from
+    /// this single colour. Persisted by reusing the `avatarGradient`
+    /// column (a leading `#` distinguishes a custom hex from a preset
+    /// key, so no schema migration), and `hydrate` routes it back here.
+    let customColorHex: String?
 
     // MARK: - Symbol type
 
@@ -115,11 +122,12 @@ struct WalletAvatarSpec: Hashable, Sendable, Codable {
         self.customSvg = nil
         self.customTint = nil
         self.badge = badge
+        self.customColorHex = nil
     }
 
     /// Full initializer used by `hydrate(...)` and the Upload-tab
     /// commit path. Carries every field including the v3 custom-SVG
-    /// pair.
+    /// pair and the optional user-picked custom colour.
     init(
         gradient: WalletAvatarGradient,
         symbolType: WalletAvatarSymbolType,
@@ -127,7 +135,8 @@ struct WalletAvatarSpec: Hashable, Sendable, Codable {
         monogram: String?,
         customSvg: String?,
         customTint: CustomTint?,
-        badge: WalletAvatarBadge?
+        badge: WalletAvatarBadge?,
+        customColorHex: String? = nil
     ) {
         self.gradient = gradient
         self.symbolType = symbolType
@@ -136,6 +145,7 @@ struct WalletAvatarSpec: Hashable, Sendable, Codable {
         self.customSvg = customSvg
         self.customTint = customTint
         self.badge = badge
+        self.customColorHex = customColorHex
     }
 
     // MARK: - Hydration from primitive columns
@@ -205,6 +215,23 @@ struct WalletAvatarSpec: Hashable, Sendable, Codable {
         // Derive the type badge from the wallet's kind. Per the hard
         // rule, this is NEVER user-selectable.
         let derivedBadge = WalletAvatarBadge.derive(from: walletKind)
+
+        // **Custom colour (2026-06-19).** A leading `#` in the gradient
+        // column means the user picked their own colour via the icon
+        // picker — route it to `customColorHex` and render a glyph disc
+        // from that colour. (Reuses the existing column, no migration.)
+        if gradientRaw.hasPrefix("#") {
+            return WalletAvatarSpec(
+                gradient: .graphite, // sentinel; overridden by customColorHex
+                symbolType: .glyph,
+                glyph: parsedGlyph ?? .iris,
+                monogram: nil,
+                customSvg: nil,
+                customTint: nil,
+                badge: derivedBadge,
+                customColorHex: gradientRaw
+            )
+        }
 
         // If the persisted gradient AND symbol type both resolve, we
         // have a real user-picked spec. Honor it.
