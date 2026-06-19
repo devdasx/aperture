@@ -55,6 +55,11 @@ struct ActivityRow: View {
     /// Preferences.
     var fiatValue: Decimal? = nil
     var fiatCurrencyCode: String = "USD"
+    /// The leg's ERC-20 / SPL contract (or nil for a native coin). Passed
+    /// to `CoinMark` so a TOKEN resolves its exact Trust Wallet logo by
+    /// contract — without it, token rows fell back to a text chip
+    /// (2026-06-19). Sourced from `TransactionRecord.tokenContract`.
+    var tokenContract: String? = nil
 
     /// Settings → Preferences toggle (default on): show the activity
     /// amount in the user's local currency. Off shows the native token
@@ -107,7 +112,7 @@ struct ActivityRow: View {
     /// into it.
     private var leadingMark: some View {
         ZStack(alignment: .bottomTrailing) {
-            CoinMark(chain: chain, tokenSymbol: tokenSymbol)
+            CoinMark(chain: chain, tokenSymbol: tokenSymbol, contract: tokenContract)
                 .frame(width: 44, height: 44)
 
             statusBadge

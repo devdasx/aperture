@@ -455,7 +455,8 @@ struct WalletActivityView: View {
             status: TransactionStatus(rawValue: tx.statusRaw) ?? .confirmed,
             kind: tx.kind,
             fiatValue: ActivityFiat.value(amountRaw: tx.amountRaw, symbol: tx.tokenSymbol, map: priceMap),
-            fiatCurrencyCode: currencyCode
+            fiatCurrencyCode: currencyCode,
+            tokenContract: tx.tokenContract
         )
     }
 
