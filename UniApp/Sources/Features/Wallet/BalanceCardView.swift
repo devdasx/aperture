@@ -253,7 +253,9 @@ struct BalanceCardView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(cardSurface)
         .clipShape(RoundedRectangle(cornerRadius: UniRadius.balanceCard, style: .continuous))
-        .overlay(innerEdgeOverlay)
+        // Flat white surface like the holdings / transactions cards
+        // (2026-06-19 user direction) — the gradient + inner specular edge
+        // were dropped; only the light-mode hairline remains.
         .overlay(hairlineOverlay)
         // No drop shadow: the card sits flat on the page like the holdings /
         // transactions cards below it (per user direction 2026-06-16 — the
@@ -284,47 +286,11 @@ struct BalanceCardView: View {
 
     // MARK: - Surface
 
+    /// Flat surface — the same fill as every other content card on the
+    /// home (2026-06-19 user direction: "make the card color same as
+    /// other cards 'white' not gradient"). No gradient, no radial lift.
     private var cardSurface: some View {
-        ZStack {
-            LinearGradient(
-                colors: [
-                    UniColors.BalanceCard.surfaceTop(colorScheme),
-                    UniColors.BalanceCard.surfaceBottom(colorScheme)
-                ],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-            // Radial lift at (12%, 0%) — the bright top-left corner.
-            RadialGradient(
-                colors: [
-                    UniColors.BalanceCard.surfaceLift(colorScheme),
-                    UniColors.BalanceCard.surfaceLift(colorScheme).opacity(0)
-                ],
-                center: UnitPoint(x: 0.12, y: 0.0),
-                startRadius: 0,
-                endRadius: 320
-            )
-        }
-    }
-
-    private var innerEdgeOverlay: some View {
-        // 1pt top-edge specular highlight (inset 0 1px 0 …).
-        RoundedRectangle(cornerRadius: UniRadius.balanceCard, style: .continuous)
-            .stroke(UniColors.BalanceCard.innerEdge(colorScheme), lineWidth: 1)
-            .mask(
-                // A top→center opacity ramp so the specular hairline
-                // shows only along the top edge and fades out. A mask
-                // uses only the alpha channel, so the opaque stop is an
-                // arbitrary fully-opaque role (`Text.primary`, opaque
-                // `.label`) — never a literal (Rule #4). `Color.clear`
-                // is the explicitly-allowed absence-of-color.
-                LinearGradient(
-                    colors: [UniColors.Text.primary, Color.clear],
-                    startPoint: .top,
-                    endPoint: .center
-                )
-            )
-            .allowsHitTesting(false)
+        UniColors.Background.secondary
     }
 
     @ViewBuilder
@@ -339,13 +305,18 @@ struct BalanceCardView: View {
     // MARK: - Watermark
 
     private var watermark: some View {
+        // Top-LEFT corner, half-clipped (2026-06-19 user direction): the
+        // iris is pinned to the leading edge and shifted half its width
+        // off-screen-left so only its right half shows in the corner. The
+        // card's `.clipShape` crops the overhang.
         Image(colorScheme == .dark ? "IrisWatermarkWhite" : "IrisWatermarkInk")
             .resizable()
             .renderingMode(.original)
             .scaledToFit()
             .frame(width: 220, height: 220)
             .opacity(UniColors.BalanceCard.watermarkOpacity(colorScheme))
-            .offset(x: 44, y: -26)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .offset(x: -110, y: -30)
             .allowsHitTesting(false)
             .accessibilityHidden(true)
     }
@@ -365,7 +336,7 @@ struct BalanceCardView: View {
                 guard walletId != nil else { return }
                 isShowingIconPicker = true
             } label: {
-                WalletAvatar(spec: avatarSpec, size: .row, walletId: walletId)
+                WalletAvatar(spec: avatarSpec, size: .balanceHeader, walletId: walletId)
                     .overlay(
                         Circle().stroke(UniColors.BalanceCard.avatarRing(colorScheme), lineWidth: 1)
                     )
@@ -392,13 +363,18 @@ struct BalanceCardView: View {
                 .buttonStyle(.plain)
                 .accessibilityLabel(Text("Switch wallet, currently \(walletName)"))
 
-                // Last refresh of balances + history (2026-06-19). Hidden
-                // until the first scan completes.
+                // Last refresh of balances + history. LIVE — a 1s
+                // `TimelineView` re-renders the relative time so it ticks
+                // ("Updated 2s ago" → "3s ago" …) without a manual timer
+                // (2026-06-19 user direction: "updated in … should be
+                // live"). Hidden until the first scan completes.
                 if let lastUpdated {
-                    Text(verbatim: Self.updatedCaption(lastUpdated))
-                        .font(UniTypography.caption2)
-                        .foregroundStyle(UniColors.BalanceCard.textMuted(colorScheme, boostContrast: boostContrast))
-                        .lineLimit(1)
+                    TimelineView(.periodic(from: .now, by: 1)) { _ in
+                        Text(verbatim: Self.updatedCaption(lastUpdated))
+                            .font(UniTypography.caption2)
+                            .foregroundStyle(UniColors.BalanceCard.textMuted(colorScheme, boostContrast: boostContrast))
+                            .lineLimit(1)
+                    }
                 }
             }
             // Both header tap targets clear the 44pt floor via the row's
@@ -430,6 +406,12 @@ struct BalanceCardView: View {
     @ViewBuilder
     private var valueBody: some View {
         balanceNumber
+            // Tapping the balance toggles hide/show — same as the eye
+            // button (2026-06-19 user direction): tap once to hide, tap
+            // the masked figure again to reveal.
+            .contentShape(Rectangle())
+            .onTapGesture { toggleHidden() }
+            .accessibilityAddTraits(.isButton)
             .padding(.bottom, 14)
 
         changeRow
@@ -466,7 +448,9 @@ struct BalanceCardView: View {
             selectedRaw: $selectedRangeRaw,
             colorScheme: colorScheme
         )
-        .padding(.top, -6)
+        // +10pt breathing room between the chart and the range selector
+        // (2026-06-19 user direction) — was -6.
+        .padding(.top, 4)
         .padding(.bottom, UniSpacing.balanceCardBottom)
     }
 

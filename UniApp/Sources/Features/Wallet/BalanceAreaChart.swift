@@ -238,11 +238,13 @@ private struct BalanceAreaCurve: View, Equatable {
                             endPoint: .bottom
                         )
                     )
-                // The stroke — 2.6pt, round caps/joins.
+                // The stroke — bolder line (2026-06-19 user direction).
+                // Shared by the home card AND the asset-detail chart, so
+                // this thickens the curve everywhere a chart appears.
                 strokePath(points: canvasPoints)
                     .stroke(
                         stroke,
-                        style: StrokeStyle(lineWidth: 2.6, lineCap: .round, lineJoin: .round)
+                        style: StrokeStyle(lineWidth: 4.0, lineCap: .round, lineJoin: .round)
                     )
                 // End-point marker — 4.5pt dot + 9pt halo @18%.
                 if let end = canvasPoints.last {

@@ -74,8 +74,8 @@ enum UniTypography {
         static let pill = Font.system(size: 13, weight: .semibold).monospacedDigit()
         /// "+293.10 today" amount line — 13 / 500, tabular, muted.
         static let amount = Font.system(size: 13, weight: .medium).monospacedDigit()
-        /// Wallet name in the header — 14.5 / 600.
-        static let walletName = Font.system(size: 14.5, weight: .semibold)
+        /// Wallet name in the header — 18.5 / 600 (bumped +4pt, 2026-06-19).
+        static let walletName = Font.system(size: 18.5, weight: .semibold)
         /// "Copy address" action beneath the name — 11.5 / 500, muted.
         static let address = Font.system(size: 11.5, weight: .medium)
         /// Segmented time-selector item — 12.5 / 600.

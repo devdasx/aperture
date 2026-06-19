@@ -60,6 +60,8 @@ struct WalletAvatar: View {
         case menuLeading
         /// 36pt — the canonical list-row size.
         case row
+        /// 41pt — the balance-card header avatar (row +5pt, 2026-06-19).
+        case balanceHeader
         /// 56pt — the Settings → Wallets → <wallet> preview anchor.
         case preview
         /// 80pt — the editor's smaller hero preview (legacy).
@@ -78,6 +80,7 @@ struct WalletAvatar: View {
             case .toolbarPill: return 22
             case .menuLeading: return 24
             case .row:         return 36
+            case .balanceHeader: return 41
             case .preview:     return 56
             case .hero:        return 80
             case .editor:      return 96
