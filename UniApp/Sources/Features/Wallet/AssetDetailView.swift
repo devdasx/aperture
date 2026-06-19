@@ -281,20 +281,35 @@ struct AssetDetailView: View {
     private func beginAction(_ action: PrefillAction) {
         chosenChain = nil
         pendingAction = action
-        isShowingNetworkPicker = true
+        let choices = networkChoices(for: action)
+        // Single network → skip the picker and go straight to the flow
+        // (2026-06-19 user direction; applies to every coin/token). For
+        // Receive that means the address + QR open immediately when the
+        // asset lives on one network.
+        if choices.count == 1 {
+            chosenChain = choices.first?.chain
+            presentPendingAction()
+        } else {
+            isShowingNetworkPicker = true
+        }
     }
 
-    /// Networks offered for the pending action: every supported network for
-    /// Receive (you can receive anywhere), only HELD networks for Send, and
-    /// only held + swappable for Swap (you can't move what you don't hold).
-    private var pickerNetworks: [AssetNetworkRow] {
+    /// Networks offered for `action`: every supported network for Receive
+    /// (you can receive anywhere), only HELD networks for Send, and only
+    /// held + swappable for Swap (you can't move what you don't hold).
+    private func networkChoices(for action: PrefillAction) -> [AssetNetworkRow] {
         let all = derivedCache?.resolution.networks ?? []
-        switch pendingAction {
+        switch action {
         case .receive: return all
         case .send:    return all.filter { $0.isHeld }
         case .swap:    return all.filter { $0.isHeld && SwapChainMap.isSwappable($0.chain) }
-        case .none:    return []
         }
+    }
+
+    /// The picker's rows for the in-flight action (empty when none).
+    private var pickerNetworks: [AssetNetworkRow] {
+        guard let action = pendingAction else { return [] }
+        return networkChoices(for: action)
     }
 
     @ViewBuilder
@@ -617,6 +632,18 @@ struct AssetDetailView: View {
 
     @ViewBuilder
     private func networksSection(_ derived: DerivedState) -> some View {
+        // Single-network asset → no Networks section at all (2026-06-19
+        // user direction). With one network there's nothing to choose
+        // between; the hero + activity already speak for that network.
+        if derived.resolution.networks.count <= 1 {
+            EmptyView()
+        } else {
+            networksList(derived)
+        }
+    }
+
+    @ViewBuilder
+    private func networksList(_ derived: DerivedState) -> some View {
         let networkRows = derived.filteredNetworks
         if !networkRows.isEmpty {
             Section {

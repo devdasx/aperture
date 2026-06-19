@@ -91,7 +91,24 @@ struct ReceiveView: View {
                     )
                 },
                 onSelectToken: { asset in
-                    navigationPath.append(ReceiveDestination.networkPicker(asset))
+                    // Single-network token → skip the picker, go straight to
+                    // the address + QR (2026-06-19 user direction; applies
+                    // to every coin/token, matching native coins which
+                    // already route direct). Multi-network tokens still
+                    // pick a network.
+                    if case let .token(symbol, _, chains) = asset,
+                       chains.count == 1, let chain = chains.first {
+                        guard let address = address(for: chain) else {
+                            missingAddressChain = chain
+                            isShowingMissingAddressAlert = true
+                            return
+                        }
+                        navigationPath.append(
+                            ReceiveDestination.qr(chain: chain, tokenSymbol: symbol, address: address)
+                        )
+                    } else {
+                        navigationPath.append(ReceiveDestination.networkPicker(asset))
+                    }
                 }
             )
             .navigationTitle("Receive")

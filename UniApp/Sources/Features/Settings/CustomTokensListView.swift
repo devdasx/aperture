@@ -21,10 +21,45 @@ import SwiftData
 struct CustomTokensListView: View {
     @Query(sort: [SortDescriptor(\CustomTokenRecord.symbol, order: .forward)])
     private var allTokens: [CustomTokenRecord]
+    /// The active wallet's held balances — so each custom token shows its
+    /// real balance (native amount + fiat), like the main screen
+    /// (2026-06-19 user direction).
+    @Query(sort: \WalletRecord.sortOrder) private var allWallets: [WalletRecord]
+    @AppStorage("activeWalletId") private var activeWalletIdRaw: String = ""
+    @AppStorage(CurrencyPreference.storageKey) private var currencyCode: String = CurrencyPreference.defaultCode
 
     @Environment(\.modelContext) private var modelContext
     @State private var isShowingAddSheet: Bool = false
     @State private var isShowingDeleteError: Bool = false
+
+    /// Active wallet — the source of the held balances shown per token.
+    private var activeWallet: WalletRecord? {
+        if let uuid = UUID(uuidString: activeWalletIdRaw),
+           let match = allWallets.first(where: { $0.id == uuid }) {
+            return match
+        }
+        return allWallets.first
+    }
+
+    /// `(chainRaw)|(contract.lowercased())` → held token balance for the
+    /// active wallet. Same case-insensitive key the home uses, so a custom
+    /// token's pasted contract matches the scanned balance regardless of
+    /// case.
+    private var heldTokenIndex: [String: TokenBalanceRecord] {
+        guard let wallet = activeWallet else { return [:] }
+        var dict: [String: TokenBalanceRecord] = [:]
+        for address in wallet.addresses {
+            for balance in address.balances {
+                guard let contract = balance.tokenContract, !contract.isEmpty else { continue }
+                dict["\(address.chainRaw)|\(contract.lowercased())"] = balance
+            }
+        }
+        return dict
+    }
+
+    private func heldBalance(for token: CustomTokenRecord) -> TokenBalanceRecord? {
+        heldTokenIndex["\(token.chainRaw)|\(token.contract.lowercased())"]
+    }
 
     /// Chain to pre-select when the user taps the toolbar `+`. The
     /// caller passes the wallet's currently-displayed chain so the
@@ -123,7 +158,11 @@ struct CustomTokensListView: View {
             ForEach(tokensByChain, id: \.chain) { group in
                 Section {
                     ForEach(group.tokens) { token in
-                        CustomTokenRow(token: token)
+                        CustomTokenRow(
+                            token: token,
+                            balance: heldBalance(for: token),
+                            currencyCode: currencyCode
+                        )
                             .listRowBackground(UniColors.Background.secondary)
                             .swipeActions(edge: .trailing, allowsFullSwipe: true) {
                                 Button(role: .destructive) {
@@ -175,6 +214,22 @@ struct CustomTokensListView: View {
 
 private struct CustomTokenRow: View {
     let token: CustomTokenRecord
+    /// The active wallet's held balance for this token, if any. `nil`
+    /// renders a 0 placeholder so the row always carries a balance.
+    let balance: TokenBalanceRecord?
+    let currencyCode: String
+
+    /// Decoded native amount (0 when unheld).
+    private var amount: Decimal {
+        guard let balance else { return .zero }
+        return WalletFormatting.decimalAmount(rawBalance: balance.rawBalance, decimals: balance.decimals)
+    }
+
+    /// Cached fiat value, only when positive.
+    private var fiatValue: Decimal? {
+        guard let cached = balance?.fiatValueCached, cached > 0 else { return nil }
+        return cached
+    }
 
     var body: some View {
         HStack(spacing: UniSpacing.s) {
@@ -209,7 +264,27 @@ private struct CustomTokenRow: View {
                     .monospacedDigit()
                     .lineLimit(1)
             }
-            Spacer()
+
+            Spacer(minLength: UniSpacing.s)
+
+            // Balance — fiat (when priced) over native amount, same shape
+            // as the main screen's token rows. Always shown, even at 0
+            // (2026-06-19 user direction).
+            VStack(alignment: .trailing, spacing: 2) {
+                if let fiatValue {
+                    Text(verbatim: WalletFormatting.fiat(fiatValue, currencyCode: balance?.fiatCurrencyCode ?? currencyCode))
+                        .font(UniTypography.bodyEmphasized)
+                        .foregroundStyle(UniColors.Text.primary)
+                        .monospacedDigit()
+                        .lineLimit(1)
+                }
+                Text(verbatim: "\(WalletFormatting.native(amount, decimals: 6)) \(token.symbol)")
+                    .font(UniTypography.subheadline)
+                    .foregroundStyle(UniColors.Text.secondary)
+                    .monospacedDigit()
+                    .lineLimit(1)
+                    .environment(\.layoutDirection, .leftToRight)
+            }
         }
         .padding(.vertical, UniSpacing.xxs)
     }
