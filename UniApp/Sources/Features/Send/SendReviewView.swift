@@ -43,6 +43,7 @@ struct SendReviewView: View {
     let onClose: () -> Void
 
     @AppStorage("biometricEnabled") private var biometricEnabled: Bool = false
+    @AppStorage("requireBiometricForSend") private var requireForSend: Bool = true
 
     /// The send state machine. `.review` is the resting state.
     @State private var phase: Phase = .review
@@ -403,7 +404,7 @@ struct SendReviewView: View {
         // `.uniHaptic(...)` triggers below.
         phase = .authenticating
 
-        if biometricEnabled {
+        if biometricEnabled && requireForSend {
             authTask?.cancel()
             authTask = Task { @MainActor in
                 let outcome = await BiometricService().authenticate(

@@ -8,6 +8,12 @@ import SwiftData
 struct SecuritySettingsView: View {
     @AppStorage("pinEnabled") private var pinEnabled: Bool = false
     @AppStorage("biometricEnabled") private var biometricEnabled: Bool = false
+    // Per-action Face ID gates (2026-06-20). Secure default ON; they only
+    // take effect when Face ID is enabled. Enforced in SendReviewView /
+    // SwapReviewView / DAppSendTransactionSheet.
+    @AppStorage("requireBiometricForSend") private var requireForSend: Bool = true
+    @AppStorage("requireBiometricForSwap") private var requireForSwap: Bool = true
+    @AppStorage("requireBiometricForDApp") private var requireForDApp: Bool = true
     @AppStorage(AutoLockPreference.storageKey) private var autoLockRaw: Int = AutoLockPreference.defaultValue
     @AppStorage("hideImportKeyWarning") private var hideImportKeyWarning: Bool = false
     @Environment(\.modelContext) private var modelContext
@@ -148,6 +154,24 @@ struct SecuritySettingsView: View {
                         .font(UniTypography.footnote)
                         .foregroundStyle(UniColors.Text.tertiary)
                         .fixedSize(horizontal: false, vertical: true)
+                }
+
+                // "Use Face ID For:" — iOS register (2026-06-20). Per-action
+                // gates; rows are disabled (greyed) until Face ID is on, the
+                // same way iOS greys these until the master is enabled.
+                if biometricAvailable {
+                    Section {
+                        faceIDActionRow("Sending transactions", isOn: $requireForSend)
+                        faceIDActionRow("Signing in dApps", isOn: $requireForDApp)
+                        faceIDActionRow("Swapping tokens", isOn: $requireForSwap)
+                    } header: {
+                        Text("Use Face ID For").font(UniTypography.footnote).foregroundStyle(UniColors.Text.tertiary)
+                    } footer: {
+                        Text("Require Face ID before each of these actions. If Face ID fails, you can fall back to your passcode.")
+                            .font(UniTypography.footnote)
+                            .foregroundStyle(UniColors.Text.tertiary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                 }
 
                 // iOS groups "Turn Passcode Off" + "Change Passcode" in one
@@ -333,6 +357,20 @@ struct SecuritySettingsView: View {
             }
         }
         .tint(UniColors.Button.primaryTint)
+        .padding(.vertical, UniSpacing.xxs)
+        .listRowBackground(UniColors.Background.secondary)
+    }
+
+    /// A per-action Face ID toggle. Disabled (greyed) until Face ID is on,
+    /// matching iOS's "Use Face ID For" rows.
+    private func faceIDActionRow(_ title: LocalizedStringKey, isOn: Binding<Bool>) -> some View {
+        UniToggle(isOn: isOn) {
+            Text(title)
+                .font(UniTypography.body)
+                .foregroundStyle(biometricEnabled ? UniColors.Text.primary : UniColors.Text.disabled)
+        }
+        .tint(UniColors.Button.primaryTint)
+        .disabled(!biometricEnabled)
         .padding(.vertical, UniSpacing.xxs)
         .listRowBackground(UniColors.Background.secondary)
     }
