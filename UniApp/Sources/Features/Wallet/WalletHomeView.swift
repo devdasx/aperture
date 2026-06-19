@@ -99,6 +99,11 @@ struct WalletHomeView: View {
     /// during the pre-seed cold-launch window so the list never blanks.
     @Query(sort: \ChainRecord.sortIndex) private var chainRecords: [ChainRecord]
     @Query private var assetRecords: [AssetRecord]
+    /// User-added custom tokens (2026-06-19). Merged into the home's
+    /// token holdings so a token the user pasted into "Add custom token"
+    /// shows in the Tokens section with its (scanned) balance — or a 0
+    /// placeholder — exactly like the catalog tokens, not only in Swap.
+    @Query private var customTokenRecords: [CustomTokenRecord]
 
     // **Per-chain aggregate rows (2026-06-17).** The `chainStateRecords`
     // `@Query` that drives the hero total now lives in the
@@ -670,12 +675,14 @@ struct WalletHomeView: View {
                 .onChange(of: allTransactionRecords.count) { _, _ in
                     rebuildTransactionMemos()
                 }
-                .onChange(of: assetRecords.count) { _, _ in
-                    // The local-first asset seed landed (Rule #27 §D) —
-                    // rebuild so the list is now sourced from the DB
-                    // `AssetRecord` rows instead of the static fallback.
-                    // (Output is identical; this just completes the
-                    // transition to DB-sourced.)
+                // Re-derive when the DB asset seed lands (Rule #27 §D — the
+                // list moves from the static fallback to DB `AssetRecord`
+                // rows; output identical) OR when a custom token is
+                // added/removed (2026-06-19 — the Tokens section reflects
+                // it immediately, not only after the next refresh). One
+                // combined key keeps the body's modifier chain inside the
+                // Swift type-checker's complexity budget.
+                .onChange(of: "\(assetRecords.count)-\(customTokenRecords.count)") { _, _ in
                     rebuildDisplayRows()
                 }
                 .onChange(of: refreshState.isRefreshing) { wasRefreshing, isRefreshing in
@@ -1784,6 +1791,15 @@ struct WalletHomeView: View {
         return fromStore.isEmpty ? AssetCatalog.allAssets : fromStore
     }
 
+    /// User-added custom tokens as value snapshots, gated on a still-known
+    /// chain (an unknown `chainRaw` would erase to `.ethereum` in the
+    /// snapshot — never display it as such). Merged into the token rows.
+    private var customTokenSnapshots: [CustomTokenSnapshot] {
+        customTokenRecords
+            .filter { $0.hasKnownChain }
+            .map { CustomTokenSnapshot(from: $0) }
+    }
+
     /// Rebuild the base-collection caches (`balancesMemo`,
     /// `allHeldRowsMemo`). Cheap to run on every change trigger; the
     /// point is that the expensive build+sort happens HERE, on change,
@@ -1842,7 +1858,8 @@ struct WalletHomeView: View {
             WalletSupportedRowBuilders.tokenRows(
                 heldRows: held,
                 currencyCode: currencyCode,
-                assets: catalogAssets
+                assets: catalogAssets,
+                customTokens: customTokenSnapshots
             ),
             currencyCode: currencyCode
         )
