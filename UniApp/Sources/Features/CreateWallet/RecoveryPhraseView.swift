@@ -370,8 +370,12 @@ struct RecoveryPhraseView: View {
                 withAnimation(.easeOut(duration: 0.2)) { needsReveal = true }
             }
         }
-        .fixedSize()
-        .padding(.horizontal, 4)
+        // Widen the capsule itself a little — the glass fills this frame, so a
+        // minWidth gives the label internal breathing room (+~4pt each side)
+        // for short labels while still growing for longer/translated ones
+        // (no truncation). fixedSize keeps it compact next to Back up now.
+        .frame(minWidth: 120)
+        .fixedSize(horizontal: true, vertical: false)
         .opacity(revealed || needsReveal ? 1 : 0.5)
         .animation(.easeInOut(duration: 0.2), value: needsReveal)
         .animation(.easeInOut(duration: 0.2), value: isShowingCopiedConfirmation)
