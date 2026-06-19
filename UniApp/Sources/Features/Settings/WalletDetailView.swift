@@ -315,6 +315,7 @@ struct WalletDetailView: View {
         .fullScreenCover(isPresented: $isShowingPhrase) {
             ExportRecoveryPhraseFlow(
                 walletId: wallet.id,
+                walletName: wallet.name,
                 onClose: { isShowingPhrase = false }
             )
             .uniAppEnvironment()
