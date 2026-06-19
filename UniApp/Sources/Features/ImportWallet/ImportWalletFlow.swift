@@ -243,6 +243,9 @@ private struct ImportMethodSelectionView: View {
     /// the destination to push after the user confirms.
     @State private var pendingProtectedDestination: ImportDestination?
 
+    /// When non-nil, the per-method "Info" explainer sheet is presented.
+    @State private var infoMethod: ImportInfo?
+
     var body: some View {
         List {
             Section {
@@ -264,60 +267,40 @@ private struct ImportMethodSelectionView: View {
             }
 
             Section {
-                // Restore an end-to-end-encrypted iCloud backup (2026-06-19).
-                // No warning gate — the secret never leaves iCloud in the
-                // clear, and the password is required to decrypt it.
-                Button {
-                    onPick(.iCloudRestore)
-                } label: {
-                    methodRow(
-                        systemImage: "icloud.and.arrow.down",
-                        title: "Restore from iCloud",
-                        trailing: "Encrypted backup"
-                    )
-                }
-                .buttonStyle(.plain)
+                // Each row: the body picks the method; the trailing "Info"
+                // button opens a deep per-method explainer sheet (2026-06-20
+                // — replaced the terse trailing captions). Recovery phrase +
+                // Private key still route through the security warning gate.
+                methodRow(
+                    systemImage: "icloud.and.arrow.down",
+                    title: "Restore from iCloud",
+                    info: .iCloud,
+                    onPick: { onPick(.iCloudRestore) }
+                )
                 .listRowBackground(UniColors.Background.secondary)
 
-                // Recovery phrase + Private key go through the security
-                // warning gate (unless the user previously suppressed).
-                Button {
-                    handleProtectedTap(.mnemonicEntry)
-                } label: {
-                    methodRow(
-                        systemImage: "text.book.closed",
-                        title: "Recovery phrase",
-                        trailing: "12 or 24 words"
-                    )
-                }
-                .buttonStyle(.plain)
+                methodRow(
+                    systemImage: "text.book.closed",
+                    title: "Recovery phrase",
+                    info: .recoveryPhrase,
+                    onPick: { handleProtectedTap(.mnemonicEntry) }
+                )
                 .listRowBackground(UniColors.Background.secondary)
 
-                Button {
-                    handleProtectedTap(.keyChainPicker)
-                } label: {
-                    methodRow(
-                        systemImage: "key.horizontal",
-                        title: "Private key",
-                        trailing: "One chain"
-                    )
-                }
-                .buttonStyle(.plain)
+                methodRow(
+                    systemImage: "key.horizontal",
+                    title: "Private key",
+                    info: .privateKey,
+                    onPick: { handleProtectedTap(.keyChainPicker) }
+                )
                 .listRowBackground(UniColors.Background.secondary)
 
-                // Watch-only is read-only — no signing key, different
-                // risk profile, no warning required (per Rule #18 +
-                // Rule #16 audit).
-                Button {
-                    onPick(.watchOnlyChainPicker)
-                } label: {
-                    methodRow(
-                        systemImage: "eye",
-                        title: "Watch-only",
-                        trailing: "Read-only"
-                    )
-                }
-                .buttonStyle(.plain)
+                methodRow(
+                    systemImage: "eye",
+                    title: "Watch-only",
+                    info: .watchOnly,
+                    onPick: { onPick(.watchOnlyChainPicker) }
+                )
                 .listRowBackground(UniColors.Background.secondary)
             }
 
@@ -346,6 +329,12 @@ private struct ImportMethodSelectionView: View {
             .intrinsicHeightSheet()
             .presentationBackground(UniColors.Background.primary)
         }
+        .sheet(item: $infoMethod) { info in
+            ImportMethodInfoSheet(info: info)
+                .uniAppEnvironment()
+                .intrinsicHeightSheet()
+                .presentationBackground(UniColors.Background.primary)
+        }
         .listStyle(.insetGrouped)
         .scrollContentBackground(.hidden)
         .background(UniColors.Background.primary)
@@ -372,34 +361,52 @@ private struct ImportMethodSelectionView: View {
         }
     }
 
+    /// One import-method row. The body (icon + title) picks the method;
+    /// the trailing **Info** button opens the per-method explainer sheet.
+    /// Two SIBLING buttons (not nested) so each is independently tappable
+    /// inside the List row with no gesture ambiguity.
     private func methodRow(
         systemImage: String,
         title: LocalizedStringKey,
-        trailing: LocalizedStringKey
+        info: ImportInfo,
+        onPick: @escaping () -> Void
     ) -> some View {
         HStack(spacing: UniSpacing.s) {
-            Image(systemName: systemImage)
-                .font(.system(size: 18, weight: .regular))
-                .foregroundStyle(UniColors.Icon.secondary)
-                .frame(width: 28, alignment: .center)
-                .accessibilityHidden(true)
+            Button(action: onPick) {
+                HStack(spacing: UniSpacing.s) {
+                    Image(systemName: systemImage)
+                        .font(.system(size: 18, weight: .regular))
+                        .foregroundStyle(UniColors.Icon.secondary)
+                        .frame(width: 28, alignment: .center)
+                        .accessibilityHidden(true)
+                    Text(title)
+                        .font(UniTypography.body)
+                        .foregroundStyle(UniColors.Text.primary)
+                    Spacer(minLength: 0)
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(UniColors.Icon.tertiary)
+                        .accessibilityHidden(true)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
 
-            Text(title)
-                .font(UniTypography.body)
-                .foregroundStyle(UniColors.Text.primary)
-
-            Spacer()
-
-            Text(trailing)
-                .font(UniTypography.subheadline)
+            Button { infoMethod = info } label: {
+                HStack(spacing: 3) {
+                    Image(systemName: "info.circle")
+                        .font(.system(size: 15, weight: .regular))
+                    Text("Info")
+                        .font(UniTypography.subheadline)
+                }
                 .foregroundStyle(UniColors.Text.secondary)
-
-            Image(systemName: "chevron.right")
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(UniColors.Icon.tertiary)
-                .accessibilityHidden(true)
+                .padding(.vertical, 6)
+                .padding(.leading, UniSpacing.s)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.borderless)
+            .accessibilityLabel(Text("About \(Text(title))"))
         }
         .padding(.vertical, UniSpacing.xxs)
-        .contentShape(Rectangle())
     }
 }
