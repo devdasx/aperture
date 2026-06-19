@@ -101,20 +101,19 @@ struct RecoveryPhraseView: View {
     /// successful copy so `.uniHaptic` observes a change and fires.
     @State private var copyTickCount: Int = 0
 
-    /// Two equal-width columns for the word grid. `UniSpacing.s` gap
-    /// between cells reads as group-internal, not section-internal.
-    private let gridColumns: [GridItem] = [
-        GridItem(.flexible(), spacing: UniSpacing.s),
-        GridItem(.flexible(), spacing: UniSpacing.s)
-    ]
+    /// Tap-to-reveal state (2026-06-20 redesign). The grid is blurred until
+    /// the user taps; re-blurs on backgrounding and whenever the word count
+    /// changes. Copy is locked until revealed.
+    @State private var revealed: Bool = false
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: UniSpacing.l) {
-                hero
-                wordGrid
-                copyRow
-                footnoteBlock
+                intro
+                PhraseRevealGate(revealed: $revealed) {
+                    PhraseGrid(words: state.words)
+                }
+                metaBlock
             }
             .padding(.horizontal, UniSpacing.l)
             .padding(.top, UniSpacing.m)
@@ -125,7 +124,12 @@ struct RecoveryPhraseView: View {
                 .padding(.horizontal, UniSpacing.l)
                 .padding(.bottom, UniSpacing.l)
         }
-        .navigationTitle(Text("Your recovery phrase"))
+        .onChange(of: state.words) { _, _ in
+            // Switching word count regenerates the phrase → re-blur + re-lock
+            // Copy (handoff security note).
+            revealed = false
+        }
+        .navigationTitle(Text("Recovery Phrase"))
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
@@ -263,215 +267,104 @@ struct RecoveryPhraseView: View {
 
     // MARK: - Hero
 
-    private var hero: some View {
-        HStack(alignment: .center, spacing: UniSpacing.s) {
-            Image(systemName: "key.fill")
-                .font(.system(size: 22, weight: .regular))
-                .symbolRenderingMode(.hierarchical)
-                .foregroundStyle(UniColors.Brand.mark)
-                .accessibilityHidden(true)
+    private var intro: some View {
+        Text("These words are your wallet. Write them in order, exactly as shown.")
+            .font(UniTypography.body)
+            .foregroundStyle(UniColors.Text.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, alignment: .leading)
+    }
 
-            UniHeadline(
-                text: "These words are your wallet. Write them in order, exactly as shown.",
-                alignment: .leading
+    // MARK: - Meta (open source)
+
+    /// "Open source. Learn more…" — gray caption + inline blue link
+    /// (iOS 26 register). Opens the open-source verification sheet.
+    private var metaBlock: some View {
+        Button {
+            UniHapticEngine.shared.play(.selection)
+            isShowingOpenSource = true
+        } label: {
+            (
+                Text("Open source. ").foregroundStyle(UniColors.Text.tertiary)
+                + Text("Learn more…").foregroundStyle(UniColors.Button.text)
             )
+            .font(UniTypography.footnote)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
         }
+        .buttonStyle(.plain)
+        .accessibilityLabel(Text("Open source. Learn more"))
+        .accessibilityHint(Text("Opens a sheet describing how this recovery phrase was generated"))
     }
 
-    // MARK: - Word grid
-
-    private var wordGrid: some View {
-        LazyVGrid(columns: gridColumns, spacing: UniSpacing.s) {
-            ForEach(Array(state.words.enumerated()), id: \.offset) { index, word in
-                WordCell(position: index + 1, word: word)
-            }
-        }
-        // Force LTR per Rule #11 §C "English-only display content"
-        // exception. A recovery phrase has a STRICT ordinal sequence —
-        // position 1 → 2 → 3 → ... → 12 must read left-to-right,
-        // top-to-bottom regardless of the app's locale. In RTL the
-        // default would flip the grid (position 1 to top-right, 2 to
-        // top-left) which silently inverts the reading order and
-        // causes users to write the phrase down wrong. The words
-        // themselves are English BIP-39 entries (universally LTR);
-        // the surrounding chrome (title, body copy, toolbar items)
-        // stays in the ambient direction so the screen still reads
-        // as Arabic / Hebrew where appropriate.
-        .environment(\.layoutDirection, .leftToRight)
-    }
-
-    // MARK: - Copy row
-
-    /// A subtle tertiary text button beneath the grid. Tap copies the
-    /// phrase to the system pasteboard with a 60-second `.expirationDate`
-    /// — iOS auto-clears the clipboard at that point so a forgotten copy
-    /// does not sit in the user's paste history indefinitely. A brief
-    /// inline footnote confirms the copy and names the expiry. No emoji,
-    /// no exclamation, no marketing softening (Rule #2 §A.7 — honest copy).
-    private var copyRow: some View {
-        VStack(alignment: .leading, spacing: UniSpacing.xs) {
-            Button {
-                copyPhrase()
-            } label: {
-                Label {
-                    Text("Copy")
-                        .font(UniTypography.bodyEmphasized)
-                } icon: {
-                    Image(systemName: "doc.on.doc")
-                        .font(.system(size: 15, weight: .regular))
-                }
-                .foregroundStyle(UniColors.Button.tertiaryLabel)
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel(Text("Copy recovery phrase"))
-            .uniHaptic(.success, trigger: copyTickCount)
-
-            if isShowingCopiedConfirmation {
-                UniFootnote(
-                    text: "Copied. The clipboard clears in 60 seconds.",
-                    alignment: .leading
-                )
-                .transition(.opacity)
-            }
-        }
-    }
+    // MARK: - Copy
 
     private func copyPhrase() {
         let phrase = state.words.joined(separator: " ")
 #if canImport(UIKit)
-        // `setItems(_:options:)` with `.expirationDate` instructs iOS to
-        // clear the pasteboard automatically at the given date — the only
-        // honest way to put a recovery phrase on the clipboard.
+        // `.expirationDate` tells iOS to auto-clear the pasteboard — the
+        // only honest way to put a recovery phrase on the clipboard.
         UIPasteboard.general.setItems(
             [[UTType.plainText.identifier: phrase]],
-            options: [.expirationDate: Date().addingTimeInterval(60)]
+            options: [.expirationDate: Date().addingTimeInterval(20)]
         )
 #endif
         copyTickCount &+= 1
-        withAnimation(.easeOut(duration: 0.2)) {
-            isShowingCopiedConfirmation = true
-        }
-        // Auto-dismiss the inline confirmation after ~2 s so it doesn't
-        // linger. The clipboard still expires on the OS-managed schedule.
+        withAnimation(.easeOut(duration: 0.2)) { isShowingCopiedConfirmation = true }
+        // Green "Copied" reverts after 1.8s (handoff); the clipboard still
+        // expires on the OS-managed schedule.
         Task { @MainActor in
-            try? await Task.sleep(for: .seconds(2.5))
-            withAnimation(.easeIn(duration: 0.25)) {
-                isShowingCopiedConfirmation = false
-            }
+            try? await Task.sleep(for: .seconds(1.8))
+            withAnimation(.easeIn(duration: 0.25)) { isShowingCopiedConfirmation = false }
         }
-    }
-
-    // MARK: - Footnote block
-
-    /// One line of guidance plus the open-source verification anchor.
-    /// The "Aperture cannot show this phrase again" line was REMOVED
-    /// per user direction — the user can re-open the recovery phrase
-    /// later via Settings (T-016 "Back up your recovery phrase"). Per
-    /// Rule #2 §A.7 (honesty), a wallet that CAN show the phrase later
-    /// must not claim otherwise.
-    ///
-    /// Rule #16 §A.4 — the most consequential security surface in the
-    /// app carries its own open-source badge so the user can verify,
-    /// at the moment of seeing their words, exactly how those words
-    /// were generated.
-    private var footnoteBlock: some View {
-        VStack(alignment: .leading, spacing: UniSpacing.s) {
-            UniFootnote(
-                text: "Changing word count generates a new phrase.",
-                alignment: .leading
-            )
-
-            openSourceBadge
-        }
-    }
-
-    /// Restrained tappable badge — same visual register as the welcome
-    /// slide's anchor: `lock.shield` glyph, "Open source" footnote
-    /// text, trailing chevron. All `UniColors.Text.tertiary` so the
-    /// affordance reads as honest footnote, not marketing banner.
-    private var openSourceBadge: some View {
-        Button {
-            isShowingOpenSource = true
-        } label: {
-            HStack(spacing: UniSpacing.xs) {
-                Image(systemName: "lock.shield")
-                    .font(.system(size: 13, weight: .regular))
-                Text("Open source")
-                    .font(UniTypography.footnote)
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 11, weight: .semibold))
-            }
-            .foregroundStyle(UniColors.Text.tertiary)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(Text("Open source"))
-        .accessibilityHint(Text("Opens a sheet describing how this recovery phrase was generated"))
     }
 
     // MARK: - Actions
 
+    /// Footer: [Copy | Back up now] on one row, Skip for now full-width below.
     private var actionRegion: some View {
-        GlassEffectContainer(spacing: UniSpacing.s) {
-            VStack(spacing: UniSpacing.s) {
+        VStack(spacing: UniSpacing.s) {
+            HStack(spacing: UniSpacing.s) {
+                copyButton
                 UniButton(title: "Back up now", variant: .primary) {
                     onBackUpNow()
                 }
-                UniButton(title: "Skip for now", variant: .secondary) {
-                    onSkipForNow()
-                }
+                .frame(maxWidth: .infinity)
+            }
+            UniButton(title: "Skip for now", variant: .secondary) {
+                onSkipForNow()
             }
         }
     }
-}
 
-// MARK: - Word cell
-
-/// A single cell in the word grid. Non-interactive by design: the user
-/// reads and writes; they do not tap, copy, or share. The position badge
-/// uses 2-digit zero-padded Western numerals (`01`, `02`, …) — these are
-/// data, not localized copy, so they render as `Text(verbatim:)`.
-private struct WordCell: View {
-    let position: Int
-    let word: String
-
-    private var positionLabel: String {
-        String(format: "%02d", position)
-    }
-
-    var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: UniSpacing.s) {
-            Text(verbatim: positionLabel)
-                .font(UniTypography.caption1)
-                .foregroundStyle(UniColors.Text.tertiary)
-                .monospacedDigit()
-
-            Text(verbatim: word)
-                .font(UniTypography.bodyEmphasized)
-                .foregroundStyle(UniColors.Text.primary)
-                .lineLimit(1)
-                .minimumScaleFactor(0.8)
-
-            Spacer(minLength: 0)
+    /// Compact Copy, locked until the phrase is revealed: while blurred it's
+    /// dimmed and a tap reveals the grid instead of copying (handoff).
+    private var copyButton: some View {
+        Button {
+            if revealed {
+                copyPhrase()
+            } else {
+                UniHapticEngine.shared.play(.contextualImpact(.tap))
+                withAnimation(.easeOut(duration: 0.25)) { revealed = true }
+            }
+        } label: {
+            HStack(spacing: UniSpacing.xs) {
+                Image(systemName: isShowingCopiedConfirmation ? "checkmark" : "doc.on.doc")
+                    .font(.system(size: 15, weight: .regular))
+                Text(isShowingCopiedConfirmation ? "Copied" : "Copy")
+                    .font(UniTypography.bodyEmphasized)
+            }
+            .foregroundStyle(isShowingCopiedConfirmation ? UniColors.Status.successForeground : UniColors.Text.primary)
+            .padding(.horizontal, UniSpacing.l)
+            .frame(height: 47)
+            .background(Capsule().fill(UniColors.Background.secondary))
+            .opacity(revealed ? 1 : 0.45)
+            .contentShape(Capsule())
+            .animation(.easeInOut(duration: 0.2), value: isShowingCopiedConfirmation)
         }
-        .padding(.horizontal, UniSpacing.s)
-        .padding(.vertical, UniSpacing.s)
-        .background(
-            // `Material.card` (white in light, near-black in dark)
-            // not `Background.secondary` — the cell IS a card on
-            // top of the page, so it has to read as one card-step
-            // above the page color. The pre-color-flip code (using
-            // `Background.secondary`) happened to land on a similar
-            // gray value for both tokens, masking the mis-naming;
-            // the 2026-06-07 flip to the iOS Settings register
-            // exposed it (the cells disappeared into the page on
-            // light mode). Rule #4-honest fix.
-            RoundedRectangle(cornerRadius: UniRadius.m, style: .continuous)
-                .fill(UniColors.Material.card)
-        )
-        // VoiceOver reads "01, abandon" not the styled stacked layout.
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(Text(verbatim: "\(position), \(word)"))
+        .buttonStyle(.plain)
+        .accessibilityLabel(Text("Copy recovery phrase"))
+        .uniHaptic(.success, trigger: copyTickCount)
     }
 }
 
