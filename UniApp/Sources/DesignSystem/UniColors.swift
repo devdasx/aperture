@@ -697,6 +697,11 @@ enum UniColors {
         static let cardSolidFallback = Color("SendGlassSolid")
         /// Hairline border on the Reduce-Transparency solid card.
         static let cardHairline = Color(uiColor: .separator)
+        /// Soft drop shadow under a glass card on the bloom. The handoff's
+        /// `0 18px 44px -22px rgba(15,18,28,.35)` — expressed as a
+        /// low-opacity black so it reads over either base. Named here so the
+        /// call site references a role, not a `Color.black` literal (Rule #4).
+        static let cardShadow = Color.black.opacity(0.18)
 
         /// **Dark glass.** Primary buttons / selected chips / the swipe
         /// knob use `rgba(16,18,24,.82)` — a near-opaque brand-ink glass

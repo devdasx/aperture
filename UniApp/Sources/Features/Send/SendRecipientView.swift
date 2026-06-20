@@ -58,6 +58,10 @@ struct SendRecipientView: View {
     /// earlier field the user empties (and then leaves) is removed.
     @FocusState private var focusedEntry: UUID?
     @State private var isScanning: Bool = false
+    /// A freshly pasted / scanned address that imitates a known recipient —
+    /// presents the full-screen address-poisoning guard (Flow A3). Nil when
+    /// no lookalike is pending.
+    @State private var poisonLookalike: SendSafety.Lookalike?
     /// Tap counter for the ambient affordances' selection haptic — the
     /// action chips (Paste / Scan / Add) and the recents rows aren't
     /// `UniButton`s, so they fire `.uniHaptic(_:trigger:)` keyed to this
@@ -122,7 +126,8 @@ struct SendRecipientView: View {
         .onChange(of: focusedEntry) { _, _ in pruneEmptyUnfocused() }
         .scrollIndicators(.hidden)
         .scrollDismissesKeyboard(.interactively)
-        .background(UniColors.Background.primary)
+        .background(SendBloomBackground())
+        .toolbarBackground(.hidden, for: .navigationBar)
         // One polite `.selection` beat for every ambient affordance on the
         // screen (chips + recents) — these aren't `UniButton`s, so the
         // haptic is wired here, keyed to the shared tap counter.
@@ -141,11 +146,30 @@ struct SendRecipientView: View {
                 title: "Scan address",
                 prompt: "Point your camera at a \(chain.displayName) address QR code.",
                 onRawDeliver: { scanned in
-                    fill(cleanScanned(scanned))
+                    handleIncoming(scanned)
                     isScanning = false
                 }
             )
             .uniAppEnvironment()
+        }
+        // Address-poisoning guard (Flow A3) — a freshly pasted / scanned
+        // address that imitates a known recipient raises a full-screen,
+        // can't-skip-silently interstitial before it can fill a field.
+        .fullScreenCover(item: $poisonLookalike) { look in
+            SendPoisoningGuardView(
+                lookalike: look,
+                knownName: nil,
+                chain: chain,
+                onUseSaved: {
+                    fill(look.knownAddress)
+                    poisonLookalike = nil
+                },
+                onContinuePasted: {
+                    fill(look.pastedAddress)
+                    poisonLookalike = nil
+                },
+                onCancel: { poisonLookalike = nil }
+            )
         }
     }
 
@@ -166,8 +190,9 @@ struct SendRecipientView: View {
             // iOS Contacts "new contact" fields and Settings grouped forms
             // read. One continuous control, not separate floating pills.
             // The card owns the radius + the surface, so each row's field is
-            // PLAIN (no per-field fill / radius).
-            UniCard(padding: 0) {
+            // PLAIN (no per-field fill / radius). In v2 the surface is liquid
+            // glass on the bloom, not an opaque card.
+            SendGlassCard(cornerRadius: UniRadius.xl, padding: 0) {
                 VStack(spacing: 0) {
                     ForEach(Array($entries.enumerated()), id: \.element.id) { offset, $entry in
                         RecipientRow(
@@ -257,7 +282,7 @@ struct SendRecipientView: View {
     private var recentsBlock: some View {
         VStack(alignment: .leading, spacing: UniSpacing.s) {
             sectionHeader("Recent")
-            UniCard(padding: 0) {
+            SendGlassCard(cornerRadius: UniRadius.xl, padding: 0) {
                 VStack(spacing: 0) {
                     ForEach(Array(recentList.enumerated()), id: \.element.id) { offset, recipient in
                         Button {
@@ -280,17 +305,14 @@ struct SendRecipientView: View {
     // MARK: - Continue (functional layer — floats above content)
 
     private var continueBar: some View {
-        GlassEffectContainer(spacing: UniSpacing.s) {
-            UniButton(
-                title: "Continue",
-                variant: .primary,
-                isEnabled: canContinue,
-                action: { onContinue(resolvedRecipients) }
-            )
-            .padding(.horizontal, UniSpacing.l)
-            .padding(.top, UniSpacing.s)
-            .padding(.bottom, UniSpacing.xs)
-        }
+        SendV2PrimaryButton(
+            "Continue",
+            isEnabled: canContinue,
+            action: { onContinue(resolvedRecipients) }
+        )
+        .padding(.horizontal, UniSpacing.l)
+        .padding(.top, UniSpacing.s)
+        .padding(.bottom, UniSpacing.xs)
     }
 
     // MARK: - Section header
@@ -380,8 +402,24 @@ struct SendRecipientView: View {
 
     private func pasteFromClipboard() {
         if let pasted = UIPasteboard.general.string {
-            fill(cleanScanned(pasted))
+            handleIncoming(pasted)
         }
+    }
+
+    /// Place a pasted / scanned address into the recipient list — but first
+    /// run the address-poisoning check (Flow A3). If the cleaned value
+    /// imitates a known recent recipient (matching ends, differing middle),
+    /// raise the full-screen guard instead of silently filling. Recents the
+    /// user taps are known-safe and bypass this (they go straight to `fill`).
+    private func handleIncoming(_ raw: String) {
+        let clean = cleanScanned(raw)
+        guard !clean.isEmpty else { return }
+        let known = recentList.map(\.address)
+        if let look = SendSafety.lookalike(for: clean, among: known, chain: chain) {
+            poisonLookalike = look
+            return
+        }
+        fill(clean)
     }
 
     /// Strip a URI scheme (`ethereum:`, `solana:`, …) and any query the QR
@@ -556,6 +594,30 @@ private struct RecipientRow: View {
             }
             .transition(.opacity)
         case .invalid:
+            invalidFeedback
+        }
+    }
+
+    /// The invalid-address feedback, with the **wrong-network** money-safety
+    /// enhancement (Flow D2): when the typed value is invalid for this chain
+    /// but is a valid address on a DIFFERENT network, name that network
+    /// plainly — a cross-network send is unrecoverable, so it's worth more
+    /// than a bare "not valid".
+    @ViewBuilder
+    private var invalidFeedback: some View {
+        if let other = SendSafety.wrongNetwork(for: entry.text, intendedChain: chain) {
+            Label {
+                Text("That looks like a \(other.displayName) address — but you're sending on \(chain.displayName). Funds sent to the wrong network can't be recovered.")
+                    .font(UniTypography.footnote)
+                    .foregroundStyle(UniColors.Status.errorForeground)
+                    .fixedSize(horizontal: false, vertical: true)
+            } icon: {
+                Image(systemName: "exclamationmark.octagon.fill")
+                    .font(.system(size: 13))
+                    .foregroundStyle(UniColors.Status.errorForeground)
+            }
+            .transition(.opacity)
+        } else {
             Label {
                 Text("That's not a valid \(chain.displayName) address.")
                     .font(UniTypography.footnote)

@@ -538530,6 +538530,94 @@
           }
         }
       }
+    },
+    "the saved address": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "the saved address"
+          }
+        }
+      }
+    },
+    "Someone may have created a near-identical address to trick you. The start and end match, but the middle is different. Sending here would send to a stranger — and it can't be reversed.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Someone may have created a near-identical address to trick you. The start and end match, but the middle is different. Sending here would send to a stranger — and it can't be reversed."
+          }
+        }
+      }
+    },
+    "Saved": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Saved"
+          }
+        }
+      }
+    },
+    "Your saved address": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Your saved address"
+          }
+        }
+      }
+    },
+    "Use the saved address": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Use the saved address"
+          }
+        }
+      }
+    },
+    "Use %@'s saved address": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Use %@'s saved address"
+          }
+        }
+      }
+    },
+    "Continue with the pasted address": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Continue with the pasted address"
+          }
+        }
+      }
+    },
+    "That looks like a %@ address — but you're sending on %@. Funds sent to the wrong network can't be recovered.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "That looks like a %@ address — but you're sending on %@. Funds sent to the wrong network can't be recovered."
+          }
+        }
+      }
     }
   },
   "version": "1.0"
