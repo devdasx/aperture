@@ -19,7 +19,6 @@ struct SecuritySettingsView: View {
     // in `AppLockView` against `PinCodeStorage`'s dedicated unlock counter.
     @AppStorage("eraseDataAfterFailedAttempts") private var eraseDataEnabled: Bool = false
     @AppStorage(AutoLockPreference.storageKey) private var autoLockRaw: Int = AutoLockPreference.defaultValue
-    @AppStorage("hideImportKeyWarning") private var hideImportKeyWarning: Bool = false
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
 
@@ -249,26 +248,6 @@ struct SecuritySettingsView: View {
                 }
             }
 
-            if hideImportKeyWarning {
-                Section {
-                    Button {
-                        hideImportKeyWarning = false
-                    } label: {
-                        SettingsRowShared(
-                            systemImage: "arrow.counterclockwise",
-                            title: "Reset import warnings",
-                            trailing: nil
-                        )
-                    }
-                    .buttonStyle(.plain)
-                    .listRowBackground(UniColors.Background.secondary)
-                } footer: {
-                    Text("Re-enables the security warning that appears before you import a recovery phrase or private key.")
-                        .font(UniTypography.footnote)
-                        .foregroundStyle(UniColors.Text.tertiary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-            }
         }
         .listStyle(.insetGrouped)
         .scrollContentBackground(.hidden)
