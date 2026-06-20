@@ -538283,6 +538283,28 @@
           }
         }
       }
+    },
+    "Wallet created": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Wallet created"
+          }
+        }
+      }
+    },
+    "Your recovery phrase is saved and your keys are secured on this device.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Your recovery phrase is saved and your keys are secured on this device."
+          }
+        }
+      }
     }
   },
   "version": "1.0"
