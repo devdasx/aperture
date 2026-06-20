@@ -106,9 +106,14 @@ enum BitcoinTransactionSigner {
         // does the same).
         for utxo in utxos {
             var outPoint = BitcoinOutPoint()
-            if let txidData = SigningNumeric.hexToData(utxo.txid) {
-                outPoint.hash = Data(txidData.reversed())
+            // Fail loud on a malformed txid rather than silently building an
+            // input with an empty outpoint hash (which would sign a corrupt,
+            // un-broadcastable transaction). Every other precondition in this
+            // signer throws — this one must too.
+            guard let txidData = SigningNumeric.hexToData(utxo.txid) else {
+                throw SigningError.malformedDraft("invalid UTXO txid: \(utxo.txid)")
             }
+            outPoint.hash = Data(txidData.reversed())
             outPoint.index = UInt32(utxo.vout)
             // RBF: BTC/LTC signal opt-in BIP-125 (sequence ≤ 0xFFFFFFFD)
             // when the draft requests it; BCH/DOGE are always final

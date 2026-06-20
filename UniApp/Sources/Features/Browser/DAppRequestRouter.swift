@@ -252,8 +252,20 @@ final class DAppRequestRouter {
 
     private func requestEVMSendTransaction(params: [Any], origin: DAppOrigin) async -> DAppRequestResult {
         guard let tx = params.first as? [String: Any] else { return .failure(.invalidParams) }
-        let from = (tx["from"] as? String) ?? ""
-        let to = (tx["to"] as? String) ?? ""
+        // Validate the untrusted dApp params at the boundary. `from` must be
+        // present, and `to` must be a well-formed 0x address — this browser
+        // does not support contract-creation (empty `to`), so reject a
+        // missing/blank/malformed destination with a clear error instead of
+        // signing something the user can't review or surfacing a cryptic
+        // node failure later.
+        guard let from = (tx["from"] as? String), !from.isEmpty else {
+            return .failure(.invalidParams)
+        }
+        guard let to = (tx["to"] as? String)?.trimmingCharacters(in: .whitespaces),
+              to.hasPrefix("0x"), to.count == 42,
+              to.dropFirst(2).allSatisfy(\.isHexDigit) else {
+            return .failure(.invalidParams)
+        }
         let valueHex = (tx["value"] as? String) ?? "0x0"
         let dataHex = (tx["data"] as? String) ?? "0x"
         let gasHex = tx["gas"] as? String

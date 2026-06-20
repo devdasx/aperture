@@ -528,14 +528,17 @@ struct MnemonicEntryView: View {
     }
 
     private func replaceWord(at index: Int, with replacement: String) {
-        let parts = editorText
+        // The tapped index comes from the FILTERED `words` array (see `words`
+        // and `coloredOverlay`), so filter BEFORE applying it. Filtering after
+        // the map misaligned the index whenever consecutive whitespace produced
+        // empty components — replacing the wrong token and leaving the invalid
+        // word in place.
+        var parts = editorText
             .components(separatedBy: .whitespacesAndNewlines)
-            .enumerated()
-            .map { i, w -> String in
-                if i == index { return replacement }
-                return w
-            }
-        editorText = parts.filter { !$0.isEmpty }.joined(separator: " ")
+            .filter { !$0.isEmpty }
+        guard index < parts.count else { return }
+        parts[index] = replacement
+        editorText = parts.joined(separator: " ")
             + (editorText.last?.isWhitespace == true ? " " : "")
     }
 
