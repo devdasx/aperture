@@ -346,13 +346,16 @@ struct ICloudRestoreView: View {
                 return String.apertureLocalized("That backup is no longer in iCloud.")
             case .cloudKit(let code, let message):
                 // CloudKit 12 (invalidArguments) "Field 'recordName' is not
-                // marked queryable": listing backups runs a CKQuery, which
-                // needs a Queryable index on recordName in the WalletBackup
-                // record type. Saving a backup doesn't create that index — it
-                // must be added once in the CloudKit Console. Dev-facing
-                // actionable message rather than the raw server string.
+                // marked queryable" — the legacy list QUERY couldn't run. This
+                // means a backup MIGHT exist but couldn't be enumerated the old
+                // way; it must NOT be shown as "no backups" (that would falsely
+                // claim the user's backup is gone). Restore now reads a
+                // query-free index instead, which self-heals when the wallet's
+                // own device opens the app — so point the user there, not at
+                // the CloudKit Console. (The raw server string is logged for
+                // devs in `CloudKitBackupStore.map`.)
                 if code == 12 || message.localizedCaseInsensitiveContains("queryable") {
-                    return String.apertureLocalized("iCloud restore needs one more setup step for this build. In the CloudKit Console for iCloud.com.aperture.wallet → the WalletBackup record type → Indexes, add a Queryable index on recordName, Save, then try again. (CloudKit 12)")
+                    return String.apertureLocalized("We couldn't list your iCloud backups just yet. If you've backed one up, open Aperture on the iPhone that holds that wallet so it finishes syncing to iCloud, then come back and try again.")
                 }
                 return String(format: String.apertureLocalized("Couldn't reach iCloud (CloudKit %lld): %@"), Int64(code), message)
             case .unknown(let message):
