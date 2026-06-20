@@ -672,23 +672,11 @@ struct BalanceCardView: View {
             .padding(.top, 18)
             .padding(.bottom, 16)
 
-        Button(action: addFunds) {
-            HStack(spacing: 8) {
-                Image(systemName: "plus")
-                    .font(.system(size: 15, weight: .semibold))
-                Text("Add funds")
-                    .font(UniTypography.BalanceCard.fundButton)
-            }
-            .foregroundStyle(UniColors.BalanceCard.fundButtonLabel(colorScheme))
-            .frame(maxWidth: .infinity)
-            .frame(height: 46)
-            .background(
-                RoundedRectangle(cornerRadius: UniRadius.m, style: .continuous)
-                    .fill(UniColors.BalanceCard.fundButtonFill(colorScheme))
-            )
-            .contentShape(RoundedRectangle(cornerRadius: UniRadius.m, style: .continuous))
+        // The unified primary CTA (2026-06-20 user direction) — same glass
+        // capsule + haptic as every other primary button, not a bespoke fill.
+        UniButton(title: "Add funds", variant: .primary, systemImage: "plus") {
+            onAddFunds()
         }
-        .buttonStyle(.plain)
         .padding(.bottom, UniSpacing.l)
         .accessibilityLabel(Text("Add funds, opens Receive"))
     }
@@ -698,11 +686,6 @@ struct BalanceCardView: View {
     private func switchWallet() {
         UniHapticEngine.shared.play(.contextualImpact(.tap)) // `tap` on press
         onSwitchWallet()
-    }
-
-    private func addFunds() {
-        UniHapticEngine.shared.play(.contextualImpact(.tap)) // `tap` on touch-up
-        onAddFunds()
     }
 
     private func toggleHidden() {

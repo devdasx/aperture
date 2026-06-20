@@ -148,6 +148,9 @@ struct AssetNetworkDetailView: View {
         Section {
             WalletActionRegion(
                 canSend: activeWallet?.kind != .watchOnly,
+                // Single-network view → Swap shows only if THIS chain is
+                // swappable (2026-06-20 user direction). e.g. TRON/TON hide it.
+                canSwap: SwapChainMap.isSwappable(chain),
                 onSend: { presentSend() },
                 onReceive: { presentReceive() },
                 onSwap: { isShowingSwap = true }

@@ -577,3 +577,69 @@
 2026-06-19T23:53:07Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	View private keys
 2026-06-19T23:53:07Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	View recovery phrase
 2026-06-19T23:53:07Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Wallet
+2026-06-19T23:58:47Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/BalanceCardView.swift	 
+2026-06-19T23:58:47Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/BalanceCardView.swift	Add crypto to get started — receive or transfer it from another wallet.
+2026-06-19T23:58:47Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/BalanceCardView.swift	Add funds
+2026-06-19T23:58:47Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/BalanceCardView.swift	Add funds, opens Receive
+2026-06-19T23:58:47Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/BalanceCardView.swift	Balance hidden
+2026-06-19T23:58:47Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/BalanceCardView.swift	Balance history range
+2026-06-19T23:58:47Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/BalanceCardView.swift	Customise wallet
+2026-06-19T23:58:47Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/BalanceCardView.swift	Show balance
+2026-06-19T23:58:47Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/BalanceCardView.swift	Switch wallet, currently \(walletName)
+2026-06-19T23:58:47Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/BalanceCardView.swift	Total balance
+2026-06-19T23:58:47Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/BalanceCardView.swift	Total balance \(value), \(dir) \(percentText) today
+2026-06-19T23:58:47Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/BalanceCardView.swift	Total balance \(value), no change today
+2026-06-19T23:58:47Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/BalanceCardView.swift	Total balance \(value). Add crypto to get started.
+2026-06-19T23:58:47Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/BalanceCardView.swift	Total balance hidden, double tap the eye button to reveal
+2026-06-19T23:58:47Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/BalanceCardView.swift	\(currency)\(gap)\(integer)\(fraction)
+2026-06-19T23:58:47Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/BalanceCardView.swift	\(currencyRun)\(dots)
+2026-06-19T23:58:47Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/BalanceCardView.swift	\(integer)\(fraction)
+2026-06-19T23:58:47Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/BalanceCardView.swift	\(integer)\(fraction)\(gap)\(currency)
+2026-06-19T23:58:47Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/BalanceCardView.swift	••••••
+2026-06-19T23:58:58Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/BalanceCardView.swift	 
+2026-06-19T23:58:58Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/BalanceCardView.swift	Add crypto to get started — receive or transfer it from another wallet.
+2026-06-19T23:58:58Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/BalanceCardView.swift	Add funds
+2026-06-19T23:58:58Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/BalanceCardView.swift	Add funds, opens Receive
+2026-06-19T23:58:58Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/BalanceCardView.swift	Balance hidden
+2026-06-19T23:58:58Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/BalanceCardView.swift	Balance history range
+2026-06-19T23:58:58Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/BalanceCardView.swift	Customise wallet
+2026-06-19T23:58:58Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/BalanceCardView.swift	Show balance
+2026-06-19T23:58:58Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/BalanceCardView.swift	Switch wallet, currently \(walletName)
+2026-06-19T23:58:58Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/BalanceCardView.swift	Total balance
+2026-06-19T23:58:58Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/BalanceCardView.swift	Total balance \(value), \(dir) \(percentText) today
+2026-06-19T23:58:58Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/BalanceCardView.swift	Total balance \(value), no change today
+2026-06-19T23:58:58Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/BalanceCardView.swift	Total balance \(value). Add crypto to get started.
+2026-06-19T23:58:58Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/BalanceCardView.swift	Total balance hidden, double tap the eye button to reveal
+2026-06-19T23:58:58Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/BalanceCardView.swift	\(currency)\(gap)\(integer)\(fraction)
+2026-06-19T23:58:58Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/BalanceCardView.swift	\(currencyRun)\(dots)
+2026-06-19T23:58:58Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/BalanceCardView.swift	\(integer)\(fraction)
+2026-06-19T23:58:58Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/BalanceCardView.swift	\(integer)\(fraction)\(gap)\(currency)
+2026-06-19T23:58:58Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/BalanceCardView.swift	••••••
+2026-06-20T00:01:27Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/AssetDetailView.swift	Balance hidden
+2026-06-20T00:01:27Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/AssetDetailView.swift	Filter and sort
+2026-06-20T00:01:27Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/AssetDetailView.swift	Networks
+2026-06-20T00:01:27Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/AssetDetailView.swift	Networks where you don't hold this asset are hidden. Toggle off Only with balance to see all networks.
+2026-06-20T00:01:27Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/AssetDetailView.swift	Not held
+2026-06-20T00:01:27Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/AssetDetailView.swift	Recent activity
+2026-06-20T00:01:27Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/AssetDetailView.swift	Total \(derived.displayName) balance
+2026-06-20T00:01:27Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/AssetDetailView.swift	View all
+2026-06-20T00:01:27Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/AssetDetailView.swift	View all \(rows.count) transactions
+2026-06-20T00:01:27Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/AssetDetailView.swift	\(WalletFormatting.native(row.amount, decimals: 8)) \(identity.symbol)
+2026-06-20T00:01:27Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/AssetDetailView.swift	\(amount) \(identity.symbol)
+2026-06-20T00:01:27Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/AssetDetailView.swift	\(rows.count)
+2026-06-20T00:01:37Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/AssetDetailView.swift	Balance hidden
+2026-06-20T00:01:37Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/AssetDetailView.swift	Filter and sort
+2026-06-20T00:01:37Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/AssetDetailView.swift	Networks
+2026-06-20T00:01:37Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/AssetDetailView.swift	Networks where you don't hold this asset are hidden. Toggle off Only with balance to see all networks.
+2026-06-20T00:01:37Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/AssetDetailView.swift	Not held
+2026-06-20T00:01:37Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/AssetDetailView.swift	Recent activity
+2026-06-20T00:01:37Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/AssetDetailView.swift	Total \(derived.displayName) balance
+2026-06-20T00:01:37Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/AssetDetailView.swift	View all
+2026-06-20T00:01:37Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/AssetDetailView.swift	View all \(rows.count) transactions
+2026-06-20T00:01:37Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/AssetDetailView.swift	\(WalletFormatting.native(row.amount, decimals: 8)) \(identity.symbol)
+2026-06-20T00:01:37Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/AssetDetailView.swift	\(amount) \(identity.symbol)
+2026-06-20T00:01:37Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/AssetDetailView.swift	\(rows.count)
+2026-06-20T00:02:02Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/AssetNetworkDetailView.swift	Activity
+2026-06-20T00:02:02Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/AssetNetworkDetailView.swift	Filter and sort
+2026-06-20T00:02:02Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/AssetNetworkDetailView.swift	Not held on \(chain.displayName)
+2026-06-20T00:02:02Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/AssetNetworkDetailView.swift	Your address

@@ -10,6 +10,11 @@ import SwiftUI
 /// require a key. `canSend` gates Send + Swap; Receive is always on.
 struct WalletActionRegion: View {
     let canSend: Bool
+    /// Whether Swap applies here at all. `false` HIDES the Swap button
+    /// entirely (2026-06-20 user direction — an asset with no swappable
+    /// network must not show Swap). Defaults `true` so the wallet-home
+    /// keeps the full Send / Receive / Swap triplet.
+    var canSwap: Bool = true
     let onSend: () -> Void
     let onReceive: () -> Void
     let onSwap: () -> Void
@@ -40,12 +45,14 @@ struct WalletActionRegion: View {
                     isEnabled: true,
                     action: onReceive
                 )
-                actionButton(
-                    icon: "arrow.left.arrow.right",
-                    label: "Swap",
-                    isEnabled: canSend,
-                    action: onSwap
-                )
+                if canSwap {
+                    actionButton(
+                        icon: "arrow.left.arrow.right",
+                        label: "Swap",
+                        isEnabled: canSend,
+                        action: onSwap
+                    )
+                }
                 Spacer(minLength: 0)
             }
             .frame(maxWidth: .infinity)
