@@ -69,61 +69,37 @@ struct WalletReadyView: View {
     )
 
     var body: some View {
-        VStack(spacing: UniSpacing.l) {
-            Spacer()
-            heroContent
-            Spacer()
-        }
-        .safeAreaInset(edge: .bottom) {
-            actionRegion
-                .padding(.horizontal, UniSpacing.l)
-                .padding(.bottom, UniSpacing.l)
+        Group {
+            if case .failed(let message) = persistState {
+                failureView(message)
+            } else {
+                // The SAME success screen as import (2026-06-20 user
+                // direction), shown immediately — the wallet persists silently
+                // in the background, so there is no "Saving your wallet…"
+                // state. The card fills in from the screen's own `@Query` as
+                // the save lands; the CTA is gated until then so the user can
+                // never leave onto a not-yet-saved wallet. The seal animation +
+                // haptics are ImportSuccessView's, so create matches import.
+                ImportSuccessView(
+                    walletId: state.pendingWalletId,
+                    result: .mnemonic,
+                    onContinue: onDone,
+                    isCreated: true,
+                    isContinueEnabled: persistState == .persisted
+                )
+            }
         }
         .navigationBarBackButtonHidden(true)
         .navigationBarTitleDisplayMode(.inline)
-        // Rule #10 — Aperture's most weighted tactile moment. Plays
-        // the `.walletSealed` Core Haptics pattern exactly once when
-        // the view appears (the trigger is a fresh per-presentation
-        // sentinel). Reduce Motion silences automatically inside
-        // `UniHapticEngine`.
-        .uniHapticSignature(.walletSealed, trigger: walletSealedTrigger)
-        .onAppear {
-            // The "sealed" haptic now fires on real persist success (below),
-            // not merely on appear — so it never celebrates a failed save.
-            persistIfNeeded()
-        }
+        .onAppear { persistIfNeeded() }
     }
 
-    @State private var walletSealedTrigger: UUID = UUID()
-
-    /// State-driven hero — the success seal + "ready" copy show ONLY once the
-    /// wallet is actually persisted. While saving it's a neutral spinner; on
-    /// failure it's an honest error hero (never a green "ready" over an error).
+    /// Honest failure surface — shown ONLY if the background persist actually
+    /// fails (rare). Keeps the diagnosable cause + Retry.
     @ViewBuilder
-    private var heroContent: some View {
-        switch persistState {
-        case .persisted:
-            Image(systemName: "checkmark.seal.fill")
-                .font(.system(size: 96, weight: .regular))
-                .symbolRenderingMode(.hierarchical)
-                .foregroundStyle(UniColors.Status.successForeground)
-                .accessibilityHidden(true)
-            VStack(spacing: UniSpacing.s) {
-                UniLargeTitle(text: "Your wallet is ready.", alignment: .center)
-                UniBody(
-                    text: "Your recovery phrase is saved. You can find your wallet on the main screen.",
-                    alignment: .center,
-                    color: UniColors.Text.secondary
-                )
-            }
-            .padding(.horizontal, UniSpacing.l)
-            UniFootnote(
-                text: "No accounts. No servers. Your wallet lives on your iPhone.",
-                alignment: .center
-            )
-            .padding(.horizontal, UniSpacing.l)
-
-        case .failed:
+    private func failureView(_ message: String) -> some View {
+        VStack(spacing: UniSpacing.l) {
+            Spacer()
             Image(systemName: "exclamationmark.triangle.fill")
                 .font(.system(size: 84, weight: .regular))
                 .symbolRenderingMode(.hierarchical)
@@ -138,18 +114,10 @@ struct WalletReadyView: View {
                 )
             }
             .padding(.horizontal, UniSpacing.l)
-
-        case .idle, .persisting:
-            ProgressView()
-                .controlSize(.large)
-            UniLargeTitle(text: "Saving your wallet…", alignment: .center)
-                .padding(.horizontal, UniSpacing.l)
+            Spacer()
         }
-    }
-
-    private var actionRegion: some View {
-        VStack(spacing: UniSpacing.s) {
-            if case .failed(let message) = persistState {
+        .safeAreaInset(edge: .bottom) {
+            VStack(spacing: UniSpacing.s) {
                 UniFootnote(
                     text: LocalizedStringKey(message),
                     alignment: .center,
@@ -157,35 +125,12 @@ struct WalletReadyView: View {
                 )
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.horizontal, UniSpacing.m)
-            }
-
-            GlassEffectContainer(spacing: UniSpacing.s) {
-                UniButton(
-                    title: persistButtonTitle,
-                    variant: .primary,
-                    isLoading: persistState == .persisting,
-                    isEnabled: persistState != .persisting
-                ) {
-                    switch persistState {
-                    case .persisted:
-                        onDone()
-                    case .failed:
-                        persistIfNeeded(force: true)
-                    case .idle, .persisting:
-                        // Idle shouldn't be reachable (onAppear fires
-                        // persistIfNeeded), but if it is, kick it.
-                        persistIfNeeded()
-                    }
+                UniButton(title: "Retry", variant: .primary) {
+                    persistIfNeeded(force: true)
                 }
             }
-        }
-    }
-
-    private var persistButtonTitle: LocalizedStringKey {
-        switch persistState {
-        case .idle, .persisting: return "Saving…"
-        case .persisted:         return "Done"
-        case .failed:            return "Retry"
+            .padding(.horizontal, UniSpacing.l)
+            .padding(.bottom, UniSpacing.l)
         }
     }
 
@@ -211,12 +156,10 @@ struct WalletReadyView: View {
                     manualBackup: manualBackupFlag
                 )
                 persistState = .persisted
-                // Fire the once-per-wallet "sealed" haptic only now, on real
-                // success.
-                walletSealedTrigger = UUID()
-                // The seed + encrypted mnemonic are in Keychain —
-                // wipe the plaintext secrets before the user moves
-                // on to the PIN flow.
+                // The seed + encrypted mnemonic are in Keychain — wipe the
+                // plaintext secrets before the user moves on. (The success
+                // seal + its haptic are ImportSuccessView's, fired on appear,
+                // so create matches import exactly.)
                 state.zeroSensitiveState()
             } catch {
                 Self.log.error(

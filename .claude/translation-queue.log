@@ -949,3 +949,23 @@
 2026-06-20T00:46:15Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/ImportWallet/ICloudRestoreView.swift	Incorrect password. Try again.
 2026-06-20T00:46:15Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/ImportWallet/ICloudRestoreView.swift	Restore from iCloud
 2026-06-20T00:46:15Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/ImportWallet/ICloudRestoreView.swift	\(blob.wordCount) words · \(blob.createdAt.formatted(date: .abbreviated, time: .omitted))
+2026-06-20T00:49:47Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/ImportWallet/ImportSuccessView.swift	+\(extra)
+2026-06-20T00:49:47Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/ImportWallet/ImportSuccessView.swift	Cancel
+2026-06-20T00:49:47Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/ImportWallet/ImportSuccessView.swift	Choose a name for this wallet.
+2026-06-20T00:49:47Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/ImportWallet/ImportSuccessView.swift	Continue to wallet
+2026-06-20T00:49:47Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/ImportWallet/ImportSuccessView.swift	Rename wallet
+2026-06-20T00:49:47Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/ImportWallet/ImportSuccessView.swift	Save
+2026-06-20T00:49:55Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/ImportWallet/ImportSuccessView.swift	+\(extra)
+2026-06-20T00:49:55Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/ImportWallet/ImportSuccessView.swift	Cancel
+2026-06-20T00:49:55Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/ImportWallet/ImportSuccessView.swift	Choose a name for this wallet.
+2026-06-20T00:49:55Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/ImportWallet/ImportSuccessView.swift	Continue to wallet
+2026-06-20T00:49:55Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/ImportWallet/ImportSuccessView.swift	Rename wallet
+2026-06-20T00:49:55Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/ImportWallet/ImportSuccessView.swift	Save
+2026-06-20T00:50:01Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/ImportWallet/ImportSuccessView.swift	+\(extra)
+2026-06-20T00:50:01Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/ImportWallet/ImportSuccessView.swift	Cancel
+2026-06-20T00:50:01Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/ImportWallet/ImportSuccessView.swift	Choose a name for this wallet.
+2026-06-20T00:50:01Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/ImportWallet/ImportSuccessView.swift	Continue to wallet
+2026-06-20T00:50:01Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/ImportWallet/ImportSuccessView.swift	Rename wallet
+2026-06-20T00:50:01Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/ImportWallet/ImportSuccessView.swift	Save
+2026-06-20T00:50:46Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/CreateWallet/WalletReadyView.swift	Retry
+2026-06-20T00:50:55Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/CreateWallet/WalletReadyView.swift	Retry
