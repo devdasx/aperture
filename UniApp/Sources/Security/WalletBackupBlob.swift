@@ -23,6 +23,13 @@ struct WalletBackupBlob: Codable, Sendable, Equatable, Identifiable {
     let createdAt: Date
     /// 12 or 24 — clear; lets the UI describe the backup without the key.
     let wordCount: Int
+    /// The wallet's avatar (user-chosen color / logo) — clear, non-secret —
+    /// so the restore picker shows the SAME identity disc the user picked
+    /// instead of a generic cloud, and a restored wallet keeps its look
+    /// (2026-06-20 user direction). Optional: backups made before this field
+    /// decode as nil, and the restore UI falls back to the deterministic
+    /// `auto(name)` disc so it's still a colored logo, never a cloud+lock.
+    let avatar: WalletAvatarSpec?
 
     // Key-derivation parameters (clear — they are not secret by design).
     let kdf: String
@@ -40,6 +47,7 @@ struct WalletBackupBlob: Codable, Sendable, Equatable, Identifiable {
         walletName: String,
         createdAt: Date,
         wordCount: Int,
+        avatar: WalletAvatarSpec? = nil,
         kdf: String,
         kdfIterations: Int,
         salt: Data,
@@ -50,6 +58,7 @@ struct WalletBackupBlob: Codable, Sendable, Equatable, Identifiable {
         self.walletName = walletName
         self.createdAt = createdAt
         self.wordCount = wordCount
+        self.avatar = avatar
         self.kdf = kdf
         self.kdfIterations = kdfIterations
         self.salt = salt
@@ -64,7 +73,8 @@ struct WalletBackupBlob: Codable, Sendable, Equatable, Identifiable {
         walletName: String,
         words: [String],
         password: String,
-        createdAt: Date
+        createdAt: Date,
+        avatar: WalletAvatarSpec? = nil
     ) throws -> WalletBackupBlob {
         let mnemonic = words.joined(separator: " ")
         let sealed = try WalletBackupCrypto.encrypt(mnemonic: mnemonic, password: password)
@@ -73,6 +83,7 @@ struct WalletBackupBlob: Codable, Sendable, Equatable, Identifiable {
             walletName: walletName,
             createdAt: createdAt,
             wordCount: words.count,
+            avatar: avatar,
             kdf: WalletBackupCrypto.kdfName,
             kdfIterations: sealed.iterations,
             salt: sealed.salt,
