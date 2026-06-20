@@ -43,6 +43,31 @@ struct WalletsListView: View {
     @State private var importPath: NavigationPath = .init()
     @State private var isShowingReorderError: Bool = false
 
+    // MARK: - Swipe-action state (2026-06-20)
+    /// The wallet pending deletion — drives `WalletDeleteSheet`, which owns its
+    /// own passcode/native-confirm gate.
+    @State private var pendingDelete: PendingDelete?
+    /// Backup-from-swipe: the target + the auth-gated phrase + the flow.
+    @State private var backupTargetId: UUID?
+    @State private var backupTargetName: String = ""
+    @State private var backupTargetAvatar: WalletAvatarSpec?
+    @State private var backupWords: [String] = []
+    @State private var isShowingBackupPasscode: Bool = false
+    @State private var isShowingWalletBackup: Bool = false
+    /// Already-localized message for the shared error alert.
+    @State private var errorAlertMessage: String?
+
+    /// Identifiable payload for the delete confirmation sheet (a wallet row
+    /// can't drive `.sheet(item:)` directly — its `id` is the SwiftData
+    /// persistent id, not this UUID).
+    private struct PendingDelete: Identifiable {
+        let id: UUID
+        let name: String
+        let kind: WalletKind
+        let networkCount: Int
+        let hasStoredSecret: Bool
+    }
+
     /// Rule #12 §G direction-only key for sheet content rebuild.
     /// `"ltr"` or `"rtl"`. Identical pattern to `OnboardingView`.
     private var sheetDirectionKey: String {
@@ -64,6 +89,39 @@ struct WalletsListView: View {
                             walletRow(wallet)
                         }
                         .listRowBackground(UniColors.Background.secondary)
+                        // Leading full-swipe = the primary action: make this
+                        // wallet active, or — if it's already active — back it
+                        // up (2026-06-20 user direction).
+                        .swipeActions(edge: .leading, allowsFullSwipe: true) {
+                            if wallet.id.uuidString == activeWalletIdRaw {
+                                Button { startBackup(wallet) } label: {
+                                    Label("Back up", systemImage: "icloud.and.arrow.up")
+                                }
+                                .tint(UniColors.Tint.accent)
+                            } else {
+                                Button { makeActive(wallet) } label: {
+                                    Label("Activate", systemImage: "checkmark.circle.fill")
+                                }
+                                .tint(UniColors.Status.successForeground)
+                            }
+                        }
+                        // Trailing = the rest: refresh, back up (when not the
+                        // full-swipe action), and remove.
+                        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                            Button(role: .destructive) { requestDelete(wallet) } label: {
+                                Label("Remove", systemImage: "trash")
+                            }
+                            Button { refresh(wallet) } label: {
+                                Label("Refresh", systemImage: "arrow.clockwise")
+                            }
+                            .tint(UniColors.Icon.secondary)
+                            if wallet.id.uuidString != activeWalletIdRaw {
+                                Button { startBackup(wallet) } label: {
+                                    Label("Back up", systemImage: "icloud.and.arrow.up")
+                                }
+                                .tint(UniColors.Tint.accent)
+                            }
+                        }
                     }
                     .onMove(perform: moveWallets)
                 } header: {
@@ -130,6 +188,73 @@ struct WalletsListView: View {
             Button("OK", role: .cancel) {}
         } message: {
             Text("The wallet order couldn't be written to the local database. Try again.")
+        }
+        // Remove (swipe) — the same self-gating delete sheet the detail screen
+        // uses (passcode verify when set, native destructive confirm otherwise).
+        .sheet(item: $pendingDelete) { target in
+            WalletDeleteSheet(
+                walletName: target.name,
+                kind: target.kind,
+                networkCount: target.networkCount,
+                hasStoredSecret: target.hasStoredSecret,
+                onAuthorized: {
+                    let id = target.id
+                    pendingDelete = nil
+                    Task { await deleteWallet(id) }
+                }
+            )
+            .uniAppEnvironment()
+            .uniSheetDetents([.large])
+            .presentationBackground(UniColors.Background.primary)
+        }
+        // Back up (swipe) — passcode gate (when set) before decrypting the
+        // phrase, then the same WalletBackupFlow the detail screen presents.
+        .fullScreenCover(isPresented: $isShowingBackupPasscode) {
+            NavigationStack {
+                PinCodeView(
+                    mode: .verify,
+                    onComplete: { _ in
+                        isShowingBackupPasscode = false
+                        DispatchQueue.main.async { loadAndPresentBackup() }
+                    },
+                    onCancel: { isShowingBackupPasscode = false },
+                    allowsBiometrics: true
+                )
+                .toolbar {
+                    ToolbarItem(placement: .topBarLeading) {
+                        Button { isShowingBackupPasscode = false } label: {
+                            Image(systemName: "xmark").font(.system(size: 17, weight: .semibold))
+                        }
+                        .accessibilityLabel(Text("Cancel"))
+                    }
+                }
+            }
+            .uniAppEnvironment()
+            .presentationBackground(UniColors.Background.primary)
+        }
+        .fullScreenCover(isPresented: $isShowingWalletBackup) {
+            if let id = backupTargetId {
+                WalletBackupFlow(
+                    walletId: id,
+                    walletName: backupTargetName,
+                    words: backupWords,
+                    avatar: backupTargetAvatar,
+                    onClose: {
+                        isShowingWalletBackup = false
+                        backupWords = []
+                    }
+                )
+                .uniAppEnvironment()
+                .presentationBackground(UniColors.Background.primary)
+            }
+        }
+        .alert(
+            Text("Something went wrong"),
+            isPresented: Binding(get: { errorAlertMessage != nil }, set: { if !$0 { errorAlertMessage = nil } })
+        ) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(LocalizedStringKey(errorAlertMessage ?? ""))
         }
     }
 
@@ -199,6 +324,99 @@ struct WalletsListView: View {
         }
         .padding(.vertical, UniSpacing.xxs)
         .contentShape(Rectangle())
+    }
+
+    // MARK: - Swipe actions
+
+    /// Make this wallet the active one (the home reads `activeWalletId`).
+    private func makeActive(_ wallet: WalletRecord) {
+        guard wallet.id.uuidString != activeWalletIdRaw else { return }
+        activeWalletIdRaw = wallet.id.uuidString
+        UniHapticEngine.shared.play(.success)
+    }
+
+    /// Real refresh of THIS wallet — balances across every chain + history,
+    /// in the background, via the canonical coordinator.
+    private func refresh(_ wallet: WalletRecord) {
+        UniHapticEngine.shared.play(.selection)
+        let container = modelContext.container
+        let fiat = currencyCode
+        let id = wallet.id
+        Task {
+            await WalletRefreshCoordinator(container: container)
+                .refreshWallet(walletId: id, fiatCode: fiat)
+        }
+    }
+
+    private func requestDelete(_ wallet: WalletRecord) {
+        pendingDelete = PendingDelete(
+            id: wallet.id,
+            name: wallet.name,
+            kind: wallet.kind,
+            networkCount: Set(wallet.addresses.map(\.chainRaw)).count,
+            hasStoredSecret: walletHasStoredSecret(wallet)
+        )
+    }
+
+    @MainActor
+    private func deleteWallet(_ id: UUID) async {
+        let repo = WalletRepository(modelContainer: modelContext.container)
+        do {
+            try await repo.deleteWallet(id: id)
+        } catch {
+            errorAlertMessage = String.apertureLocalized("Couldn't delete this wallet from the local database. Try again.")
+        }
+    }
+
+    /// Back up (swipe): gate behind the app passcode / device biometric (when
+    /// present), then decrypt + present the backup flow — same security as the
+    /// detail screen's Back up.
+    private func startBackup(_ wallet: WalletRecord) {
+        backupTargetId = wallet.id
+        backupTargetName = wallet.name
+        backupTargetAvatar = wallet.avatarSpec
+        if PinCodeStorage.hasPin {
+            isShowingBackupPasscode = true
+        } else if BiometricService().isAvailable {
+            Task {
+                let outcome = await BiometricService().authenticate(
+                    reason: LocalizedStringResource("Confirm to back up your wallet.")
+                )
+                if case .success = outcome { loadAndPresentBackup() }
+            }
+        } else {
+            // Nothing on the device can gate it → proceed (matches the app-wide
+            // removal of the no-lock warning).
+            loadAndPresentBackup()
+        }
+    }
+
+    @MainActor
+    private func loadAndPresentBackup() {
+        guard let id = backupTargetId else { return }
+        Task { @MainActor in
+            let loaded = try? await Task.detached(priority: .userInitiated) {
+                try MnemonicVault.loadMnemonic(for: id)
+            }.value
+            guard let words = loaded ?? nil, !words.isEmpty else {
+                errorAlertMessage = String.apertureLocalized("Couldn't read this wallet's phrase to back it up. Try restarting Aperture.")
+                return
+            }
+            backupWords = words
+            isShowingWalletBackup = true
+        }
+    }
+
+    /// `true` iff this wallet's secret material lives in the Keychain.
+    private func walletHasStoredSecret(_ wallet: WalletRecord) -> Bool {
+        switch wallet.kind {
+        case .importedKey:
+            return MnemonicVault.hasPrivateKey(for: wallet.id)
+        case .created, .importedMnemonic:
+            return MnemonicVault.hasMnemonic(for: wallet.id)
+        case .watchOnly:
+            return false
+        }
     }
 
     // MARK: - Reorder
