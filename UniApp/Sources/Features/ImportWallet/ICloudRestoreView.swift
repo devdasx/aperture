@@ -1,5 +1,8 @@
 import SwiftUI
 import OSLog
+#if canImport(UIKit)
+import UIKit
+#endif
 
 /// **Restore from iCloud** — the read side of the encrypted-backup feature
 /// (2026-06-19 backup handoff). Lists the user's CloudKit wallet backups,
@@ -18,6 +21,7 @@ struct ICloudRestoreView: View {
     let onImported: (UUID) -> Void
 
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.openURL) private var openURL
 
     @State private var listState: ListState = .loading
     @State private var selected: WalletBackupBlob?
@@ -32,7 +36,12 @@ struct ICloudRestoreView: View {
     enum ListState: Equatable {
         case loading
         case loaded([WalletBackupBlob])
+        /// Signed in to iCloud, but this account has no wallet backups.
         case empty
+        /// No iCloud account / iCloud unavailable — distinct from a failure
+        /// so we can guide the user to sign in rather than show a generic
+        /// error (2026-06-20 user direction).
+        case needsICloud
         case failed(String)
     }
 
@@ -58,6 +67,28 @@ struct ICloudRestoreView: View {
         case .loading:
             UniLoadingState(caption: "Looking for backups in iCloud…")
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+        case .needsICloud:
+            // No Apple ID signed in / iCloud unavailable. CloudKit needs the
+            // iCloud account (it does NOT need iCloud Drive specifically), so
+            // guide the user to sign in rather than show a generic failure.
+            restoreState(
+                icon: "icloud.slash",
+                title: "Sign in to iCloud",
+                detail: "To restore a wallet from iCloud, sign in to iCloud on this iPhone. Open Settings, tap your name at the top, and turn on iCloud.",
+                actionTitle: "Open Settings",
+                action: { openSettings() }
+            )
+        case .empty:
+            // A REAL empty state — calm and clearly NOT an error: an accent
+            // (not error-grey) tray icon, a friendly title, no "Try again"
+            // (there's nothing to retry). 2026-06-20 user direction.
+            restoreState(
+                icon: "tray",
+                iconTint: UniColors.Icon.accent,
+                discTint: UniColors.Icon.accent.opacity(0.12),
+                title: "No backups yet",
+                detail: "When you back a wallet up to iCloud, it shows up here to restore. You can create one from a wallet's recovery-phrase screen → Back up."
+            )
         case .failed(let message):
             restoreState(
                 icon: "icloud.slash",
@@ -65,12 +96,6 @@ struct ICloudRestoreView: View {
                 detail: LocalizedStringKey(message),
                 actionTitle: "Try again",
                 action: { Task { listState = .loading; await load() } }
-            )
-        case .empty:
-            restoreState(
-                icon: "icloud",
-                title: "No iCloud backups",
-                detail: "You don't have any wallet backups in this iCloud account yet. Create one from a wallet's recovery-phrase screen → Backup Now."
             )
         case .loaded(let backups):
             List {
@@ -108,6 +133,8 @@ struct ICloudRestoreView: View {
     @ViewBuilder
     private func restoreState(
         icon: String,
+        iconTint: Color = UniColors.Icon.secondary,
+        discTint: Color = UniColors.Background.secondary,
         title: LocalizedStringKey,
         detail: LocalizedStringKey,
         actionTitle: LocalizedStringKey? = nil,
@@ -118,12 +145,12 @@ struct ICloudRestoreView: View {
             VStack(spacing: UniSpacing.l) {
                 ZStack {
                     Circle()
-                        .fill(UniColors.Background.secondary)
+                        .fill(discTint)
                         .frame(width: 96, height: 96)
                     Image(systemName: icon)
                         .font(.system(size: 40, weight: .light))
                         .symbolRenderingMode(.hierarchical)
-                        .foregroundStyle(UniColors.Icon.secondary)
+                        .foregroundStyle(iconTint)
                 }
                 .accessibilityHidden(true)
                 VStack(spacing: UniSpacing.s) {
@@ -272,13 +299,34 @@ struct ICloudRestoreView: View {
     }
 
     private func load() async {
+        // Account first: no Apple ID / iCloud unavailable gets its own calm
+        // "Sign in to iCloud" state, not a generic failure (2026-06-20).
         do {
             try await store.ensureAccountAvailable()
+        } catch CloudKitBackupStore.StoreError.notSignedIn,
+                CloudKitBackupStore.StoreError.iCloudUnavailable {
+            listState = .needsICloud
+            return
+        } catch {
+            listState = .failed(Self.message(for: error))
+            return
+        }
+        do {
             let backups = try await store.list()
             listState = backups.isEmpty ? .empty : .loaded(backups)
         } catch {
             listState = .failed(Self.message(for: error))
         }
+    }
+
+    /// Open the iOS Settings app (the closest public affordance — it lands on
+    /// Aperture's settings page, from which the user can reach iCloud).
+    private func openSettings() {
+#if canImport(UIKit)
+        if let url = URL(string: UIApplication.openSettingsURLString) {
+            openURL(url)
+        }
+#endif
     }
 
     private func restore(_ blob: WalletBackupBlob) async {

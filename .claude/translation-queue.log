@@ -744,3 +744,51 @@
 2026-06-20T00:25:49Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	\(row.chain.displayName) details
 2026-06-20T00:25:49Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	\(row.symbol) details
 2026-06-20T00:31:26Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/ImportWallet/ICloudRestoreView.swift	\(blob.wordCount) words · \(blob.createdAt.formatted(date: .abbreviated, time: .omitted))
+2026-06-20T00:38:11Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/ImportWallet/ICloudRestoreView.swift	Back
+2026-06-20T00:38:11Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/ImportWallet/ICloudRestoreView.swift	Choose a backup to restore. You'll need its password.
+2026-06-20T00:38:11Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/ImportWallet/ICloudRestoreView.swift	Enter password
+2026-06-20T00:38:11Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/ImportWallet/ICloudRestoreView.swift	Enter the backup password you set for this wallet to decrypt it.
+2026-06-20T00:38:11Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/ImportWallet/ICloudRestoreView.swift	Hide password
+2026-06-20T00:38:11Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/ImportWallet/ICloudRestoreView.swift	Incorrect password. Try again.
+2026-06-20T00:38:11Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/ImportWallet/ICloudRestoreView.swift	Restore from iCloud
+2026-06-20T00:38:11Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/ImportWallet/ICloudRestoreView.swift	\(blob.wordCount) words · \(blob.createdAt.formatted(date: .abbreviated, time: .omitted))
+2026-06-20T00:38:17Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/ImportWallet/ICloudRestoreView.swift	Back
+2026-06-20T00:38:17Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/ImportWallet/ICloudRestoreView.swift	Choose a backup to restore. You'll need its password.
+2026-06-20T00:38:17Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/ImportWallet/ICloudRestoreView.swift	Enter password
+2026-06-20T00:38:17Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/ImportWallet/ICloudRestoreView.swift	Enter the backup password you set for this wallet to decrypt it.
+2026-06-20T00:38:17Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/ImportWallet/ICloudRestoreView.swift	Hide password
+2026-06-20T00:38:17Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/ImportWallet/ICloudRestoreView.swift	Incorrect password. Try again.
+2026-06-20T00:38:17Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/ImportWallet/ICloudRestoreView.swift	Restore from iCloud
+2026-06-20T00:38:17Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/ImportWallet/ICloudRestoreView.swift	\(blob.wordCount) words · \(blob.createdAt.formatted(date: .abbreviated, time: .omitted))
+2026-06-20T00:38:25Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/ImportWallet/ICloudRestoreView.swift	Back
+2026-06-20T00:38:25Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/ImportWallet/ICloudRestoreView.swift	Choose a backup to restore. You'll need its password.
+2026-06-20T00:38:25Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/ImportWallet/ICloudRestoreView.swift	Enter password
+2026-06-20T00:38:25Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/ImportWallet/ICloudRestoreView.swift	Enter the backup password you set for this wallet to decrypt it.
+2026-06-20T00:38:25Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/ImportWallet/ICloudRestoreView.swift	Hide password
+2026-06-20T00:38:25Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/ImportWallet/ICloudRestoreView.swift	Incorrect password. Try again.
+2026-06-20T00:38:25Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/ImportWallet/ICloudRestoreView.swift	Restore from iCloud
+2026-06-20T00:38:25Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/ImportWallet/ICloudRestoreView.swift	\(blob.wordCount) words · \(blob.createdAt.formatted(date: .abbreviated, time: .omitted))
+2026-06-20T00:38:39Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/ImportWallet/ICloudRestoreView.swift	Back
+2026-06-20T00:38:39Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/ImportWallet/ICloudRestoreView.swift	Choose a backup to restore. You'll need its password.
+2026-06-20T00:38:39Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/ImportWallet/ICloudRestoreView.swift	Enter password
+2026-06-20T00:38:39Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/ImportWallet/ICloudRestoreView.swift	Enter the backup password you set for this wallet to decrypt it.
+2026-06-20T00:38:39Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/ImportWallet/ICloudRestoreView.swift	Hide password
+2026-06-20T00:38:39Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/ImportWallet/ICloudRestoreView.swift	Incorrect password. Try again.
+2026-06-20T00:38:39Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/ImportWallet/ICloudRestoreView.swift	Restore from iCloud
+2026-06-20T00:38:39Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/ImportWallet/ICloudRestoreView.swift	\(blob.wordCount) words · \(blob.createdAt.formatted(date: .abbreviated, time: .omitted))
+2026-06-20T00:38:49Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/ImportWallet/ICloudRestoreView.swift	Back
+2026-06-20T00:38:49Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/ImportWallet/ICloudRestoreView.swift	Choose a backup to restore. You'll need its password.
+2026-06-20T00:38:49Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/ImportWallet/ICloudRestoreView.swift	Enter password
+2026-06-20T00:38:49Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/ImportWallet/ICloudRestoreView.swift	Enter the backup password you set for this wallet to decrypt it.
+2026-06-20T00:38:49Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/ImportWallet/ICloudRestoreView.swift	Hide password
+2026-06-20T00:38:49Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/ImportWallet/ICloudRestoreView.swift	Incorrect password. Try again.
+2026-06-20T00:38:49Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/ImportWallet/ICloudRestoreView.swift	Restore from iCloud
+2026-06-20T00:38:49Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/ImportWallet/ICloudRestoreView.swift	\(blob.wordCount) words · \(blob.createdAt.formatted(date: .abbreviated, time: .omitted))
+2026-06-20T00:39:13Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/ImportWallet/ICloudRestoreView.swift	Back
+2026-06-20T00:39:13Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/ImportWallet/ICloudRestoreView.swift	Choose a backup to restore. You'll need its password.
+2026-06-20T00:39:13Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/ImportWallet/ICloudRestoreView.swift	Enter password
+2026-06-20T00:39:13Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/ImportWallet/ICloudRestoreView.swift	Enter the backup password you set for this wallet to decrypt it.
+2026-06-20T00:39:13Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/ImportWallet/ICloudRestoreView.swift	Hide password
+2026-06-20T00:39:13Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/ImportWallet/ICloudRestoreView.swift	Incorrect password. Try again.
+2026-06-20T00:39:13Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/ImportWallet/ICloudRestoreView.swift	Restore from iCloud
+2026-06-20T00:39:13Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/ImportWallet/ICloudRestoreView.swift	\(blob.wordCount) words · \(blob.createdAt.formatted(date: .abbreviated, time: .omitted))
