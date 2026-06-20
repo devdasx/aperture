@@ -12,19 +12,26 @@ import SwiftData
 /// push to a wallet-detail screen later, T-042).
 struct WalletSwitcherSheet: View {
     @Query(sort: \WalletRecord.sortOrder) private var wallets: [WalletRecord]
-    /// Per-chain aggregate rows — summed per wallet for the row balance
-    /// (the same source the Wallets management screen uses).
-    @Query private var chainStates: [ChainStateRecord]
+    /// Live per-token balances — the same source the wallet-home hero and the
+    /// Wallets management screen use, so the switcher shows the real per-wallet
+    /// total instead of JOD 0.000 (2026-06-20 fix; the old ChainStateRecord
+    /// aggregate could be empty even with token balances present).
+    @Query private var tokenBalances: [TokenBalanceRecord]
     @AppStorage("activeWalletId") private var activeWalletIdRaw: String = ""
     @AppStorage(CurrencyPreference.storageKey) private var currencyCode: String = CurrencyPreference.defaultCode
     @Environment(\.dismiss) private var dismiss
 
-    /// A wallet's total balance in the user's currency, summed from its
-    /// per-chain aggregate rows (mirrors `WalletsListView.fiatBalance`).
+    /// A wallet's total balance in the user's currency, summed from its own
+    /// addresses' cached token-fiat values (mirrors `WalletsListView`).
     private func fiatBalance(for wallet: WalletRecord) -> Decimal {
-        chainStates
-            .filter { $0.walletId == wallet.id && $0.fiatCurrencyCode == currencyCode }
-            .reduce(Decimal.zero) { $0 + $1.totalFiat }
+        let addressIds = Set(wallet.addresses.map(\.id))
+        var total = Decimal.zero
+        for balance in tokenBalances {
+            guard balance.fiatCurrencyCode == currencyCode else { continue }
+            guard let aid = balance.addressId, addressIds.contains(aid) else { continue }
+            total += balance.fiatValueCached
+        }
+        return total
     }
 
     /// Fired when the user picks an existing wallet (after writing the
