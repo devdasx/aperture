@@ -88,12 +88,22 @@ final class ImportWalletState {
         // own word ("Кошелёк", "محفظة", "ウォレット"); the counter is
         // `walletCount + 1` so "Wallet 1" / "Wallet 2" sequence
         // matches what the user expects from Phantom / Trust Wallet.
+        // The default name reflects HOW the wallet came in, localized to the
+        // user's language (2026-06-20 user direction): an imported phrase →
+        // "Imported Wallet N" / Arabic "محفظة مستوردة N", a private key → an
+        // "Imported Key N", a watched address → "Watch-Only N". An explicit
+        // name (e.g. an iCloud restore passing the backed-up name) always wins.
         let resolvedName: String
         if let defaultName, !defaultName.isEmpty {
             resolvedName = defaultName
         } else {
             let existingCount = (try? await repository.walletCount()) ?? 0
-            let prefix = String.apertureLocalized("Wallet")
+            let prefix: String
+            switch result {
+            case .mnemonic:   prefix = String.apertureLocalized("Imported Wallet")
+            case .privateKey: prefix = String.apertureLocalized("Imported Key")
+            case .watchOnly:  prefix = String.apertureLocalized("Watch-Only")
+            }
             resolvedName = "\(prefix) \(existingCount + 1)"
         }
         switch result {
