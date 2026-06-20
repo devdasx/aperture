@@ -25,6 +25,16 @@ struct ImportSuccessView: View {
     let walletId: UUID
     let result: ImportResult
     let onContinue: () -> Void
+    /// `true` when this same screen terminates the wallet-CREATE flow rather
+    /// than an import (2026-06-20 user direction — the create success must
+    /// match the import success exactly). Only the copy changes ("created"
+    /// vs "imported"); the layout, seal, card and CTA are identical.
+    var isCreated: Bool = false
+    /// Gates the "Continue to wallet" CTA. The create flow persists in the
+    /// background while this screen is already up, so it passes `false` until
+    /// the wallet is saved — the user can't leave onto a not-yet-saved wallet.
+    /// Imports are persisted before this screen, so they leave it `true`.
+    var isContinueEnabled: Bool = true
 
     @Query private var wallets: [WalletRecord]
     @Environment(\.modelContext) private var modelContext
@@ -269,7 +279,7 @@ struct ImportSuccessView: View {
     // MARK: - CTA
 
     private var cta: some View {
-        UniButton(title: "Continue to wallet", variant: .primary) {
+        UniButton(title: "Continue to wallet", variant: .primary, isEnabled: isContinueEnabled) {
             onContinue()
         }
         .padding(.horizontal, UniSpacing.l)
@@ -315,7 +325,7 @@ struct ImportSuccessView: View {
 
     private var headline: LocalizedStringKey {
         switch result {
-        case .mnemonic:   return "Wallet imported"
+        case .mnemonic:   return isCreated ? "Wallet created" : "Wallet imported"
         case .privateKey: return "Key imported"
         case .watchOnly:  return "Watch-only"
         }
@@ -324,6 +334,9 @@ struct ImportSuccessView: View {
     private var lede: String {
         switch result {
         case .mnemonic:
+            if isCreated {
+                return String(localized: "Your recovery phrase is saved and your keys are secured on this device.")
+            }
             return String(localized: "Your recovery phrase was verified and your keys are now secured on this device.")
         case .privateKey(let chain):
             if chain.family == .evm {
