@@ -1,4 +1,7 @@
 import SwiftUI
+#if canImport(UIKit)
+import UIKit
+#endif
 
 /// One row in the wallet-home "Recent activity" section. Composed
 /// from a `TransactionRecord` (production) or `TransactionEvent`
@@ -60,12 +63,17 @@ struct ActivityRow: View {
     /// contract — without it, token rows fell back to a text chip
     /// (2026-06-19). Sourced from `TransactionRecord.tokenContract`.
     var tokenContract: String? = nil
+    /// The on-chain transaction hash — drives the long-press menu (copy
+    /// hash, view on explorer). Empty ("") suppresses those entries, e.g.
+    /// for a test-mode event with no real hash. (2026-06-20 user direction.)
+    var txHash: String = ""
 
     /// Settings → Preferences toggle (default on): show the activity
     /// amount in the user's local currency. Off shows the native token
     /// amount. Read here so every activity surface honors the choice
     /// without threading it through each call site.
     @AppStorage("txAmountsInLocalCurrency") private var showAmountsInFiat: Bool = true
+    @Environment(\.openURL) private var openURL
 
     var body: some View {
         HStack(spacing: UniSpacing.s) {
@@ -96,6 +104,47 @@ struct ActivityRow: View {
         .padding(.vertical, UniSpacing.xs)
         .contentShape(Rectangle())
         .accessibilityElement(children: .combine)
+        // Long-press → copy hash / amount / address, or open the explorer
+        // (2026-06-20 user direction). Tap still navigates to the tx detail.
+        .contextMenu { transactionActions }
+    }
+
+    // MARK: - Long-press actions
+
+    @ViewBuilder
+    private var transactionActions: some View {
+        if !txHash.isEmpty {
+            Button { copyToPasteboard(txHash) } label: {
+                Label("Copy transaction hash", systemImage: "number")
+            }
+        }
+        Button { copyToPasteboard(copyableAmount) } label: {
+            Label("Copy amount", systemImage: "centsign.circle")
+        }
+        if !counterparty.isEmpty {
+            Button { copyToPasteboard(counterparty) } label: {
+                Label("Copy address", systemImage: "doc.on.doc")
+            }
+        }
+        if !txHash.isEmpty, let url = TransactionExplorer.url(for: txHash, chain: chain) {
+            Button { openURL(url) } label: {
+                Label("View on explorer", systemImage: "safari")
+            }
+        }
+    }
+
+    /// The native on-chain amount + symbol, e.g. "1.5 ETH" — what "Copy
+    /// amount" puts on the clipboard (the real moved amount, not a fiat
+    /// estimate).
+    private var copyableAmount: String {
+        "\(WalletFormatting.native(amount, decimals: 6)) \(tokenSymbol)"
+    }
+
+    private func copyToPasteboard(_ value: String) {
+#if canImport(UIKit)
+        UIPasteboard.general.string = value
+#endif
+        UniHapticEngine.shared.play(.success)
     }
 
     // MARK: - Leading mark + status badge
