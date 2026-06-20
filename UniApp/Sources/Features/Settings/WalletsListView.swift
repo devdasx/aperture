@@ -461,7 +461,7 @@ struct WalletsListView: View {
             let loaded = try? await Task.detached(priority: .userInitiated) {
                 try MnemonicVault.loadMnemonic(for: id)
             }.value
-            guard let words = loaded ?? nil, !words.isEmpty else {
+            guard let words = loaded, !words.isEmpty else {
                 errorAlertMessage = String.apertureLocalized("Couldn't read this wallet's phrase to back it up. Try restarting Aperture.")
                 return
             }
