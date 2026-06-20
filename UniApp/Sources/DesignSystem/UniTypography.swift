@@ -62,20 +62,23 @@ enum UniTypography {
     /// point value derived from the size); the font tokens here carry
     /// only size + weight + design + figure style.
     enum BalanceCard {
-        /// Balance integer + decimals — 44 / 700, tabular. SF Pro Display
-        /// (the system `.default` design IS SF Pro on iOS). The decimals
-        /// share this size; only their color differs (fainter tint).
-        static let balance = Font.system(size: 44, weight: .bold).monospacedDigit()
-        /// Currency code prefix — 21 / 600, tabular, muted color.
-        static let currency = Font.system(size: 21, weight: .semibold).monospacedDigit()
+        /// Balance integer + decimals — 44 / 700, tabular, **SF Pro Rounded**
+        /// (2026-06-20 user direction: the hero figure reads as rounded, not
+        /// the default system face). The decimals share this size; only their
+        /// color differs (fainter tint).
+        static let balance = Font.system(size: 44, weight: .bold, design: .rounded).monospacedDigit()
+        /// Currency code prefix — 21 / 600, tabular, rounded to match the
+        /// balance digits, muted color.
+        static let currency = Font.system(size: 21, weight: .semibold, design: .rounded).monospacedDigit()
         /// "Total balance" label — 13 / 500, muted.
         static let label = Font.system(size: 13, weight: .medium)
         /// Change pill (▲/▼ + percent) — 13 / 600, tabular.
         static let pill = Font.system(size: 13, weight: .semibold).monospacedDigit()
         /// "+293.10 today" amount line — 13 / 500, tabular, muted.
         static let amount = Font.system(size: 13, weight: .medium).monospacedDigit()
-        /// Wallet name in the header — 18.5 / 600 (bumped +4pt, 2026-06-19).
-        static let walletName = Font.system(size: 18.5, weight: .semibold)
+        /// Wallet name in the header — 16.5 / 600 (−2pt, 2026-06-20 user
+        /// direction).
+        static let walletName = Font.system(size: 16.5, weight: .semibold)
         /// "Copy address" action beneath the name — 11.5 / 500, muted.
         static let address = Font.system(size: 11.5, weight: .medium)
         /// Segmented time-selector item — 12.5 / 600.

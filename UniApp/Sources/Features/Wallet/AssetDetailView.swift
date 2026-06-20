@@ -165,7 +165,7 @@ struct AssetDetailView: View {
         let derived = derivedCache ?? computeDerived()
         List {
             heroCardSection(derived)
-            actionsSection
+            actionsSection(derived)
             networksSection(derived)
             activitySection(derived)
             footerSection
@@ -268,10 +268,17 @@ struct AssetDetailView: View {
     // MARK: - Actions (symbol-level → pick a network, then open pre-filled)
 
     @ViewBuilder
-    private var actionsSection: some View {
+    private func actionsSection(_ derived: DerivedState) -> some View {
+        // Show Swap only when at least one of this asset's networks is actually
+        // swappable (2026-06-20 user direction — assets on chains the swap
+        // provider doesn't cover, e.g. TRON/TON, must not show Swap at all).
+        // Uses the SAME networks the Swap picker would offer, so the button's
+        // presence and the picker's contents can never disagree.
+        let canSwap = derived.resolution.networks.contains { SwapChainMap.isSwappable($0.chain) }
         Section {
             WalletActionRegion(
                 canSend: activeWallet?.kind != .watchOnly,
+                canSwap: canSwap,
                 onSend: { beginAction(.send) },
                 onReceive: { beginAction(.receive) },
                 onSwap: { beginAction(.swap) }
