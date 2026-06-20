@@ -22,6 +22,50 @@ struct WalletsListView: View {
     @AppStorage("languagePreference") private var languageCode: String = LanguagePreference.systemCode
     @Environment(\.modelContext) private var modelContext
 
+    // MARK: - Filter & Sort (2026-06-20 — replaced the Edit button)
+    @AppStorage("walletsListSortKey") private var sortKeyRaw: String = WalletsListSortKey.custom.rawValue
+    @AppStorage("walletsListSortAscending") private var sortAscending: Bool = true
+    @AppStorage("walletsListShowCreated") private var showCreated: Bool = true
+    @AppStorage("walletsListShowImportedMnemonic") private var showImportedMnemonic: Bool = true
+    @AppStorage("walletsListShowImportedKey") private var showImportedKey: Bool = true
+    @AppStorage("walletsListShowWatchOnly") private var showWatchOnly: Bool = true
+    @AppStorage("walletsListOnlyUnbackedUp") private var onlyUnbackedUp: Bool = false
+    @State private var isShowingFilter: Bool = false
+
+    /// `true` when any non-default filter/sort is active — surfaces a dot on
+    /// the filter button so the user knows the list is narrowed.
+    private var isFilterActive: Bool {
+        sortKeyRaw != WalletsListSortKey.custom.rawValue
+            || !sortAscending
+            || !showCreated || !showImportedMnemonic || !showImportedKey || !showWatchOnly
+            || onlyUnbackedUp
+    }
+
+    private func kindShown(_ kind: WalletKind) -> Bool {
+        switch kind {
+        case .created:          return showCreated
+        case .importedMnemonic: return showImportedMnemonic
+        case .importedKey:      return showImportedKey
+        case .watchOnly:        return showWatchOnly
+        }
+    }
+
+    private func sortWallets(_ list: [WalletRecord]) -> [WalletRecord] {
+        let key = WalletsListSortKey(rawValue: sortKeyRaw) ?? .custom
+        let sorted: [WalletRecord]
+        switch key {
+        case .custom:
+            sorted = list.sorted { $0.sortOrder < $1.sortOrder }
+        case .name:
+            sorted = list.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+        case .balance:
+            sorted = list.sorted { fiatBalance(for: $0) < fiatBalance(for: $1) }
+        case .dateAdded:
+            sorted = list.sorted { $0.createdAt < $1.createdAt }
+        }
+        return sortAscending ? sorted : sorted.reversed()
+    }
+
     /// A wallet's total balance in the user's currency, summed from its own
     /// addresses' cached token-fiat values. Zero only until the wallet has
     /// actually been scanned (no scanned tokens yet).
@@ -75,9 +119,15 @@ struct WalletsListView: View {
     }
 
     private var filteredWallets: [WalletRecord] {
+        var result = wallets.filter { kindShown($0.kind) }
+        if onlyUnbackedUp {
+            result = result.filter { $0.requiresBackup }
+        }
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !query.isEmpty else { return wallets }
-        return wallets.filter { $0.name.localizedStandardContains(query) }
+        if !query.isEmpty {
+            result = result.filter { $0.name.localizedStandardContains(query) }
+        }
+        return sortWallets(result)
     }
 
     var body: some View {
@@ -156,9 +206,22 @@ struct WalletsListView: View {
         .navigationBarTitleDisplayMode(.large)
         .searchableIfNeeded(text: $searchText, when: wallets.count > 5)
         .toolbar {
-            if wallets.count > 1 {
-                ToolbarItem(placement: .topBarTrailing) { EditButton() }
+            ToolbarItem(placement: .topBarTrailing) {
+                Button { isShowingFilter = true } label: {
+                    Image(systemName: isFilterActive
+                          ? "line.3.horizontal.decrease.circle.fill"
+                          : "line.3.horizontal.decrease")
+                }
+                .accessibilityLabel(Text("Filter and sort"))
             }
+        }
+        .sheet(isPresented: $isShowingFilter) {
+            WalletsListFilterSheet()
+                .id(sheetDirectionKey)
+                .uniAppEnvironment()
+                .uniSheetDetents([.large])
+                .presentationDragIndicator(.visible)
+                .presentationBackground(UniColors.Background.primary)
         }
         .fullScreenCover(isPresented: $isShowingCreate, onDismiss: { createPath = .init() }) {
             RecoveryPhraseFlow(
@@ -446,5 +509,153 @@ private extension View {
         } else {
             self
         }
+    }
+}
+
+// MARK: - Filter & Sort
+
+/// How the Wallets list is ordered.
+enum WalletsListSortKey: String, CaseIterable, Identifiable {
+    case custom      // the user's manual / insertion order (sortOrder)
+    case name
+    case balance
+    case dateAdded   // createdAt
+
+    var id: String { rawValue }
+
+    var label: LocalizedStringKey {
+        switch self {
+        case .custom:    return "Custom order"
+        case .name:      return "Name"
+        case .balance:   return "Balance"
+        case .dateAdded: return "Date added"
+        }
+    }
+}
+
+/// The Wallets list **Filter & Sort** sheet (2026-06-20 — replaces the Edit
+/// button). Mirrors the wallet-home filter pattern: every control is an
+/// `@AppStorage` write that `WalletsListView` reads live, so "Done" is just
+/// "close" — the list is already updated.
+struct WalletsListFilterSheet: View {
+    @Environment(\.dismiss) private var dismiss
+
+    @AppStorage("walletsListSortKey") private var sortKeyRaw: String = WalletsListSortKey.custom.rawValue
+    @AppStorage("walletsListSortAscending") private var sortAscending: Bool = true
+    @AppStorage("walletsListShowCreated") private var showCreated: Bool = true
+    @AppStorage("walletsListShowImportedMnemonic") private var showImportedMnemonic: Bool = true
+    @AppStorage("walletsListShowImportedKey") private var showImportedKey: Bool = true
+    @AppStorage("walletsListShowWatchOnly") private var showWatchOnly: Bool = true
+    @AppStorage("walletsListOnlyUnbackedUp") private var onlyUnbackedUp: Bool = false
+
+    @State private var isShowingResetConfirm: Bool = false
+
+    private var isCustomSort: Bool { sortKeyRaw == WalletsListSortKey.custom.rawValue }
+
+    var body: some View {
+        NavigationStack {
+            List {
+                sortSection
+                kindSection
+                backupSection
+                resetSection
+            }
+            .listStyle(.insetGrouped)
+            .scrollContentBackground(.hidden)
+            .background(UniColors.Background.primary)
+            .navigationTitle(Text("Filter & Sort"))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button { dismiss() } label: {
+                        Text("Done").font(UniTypography.bodyEmphasized)
+                    }
+                }
+            }
+            .confirmationDialog(
+                Text("Reset filters?"),
+                isPresented: $isShowingResetConfirm,
+                titleVisibility: .visible
+            ) {
+                Button("Reset", role: .destructive) { resetAll() }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("This clears every filter and sort choice.")
+            }
+        }
+    }
+
+    private var sortSection: some View {
+        Section {
+            Picker(selection: $sortKeyRaw) {
+                ForEach(WalletsListSortKey.allCases) { key in
+                    Text(key.label).tag(key.rawValue)
+                }
+            } label: {
+                Text("Sort by").font(UniTypography.body).foregroundStyle(UniColors.Text.primary)
+            }
+            .listRowBackground(UniColors.Background.secondary)
+
+            Toggle(isOn: $sortAscending) {
+                Text("Ascending order").font(UniTypography.body).foregroundStyle(isCustomSort ? UniColors.Text.disabled : UniColors.Text.primary)
+            }
+            .tint(UniColors.Button.primaryTint)
+            .disabled(isCustomSort)
+            .listRowBackground(UniColors.Background.secondary)
+        } header: {
+            Text("Sort").font(UniTypography.footnote).foregroundStyle(UniColors.Text.tertiary)
+        }
+    }
+
+    private var kindSection: some View {
+        Section {
+            kindToggle("Created", isOn: $showCreated)
+            kindToggle("Imported (phrase)", isOn: $showImportedMnemonic)
+            kindToggle("Imported (key)", isOn: $showImportedKey)
+            kindToggle("Watch-only", isOn: $showWatchOnly)
+        } header: {
+            Text("Show wallet types").font(UniTypography.footnote).foregroundStyle(UniColors.Text.tertiary)
+        }
+    }
+
+    private var backupSection: some View {
+        Section {
+            Toggle(isOn: $onlyUnbackedUp) {
+                Text("Only wallets that need backup").font(UniTypography.body).foregroundStyle(UniColors.Text.primary)
+            }
+            .tint(UniColors.Button.primaryTint)
+            .listRowBackground(UniColors.Background.secondary)
+        } header: {
+            Text("Backup").font(UniTypography.footnote).foregroundStyle(UniColors.Text.tertiary)
+        }
+    }
+
+    private var resetSection: some View {
+        Section {
+            Button(role: .destructive) {
+                isShowingResetConfirm = true
+            } label: {
+                Text("Reset filters").font(UniTypography.body)
+            }
+            .listRowBackground(UniColors.Background.secondary)
+        }
+    }
+
+    private func kindToggle(_ title: LocalizedStringKey, isOn: Binding<Bool>) -> some View {
+        Toggle(isOn: isOn) {
+            Text(title).font(UniTypography.body).foregroundStyle(UniColors.Text.primary)
+        }
+        .tint(UniColors.Button.primaryTint)
+        .listRowBackground(UniColors.Background.secondary)
+    }
+
+    private func resetAll() {
+        sortKeyRaw = WalletsListSortKey.custom.rawValue
+        sortAscending = true
+        showCreated = true
+        showImportedMnemonic = true
+        showImportedKey = true
+        showWatchOnly = true
+        onlyUnbackedUp = false
     }
 }
