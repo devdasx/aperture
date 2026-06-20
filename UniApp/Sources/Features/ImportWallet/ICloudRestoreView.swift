@@ -59,26 +59,19 @@ struct ICloudRestoreView: View {
             UniLoadingState(caption: "Looking for backups in iCloud…")
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         case .failed(let message):
-            VStack(spacing: UniSpacing.l) {
-                UniEmptyState(
-                    title: "Couldn't reach iCloud",
-                    detail: LocalizedStringKey(message),
-                    mark: .icon(systemName: "icloud.slash")
-                )
-                UniButton(title: "Try again", variant: .secondary) {
-                    Task { listState = .loading; await load() }
-                }
-                .padding(.horizontal, UniSpacing.l)
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-        case .empty:
-            UniEmptyState(
-                title: "No iCloud backups",
-                detail: "You don't have any wallet backups in this iCloud account yet. Create one from a wallet's recovery-phrase screen → Backup Now.",
-                mark: .icon(systemName: "icloud")
+            restoreState(
+                icon: "icloud.slash",
+                title: "Couldn't reach iCloud",
+                detail: LocalizedStringKey(message),
+                actionTitle: "Try again",
+                action: { Task { listState = .loading; await load() } }
             )
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .padding(.horizontal, UniSpacing.l)
+        case .empty:
+            restoreState(
+                icon: "icloud",
+                title: "No iCloud backups",
+                detail: "You don't have any wallet backups in this iCloud account yet. Create one from a wallet's recovery-phrase screen → Backup Now."
+            )
         case .loaded(let backups):
             List {
                 Section {
@@ -105,6 +98,55 @@ struct ICloudRestoreView: View {
             .scrollContentBackground(.hidden)
             .background(UniColors.Background.primary)
         }
+    }
+
+    /// Modern, full-bleed state surface for the error + empty cases — sits on
+    /// the app background with NO white card (2026-06-20 user direction): a
+    /// soft tinted icon disc, a bold title, a calm detail line, and an optional
+    /// action pinned to the bottom. Replaces the `UniEmptyState` card, whose
+    /// `Material.card` fill read as a white block on this full-screen surface.
+    @ViewBuilder
+    private func restoreState(
+        icon: String,
+        title: LocalizedStringKey,
+        detail: LocalizedStringKey,
+        actionTitle: LocalizedStringKey? = nil,
+        action: (() -> Void)? = nil
+    ) -> some View {
+        VStack(spacing: 0) {
+            Spacer(minLength: 0)
+            VStack(spacing: UniSpacing.l) {
+                ZStack {
+                    Circle()
+                        .fill(UniColors.Background.secondary)
+                        .frame(width: 96, height: 96)
+                    Image(systemName: icon)
+                        .font(.system(size: 40, weight: .light))
+                        .symbolRenderingMode(.hierarchical)
+                        .foregroundStyle(UniColors.Icon.secondary)
+                }
+                .accessibilityHidden(true)
+                VStack(spacing: UniSpacing.s) {
+                    Text(title)
+                        .font(.system(size: 22, weight: .bold))
+                        .foregroundStyle(UniColors.Text.primary)
+                        .multilineTextAlignment(.center)
+                    Text(detail)
+                        .font(UniTypography.body)
+                        .foregroundStyle(UniColors.Text.secondary)
+                        .multilineTextAlignment(.center)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(.horizontal, UniSpacing.xl)
+            }
+            Spacer(minLength: 0)
+            if let actionTitle, let action {
+                UniButton(title: actionTitle, variant: .secondary) { action() }
+                    .padding(.horizontal, UniSpacing.l)
+                    .padding(.bottom, UniSpacing.l)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private func backupRow(_ blob: WalletBackupBlob) -> some View {
@@ -303,6 +345,15 @@ struct ICloudRestoreView: View {
             case .notFound:
                 return String.apertureLocalized("That backup is no longer in iCloud.")
             case .cloudKit(let code, let message):
+                // CloudKit 12 (invalidArguments) "Field 'recordName' is not
+                // marked queryable": listing backups runs a CKQuery, which
+                // needs a Queryable index on recordName in the WalletBackup
+                // record type. Saving a backup doesn't create that index — it
+                // must be added once in the CloudKit Console. Dev-facing
+                // actionable message rather than the raw server string.
+                if code == 12 || message.localizedCaseInsensitiveContains("queryable") {
+                    return String.apertureLocalized("iCloud restore needs one more setup step for this build. In the CloudKit Console for iCloud.com.aperture.wallet → the WalletBackup record type → Indexes, add a Queryable index on recordName, Save, then try again. (CloudKit 12)")
+                }
                 return String(format: String.apertureLocalized("Couldn't reach iCloud (CloudKit %lld): %@"), Int64(code), message)
             case .unknown(let message):
                 return String(format: String.apertureLocalized("Couldn't reach iCloud: %@"), message)

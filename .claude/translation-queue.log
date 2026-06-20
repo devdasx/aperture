@@ -643,3 +643,27 @@
 2026-06-20T00:02:02Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/AssetNetworkDetailView.swift	Filter and sort
 2026-06-20T00:02:02Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/AssetNetworkDetailView.swift	Not held on \(chain.displayName)
 2026-06-20T00:02:02Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/AssetNetworkDetailView.swift	Your address
+2026-06-20T00:05:52Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/ImportWallet/ICloudRestoreView.swift	Back
+2026-06-20T00:05:52Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/ImportWallet/ICloudRestoreView.swift	Choose a backup to restore. You'll need its password.
+2026-06-20T00:05:52Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/ImportWallet/ICloudRestoreView.swift	Enter password
+2026-06-20T00:05:52Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/ImportWallet/ICloudRestoreView.swift	Enter the backup password you set for this wallet to decrypt it.
+2026-06-20T00:05:52Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/ImportWallet/ICloudRestoreView.swift	Hide password
+2026-06-20T00:05:52Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/ImportWallet/ICloudRestoreView.swift	Incorrect password. Try again.
+2026-06-20T00:05:52Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/ImportWallet/ICloudRestoreView.swift	Restore from iCloud
+2026-06-20T00:05:52Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/ImportWallet/ICloudRestoreView.swift	\(blob.wordCount) words · \(blob.createdAt.formatted(date: .abbreviated, time: .omitted))
+2026-06-20T00:06:05Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/ImportWallet/ICloudRestoreView.swift	Back
+2026-06-20T00:06:05Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/ImportWallet/ICloudRestoreView.swift	Choose a backup to restore. You'll need its password.
+2026-06-20T00:06:05Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/ImportWallet/ICloudRestoreView.swift	Enter password
+2026-06-20T00:06:05Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/ImportWallet/ICloudRestoreView.swift	Enter the backup password you set for this wallet to decrypt it.
+2026-06-20T00:06:05Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/ImportWallet/ICloudRestoreView.swift	Hide password
+2026-06-20T00:06:05Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/ImportWallet/ICloudRestoreView.swift	Incorrect password. Try again.
+2026-06-20T00:06:05Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/ImportWallet/ICloudRestoreView.swift	Restore from iCloud
+2026-06-20T00:06:05Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/ImportWallet/ICloudRestoreView.swift	\(blob.wordCount) words · \(blob.createdAt.formatted(date: .abbreviated, time: .omitted))
+2026-06-20T00:06:15Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/ImportWallet/ICloudRestoreView.swift	Back
+2026-06-20T00:06:15Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/ImportWallet/ICloudRestoreView.swift	Choose a backup to restore. You'll need its password.
+2026-06-20T00:06:15Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/ImportWallet/ICloudRestoreView.swift	Enter password
+2026-06-20T00:06:15Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/ImportWallet/ICloudRestoreView.swift	Enter the backup password you set for this wallet to decrypt it.
+2026-06-20T00:06:15Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/ImportWallet/ICloudRestoreView.swift	Hide password
+2026-06-20T00:06:15Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/ImportWallet/ICloudRestoreView.swift	Incorrect password. Try again.
+2026-06-20T00:06:15Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/ImportWallet/ICloudRestoreView.swift	Restore from iCloud
+2026-06-20T00:06:15Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/ImportWallet/ICloudRestoreView.swift	\(blob.wordCount) words · \(blob.createdAt.formatted(date: .abbreviated, time: .omitted))

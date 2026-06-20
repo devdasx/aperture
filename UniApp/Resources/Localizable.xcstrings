@@ -538214,6 +538214,17 @@
           }
         }
       }
+    },
+    "iCloud restore needs one more setup step for this build. In the CloudKit Console for iCloud.com.aperture.wallet → the WalletBackup record type → Indexes, add a Queryable index on recordName, Save, then try again. (CloudKit 12)": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "iCloud restore needs one more setup step for this build. In the CloudKit Console for iCloud.com.aperture.wallet → the WalletBackup record type → Indexes, add a Queryable index on recordName, Save, then try again. (CloudKit 12)"
+          }
+        }
+      }
     }
   },
   "version": "1.0"
