@@ -969,3 +969,126 @@
 2026-06-20T00:50:01Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/ImportWallet/ImportSuccessView.swift	Save
 2026-06-20T00:50:46Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/CreateWallet/WalletReadyView.swift	Retry
 2026-06-20T00:50:55Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/CreateWallet/WalletReadyView.swift	Retry
+2026-06-20T00:52:10Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Add ERC-20 / SPL tokens by pasting their contract or mint address. Aperture reads name, symbol, and decimals from chain.
+2026-06-20T00:52:10Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	An iCloud backup keeps an encrypted copy of your recovery phrase in your private iCloud, so you can restore on another device. A manual backup means you've written the words down yourself. Doing both is the safest.
+2026-06-20T00:52:10Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Back up now
+2026-06-20T00:52:10Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Backed up
+2026-06-20T00:52:10Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Backup
+2026-06-20T00:52:10Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Cancel
+2026-06-20T00:52:10Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Confirm
+2026-06-20T00:52:10Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Confirm to back up your wallet.
+2026-06-20T00:52:10Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Confirm to view your private key.
+2026-06-20T00:52:10Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Confirm to view your private keys.
+2026-06-20T00:52:10Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Confirm to view your recovery phrase.
+2026-06-20T00:52:10Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Custom tokens
+2026-06-20T00:52:10Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Customize
+2026-06-20T00:52:10Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Delete wallet
+2026-06-20T00:52:10Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Deleting this wallet removes it from this iPhone and erases its encrypted seed from Keychain. Your recovery phrase, if you wrote it down, is still yours — you can restore the wallet later by importing it.
+2026-06-20T00:52:10Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Details
+2026-06-20T00:52:10Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Kind
+2026-06-20T00:52:10Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Name
+2026-06-20T00:52:10Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Not backed up
+2026-06-20T00:52:10Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	OK
+2026-06-20T00:52:10Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Recovery & keys
+2026-06-20T00:52:10Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Save
+2026-06-20T00:52:10Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Something went wrong
+2026-06-20T00:52:10Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	This wallet watches an address. There is no recovery phrase or private key on this iPhone — nothing secret is stored.
+2026-06-20T00:52:10Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Tokens
+2026-06-20T00:52:10Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Unavailable
+2026-06-20T00:52:10Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	View anyway
+2026-06-20T00:52:10Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	View private key
+2026-06-20T00:52:10Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	View private keys
+2026-06-20T00:52:10Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	View recovery phrase
+2026-06-20T00:52:10Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Wallet
+2026-06-20T00:52:25Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Add ERC-20 / SPL tokens by pasting their contract or mint address. Aperture reads name, symbol, and decimals from chain.
+2026-06-20T00:52:25Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	An iCloud backup keeps an encrypted copy of your recovery phrase in your private iCloud, so you can restore on another device. A manual backup means you've written the words down yourself. Doing both is the safest.
+2026-06-20T00:52:25Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Back up now
+2026-06-20T00:52:25Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Backed up
+2026-06-20T00:52:25Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Backup
+2026-06-20T00:52:25Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Cancel
+2026-06-20T00:52:25Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Confirm
+2026-06-20T00:52:25Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Confirm to back up your wallet.
+2026-06-20T00:52:25Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Confirm to view your private key.
+2026-06-20T00:52:25Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Confirm to view your private keys.
+2026-06-20T00:52:25Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Confirm to view your recovery phrase.
+2026-06-20T00:52:25Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Custom tokens
+2026-06-20T00:52:25Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Customize
+2026-06-20T00:52:25Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Delete wallet
+2026-06-20T00:52:25Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Deleting this wallet removes it from this iPhone and erases its encrypted seed from Keychain. Your recovery phrase, if you wrote it down, is still yours — you can restore the wallet later by importing it.
+2026-06-20T00:52:25Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Details
+2026-06-20T00:52:25Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Kind
+2026-06-20T00:52:25Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Name
+2026-06-20T00:52:25Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Not backed up
+2026-06-20T00:52:25Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	OK
+2026-06-20T00:52:25Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Recovery & keys
+2026-06-20T00:52:25Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Save
+2026-06-20T00:52:25Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Something went wrong
+2026-06-20T00:52:25Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	This wallet watches an address. There is no recovery phrase or private key on this iPhone — nothing secret is stored.
+2026-06-20T00:52:25Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Tokens
+2026-06-20T00:52:25Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Unavailable
+2026-06-20T00:52:25Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	View anyway
+2026-06-20T00:52:25Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	View private key
+2026-06-20T00:52:25Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	View private keys
+2026-06-20T00:52:25Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	View recovery phrase
+2026-06-20T00:52:25Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Wallet
+2026-06-20T00:52:41Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Add ERC-20 / SPL tokens by pasting their contract or mint address. Aperture reads name, symbol, and decimals from chain.
+2026-06-20T00:52:41Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	An iCloud backup keeps an encrypted copy of your recovery phrase in your private iCloud, so you can restore on another device. A manual backup means you've written the words down yourself. Doing both is the safest.
+2026-06-20T00:52:41Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Back up now
+2026-06-20T00:52:41Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Backed up
+2026-06-20T00:52:41Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Backup
+2026-06-20T00:52:41Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Cancel
+2026-06-20T00:52:41Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Confirm
+2026-06-20T00:52:41Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Confirm to back up your wallet.
+2026-06-20T00:52:41Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Confirm to view your private key.
+2026-06-20T00:52:41Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Confirm to view your private keys.
+2026-06-20T00:52:41Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Confirm to view your recovery phrase.
+2026-06-20T00:52:41Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Custom tokens
+2026-06-20T00:52:41Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Customize
+2026-06-20T00:52:41Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Delete wallet
+2026-06-20T00:52:41Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Deleting this wallet removes it from this iPhone and erases its encrypted seed from Keychain. Your recovery phrase, if you wrote it down, is still yours — you can restore the wallet later by importing it.
+2026-06-20T00:52:41Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Details
+2026-06-20T00:52:41Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Kind
+2026-06-20T00:52:41Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Name
+2026-06-20T00:52:41Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Not backed up
+2026-06-20T00:52:41Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	OK
+2026-06-20T00:52:41Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Recovery & keys
+2026-06-20T00:52:41Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Save
+2026-06-20T00:52:41Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Something went wrong
+2026-06-20T00:52:41Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	This wallet watches an address. There is no recovery phrase or private key on this iPhone — nothing secret is stored.
+2026-06-20T00:52:41Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Tokens
+2026-06-20T00:52:41Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Unavailable
+2026-06-20T00:52:41Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	View anyway
+2026-06-20T00:52:41Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	View private key
+2026-06-20T00:52:41Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	View private keys
+2026-06-20T00:52:41Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	View recovery phrase
+2026-06-20T00:52:41Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Wallet
+2026-06-20T00:53:03Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Add ERC-20 / SPL tokens by pasting their contract or mint address. Aperture reads name, symbol, and decimals from chain.
+2026-06-20T00:53:03Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	An iCloud backup keeps an encrypted copy of your recovery phrase in your private iCloud, so you can restore on another device. A manual backup means you've written the words down yourself. Doing both is the safest.
+2026-06-20T00:53:03Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Back up now
+2026-06-20T00:53:03Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Backed up
+2026-06-20T00:53:03Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Backup
+2026-06-20T00:53:03Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Cancel
+2026-06-20T00:53:03Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Confirm
+2026-06-20T00:53:03Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Confirm to back up your wallet.
+2026-06-20T00:53:03Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Confirm to view your private key.
+2026-06-20T00:53:03Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Confirm to view your private keys.
+2026-06-20T00:53:03Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Confirm to view your recovery phrase.
+2026-06-20T00:53:03Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Custom tokens
+2026-06-20T00:53:03Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Customize
+2026-06-20T00:53:03Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Delete wallet
+2026-06-20T00:53:03Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Deleting this wallet removes it from this iPhone and erases its encrypted seed from Keychain. Your recovery phrase, if you wrote it down, is still yours — you can restore the wallet later by importing it.
+2026-06-20T00:53:03Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Details
+2026-06-20T00:53:03Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Kind
+2026-06-20T00:53:03Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Name
+2026-06-20T00:53:03Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Not backed up
+2026-06-20T00:53:03Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	OK
+2026-06-20T00:53:03Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Recovery & keys
+2026-06-20T00:53:03Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Save
+2026-06-20T00:53:03Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Something went wrong
+2026-06-20T00:53:03Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	This wallet watches an address. There is no recovery phrase or private key on this iPhone — nothing secret is stored.
+2026-06-20T00:53:03Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Tokens
+2026-06-20T00:53:03Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Unavailable
+2026-06-20T00:53:03Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	View private key
+2026-06-20T00:53:03Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	View private keys
+2026-06-20T00:53:03Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	View recovery phrase
+2026-06-20T00:53:03Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/WalletDetailView.swift	Wallet

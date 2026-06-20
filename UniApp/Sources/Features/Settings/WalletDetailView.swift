@@ -68,7 +68,6 @@ struct WalletDetailView: View {
     private enum SensitiveReveal { case phrase, key, chainKeys, backup }
     @State private var pendingReveal: SensitiveReveal?
     @State private var isShowingPasscodeGate: Bool = false
-    @State private var isShowingNoAuthWarning: Bool = false
 
     /// Already-localized message for the shared error alert. Non-nil
     /// presents the alert; dismissing it clears the value.
@@ -445,23 +444,6 @@ struct WalletDetailView: View {
             .uniAppEnvironment()
             .presentationBackground(UniColors.Background.primary)
         }
-        // No app passcode AND no device biometric → nothing on the device
-        // can gate the secret. Allow, but warn honestly first.
-        .sheet(isPresented: $isShowingNoAuthWarning) {
-            NoDeviceLockWarningSheet(
-                onContinue: {
-                    isShowingNoAuthWarning = false
-                    let target = pendingReveal
-                    DispatchQueue.main.async {
-                        if let target { performReveal(target) }
-                    }
-                },
-                onCancel: { isShowingNoAuthWarning = false }
-            )
-            .uniAppEnvironment()
-            .intrinsicHeightSheet()
-            .presentationBackground(UniColors.Background.primary)
-        }
         .sheet(isPresented: $isShowingIconPicker) {
             WalletIconPickerSheet(walletId: wallet.id)
                 .uniAppEnvironment()
@@ -816,8 +798,11 @@ struct WalletDetailView: View {
                 }
             )
         } else {
-            // Nothing on the device can gate it → warn, then allow.
-            isShowingNoAuthWarning = true
+            // Nothing on the device can gate it → reveal directly. The old
+            // "No lock is set" warning was removed app-wide (2026-06-20 user
+            // direction); on a phone with no passcode and no biometric there's
+            // nothing to authenticate against, so we don't interrupt.
+            performReveal(target)
         }
     }
 
@@ -994,38 +979,6 @@ private struct BiometricChallengeSheet: View {
         guard !hasCompleted else { return }
         hasCompleted = true
         if case .success = outcome { onSuccess() } else { onFailure() }
-    }
-}
-
-// MARK: - No-device-lock warning sheet
-
-/// Shown before a sensitive reveal when this iPhone has neither an
-/// in-app passcode nor an enrolled biometric — nothing can gate the
-/// secret, so we say so honestly (Rule #16) and let the user decide.
-/// Recommends turning on a lock, but never blocks: the user owns the
-/// device and the choice.
-private struct NoDeviceLockWarningSheet: View {
-    let onContinue: () -> Void
-    let onCancel: () -> Void
-
-    var body: some View {
-        UniSheet(title: "No lock is set") {
-            VStack(spacing: UniSpacing.m) {
-                Image(systemName: "exclamationmark.shield")
-                    .font(.system(size: 44, weight: .light))
-                    .symbolRenderingMode(.hierarchical)
-                    .foregroundStyle(UniColors.Status.warningForeground)
-                    .accessibilityHidden(true)
-                UniBody(
-                    text: "This iPhone has no passcode or Face ID set, so anyone holding it unlocked could view this secret. Turn on a passcode or Face ID in Settings for real protection.",
-                    alignment: .center,
-                    color: UniColors.Text.secondary
-                )
-            }
-        } actions: {
-            UniButton(title: "View anyway", variant: .primary) { onContinue() }
-            UniButton(title: "Cancel", variant: .secondary) { onCancel() }
-        }
     }
 }
 
