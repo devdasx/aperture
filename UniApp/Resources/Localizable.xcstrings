@@ -538442,6 +538442,17 @@
           }
         }
       }
+    },
+    "Copy amount": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Copy amount"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

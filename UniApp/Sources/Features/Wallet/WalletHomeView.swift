@@ -485,7 +485,8 @@ struct WalletHomeView: View {
                 counterparty: tx.counterparty,
                 occurredAt: tx.occurredAt,
                 status: TransactionStatus(rawValue: tx.statusRaw) ?? .confirmed,
-                kind: tx.kind
+                kind: tx.kind,
+                txHash: tx.txHash
             )
         }
     }
@@ -2828,6 +2829,8 @@ private struct ActivityRowModel: Identifiable, Equatable {
     let occurredAt: Date
     let status: TransactionStatus
     let kind: TransactionKind
+    /// On-chain hash — drives the row's long-press copy/explorer menu.
+    let txHash: String
 }
 
 /// The recent-activity `ForEach`, extracted from `WalletHomeView.body` into a
@@ -2869,7 +2872,8 @@ private struct RecentActivityRows: View {
                     kind: row.kind,
                     fiatValue: ActivityFiat.value(amountRaw: row.amountRaw, symbol: row.tokenSymbol, map: map),
                     fiatCurrencyCode: currencyCode,
-                    tokenContract: row.tokenContract
+                    tokenContract: row.tokenContract,
+                    txHash: row.txHash
                 )
             }
             .buttonStyle(.plain)

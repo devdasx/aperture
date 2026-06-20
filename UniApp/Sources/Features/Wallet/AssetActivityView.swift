@@ -318,7 +318,8 @@ struct AssetActivityView: View {
             kind: tx.kind,
             fiatValue: ActivityFiat.value(amountRaw: tx.amountRaw, symbol: tx.tokenSymbol, map: priceMap),
             fiatCurrencyCode: currencyCode,
-            tokenContract: tx.tokenContract
+            tokenContract: tx.tokenContract,
+            txHash: tx.txHash
         )
     }
 }
