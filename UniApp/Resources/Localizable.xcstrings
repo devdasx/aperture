@@ -538431,6 +538431,17 @@
           }
         }
       }
+    },
+    "Hide": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hide"
+          }
+        }
+      }
     }
   },
   "version": "1.0"
