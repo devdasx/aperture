@@ -141,21 +141,17 @@ struct BrowserHomeView: View {
                     router: router
                 )
             }
-            .sheet(isPresented: $isShowingQRScanner) {
+            .fullScreenCover(isPresented: $isShowingQRScanner) {
+                // The unified full-screen scanner auto-detects WalletConnect
+                // (and addresses) — no per-caller `wc:` filter (2026-06-20).
                 UniQRScannerSheet(
-                    title: "Scan WalletConnect QR",
-                    prompt: "Point your camera at a WalletConnect QR code from any dApp.",
-                    accepts: { $0.hasPrefix("wc:") },
-                    onScan: { uri in
-                        Task { await router.handleWalletConnectURI(uri) }
+                    onConnect: { uri in
                         isShowingQRScanner = false
+                        Task { await router.handleWalletConnectURI(uri) }
                     }
                 )
                 .id(sheetDirectionKey)
                 .uniAppEnvironment()
-                .uniSheetDetents([.large])
-                .presentationDragIndicator(.visible)
-                .presentationBackground(UniColors.Background.primary)
             }
             .sheet(isPresented: $isShowingBrowserSettings) {
                 BrowserSettingsView()

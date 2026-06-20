@@ -134,11 +134,13 @@ struct SendRecipientView: View {
                 CoinTitleBar(chain: chain, tokenSymbol: tokenSymbol, verb: "Send", trailing: "to")
             }
         }
-        .sheet(isPresented: $isScanning) {
+        .fullScreenCover(isPresented: $isScanning) {
+            // Raw-deliver mode: this scan is already scoped to `chain`, so the
+            // scanner hands back the payload and the field validates it.
             UniQRScannerSheet(
                 title: "Scan address",
                 prompt: "Point your camera at a \(chain.displayName) address QR code.",
-                onScan: { scanned in
+                onRawDeliver: { scanned in
                     fill(cleanScanned(scanned))
                     isScanning = false
                 }
