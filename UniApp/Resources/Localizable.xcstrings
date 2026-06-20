@@ -538453,6 +538453,83 @@
           }
         }
       }
+    },
+    "Scan any QR code · Wallet address or WalletConnect": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Scan any QR code · Wallet address or WalletConnect"
+          }
+        }
+      }
+    },
+    "Enable camera": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Enable camera"
+          }
+        }
+      }
+    },
+    "Gallery": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gallery"
+          }
+        }
+      }
+    },
+    "WalletConnect": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "WalletConnect"
+          }
+        }
+      }
+    },
+    "Connect this dApp to your wallet.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Connect this dApp to your wallet."
+          }
+        }
+      }
+    },
+    "Code not recognized": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Code not recognized"
+          }
+        }
+      }
+    },
+    "That isn't a wallet address or a WalletConnect code.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "That isn't a wallet address or a WalletConnect code."
+          }
+        }
+      }
     }
   },
   "version": "1.0"
