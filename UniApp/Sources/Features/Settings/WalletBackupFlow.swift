@@ -26,6 +26,11 @@ struct WalletBackupFlow: View {
     let walletId: UUID
     let walletName: String
     let words: [String]
+    /// The wallet's avatar (color / logo) — stored into the iCloud backup so
+    /// the restore picker shows the user's chosen disc, and a restored wallet
+    /// keeps it (2026-06-20). nil from paths that don't have it yet (create
+    /// flow); the restore UI then derives a colored disc from the name.
+    var avatar: WalletAvatarSpec? = nil
     let onClose: () -> Void
     /// `true` when run from wallet CREATION (the wallet isn't persisted yet):
     /// the manual path skips `markManualBackupComplete` (there's no record to
@@ -58,6 +63,7 @@ struct WalletBackupFlow: View {
         walletId: UUID,
         walletName: String,
         words: [String],
+        avatar: WalletAvatarSpec? = nil,
         onClose: @escaping () -> Void,
         isNewWallet: Bool = false,
         onBackedUp: ((WalletBackupMethod) -> Void)? = nil
@@ -65,6 +71,7 @@ struct WalletBackupFlow: View {
         self.walletId = walletId
         self.walletName = walletName
         self.words = words
+        self.avatar = avatar
         self.onClose = onClose
         self.isNewWallet = isNewWallet
         self.onBackedUp = onBackedUp
@@ -117,6 +124,7 @@ struct WalletBackupFlow: View {
                 walletId: walletId,
                 walletName: walletName,
                 words: words,
+                avatar: avatar,
                 password: password,
                 onDone: { complete(.iCloud) }
             )
@@ -423,6 +431,7 @@ private struct ICloudProgressScreen: View {
     let walletId: UUID
     let walletName: String
     let words: [String]
+    let avatar: WalletAvatarSpec?
     let password: String
     let onDone: () -> Void
 
@@ -516,12 +525,12 @@ private struct ICloudProgressScreen: View {
         steps = [.active, .pending, .pending]
         progress = reduceMotion ? 0.34 : 0.06
 
-        let wid = walletId, wname = walletName, w = words, pw = password
+        let wid = walletId, wname = walletName, w = words, pw = password, av = avatar
         do {
             // 1 · Encrypt on device (PBKDF2 600k → AES-GCM) off the main actor.
             let blob = try await Task.detached(priority: .userInitiated) {
                 try WalletBackupBlob.make(
-                    walletId: wid, walletName: wname, words: w, password: pw, createdAt: Date()
+                    walletId: wid, walletName: wname, words: w, password: pw, createdAt: Date(), avatar: av
                 )
             }.value
             steps[0] = .done; steps[1] = .active

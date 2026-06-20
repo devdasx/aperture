@@ -375,6 +375,7 @@ struct WalletDetailView: View {
                 walletId: wallet.id,
                 walletName: wallet.name,
                 words: backupWords,
+                avatar: wallet.avatarSpec, // carry the user's chosen disc into the backup
                 onClose: {
                     isShowingWalletBackup = false
                     backupWords = []

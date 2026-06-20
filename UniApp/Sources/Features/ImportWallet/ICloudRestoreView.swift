@@ -178,10 +178,15 @@ struct ICloudRestoreView: View {
 
     private func backupRow(_ blob: WalletBackupBlob) -> some View {
         HStack(spacing: UniSpacing.s) {
-            Image(systemName: "lock.icloud")
-                .font(.system(size: 20))
-                .foregroundStyle(UniColors.Icon.secondary)
-                .frame(width: 30)
+            // The wallet's own identity disc (the user's chosen color / logo),
+            // not a generic cloud+lock (2026-06-20 user direction). Backups
+            // made before the avatar was stored derive a colored disc from the
+            // name so it's still a logo, never a cloud.
+            WalletAvatar(
+                spec: blob.avatar ?? .auto(name: blob.walletName),
+                size: .row,
+                walletId: blob.walletId
+            )
             VStack(alignment: .leading, spacing: 2) {
                 Text(verbatim: blob.walletName)
                     .font(UniTypography.body)
@@ -360,6 +365,12 @@ struct ICloudRestoreView: View {
             let walletId = try await state.persist(
                 result: .mnemonic, into: repo, defaultName: blob.walletName
             )
+            // Restore the wallet's saved look (color / logo) so it comes back
+            // exactly as the user had it. Best-effort — a default disc is fine
+            // if this fails, and older backups simply have no avatar to apply.
+            if let avatar = blob.avatar {
+                _ = try? await repo.updateAvatar(id: walletId, spec: avatar)
+            }
             state.zeroSensitiveInput()
             // Kick the restored wallet's first balance/history refresh so it
             // doesn't read $0 until relaunch (mirrors the typed-import path).
