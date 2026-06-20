@@ -11,21 +11,29 @@ import SwiftData
 /// list doesn't carry chrome it doesn't need.
 struct WalletsListView: View {
     @Query(sort: \WalletRecord.sortOrder) private var wallets: [WalletRecord]
-    /// Per-chain aggregate rows — summed per wallet for the row balance
-    /// (2026-06-17). The same source the wallet-home hero uses, so the
-    /// management list and the home agree.
-    @Query private var chainStates: [ChainStateRecord]
+    /// Live per-token balances — the SAME source the wallet-home hero uses for
+    /// its `liveBalanceSum`, so this list shows the same number as the home
+    /// (2026-06-20 fix). The previous `ChainStateRecord` aggregate could be
+    /// empty even when token balances existed, which made every wallet read
+    /// JOD 0.000 here while the home showed the real total.
+    @Query private var tokenBalances: [TokenBalanceRecord]
     @AppStorage("activeWalletId") private var activeWalletIdRaw: String = ""
     @AppStorage(CurrencyPreference.storageKey) private var currencyCode: String = CurrencyPreference.defaultCode
     @AppStorage("languagePreference") private var languageCode: String = LanguagePreference.systemCode
     @Environment(\.modelContext) private var modelContext
 
-    /// A wallet's total balance in the user's currency, summed from its
-    /// per-chain aggregate rows. Zero until the wallet has been scanned.
+    /// A wallet's total balance in the user's currency, summed from its own
+    /// addresses' cached token-fiat values. Zero only until the wallet has
+    /// actually been scanned (no scanned tokens yet).
     private func fiatBalance(for wallet: WalletRecord) -> Decimal {
-        chainStates
-            .filter { $0.walletId == wallet.id && $0.fiatCurrencyCode == currencyCode }
-            .reduce(Decimal.zero) { $0 + $1.totalFiat }
+        let addressIds = Set(wallet.addresses.map(\.id))
+        var total = Decimal.zero
+        for balance in tokenBalances {
+            guard balance.fiatCurrencyCode == currencyCode else { continue }
+            guard let aid = balance.addressId, addressIds.contains(aid) else { continue }
+            total += balance.fiatValueCached
+        }
+        return total
     }
 
     @State private var searchText: String = ""
