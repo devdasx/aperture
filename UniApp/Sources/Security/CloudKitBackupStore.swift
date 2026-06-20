@@ -25,6 +25,16 @@ struct CloudKitBackupStore: Sendable {
     private static let blobKey = "blob"
     private static let versionKey = "version"
 
+    // A single, fixed-recordID "index" record listing every backed-up wallet
+    // id. Restore reads THIS by recordID (no `CKQuery`), so it never needs a
+    // server-side Queryable index on `recordName` — the gotcha that made
+    // `list()`'s query fail with CloudKit 12 even though backups existed.
+    // Auto-created on first save (Development auto-schema); maintained
+    // best-effort so a backup never fails because an index write did.
+    private static let indexRecordType = "WalletBackupIndex"
+    private static let indexRecordName = "wallet-backup-index"
+    private static let indexIdsKey = "walletIds"
+
     private static let log = Logger(subsystem: "com.thuglife.aperture", category: "backup-cloudkit")
 
     /// Human-surfaceable failure. Every case maps to a real CloudKit / account
@@ -49,6 +59,10 @@ struct CloudKitBackupStore: Sendable {
 
     private var database: CKDatabase {
         CKContainer(identifier: Self.containerIdentifier).privateCloudDatabase
+    }
+
+    private var indexRecordID: CKRecord.ID {
+        CKRecord.ID(recordName: Self.indexRecordName)
     }
 
     // MARK: - Account
@@ -111,6 +125,9 @@ struct CloudKitBackupStore: Sendable {
             }
             database.add(op)
         }
+        // Backup is safely uploaded — now record it in the query-free index
+        // (best-effort: never let an index hiccup undo a successful backup).
+        await addToIndex(blob.walletId)
     }
 
     // MARK: - Verify / fetch
@@ -126,7 +143,13 @@ struct CloudKitBackupStore: Sendable {
         let recordID = CKRecord.ID(recordName: walletId.uuidString)
         do {
             let record = try await database.record(for: recordID)
-            return try Self.decode(record)
+            let blob = try Self.decode(record)
+            // Self-heal: any confirmed backup gets listed in the index, so a
+            // backup made BEFORE the index existed becomes restorable the next
+            // time the app checks its status (e.g. opening the wallet detail) —
+            // no re-backup, no Console step. Cheap: a no-op once it's listed.
+            await addToIndex(walletId)
+            return blob
         } catch {
             throw Self.map(error)
         }
@@ -137,7 +160,43 @@ struct CloudKitBackupStore: Sendable {
     /// All of the user's wallet backups, newest first. Decodes only the
     /// clear envelope (no password needed) so the restore screen can list
     /// them before the user enters a password.
+    ///
+    /// **Query-free.** Reads the fixed-recordID index, then fetches each
+    /// listed backup by recordID — no `CKQuery`, so no server-side Queryable
+    /// index on `recordName` is required. Only if the index record doesn't
+    /// exist yet (a brand-new install that never wrote one) does it fall back
+    /// to a query.
     func list() async throws -> [WalletBackupBlob] {
+        if let indexed = try await listFromIndex(), !indexed.isEmpty {
+            return indexed
+        }
+        return try await listViaQuery()
+    }
+
+    /// Read the index record by recordID and fetch each listed backup. Returns
+    /// `nil` when there is no index record yet (→ caller tries the query),
+    /// `[]` when the index exists but every listed backup is gone.
+    private func listFromIndex() async throws -> [WalletBackupBlob]? {
+        guard let index = try? await database.record(for: indexRecordID) else {
+            return nil // no index record yet
+        }
+        let ids = (index[Self.indexIdsKey] as? [String]) ?? []
+        guard !ids.isEmpty else { return [] }
+        var blobs: [WalletBackupBlob] = []
+        for idString in ids {
+            let recordID = CKRecord.ID(recordName: idString)
+            if let record = try? await database.record(for: recordID),
+               let blob = try? Self.decode(record) {
+                blobs.append(blob)
+            }
+        }
+        return blobs.sorted { $0.createdAt > $1.createdAt }
+    }
+
+    /// Legacy fallback: enumerate via `CKQuery` (needs a Queryable index on
+    /// `recordName` in the CloudKit schema). Only reached when no index record
+    /// exists yet; the index path is the norm.
+    private func listViaQuery() async throws -> [WalletBackupBlob] {
         let query = CKQuery(recordType: Self.recordType, predicate: NSPredicate(value: true))
         do {
             let (matchResults, _) = try await database.records(matching: query)
@@ -167,8 +226,51 @@ struct CloudKitBackupStore: Sendable {
             _ = try await database.deleteRecord(withID: recordID)
         } catch {
             let mapped = Self.map(error)
-            if case .notFound = mapped { return } // already gone — idempotent
+            if case .notFound = mapped {
+                await removeFromIndex(walletId) // keep the index honest
+                return // already gone — idempotent
+            }
             throw mapped
+        }
+        await removeFromIndex(walletId)
+    }
+
+    // MARK: - Index maintenance (query-free restore)
+
+    /// Best-effort: ensure `walletId` appears in the index record. NEVER
+    /// throws — a backup (or a status fetch) must succeed even if the index
+    /// write fails. A no-op once the id is already listed.
+    private func addToIndex(_ walletId: UUID) async {
+        let key = walletId.uuidString
+        do {
+            let record: CKRecord
+            if let existing = try? await database.record(for: indexRecordID) {
+                record = existing
+            } else {
+                record = CKRecord(recordType: Self.indexRecordType, recordID: indexRecordID)
+            }
+            var ids = (record[Self.indexIdsKey] as? [String]) ?? []
+            guard !ids.contains(key) else { return } // already listed — no write
+            ids.append(key)
+            record[Self.indexIdsKey] = ids as NSArray
+            _ = try await database.save(record)
+        } catch {
+            Self.log.error("Backup index add failed (non-fatal): \(String(describing: error), privacy: .public)")
+        }
+    }
+
+    /// Best-effort: drop `walletId` from the index record. Never throws.
+    private func removeFromIndex(_ walletId: UUID) async {
+        let key = walletId.uuidString
+        do {
+            guard let record = try? await database.record(for: indexRecordID) else { return }
+            var ids = (record[Self.indexIdsKey] as? [String]) ?? []
+            guard ids.contains(key) else { return }
+            ids.removeAll { $0 == key }
+            record[Self.indexIdsKey] = ids as NSArray
+            _ = try await database.save(record)
+        } catch {
+            Self.log.error("Backup index remove failed (non-fatal): \(String(describing: error), privacy: .public)")
         }
     }
 
