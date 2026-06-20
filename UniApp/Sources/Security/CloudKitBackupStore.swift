@@ -235,6 +235,23 @@ struct CloudKitBackupStore: Sendable {
         await removeFromIndex(walletId)
     }
 
+    // MARK: - Reconcile (auto-heal the index for pre-index backups)
+
+    /// Best-effort: ensure every locally-present wallet that actually has an
+    /// iCloud backup is listed in the query-free index. This is what makes a
+    /// backup created BEFORE the index existed restorable with NO Console step
+    /// and NO manual re-backup — the moment any device running this build sees
+    /// the wallet, the CloudKit-side index record is populated, and it persists
+    /// in iCloud for a later fresh-install restore. Runs silently; per-wallet
+    /// failures (no backup for that wallet, offline) are ignored.
+    func reconcileIndex(walletIds: [UUID]) async {
+        for id in walletIds {
+            // `fetch` self-heals the index on success (addToIndex); a wallet
+            // with no backup simply throws and is skipped.
+            _ = try? await fetch(walletId: id)
+        }
+    }
+
     // MARK: - Index maintenance (query-free restore)
 
     /// Best-effort: ensure `walletId` appears in the index record. NEVER

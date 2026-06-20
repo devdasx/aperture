@@ -147,6 +147,12 @@ struct WalletHomeView: View {
     /// byte-for-byte unchanged.
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
+    /// One-shot-per-session guard for the iCloud backup-index reconcile
+    /// (2026-06-20). Heals the query-free restore index for any wallet backed
+    /// up before that index existed, so Restore from iCloud lists it with no
+    /// CloudKit Console step. See the `.task` below.
+    @State private var didHealBackupIndex = false
+
     // MARK: - Filter & Sort preferences (Rule #14-class declarative reads)
     //
     // The wallet home reads every Filter & Sort preference reactively
@@ -606,6 +612,21 @@ struct WalletHomeView: View {
                     // sees the `mostRecentScanAt` footer tick over
                     // honestly.
                     await runRefresh()
+                }
+                .task {
+                    // One-shot per session: heal the query-free iCloud
+                    // backup index for any wallet backed up BEFORE that index
+                    // existed (2026-06-20). The index record lives in iCloud,
+                    // so populating it once here makes Restore from iCloud list
+                    // the backup on a later fresh install — with no CloudKit
+                    // Console step and no manual re-backup. Best-effort,
+                    // background; per-wallet failures (no backup / offline) are
+                    // ignored.
+                    guard !didHealBackupIndex else { return }
+                    didHealBackupIndex = true
+                    let ids = allWallets.map(\.id)
+                    guard !ids.isEmpty else { return }
+                    await CloudKitBackupStore().reconcileIndex(walletIds: ids)
                 }
                 .task(id: priceDataFingerprint) {
                     // Rebuild the chart's price dictionaries off-body
