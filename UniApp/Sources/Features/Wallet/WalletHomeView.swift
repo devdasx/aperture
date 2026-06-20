@@ -531,15 +531,23 @@ struct WalletHomeView: View {
                 // because toolbar items are navigation affordances, not
                 // commit CTAs (the rule's documented exception).
                 .toolbar {
-                    // 2026-06-14 — sync has NO UI surface (user
-                    // direction: "from app bar we need to remove the
-                    // syncing at all we don't need it in the UI, just
-                    // run in the background"). The leading app-bar mark
-                    // that morphed Syncing… ⟷ iris was removed; the
-                    // background sync writer (`WalletRefreshCoordinator`)
-                    // still stamps `SyncStatusRecord` for freshness, but
-                    // nothing renders it. The leading slot is now empty,
-                    // exactly as it was before the mark was introduced.
+                    // App mark in a black liquid-glass disc, leading
+                    // (2026-06-20 user direction) — the same dark-glass
+                    // treatment as the Send / Receive / Swap action circles.
+                    ToolbarItem(placement: .topBarLeading) {
+                        ZStack {
+                            Circle().fill(Color.black)
+                            Image("IrisWatermarkWhite")
+                                .resizable()
+                                .renderingMode(.original)
+                                .scaledToFit()
+                                .frame(width: 16, height: 16)
+                        }
+                        .frame(width: 32, height: 32)
+                        .glassEffect(.regular, in: .circle)
+                        .accessibilityLabel(Text("Aperture"))
+                    }
+                    // 2026-06-09 — Filter & Sort affordance. Bare
                     // 2026-06-09 — Filter & Sort affordance. Bare
                     // `line.3.horizontal.decrease` (iOS-native filter
                     // glyph; the same symbol Mail / Files / Photos
@@ -1366,6 +1374,13 @@ struct WalletHomeView: View {
             .equatable()
         }
         .accessibilityLabel(Text("\(row.chain.displayName) details"))
+        // Pin (main / full-swipe) + Hide — 2026-06-20 user direction.
+        .swipeActions(edge: .leading, allowsFullSwipe: true) {
+            pinSwipeButton(assetID: WalletHomeFilterPreferences.assetID(coin: row))
+        }
+        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+            hideSwipeButton(assetID: WalletHomeFilterPreferences.assetID(coin: row))
+        }
     }
 
     /// Wrap a token row in a `NavigationLink(value:)`. The
@@ -1379,6 +1394,45 @@ struct WalletHomeView: View {
             supportedTokenRow(row)
         }
         .accessibilityLabel(Text("\(row.symbol) details"))
+        .swipeActions(edge: .leading, allowsFullSwipe: true) {
+            pinSwipeButton(assetID: WalletHomeFilterPreferences.assetID(token: row))
+        }
+        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+            hideSwipeButton(assetID: WalletHomeFilterPreferences.assetID(token: row))
+        }
+    }
+
+    // MARK: - Pin / Hide swipe actions (2026-06-20)
+
+    private func isPinned(_ assetID: String) -> Bool {
+        WalletHomeFilterPreferences.decode(filterPinnedAssetsJSON).contains(assetID)
+    }
+
+    @ViewBuilder
+    private func pinSwipeButton(assetID: String) -> some View {
+        Button {
+            var set = WalletHomeFilterPreferences.decode(filterPinnedAssetsJSON)
+            if set.contains(assetID) { set.remove(assetID) } else { set.insert(assetID) }
+            filterPinnedAssetsJSON = WalletHomeFilterPreferences.encode(set)
+            UniHapticEngine.shared.play(.selection)
+        } label: {
+            Label(isPinned(assetID) ? "Unpin" : "Pin",
+                  systemImage: isPinned(assetID) ? "pin.slash.fill" : "pin.fill")
+        }
+        .tint(UniColors.Tint.accent)
+    }
+
+    @ViewBuilder
+    private func hideSwipeButton(assetID: String) -> some View {
+        Button {
+            var set = WalletHomeFilterPreferences.decode(filterHiddenAssetsJSON)
+            set.insert(assetID)
+            filterHiddenAssetsJSON = WalletHomeFilterPreferences.encode(set)
+            UniHapticEngine.shared.play(.selection)
+        } label: {
+            Label("Hide", systemImage: "eye.slash.fill")
+        }
+        .tint(UniColors.Icon.secondary)
     }
 
     // MARK: - Combined section (Filter view mode = .combined)
