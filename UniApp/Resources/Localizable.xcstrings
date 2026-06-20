@@ -538305,6 +538305,39 @@
           }
         }
       }
+    },
+    "Imported Wallet": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Imported Wallet"
+          }
+        }
+      }
+    },
+    "Imported Key": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Imported Key"
+          }
+        }
+      }
+    },
+    "Watch-Only": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Watch-Only"
+          }
+        }
+      }
     }
   },
   "version": "1.0"
