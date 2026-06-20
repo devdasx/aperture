@@ -667,3 +667,73 @@
 2026-06-20T00:06:15Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/ImportWallet/ICloudRestoreView.swift	Incorrect password. Try again.
 2026-06-20T00:06:15Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/ImportWallet/ICloudRestoreView.swift	Restore from iCloud
 2026-06-20T00:06:15Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/ImportWallet/ICloudRestoreView.swift	\(blob.wordCount) words · \(blob.createdAt.formatted(date: .abbreviated, time: .omitted))
+2026-06-20T00:08:10Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/ImportWallet/ImportWalletFlow.swift	About \(Text(title))
+2026-06-20T00:08:10Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/ImportWallet/ImportWalletFlow.swift	Aperture couldn't write your wallet to this iPhone. Nothing was imported. Try again.
+2026-06-20T00:08:10Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/ImportWallet/ImportWalletFlow.swift	Cancel
+2026-06-20T00:08:10Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/ImportWallet/ImportWalletFlow.swift	Couldn't save your wallet
+2026-06-20T00:08:10Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/ImportWallet/ImportWalletFlow.swift	OK
+2026-06-20T00:08:10Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/ImportWallet/ImportWalletFlow.swift	Watch-only wallets can see balances and transactions. They cannot send. Imported private keys cover a single chain — your other chains stay outside Aperture until you also import their keys or your recovery phrase.
+2026-06-20T00:08:20Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/ImportWallet/ImportWalletFlow.swift	About \(Text(title))
+2026-06-20T00:08:20Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/ImportWallet/ImportWalletFlow.swift	Aperture couldn't write your wallet to this iPhone. Nothing was imported. Try again.
+2026-06-20T00:08:20Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/ImportWallet/ImportWalletFlow.swift	Cancel
+2026-06-20T00:08:20Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/ImportWallet/ImportWalletFlow.swift	Couldn't save your wallet
+2026-06-20T00:08:20Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/ImportWallet/ImportWalletFlow.swift	OK
+2026-06-20T00:08:20Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/ImportWallet/ImportWalletFlow.swift	Watch-only wallets can see balances and transactions. They cannot send. Imported private keys cover a single chain — your other chains stay outside Aperture until you also import their keys or your recovery phrase.
+2026-06-20T00:08:28Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/ImportWallet/ImportWalletFlow.swift	About \(Text(title))
+2026-06-20T00:08:28Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/ImportWallet/ImportWalletFlow.swift	Aperture couldn't write your wallet to this iPhone. Nothing was imported. Try again.
+2026-06-20T00:08:28Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/ImportWallet/ImportWalletFlow.swift	Cancel
+2026-06-20T00:08:28Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/ImportWallet/ImportWalletFlow.swift	Couldn't save your wallet
+2026-06-20T00:08:28Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/ImportWallet/ImportWalletFlow.swift	OK
+2026-06-20T00:08:28Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/ImportWallet/ImportWalletFlow.swift	Watch-only wallets can see balances and transactions. They cannot send. Imported private keys cover a single chain — your other chains stay outside Aperture until you also import their keys or your recovery phrase.
+2026-06-20T00:08:35Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/ImportWallet/ImportWalletFlow.swift	About \(Text(title))
+2026-06-20T00:08:35Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/ImportWallet/ImportWalletFlow.swift	Aperture couldn't write your wallet to this iPhone. Nothing was imported. Try again.
+2026-06-20T00:08:35Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/ImportWallet/ImportWalletFlow.swift	Cancel
+2026-06-20T00:08:35Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/ImportWallet/ImportWalletFlow.swift	Couldn't save your wallet
+2026-06-20T00:08:35Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/ImportWallet/ImportWalletFlow.swift	OK
+2026-06-20T00:08:35Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/ImportWallet/ImportWalletFlow.swift	Watch-only wallets can see balances and transactions. They cannot send. Imported private keys cover a single chain — your other chains stay outside Aperture until you also import their keys or your recovery phrase.
+2026-06-20T00:08:48Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SecuritySettingsView.swift	After 10 failed passcode attempts, every wallet and all data on this iPhone will be erased. Make sure your recovery phrases are backed up — a wallet you didn't back up can't be recovered.
+2026-06-20T00:08:48Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SecuritySettingsView.swift	Aperture locks when this much time has passed in the background. Re-opening requires PIN or Face ID.
+2026-06-20T00:08:48Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SecuritySettingsView.swift	Auto-lock
+2026-06-20T00:08:48Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SecuritySettingsView.swift	Back
+2026-06-20T00:08:48Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SecuritySettingsView.swift	Cancel
+2026-06-20T00:08:48Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SecuritySettingsView.swift	Change Passcode
+2026-06-20T00:08:48Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SecuritySettingsView.swift	Enable Face ID for Aperture.
+2026-06-20T00:08:48Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SecuritySettingsView.swift	Erase Data
+2026-06-20T00:08:48Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SecuritySettingsView.swift	Erase all wallets and data on this iPhone after 10 failed passcode attempts. A wallet you backed up can be restored from its recovery phrase — one you didn't is gone for good.
+2026-06-20T00:08:48Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SecuritySettingsView.swift	Face ID
+2026-06-20T00:08:48Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SecuritySettingsView.swift	Lock
+2026-06-20T00:08:48Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SecuritySettingsView.swift	Require Face ID before each of these actions. If Face ID fails, you can fall back to your passcode.
+2026-06-20T00:08:48Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SecuritySettingsView.swift	Security
+2026-06-20T00:08:48Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SecuritySettingsView.swift	Timing
+2026-06-20T00:08:48Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SecuritySettingsView.swift	Turn On
+2026-06-20T00:08:48Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SecuritySettingsView.swift	Turn Passcode Off
+2026-06-20T00:08:48Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SecuritySettingsView.swift	Turn Passcode On
+2026-06-20T00:08:48Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SecuritySettingsView.swift	Turn on Erase Data?
+2026-06-20T00:08:48Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SecuritySettingsView.swift	Turning off the passcode removes the lock from this iPhone's copy of your wallets. Your seed and mnemonic stay encrypted in Keychain — but anyone with this phone unlocked can open Aperture without proving they own it.
+2026-06-20T00:08:48Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SecuritySettingsView.swift	Use Face ID For
+2026-06-20T00:08:58Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SecuritySettingsView.swift	After 10 failed passcode attempts, every wallet and all data on this iPhone will be erased. Make sure your recovery phrases are backed up — a wallet you didn't back up can't be recovered.
+2026-06-20T00:08:58Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SecuritySettingsView.swift	Aperture locks when this much time has passed in the background. Re-opening requires PIN or Face ID.
+2026-06-20T00:08:58Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SecuritySettingsView.swift	Auto-lock
+2026-06-20T00:08:58Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SecuritySettingsView.swift	Back
+2026-06-20T00:08:58Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SecuritySettingsView.swift	Cancel
+2026-06-20T00:08:58Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SecuritySettingsView.swift	Change Passcode
+2026-06-20T00:08:58Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SecuritySettingsView.swift	Enable Face ID for Aperture.
+2026-06-20T00:08:58Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SecuritySettingsView.swift	Erase Data
+2026-06-20T00:08:58Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SecuritySettingsView.swift	Erase all wallets and data on this iPhone after 10 failed passcode attempts. A wallet you backed up can be restored from its recovery phrase — one you didn't is gone for good.
+2026-06-20T00:08:58Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SecuritySettingsView.swift	Face ID
+2026-06-20T00:08:58Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SecuritySettingsView.swift	Lock
+2026-06-20T00:08:58Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SecuritySettingsView.swift	Require Face ID before each of these actions. If Face ID fails, you can fall back to your passcode.
+2026-06-20T00:08:58Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SecuritySettingsView.swift	Security
+2026-06-20T00:08:58Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SecuritySettingsView.swift	Timing
+2026-06-20T00:08:58Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SecuritySettingsView.swift	Turn On
+2026-06-20T00:08:58Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SecuritySettingsView.swift	Turn Passcode Off
+2026-06-20T00:08:58Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SecuritySettingsView.swift	Turn Passcode On
+2026-06-20T00:08:58Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SecuritySettingsView.swift	Turn on Erase Data?
+2026-06-20T00:08:58Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SecuritySettingsView.swift	Turning off the passcode removes the lock from this iPhone's copy of your wallets. Your seed and mnemonic stay encrypted in Keychain — but anyone with this phone unlocked can open Aperture without proving they own it.
+2026-06-20T00:08:58Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SecuritySettingsView.swift	Use Face ID For
+2026-06-20T00:09:27Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/ImportWallet/ImportGuideSheets.swift	0x0000000000000000000000000000000000000000000000000000000000000001
+2026-06-20T00:09:27Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/ImportWallet/ImportGuideSheets.swift	Choose a different wallet
+2026-06-20T00:09:27Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/ImportWallet/ImportGuideSheets.swift	Got it
+2026-06-20T00:09:27Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/ImportWallet/ImportGuideSheets.swift	Use it anyway
+2026-06-20T00:09:27Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/ImportWallet/ImportGuideSheets.swift	abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about
+2026-06-20T00:09:27Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/ImportWallet/ImportGuideSheets.swift	bc1qexample…example…example

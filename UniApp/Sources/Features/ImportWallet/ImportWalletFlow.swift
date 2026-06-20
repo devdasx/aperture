@@ -237,12 +237,6 @@ private struct ImportMethodSelectionView: View {
     let onDismiss: () -> Void
     let onPick: (ImportDestination) -> Void
 
-    @AppStorage("hideImportKeyWarning") private var hideImportKeyWarning: Bool = false
-
-    /// When non-nil, the security-warning sheet is presented. Carries
-    /// the destination to push after the user confirms.
-    @State private var pendingProtectedDestination: ImportDestination?
-
     /// When non-nil, the per-method "Info" explainer sheet is presented.
     @State private var infoMethod: ImportInfo?
 
@@ -283,7 +277,7 @@ private struct ImportMethodSelectionView: View {
                     systemImage: "text.book.closed",
                     title: "Recovery phrase",
                     info: .recoveryPhrase,
-                    onPick: { handleProtectedTap(.mnemonicEntry) }
+                    onPick: { onPick(.mnemonicEntry) }
                 )
                 .listRowBackground(UniColors.Background.secondary)
 
@@ -291,7 +285,7 @@ private struct ImportMethodSelectionView: View {
                     systemImage: "key.horizontal",
                     title: "Private key",
                     info: .privateKey,
-                    onPick: { handleProtectedTap(.keyChainPicker) }
+                    onPick: { onPick(.keyChainPicker) }
                 )
                 .listRowBackground(UniColors.Background.secondary)
 
@@ -312,22 +306,6 @@ private struct ImportMethodSelectionView: View {
                     .foregroundStyle(UniColors.Text.tertiary)
                     .fixedSize(horizontal: false, vertical: true)
             }
-        }
-        .sheet(item: $pendingProtectedDestination) { destination in
-            ImportSecurityWarningSheet(
-                onProceed: { suppressFuture in
-                    if suppressFuture { hideImportKeyWarning = true }
-                    pendingProtectedDestination = nil
-                    // Defer push by a frame so the sheet dismiss animation
-                    // doesn't race with the NavigationStack push.
-                    DispatchQueue.main.async {
-                        onPick(destination)
-                    }
-                }
-            )
-            .uniAppEnvironment()
-            .intrinsicHeightSheet()
-            .presentationBackground(UniColors.Background.primary)
         }
         .sheet(item: $infoMethod) { info in
             ImportMethodInfoSheet(info: info)
@@ -350,14 +328,6 @@ private struct ImportMethodSelectionView: View {
                 }
                 .accessibilityLabel(Text("Cancel"))
             }
-        }
-    }
-
-    private func handleProtectedTap(_ destination: ImportDestination) {
-        if hideImportKeyWarning {
-            onPick(destination)
-        } else {
-            pendingProtectedDestination = destination
         }
     }
 
