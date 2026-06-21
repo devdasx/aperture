@@ -15,10 +15,10 @@ import SwiftData
 /// bumps whenever the disabled set grows). Idempotent regardless: re-running on
 /// an already-clean store deletes nothing.
 enum DisabledChainDataPurge {
-    /// `.v2` — the disabled set grew from EVM-only to EVM + Bitcoin family +
-    /// Tron. Bumping the suffix re-runs the purge once for users who already
-    /// ran the EVM-only `.v1` pass.
-    private static let doneKey = "apertureDisabledChainDataPurged.v2"
+    /// `.v3` — the disabled set grew (v1 = EVM only, v2 = + Bitcoin family +
+    /// Tron, v3 = + Solana + Stellar). Bumping the suffix re-runs the purge
+    /// once for users who already ran an earlier pass.
+    private static let doneKey = "apertureDisabledChainDataPurged.v3"
 
     /// Runs the purge once, off the main thread. Safe to call on every launch.
     static func runIfNeeded(container: ModelContainer) {
