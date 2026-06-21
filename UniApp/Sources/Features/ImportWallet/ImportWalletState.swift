@@ -164,6 +164,14 @@ final class ImportWalletState {
             }
 
         case .privateKey(let chain):
+            // Defensive: never persist a private-key wallet with no derived
+            // address. The decoder positively identifies the key before we
+            // reach here, so this is belt-and-braces — but guard before any
+            // Keychain write so an empty derivation can't yield an unusable,
+            // addressless wallet.
+            guard !derivedAddressFromKey.isEmpty else {
+                throw KeyImportError.derivationFailed
+            }
             // Single private-key import — decode the typed key into
             // its raw byte payload, positively identified for `chain`
             // (hex → 32 raw bytes; Bitcoin-family WIF → base58check

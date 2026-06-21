@@ -123,8 +123,12 @@ enum WalletBackupCrypto {
 
     private static func randomBytes(_ count: Int) throws -> Data {
         var data = Data(count: count)
-        let status = data.withUnsafeMutableBytes {
-            SecRandomCopyBytes(kSecRandomDefault, count, $0.baseAddress!)
+        let status = data.withUnsafeMutableBytes { (buffer: UnsafeMutableRawBufferPointer) -> Int32 in
+            // `Data(count:)` with count > 0 always has a base address; guard
+            // anyway so a degenerate count == 0 yields a clean error instead of
+            // force-unwrapping nil and trapping inside a CSPRNG.
+            guard let baseAddress = buffer.baseAddress else { return errSecParam }
+            return SecRandomCopyBytes(kSecRandomDefault, count, baseAddress)
         }
         guard status == errSecSuccess else { throw CryptoError.randomGenerationFailed(status) }
         return data

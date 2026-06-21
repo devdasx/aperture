@@ -489,7 +489,10 @@ struct EVMChainAdapter: Sendable {
         guard !stripped.isEmpty, let value = Int(stripped, radix: 16) else { return 18 }
         // Sanity clamp — `decimals()` should be in 0...77 (max EVM
         // uint256 has 78 decimal digits; nothing real exceeds 30).
-        if value < 0 || value > 77 { return 18 }
+        // `Int(_:radix:)` never yields a negative from unsigned hex (an
+        // out-of-range value returns nil above), so only the upper bound needs
+        // checking.
+        if value > 77 { return 18 }
         return value
     }
 
