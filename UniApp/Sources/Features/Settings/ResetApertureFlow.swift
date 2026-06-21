@@ -1,5 +1,20 @@
 import SwiftUI
 import SwiftData
+import Observation
+
+/// Drives the full-screen Reset Aperture flow, which is presented at the APP
+/// ROOT (above `RootGate`), NOT from the Settings tab. Presenting it at the
+/// root is what lets the erasing→factory-fresh morph survive the wipe: once the
+/// wipe empties the wallets, `RootGate` swaps `MainTabView` for onboarding
+/// underneath, but this root-level cover stays on top showing the morph until
+/// the user taps "Get Started" — which dismisses it onto the fresh onboarding.
+@MainActor
+@Observable
+final class ResetFlowGate {
+    static let shared = ResetFlowGate()
+    private init() {}
+    var isPresenting = false
+}
 
 /// **Reset Aperture — the full-screen factory-reset flow** (`design_handoff_reset`,
 /// rebuilt to match the HTML reference 1:1).

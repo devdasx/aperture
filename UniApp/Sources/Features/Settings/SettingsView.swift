@@ -541,37 +541,6 @@ private struct HapticToggleRow: View {
     }
 }
 
-// MARK: - Privacy mask toggle
-//
-// 2026-06-09 — user direction: *"we should be able to disable
-// privacy screen from the app settings."* Default ON because
-// privacy is the safer default for a self-custody wallet
-// (balances/addresses shouldn't surface in the iOS task-switcher
-// snapshot). The toggle is gated by `PinCodePreference.isPinEnabled()`
-// at the consumer (`AppRoot`) — without a PIN, the mask is theatre
-// because the wallet is reachable anyway.
-private struct PrivacyMaskToggleRow: View {
-    @Binding var isOn: Bool
-
-    var body: some View {
-        UniToggle(isOn: $isOn) {
-            HStack(spacing: UniSpacing.s) {
-                Image(systemName: "eye.slash")
-                    .font(.system(size: 18, weight: .regular))
-                    .foregroundStyle(UniColors.Icon.secondary)
-                    .frame(width: 28, alignment: .center)
-                    .accessibilityHidden(true)
-                Text("Privacy mask")
-                    .font(UniTypography.body)
-                    .foregroundStyle(UniColors.Text.primary)
-            }
-        }
-        .tint(UniColors.Button.primaryTint)
-        .padding(.vertical, UniSpacing.xxs)
-        // Haptic fires inside UniToggle (`.toggle` per handoff)
-    }
-}
-
 // MARK: - Hide-balance toggle + threshold picker
 
 private struct HideBalanceToggleRow: View {

@@ -212,11 +212,11 @@ struct UniAppApp: App {
 /// permission prompt with the "Immediately" timer dumped the user
 /// from the recovery-phrase entry back to the main screen.
 ///
-/// **v5 (2026-06-13) — lock + privacy mask move to a detached
-/// overlay `UIWindow`.** The content branch (`splash` ⟷ `RootGate`)
+/// **v5 (2026-06-13) — the lock moves to a detached overlay
+/// `UIWindow`.** The content branch (`splash` ⟷ `RootGate`)
 /// is the ONLY thing this view mounts; it is never unmounted by a
-/// lock. `AppLockView` + `PrivacyMaskView` render in their own
-/// `UIWindow` (`LockOverlayRoot`) layered above the main window.
+/// lock. `AppLockView` renders in its own `UIWindow`
+/// (`LockOverlayRoot`) layered above the main window.
 /// Why a window and not a ZStack layer: sheets and fullScreenCovers
 /// present ABOVE the root view's ZStack — a ZStack-layer lock would
 /// be invisible behind the import/create covers, and the app-switcher
@@ -280,8 +280,8 @@ private struct AppRoot: View {
         "\(scenePhase)|\(isShowingSplash)|\(lockController.isLocked)|\(activeWalletIdRaw)"
     }
 
-    /// The detached overlay window hosting `PrivacyMaskView` +
-    /// `AppLockView` above the main window (see the type doc for why
+    /// The detached overlay window hosting `AppLockView` above the main
+    /// window (see the type doc for why
     /// this is a window, not a ZStack layer). Created once, on first
     /// appear, and kept for the app's lifetime. Always visible —
     /// `LockOverlayRoot` renders nothing (fully transparent) when
@@ -359,6 +359,20 @@ private struct AppRoot: View {
         // lock, or hit the splash, and restarts (against the new wallet)
         // when those clear. See `autoRefreshGate`'s doc.
         .task(id: autoRefreshGate) { await runAutoRefreshLoop() }
+        // App-wide Reset Aperture (design_handoff_reset) — presented HERE, at
+        // the app root above `RootGate`, NOT from the Settings tab. That's what
+        // lets the erasing→factory-fresh morph survive the wipe: once the wipe
+        // empties the wallets, `RootGate` swaps `MainTabView` for onboarding
+        // underneath, but this cover stays on top showing the morph until the
+        // user taps "Get Started", which dismisses it onto the fresh onboarding.
+        .fullScreenCover(isPresented: Binding(
+            get: { ResetFlowGate.shared.isPresenting },
+            set: { ResetFlowGate.shared.isPresenting = $0 }
+        )) {
+            ResetApertureFlow(onClose: { ResetFlowGate.shared.isPresenting = false })
+                .id(rootDirectionKey)
+                .uniAppEnvironment()
+        }
     }
 
     /// Auto-refresh interval. **Eased 10 s → 30 s (2026-06-16)** as part
@@ -504,14 +518,6 @@ private struct AppRoot: View {
 ///    off on a locked cold launch); fades out over the standard
 ///    0.55s smooth spring on unlock, revealing the untouched content
 ///    tree underneath.
-/// 2. **`PrivacyMaskView`** — the task-switcher snapshot shield.
-///    Mounted whenever the scene isn't `.active` (mirrored through
-///    `AutoLockController.isSceneActive`, since `\.scenePhase` does
-///    not propagate into a hand-mounted `UIHostingController`), the
-///    user has a PIN, and the mask preference is on. Showing the mask
-///    on `.inactive` is deliberate and correct — the snapshot is taken
-///    from that state; it's the LOCK that must wait for `.background`
-///    (see `AutoLockController.handleScenePhaseChange`).
 private struct LockOverlayRoot: View {
     @Environment(\.autoLockController) private var lockController
 
@@ -527,30 +533,6 @@ private struct LockOverlayRoot: View {
     /// change while unlocked, when this renders nothing.
     @AppStorage("languagePreference") private var languageCode: String = LanguagePreference.systemCode
 
-    /// Live PIN-enabled flag — reactive so enabling / disabling the
-    /// PIN in Settings flips the mask gate immediately.
-    @AppStorage(PinCodePreference.pinEnabledKey)
-    private var pinEnabled: Bool = PinCodePreference.defaultValue
-
-    /// User preference — Settings → Preferences → "Privacy mask".
-    /// Default ON. When OFF, the privacy mask never mounts, and the
-    /// scene's last-active frame becomes the task-switcher snapshot
-    /// — explicit opt-out the user can flip in Settings.
-    @AppStorage(PrivacyMaskPreference.storageKey)
-    private var privacyMaskEnabled: Bool = PrivacyMaskPreference.defaultValue
-
-    /// `true` whenever the privacy mask should be on screen — any
-    /// time the scene isn't fully active AND the user has PIN
-    /// protection enabled AND they haven't disabled the privacy mask
-    /// in Settings. Suppressed during the splash: there's nothing
-    /// sensitive to shield yet, and a launch-time `.inactive` beat
-    /// would otherwise flash the mask over the splash animation.
-    private var isMaskVisible: Bool {
-        pinEnabled && privacyMaskEnabled
-            && !lockController.isSceneActive
-            && !lockController.isSplashActive
-    }
-
     var body: some View {
         ZStack {
             if lockController.isLocked {
@@ -565,21 +547,6 @@ private struct LockOverlayRoot: View {
                     // through a half-opaque lock for half a second.
                     .transition(.asymmetric(insertion: .identity, removal: .opacity))
             }
-
-            // Privacy mask — top layer, scene-phase gated.
-            //
-            // **2026-06-09 — `.opacity` transition.** The mask fades
-            // out as the scene becomes active, revealing whatever is
-            // underneath — `AppLockView` when a real background
-            // period exceeded the auto-lock threshold. The user reads
-            // a smooth privacy → PIN navigation instead of an instant
-            // cut. Insertion stays `.opacity` symmetric so the mask
-            // fades IN on backgrounding too (no harsh snap).
-            if isMaskVisible {
-                PrivacyMaskView()
-                    .transition(.opacity)
-                    .zIndex(100)
-            }
         }
         // Direction-keyed identity for the overlay content — see the
         // `languageCode` property doc. Flips only on LTR ↔ RTL.
@@ -587,9 +554,6 @@ private struct LockOverlayRoot: View {
         // Unlock fade — same 0.55s smooth spring the splash → content
         // crossfade uses, so the lock's exit reads as one system.
         .animation(.smooth(duration: 0.55), value: lockController.isLocked)
-        // Privacy mask fade — slightly tighter (0.35s vs 0.55s) so
-        // the privacy → PIN handoff feels prompt without being abrupt.
-        .animation(.easeInOut(duration: 0.35), value: isMaskVisible)
     }
 }
 
