@@ -80,15 +80,23 @@ struct DogecoinConnector: ChainConnector {
         guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             throw .decodingFailed("BlockCypher response not JSON")
         }
+        // BlockCypher reports `final_balance` = confirmed `balance` +
+        // `unconfirmed_balance`, so a pending incoming tx is reflected
+        // immediately, not only after confirmation. Prefer it; fall back to
+        // the confirmed `balance` only if `final_balance` is absent.
         let units: Decimal
-        if let n = json["balance"] as? NSNumber {
+        if let n = json["final_balance"] as? NSNumber {
+            units = NSDecimalNumber(value: n.int64Value).decimalValue
+        } else if let i = json["final_balance"] as? Int {
+            units = Decimal(i)
+        } else if let n = json["balance"] as? NSNumber {
             units = NSDecimalNumber(value: n.int64Value).decimalValue
         } else if let i = json["balance"] as? Int {
             units = Decimal(i)
         } else {
             throw .decodingFailed("BlockCypher balance field missing or wrong type")
         }
-        let coins = units / Self.satoshisPerCoin
+        let coins = max(0, units) / Self.satoshisPerCoin
         if let nTx = (json["n_tx"] as? NSNumber)?.intValue {
             return ChainAccountSummary(nativeBalance: coins, isUsed: nTx > 0)
         }

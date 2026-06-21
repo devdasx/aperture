@@ -57,9 +57,15 @@ struct BitcoinConnector: ChainConnector {
         let funded = (chainStats["funded_txo_sum"] as? NSNumber)?.int64Value ?? 0
         let spent = (chainStats["spent_txo_sum"] as? NSNumber)?.int64Value ?? 0
         let txCount = (chainStats["tx_count"] as? NSNumber)?.intValue ?? 0
+        // Include the mempool (unconfirmed) delta so an incoming pending tx is
+        // reflected in the balance immediately, not only after confirmation.
+        // Esplora reports exact mempool funded/spent sums; net them in (a
+        // pending incoming adds, a pending outgoing subtracts).
+        let mempoolFunded = (mempoolStats["funded_txo_sum"] as? NSNumber)?.int64Value ?? 0
+        let mempoolSpent = (mempoolStats["spent_txo_sum"] as? NSNumber)?.int64Value ?? 0
         let mempoolTxCount = (mempoolStats["tx_count"] as? NSNumber)?.intValue ?? 0
 
-        let satoshis = NSDecimalNumber(value: funded - spent).decimalValue
+        let satoshis = NSDecimalNumber(value: (funded - spent) + (mempoolFunded - mempoolSpent)).decimalValue
         let nativeBalance = satoshis / Self.satoshisPerCoin
         let isUsed = txCount > 0 || mempoolTxCount > 0
         return ChainAccountSummary(nativeBalance: nativeBalance, isUsed: isUsed)
