@@ -224,12 +224,14 @@ struct SettingsView: View {
                     .listRowBackground(UniColors.Background.secondary)
                 }
 
-                // Section 4b — dApps (connections + on-chain approvals)
+                // Section 4b — Connected dApps (manage browser + WalletConnect
+                // connections). On-chain token approvals were removed with EVM
+                // data fetching (2026-06-21).
                 Section {
                     NavigationLink(value: SettingsDestination.connectionApprovals) {
                         SettingsRow(
-                            systemImage: "checkmark.shield",
-                            title: "Connection & Approvals",
+                            systemImage: "app.connected.to.app.below.fill",
+                            title: "Connected dApps",
                             trailing: nil
                         )
                     }

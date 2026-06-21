@@ -3,51 +3,32 @@ import Foundation
 /// **The fleet dispatcher.** Maps a `SupportedChain` to its independent
 /// `ChainConnector`. One switch, one connector per chain.
 ///
-/// **Fully wired (Integrate phase).** Every `SupportedChain` case routes
-/// to its own connector — the EVM family each to its own copy of the
-/// Ethereum template (`ArbitrumConnector`, `BaseConnector`, …), the
-/// Bitcoin family each to its own copy of the Bitcoin template
-/// (`LitecoinConnector`, `DogecoinConnector`, …), and every other L1 to
-/// its own per-family connector (`SolanaConnector`, `RippleConnector`,
-/// `StellarConnector`, `TronConnector`, the long-tail set). The switch
-/// is EXHAUSTIVE with no `default` — adding a new `SupportedChain` case
-/// is a compile error here until its connector is wired, by design.
+/// **EVM data fetching is disabled (2026-06-21 user direction).** Every EVM
+/// chain routes to `DisabledEVMConnector` — a no-op that returns zero balance,
+/// no tokens, and no history without a network call. The per-chain EVM
+/// connectors and the Alchemy connector/service were deleted. EVM addresses
+/// stay derivable (receive), and Send / Swap / dApp keep signing + broadcasting
+/// through their own RPC path, not through this dispatcher.
 ///
-/// **Contract.** Returns `any ChainConnector` — the caller works against
-/// the protocol, never a concrete type, so a chain's connector can be
-/// swapped without touching call sites. Connectors are zero-arg
-/// constructible (`init(client: RPCClient = .shared)`), so the default
-/// shared `RPCClient` (rotation + rate-limit + circuit-breaking +
-/// ConcurrencyGate) backs every read.
+/// Every non-EVM `SupportedChain` case routes to its own connector — the
+/// Bitcoin family each to its own copy of the Bitcoin template
+/// (`LitecoinConnector`, `DogecoinConnector`, …), and every other L1 to its
+/// own per-family connector (`SolanaConnector`, `RippleConnector`,
+/// `StellarConnector`, `TronConnector`, the long-tail set). The switch is
+/// EXHAUSTIVE with no `default`.
+///
+/// **Contract.** Returns `any ChainConnector` — the caller works against the
+/// protocol, never a concrete type.
 enum ChainConnectorRegistry {
 
     /// The connector for `chain`. Exhaustive: every chain resolves to a
     /// concrete connector value, no trap, no `default`.
     static func connector(for chain: SupportedChain) -> any ChainConnector {
-        // **Alchemy routing (2026-06-17, user direction).** When an Alchemy
-        // key is configured, the 10 EVM chains Alchemy's Portfolio + Transfers
-        // APIs cover (Ethereum, Arbitrum, Base, Optimism, Scroll, zkSync,
-        // Polygon, BNB, Avalanche, Celo) read balances + history SOLELY through
-        // `AlchemyConnector` — no Infura/Multicall3/eth_getLogs fallback. Every
-        // other chain (opBNB, the Bitcoin family, Solana, and the long-tail
-        // L1s — none of which Alchemy's Portfolio API serves) keeps its own
-        // independent connector below.
-        if Secrets.hasAlchemyKey, AlchemyConnector.supportedChains.contains(chain) {
-            return AlchemyConnector(chain: chain)
-        }
         switch chain {
-        // MARK: - EVM family (each its own copy of EthereumConnector)
-        case .ethereum:  return EthereumConnector()
-        case .arbitrum:  return ArbitrumConnector()
-        case .base:      return BaseConnector()
-        case .optimism:  return OptimismConnector()
-        case .scroll:    return ScrollConnector()
-        case .zkSync:    return ZkSyncConnector()
-        case .polygon:   return PolygonConnector()
-        case .bnbChain:  return BnbChainConnector()
-        case .opBNB:     return OpBNBConnector()
-        case .avalanche: return AvalancheConnector()
-        case .celo:      return CeloConnector()
+        // MARK: - EVM family — data fetching DISABLED (no-op connector)
+        case .ethereum, .arbitrum, .base, .optimism, .scroll, .zkSync,
+             .polygon, .bnbChain, .opBNB, .avalanche, .celo:
+            return DisabledEVMConnector(chain: chain)
 
         // MARK: - Bitcoin family (each its own copy of BitcoinConnector)
         case .bitcoin:     return BitcoinConnector()

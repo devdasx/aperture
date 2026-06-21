@@ -228,61 +228,40 @@ struct WalletRefreshCoordinator: Sendable {
         let heldSymbols: Set<String> =
             Set(fetchBalanceRowSnapshot(walletId: walletId).map { $0.symbol.uppercased() })
 
-        // **2026-06-18 — batched Alchemy balance prefetch (Task 1/B3).**
-        // Collapse all Alchemy-covered EVM balances into ONE Portfolio request
-        // BEFORE the per-chain stream scans run. `streamScan` →
-        // `ChainConnectorRegistry` → `AlchemyConnector` → `AlchemyService.tokens`
-        // then hit the warmed cache (zero extra requests) instead of firing one
-        // POST per chain. If the prefetch fails it warms nothing, so the
-        // per-chain reads simply miss cache and fetch individually — identical
-        // to the pre-batch behavior, just without the speedup. All EVM chains
-        // share one EOA, so `evmAddresses` is normally a single address serving
-        // every network in one batched entry.
-        if Secrets.hasAlchemyKey {
-            let alchemyNetworks = Array(Set(
-                chainAddresses.keys
-                    .filter { AlchemyConnector.supportedChains.contains($0) }
-                    .compactMap { AlchemyConnector.network(for: $0) }
-            ))
-            let evmAddresses = Array(Set(
-                chainAddresses
-                    .filter { AlchemyConnector.supportedChains.contains($0.key) }
-                    .map { $0.value }
-            ))
-            if !alchemyNetworks.isEmpty, !evmAddresses.isEmpty {
-                await AlchemyService.shared.prefetchBalances(
-                    networks: alchemyNetworks,
-                    addresses: evmAddresses
-                )
-            }
-        }
+        // **EVM data fetching disabled (2026-06-21 user direction).** Scan only
+        // the NON-EVM chains. EVM addresses still derive (receive) and keep
+        // their encrypted keys below (Send / Swap / dApp), but no EVM balance,
+        // token, or history is ever fetched. The old batched-Alchemy EVM
+        // prefetch was removed along with the Alchemy connector/service.
+        let scanChainAddresses = chainAddresses.filter { $0.key.family != .evm }
+        let scanChainSnapshots = chainSnapshots.filter { $0.key.family != .evm }
 
         let scanner = RealRPCBalanceScanner(client: RPCClient.shared)
         let stream = scanner.streamScan(
-            addresses: chainAddresses,
+            addresses: scanChainAddresses,
             currency: currency,
             customTokens: customTokensByChain,
             priorityTokenSymbols: heldSymbols
         )
 
-        // Track which chains yielded a native row so we can (a)
-        // retry the ones that didn't and (b) mark the rest
-        // scan-complete at the end (chains whose RPC failed
-        // entirely still need their "Last synced" stamp refreshed
-        // for honesty). The scanner yields a native row for every
-        // chain it could READ — a genuine zero balance still
-        // yields — so "no row" means the read failed, not that the
-        // wallet is empty.
+        // Track which chains yielded a native row so we can mark the rest
+        // scan-complete at the end (chains whose RPC failed entirely still
+        // need their "Last synced" stamp refreshed for honesty). The scanner
+        // yields a native row for every chain it could READ — a genuine zero
+        // balance still yields — so "no row" means the read failed, not that
+        // the wallet is empty.
         let nativeYieldedChains = await consumeBalanceStream(
             stream,
-            chainSnapshots: chainSnapshots,
+            chainSnapshots: scanChainSnapshots,
             txRepo: txRepo,
             chainStateRepo: chainStateRepo,
             walletId: walletId,
             fiatCurrencyCode: currency.code
         )
 
-        let failedChains = Set(chainAddresses.keys).subtracting(nativeYieldedChains)
+        // Bookkeeping is over the SCANNED (non-EVM) chains only — EVM is never
+        // scanned, so it must not be counted as "failed to sync".
+        let failedChains = Set(scanChainAddresses.keys).subtracting(nativeYieldedChains)
 
         // **2026-06-17 — retry pass removed for speed.** The old code slept
         // 3s and re-scanned failed chains in-pipeline, which kept the spinner
@@ -299,7 +278,8 @@ struct WalletRefreshCoordinator: Sendable {
         // replacement is running; stamping scans we never finished
         // would be dishonest).
         if !Task.isCancelled {
-            for snap in addressSnapshot where !nativeYieldedChains.contains(snap.chain) {
+            for snap in addressSnapshot
+            where snap.chain.family != .evm && !nativeYieldedChains.contains(snap.chain) {
                 try? await txRepo.markScanComplete(addressId: snap.id, isUsed: snap.isUsed, save: false)
             }
         }
