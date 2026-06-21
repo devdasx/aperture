@@ -42,7 +42,6 @@ struct WalletDetailView: View {
     @State private var isShowingChainKeys: Bool = false
     @State private var isShowingBackupFlow: Bool = false
     @State private var isShowingIconPicker: Bool = false
-    @State private var biometricChallenge: BiometricChallenge?
 
     // MARK: - Backup status section (2026-06-20)
     /// Presents the full backup flow (iCloud / manual chooser) once the
@@ -398,16 +397,6 @@ struct WalletDetailView: View {
             )
             .uniAppEnvironment()
             .uniSheetDetents([.large])
-            .presentationBackground(UniColors.Background.primary)
-        }
-        .sheet(item: $biometricChallenge) { challenge in
-            BiometricChallengeSheet(
-                reason: challenge.reason,
-                onSuccess: challenge.onSuccess,
-                onFailure: { biometricChallenge = nil }
-            )
-            .uniAppEnvironment()
-            .intrinsicHeightSheet()
             .presentationBackground(UniColors.Background.primary)
         }
         // App passcode set → the unified passcode verify screen. It
@@ -783,25 +772,16 @@ struct WalletDetailView: View {
     private func requestReveal(_ target: SensitiveReveal) {
         pendingReveal = target
         if PinCodeStorage.hasPin {
-            // App passcode set → unified passcode screen (auto Face ID
-            // if the in-app Face ID toggle is on).
+            // App passcode set → the ONE unified passcode screen, which
+            // auto-prompts Face ID when the in-app toggle is on. Every auth
+            // gate routes through this screen — never a raw OS Face ID prompt
+            // (2026-06-21 user direction).
             isShowingPasscodeGate = true
-        } else if BiometricService().isAvailable {
-            // No app passcode, but the device has Face ID/Touch ID
-            // enrolled → prompt it directly, even with both in-app
-            // toggles off.
-            biometricChallenge = BiometricChallenge(
-                reason: revealReason(target),
-                onSuccess: {
-                    biometricChallenge = nil
-                    performReveal(target)
-                }
-            )
         } else {
-            // Nothing on the device can gate it → reveal directly. The old
-            // "No lock is set" warning was removed app-wide (2026-06-20 user
-            // direction); on a phone with no passcode and no biometric there's
-            // nothing to authenticate against, so we don't interrupt.
+            // No app passcode → nothing in-app to verify against. The wallet
+            // is protected by the iPhone's own lock screen; reveal directly
+            // rather than popping a raw OS Face ID prompt. (The old "No lock is
+            // set" warning was removed app-wide, 2026-06-20.)
             performReveal(target)
         }
     }
@@ -812,15 +792,6 @@ struct WalletDetailView: View {
         case .key:       isShowingKey = true
         case .chainKeys: isShowingChainKeys = true
         case .backup:    Task { await loadWordsAndPresentBackup() }
-        }
-    }
-
-    private func revealReason(_ target: SensitiveReveal) -> LocalizedStringResource {
-        switch target {
-        case .phrase:    return LocalizedStringResource("Confirm to view your recovery phrase.")
-        case .key:       return LocalizedStringResource("Confirm to view your private key.")
-        case .chainKeys: return LocalizedStringResource("Confirm to view your private keys.")
-        case .backup:    return LocalizedStringResource("Confirm to back up your wallet.")
         }
     }
 
@@ -928,59 +899,6 @@ struct WalletDetailView: View {
 
 // MARK: - Biometric challenge shim
 
-/// Identifiable shim so `.sheet(item:)` can present a biometric
-/// challenge inline without us threading a separate state per use
-/// site.
-private struct BiometricChallenge: Identifiable {
-    let id = UUID()
-    let reason: LocalizedStringResource
-    let onSuccess: () -> Void
-}
-
-private struct BiometricChallengeSheet: View {
-    let reason: LocalizedStringResource
-    let onSuccess: () -> Void
-    let onFailure: () -> Void
-
-    /// Guards against two `LAContext` evaluations racing — the
-    /// `.task` auto-prompt and the manual Confirm button share one
-    /// serialized path; the button is suppressed while a prompt is up.
-    @State private var isAuthenticating: Bool = false
-    /// Ensures the completion (success or failure) fires at most once.
-    @State private var hasCompleted: Bool = false
-
-    var body: some View {
-        UniSheet(title: "Authenticate") {
-            VStack(spacing: UniSpacing.m) {
-                Image(systemName: "faceid")
-                    .font(.system(size: 44, weight: .light))
-                    .symbolRenderingMode(.hierarchical)
-                    .foregroundStyle(UniColors.Status.infoForeground)
-                    .accessibilityHidden(true)
-                UniBody(text: "Confirm with Face ID to continue.", alignment: .center, color: UniColors.Text.secondary)
-            }
-        } actions: {
-            UniButton(title: "Confirm", variant: .primary, isEnabled: !isAuthenticating) {
-                Task { await authenticate() }
-            }
-        }
-        .task {
-            // Auto-present the system prompt on appear for one-tap UX.
-            await authenticate()
-        }
-    }
-
-    @MainActor
-    private func authenticate() async {
-        guard !isAuthenticating, !hasCompleted else { return }
-        isAuthenticating = true
-        defer { isAuthenticating = false }
-        let outcome = await BiometricService().authenticate(reason: reason)
-        guard !hasCompleted else { return }
-        hasCompleted = true
-        if case .success = outcome { onSuccess() } else { onFailure() }
-    }
-}
 
 // MARK: - Backup state card (two-state lead surface)
 

@@ -439,17 +439,13 @@ struct WalletsListView: View {
         backupTargetName = wallet.name
         backupTargetAvatar = wallet.avatarSpec
         if PinCodeStorage.hasPin {
+            // The ONE unified passcode screen (auto Face ID when the in-app
+            // toggle is on) — never a raw OS Face ID prompt (2026-06-21).
             isShowingBackupPasscode = true
-        } else if BiometricService().isAvailable {
-            Task {
-                let outcome = await BiometricService().authenticate(
-                    reason: LocalizedStringResource("Confirm to back up your wallet.")
-                )
-                if case .success = outcome { loadAndPresentBackup() }
-            }
         } else {
-            // Nothing on the device can gate it → proceed (matches the app-wide
-            // removal of the no-lock warning).
+            // No app passcode → nothing in-app to verify against; proceed
+            // (matches the app-wide removal of the no-lock warning). The
+            // iPhone's own lock screen is the gate.
             loadAndPresentBackup()
         }
     }

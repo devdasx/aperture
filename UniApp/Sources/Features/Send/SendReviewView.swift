@@ -385,7 +385,10 @@ struct SendReviewView: View {
                 // lives in the lock screen, not mid-send.
                 isShowingPinVerify = false
                 phase = .review
-            }
+            },
+            // Face ID auto-prompts here only when the user kept "Require
+            // Face ID for sending" on; off → passcode-only (no biometric).
+            allowsBiometrics: requireForSend
         )
         .background(UniColors.Background.primary.ignoresSafeArea())
         .uniAppEnvironment()
@@ -404,30 +407,12 @@ struct SendReviewView: View {
         // `.uniHaptic(...)` triggers below.
         phase = .authenticating
 
-        if biometricEnabled && requireForSend {
-            authTask?.cancel()
-            authTask = Task { @MainActor in
-                let outcome = await BiometricService().authenticate(
-                    reason: LocalizedStringResource("Confirm to send this transaction.")
-                )
-                guard !Task.isCancelled else { return }
-                switch outcome {
-                case .success:
-                    afterAuthSuccess()
-                case .failure(.unavailable):
-                    // Biometrics unexpectedly unavailable — fall back to
-                    // the PIN if one is set, otherwise proceed (Rule #17
-                    // optional-PIN).
-                    routeToPinOrProceed()
-                case .failure(.userCancelled), .failure(.authenticationFailed):
-                    routeToPinOrProceed()
-                case .failure(.systemError):
-                    routeToPinOrProceed()
-                }
-            }
-        } else {
-            routeToPinOrProceed()
-        }
+        // Unified auth: route through the ONE passcode screen. It auto-prompts
+        // Face ID only when the in-app biometric toggle AND "Require Face ID
+        // for sending" are both on — `pinVerifyCover` passes
+        // `allowsBiometrics: requireForSend`, and the screen itself gates on
+        // `biometricEnabled`. No raw OS Face ID prompt (2026-06-21 direction).
+        routeToPinOrProceed()
     }
 
     /// After a biometric failure / when biometrics are off: require the
