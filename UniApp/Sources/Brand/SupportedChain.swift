@@ -63,6 +63,20 @@ enum SupportedChain: String, CaseIterable, Hashable, Sendable, Codable {
         }
     }
 
+    /// Whether on-chain DATA fetching — native + token balances, transaction
+    /// history, and prices — is disabled for this chain (2026-06-21 user
+    /// direction). The address still derives (Receive) and Send still works
+    /// through its own RPC + signing path; only the wallet-home
+    /// balance / holdings / activity data is suppressed, and the chain routes
+    /// to the no-op `DisabledChainConnector`.
+    ///
+    /// Currently: every EVM chain, the whole Bitcoin family (BTC / BCH / LTC /
+    /// DOGE), and Tron. The active chains are Solana, XRPL, Stellar, and the
+    /// remaining long-tail L1s.
+    var fetchingDisabled: Bool {
+        family == .evm || family == .bitcoin || self == .tron
+    }
+
     /// Whether the chain supports BIP-32 extended public keys
     /// (xpub / ypub / zpub) for watch-only import. Only the Bitcoin
     /// family does.
