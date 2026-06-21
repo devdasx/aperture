@@ -87,6 +87,15 @@ struct UniAppApp: App {
         //    `.applicationDefault` data store lives in the app
         //    sandbox alongside SwiftData. Tip dismissals persist
         //    across launches — the *"only for first time"* contract.
+        // A prior factory reset can't reset TipKit's "seen" datastore itself
+        // (TipKit was already configured for that session, so resetting it
+        // mid-session throws). It leaves a marker; consume it HERE — the only
+        // valid moment, immediately BEFORE `Tips.configure()` — so a reset
+        // wallet truly sees first-time tips again. One-shot: clear the marker.
+        if UserDefaults.standard.bool(forKey: FactoryReset.tipKitResetFlagKey) {
+            try? Tips.resetDatastore()
+            UserDefaults.standard.removeObject(forKey: FactoryReset.tipKitResetFlagKey)
+        }
         try? Tips.configure([
             .displayFrequency(.immediate),
             .datastoreLocation(.applicationDefault)

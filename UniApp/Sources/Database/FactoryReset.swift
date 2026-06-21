@@ -1,12 +1,13 @@
 import Foundation
 import SwiftData
 import OSLog
-// WebKit + TipKit are imported ONLY for `performFullWipe`: the dApp browser
-// persists cookies/storage in the default `WKWebsiteDataStore`, and TipKit
-// persists "shown once" counters in its own datastore — both must go for a
-// reset to equal a first install.
+// WebKit is imported ONLY for the wipe: the dApp browser persists
+// cookies/storage in the default `WKWebsiteDataStore`, which must go for a
+// reset to equal a first install. TipKit's own datastore ("shown once"
+// counters) can only be reset BEFORE `Tips.configure()` runs — which already
+// happened at launch — so that reset is deferred to the next launch via
+// `tipKitResetFlagKey` (see `UniAppApp`), not attempted mid-session.
 import WebKit
-import TipKit
 
 // MARK: - FactoryReset
 
@@ -62,9 +63,15 @@ enum FactoryReset {
         case wallets
         /// Keychain seed / mnemonic / private-key material + the PIN records.
         case keys
-        /// Web data, URL/cookie caches, token-logo cache, TipKit, UserDefaults.
+        /// Web data, URL/cookie caches, token-logo cache, UserDefaults.
         case settings
     }
+
+    /// UserDefaults marker that asks the NEXT launch to reset TipKit's "seen"
+    /// datastore before it configures TipKit — the only valid moment to reset
+    /// it. Set during the wipe AFTER the UserDefaults domain is cleared (so it
+    /// survives), and consumed once in `UniAppApp.init`.
+    static let tipKitResetFlagKey = "apertureNeedsTipKitReset"
 
     /// The **complete** factory wipe — the single routine behind BOTH
     /// "Reset Aperture" (Settings) and "Erase Data" (auto-wipe after repeated
@@ -134,25 +141,19 @@ enum FactoryReset {
         HTTPCookieStorage.shared.removeCookies(since: .distantPast)
         // Token-logo disk cache (Caches/AperturePaint/CoinMarks).
         await CoinMarkCache.shared.clearAll()
-        // TipKit datastore — best-effort reset + reconfigure.
-        do {
-            try Tips.resetDatastore()
-            try Tips.configure([
-                .displayFrequency(.immediate),
-                .datastoreLocation(.applicationDefault)
-            ])
-        } catch {
-            log.error("Full wipe: TipKit datastore reset failed: \(String(describing: error), privacy: .public)")
-        }
         // Wipe every @AppStorage key (active-wallet pointer, tab, theme/
         // language/currency, pin/biometric/erase flags, restoration stamps,
         // and the fresh-install marker — so the NEXT launch re-runs the
-        // fresh-install Keychain purge as a second idempotent sweep). Done LAST
-        // so the onboarding flag (`hasOnboarded`) only flips after the data is
-        // truly gone (handoff rule #5).
+        // fresh-install Keychain purge as a second idempotent sweep). Done
+        // before the onboarding flag so it only flips after the data is gone.
         if let bundleId = Bundle.main.bundleIdentifier {
             UserDefaults.standard.removePersistentDomain(forName: bundleId)
         }
+        // Ask the next launch to reset TipKit's "seen" datastore (it can't be
+        // reset mid-session — `Tips.configure()` already ran, so
+        // `Tips.resetDatastore()` here would throw `tipsDatastoreAlreadyConfigured`).
+        // Set AFTER the domain wipe so the marker itself survives.
+        UserDefaults.standard.set(true, forKey: tipKitResetFlagKey)
         onStageComplete(.settings)
         log.notice("Full wipe completed: \(walletIds.count, privacy: .public) wallets purged.")
     }
