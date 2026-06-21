@@ -233,7 +233,7 @@ enum DayKey {
     /// #3, 2026-06-18 fix).
     static let utc: Calendar = {
         var calendar = Calendar(identifier: .gregorian)
-        calendar.timeZone = TimeZone(identifier: "UTC")!
+        calendar.timeZone = TimeZone(identifier: "UTC") ?? .gmt
         return calendar
     }()
 

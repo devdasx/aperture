@@ -113,7 +113,7 @@ enum SigningKeyProvider {
 
         // Load the mnemonic from the vault. A backed-up wallet keeps
         // only the derived seed on device; the phrase is gone by design.
-        let words = (try? MnemonicVault.loadMnemonic(for: wallet.id)) ?? nil
+        let words = try? MnemonicVault.loadMnemonic(for: wallet.id)
         guard let words, !words.isEmpty else {
             throw SigningError.secretUnavailable
         }

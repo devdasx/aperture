@@ -819,7 +819,9 @@ struct BalanceCardView: View {
         case .week:  span = 86_400 * 7
         case .month: span = 86_400 * 30
         case .year:  span = 86_400 * 365
-        case .all:   span = 86_400 * 30
+        // "All time" — give the empty-state zero baseline a year-wide x-range
+        // (was mistakenly a 30-day span, identical to .month).
+        case .all:   span = 86_400 * 365
         }
         return [
             BalancePoint(timestamp: now.addingTimeInterval(-span), fiat: 0),
