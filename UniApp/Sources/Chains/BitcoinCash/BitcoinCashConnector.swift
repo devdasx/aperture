@@ -66,9 +66,22 @@ struct BitcoinCashConnector: ChainConnector {
         } else {
             confirmed = 0
         }
+        // Haskoin reports `unconfirmed` (the signed mempool delta — positive
+        // for a pending incoming tx, negative for a pending spend) separately.
+        // Include it so an incoming pending tx shows in the balance
+        // immediately, not only after confirmation. Clamp the total at 0
+        // since `unconfirmed` is signed.
+        let unconfirmed: Decimal
+        if let n = json["unconfirmed"] as? NSNumber {
+            unconfirmed = NSDecimalNumber(value: n.int64Value).decimalValue
+        } else if let i = json["unconfirmed"] as? Int {
+            unconfirmed = Decimal(i)
+        } else {
+            unconfirmed = 0
+        }
         let txs = (json["txs"] as? NSNumber)?.intValue
             ?? (json["txs"] as? Int) ?? 0
-        let bch = confirmed / Self.satoshisPerCoin
+        let bch = max(0, confirmed + unconfirmed) / Self.satoshisPerCoin
         return ChainAccountSummary(nativeBalance: bch, isUsed: txs > 0 || bch > 0)
     }
 
