@@ -109,22 +109,11 @@ struct RecoveryPhraseView: View {
     /// delay so the confirmation does not linger.
     @State private var isShowingCopiedConfirmation: Bool = false
 
-    /// Tap-to-reveal state (2026-06-20 redesign). The grid is blurred until
-    /// the user taps; re-blurs on backgrounding and whenever the word count
-    /// changes. Copy is locked until revealed.
-    @State private var revealed: Bool = false
-
-    /// Set when Copy is tapped before the phrase is revealed — flashes the
-    /// button red + a "Tap to reveal first" hint, matching the Export flow.
-    @State private var needsReveal: Bool = false
-
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: UniSpacing.l) {
                 intro
-                PhraseRevealGate(revealed: $revealed) {
-                    PhraseGrid(words: state.words)
-                }
+                PhraseGrid(words: state.words)
                 metaBlock
             }
             .padding(.horizontal, UniSpacing.l)
@@ -135,11 +124,6 @@ struct RecoveryPhraseView: View {
             actionRegion
                 .padding(.horizontal, UniSpacing.l)
                 .padding(.bottom, UniSpacing.l)
-        }
-        .onChange(of: state.words) { _, _ in
-            // Switching word count regenerates the phrase → re-blur + re-lock
-            // Copy (handoff security note).
-            revealed = false
         }
         .navigationTitle(Text("Recovery Phrase"))
         .navigationBarTitleDisplayMode(.inline)
@@ -339,11 +323,6 @@ struct RecoveryPhraseView: View {
     /// Footer: [Copy | Back up now] on one row, Skip for now full-width below.
     private var actionRegion: some View {
         VStack(spacing: UniSpacing.s) {
-            if needsReveal {
-                Text("Tap to reveal first")
-                    .font(UniTypography.caption1)
-                    .foregroundStyle(UniColors.Status.errorForeground)
-            }
             HStack(spacing: UniSpacing.s) {
                 copyButton
                 UniButton(title: "Back up now", variant: .primary) {
@@ -355,35 +334,18 @@ struct RecoveryPhraseView: View {
                 onSkipForNow()
             }
         }
-        .onChange(of: revealed) { _, isRevealed in
-            if isRevealed { needsReveal = false }
-        }
-        .task(id: needsReveal) {
-            guard needsReveal else { return }
-            try? await Task.sleep(for: .seconds(2.5))
-            if !Task.isCancelled {
-                withAnimation(.easeInOut(duration: 0.2)) { needsReveal = false }
-            }
-        }
     }
 
-    /// Copy — the unified `.secondary` button, matching the Export flow's Copy
-    /// exactly (2026-06-20 user direction): locked until the phrase is
-    /// revealed; tapping it while blurred flashes it red (`.destructive`) with
-    /// a "Tap to reveal first" hint and a warning haptic — it does NOT copy or
-    /// auto-reveal. +4pt each side of breathing room.
+    /// Copy — the unified `.secondary` button. The phrase is shown by default
+    /// now (tap-to-reveal removed, 2026-06-21 user direction), so Copy is
+    /// always available. +4pt each side of breathing room.
     private var copyButton: some View {
         UniButton(
             title: isShowingCopiedConfirmation ? "Copied" : "Copy",
-            variant: needsReveal ? .destructive : .secondary,
+            variant: .secondary,
             systemImage: isShowingCopiedConfirmation ? "checkmark" : "doc.on.doc"
         ) {
-            if revealed {
-                copyPhrase()
-            } else {
-                UniHapticEngine.shared.play(.warning)
-                withAnimation(.easeOut(duration: 0.2)) { needsReveal = true }
-            }
+            copyPhrase()
         }
         // Widen the capsule itself a little — the glass fills this frame, so a
         // minWidth gives the label internal breathing room (+~4pt each side)
@@ -391,8 +353,6 @@ struct RecoveryPhraseView: View {
         // (no truncation). fixedSize keeps it compact next to Back up now.
         .frame(minWidth: 120)
         .fixedSize(horizontal: true, vertical: false)
-        .opacity(revealed || needsReveal ? 1 : 0.5)
-        .animation(.easeInOut(duration: 0.2), value: needsReveal)
         .animation(.easeInOut(duration: 0.2), value: isShowingCopiedConfirmation)
         .accessibilityLabel(Text("Copy recovery phrase"))
     }

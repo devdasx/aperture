@@ -41,7 +41,7 @@ struct WordmarkIllustration: View {
         Image("LogoCircle")
             .resizable()
             .scaledToFit()
-            .frame(width: 64, height: 64)
+            .frame(width: 96, height: 96)
             .matchedGeometryEffect(
                 id: "logo",
                 in: logoNamespace,
