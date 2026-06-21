@@ -52,37 +52,68 @@ import TipKit
 /// `ResetCompletenessTests` pins this type's contract.
 enum FactoryReset {
 
+    /// The three honest deletion stages the Reset-Aperture UI reports, in REAL
+    /// execution order. `.wallets` runs FIRST and is the ONLY one that throws
+    /// (the SwiftData custody gate — if it fails, nothing has been destroyed).
+    /// The reset flow's progress ring fills one third per stage as each
+    /// genuinely completes (handoff rule #4 — honest progress, not a timer).
+    enum Stage: CaseIterable, Sendable {
+        /// SwiftData wallets + every model table. The failable custody gate.
+        case wallets
+        /// Keychain seed / mnemonic / private-key material + the PIN records.
+        case keys
+        /// Web data, URL/cookie caches, token-logo cache, TipKit, UserDefaults.
+        case settings
+    }
+
     /// The **complete** factory wipe — the single routine behind BOTH
-    /// "Reset Aperture" (Settings) and "Erase Data" (auto-wipe after
-    /// repeated wrong passcodes). After it returns, the app's persistent
-    /// state is indistinguishable from a first install: every SwiftData
-    /// table empty, every Aperture Keychain item gone, the full
-    /// `UserDefaults` domain removed, the dApp browser's website data
-    /// cleared, the TipKit datastore reset, and the token-logo disk cache
-    /// deleted. `RootGate` observes the wallet count flip to zero and routes
-    /// back to onboarding.
+    /// "Reset Aperture" (Settings) and "Erase Data" (auto-wipe after repeated
+    /// wrong passcodes). Used by the no-progress `AppLockView` path; delegates
+    /// to `performStagedWipe` with a no-op reporter so there is exactly ONE
+    /// wipe implementation.
+    @MainActor
+    static func performFullWipe(modelContext: ModelContext) async throws {
+        try await performStagedWipe(modelContext: modelContext, onStageComplete: { _ in })
+    }
+
+    /// The complete factory wipe, reporting each real deletion `Stage` as it
+    /// finishes so the Reset-Aperture UI's progress ring reflects honest
+    /// progress. After it returns, the app's persistent state is
+    /// indistinguishable from a first install: every SwiftData table empty,
+    /// every Aperture Keychain item gone, the full `UserDefaults` domain
+    /// removed, the dApp browser's website data cleared, the TipKit datastore
+    /// reset, and the token-logo disk cache deleted. `RootGate` observes the
+    /// wallet count flip to zero and routes back to onboarding.
     ///
     /// **Order is the safety contract.** The SwiftData wallet deletion runs
     /// FIRST and is the ONLY step that throws — if it fails, NOTHING has been
     /// destroyed (the caller surfaces an error and the user keeps a working
     /// app). Every step after it is best-effort so a single failure never
-    /// strands a half-reset device.
+    /// strands a half-reset device. `onStageComplete` is called on the main
+    /// actor after each stage genuinely finishes.
     @MainActor
-    static func performFullWipe(modelContext: ModelContext) async throws {
+    static func performStagedWipe(
+        modelContext: ModelContext,
+        onStageComplete: (Stage) -> Void
+    ) async throws {
         let log = Logger(subsystem: "com.thuglife.aperture", category: "reset")
         let repo = WalletRepository(modelContainer: modelContext.container)
         // Capture ids up front so Keychain items can be wiped after the
         // SwiftData rows are gone (once the rows go, the ids are lost).
         let walletIds = (try? await repo.allWalletIds()) ?? []
-        // Database first — the custody gate. `deleteAllWallets()` refuses the
-        // in-memory fallback store, drops every wallet (with cascades) plus
-        // the primitive-keyed chart snapshots, and clears the Keychain wallet
-        // manifest. Throws ⇒ nothing destroyed yet.
+
+        // STAGE 1 — wallets & history. The custody gate. `deleteAllWallets()`
+        // refuses the in-memory fallback store, drops every wallet (with
+        // cascades) plus the primitive-keyed chart snapshots, and clears the
+        // Keychain wallet manifest. Throws ⇒ nothing destroyed yet.
         try await repo.deleteAllWallets()
         // Structural wipe of EVERY model in `ApertureSchemaV1.models`.
         do { try wipeAllModels(in: modelContext) }
         catch { log.error("Full wipe: structural model wipe failed: \(String(describing: error), privacy: .public)") }
-        // Per-wallet Keychain material. Idempotent: missing items are success.
+        onStageComplete(.wallets)
+
+        // STAGE 2 — keys & phrases (Keychain). Best-effort; idempotent (a
+        // missing item is success).
         for id in walletIds {
             try? SeedVault.deleteSeed(for: id)
             try? MnemonicVault.deleteMnemonic(for: id)
@@ -90,6 +121,9 @@ enum FactoryReset {
         }
         // Keychain — PIN hash + salt + both failure records.
         PinCodeStorage.clear()
+        onStageComplete(.keys)
+
+        // STAGE 3 — settings & cache. Best-effort.
         // dApp-browser website data: cookies, local/session storage, caches.
         await WKWebsiteDataStore.default().removeData(
             ofTypes: WKWebsiteDataStore.allWebsiteDataTypes(),
@@ -113,10 +147,13 @@ enum FactoryReset {
         // Wipe every @AppStorage key (active-wallet pointer, tab, theme/
         // language/currency, pin/biometric/erase flags, restoration stamps,
         // and the fresh-install marker — so the NEXT launch re-runs the
-        // fresh-install Keychain purge as a second idempotent sweep).
+        // fresh-install Keychain purge as a second idempotent sweep). Done LAST
+        // so the onboarding flag (`hasOnboarded`) only flips after the data is
+        // truly gone (handoff rule #5).
         if let bundleId = Bundle.main.bundleIdentifier {
             UserDefaults.standard.removePersistentDomain(forName: bundleId)
         }
+        onStageComplete(.settings)
         log.notice("Full wipe completed: \(walletIds.count, privacy: .public) wallets purged.")
     }
 

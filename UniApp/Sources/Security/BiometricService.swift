@@ -104,6 +104,33 @@ final class BiometricService: Sendable {
         }
     }
 
+    /// Device-owner authentication that ACCEPTS the device passcode as a
+    /// fallback when biometrics are unavailable or unenrolled
+    /// (`.deviceOwnerAuthentication`). Reserved for the most consequential
+    /// gates — the factory reset's "Erase Aperture" commit — where the
+    /// handoff asks for "Face ID / passcode". Returns `.failure(.unavailable)`
+    /// ONLY when the device has no passcode set at all (no auth to present);
+    /// the caller then relies on its own gates (typed RESET + acknowledgements).
+    func authenticateOwner(reason: LocalizedStringResource) async -> Result<Void, AuthError> {
+        let context = LAContext()
+        var policyError: NSError?
+        guard context.canEvaluatePolicy(.deviceOwnerAuthentication, error: &policyError) else {
+            return .failure(.unavailable)
+        }
+        var localizedReason = reason
+        localizedReason.locale = ApertureLocalization.currentLocale
+        let resolvedReason = String(localized: localizedReason)
+        do {
+            let success = try await context.evaluatePolicy(
+                .deviceOwnerAuthentication,
+                localizedReason: resolvedReason
+            )
+            return success ? .success(()) : .failure(.authenticationFailed)
+        } catch {
+            return .failure(Self.mapError(error))
+        }
+    }
+
     // MARK: - Private mappers
 
     private static func mapBiometryType(_ type: LABiometryType) -> BiometryType {
