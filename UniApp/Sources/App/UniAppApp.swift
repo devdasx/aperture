@@ -141,6 +141,13 @@ struct UniAppApp: App {
                     BiometricEnrollmentTracker.checkForDrift(
                         in: ApertureDatabase.shared.container
                     )
+                    // EVM data fetching is disabled (2026-06-21) — clear any
+                    // EVM balances / history persisted before the cutover.
+                    // One-shot, off the first frame, self-gated.
+                    let container = ApertureDatabase.shared.container
+                    await Task.detached(priority: .utility) {
+                        EVMDataPurge.runIfNeeded(container: container)
+                    }.value
                 }
         }
         // The app fills the screen natively on iPad (full-screen) and the
