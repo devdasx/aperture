@@ -55,3 +55,7 @@ build-sim/
 
 build-ipad-sim/
 build-mac-dfi/
+
+# Supabase CSV export output (may contain private data — never commit)
+supabase_export/
+scripts/supabase_export/
