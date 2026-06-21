@@ -229,7 +229,7 @@ struct ResetApertureFlow: View {
             beginBackup(for: wallet)
         } label: {
             HStack(spacing: 13) {
-                irisDisc(size: 40)
+                irisDisc(size: 40, irisFraction: 0.6)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(verbatim: wallet.name)
                         .font(.system(size: 16, weight: .bold))
@@ -490,15 +490,18 @@ struct ResetApertureFlow: View {
 
     /// The brand iris seal — an `--ink` disc with the iris in the `--surface`
     /// colour, matching the handoff (and reused as the wallet-picker avatar).
-    private func irisDisc(size: CGFloat) -> some View {
+    private func irisDisc(size: CGFloat, irisFraction: CGFloat = 0.82) -> some View {
         ZStack {
             Circle().fill(UniColors.Brand.mark)
+            // The iris fills ~82% of the disc to match the handoff (the seal's
+            // `mlogo` is 98px inside a 123px disc). A smaller fraction is passed
+            // for the wallet-picker avatar.
             Image("IrisWatermarkWhite")
                 .resizable()
                 .renderingMode(.template)
                 .scaledToFit()
                 .foregroundStyle(UniColors.Background.secondary)
-                .padding(size * 0.3)
+                .frame(width: size * irisFraction, height: size * irisFraction)
         }
         .frame(width: size, height: size)
     }
