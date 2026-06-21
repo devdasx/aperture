@@ -117,6 +117,13 @@ struct UniButton: View {
     var systemImage: String? = nil
     var isLoading: Bool = false
     var isEnabled: Bool = true
+    /// Optional glass tint override (the `.glass` / `.glassProminent` FILL
+    /// colour) for the `.primary` / `.secondary` / `.destructive` variants.
+    /// `nil` keeps the variant's default tint. Lets a caller keep the unified
+    /// Liquid Glass material while carrying a bespoke accent — e.g. the Reset
+    /// flow's exact destructive red (`UniColors.Reset.danger`) on a glass
+    /// `.destructive` button instead of the brighter system red.
+    var tint: Color? = nil
     /// SF Symbol for `.actionCircle`'s glyph. Ignored by other variants
     /// today; kept on the public surface so future toolbar / action-class
     /// variants can adopt it without an API break.
@@ -155,6 +162,7 @@ struct UniButton: View {
         systemImage: String? = nil,
         isLoading: Bool = false,
         isEnabled: Bool = true,
+        tint: Color? = nil,
         icon: String? = nil,
         action: @escaping () -> Void
     ) {
@@ -163,6 +171,7 @@ struct UniButton: View {
         self.systemImage = systemImage
         self.isLoading = isLoading
         self.isEnabled = isEnabled
+        self.tint = tint
         self.icon = icon
         self.action = action
     }
@@ -177,6 +186,7 @@ struct UniButton: View {
         systemImage: String? = nil,
         isLoading: Bool = false,
         isEnabled: Bool = true,
+        tint: Color? = nil,
         icon: String? = nil,
         walletSymbol: String? = nil,
         walletColorHex: String? = nil,
@@ -189,6 +199,7 @@ struct UniButton: View {
         self.systemImage = systemImage
         self.isLoading = isLoading
         self.isEnabled = isEnabled
+        self.tint = tint
         self.icon = icon
         self.walletSymbol = walletSymbol
         self.walletColorHex = walletColorHex
@@ -216,7 +227,7 @@ struct UniButton: View {
         } label: {
             label
         }
-        .modifier(VariantStyle(variant: variant, isActive: isActive))
+        .modifier(VariantStyle(variant: variant, isActive: isActive, tintOverride: tint))
         .disabled(!isEnabled || isLoading)
     }
 
@@ -397,16 +408,18 @@ struct UniButton: View {
     private struct VariantStyle: ViewModifier {
         let variant: Variant
         let isActive: Bool
+        /// Optional FILL tint override for the glass variants (nil = default).
+        var tintOverride: Color? = nil
 
         @ViewBuilder
         func body(content: Content) -> some View {
             switch variant {
             case .primary:
-                applyGlassProminent(content, activeTint: UniColors.Button.primaryTint)
+                applyGlassProminent(content, activeTint: tintOverride ?? UniColors.Button.primaryTint)
             case .secondary:
-                applyGlass(content, activeTint: UniColors.Button.secondaryTint)
+                applyGlass(content, activeTint: tintOverride ?? UniColors.Button.secondaryTint)
             case .destructive:
-                applyGlassProminent(content, activeTint: UniColors.Button.destructiveTint)
+                applyGlassProminent(content, activeTint: tintOverride ?? UniColors.Button.destructiveTint)
             case .tertiary:
                 content
                     .buttonStyle(.plain)
