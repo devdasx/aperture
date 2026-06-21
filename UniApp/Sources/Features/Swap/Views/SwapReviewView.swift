@@ -345,7 +345,10 @@ struct SwapReviewView: View {
                 // lock screen, not mid-swap.
                 isShowingPinVerify = false
                 phase = .review
-            }
+            },
+            // Face ID auto-prompts here only when the user kept "Require
+            // Face ID for swapping" on; off → passcode-only (no biometric).
+            allowsBiometrics: requireForSwap
         )
         .background(UniColors.Background.primary.ignoresSafeArea())
         .uniAppEnvironment()
@@ -364,26 +367,12 @@ struct SwapReviewView: View {
         // landing fire via the body's `.uniHaptic(...)` triggers.
         phase = .authenticating
 
-        if biometricEnabled && requireForSwap {
-            authTask?.cancel()
-            authTask = Task { @MainActor in
-                let outcome = await BiometricService().authenticate(
-                    reason: LocalizedStringResource("Confirm to swap.")
-                )
-                guard !Task.isCancelled else { return }
-                switch outcome {
-                case .success:
-                    afterAuthSuccess()
-                case .failure(.unavailable),
-                     .failure(.userCancelled),
-                     .failure(.authenticationFailed),
-                     .failure(.systemError):
-                    routeToPinOrProceed()
-                }
-            }
-        } else {
-            routeToPinOrProceed()
-        }
+        // Unified auth: route through the ONE passcode screen. It auto-prompts
+        // Face ID only when the in-app biometric toggle AND "Require Face ID
+        // for swapping" are both on — `pinVerifyCover` passes
+        // `allowsBiometrics: requireForSwap`, and the screen itself gates on
+        // `biometricEnabled`. No raw OS Face ID prompt (2026-06-21 direction).
+        routeToPinOrProceed()
     }
 
     /// After a biometric failure / when biometrics are off: require the PIN

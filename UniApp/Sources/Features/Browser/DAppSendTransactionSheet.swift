@@ -33,6 +33,10 @@ struct DAppSendTransactionSheet: View {
     @State private var isShowingFullAddress: Bool = false
     @State private var isSending: Bool = false
     @State private var sendError: String?
+    /// Drives the unified passcode gate (the ONE PinCodeView). Set when the
+    /// user taps Confirm and an app passcode exists; on success we sign +
+    /// broadcast. Never a raw OS Face ID prompt (2026-06-21 direction).
+    @State private var isShowingPinGate: Bool = false
 
     var body: some View {
         NavigationStack {
@@ -67,7 +71,38 @@ struct DAppSendTransactionSheet: View {
             .safeAreaInset(edge: .bottom) {
                 actionRegion
             }
+            .fullScreenCover(isPresented: $isShowingPinGate) {
+                pinGateCover
+            }
         }
+    }
+
+    /// The unified passcode screen, presented before signing. Auto-prompts
+    /// Face ID when "Require Face ID for dApps" is on (`allowsBiometrics:
+    /// requireForDApp`) and the in-app biometric toggle is enabled; otherwise
+    /// it's passcode-only. On success → sign + broadcast.
+    private var pinGateCover: some View {
+        NavigationStack {
+            PinCodeView(
+                mode: .verify,
+                onComplete: { _ in
+                    isShowingPinGate = false
+                    performSignAndBroadcast()
+                },
+                onCancel: { isShowingPinGate = false },
+                allowsBiometrics: requireForDApp
+            )
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button { isShowingPinGate = false } label: {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 17, weight: .semibold))
+                    }
+                    .accessibilityLabel(Text("Cancel"))
+                }
+            }
+        }
+        .uniAppEnvironment()
     }
 
     // MARK: - Sections
@@ -259,18 +294,26 @@ struct DAppSendTransactionSheet: View {
     /// + broadcast the real transaction and hand the hash back to the dApp.
     private func confirmAndSend() {
         guard !isSending else { return }
+        sendError = nil
+        // Unified auth: route through the ONE passcode screen when an app
+        // passcode exists; with none set there's nothing in-app to verify
+        // against, so sign directly (the iPhone's lock screen is the gate).
+        if PinCodeStorage.hasPin {
+            isShowingPinGate = true
+        } else {
+            performSignAndBroadcast()
+        }
+    }
+
+    /// Sign the request with the wallet key and broadcast it on-chain, then
+    /// hand the real tx hash back to the dApp. Called only after the auth
+    /// gate (if any) has passed.
+    private func performSignAndBroadcast() {
+        guard !isSending else { return }
         isSending = true
         sendError = nil
         Task { @MainActor in
             defer { isSending = false }
-            let biometrics = BiometricService()
-            if biometrics.isAvailable && requireForDApp {
-                let outcome = await biometrics.authenticate(reason: "Confirm sending this transaction")
-                if case .failure = outcome {
-                    sendError = String.apertureLocalized("Authentication failed — the transaction wasn’t sent.")
-                    return
-                }
-            }
             switch await EVMDAppSigner.sendTransaction(request) {
             case .success(let txHash):
                 router.approveSend(txHash: txHash)

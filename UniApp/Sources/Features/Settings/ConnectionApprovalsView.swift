@@ -48,6 +48,10 @@ struct ConnectionApprovalsView: View {
     @State private var scanState: ApprovalScanState = .idle
     /// Per-approval revoke state, keyed by `TokenApproval.id`.
     @State private var revokeStates: [String: RevocationState] = [:]
+    /// The approval the user asked to revoke, held while the unified passcode
+    /// gate is up. Non-nil presents the ONE PinCodeView; on success we sign +
+    /// broadcast the revoke. Never a raw OS Face ID prompt (2026-06-21).
+    @State private var pendingRevokeApproval: TokenApproval?
 
     var body: some View {
         List {
@@ -60,6 +64,36 @@ struct ConnectionApprovalsView: View {
         .navigationTitle(Text("Connection & Approvals"))
         .navigationBarTitleDisplayMode(.large)
         .task { await runScan() }
+        .fullScreenCover(item: $pendingRevokeApproval) { approval in
+            revokePinGate(approval)
+        }
+    }
+
+    /// The unified passcode screen, presented before a revoke is signed.
+    /// Auto-prompts Face ID when the in-app biometric toggle is on; otherwise
+    /// it's the passcode keypad. On success → sign + broadcast `approve(_, 0)`.
+    private func revokePinGate(_ approval: TokenApproval) -> some View {
+        NavigationStack {
+            PinCodeView(
+                mode: .verify,
+                onComplete: { _ in
+                    pendingRevokeApproval = nil
+                    performRevoke(approval)
+                },
+                onCancel: { pendingRevokeApproval = nil },
+                allowsBiometrics: true
+            )
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button { pendingRevokeApproval = nil } label: {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 17, weight: .semibold))
+                    }
+                    .accessibilityLabel(Text("Cancel"))
+                }
+            }
+        }
+        .uniAppEnvironment()
     }
 
     // MARK: - Connected dApps (mirrors BrowserSettingsView)
@@ -350,23 +384,26 @@ struct ConnectionApprovalsView: View {
     /// `DAppSendTransactionSheet.confirmAndSend`'s gating pattern.
     private func revoke(_ approval: TokenApproval) {
         guard revokeStates[approval.id] != .revoking else { return }
+        // Unified auth: route through the ONE passcode screen when an app
+        // passcode exists; with none set sign directly (the iPhone's lock
+        // screen is the gate). No raw OS Face ID prompt (2026-06-21).
+        if PinCodeStorage.hasPin {
+            pendingRevokeApproval = approval
+        } else {
+            performRevoke(approval)
+        }
+    }
+
+    /// Sign + broadcast `approve(spender, 0)` for `approval`. Called only
+    /// after the auth gate (if any) has passed.
+    private func performRevoke(_ approval: TokenApproval) {
+        guard revokeStates[approval.id] != .revoking else { return }
         revokeStates[approval.id] = .revoking
         Task { @MainActor in
             guard let resolved = ActiveWalletResolver.resolve(),
                   let owner = resolved.evmAddresses[approval.chain] else {
                 revokeStates[approval.id] = .failed(reason: "No wallet is selected to sign this revoke.")
                 return
-            }
-
-            let biometrics = BiometricService()
-            if biometrics.isAvailable {
-                let outcome = await biometrics.authenticate(reason: "Confirm revoking this approval")
-                if case .failure = outcome {
-                    revokeStates[approval.id] = .failed(
-                        reason: String.apertureLocalized("Authentication failed — the revoke wasn’t sent.")
-                    )
-                    return
-                }
             }
 
             switch await ApprovalRevocationService.revoke(
