@@ -71,7 +71,15 @@ struct AppLockView: View {
             onForgotPin: {
                 isShowingForgotSheet = true
             },
-            onFailedAttempt: { handleFailedUnlock() }
+            onFailedAttempt: { handleFailedUnlock() },
+            // The wrong-passcode line shows "N attempts remaining" ONLY when
+            // the user armed Erase Data — that's the only mode with a real
+            // finite count (the wipe at the threshold). Read after the failure
+            // is recorded, so it reflects the just-incremented count.
+            attemptsRemaining: {
+                guard eraseDataEnabled else { return nil }
+                return max(0, PinCodeStorage.eraseDataThreshold - PinCodeStorage.unlockFailureCount())
+            }
         )
         // Opaque backing. `AppLockView` used to ship inside a
         // `.fullScreenCover`, which provided window-level opacity

@@ -760,6 +760,48 @@ enum UniColors {
         static let onDanger = Color.white
     }
 
+    // MARK: - PinLock (the unified passcode screen)
+
+    /// Tokens transcribed verbatim from the PIN-lock design handoff
+    /// (`design_handoff_pin_lock/`). The keypad is the flat iOS-dialer style —
+    /// no key backgrounds, a circular press-dim — so these are the few
+    /// brand-fixed values that surface needs beyond `Text` / `Background`
+    /// (Rule #4 §B: hex / `UIColor` only inside `UniColors`).
+    enum PinLock {
+        /// Wrong-passcode accent — the same brick as the Reset flow
+        /// (`#E0483D` light / `#FF5B51` dark). Drives the red dots, the shake,
+        /// and the "N attempts remaining" line.
+        static let danger = Reset.danger
+        /// Unlock-success green — `#179A5B` light / `#2FD07F` dark. A brief
+        /// fill on the dots when the passcode is correct, before the reveal.
+        static let positive = Color(uiColor: UIColor { trait in
+            trait.userInterfaceStyle == .dark
+                ? UIColor(red: 0x2F / 255.0, green: 0xD0 / 255.0, blue: 0x7F / 255.0, alpha: 1)
+                : UIColor(red: 0x17 / 255.0, green: 0x9A / 255.0, blue: 0x5B / 255.0, alpha: 1)
+        })
+        /// Empty-dot ring — `rgba(10,12,16,.22)` light / `rgba(255,255,255,.3)`
+        /// dark. A 2pt inner stroke; the filled dot is solid ink.
+        static let dotEmpty = Color(uiColor: UIColor { trait in
+            trait.userInterfaceStyle == .dark
+                ? UIColor(white: 1, alpha: 0.30)
+                : UIColor(red: 0x0A / 255.0, green: 0x0C / 255.0, blue: 0x10 / 255.0, alpha: 0.22)
+        })
+        /// Keypad press-dim — the 62pt circle that fades in under a pressed
+        /// digit. `rgba(10,12,16,.12)` light / `rgba(255,255,255,.18)` dark.
+        static let keyPress = Color(uiColor: UIColor { trait in
+            trait.userInterfaceStyle == .dark
+                ? UIColor(white: 1, alpha: 0.18)
+                : UIColor(red: 0x0A / 255.0, green: 0x0C / 255.0, blue: 0x10 / 255.0, alpha: 0.12)
+        })
+        /// Delete-glyph gray — `#B9BCC4` light / `#54565E` dark. The filled
+        /// rounded backspace with the knocked-out X.
+        static let delete = Color(uiColor: UIColor { trait in
+            trait.userInterfaceStyle == .dark
+                ? UIColor(red: 0x54 / 255.0, green: 0x56 / 255.0, blue: 0x5E / 255.0, alpha: 1)
+                : UIColor(red: 0xB9 / 255.0, green: 0xBC / 255.0, blue: 0xC4 / 255.0, alpha: 1)
+        })
+    }
+
     // MARK: - BalanceCard (the flagship wallet-home surface)
 
     /// Every color the flagship balance card uses, transcribed verbatim
