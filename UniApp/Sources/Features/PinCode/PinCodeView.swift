@@ -82,6 +82,15 @@ struct PinCodeView: View {
     /// Rule #17; policy is a parameter, never a second component.
     var allowsBiometrics: Bool = true
 
+    /// Optional, `.verify` only. When non-nil AND it returns a value, the
+    /// wrong-passcode line reads "Wrong passcode. N attempts remaining."
+    /// instead of the bare "Wrong passcode." The app-unlock screen passes the
+    /// count down from its optional Erase-Data wipe (`AppLockView` → `Pin-
+    /// CodeStorage.eraseDataThreshold − unlockFailureCount()`); other gates
+    /// leave it nil and show no counter. Read AFTER each failed attempt so the
+    /// freshly-incremented count is reflected.
+    var attemptsRemaining: (() -> Int?)? = nil
+
     // MARK: - State
 
     /// Current digit buffer. Only modified by the keypad — never by parent
@@ -132,44 +141,64 @@ struct PinCodeView: View {
     /// source of truth; this is the UI-facing copy the countdown updates.
     @State private var lockoutRemaining: TimeInterval = 0
 
+    /// Drives the ⋯ → "Forgot passcode?" native action sheet (handoff: the
+    /// forgot affordance moved out of the body into the options sheet).
+    @State private var isShowingOptions: Bool = false
+
+    /// Remaining-attempts count captured on a failed verify when the caller
+    /// supplied `attemptsRemaining`. `nil` → the wrong line shows no counter.
+    @State private var attemptsLeft: Int?
+
+    /// Brief green success fill on the dots before `onComplete` fires — the
+    /// handoff's `.dots.ok` state. Cleared on teardown.
+    @State private var didSucceed: Bool = false
+
+    /// Tracked task for the success-flash → complete hop; cancelled on
+    /// `.onDisappear` so `onComplete` never fires into a gone parent.
+    @State private var successTask: Task<Void, Never>?
+
     // MARK: - Body
 
     var body: some View {
-        VStack(spacing: UniSpacing.l) {
-            // Header (title + body copy) follows the AMBIENT app
-            // locale per the Rule #17 §I refinement (2026-06-06 user
-            // feedback Image #51): "Set a passcode" / "Confirm your
-            // passcode" / "Enter your passcode" and their body copy
-            // are read-once descriptive text that benefits from
-            // translation — not muscle memory. The keypad below is
-            // what carries the universal-passcode-gesture guarantee.
-            header
-            // Keypad-subtree group: dots + keypad + forgot row are
-            // forced LTR + English so dots fill L→R, keypad geometry
-            // stays 1-2-3 / 4-5-6 / 7-8-9 in every locale, digit
-            // glyphs render as ASCII 0–9 (not Arabic-Indic), and
-            // "Forgot your passcode?" matches the keypad's English
-            // muscle-memory register (the forgot tap leaves the
-            // keypad context into a translated sheet).
-            VStack(spacing: UniSpacing.l) {
+        VStack(spacing: 0) {
+            // Title stays in the BODY (the handoff has no nav-bar title here)
+            // and follows the AMBIENT app locale — "Enter / Create / Confirm
+            // Passcode" is read-once descriptive text that benefits from
+            // translation. 25/600, no subtitle, no lock icon (handoff).
+            Spacer(minLength: 0).frame(height: 44)
+            titleView
+            // Dots + status line + keypad are forced LTR + English so the dots
+            // fill L→R, the grid geometry stays 1-2-3 / 4-5-6 / 7-8-9 in every
+            // locale, and the digit glyphs render as ASCII 0–9 (not
+            // Arabic-Indic) — the universal-passcode-gesture guarantee.
+            VStack(spacing: 0) {
                 dotRow
-                lockoutRow
-                Spacer(minLength: 0)
+                    .padding(.top, 22)
+                statusLine
+                    .padding(.top, 6)
+                Spacer(minLength: 20)
                 keypad
                     .disabled(isLockedOut)
                     .opacity(isLockedOut ? 0.4 : 1)
                     .animation(.easeInOut(duration: 0.2), value: isLockedOut)
-                inlineErrorRow
-                forgotRow
+                    .padding(.bottom, 6)
             }
             .environment(\.layoutDirection, .leftToRight)
             .environment(\.locale, Locale(identifier: "en"))
         }
-        .padding(.horizontal, UniSpacing.l)
-        .padding(.vertical, UniSpacing.l)
+        .padding(.horizontal, 20)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .overlay(alignment: .topTrailing) { optionsButton }
         .uniHaptic(.contextualImpact(.tap), trigger: keypressTrigger)
         .uniHaptic(.error, trigger: errorTrigger)
+        .confirmationDialog(
+            "Can’t unlock? You can restore access with your recovery phrase.",
+            isPresented: $isShowingOptions,
+            titleVisibility: .visible
+        ) {
+            Button("Forgot passcode?") { onForgotPin?() }
+            Button("Cancel", role: .cancel) { }
+        }
         .task {
             guard case .verify = mode else { return }
             // Restore any persisted brute-force lockout before anything
@@ -209,39 +238,53 @@ struct PinCodeView: View {
             biometricTask?.cancel()
             verifyTask?.cancel()
             lockoutTask?.cancel()
+            successTask?.cancel()
         }
     }
 
-    // MARK: - Header
+    // MARK: - Title + options
 
-    private var header: some View {
-        VStack(spacing: UniSpacing.s) {
-            UniLargeTitle(text: titleKey, alignment: .center)
-            UniBody(
-                text: bodyKey,
-                alignment: .center,
-                color: UniColors.Text.secondary
-            )
-        }
-        .padding(.top, UniSpacing.l)
+    /// Handoff title — 25/600, centered, no subtitle, no lock icon.
+    private var titleView: some View {
+        Text(titleKey)
+            .font(.system(size: 25, weight: .semibold))
+            .foregroundStyle(UniColors.Text.primary)
+            .multilineTextAlignment(.center)
+            .fixedSize(horizontal: false, vertical: true)
     }
 
     private var titleKey: LocalizedStringKey {
         switch mode {
-        case .set:     return "Set a passcode"
-        case .confirm: return "Confirm your passcode"
-        case .verify:  return "Enter your passcode"
+        case .set:     return "Create Passcode"
+        case .confirm: return "Confirm Passcode"
+        case .verify:  return "Enter Passcode"
         }
     }
 
-    private var bodyKey: LocalizedStringKey {
-        switch mode {
-        case .set:
-            return "Choose a 6-digit passcode. You'll use it to unlock Aperture and confirm transactions."
-        case .confirm:
-            return "Enter the same passcode again."
-        case .verify:
-            return "Enter your passcode to continue."
+    /// The ⋯ options chip (handoff `.optbar`), pinned top-trailing. Verify
+    /// mode only, and only when the caller wired a forgot-passcode recovery
+    /// path — it opens the native action sheet carrying "Forgot passcode?"
+    /// (moved out of the screen body per the handoff). A flat circular chip,
+    /// NOT a liquid-glass nav button: the lock screen owns no nav bar (it's a
+    /// detached full-screen surface), so this is an in-view control exactly
+    /// as the handoff draws it.
+    @ViewBuilder
+    private var optionsButton: some View {
+        if mode == .verify, onForgotPin != nil {
+            Button {
+                UniHapticEngine.shared.play(.contextualImpact(.whisper))
+                isShowingOptions = true
+            } label: {
+                Image(systemName: "ellipsis")
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundStyle(UniColors.Text.primary)
+                    .frame(width: 38, height: 38)
+                    .background(UniColors.Fill.quaternary, in: Circle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(Text("Options"))
+            .padding(.top, 4)
+            .padding(.trailing, 4)
         }
     }
 
@@ -251,19 +294,42 @@ struct PinCodeView: View {
     /// shake on mismatch. The shake amplitude is small (8 pt) — enough
     /// to register without feeling alarming.
     private var dotRow: some View {
-        HStack(spacing: UniSpacing.s) {
+        HStack(spacing: 20) {
             ForEach(0..<6, id: \.self) { index in
+                let filled = index < digits.count
                 Circle()
-                    .fill(
-                        index < digits.count
-                            ? UniColors.Brand.mark
-                            : UniColors.Fill.tertiary
-                    )
-                    .frame(width: 16, height: 16)
+                    .fill(filled ? dotFillColor : Color.clear)
+                    .frame(width: 14, height: 14)
+                    .overlay {
+                        // Empty dot = a 2pt inner ring; filled = solid, no ring.
+                        Circle()
+                            .strokeBorder(dotRingColor, lineWidth: 2)
+                            .opacity(filled ? 0 : 1)
+                    }
             }
         }
         .modifier(ShakeEffect(animatableData: CGFloat(shakeTrigger)))
         .animation(.spring(response: 0.3, dampingFraction: 0.4), value: shakeTrigger)
+        .animation(.easeOut(duration: 0.18), value: digits.count)
+        .animation(.easeOut(duration: 0.18), value: didSucceed)
+    }
+
+    /// `true` while six wrong digits are still on screen — drives the red dots
+    /// during the shake. Clears the instant the digits empty (retry) so the
+    /// dots return to their normal gray rings even though the message lingers.
+    private var dotsErrored: Bool { inlineError != nil && digits.count == 6 }
+
+    /// Fill for a filled dot: ink normally, danger during a wrong attempt,
+    /// green on the brief success flash (handoff `.dots` / `.err` / `.ok`).
+    private var dotFillColor: Color {
+        if didSucceed { return UniColors.PinLock.positive }
+        if dotsErrored { return UniColors.PinLock.danger }
+        return UniColors.Text.primary
+    }
+
+    /// Empty-dot ring: 2pt `dotEmpty`, danger during a wrong attempt.
+    private var dotRingColor: Color {
+        dotsErrored ? UniColors.PinLock.danger : UniColors.PinLock.dotEmpty
     }
 
     // MARK: - Brute-force lockout
@@ -272,26 +338,42 @@ struct PinCodeView: View {
         lockoutRemaining > 0
     }
 
-    /// Countdown line under the dots, shown in `.verify` mode while an
-    /// escalating brute-force delay is active. Reserves a fixed-height
-    /// slot (like `inlineErrorRow`) so the keypad doesn't jump when the
-    /// lockout engages or expires. `.set` / `.confirm` modes render
-    /// nothing — their layout is unchanged.
+    /// The single status line under the dots (handoff `.errtx`, height 20).
+    /// One fixed-height slot so the keypad never jumps: it shows the active
+    /// brute-force countdown (secondary), the wrong-passcode line with its
+    /// live attempts counter (danger), or nothing.
     @ViewBuilder
-    private var lockoutRow: some View {
-        if mode == .verify {
-            Group {
-                if isLockedOut {
-                    UniFootnote(
-                        text: "Try again in \(lockoutCountdown)",
-                        alignment: .center,
-                        color: UniColors.Text.secondary
-                    )
-                } else {
-                    UniFootnote(text: " ", alignment: .center)
-                }
+    private var statusLine: some View {
+        Group {
+            if mode == .verify, isLockedOut {
+                Text("Try again in \(lockoutCountdown)")
+                    .foregroundStyle(UniColors.Text.secondary)
+            } else if let error = inlineError {
+                errorText(error)
+                    .foregroundStyle(UniColors.PinLock.danger)
+            } else {
+                Text(verbatim: " ")
             }
-            .frame(height: 20)
+        }
+        .font(.system(size: 13.5, weight: .semibold))
+        .multilineTextAlignment(.center)
+        .frame(height: 20)
+    }
+
+    /// The wrong-passcode line. Appends the live "N attempts remaining" suffix
+    /// when the caller (the app-unlock screen with Erase-Data armed) supplied
+    /// a count via `attemptsRemaining`; otherwise the bare phrase. A confirm
+    /// mismatch reads "Those don't match."
+    private func errorText(_ error: InlineError) -> Text {
+        switch error {
+        case .mismatch:
+            return Text("Those don’t match. Try again.")
+        case .incorrect:
+            guard let n = attemptsLeft else { return Text("Wrong passcode.") }
+            let attempts = n == 1
+                ? Text("1 attempt remaining")
+                : Text("\(n) attempts remaining")
+            return Text("Wrong passcode. ") + attempts + Text(verbatim: ".")
         }
     }
 
@@ -327,37 +409,30 @@ struct PinCodeView: View {
         }
     }
 
-    // MARK: - Keypad
+    // MARK: - Keypad (flat iOS-dialer style — handoff)
 
-    /// 12 buttons in a 3-column `LazyVGrid` — digits 1–9 across rows 1–3,
-    /// then biometric / 0 / delete on row 4.
-    ///
-    /// **Liquid Glass (Rule #2 §B).** The ten digit keys live inside one
-    /// `GlassEffectContainer` so their circular glass shapes participate
-    /// in one shared material — touches reflect light across neighboring
-    /// keys (Rule #2 §B.2 — "the materiality is the affordance"). The
-    /// container's spacing matches the grid spacing so the system handles
-    /// edge merging cleanly when keys are close enough to share material.
+    /// 12 keys in a 3-column grid — digits 1–9, then Face ID / 0 / delete.
+    /// The handoff keypad has NO key backgrounds (Apple's lock-screen dialer
+    /// style): each key is a bare digit + ITU letters over a transparent
+    /// field, with a circular press-dim that fades in on touch
+    /// (`DialerKeyStyle`). Pinned to the bottom of the screen.
     private var keypad: some View {
-        GlassEffectContainer(spacing: UniSpacing.m) {
-            LazyVGrid(columns: keypadColumns, spacing: UniSpacing.m) {
-                ForEach(1...9, id: \.self) { digit in
-                    digitKey(String(digit))
-                }
-                biometricKey
-                digitKey("0")
-                deleteKey
+        LazyVGrid(columns: keypadColumns, spacing: 26) {
+            ForEach(1...9, id: \.self) { digit in
+                digitKey(String(digit))
             }
-            .frame(maxWidth: 340) // tightens the keypad on wide screens; sized for 88pt keys + 16pt gaps
+            biometricKey
+            digitKey("0")
+            deleteKey
         }
+        .frame(maxWidth: 360)
     }
 
     private var keypadColumns: [GridItem] {
-        let spacing = UniSpacing.m
-        return [
-            GridItem(.flexible(), spacing: spacing),
-            GridItem(.flexible(), spacing: spacing),
-            GridItem(.flexible(), spacing: spacing)
+        [
+            GridItem(.flexible(), spacing: 0),
+            GridItem(.flexible(), spacing: 0),
+            GridItem(.flexible(), spacing: 0)
         ]
     }
 
@@ -389,42 +464,25 @@ struct PinCodeView: View {
         Button {
             handleDigitTap(digit)
         } label: {
-            VStack(spacing: 2) {
+            VStack(spacing: 3) {
                 Text(verbatim: digit)
-                    .font(.system(size: 36, weight: .regular, design: .default))
+                    .font(.system(size: 30, weight: .medium, design: .rounded))
                     .foregroundStyle(UniColors.Text.primary)
-                if letterRow.isEmpty {
-                    // Reserved space so 1 and 0 don't shift their digit
-                    // upward relative to keys with letters — preserves
-                    // the grid's vertical rhythm.
-                    Text(verbatim: " ")
-                        .font(.system(size: 11, weight: .semibold))
-                        .tracking(2)
-                        .opacity(0)
-                } else {
-                    Text(verbatim: letterRow)
-                        .font(.system(size: 11, weight: .semibold))
-                        .tracking(2)
-                        .foregroundStyle(UniColors.Text.secondary)
-                        .accessibilityHidden(true)
-                }
+                // ITU letters under the digit (uppercase, .16em tracking).
+                // Empty but height-reserved for 1 and 0 so every digit sits
+                // on the same baseline.
+                Text(verbatim: letterRow.isEmpty ? " " : letterRow)
+                    .font(.system(size: 11, weight: .semibold))
+                    .tracking(1.8)
+                    .foregroundStyle(UniColors.Text.secondary)
+                    .opacity(letterRow.isEmpty ? 0 : 1)
+                    .frame(height: 12)
+                    .accessibilityHidden(true)
             }
-            .frame(width: 88, height: 88)
-            .glassEffect(.regular.interactive(), in: .circle)
-            // Hit-test fix (2026-06-08, same root cause as Rule #19's
-            // UniButton fix): `.glassEffect(_:in: .circle)` paints a
-            // circle that fills the 88×88 frame, but `Button` with
-            // `.plain` style hit-tests the VStack's intrinsic bounds
-            // — the digit glyph and letter row. Taps in the corners
-            // of the circle fell through. `.contentShape(Circle())`
-            // brings the tap region back in line with the painted
-            // material. Apple's `.glassEffect(_:in:)` API takes the
-            // shape parameter for the visual *and* the interactive
-            // boundary; SwiftUI's `Button` does not infer the second
-            // one — we declare it explicitly.
-            .contentShape(Circle())
+            .frame(maxWidth: .infinity, minHeight: 64)
+            .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(DialerKeyStyle())
         .accessibilityLabel(Text(verbatim: digit))
     }
 
@@ -439,16 +497,16 @@ struct PinCodeView: View {
                 handleBiometricTap()
             } label: {
                 Image(systemName: biometricSymbol)
-                    .font(.system(size: 32, weight: .regular))
-                    .symbolRenderingMode(.hierarchical)
-                    .foregroundStyle(UniColors.Brand.mark)
-                    .frame(width: 88, height: 88)
+                    .font(.system(size: 30, weight: .regular))
+                    .foregroundStyle(UniColors.Text.primary)
+                    .frame(maxWidth: .infinity, minHeight: 64)
+                    .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
+            .buttonStyle(DialerFnKeyStyle())
             .accessibilityLabel(Text(biometricAccessibilityKey))
         } else {
             // Empty placeholder — same dimensions so the grid math stays.
-            Color.clear.frame(width: 88, height: 88)
+            Color.clear.frame(maxWidth: .infinity, minHeight: 64)
         }
     }
 
@@ -457,55 +515,16 @@ struct PinCodeView: View {
         Button {
             handleDeleteTap()
         } label: {
-            Image(systemName: "delete.left")
-                .font(.system(size: 28, weight: .regular))
-                .foregroundStyle(UniColors.Text.primary)
-                .frame(width: 88, height: 88)
+            // Filled rounded backspace with the knocked-out X (handoff
+            // "filled gray rounded-X glyph"), in the muted delete gray.
+            Image(systemName: "delete.left.fill")
+                .font(.system(size: 27, weight: .regular))
+                .foregroundStyle(UniColors.PinLock.delete)
+                .frame(maxWidth: .infinity, minHeight: 64)
+                .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
-        .disabled(digits.isEmpty)
-        .opacity(digits.isEmpty ? 0.4 : 1)
+        .buttonStyle(DialerFnKeyStyle())
         .accessibilityLabel(Text("Delete last digit"))
-    }
-
-    // MARK: - Inline error
-
-    /// Renders the transient mismatch / incorrect-PIN footnote. Reserves a
-    /// fixed-height slot so the keypad doesn't jump up/down as the error
-    /// appears and disappears.
-    private var inlineErrorRow: some View {
-        Group {
-            if let error = inlineError {
-                UniFootnote(
-                    text: error.localizedKey,
-                    alignment: .center,
-                    color: UniColors.Status.errorForeground
-                )
-            } else {
-                UniFootnote(text: " ", alignment: .center)
-            }
-        }
-        .frame(height: 20)
-    }
-
-    // MARK: - Forgot row
-
-    @ViewBuilder
-    private var forgotRow: some View {
-        if mode == .verify, let onForgotPin {
-            Button {
-                onForgotPin()
-            } label: {
-                Text("Forgot PIN?")
-                    .font(UniTypography.footnote)
-                    .foregroundStyle(UniColors.Text.tertiary)
-            }
-            .buttonStyle(.plain)
-        } else {
-            // Reserve consistent footer height — empty when absent so the
-            // dots/keypad don't shift between modes.
-            Color.clear.frame(height: 20)
-        }
     }
 
     // MARK: - Biometric symbol resolution
@@ -576,6 +595,8 @@ struct PinCodeView: View {
         // unreachable; the guard keeps it that way if the keypad ever
         // changes shape.
         guard allowsBiometrics else { return }
+        // Medium impact as the scan begins (handoff haptics table).
+        UniHapticEngine.shared.play(.contextualImpact(.commit))
         biometricTask?.cancel()
         biometricTask = Task {
             let result = await biometricService.authenticate(
@@ -599,12 +620,27 @@ struct PinCodeView: View {
             onComplete(digits)
         case .confirm(let expected):
             if digits == expected {
-                onComplete(digits)
+                flashSuccessThenComplete(digits)
             } else {
                 failWith(.mismatch)
             }
         case .verify:
             verifyPin()
+        }
+    }
+
+    /// Brief green dot flash (handoff `.dots.ok`) + success haptic, then hand
+    /// off to the caller. Used on a correct passcode / confirm match; a
+    /// biometric success skips it (no dots are involved). The hop is tracked
+    /// so `onComplete` never fires into a parent after teardown.
+    private func flashSuccessThenComplete(_ value: String) {
+        UniHapticEngine.shared.play(.success)
+        withAnimation(.easeOut(duration: 0.18)) { didSucceed = true }
+        successTask?.cancel()
+        successTask = Task {
+            try? await Task.sleep(for: .milliseconds(160))
+            guard !Task.isCancelled else { return }
+            onComplete(value)
         }
     }
 
@@ -632,13 +668,16 @@ struct PinCodeView: View {
             guard !Task.isCancelled else { return }
             if isValid {
                 PinCodeStorage.clearFailures()
-                onComplete("")
+                flashSuccessThenComplete("")
             } else {
                 PinCodeStorage.recordFailure()
                 // Notify the caller of a failed verify (app-unlock uses this
                 // for the optional Erase-Data wipe). Fired BEFORE the shake so
                 // an erase decision isn't delayed behind the clear animation.
                 onFailedAttempt?()
+                // Capture the live remaining-attempts count AFTER the caller
+                // incremented it, so the wrong line reads the fresh value.
+                attemptsLeft = attemptsRemaining?()
                 failWith(.incorrect)
                 refreshLockout()
             }
@@ -680,19 +719,12 @@ struct PinCodeView: View {
 
     // MARK: - Types
 
-    /// Inline error messages keyed off the catalog. We keep the enum
-    /// internal rather than expose `String` so the catalog source stays
-    /// authoritative.
+    /// Which transient wrong-state the status line is showing. The copy lives
+    /// in `errorText(_:)` so the wrong-passcode line can splice in the live
+    /// "N attempts remaining" suffix.
     private enum InlineError: Equatable {
         case mismatch
         case incorrect
-
-        var localizedKey: LocalizedStringKey {
-            switch self {
-            case .mismatch:  return "Those don't match. Try again."
-            case .incorrect: return "Incorrect PIN."
-            }
-        }
     }
 }
 
@@ -707,10 +739,41 @@ private struct ShakeEffect: GeometryEffect {
     var animatableData: CGFloat
 
     func effectValue(size: CGSize) -> ProjectionTransform {
-        let amplitude: CGFloat = 8
+        let amplitude: CGFloat = 9
         let phase = animatableData * .pi * 4
         let x = sin(phase) * amplitude
         return ProjectionTransform(CGAffineTransform(translationX: x, y: 0))
+    }
+}
+
+// MARK: - Keypad key styles (flat iOS-dialer — handoff)
+
+/// Flat dialer DIGIT key: no background; a 62pt circular press-dim fades in
+/// under the label on touch (handoff `.key::before`) — fast in (0.04s), gentle
+/// out (0.18s). The label keeps its full-width tap target.
+private struct DialerKeyStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .background(
+                Circle()
+                    .fill(UniColors.PinLock.keyPress)
+                    .frame(width: 62, height: 62)
+                    .opacity(configuration.isPressed ? 1 : 0)
+                    .animation(
+                        .easeOut(duration: configuration.isPressed ? 0.04 : 0.18),
+                        value: configuration.isPressed
+                    )
+            )
+    }
+}
+
+/// Flat dialer FUNCTION key (Face ID / delete): no press circle — it dims to
+/// 0.4 on touch, matching the handoff's `.key.fn:active{opacity:.4}`.
+private struct DialerFnKeyStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .opacity(configuration.isPressed ? 0.4 : 1)
+            .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
     }
 }
 
