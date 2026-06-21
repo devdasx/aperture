@@ -52,6 +52,8 @@ struct ResetApertureFlow: View {
     private var typedMatches: Bool { typed == confirmWord }
     @State private var didFireTypedHaptic = false
     @State private var isShowingPinGate = false
+    /// Defers the PIN cover until the keyboard has fully retracted.
+    @State private var pinGateTask: Task<Void, Never>?
 
     @State private var stagesDone: Set<FactoryReset.Stage> = []
     @State private var isComplete = false
@@ -73,6 +75,7 @@ struct ResetApertureFlow: View {
     private let danger = UniColors.Reset.danger
 
     var body: some View {
+        NavigationStack {
         ZStack {
             UniColors.Background.primary.ignoresSafeArea()
             switch step {
@@ -128,13 +131,14 @@ struct ResetApertureFlow: View {
             }
             .uniAppEnvironment()
         }
+        }
     }
 
     // MARK: - 1 · Warning
 
     private var warningScreen: some View {
         screenScaffold(
-            nav: navBar(title: "Settings", leading: .close, onTap: { close() }),
+            title: "Settings", leading: .close, onLeading: { close() },
             footer: {
                 dangerButton("Continue") { step = .backup }
                 ghostButton("Cancel") { close() }
@@ -187,7 +191,7 @@ struct ResetApertureFlow: View {
 
     private var backupScreen: some View {
         screenScaffold(
-            nav: navBar(title: "Reset Aperture", leading: .back, onTap: { step = .warning }),
+            title: "Reset Aperture", leading: .back, onLeading: { step = .warning },
             footer: {
                 primaryButton("My Wallets Are Backed Up") { step = .acknowledge }
                 ghostButton("Back Up First") { step = .backupPicker }
@@ -231,7 +235,7 @@ struct ResetApertureFlow: View {
 
     private var walletPickerScreen: some View {
         screenScaffold(
-            nav: navBar(title: "Back Up", leading: .back, onTap: { step = .backup }),
+            title: "Back Up", leading: .back, onLeading: { step = .backup },
             centered: false,
             footer: { EmptyView() }
         ) {
@@ -313,7 +317,7 @@ struct ResetApertureFlow: View {
 
     private var acknowledgeScreen: some View {
         screenScaffold(
-            nav: navBar(title: "Reset Aperture", leading: .back, onTap: { step = .backup }),
+            title: "Reset Aperture", leading: .back, onLeading: { step = .backup },
             centered: false,
             footer: {
                 dangerButton("Continue", isEnabled: allAcknowledged) { step = .confirm }
@@ -375,7 +379,7 @@ struct ResetApertureFlow: View {
 
     private var confirmScreen: some View {
         screenScaffold(
-            nav: navBar(title: "Reset Aperture", leading: .back, onTap: { step = .acknowledge }),
+            title: "Reset Aperture", leading: .back, onLeading: { step = .acknowledge },
             footer: {
                 dangerButton("Erase Aperture", isEnabled: typedMatches) {
                     confirmAndAuthenticate()
@@ -432,10 +436,23 @@ struct ResetApertureFlow: View {
     /// deliberate gates and we proceed.
     private func confirmAndAuthenticate() {
         guard typedMatches else { return }
-        if PinCodeStorage.hasPin {
-            isShowingPinGate = true
-        } else {
+        guard PinCodeStorage.hasPin else {
+            // No PIN to verify → the typed RESET + acknowledgements are the
+            // gates. Drop the keyboard and go straight to the wipe.
+            confirmFocused = false
             step = .erasing
+            return
+        }
+        // Dismiss the keyboard FIRST and let it fully retract before the PIN
+        // cover slides up — otherwise the keyboard and the cover animate over
+        // each other (2026-06-21 user direction). Resign focus, then present
+        // once the standard keyboard-dismiss animation has settled.
+        confirmFocused = false
+        pinGateTask?.cancel()
+        pinGateTask = Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(350))
+            guard !Task.isCancelled else { return }
+            isShowingPinGate = true
         }
     }
 
@@ -443,7 +460,6 @@ struct ResetApertureFlow: View {
 
     private var erasingScreen: some View {
         VStack(spacing: 0) {
-            navBar(title: "Reset Aperture", leading: .none, onTap: {})
             ScrollView {
                 VStack(spacing: UniSpacing.mPlus) {
                     morphingEmblem
@@ -478,6 +494,8 @@ struct ResetApertureFlow: View {
             .padding(.horizontal, hPad)
             .padding(.bottom, UniSpacing.l)
         }
+        .navigationTitle("Reset Aperture")
+        .navigationBarTitleDisplayMode(.inline)
         .task { await runWipe() }
     }
 
@@ -658,43 +676,35 @@ struct ResetApertureFlow: View {
 
     private enum NavLeading { case close, back, none }
 
-    @ViewBuilder
-    private func navBar(title: LocalizedStringKey, leading: NavLeading, onTap: @escaping () -> Void) -> some View {
-        ZStack {
-            Text(title)
-                .font(.system(size: 17, weight: .semibold))
-                .foregroundStyle(UniColors.Text.primary)
-            HStack {
-                if leading != .none {
-                    Button {
-                        UniHapticEngine.shared.play(.contextualImpact(.whisper))
-                        onTap()
-                    } label: {
-                        Image(systemName: leading == .close ? "xmark" : "chevron.left")
-                            .font(.system(size: 18, weight: .semibold))
-                            .foregroundStyle(UniColors.Text.primary)
-                            .frame(width: 38, height: 38)
-                            .background(UniColors.Fill.quaternary, in: Circle())
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel(Text(leading == .close ? "Close" : "Back"))
+    /// Native nav-bar leading control for the reset flow. iOS 26 wraps the
+    /// toolbar button in its own circular liquid-glass chip automatically —
+    /// we just supply the glyph, no custom background.
+    @ToolbarContentBuilder
+    private func resetLeading(_ leading: NavLeading, onTap: @escaping () -> Void) -> some ToolbarContent {
+        if leading != .none {
+            ToolbarItem(placement: .topBarLeading) {
+                Button {
+                    UniHapticEngine.shared.play(.contextualImpact(.whisper))
+                    onTap()
+                } label: {
+                    Image(systemName: leading == .close ? "xmark" : "chevron.left")
+                        .font(.system(size: 17, weight: .semibold))
                 }
-                Spacer()
+                .accessibilityLabel(Text(leading == .close ? "Close" : "Back"))
             }
         }
-        .frame(height: 56)
-        .padding(.horizontal, 14)
     }
 
     @ViewBuilder
     private func screenScaffold<C: View, F: View>(
-        nav: some View,
+        title: LocalizedStringKey,
+        leading: NavLeading,
+        onLeading: @escaping () -> Void = {},
         centered: Bool = true,
         @ViewBuilder footer: () -> F,
         @ViewBuilder content: () -> C
     ) -> some View {
         VStack(spacing: 0) {
-            nav
             ScrollView {
                 content()
                     .padding(.horizontal, hPad)
@@ -709,6 +719,9 @@ struct ResetApertureFlow: View {
             .padding(.horizontal, hPad)
             .padding(.bottom, UniSpacing.l)
         }
+        .navigationTitle(title)
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar { resetLeading(leading, onTap: onLeading) }
     }
 
     private func heroGlyph(_ symbol: String, tint: Color) -> some View {
