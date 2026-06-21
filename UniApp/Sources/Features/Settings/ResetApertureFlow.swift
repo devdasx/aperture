@@ -605,17 +605,49 @@ struct ResetApertureFlow: View {
 
     private func runWipe() async {
         guard eraseError == nil, !isComplete else { return }
-        do {
-            try await FactoryReset.performStagedWipe(modelContext: modelContext) { stage in
+        let animate = !reduceMotion
+
+        // Run the REAL staged wipe in parallel with a minimum-duration paced
+        // animation. A real wipe is near-instant, which would flash the ring;
+        // pacing the visible steps over ~3s (the handoff's choreography) makes
+        // the reset read as a deliberate process. The success morph waits for
+        // the real wipe — we NEVER show "complete" before the data is gone.
+        let wipe = Task<Bool, Never> { @MainActor in
+            do {
+                try await FactoryReset.performStagedWipe(modelContext: modelContext) { _ in }
+                return true
+            } catch {
+                return false
+            }
+        }
+
+        if animate {
+            // Reveal each step on a paced timeline (the ring fills as they land).
+            let timeline: [(FactoryReset.Stage, Duration)] = [
+                (.wallets, .milliseconds(850)),
+                (.keys, .milliseconds(900)),
+                (.settings, .milliseconds(800)),
+            ]
+            for (stage, dwell) in timeline {
+                try? await Task.sleep(for: dwell)
                 UniHapticEngine.shared.play(.contextualImpact(.whisper))
                 _ = withAnimation(.easeOut(duration: 0.3)) { stagesDone.insert(stage) }
             }
-            UniHapticEngine.shared.play(.success)
-            withAnimation { isComplete = true }
-        } catch {
-            UniHapticEngine.shared.play(.error)
-            eraseError = String.apertureLocalized("Couldn’t erase Aperture. Nothing was removed — your wallets, keys, and settings are untouched. Try again.")
         }
+
+        // Resolve the real wipe (almost always already finished). Failure ⇒
+        // nothing was destroyed; show the error + reset the ring, never morph.
+        guard await wipe.value else {
+            UniHapticEngine.shared.play(.error)
+            withAnimation { stagesDone = [] }
+            eraseError = String.apertureLocalized("Couldn’t erase Aperture. Nothing was removed — your wallets, keys, and settings are untouched. Try again.")
+            return
+        }
+
+        if !animate { stagesDone = Set(FactoryReset.Stage.allCases) }
+        if animate { try? await Task.sleep(for: .milliseconds(450)) }
+        UniHapticEngine.shared.play(.success)
+        withAnimation { isComplete = true }
     }
 
     private func close() {
