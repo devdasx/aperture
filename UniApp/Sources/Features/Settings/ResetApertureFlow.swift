@@ -95,10 +95,7 @@ struct ResetApertureFlow: View {
         screenScaffold(
             nav: navBar(title: "Settings", leading: .close, onTap: { close() }),
             footer: {
-                dangerButton("Continue") {
-                    UniHapticEngine.shared.play(.warning)
-                    step = .backup
-                }
+                dangerButton("Continue") { step = .backup }
                 ghostButton("Cancel") { close() }
             }
         ) {
@@ -339,7 +336,7 @@ struct ResetApertureFlow: View {
         screenScaffold(
             nav: navBar(title: "Reset Aperture", leading: .back, onTap: { step = .acknowledge }),
             footer: {
-                dangerButton(isAuthenticating ? "Authenticating…" : "Erase Aperture", isEnabled: typedMatches && !isAuthenticating) {
+                dangerButton(isAuthenticating ? "Authenticating…" : "Erase Aperture", isEnabled: typedMatches, isLoading: isAuthenticating) {
                     confirmAndAuthenticate()
                 }
                 ghostButton("Cancel") { close() }
@@ -389,7 +386,6 @@ struct ResetApertureFlow: View {
     private func confirmAndAuthenticate() {
         guard typedMatches, !isAuthenticating else { return }
         isAuthenticating = true
-        UniHapticEngine.shared.play(.warning)
         Task {
             let result = await BiometricService().authenticateOwner(reason: "Authenticate to erase Aperture")
             isAuthenticating = false
@@ -432,13 +428,15 @@ struct ResetApertureFlow: View {
                 .padding(.bottom, UniSpacing.xl)
             }
             .scrollIndicators(.hidden)
-            VStack(spacing: 10) {
-                if eraseError != nil {
-                    dangerButton("Try again") { eraseError = nil; stagesDone = []; Task { await runWipe() } }
-                    ghostButton("Cancel") { close() }
-                } else if isComplete {
-                    primaryButton("Get Started") { UniHapticEngine.shared.play(.success); close() }
-                    ghostButton("Replay") { replayMorph() }
+            GlassEffectContainer(spacing: 10) {
+                VStack(spacing: 10) {
+                    if eraseError != nil {
+                        dangerButton("Try again") { eraseError = nil; stagesDone = []; Task { await runWipe() } }
+                        ghostButton("Cancel") { close() }
+                    } else if isComplete {
+                        primaryButton("Get Started") { close() }
+                        ghostButton("Replay") { replayMorph() }
+                    }
                 }
             }
             .padding(.horizontal, hPad)
@@ -595,7 +593,6 @@ struct ResetApertureFlow: View {
     }
 
     private func close() {
-        UniHapticEngine.shared.play(.contextualImpact(.whisper))
         onClose()
     }
 
@@ -611,7 +608,10 @@ struct ResetApertureFlow: View {
                 .foregroundStyle(UniColors.Text.primary)
             HStack {
                 if leading != .none {
-                    Button(action: onTap) {
+                    Button {
+                        UniHapticEngine.shared.play(.contextualImpact(.whisper))
+                        onTap()
+                    } label: {
                         Image(systemName: leading == .close ? "xmark" : "chevron.left")
                             .font(.system(size: 18, weight: .semibold))
                             .foregroundStyle(UniColors.Text.primary)
@@ -645,9 +645,11 @@ struct ResetApertureFlow: View {
                     .frame(maxWidth: .infinity, alignment: centered ? .center : .leading)
             }
             .scrollIndicators(.hidden)
-            VStack(spacing: 10) { footer() }
-                .padding(.horizontal, hPad)
-                .padding(.bottom, UniSpacing.l)
+            GlassEffectContainer(spacing: 10) {
+                VStack(spacing: 10) { footer() }
+            }
+            .padding(.horizontal, hPad)
+            .padding(.bottom, UniSpacing.l)
         }
     }
 
@@ -711,47 +713,20 @@ struct ResetApertureFlow: View {
         Rectangle().fill(UniColors.Separator.regular).frame(height: 1)
     }
 
-    // MARK: - Buttons (text-only)
+    // MARK: - Buttons (unified Liquid Glass — UniButton)
 
-    private func dangerButton(_ title: LocalizedStringKey, isEnabled: Bool = true, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Text(title)
-                .font(.system(size: 16.5, weight: .semibold))
-                .foregroundStyle(UniColors.Reset.onDanger)
-                .frame(maxWidth: .infinity)
-                .frame(height: 56)
-                .background(Capsule().fill(danger))
-                .contentShape(Capsule())
-        }
-        .buttonStyle(.plain)
-        .opacity(isEnabled ? 1 : 0.4)
-        .disabled(!isEnabled)
+    /// Destructive CTA — glass-prominent, tinted to the reset's exact red.
+    private func dangerButton(_ title: LocalizedStringKey, isEnabled: Bool = true, isLoading: Bool = false, action: @escaping () -> Void) -> some View {
+        UniButton(title: title, variant: .destructive, isLoading: isLoading, isEnabled: isEnabled, tint: UniColors.Reset.danger, action: action)
     }
 
+    /// Primary (non-destructive) CTA — glass-prominent, accent tint.
     private func primaryButton(_ title: LocalizedStringKey, isEnabled: Bool = true, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Text(title)
-                .font(.system(size: 16.5, weight: .semibold))
-                .foregroundStyle(UniColors.Button.primaryLabel)
-                .frame(maxWidth: .infinity)
-                .frame(height: 56)
-                .background(Capsule().fill(UniColors.Brand.mark))
-                .contentShape(Capsule())
-        }
-        .buttonStyle(.plain)
-        .opacity(isEnabled ? 1 : 0.4)
-        .disabled(!isEnabled)
+        UniButton(title: title, variant: .primary, isEnabled: isEnabled, action: action)
     }
 
+    /// Secondary CTA — the unified `.glass` button (no longer bare text).
     private func ghostButton(_ title: LocalizedStringKey, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Text(title)
-                .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(UniColors.Text.secondary)
-                .frame(maxWidth: .infinity)
-                .frame(height: 46)
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
+        UniButton(title: title, variant: .secondary, action: action)
     }
 }
