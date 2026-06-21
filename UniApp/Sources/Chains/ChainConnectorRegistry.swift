@@ -31,13 +31,11 @@ enum ChainConnectorRegistry {
         case .ethereum, .arbitrum, .base, .optimism, .scroll, .zkSync,
              .polygon, .bnbChain, .opBNB, .avalanche, .celo,
              .bitcoin, .bitcoinCash, .litecoin, .dogecoin,
-             .tron:
+             .tron, .solana, .stellar:
             return DisabledChainConnector(chain: chain)
 
         // MARK: - Active connectors (each its own per-chain connector)
-        case .solana:   return SolanaConnector()
         case .ripple:   return RippleConnector()
-        case .stellar:  return StellarConnector()
         case .near:     return NearConnector()
         case .ton:      return TonConnector()
         case .polkadot: return PolkadotConnector()

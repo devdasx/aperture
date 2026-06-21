@@ -71,10 +71,15 @@ enum SupportedChain: String, CaseIterable, Hashable, Sendable, Codable {
     /// to the no-op `DisabledChainConnector`.
     ///
     /// Currently: every EVM chain, the whole Bitcoin family (BTC / BCH / LTC /
-    /// DOGE), and Tron. The active chains are Solana, XRPL, Stellar, and the
-    /// remaining long-tail L1s.
+    /// DOGE), Tron, Solana, and Stellar. (Solana + Stellar are named by case,
+    /// not family — Sui shares their `.ed25519` family but stays active.) The
+    /// active chains are XRPL, Aptos, Near, Polkadot, Sui, and Ton.
     var fetchingDisabled: Bool {
-        family == .evm || family == .bitcoin || self == .tron
+        family == .evm
+            || family == .bitcoin
+            || self == .tron
+            || self == .solana
+            || self == .stellar
     }
 
     /// Whether the chain supports BIP-32 extended public keys
