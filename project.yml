@@ -115,7 +115,6 @@ targets:
         ONEINCH_API_KEY: "$(ONEINCH_API_KEY)"
         ONERPC_API_KEY: "$(ONERPC_API_KEY)"
         INFURA_API_KEY: "$(INFURA_API_KEY)"
-        ALCHEMY_API_KEY: "$(ALCHEMY_API_KEY)"
     # iCloud → CloudKit, for the encrypted wallet-backup feature (the blob
     # store in CloudKitBackupStore). Container auto-creates under the team's
     # account when the capability is enabled in signing; record types

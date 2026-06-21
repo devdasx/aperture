@@ -53,19 +53,8 @@ enum Secrets {
     /// keyed Infura endpoint as the EVM primary.
     static var hasInfuraKey: Bool { !infuraAPIKey.isEmpty }
 
-    /// Alchemy — the user's account for the **Portfolio + Transfers APIs**
-    /// (2026-06-17). When set, the EVM chains Alchemy covers (Ethereum,
-    /// Arbitrum, Base, Optimism, Scroll, zkSync, Polygon, BNB, Avalanche,
-    /// Celo) read balances via `assets/tokens/by-address` (one call: native +
-    /// tokens) and history via `alchemy_getAssetTransfers` — through
-    /// `AlchemyConnector`, with NO JSON-RPC fallback. REST base
-    /// `https://api.g.alchemy.com/data/v1/<key>/…`; per-network RPC
-    /// `https://<network>.g.alchemy.com/v2/<key>`.
-    static let alchemyAPIKey: String = value("ALCHEMY_API_KEY")
-
-    /// `true` when the Alchemy key is configured — gates whether the registry
-    /// routes Alchemy-supported chains through `AlchemyConnector`.
-    static var hasAlchemyKey: Bool { !alchemyAPIKey.isEmpty }
+    // Alchemy keys were removed (2026-06-21): EVM data fetching is disabled and
+    // `AlchemyConnector` / `AlchemyService` were deleted, so the key is dead.
 
     /// `true` when the swap engine has the Li.Fi key it needs. Callers gate
     /// on this and show an honest "Swap unavailable" state otherwise.
