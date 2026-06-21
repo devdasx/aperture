@@ -61,6 +61,14 @@ enum EVMTransactionSigner {
         guard let recipient = draft.recipients.first else {
             throw SigningError.malformedDraft("no recipient")
         }
+        // Defensive: validate the recipient address against the chain's own
+        // rules (wallet-core) before building the transfer. The Send UI
+        // already validates it — this is belt-and-braces so a malformed
+        // address can't reach signing. (For a token send the recipient is the
+        // token destination; the contract is checked separately below.)
+        guard coin.validate(address: recipient.address) else {
+            throw SigningError.malformedDraft("invalid \(draft.chain.displayName) recipient address")
+        }
 
         var input = EthereumSigningInput()
         input.chainID = SigningNumeric.bigEndianData(fromUInt64: UInt64(chainId))

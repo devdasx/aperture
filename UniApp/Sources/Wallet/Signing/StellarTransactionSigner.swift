@@ -52,6 +52,14 @@ enum StellarTransactionSigner {
         guard let recipient = draft.recipients.first else {
             throw SigningError.malformedDraft("no recipient")
         }
+        // Defensive: validate the recipient address against Stellar's own
+        // rules (wallet-core) before building the operation — belt-and-braces
+        // over the Send UI's validation so a malformed address can't reach
+        // create_account / payment.
+        guard let stellarCoin = ChainCoinType.coinType(for: draft.chain),
+              stellarCoin.validate(address: recipient.address) else {
+            throw SigningError.malformedDraft("invalid Stellar recipient address")
+        }
         guard let amount = SigningAmount.int64(display: recipient.amount, decimals: draft.effectiveDecimals) else {
             throw SigningError.malformedDraft("invalid Stellar amount")
         }
