@@ -450,7 +450,6 @@ struct ResetApertureFlow: View {
                         ghostButton("Cancel") { close() }
                     } else if isComplete {
                         primaryButton("Get Started") { close() }
-                        ghostButton("Replay") { replayMorph() }
                     }
                 }
             }
@@ -594,19 +593,6 @@ struct ResetApertureFlow: View {
         } catch {
             UniHapticEngine.shared.play(.error)
             eraseError = String.apertureLocalized("Couldn’t erase Aperture. Nothing was removed — your wallets, keys, and settings are untouched. Try again.")
-        }
-    }
-
-    private func replayMorph() {
-        guard isComplete else { return }
-        withAnimation(.easeIn(duration: 0.2)) { isComplete = false; stagesDone = [] }
-        Task {
-            for stage in FactoryReset.Stage.allCases {
-                try? await Task.sleep(for: .milliseconds(450))
-                _ = withAnimation(.easeOut(duration: 0.3)) { stagesDone.insert(stage) }
-            }
-            try? await Task.sleep(for: .milliseconds(300))
-            withAnimation(.smooth(duration: 0.6)) { isComplete = true }
         }
     }
 
