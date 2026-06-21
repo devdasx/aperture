@@ -51,7 +51,7 @@ struct ResetApertureFlow: View {
     private let confirmWord = "RESET"
     private var typedMatches: Bool { typed == confirmWord }
     @State private var didFireTypedHaptic = false
-    @State private var isAuthenticating = false
+    @State private var isShowingPinGate = false
 
     @State private var stagesDone: Set<FactoryReset.Stage> = []
     @State private var isComplete = false
@@ -101,6 +101,32 @@ struct ResetApertureFlow: View {
                 )
                 .uniAppEnvironment()
             }
+        }
+        // The reset's final gate is the app's UNIFIED lock screen — auto Face
+        // ID (when the user enabled biometrics) with the PIN keypad fallback,
+        // not a raw LAContext prompt. Presented after the user types RESET.
+        .fullScreenCover(isPresented: $isShowingPinGate) {
+            NavigationStack {
+                PinCodeView(
+                    mode: .verify,
+                    onComplete: { _ in
+                        isShowingPinGate = false
+                        step = .erasing
+                    },
+                    onCancel: { isShowingPinGate = false },
+                    allowsBiometrics: true
+                )
+                .toolbar {
+                    ToolbarItem(placement: .topBarLeading) {
+                        Button { isShowingPinGate = false } label: {
+                            Image(systemName: "xmark")
+                                .font(.system(size: 17, weight: .semibold))
+                        }
+                        .accessibilityLabel(Text("Cancel"))
+                    }
+                }
+            }
+            .uniAppEnvironment()
         }
     }
 
@@ -351,7 +377,7 @@ struct ResetApertureFlow: View {
         screenScaffold(
             nav: navBar(title: "Reset Aperture", leading: .back, onTap: { step = .acknowledge }),
             footer: {
-                dangerButton(isAuthenticating ? "Authenticating…" : "Erase Aperture", isEnabled: typedMatches, isLoading: isAuthenticating) {
+                dangerButton("Erase Aperture", isEnabled: typedMatches) {
                     confirmAndAuthenticate()
                 }
                 ghostButton("Cancel") { close() }
@@ -398,22 +424,18 @@ struct ResetApertureFlow: View {
         }
     }
 
+    /// Tapping "Erase Aperture" routes through the app's UNIFIED lock screen
+    /// (`PinCodeView(.verify)`, which auto-presents Face ID when the user has
+    /// enabled biometrics and otherwise shows the PIN keypad) — NOT a raw
+    /// `LAContext` Face ID prompt. When no PIN is set there is nothing to
+    /// verify, so the typed RESET + the three acknowledgements are the
+    /// deliberate gates and we proceed.
     private func confirmAndAuthenticate() {
-        guard typedMatches, !isAuthenticating else { return }
-        isAuthenticating = true
-        Task {
-            let result = await BiometricService().authenticateOwner(reason: "Authenticate to erase Aperture")
-            isAuthenticating = false
-            switch result {
-            case .success:
-                UniHapticEngine.shared.play(.success); step = .erasing
-            case .failure(.unavailable):
-                UniHapticEngine.shared.play(.success); step = .erasing
-            case .failure(.userCancelled):
-                break
-            case .failure:
-                UniHapticEngine.shared.play(.error)
-            }
+        guard typedMatches else { return }
+        if PinCodeStorage.hasPin {
+            isShowingPinGate = true
+        } else {
+            step = .erasing
         }
     }
 
