@@ -94,10 +94,10 @@ actor ChainStateRepository {
         var rebuilt = 0
         for address in wallet.addresses {
             guard let chain = SupportedChain(rawValue: address.chainRaw) else { continue }
-            // EVM data is disabled (2026-06-21) — never build a per-chain
-            // aggregate row for an EVM chain, so EVM never appears in the
-            // balance card / holdings.
-            if chain.family == .evm { continue }
+            // Data is disabled for some chains (2026-06-21 — EVM + Bitcoin
+            // family + Tron) — never build a per-chain aggregate row for them,
+            // so they never appear in the balance card / holdings.
+            if chain.fetchingDisabled { continue }
             if let onlyChains, !onlyChains.contains(chain) { continue }
             let state: ChainSyncState = interim
                 ? .syncing

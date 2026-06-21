@@ -141,12 +141,13 @@ struct UniAppApp: App {
                     BiometricEnrollmentTracker.checkForDrift(
                         in: ApertureDatabase.shared.container
                     )
-                    // EVM data fetching is disabled (2026-06-21) — clear any
-                    // EVM balances / history persisted before the cutover.
-                    // One-shot, off the first frame, self-gated.
+                    // Data fetching is disabled for some chains (2026-06-21 —
+                    // EVM + Bitcoin family + Tron) — clear any balances /
+                    // history / UTXOs persisted before the cutover. One-shot,
+                    // off the first frame, self-gated.
                     let container = ApertureDatabase.shared.container
                     await Task.detached(priority: .utility) {
-                        EVMDataPurge.runIfNeeded(container: container)
+                        DisabledChainDataPurge.runIfNeeded(container: container)
                     }.value
                 }
         }

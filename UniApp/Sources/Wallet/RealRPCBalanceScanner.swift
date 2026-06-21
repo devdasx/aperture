@@ -41,10 +41,10 @@ struct RealRPCBalanceScanner: BalanceScanner {
         addresses: [SupportedChain: String],
         currency: SupportedCurrency
     ) async throws -> [ChainBalance] {
-        // EVM data fetching is disabled app-wide (2026-06-21 user direction):
-        // drop every EVM address up front so no EVM balance/token RPC is ever
-        // fired, no matter which caller invoked the scan.
-        let addresses = addresses.filter { $0.key.family != .evm }
+        // Data fetching is disabled for some chains (2026-06-21 user
+        // direction — EVM + Bitcoin family + Tron): drop those addresses up
+        // front so no balance/token RPC is ever fired, whatever the caller.
+        let addresses = addresses.filter { !$0.key.fetchingDisabled }
         // Phase 1 — fetch on-chain summaries in parallel. Bounded by
         // each endpoint's `RateLimiter`; the `TaskGroup` is honest
         // about concurrency without flooding any single provider
@@ -126,11 +126,12 @@ struct RealRPCBalanceScanner: BalanceScanner {
         customTokens: [SupportedChain: [CustomTokenSnapshot]] = [:],
         priorityTokenSymbols: Set<String> = []
     ) -> AsyncStream<StreamRow> {
-        // EVM data fetching is disabled app-wide (2026-06-21 user direction):
-        // drop EVM addresses (and any EVM custom tokens) so the stream never
-        // scans an EVM chain — every caller skips EVM through this one point.
-        let addresses = addresses.filter { $0.key.family != .evm }
-        let customTokens = customTokens.filter { $0.key.family != .evm }
+        // Data fetching is disabled for some chains (2026-06-21 — EVM +
+        // Bitcoin family + Tron): drop those addresses (and their custom
+        // tokens) so the stream never scans them — every caller skips them
+        // through this one point.
+        let addresses = addresses.filter { !$0.key.fetchingDisabled }
+        let customTokens = customTokens.filter { !$0.key.fetchingDisabled }
         return AsyncStream(StreamRow.self) { continuation in
             // **One deduplicated price batch per refresh** (2026-06-12)
             // — every token on every chain reads from this single

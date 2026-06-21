@@ -228,13 +228,14 @@ struct WalletRefreshCoordinator: Sendable {
         let heldSymbols: Set<String> =
             Set(fetchBalanceRowSnapshot(walletId: walletId).map { $0.symbol.uppercased() })
 
-        // **EVM data fetching disabled (2026-06-21 user direction).** Scan only
-        // the NON-EVM chains. EVM addresses still derive (receive) and keep
-        // their encrypted keys below (Send / Swap / dApp), but no EVM balance,
-        // token, or history is ever fetched. The old batched-Alchemy EVM
-        // prefetch was removed along with the Alchemy connector/service.
-        let scanChainAddresses = chainAddresses.filter { $0.key.family != .evm }
-        let scanChainSnapshots = chainSnapshots.filter { $0.key.family != .evm }
+        // **Data fetching disabled for some chains (2026-06-21 user
+        // direction — EVM + Bitcoin family + Tron).** Scan only the active
+        // chains. Disabled chains still derive addresses (receive) and keep
+        // their encrypted keys below (Send), but no balance, token, or history
+        // is ever fetched. The old batched-Alchemy EVM prefetch was removed
+        // along with the Alchemy connector/service.
+        let scanChainAddresses = chainAddresses.filter { !$0.key.fetchingDisabled }
+        let scanChainSnapshots = chainSnapshots.filter { !$0.key.fetchingDisabled }
 
         let scanner = RealRPCBalanceScanner(client: RPCClient.shared)
         let stream = scanner.streamScan(
@@ -279,7 +280,7 @@ struct WalletRefreshCoordinator: Sendable {
         // would be dishonest).
         if !Task.isCancelled {
             for snap in addressSnapshot
-            where snap.chain.family != .evm && !nativeYieldedChains.contains(snap.chain) {
+            where !snap.chain.fetchingDisabled && !nativeYieldedChains.contains(snap.chain) {
                 try? await txRepo.markScanComplete(addressId: snap.id, isUsed: snap.isUsed, save: false)
             }
         }
@@ -989,7 +990,9 @@ struct WalletRefreshCoordinator: Sendable {
     ) async {
         let utxoService = UTXOService(client: .shared)
         await withTaskGroup(of: Void.self) { group in
-            for snap in snapshot where snap.chain.family == .bitcoin {
+            // Bitcoin-family fetching is disabled (2026-06-21) — Send fetches
+            // UTXOs on demand, so the refresh no longer persists them.
+            for snap in snapshot where snap.chain.family == .bitcoin && !snap.chain.fetchingDisabled {
                 if snap.address.hasPrefix(StubKeyImportService.stubAddressPrefix) { continue }
                 group.addTask {
                     do {

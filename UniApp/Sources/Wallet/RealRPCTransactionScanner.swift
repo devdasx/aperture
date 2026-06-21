@@ -108,10 +108,10 @@ struct RealRPCTransactionScanner: TransactionScanner {
         ownAddressesByChain: [SupportedChain: Set<String>],
         deepHistory: Bool = false
     ) async -> [TransactionEvent] {
-        // EVM transaction-history fetching is disabled app-wide (2026-06-21
-        // user direction): drop every EVM address up front so no EVM history
-        // RPC is ever fired. All overloads funnel through this worker.
-        let addresses = addresses.filter { $0.key.family != .evm }
+        // Transaction-history fetching is disabled for some chains (2026-06-21
+        // — EVM + Bitcoin family + Tron): drop those addresses up front so no
+        // history RPC is ever fired. All overloads funnel through this worker.
+        let addresses = addresses.filter { !$0.key.fetchingDisabled }
         // **Latency fix (2026-06-17).** The bulk scan used to force
         // `max(limit, fullHistoryCap)` = 1000 events PER CHAIN on EVERY
         // refresh — deep-paginating dozens of RPC calls per chain, which is
