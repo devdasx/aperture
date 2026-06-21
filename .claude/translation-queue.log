@@ -1489,3 +1489,11 @@
 2026-06-21T00:05:47Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Switch wallet, currently \(activeWallet?.name ?? 
 2026-06-21T00:05:47Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	\(row.chain.displayName) details
 2026-06-21T00:05:47Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	\(row.symbol) details
+2026-06-21T00:25:46Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/BalanceCardView.swift	Switch wallet, currently \(walletName)
+2026-06-21T00:25:46Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/BalanceCardView.swift	Total balance \(value), \(dir) \(percentText) today
+2026-06-21T00:25:46Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/BalanceCardView.swift	Total balance \(value), no change today
+2026-06-21T00:25:46Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/BalanceCardView.swift	Total balance \(value). Add crypto to get started.
+2026-06-21T00:25:46Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/BalanceCardView.swift	\(currency)\(gap)\(integer)\(fraction)
+2026-06-21T00:25:46Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/BalanceCardView.swift	\(currencyRun)\(dots)
+2026-06-21T00:25:46Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/BalanceCardView.swift	\(integer)\(fraction)
+2026-06-21T00:25:46Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/BalanceCardView.swift	\(integer)\(fraction)\(gap)\(currency)

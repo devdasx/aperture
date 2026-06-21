@@ -65,6 +65,15 @@ enum BitcoinTransactionSigner {
         guard let recipient = draft.recipients.first else {
             throw SigningError.malformedDraft("no recipient")
         }
+        // Defensive: validate EVERY recipient address against the chain's own
+        // rules (wallet-core) before building outputs. The Send UI already
+        // validates each recipient and wallet-core's `lockScriptForAddress`
+        // would reject an invalid one — this is belt-and-braces so a malformed
+        // address can never reach output construction and waste a fee on an
+        // un-spendable/garbage output.
+        for r in draft.recipients where !coin.validate(address: r.address) {
+            throw SigningError.malformedDraft("invalid \(draft.chain.displayName) recipient address")
+        }
         guard let byteFeeDec = draft.fee.byteFeeRate, byteFeeDec > 0 else {
             throw SigningError.malformedDraft("no fee rate")
         }

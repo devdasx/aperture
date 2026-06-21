@@ -102,7 +102,7 @@ final class DAppRequestRouter {
         let origin = DAppOrigin(
             host: pageURL?.host ?? "(unknown)",
             url: pageURL?.absoluteString ?? "",
-            title: (pageTitle?.isEmpty == false) ? pageTitle! : (pageURL?.host ?? "dApp"),
+            title: pageTitle.flatMap { $0.isEmpty ? nil : $0 } ?? pageURL?.host ?? "dApp",
             iconURL: pageURL.flatMap { faviconURL(for: $0) }
         )
         switch channel {
