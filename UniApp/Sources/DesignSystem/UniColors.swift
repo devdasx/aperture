@@ -737,6 +737,29 @@ enum UniColors {
         static let cameraOnMediaNote = Color.white.opacity(0.9)
     }
 
+    // MARK: - Reset (the factory-reset flow)
+
+    /// Exact palette for the full-screen Reset Aperture flow
+    /// (`design_handoff_reset`). The handoff's destructive red is a muted
+    /// brick — `#E0483D` (light) / `#FF5B51` (dark) — distinct from the
+    /// brighter system red, and the ONLY accent the flow uses (trash hero,
+    /// erase buttons, type-field border, progress ring, checked
+    /// acknowledgements). Defined here per Rule #4 §B (hex/UIColor only in
+    /// `UniColors`); the flow references these roles.
+    enum Reset {
+        /// `#E0483D` light / `#FF5B51` dark — adaptive, matching the handoff.
+        static let danger = Color(uiColor: UIColor { trait in
+            trait.userInterfaceStyle == .dark
+                ? UIColor(red: 1.0, green: 0x5B / 255.0, blue: 0x51 / 255.0, alpha: 1)
+                : UIColor(red: 0xE0 / 255.0, green: 0x48 / 255.0, blue: 0x3D / 255.0, alpha: 1)
+        })
+        /// A 10% wash of `danger` (the handoff's `--danger-bg`).
+        static let dangerWash = danger.opacity(0.10)
+        /// Label on a danger fill — always white (the fill is a guaranteed red,
+        /// so white reads in any appearance).
+        static let onDanger = Color.white
+    }
+
     // MARK: - BalanceCard (the flagship wallet-home surface)
 
     /// Every color the flagship balance card uses, transcribed verbatim

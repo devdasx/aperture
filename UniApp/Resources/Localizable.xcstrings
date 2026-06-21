@@ -1,6 +1,391 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "Resetting removes all content from this device and returns Aperture to its original state. This can’t be undone." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Resetting removes all content from this device and returns Aperture to its original state. This can’t be undone."
+          }
+        }
+      }
+    },
+    "Every wallet you’ve created, imported, or are watching." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Every wallet you’ve created, imported, or are watching."
+          }
+        }
+      }
+    },
+    "Keys & Recovery Phrases" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keys & Recovery Phrases"
+          }
+        }
+      }
+    },
+    "Permanently removed from this device’s Secure Enclave." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Permanently removed from this device’s Secure Enclave."
+          }
+        }
+      }
+    },
+    "Transactions & Balances" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Transactions & Balances"
+          }
+        }
+      }
+    },
+    "Your full history, contacts, and cached balances." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Your full history, contacts, and cached balances."
+          }
+        }
+      }
+    },
+    "Networks, passcode, and all preferences." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Networks, passcode, and all preferences."
+          }
+        }
+      }
+    },
+    "Aperture is self-custodial. Your keys never leave this device, and we keep " : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aperture is self-custodial. Your keys never leave this device, and we keep "
+          }
+        }
+      }
+    },
+    "no copy" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "no copy"
+          }
+        }
+      }
+    },
+    ". Without your recovery phrase or private key, any wallet erased here " : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : ". Without your recovery phrase or private key, any wallet erased here "
+          }
+        }
+      }
+    },
+    "can’t be recovered" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "can’t be recovered"
+          }
+        }
+      }
+    },
+    "." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "."
+          }
+        }
+      }
+    },
+    "No recovery phrase, no recovery." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No recovery phrase, no recovery."
+          }
+        }
+      }
+    },
+    " Make sure every wallet you want to keep is backed up first." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : " Make sure every wallet you want to keep is backed up first."
+          }
+        }
+      }
+    },
+    "Back Up" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Back Up"
+          }
+        }
+      }
+    },
+    "Choose the wallet you want to back up. Each wallet has its own recovery phrase or key." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Choose the wallet you want to back up. Each wallet has its own recovery phrase or key."
+          }
+        }
+      }
+    },
+    "Confirm you understand" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Confirm you understand"
+          }
+        }
+      }
+    },
+    "Acknowledge each item to continue." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Acknowledge each item to continue."
+          }
+        }
+      }
+    },
+    "All wallets will be erased" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "All wallets will be erased"
+          }
+        }
+      }
+    },
+    "Wallets, keys, and recovery phrases are removed from this device." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wallets, keys, and recovery phrases are removed from this device."
+          }
+        }
+      }
+    },
+    "This can’t be undone" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "This can’t be undone"
+          }
+        }
+      }
+    },
+    "Aperture keeps no backup. Erased wallets are gone for good." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aperture keeps no backup. Erased wallets are gone for good."
+          }
+        }
+      }
+    },
+    "My wallets are backed up" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "My wallets are backed up"
+          }
+        }
+      }
+    },
+    "I have the recovery phrase for every wallet I want to keep." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "I have the recovery phrase for every wallet I want to keep."
+          }
+        }
+      }
+    },
+    "One last step" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "One last step"
+          }
+        }
+      }
+    },
+    "Typing the word below confirms the reset. This erases everything and can’t be undone." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Typing the word below confirms the reset. This erases everything and can’t be undone."
+          }
+        }
+      }
+    },
+    "Type " : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Type "
+          }
+        }
+      }
+    },
+    " to continue" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : " to continue"
+          }
+        }
+      }
+    },
+    "Aperture has been restored to its original state. Everything on this device has been erased." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aperture has been restored to its original state. Everything on this device has been erased."
+          }
+        }
+      }
+    },
+    "Securely erasing all wallets and data from this device." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Securely erasing all wallets and data from this device."
+          }
+        }
+      }
+    },
+    "Wiping keys & recovery phrases" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wiping keys & recovery phrases"
+          }
+        }
+      }
+    },
+    "Restoring default settings" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Restoring default settings"
+          }
+        }
+      }
+    },
+    "We’d love to know why you’re leaving and how we could be better. Every message reaches our team." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "We’d love to know why you’re leaving and how we could be better. Every message reaches our team."
+          }
+        }
+      }
+    },
+    "Couldn’t reset" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Couldn’t reset"
+          }
+        }
+      }
+    },
+    "Couldn’t erase Aperture. Nothing was removed — your wallets, keys, and settings are untouched. Try again." : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Couldn’t erase Aperture. Nothing was removed — your wallets, keys, and settings are untouched. Try again."
+          }
+        }
+      }
+    },
     "" : {
       "comment" : "Empty source string from Text(verbatim: \"\") at ReceiveQRDetailView. No translation needed.",
       "localizations" : {
