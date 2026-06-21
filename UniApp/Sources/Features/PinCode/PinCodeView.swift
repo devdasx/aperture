@@ -167,6 +167,7 @@ struct PinCodeView: View {
             // translation. 25/600, no subtitle, no lock icon (handoff).
             Spacer(minLength: 0).frame(height: 44)
             titleView
+                .padding(.horizontal, 20)
             // Dots + status line + keypad are forced LTR + English so the dots
             // fill L→R, the grid geometry stays 1-2-3 / 4-5-6 / 7-8-9 in every
             // locale, and the digit glyphs render as ASCII 0–9 (not
@@ -176,7 +177,11 @@ struct PinCodeView: View {
                     .padding(.top, 22)
                 statusLine
                     .padding(.top, 6)
+                    .padding(.horizontal, 20)
                 Spacer(minLength: 20)
+                // The keypad spans the FULL screen width — no horizontal
+                // padding (handoff: edge-to-edge dialer). Only the title /
+                // dots / status above are inset.
                 keypad
                     .disabled(isLockedOut)
                     .opacity(isLockedOut ? 0.4 : 1)
@@ -186,7 +191,6 @@ struct PinCodeView: View {
             .environment(\.layoutDirection, .leftToRight)
             .environment(\.locale, Locale(identifier: "en"))
         }
-        .padding(.horizontal, 20)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .overlay(alignment: .topTrailing) { optionsButton }
         .uniHaptic(.contextualImpact(.tap), trigger: keypressTrigger)
@@ -283,8 +287,8 @@ struct PinCodeView: View {
             }
             .buttonStyle(.plain)
             .accessibilityLabel(Text("Options"))
-            .padding(.top, 4)
-            .padding(.trailing, 4)
+            .padding(.top, 8)
+            .padding(.trailing, 14)
         }
     }
 
@@ -425,7 +429,6 @@ struct PinCodeView: View {
             digitKey("0")
             deleteKey
         }
-        .frame(maxWidth: 360)
     }
 
     private var keypadColumns: [GridItem] {
@@ -466,7 +469,7 @@ struct PinCodeView: View {
         } label: {
             VStack(spacing: 3) {
                 Text(verbatim: digit)
-                    .font(.system(size: 30, weight: .medium, design: .rounded))
+                    .font(.system(size: 34, weight: .regular))
                     .foregroundStyle(UniColors.Text.primary)
                 // ITU letters under the digit (uppercase, .16em tracking).
                 // Empty but height-reserved for 1 and 0 so every digit sits
