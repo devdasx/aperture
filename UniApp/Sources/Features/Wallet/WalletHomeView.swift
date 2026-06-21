@@ -473,10 +473,15 @@ struct WalletHomeView: View {
     /// this snapshot has no price dependency and the parent no longer needs the
     /// `cachedPrices` query). Cheap (≤5 rows).
     private var recentActivityModels: [ActivityRowModel] {
-        recentTransactions.map { tx in
-            ActivityRowModel(
+        recentTransactions.compactMap { tx in
+            // Skip a transaction whose chain can't be resolved rather than
+            // silently misattributing it to Ethereum. In practice the
+            // repository never produces an orphaned tx, so this never drops a
+            // real row — it's data-integrity insurance.
+            guard let chain = chainFor(tx) else { return nil }
+            return ActivityRowModel(
                 id: tx.id,
-                chain: chainFor(tx),
+                chain: chain,
                 direction: TransactionDirection(rawValue: tx.directionRaw) ?? .outgoing,
                 amount: Decimal(string: tx.amountRaw) ?? .zero,
                 amountRaw: tx.amountRaw,
@@ -2389,17 +2394,19 @@ struct WalletHomeView: View {
     // app relaunch. The live `@Query` fixes that with no rebuild calls.
 
     /// Resolves the chain a `TransactionRecord` belongs to via its
-    /// back-pointer to `WalletAddressRecord.chainRaw`. The schema
-    /// guarantees the back-pointer (transactions are cascade-children
-    /// of addresses), so the fallback to `.ethereum` is defensive
-    /// only — it only fires if the record is orphaned, which the
-    /// repository never produces.
-    private func chainFor(_ tx: TransactionRecord) -> SupportedChain {
+    /// back-pointer to `WalletAddressRecord.chainRaw`. Returns nil when the
+    /// chain can't be resolved (an orphaned / corrupted record) so callers
+    /// SKIP the row rather than silently misattributing it to Ethereum —
+    /// which would offer a wrong-chain explorer link and a wrong chain badge.
+    /// This matches the sibling resolvers in `AssetDetailView` /
+    /// `WalletActivityView`. The repository never produces an orphaned tx, so
+    /// this is data-integrity insurance, not a behaviour change.
+    private func chainFor(_ tx: TransactionRecord) -> SupportedChain? {
         if let raw = tx.address?.chainRaw,
            let chain = SupportedChain(rawValue: raw) {
             return chain
         }
-        return .ethereum
+        return nil
     }
 
     /// Latest `lastScannedAt` across all addresses, or nil if no scan

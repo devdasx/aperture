@@ -123,7 +123,15 @@ struct BroadcastService: Sendable {
             )
             let txid = (String(data: data, encoding: .utf8) ?? "")
                 .trimmingCharacters(in: .whitespacesAndNewlines)
-            guard txid.count >= 32, !txid.contains(" ") else {
+            // Esplora returns the txid as exactly 64 hex characters (a 32-byte
+            // hash). Require precisely that — a truncated, over-length, or
+            // non-hex body is a corrupted/garbage response, NOT a real
+            // broadcast result. Accepting `>= 32` would let a half-length or
+            // junk string be reported to the user as a successful tx hash they
+            // could never track on-chain. Route anything else to a definitive
+            // failure (empty → ambiguous; otherwise → failed).
+            let isHexTxid = txid.count == 64 && txid.allSatisfy { $0.isHexDigit }
+            guard isHexTxid else {
                 throw (txid.isEmpty ? SigningError.broadcastAmbiguous("empty response") : SigningError.broadcastFailed(txid))
             }
             return txid

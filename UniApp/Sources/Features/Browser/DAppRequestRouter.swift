@@ -252,13 +252,15 @@ final class DAppRequestRouter {
 
     private func requestEVMSendTransaction(params: [Any], origin: DAppOrigin) async -> DAppRequestResult {
         guard let tx = params.first as? [String: Any] else { return .failure(.invalidParams) }
-        // Validate the untrusted dApp params at the boundary. `from` must be
-        // present, and `to` must be a well-formed 0x address — this browser
+        // Validate the untrusted dApp params at the boundary. BOTH `from` and
+        // `to` must be well-formed 0x addresses (0x + 40 hex) — this browser
         // does not support contract-creation (empty `to`), so reject a
-        // missing/blank/malformed destination with a clear error instead of
-        // signing something the user can't review or surfacing a cryptic
-        // node failure later.
-        guard let from = (tx["from"] as? String), !from.isEmpty else {
+        // missing/blank/malformed address with a clear error instead of
+        // signing something the user can't review (or showing them a malformed
+        // address in the confirmation sheet that fails late at signing).
+        guard let from = (tx["from"] as? String)?.trimmingCharacters(in: .whitespaces),
+              from.hasPrefix("0x"), from.count == 42,
+              from.dropFirst(2).allSatisfy(\.isHexDigit) else {
             return .failure(.invalidParams)
         }
         guard let to = (tx["to"] as? String)?.trimmingCharacters(in: .whitespaces),
@@ -349,6 +351,13 @@ final class DAppRequestRouter {
     }
 
     private func requestSolanaConnect(origin: DAppOrigin) async -> DAppRequestResult {
+        // No derived Solana address (e.g. an EVM-only / Bitcoin / XRP wallet)
+        // → refuse honestly instead of later handing the dApp {publicKey:""},
+        // a truthy-but-invalid value it would accept and then fail to sign
+        // with. Mirrors how EVM eth_accounts returns [] when there's no address.
+        guard solanaAddress() != nil else {
+            return .failure(DAppRequestError(code: 4100, message: "This wallet has no Solana account"))
+        }
         if connectedHosts.contains(origin.host),
            let pubkey = solanaAddress() {
             return .success(["publicKey": pubkey])
@@ -385,11 +394,17 @@ final class DAppRequestRouter {
         origin: DAppOrigin,
         method: String
     ) async -> DAppRequestResult {
+        // Same honesty as connect: with no derived Solana address there's
+        // nothing to sign from — refuse rather than enqueuing a request with
+        // an empty `from`.
+        guard let from = solanaAddress() else {
+            return .failure(DAppRequestError(code: 4100, message: "This wallet has no Solana account"))
+        }
         return await withCheckedContinuation { (cont: CheckedContinuation<DAppRequestResult, Never>) in
             enqueue(.sendTransaction(.init(
                 id: UUID(),
                 origin: origin,
-                from: solanaAddress() ?? "",
+                from: from,
                 to: "",
                 valueHex: "0x0",
                 dataHex: "0x",
@@ -408,6 +423,24 @@ final class DAppRequestRouter {
     /// channel) or `{publicKey:...}` (Solana channel) via the
     /// continuation.
     func approveConnect(host: String, channel: ConnectChannel) {
+        // Resolve the address to reveal BEFORE recording the connection, so a
+        // Solana approve with no derived address fails honestly — never
+        // handing the dApp an empty publicKey and never leaving a
+        // half-recorded connection behind. (requestSolanaConnect already
+        // prevents the sheet from appearing without an address; this is
+        // belt-and-braces.)
+        let addr: any Sendable
+        switch channel {
+        case .evm:
+            addr = [activeAddress()].compactMap { $0 } as [String]
+        case .solana:
+            guard let pubkey = solanaAddress() else {
+                resume(.failure(DAppRequestError(code: 4100, message: "This wallet has no Solana account")))
+                return
+            }
+            addr = ["publicKey": pubkey]
+        }
+
         connectedHosts.insert(host)
 
         // Persist the connection. The full origin (name / url / icon)
@@ -426,13 +459,6 @@ final class DAppRequestRouter {
             )
         }
 
-        let addr: any Sendable
-        switch channel {
-        case .evm:
-            addr = [activeAddress()].compactMap { $0 } as [String]
-        case .solana:
-            addr = ["publicKey": solanaAddress() ?? ""]
-        }
         resume(.success(addr))
     }
 

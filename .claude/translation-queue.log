@@ -1483,3 +1483,9 @@
 2026-06-20T02:05:24Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	That's not a valid \(chain.displayName) address.
 2026-06-20T02:05:24Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	Use this recipient
 2026-06-20T02:05:24Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	\(name)  →  \(SendRecipientView.shorten(address))
+2026-06-21T00:05:40Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Switch wallet, currently \(activeWallet?.name ?? 
+2026-06-21T00:05:40Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	\(row.chain.displayName) details
+2026-06-21T00:05:40Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	\(row.symbol) details
+2026-06-21T00:05:47Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Switch wallet, currently \(activeWallet?.name ?? 
+2026-06-21T00:05:47Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	\(row.chain.displayName) details
+2026-06-21T00:05:47Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	\(row.symbol) details
