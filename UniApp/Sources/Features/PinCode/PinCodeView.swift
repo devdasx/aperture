@@ -294,27 +294,25 @@ struct PinCodeView: View {
 
     // MARK: - Dot row
 
-    /// Six dots, filled count = `digits.count`. Animates a horizontal
-    /// shake on mismatch. The shake amplitude is small (8 pt) — enough
-    /// to register without feeling alarming.
+    /// Six dots, filled count = `digits.count`. Each dot is a native SF
+    /// Symbol — `circle` when empty, `circle.fill` when typed — so the
+    /// empty→filled change rides Apple's own symbol-replace animation
+    /// (`.contentTransition(.symbolEffect(.replace))`). A `.regular` weight
+    /// reads lighter than the old 2pt drawn ring. A horizontal shake plays on
+    /// a wrong attempt (9pt — enough to register without feeling alarming).
     private var dotRow: some View {
         HStack(spacing: 20) {
             ForEach(0..<6, id: \.self) { index in
                 let filled = index < digits.count
-                Circle()
-                    .fill(filled ? dotFillColor : Color.clear)
-                    .frame(width: 14, height: 14)
-                    .overlay {
-                        // Empty dot = a 2pt inner ring; filled = solid, no ring.
-                        Circle()
-                            .strokeBorder(dotRingColor, lineWidth: 2)
-                            .opacity(filled ? 0 : 1)
-                    }
+                Image(systemName: filled ? "circle.fill" : "circle")
+                    .font(.system(size: 14, weight: .regular))
+                    .foregroundStyle(filled ? dotFillColor : dotRingColor)
+                    .contentTransition(.symbolEffect(.replace))
             }
         }
         .modifier(ShakeEffect(animatableData: CGFloat(shakeTrigger)))
         .animation(.spring(response: 0.3, dampingFraction: 0.4), value: shakeTrigger)
-        .animation(.easeOut(duration: 0.18), value: digits.count)
+        .animation(.snappy(duration: 0.22), value: digits.count)
         .animation(.easeOut(duration: 0.18), value: didSucceed)
     }
 
@@ -331,7 +329,7 @@ struct PinCodeView: View {
         return UniColors.Text.primary
     }
 
-    /// Empty-dot ring: 2pt `dotEmpty`, danger during a wrong attempt.
+    /// Empty-dot tint: `dotEmpty` gray, danger during a wrong attempt.
     private var dotRingColor: Color {
         dotsErrored ? UniColors.PinLock.danger : UniColors.PinLock.dotEmpty
     }
