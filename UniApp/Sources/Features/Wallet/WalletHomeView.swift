@@ -420,6 +420,25 @@ struct WalletHomeView: View {
     @Query(sort: \TransactionRecord.occurredAt, order: .reverse)
     private var allTransactionRecords: [TransactionRecord]
 
+    /// **Live balance feed (2026-06-21).** A TOP-LEVEL `@Query`, NOT a
+    /// `wallet.addresses[].balances` relationship traversal — for the SAME
+    /// reasons as `allTransactionRecords` above. The holdings list, chart,
+    /// rollup, and the hero's fallback sum were all fed by the memoized
+    /// `balances`/`allHeldRows` projections, which read the `balances`
+    /// relationship and rebuilt only when the relationship-COUNT changed.
+    /// That broke live balance updates two ways: (1) SwiftData does NOT append
+    /// a newly-INSERTED balance (a token received for the FIRST time) to an
+    /// already-materialized to-many array, so a new asset never showed until
+    /// relaunch; and (2) a scalar VALUE update (receiving MORE of an asset you
+    /// already hold) leaves the row count unchanged, so the count trigger
+    /// never fired and the holdings stayed frozen. Reading the rows from this
+    /// top-level query — and driving the rebuild off a VALUE fingerprint of it
+    /// (`balanceRowsRevision`) — makes every balance change render live, no
+    /// relaunch, no manual refresh (Rule #25, now honoured for balances as it
+    /// already was for transactions). The hero total itself was already live
+    /// via `BalanceCardLiveSection`'s own `chainStateRecords` query.
+    @Query private var allBalanceRecords: [TokenBalanceRecord]
+
     /// The active wallet's transactions, newest first — the live
     /// top-level `@Query` filtered to the active wallet's address ids.
     /// Address ids are stable (addresses aren't inserted during normal
@@ -1736,14 +1755,34 @@ struct WalletHomeView: View {
 
     private func computeAllHeldRows() -> [(chain: SupportedChain, balance: TokenBalanceRecord)] {
         guard let wallet = activeWallet else { return [] }
+        // Read balances from the top-level `allBalanceRecords` @Query (live
+        // across cross-context inserts + scalar updates) and attribute each to
+        // a chain via the wallet's own address records — NOT the insert-stale
+        // `address.balances` relationship.
+        let chainByAddressId = chainByActiveAddressId(wallet)
         var result: [(SupportedChain, TokenBalanceRecord)] = []
-        for address in wallet.addresses {
-            guard let chain = SupportedChain(rawValue: address.chainRaw) else { continue }
-            for balance in address.balances where !balance.rawBalance.isEmpty {
-                result.append((chain, balance))
-            }
+        for balance in allBalanceRecords {
+            guard let aid = balance.addressId ?? balance.address?.id,
+                  let chain = chainByAddressId[aid],
+                  !balance.rawBalance.isEmpty else { continue }
+            result.append((chain, balance))
         }
         return result
+    }
+
+    /// Maps each of the active wallet's address UUIDs to its chain, built from
+    /// the wallet's own (stable, cross-context-safe) address records — so the
+    /// balance rows from the top-level `allBalanceRecords` @Query can be
+    /// attributed to a chain without traversing the insert-stale `balances`
+    /// relationship.
+    private func chainByActiveAddressId(_ wallet: WalletRecord) -> [UUID: SupportedChain] {
+        var map: [UUID: SupportedChain] = [:]
+        for address in wallet.addresses {
+            if let chain = SupportedChain(rawValue: address.chainRaw) {
+                map[address.id] = chain
+            }
+        }
+        return map
     }
 
     /// `[symbol-uppercased: price]` map filtered to the active fiat,
@@ -1820,9 +1859,30 @@ struct WalletHomeView: View {
     /// `allTransactionRecords` — so no relationship-count proxy is
     /// needed, and the relationship-count proxy never saw cross-context
     /// inserts anyway, which was the live-tx bug.)
-    private var balanceRowsRevision: Int {
-        guard let wallet = activeWallet else { return 0 }
-        return wallet.addresses.reduce(0) { $0 + $1.balances.count }
+    /// A VALUE fingerprint of the active wallet's balance rows, read from the
+    /// top-level `allBalanceRecords` @Query (NOT the insert-stale `balances`
+    /// relationship). It changes whenever a balance row is inserted, removed,
+    /// OR its value updates — so the `.onChange` rebuild of the display
+    /// projections fires on every real balance change, not only when the ROW
+    /// COUNT changes. This replaces the old relationship-count proxy that
+    /// silently missed scalar updates and cross-context inserts (the
+    /// stale-balance bug: a received transaction didn't reflect in the holdings
+    /// until an app relaunch). `count` catches add/remove, `newest` catches a
+    /// re-fetch even at an unchanged value, and `fiatSum` catches a value move.
+    private var balanceRowsRevision: String {
+        guard let wallet = activeWallet else { return "none" }
+        let ids = Set(wallet.addresses.map { $0.id })
+        guard !ids.isEmpty else { return "none" }
+        var count = 0
+        var newest = Date.distantPast
+        var fiatSum = Decimal.zero
+        for balance in allBalanceRecords {
+            guard let aid = balance.addressId ?? balance.address?.id, ids.contains(aid) else { continue }
+            count += 1
+            if balance.updatedAt > newest { newest = balance.updatedAt }
+            fiatSum += balance.fiatValueCached
+        }
+        return "\(count)|\(newest.timeIntervalSince1970)|\(fiatSum)"
     }
 
     /// Decode the `@AppStorage`-bound preference values into the
@@ -2341,13 +2401,18 @@ struct WalletHomeView: View {
     private func computeBalances() -> [(chain: SupportedChain, balance: TokenBalanceRecord)] {
         guard let wallet = activeWallet else { return [] }
         let threshold = Decimal(hideSmallThreshold)
+        // Read from the top-level `allBalanceRecords` @Query (live across
+        // cross-context inserts + scalar updates) attributed via the wallet's
+        // own address records — NOT the insert-stale `address.balances`
+        // relationship that left the holdings frozen until relaunch.
+        let chainByAddressId = chainByActiveAddressId(wallet)
         var result: [(SupportedChain, TokenBalanceRecord)] = []
-        for address in wallet.addresses {
-            guard let chain = SupportedChain(rawValue: address.chainRaw) else { continue }
-            for balance in address.balances where !balance.rawBalance.isEmpty && balance.rawBalance != "0" {
-                if balance.fiatValueCached >= threshold {
-                    result.append((chain, balance))
-                }
+        for balance in allBalanceRecords {
+            guard let aid = balance.addressId ?? balance.address?.id,
+                  let chain = chainByAddressId[aid],
+                  !balance.rawBalance.isEmpty, balance.rawBalance != "0" else { continue }
+            if balance.fiatValueCached >= threshold {
+                result.append((chain, balance))
             }
         }
         return result.sorted { $0.1.fiatValueCached > $1.1.fiatValueCached }
