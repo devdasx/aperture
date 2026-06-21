@@ -192,7 +192,15 @@ actor ChainStateRepository {
             predicate: #Predicate { $0.walletId == walletId && $0.chainRaw == chainRaw }
         )
         let utxos = try readContext.fetch(utxoDescriptor)
-        let utxoTotal = utxos.reduce(Int64(0)) { $0 + $1.valueSats }
+        // Saturating sum — a hostile / corrupted UTXO provider could return
+        // values whose total overflows Int64 and traps. Honest data can never
+        // approach Int64.max sats (total BTC supply is ~2.1e15 sats vs Int64
+        // max ~9.2e18), so saturation never affects real wallets; it's a crash
+        // guard against malformed provider responses.
+        let utxoTotal = utxos.reduce(Int64(0)) { acc, utxo in
+            let (sum, overflow) = acc.addingReportingOverflow(utxo.valueSats)
+            return overflow ? Int64.max : sum
+        }
 
         // --- Upsert the aggregate row ---
         let (record, isNew) = try fetchOrCreateRow(walletId: walletId, chainRaw: chainRaw, address: address)

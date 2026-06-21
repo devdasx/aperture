@@ -603,7 +603,9 @@ struct EthereumConnector: ChainConnector {
     private static func unpadTopic(_ topic: String) -> String {
         let stripped = topic.hasPrefix("0x") ? String(topic.dropFirst(2)) : topic
         if stripped.count >= 40 { return "0x" + String(stripped.suffix(40)) }
-        return topic
+        // Degenerate (too-short) topic — return a consistently 0x-prefixed
+        // form rather than echoing the raw input with whatever prefix it had.
+        return "0x" + stripped
     }
 
     private static func shortContract(_ addr: String) -> String {

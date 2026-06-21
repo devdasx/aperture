@@ -41,7 +41,13 @@ enum SendAmountMath {
         case .xrpReserve(let base, let perObject):
             return base + Decimal(state.ownerCount) * perObject + state.sellingLiabilities
         case .stellarReserve(let baseReserve):
-            let entries = Decimal(2 + state.subentryCount + state.numSponsoring - state.numSponsored)
+            // Clamp the entry count at 0: a well-formed account is always
+            // non-negative here, but malformed / hostile account state
+            // (numSponsored larger than the rest) would make it negative — a
+            // negative reserve OVER-reports spendable balance. The reserve must
+            // never fall below the selling-liabilities floor.
+            let rawEntries = 2 + state.subentryCount + state.numSponsoring - state.numSponsored
+            let entries = Decimal(max(0, rawEntries))
             return entries * baseReserve + state.sellingLiabilities
         case .existentialDeposit(let ed):
             // Spendable = free − max(frozen − reserved, ED). The non-

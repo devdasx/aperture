@@ -234,6 +234,16 @@ final class CreateWalletState {
             mnemonic: lowercasedWords,
             passphrase: passphrase
         )
+        // Defensive: a freshly app-generated mnemonic always derives the full
+        // address set, so this never fires in practice — but never persist a
+        // zero-address wallet. Roll back the Keychain material we just wrote
+        // and fail loud rather than leaving an addressless wallet the user
+        // can't receive into. (Mirrors the same guard on the import path.)
+        guard !derivedAddresses.isEmpty else {
+            try? SeedVault.deleteSeed(for: walletId)
+            try? MnemonicVault.deleteMnemonic(for: walletId)
+            throw KeyImportError.derivationFailed
+        }
         let addressEntries: [(chainRaw: String, address: String)] =
             derivedAddresses.map { (chain, address) in
                 (chainRaw: chain.rawValue, address: address)

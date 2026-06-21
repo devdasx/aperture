@@ -53,11 +53,13 @@ enum Ed25519Derivation {
         // Curve25519.Signing.PrivateKey accepts a 32-byte seed; the
         // public key is the canonical ed25519 verifying key.
         guard let signingKey = try? Curve25519.Signing.PrivateKey(rawRepresentation: privateKey) else {
-            // SLIP-0010 produces exactly 32 bytes — the only way this
-            // initializer fails is a memory-corruption-class bug.
-            // Return all zeros as a defensive fallback that will
-            // produce an obviously-invalid address rather than crash.
-            return Data(repeating: 0, count: 32)
+            // SLIP-0010 always yields a 32-byte node key, so this initializer
+            // cannot fail in practice. If it ever did, returning an all-zero
+            // public key would be CATASTROPHIC — it forms a real, well-formed
+            // address the user could receive funds at but never spend from
+            // (there is no private key for the zero public key). Fail loud
+            // instead of silently deriving a fund-loss address.
+            preconditionFailure("ed25519 public-key derivation from a 32-byte SLIP-0010 node must not fail")
         }
         return signingKey.publicKey.rawRepresentation
     }

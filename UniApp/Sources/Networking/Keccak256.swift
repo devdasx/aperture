@@ -65,6 +65,12 @@ enum Keccak256 {
             ? String(contract.dropFirst(2))
             : contract
         let lowered = stripped.lowercased()
+        // EIP-55 is defined only for a 40-hex-character address, and the digest
+        // below is 64 hex chars. An oversized input (count > 64) would index
+        // past the digest and trap. Guard the length: callers pass validated
+        // addresses, so for them this is a no-op — it's crash insurance for any
+        // malformed/oversized string that reaches here.
+        guard lowered.count == 40 else { return "0x" + lowered }
         guard let data = lowered.data(using: .utf8) else { return "0x" + lowered }
         let digest = hash(data).map { String(format: "%02x", $0) }.joined()
         var out = "0x"

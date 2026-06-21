@@ -284,7 +284,13 @@ final class SendComposeModel {
         guard !trimmed.isEmpty else { return nil }
         // Normalize a comma decimal separator to a dot for `Decimal(string:)`.
         let normalized = trimmed.replacingOccurrences(of: ",", with: ".")
-        return Decimal(string: normalized, locale: Locale(identifier: "en_US_POSIX"))
+        guard let value = Decimal(string: normalized, locale: Locale(identifier: "en_US_POSIX")),
+              value >= 0 else { return nil }
+        // A send amount can never be negative. The numeric keypad can't type a
+        // minus, but a crafted payment URI (EIP-681 / Solana Pay) could carry
+        // one — reject it at the parse boundary so a negative amount can never
+        // reach base-unit conversion or signing.
+        return value
     }
 
     /// The crypto amount for one entry, resolving the fiat→crypto
