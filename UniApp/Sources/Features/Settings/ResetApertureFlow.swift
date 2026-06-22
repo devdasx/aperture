@@ -201,11 +201,7 @@ struct ResetApertureFlow: View {
                 heroGlyph("shield", tint: UniColors.Text.primary)
                 bigTitle("Before you continue", centered: true)
                 subtitleRich(centered: true) {
-                    Text("Aperture is self-custodial. Your keys never leave this device, and we keep ")
-                        + Text("no copy").foregroundColor(UniColors.Text.primary).bold()
-                        + Text(". Without your recovery phrase or private key, any wallet erased here ")
-                        + Text("can’t be recovered").foregroundColor(UniColors.Text.primary).bold()
-                        + Text(".")
+                    Text("Aperture is self-custodial. Your keys never leave this device, and we keep \(Text("no copy").foregroundColor(UniColors.Text.primary).bold()). Without your recovery phrase or private key, any wallet erased here \(Text("can’t be recovered").foregroundColor(UniColors.Text.primary).bold()).")
                 }
                 calloutCard()
             }
@@ -219,9 +215,8 @@ struct ResetApertureFlow: View {
                 .font(.system(size: 18, weight: .semibold))
                 .foregroundStyle(UniColors.Status.warningForeground)
                 .frame(width: 22, height: 22)
-            (Text("No recovery phrase, no recovery.").foregroundColor(UniColors.Status.warningForeground).bold()
-                + Text(" Make sure every wallet you want to keep is backed up first.")
-                    .foregroundColor(UniColors.Status.warningForeground))
+            Text("\(Text("No recovery phrase, no recovery.").bold()) Make sure every wallet you want to keep is backed up first.")
+                .foregroundColor(UniColors.Status.warningForeground)
                 .font(.system(size: 13, weight: .medium))
                 .fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: 0)
@@ -392,7 +387,7 @@ struct ResetApertureFlow: View {
                 bigTitle("One last step", centered: true)
                 subtitle("Typing the word below confirms the reset. This erases everything and can’t be undone.", centered: true)
                 VStack(spacing: 10) {
-                    (Text("Type ") + Text(verbatim: confirmWord).foregroundColor(UniColors.Text.primary).bold() + Text(" to continue"))
+                    Text("Type \(Text(verbatim: confirmWord).foregroundColor(UniColors.Text.primary).bold()) to continue")
                         .font(.system(size: 13, weight: .medium))
                         .foregroundStyle(UniColors.Text.secondary)
                     ZStack {
