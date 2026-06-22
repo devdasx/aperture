@@ -321,7 +321,7 @@ struct MnemonicEntryView: View {
     /// system keyboard. The chip field is the visible surface; the system paste
     /// menu / keyboard fills this directly (no Paste button needed).
     private var hiddenField: some View {
-        TextField("", text: $text, axis: .vertical)
+        TextField("", text: $text)
             .focused($focused)
             .textInputAutocapitalization(.never)
             .autocorrectionDisabled(true)
@@ -336,13 +336,12 @@ struct MnemonicEntryView: View {
     // MARK: Input handling
 
     private func handleTextChange(_ raw: String) {
-        // A newline (Return / pasted line break) accepts the ghost + advances.
-        if raw.contains(where: \.isNewline) {
-            text = raw.filter { !$0.isNewline }
-            acceptGhostAndAdvance()
-            return
-        }
-        // Normalize: lowercase, keep letters + whitespace only.
+        // Normalize: lowercase, keep letters + whitespace only. Newlines from a
+        // line-delimited paste count as whitespace here — `words` /
+        // `currentWord` both split on `.whitespacesAndNewlines`, so they
+        // tokenize as word separators rather than merging adjacent words. The
+        // Return key itself never reaches the (single-line) field; it fires
+        // `.onSubmit` → `acceptGhostAndAdvance()` instead.
         let cleaned = raw.lowercased().filter { $0.isLetter || $0.isWhitespace }
         if cleaned != raw {
             text = cleaned
