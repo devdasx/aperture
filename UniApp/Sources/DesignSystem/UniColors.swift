@@ -802,6 +802,32 @@ enum UniColors {
         })
     }
 
+    // MARK: - SeedGrid (the recovery-phrase import word grid)
+
+    /// Tokens transcribed from the import-flows handoff
+    /// (`design_handoff_import_flows/`) for the per-word recovery-phrase grid.
+    /// The per-word status borders reuse `PinLock.positive` (green = valid
+    /// BIP-39 word) and `Reset.danger` (red = not in the list); these two are
+    /// the grid-specific greys (Rule #4 §B — hex / `UIColor` only here).
+    enum SeedGrid {
+        /// Index numbers, the inline ghost completion, and the active (current)
+        /// slot's border — `#BCBEC5` light / `#4A4C54` dark (the handoff's
+        /// `--faint`).
+        static let faint = Color(uiColor: UIColor { trait in
+            trait.userInterfaceStyle == .dark
+                ? UIColor(red: 0x4A / 255.0, green: 0x4C / 255.0, blue: 0x54 / 255.0, alpha: 1)
+                : UIColor(red: 0xBC / 255.0, green: 0xBE / 255.0, blue: 0xC5 / 255.0, alpha: 1)
+        })
+        /// The cell hairline dividers + the segmented-control track —
+        /// `rgba(10,12,16,.05)` light / `rgba(255,255,255,.07)` dark (the
+        /// handoff's `--seg-bg`).
+        static let hairline = Color(uiColor: UIColor { trait in
+            trait.userInterfaceStyle == .dark
+                ? UIColor(white: 1, alpha: 0.07)
+                : UIColor(red: 0x0A / 255.0, green: 0x0C / 255.0, blue: 0x10 / 255.0, alpha: 0.05)
+        })
+    }
+
     // MARK: - BalanceCard (the flagship wallet-home surface)
 
     /// Every color the flagship balance card uses, transcribed verbatim

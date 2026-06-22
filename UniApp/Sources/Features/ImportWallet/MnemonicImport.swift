@@ -1,287 +1,171 @@
 import SwiftUI
 
-// MARK: - Mnemonic entry step (single-field, live-validating)
+// MARK: - Mnemonic entry step — per-word BIP-39 grid (design_handoff_import_flows)
 
-/// Step 1 of the mnemonic-import flow — the user enters 12 or 24 words
-/// into a single editor surface with per-word inline coloring, live
-/// BIP-39 suggestion chips above the keyboard, and a tap-on-red-word
-/// advice sheet. Per the jony-ive 2026-06-05 redesign:
+/// Recovery-phrase entry, rebuilt to the import-flows handoff. A **per-word
+/// grid** replaces the old single text box:
 ///
-/// - **One field**, not a 12-cell grid. The phrase is one continuous
-///   string the user types or pastes; word boundaries are inferred.
-/// - **Per-word color on commit** — when the caret moves off a word,
-///   it commits green (`Validation.valid`) if in the BIP-39 wordlist,
-///   red (`Validation.invalid`) otherwise. The word currently being
-///   typed stays neutral (no flicker).
-/// - **Suggestion strip above the keyboard** — up to 6 BIP-39 words
-///   matching the current prefix, alphabetically sorted; tap to commit
-///   the word + a trailing space.
-/// - **Tap red word** → opens `MnemonicWordAdviceSheet` with the top 3
-///   Levenshtein candidates from the 2048-word list. Tap a candidate
-///   to replace the invalid word in one gesture.
-/// - **Auto-dismiss keyboard** when the phrase is complete AND
-///   validates via `BIP39.validate(_:)` (full checksum, not just
-///   wordlist membership). Re-tap re-focuses, no friction.
-/// - **Restrained motion** — color crossfade is `.snappy(0.22)`; no
-///   per-character pop, no bounce (Rule #2 §A.4).
+/// - **Grid** — one grouped container, two columns, numbered slots, hairline
+///   dividers (`SeedGrid.hairline`), the four corner cells rounding their outer
+///   corner to the container radius. Each slot's 2px status border reflects its
+///   word: **green** valid BIP-39 word, **red** not in the list, **gray** the
+///   current/active field.
+/// - **12 / 24 segmented control** + **Paste** in the head row. 15 / 18 / 21
+///   are auto-detected from a paste (the grid grows; `BIP39.validate` accepts
+///   every valid length).
+/// - **Inline ghost completion** — the gray remainder shows only when the typed
+///   prefix uniquely matches one BIP-39 word; space / the keyboard's **next** /
+///   a suggestion tap accepts it, commits the word, and advances.
+/// - **BIP-39 suggestion bar** above the keyboard (`.keyboard` toolbar).
+/// - Tap any slot to jump back and edit it.
+/// - The app-bar **key** opens the optional BIP-39 passphrase sheet.
+///
+/// All validation is real: `BIP39Wordlist` membership per word, `BIP39.validate`
+/// checksum for the whole phrase, and the `KnownLeakedSeeds` blocklist.
 struct MnemonicEntryView: View {
     @Bindable var state: ImportWalletState
     let onContinue: () -> Void
 
-    /// The full editor text. Derived `parsedWords` come from this on
-    /// every change.
-    @State private var editorText: String = ""
+    /// The slot the user is currently editing.
+    @State private var activeIndex: Int = 0
+    /// In-progress text for the active slot. Kept in sync with
+    /// `state.mnemonicWords[activeIndex]` so validation always sees it.
+    @State private var draft: String = ""
+    @FocusState private var focused: Bool
 
-    /// Currently-focused state of the editor; auto-dismisses to false
-    /// on successful full-phrase validation.
-    @FocusState private var isEditorFocused: Bool
-
-    /// Pending auto-dismiss of the keyboard after a valid phrase.
-    /// Stored so a subsequent edit cancels the stale dismissal
-    /// instead of letting it fire after the phrase changed again.
+    /// Pending keyboard auto-dismiss once the phrase validates.
     @State private var focusDismissTask: Task<Void, Never>? = nil
 
-    /// The word currently being advised (red word the user tapped),
-    /// or nil. Drives the `.sheet(item:)` presentation.
-    @State private var advisedWord: AdvisedWord? = nil
-
-    /// Recovery-phrase guide sheet visibility (Rule #18).
-    @State private var isShowingGuide: Bool = false
-
-    /// Leaked-seed warning sheet visibility — presented when the
-    /// user's typed phrase matches the `KnownLeakedSeeds` blocklist.
     @State private var isShowingLeakedWarning: Bool = false
-
-    /// Passphrase sheet visibility — opened from the toolbar overflow
-    /// Menu ("Add passphrase" / "Edit passphrase"). Reuses the same
-    /// `PassphraseSheet` the create-wallet flow uses so the contract
-    /// (save vs. cancel, eye-toggle reveal, opaque background) is
-    /// identical across both surfaces.
     @State private var isShowingPassphraseSheet: Bool = false
-
-    /// Ambient app layout direction — read once from `@Environment`
-    /// so the editor-surface fallback (when `editorText` is empty)
-    /// follows the user's locale per Rule #11 §C "interactive input
-    /// controls follow ambient when empty."
-    @Environment(\.layoutDirection) private var ambientLayoutDirection
 
     // MARK: Derived
 
+    private var count: Int { state.mnemonicWords.count }
+
+    /// Lowercased, trimmed words — the validation view of the grid.
     private var words: [String] {
-        editorText
-            .lowercased()
-            .components(separatedBy: .whitespacesAndNewlines)
-            .filter { !$0.isEmpty }
+        state.mnemonicWords.map {
+            $0.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+        }
     }
 
-    private var currentWord: String {
-        // The word the caret is inside. Without a real caret API on
-        // `TextEditor`, we use the heuristic: the last token if the
-        // text doesn't end on whitespace, otherwise empty.
-        guard let last = editorText.last else { return "" }
-        if last.isWhitespace || last.isNewline { return "" }
-        return editorText
-            .lowercased()
-            .components(separatedBy: .whitespacesAndNewlines)
-            .last ?? ""
-    }
+    private var allFilled: Bool { words.allSatisfy { !$0.isEmpty } }
 
-    private var validCount: Int {
-        let pendingIndex = endsWithIncompleteWord ? words.count - 1 : -1
-        return words.enumerated().filter { idx, w in
-            idx != pendingIndex && BIP39Wordlist.english.contains(w)
-        }.count
-    }
+    /// Full-phrase checksum (BIP-39), valid only once every slot is filled.
+    private var checksumValid: Bool { allFilled && BIP39.validate(words) }
 
-    private var endsWithIncompleteWord: Bool {
-        guard let last = editorText.last else { return false }
-        return !last.isWhitespace && !last.isNewline
-    }
+    private var canContinue: Bool { checksumValid }
 
-    /// Suggestion chips for the current word's prefix. Up to 6,
-    /// alphabetical, only when the user is mid-typing a non-empty
-    /// prefix. Binary-searched against the pre-sorted wordlist —
-    /// O(log n) per keystroke instead of a full 2048-word scan.
+    private var isLeakedPhrase: Bool { KnownLeakedSeeds.isLeaked(mnemonic: words) }
+
+    /// Up to 3 BIP-39 matches for the active draft (the suggestion bar).
     private var suggestions: [String] {
-        SortedBIP39Words.matches(prefix: currentWord, limit: 6)
+        SortedBIP39Words.matches(prefix: draft.lowercased(), limit: 3)
     }
 
-    private var canContinue: Bool {
-        (words.count == 12 || words.count == 24)
-            && BIP39.validate(words)
+    /// The inline ghost completion — the remainder of the unique BIP-39 word
+    /// the draft prefixes, or `""` when the prefix is empty / ambiguous /
+    /// already complete.
+    private var ghost: String {
+        let prefix = draft.lowercased()
+        guard !prefix.isEmpty else { return "" }
+        let matches = SortedBIP39Words.matches(prefix: prefix, limit: 2)
+        guard matches.count == 1, matches[0] != prefix else { return "" }
+        return String(matches[0].dropFirst(prefix.count))
     }
 
-    /// `true` when the typed phrase is valid AND matches the
-    /// `KnownLeakedSeeds` blocklist. Continue is still enabled — but
-    /// the tap presents `LeakedSeedWarningSheet` instead of pushing
-    /// straight to review.
-    private var isLeakedPhrase: Bool {
-        KnownLeakedSeeds.isLeaked(mnemonic: words)
+    /// The full BIP-39 word that `prefix` uniquely completes to, or `""` when
+    /// the prefix is empty / ambiguous / already a complete word. Computed
+    /// from the given prefix (not the active `draft`) so it's correct when
+    /// committing pasted / space-separated tokens.
+    private func uniqueCompletion(of prefix: String) -> String {
+        let lower = prefix.lowercased()
+        guard !lower.isEmpty else { return "" }
+        let matches = SortedBIP39Words.matches(prefix: lower, limit: 2)
+        guard matches.count == 1, matches[0] != lower else { return "" }
+        return matches[0]
+    }
+
+    private enum SlotStatus { case empty, active, valid, invalid }
+
+    private func status(_ i: Int) -> SlotStatus {
+        if i == activeIndex { return .active }
+        let w = words[i]
+        if w.isEmpty { return .empty }
+        return BIP39Wordlist.english.contains(w) ? .valid : .invalid
+    }
+
+    private func borderColor(_ st: SlotStatus) -> Color? {
+        switch st {
+        case .active:  return UniColors.SeedGrid.faint
+        case .valid:   return UniColors.PinLock.positive
+        case .invalid: return UniColors.Reset.danger
+        case .empty:   return nil
+        }
     }
 
     // MARK: Body
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: UniSpacing.l) {
-                ImportHeaderBlock(
-                    title: "Enter your recovery phrase",
-                    subtitle: "Type or paste the twelve or twenty-four words from the wallet you want to bring in. Aperture checks every word against the standard list as you go."
-                )
-                editorSurface
-                ImportExampleCaption(
-                    caption: "Example only — never type a real phrase you saw in a tutorial.",
-                    example: "abandon abandon abandon … about",
-                    monospaced: false
-                )
+        VStack(spacing: 0) {
+            headRow
+                .padding(.horizontal, 24)
+                .padding(.top, 4)
+                .padding(.bottom, 12)
+
+            ScrollView {
+                VStack(spacing: 14) {
+                    wordGrid
+                    if allFilled { validationLine }
+                    // The off-screen input field that drives the system
+                    // keyboard for the active slot.
+                    hiddenField
+                }
+                .padding(.horizontal, 24)
+                .padding(.bottom, 12)
+                // Forced LTR + English so the slots fill 1→N and digits
+                // render ASCII regardless of the app's locale.
+                .environment(\.layoutDirection, .leftToRight)
+                .environment(\.locale, Locale(identifier: "en"))
             }
-            .padding(.horizontal, UniSpacing.l)
-            .padding(.top, UniSpacing.l)
-            .padding(.bottom, UniSpacing.xl)
+            .scrollIndicators(.hidden)
         }
         .background(UniColors.Background.primary)
-        .navigationTitle("Enter recovery phrase")
+        .navigationTitle("Recovery phrase")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            // Per user direction 2026-06-05, the leading toolbar slot is
-            // an overflow Menu that holds both the guide trigger and the
-            // optional-passphrase entry — keeping the screen body free
-            // of the inline DisclosureGroup and freeing real estate for
-            // the suggestion strip. Paste stays in the trailing slot.
-            ToolbarItem(placement: .topBarLeading) {
-                Menu {
-                    Button {
-                        isShowingPassphraseSheet = true
-                    } label: {
-                        Label(
-                            state.mnemonicPassphrase.isEmpty
-                                ? "Add passphrase"
-                                : "Edit passphrase",
-                            systemImage: "key"
-                        )
-                    }
-                    Button {
-                        isShowingGuide = true
-                    } label: {
-                        Label("What's a recovery phrase?", systemImage: "info.circle")
-                    }
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
+                    isShowingPassphraseSheet = true
                 } label: {
-                    // Bare `ellipsis` — no `.circle` chrome. M-003:
-                    // the circle wrapper is the off-system look we
-                    // already corrected once before. Toolbar icons
-                    // inherit nav-bar tinting; adding chrome reads
-                    // as a foreign bubble next to the title.
-                    Image(systemName: "ellipsis")
+                    Image(systemName: "key")
                         .font(.system(size: 17, weight: .semibold))
                 }
-                .accessibilityLabel(Text("More options"))
+                .accessibilityLabel(Text(
+                    state.mnemonicPassphrase.isEmpty ? "Add passphrase" : "Edit passphrase"
+                ))
             }
-            ToolbarItem(placement: .topBarTrailing) {
-                Button("Paste") {
-                    pasteFromClipboard()
-                }
-                    .tint(UniColors.Button.text)
+            ToolbarItemGroup(placement: .keyboard) {
+                suggestionBar
             }
         }
         .safeAreaInset(edge: .bottom) {
-            VStack(spacing: UniSpacing.s) {
-                // Strip is visible whenever the editor is focused AND
-                // the user has a non-empty in-progress word. When the
-                // prefix has zero BIP-39 matches the strip renders a
-                // quiet "No matching word" hint instead of hiding —
-                // absence-of-chips was reading as "the feature broke",
-                // a single explanatory line is honest and calm.
-                if isEditorFocused && !currentWord.isEmpty {
-                    suggestionStrip
+            GlassEffectContainer(spacing: UniSpacing.s) {
+                UniButton(title: "Continue", variant: .primary, isEnabled: canContinue) {
+                    if isLeakedPhrase {
+                        isShowingLeakedWarning = true
+                    } else {
+                        onContinue()
+                    }
                 }
-                continueButton
             }
-            .padding(.horizontal, UniSpacing.l)
+            .padding(.horizontal, 24)
             .padding(.bottom, UniSpacing.l)
         }
-        .onChange(of: editorText) { _, newValue in
-            // Enter = dismiss keyboard, never newline. The Return key (or
-            // a pasted newline) must dismiss, never insert a line break.
-            // A mnemonic is space-separated words and never legitimately
-            // contains a newline, so the robust behavior is to strip
-            // EVERY newline char (`\n`, `\r`, `\r\n`, Unicode separators)
-            // the instant one appears and resign focus — multi-word paste
-            // is preserved because spaces are kept. Aligns with the
-            // `UniTextField` contract; see `CLAUDE.md` Rule #19 §D.
-            //
-            // The prior check matched only an exact single-`\n`-appended-
-            // to-prior-buffer diff, so a mid-buffer Enter or `\r\n` left a
-            // visible break. `\.isNewline` is the exhaustive fix.
-            if newValue.contains(where: \.isNewline) {
-                editorText = newValue.filter { !$0.isNewline }
-                isEditorFocused = false
-                return
-            }
-            // Normalize: lowercase + strip non-letter/whitespace.
-            let cleaned = newValue
-                .lowercased()
-                .filter { $0.isLetter || $0.isWhitespace }
-            if cleaned != newValue {
-                editorText = cleaned
-                return
-            }
-            // Sync into shared state (used by the next step).
-            state.mnemonicWords = words
-
-            // Auto-detect word count from pasted phrases.
-            if words.count == 24, state.mnemonicWordCount != .twentyFour {
-                state.mnemonicWordCount = .twentyFour
-            } else if words.count == 12, state.mnemonicWordCount != .twelve {
-                state.mnemonicWordCount = .twelve
-            }
-
-            // Auto-dismiss keyboard when the phrase is complete + valid.
-            // Cancellable: a follow-on edit invalidates any pending
-            // dismissal so a stale timer can't yank focus away while
-            // the user is still typing.
-            focusDismissTask?.cancel()
-            if canContinue, isEditorFocused {
-                focusDismissTask = Task { @MainActor in
-                    try? await Task.sleep(for: .seconds(0.25))
-                    guard !Task.isCancelled else { return }
-                    isEditorFocused = false
-                }
-            }
-        }
+        .onAppear { focusFirstEmpty() }
         .uniHaptic(.success, trigger: canContinue)
-        .sheet(item: $advisedWord) { advised in
-            MnemonicWordAdviceSheet(
-                typedWord: advised.word,
-                onPickSuggestion: { replacement in
-                    replaceWord(at: advised.index, with: replacement)
-                    advisedWord = nil
-                },
-                onKeepEditing: {
-                    advisedWord = nil
-                    isEditorFocused = true
-                }
-            )
-            .uniAppEnvironment()
-            .intrinsicHeightSheet()
-            .presentationBackground(UniColors.Background.primary)
-        }
-        .sheet(isPresented: $isShowingGuide) {
-            RecoveryPhraseGuideSheet(onDismiss: { isShowingGuide = false })
-                .uniAppEnvironment()
-                .intrinsicHeightSheet()
-                .presentationBackground(UniColors.Background.primary)
-        }
         .sheet(isPresented: $isShowingPassphraseSheet) {
-            // Unified intrinsic-height sheet (Rule #18's
-            // `.intrinsicHeightSheet()`), matching the create flow's
-            // PassphraseSheet call site in `RecoveryPhraseView` exactly.
-            // A fixed `.medium` detent clipped the passphrase field and
-            // overlapped the Save/Cancel CTAs once the keyboard rose
-            // (user screenshot 2026-06-13) — the content-sized detent
-            // with `.large` fallback lets `UniSheet`'s inner ScrollView
-            // absorb keyboard-compressed space instead of clipping.
-            // The modifier owns the detents and drag indicator; do not
-            // re-add `.presentationDetents` here.
             PassphraseSheet(
                 passphrase: $state.mnemonicPassphrase,
                 onDismiss: { isShowingPassphraseSheet = false }
@@ -294,16 +178,13 @@ struct MnemonicEntryView: View {
             LeakedSeedWarningSheet(
                 kind: .mnemonic,
                 onChooseDifferent: {
-                    editorText = ""
+                    clearAll()
                     isShowingLeakedWarning = false
-                    isEditorFocused = true
+                    focusFirstEmpty()
                 },
                 onUseAnyway: {
                     isShowingLeakedWarning = false
-                    // User explicitly overrode — proceed to review.
-                    DispatchQueue.main.async {
-                        onContinue()
-                    }
+                    DispatchQueue.main.async { onContinue() }
                 }
             )
             .uniAppEnvironment()
@@ -312,260 +193,388 @@ struct MnemonicEntryView: View {
         }
     }
 
+    // MARK: Head row (segmented length + Paste)
 
-
-    // MARK: Counter row
-
-    private var counterRow: some View {
+    private var headRow: some View {
         HStack {
-            Text("\(validCount) of \(state.mnemonicWordCount.rawValue) words")
-                .font(UniTypography.subheadline)
-                .foregroundStyle(UniColors.Text.secondary)
-            Spacer()
+            segmentedControl
+            Spacer(minLength: 0)
             Button {
                 pasteFromClipboard()
             } label: {
-                HStack(spacing: UniSpacing.xs) {
+                HStack(spacing: 6) {
                     Image(systemName: "doc.on.clipboard")
-                        .font(.system(size: 13, weight: .semibold))
+                        .font(.system(size: 15, weight: .semibold))
                     Text("Paste")
-                        .font(UniTypography.subheadline.weight(.semibold))
+                        .font(.system(size: 14.5, weight: .semibold))
                 }
-                .foregroundStyle(UniColors.Button.text)
+                .foregroundStyle(UniColors.Text.primary)
             }
             .buttonStyle(.plain)
         }
     }
 
-    // MARK: Editor surface (overlay + transparent editor)
-
-    private var editorSurface: some View {
-        ZStack(alignment: .topLeading) {
-            // Colored overlay — the visible text. Built from
-            // AttributedString runs per word.
-            coloredOverlay
-                .padding(UniSpacing.s)
-                .allowsHitTesting(true) // for link taps on red words
-
-            // Transparent editor — the actual input. foregroundStyle
-            // is clear so only the overlay renders; the native caret
-            // (system tint) is still visible.
-            TextEditor(text: $editorText)
-                .focused($isEditorFocused)
-                .textInputAutocapitalization(.never)
-                .autocorrectionDisabled(true)
-                .textContentType(.password)
-                .font(UniTypography.body)
-                .foregroundStyle(Color.clear)
-                .scrollContentBackground(.hidden)
-                .padding(.horizontal, UniSpacing.s - 5) // align with overlay
-                .padding(.vertical, UniSpacing.s - 8)
-                .multilineTextAlignment(.leading)
-
-            // Empty-state placeholder.
-            if editorText.isEmpty {
-                Text("Type or paste your 12 or 24 word phrase")
-                    .font(UniTypography.body)
-                    .foregroundStyle(UniColors.Text.tertiary)
-                    .padding(UniSpacing.s)
-                    .allowsHitTesting(false)
-            }
+    private var segmentedControl: some View {
+        HStack(spacing: 2) {
+            segButton("12 words", length: 12)
+            segButton("24 words", length: 24)
         }
-        .frame(minHeight: 132, maxHeight: 220)
+        .padding(3)
         .background(
-            RoundedRectangle(cornerRadius: UniRadius.card, style: .continuous)
-                .fill(UniColors.Background.secondary)
+            RoundedRectangle(cornerRadius: 11, style: .continuous)
+                .fill(UniColors.SeedGrid.hairline)
         )
-        // Per Rule #11 §C "interactive input controls follow ambient"
-        // with the **content-aware refinement (2026-06-06)**: when the
-        // user types, the field's writing direction follows the
-        // FIRST STRONG directional character — same `TextDirection.detect`
-        // logic the `UniTextField` primitive uses. Empty editor →
-        // follow ambient app locale (RTL placeholder right-aligned in
-        // Arabic, LTR left-aligned in English). User types Latin
-        // (BIP-39 English word) → field flips to LTR, cursor starts
-        // at the left, text grows rightward. User types Arabic →
-        // field stays RTL, cursor on right. Matches the user's
-        // expectation from Image #50: "when write in LTR start from
-        // left, when write in RTL start from right."
-        .environment(
-            \.layoutDirection,
-            TextDirection.detect(in: editorText) ?? ambientLayoutDirection
-        )
-        .contentShape(Rectangle())
-        .onTapGesture { isEditorFocused = true }
-        .environment(\.openURL, OpenURLAction { url in
-            if url.scheme == "aperture", url.host == "invalid-word",
-               let last = url.pathComponents.last, let index = Int(last) {
-                if index < words.count {
-                    isEditorFocused = false
-                    advisedWord = AdvisedWord(index: index, word: words[index])
+    }
+
+    private func segButton(_ title: String, length: Int) -> some View {
+        let on = (count == length)
+        return Button {
+            selectLength(length)
+        } label: {
+            Text(title)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(on ? UniColors.Text.primary : UniColors.Text.secondary)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 7)
+                .background {
+                    if on {
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .fill(UniColors.Background.secondary)
+                    }
                 }
-                return .handled
-            }
-            return .systemAction
-        })
+        }
+        .buttonStyle(.plain)
     }
 
-    /// Builds the colored overlay as a SwiftUI `Text` with per-word
-    /// AttributedString runs. Each word carries its validation color;
-    /// invalid (committed) words also carry a `.link` attribute
-    /// pointing to `aperture://invalid-word/<index>` so taps surface
-    /// the advice sheet via the OpenURL environment action.
-    private var coloredOverlay: some View {
-        let pendingIndex = endsWithIncompleteWord ? words.count - 1 : -1
-        var attributed = AttributedString()
-        var firstWord = true
-        for (index, word) in words.enumerated() {
-            if !firstWord {
-                attributed.append(AttributedString(" "))
-            }
-            firstWord = false
-            var run = AttributedString(word)
-            let isPending = (index == pendingIndex)
-            let isValid = BIP39Wordlist.english.contains(word)
-            if isPending {
-                run.foregroundColor = UniColors.Validation.pending
-            } else if isValid {
-                run.foregroundColor = UniColors.Validation.valid
-            } else {
-                run.foregroundColor = UniColors.Validation.invalid
-                run.underlineStyle = .single
-                run.link = URL(string: "aperture://invalid-word/\(index)")
-            }
-            attributed.append(run)
-        }
-        // Trailing space the user may have typed.
-        if editorText.last?.isWhitespace == true {
-            attributed.append(AttributedString(" "))
-        }
-        return Text(attributed)
-            .font(UniTypography.body)
-            .frame(maxWidth: .infinity, alignment: .topLeading)
-            .animation(.snappy(duration: 0.22), value: words)
-    }
+    // MARK: Word grid
 
-    // MARK: Suggestion strip
+    private var wordGrid: some View {
+        LazyVGrid(
+            columns: [
+                GridItem(.flexible(), spacing: 0),
+                GridItem(.flexible(), spacing: 0)
+            ],
+            spacing: 0
+        ) {
+            ForEach(Array(state.mnemonicWords.indices), id: \.self) { i in
+                slotView(i)
+            }
+        }
+        .background(UniColors.Background.secondary)
+        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .shadow(color: Color.black.opacity(0.08), radius: 18, x: 0, y: 10)
+    }
 
     @ViewBuilder
-    private var suggestionStrip: some View {
-        if suggestions.isEmpty {
-            // Quiet, calm "no matches" line — explains the absence
-            // rather than disappearing the affordance entirely.
-            HStack {
-                Text("No matching word")
-                    .font(UniTypography.subheadline)
-                    .foregroundStyle(UniColors.Text.tertiary)
-                    .italic()
-                Spacer()
+    private func slotView(_ i: Int) -> some View {
+        let st = status(i)
+        let isActive = (i == activeIndex)
+        HStack(spacing: 10) {
+            Text(verbatim: "\(i + 1)")
+                .font(.system(size: 12, weight: .semibold).monospacedDigit())
+                .foregroundStyle(UniColors.SeedGrid.faint)
+                .frame(width: 16, alignment: .trailing)
+
+            if isActive {
+                HStack(spacing: 0) {
+                    Text(verbatim: draft)
+                        .foregroundStyle(UniColors.Text.primary)
+                    Text(verbatim: ghost)
+                        .foregroundStyle(UniColors.SeedGrid.faint)
+                    caret
+                }
+                .font(.system(size: 15, weight: .semibold))
+            } else {
+                Text(verbatim: words[i])
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(
+                        st == .invalid ? UniColors.Reset.danger : UniColors.Text.primary
+                    )
             }
-            .padding(.horizontal, UniSpacing.s)
-            .frame(height: 44)
-        } else {
-            GlassEffectContainer(spacing: UniSpacing.xs) {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: UniSpacing.xs) {
-                        ForEach(suggestions, id: \.self) { word in
-                            Button {
-                                // Imperative fire — a `trigger:`-bound
-                                // modifier on the chip would also fire
-                                // every time re-filtering changed the
-                                // chip's word, not just on tap.
-                                UniHapticEngine.shared.fire(.contextualImpact(.tap))
-                                commitSuggestion(word)
-                            } label: {
-                                Text(verbatim: word)
-                                    .font(UniTypography.subheadline)
-                                    .padding(.horizontal, UniSpacing.s)
-                                    .padding(.vertical, UniSpacing.xs)
-                                    .foregroundStyle(UniColors.Text.primary)
-                                    .background(
-                                        Capsule(style: .continuous)
-                                            .fill(UniColors.Background.secondary)
-                                    )
-                            }
-                            .buttonStyle(.plain)
-                        }
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 14)
+        .frame(minHeight: 46, alignment: .leading)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .contentShape(Rectangle())
+        // Column divider on the left column; row divider except the last row.
+        .overlay(alignment: .trailing) {
+            if i % 2 == 0 {
+                Rectangle().fill(UniColors.SeedGrid.hairline).frame(width: 1)
+            }
+        }
+        .overlay(alignment: .bottom) {
+            if i < count - 2 {
+                Rectangle().fill(UniColors.SeedGrid.hairline).frame(height: 1)
+            }
+        }
+        // Per-word status border (rounds the outer corner on the 4 corner cells
+        // so the 2px stroke is never clipped by the container radius).
+        .overlay {
+            if let color = borderColor(st) {
+                cornerShape(i).strokeBorder(color, lineWidth: 2)
+            }
+        }
+        .animation(.snappy(duration: 0.18), value: st)
+        .onTapGesture { activate(i) }
+    }
+
+    /// The active slot's blinking caret — deterministic via `TimelineView`, no
+    /// per-view state.
+    private var caret: some View {
+        TimelineView(.periodic(from: .now, by: 0.53)) { context in
+            let on = Int(context.date.timeIntervalSinceReferenceDate / 0.53) % 2 == 0
+            Rectangle()
+                .fill(UniColors.Text.primary)
+                .frame(width: 2, height: 18)
+                .opacity(on ? 1 : 0)
+                .padding(.leading, 1)
+        }
+    }
+
+    private func cornerShape(_ i: Int) -> UnevenRoundedRectangle {
+        let r: CGFloat = 20
+        return UnevenRoundedRectangle(
+            topLeadingRadius: i == 0 ? r : 0,
+            bottomLeadingRadius: i == count - 2 ? r : 0,
+            bottomTrailingRadius: i == count - 1 ? r : 0,
+            topTrailingRadius: i == 1 ? r : 0,
+            style: .continuous
+        )
+    }
+
+    // MARK: Validation line
+
+    @ViewBuilder
+    private var validationLine: some View {
+        HStack(spacing: 8) {
+            Image(systemName: checksumValid ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
+                .font(.system(size: 15, weight: .semibold))
+            Text(checksumValid
+                 ? "Valid recovery phrase"
+                 : "Invalid recovery phrase — checksum failed")
+                .font(.system(size: 13.5, weight: .semibold))
+            Spacer(minLength: 0)
+        }
+        .foregroundStyle(checksumValid ? UniColors.PinLock.positive : UniColors.Reset.danger)
+        .padding(.horizontal, 2)
+    }
+
+    // MARK: Suggestion bar (keyboard accessory)
+
+    @ViewBuilder
+    private var suggestionBar: some View {
+        if focused, !draft.isEmpty, !suggestions.isEmpty {
+            HStack(spacing: 0) {
+                ForEach(Array(suggestions.enumerated()), id: \.element) { index, word in
+                    if index > 0 {
+                        Rectangle()
+                            .fill(UniColors.SeedGrid.hairline)
+                            .frame(width: 1, height: 22)
                     }
-                    .padding(.horizontal, UniSpacing.xs)
+                    Button {
+                        UniHapticEngine.shared.play(.selection)
+                        commitSuggestion(word)
+                    } label: {
+                        Text(verbatim: word)
+                            .font(.system(size: 15, weight: index == 0 ? .bold : .semibold))
+                            .foregroundStyle(UniColors.Text.primary)
+                            .frame(maxWidth: .infinity)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
                 }
             }
-            .frame(height: 44)
+            .frame(maxWidth: .infinity)
         }
     }
 
-    // MARK: Continue button
+    // MARK: Hidden input
 
-    /// Per Rule #19 — every CTA goes through `UniButton`. The
-    /// leaked-phrase check lives inside the action closure; the
-    /// `isEnabled:` parameter owns the disabled-state contract; the
-    /// `.contextualImpact(.commit)` haptic auto-fires via the
-    /// primary variant.
-    private var continueButton: some View {
-        UniButton(title: "Continue", variant: .primary, isEnabled: canContinue) {
-            if isLeakedPhrase {
-                isShowingLeakedWarning = true
-            } else {
-                onContinue()
+    /// The real (near-invisible) text field that holds the active slot's draft
+    /// and drives the system keyboard. The grid is the visible surface.
+    private var hiddenField: some View {
+        TextField("", text: $draft)
+            .focused($focused)
+            .textInputAutocapitalization(.never)
+            .autocorrectionDisabled(true)
+            .keyboardType(.asciiCapable)
+            .submitLabel(.next)
+            // `.password` suppresses the QuickType predictive strip (our own
+            // BIP-39 bar replaces it) and the strong-password autofill.
+            .textContentType(.password)
+            .frame(width: 1, height: 1)
+            .opacity(0.02)
+            .onChange(of: draft) { _, newValue in handleDraftChange(newValue) }
+            .onSubmit { commitWord(acceptGhost: true) }
+    }
+
+    // MARK: Input handling
+
+    private func handleDraftChange(_ raw: String) {
+        // A newline (Return / pasted line break) commits the current word.
+        if raw.contains(where: \.isNewline) {
+            draft = raw.filter { !$0.isNewline }
+            commitWord(acceptGhost: true)
+            return
+        }
+        // Whitespace → one or more word boundaries (typed space, or words
+        // pasted into the field). Commit every completed token, keep the
+        // trailing partial as the new draft.
+        if raw.contains(where: { $0.isWhitespace }) {
+            var tokens = raw.lowercased().components(separatedBy: .whitespaces)
+            let trailing = tokens.removeLast()
+            for token in tokens where !token.isEmpty {
+                commit(word: token, acceptGhost: true)
             }
+            draft = trailing.filter { $0.isLetter }
+            syncDraftSlot()
+            return
         }
+        // Plain typing — keep letters only, lowercase, live-sync the slot.
+        let cleaned = raw.lowercased().filter { $0.isLetter }
+        if cleaned != raw {
+            draft = cleaned
+            return
+        }
+        syncDraftSlot()
+        scheduleAutoDismiss()
     }
 
-    // MARK: Actions
+    /// Mirror the active draft into the shared model so validation + the grid
+    /// reflect it live.
+    private func syncDraftSlot() {
+        guard activeIndex < state.mnemonicWords.count else { return }
+        state.mnemonicWords[activeIndex] = draft
+    }
+
+    /// Commit the active draft to its slot and advance to the next slot.
+    private func commitWord(acceptGhost: Bool) {
+        commit(word: draft, acceptGhost: acceptGhost)
+        draft = activeIndex < state.mnemonicWords.count ? state.mnemonicWords[activeIndex] : ""
+        scheduleAutoDismiss()
+    }
+
+    /// Write `word` to the active slot (accepting its unique BIP-39 completion
+    /// when `acceptGhost`) and step the active index forward (clamped to the
+    /// last slot).
+    private func commit(word: String, acceptGhost: Bool) {
+        guard activeIndex < state.mnemonicWords.count else { return }
+        let lower = word.lowercased()
+        let final: String
+        if acceptGhost {
+            let completed = uniqueCompletion(of: lower)
+            final = completed.isEmpty ? lower : completed
+        } else {
+            final = lower
+        }
+        state.mnemonicWords[activeIndex] = final
+        if BIP39Wordlist.english.contains(final) {
+            UniHapticEngine.shared.play(.selection)
+        }
+        if activeIndex < count - 1 { activeIndex += 1 }
+    }
 
     private func commitSuggestion(_ word: String) {
-        // Replace the in-progress word with the chosen suggestion +
-        // trailing space so the user flows into the next word.
-        var newText = editorText
-        // Strip the last (in-progress) token.
-        if let lastSpace = newText.lastIndex(where: { $0.isWhitespace || $0.isNewline }) {
-            newText = String(newText[...lastSpace])
-        } else {
-            newText = ""
+        commit(word: word, acceptGhost: false)
+        draft = activeIndex < state.mnemonicWords.count ? state.mnemonicWords[activeIndex] : ""
+        scheduleAutoDismiss()
+    }
+
+    private func activate(_ index: Int) {
+        guard index < state.mnemonicWords.count else { return }
+        UniHapticEngine.shared.play(.selection)
+        activeIndex = index
+        draft = state.mnemonicWords[index]
+        focused = true
+    }
+
+    private func focusFirstEmpty() {
+        let firstEmpty = state.mnemonicWords.firstIndex(where: { $0.isEmpty }) ?? 0
+        activeIndex = firstEmpty
+        draft = state.mnemonicWords[firstEmpty]
+        focused = true
+    }
+
+    private func clearAll() {
+        for i in state.mnemonicWords.indices { state.mnemonicWords[i] = "" }
+        activeIndex = 0
+        draft = ""
+    }
+
+    /// Auto-dismiss the keyboard once the whole phrase validates, revealing the
+    /// "Valid recovery phrase" line + the Continue CTA. Cancellable so a
+    /// follow-on edit doesn't yank focus mid-type.
+    private func scheduleAutoDismiss() {
+        focusDismissTask?.cancel()
+        guard canContinue, focused else { return }
+        focusDismissTask = Task { @MainActor in
+            try? await Task.sleep(for: .seconds(0.25))
+            guard !Task.isCancelled else { return }
+            focused = false
         }
-        newText.append(word + " ")
-        editorText = newText
     }
 
-    private func replaceWord(at index: Int, with replacement: String) {
-        // The tapped index comes from the FILTERED `words` array (see `words`
-        // and `coloredOverlay`), so filter BEFORE applying it. Filtering after
-        // the map misaligned the index whenever consecutive whitespace produced
-        // empty components — replacing the wrong token and leaving the invalid
-        // word in place.
-        var parts = editorText
-            .components(separatedBy: .whitespacesAndNewlines)
-            .filter { !$0.isEmpty }
-        guard index < parts.count else { return }
-        parts[index] = replacement
-        editorText = parts.joined(separator: " ")
-            + (editorText.last?.isWhitespace == true ? " " : "")
+    // MARK: Length control + paste
+
+    /// Switch the grid to a 12- or 24-word length (the segmented control). The
+    /// shared model resizes via its `BIP39WordCount` setter, preserving the
+    /// leading words.
+    private func selectLength(_ length: Int) {
+        guard count != length else { return }
+        state.mnemonicWordCount = length == 24 ? .twentyFour : .twelve
+        let firstEmpty = state.mnemonicWords.firstIndex(where: { $0.isEmpty }) ?? (state.mnemonicWords.count - 1)
+        activeIndex = min(firstEmpty, state.mnemonicWords.count - 1)
+        draft = state.mnemonicWords[activeIndex]
     }
 
+    /// Paste a phrase from the clipboard, **auto-detecting its length**. A
+    /// 12 / 15 / 18 / 21 / 24-word paste grows the grid to match (even if a
+    /// different length was selected); anything else snaps to the nearest of
+    /// 12 / 24.
     private func pasteFromClipboard() {
         guard let pasted = UIPasteboard.general.string else { return }
-        let cleaned = pasted
+        let parts = pasted
             .lowercased()
-            .filter { $0.isLetter || $0.isWhitespace || $0.isNewline }
+            .filter { $0.isLetter || $0.isWhitespace }
             .components(separatedBy: .whitespacesAndNewlines)
             .filter { !$0.isEmpty }
-            .joined(separator: " ")
-        // Only consume (and clear) the clipboard when the paste
-        // actually yielded word content — clearing on a no-op paste
-        // would destroy unrelated user data for nothing.
-        guard !cleaned.isEmpty else { return }
-        editorText = cleaned + " "
-        // `items = []` removes the pasteboard entry entirely;
-        // assigning `""` would leave an empty string item behind.
-        UIPasteboard.general.items = []
-    }
-}
+        guard !parts.isEmpty else { return }
+        UniHapticEngine.shared.play(.contextualImpact(.commit))
 
-/// Identity for the `.sheet(item:)` invalid-word advice presentation.
-private struct AdvisedWord: Identifiable, Hashable {
-    let index: Int
-    let word: String
-    var id: String { "\(index)|\(word)" }
+        let detected = [12, 15, 18, 21, 24].contains(parts.count)
+            ? parts.count
+            : (parts.count > 12 ? 24 : 12)
+        resizeGrid(to: detected)
+        for (i, word) in parts.enumerated() where i < detected {
+            state.mnemonicWords[i] = word
+        }
+        // Park the active slot just past the pasted content (or the last slot).
+        activeIndex = min(parts.count, detected - 1)
+        draft = state.mnemonicWords[activeIndex]
+        // Consume the clipboard so the phrase doesn't linger.
+        UIPasteboard.general.items = []
+        scheduleAutoDismiss()
+    }
+
+    /// Resize the shared word buffer to `n` slots. 12 / 24 go through the
+    /// `BIP39WordCount` setter; 15 / 18 / 21 (which the enum can't represent)
+    /// resize the array directly — derivation reads the array, not the enum.
+    private func resizeGrid(to n: Int) {
+        if n == 12 {
+            state.mnemonicWordCount = .twelve
+        } else if n == 24 {
+            state.mnemonicWordCount = .twentyFour
+        } else {
+            var w = state.mnemonicWords
+            if w.count < n {
+                w.append(contentsOf: Array(repeating: "", count: n - w.count))
+            } else if w.count > n {
+                w.removeLast(w.count - n)
+            }
+            state.mnemonicWords = w
+        }
+    }
 }
 
 /// Pre-sorted BIP-39 wordlist with binary-search prefix lookup.

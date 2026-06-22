@@ -129,13 +129,16 @@ enum BIP39 {
 
     /// Validates a mnemonic by re-deriving its checksum and verifying every
     /// word appears in the canonical wordlist. Returns `true` iff both
-    /// checks pass. Length must be 12 or 24; other lengths return `false`.
+    /// checks pass. Length must be a valid BIP-39 mnemonic length —
+    /// 12, 15, 18, 21, or 24 words; other lengths return `false`. The
+    /// bit-stream + checksum math below is fully general (checksumBits =
+    /// words·11 / 33 = words/3, entropyBits the remainder — a whole number
+    /// of bytes for every valid length), so all five lengths validate.
     ///
-    /// Used by future verification flows and by the debug-mode smoke test
-    /// to confirm the round-trip of `generateMnemonic` is internally
-    /// consistent.
+    /// Used by the import flow's per-word grid (which auto-detects 15/18/21
+    /// from a pasted phrase) and by the debug-mode smoke test.
     static func validate(_ words: [String]) -> Bool {
-        guard words.count == 12 || words.count == 24 else { return false }
+        guard [12, 15, 18, 21, 24].contains(words.count) else { return false }
 
         // Look up each word's index in the wordlist; bail on the first
         // miss. O(1) per word via the cached `wordIndex` map.
