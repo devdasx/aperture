@@ -44,6 +44,12 @@ struct MnemonicEntryView: View {
     @State private var isShowingPassphraseSheet = false
     @State private var isShowingScanner = false
 
+    /// Drives the iOS 26 native **zoom** transition — the passphrase sheet
+    /// scales out of the ⋯ toolbar button (`matchedTransitionSource` on the
+    /// `ToolbarItem` ↔ `navigationTransition(.zoom)` on the sheet's root).
+    @Namespace private var passphraseZoom
+    private let passphraseZoomID = "passphrase"
+
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     /// Zero-width space that prefixes the hidden field so a Backspace on an
@@ -159,6 +165,9 @@ struct MnemonicEntryView: View {
                     state.mnemonicPassphrase.isEmpty ? "Add passphrase" : "Edit passphrase"
                 ))
             }
+            // The ⋯ item is the zoom source — the modifier goes on the
+            // ToolbarItem (CustomizableToolbarContent), not the inner Button.
+            .matchedTransitionSource(id: passphraseZoomID, in: passphraseZoom)
         }
         .safeAreaInset(edge: .bottom) { bottomBar }
         .onAppear {
@@ -200,6 +209,8 @@ struct MnemonicEntryView: View {
             .uniAppEnvironment()
             .intrinsicHeightSheet()
             .presentationBackground(UniColors.Background.primary)
+            // Native iOS 26 zoom — the sheet morphs out of the ⋯ source above.
+            .navigationTransition(.zoom(sourceID: passphraseZoomID, in: passphraseZoom))
         }
         .sheet(isPresented: $isShowingLeakedWarning) {
             LeakedSeedWarningSheet(
