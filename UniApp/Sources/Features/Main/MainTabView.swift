@@ -179,115 +179,37 @@ struct MainTabView: View {
     }
 
     var body: some View {
-        TabView(selection: selectedTab) {
-            // MARK: - Wallet (custom avatar label)
-            //
-            // The Wallet tab's `label:` closure renders the active
-            // wallet's `WalletAvatar` instead of a generic SF Symbol.
-            // The text "Wallet" stays — iOS tab bars show both glyph
-            // and text by default. The avatar replaces the glyph
-            // role; the text role is unchanged.
-            //
-            // `.contextMenu` is NOT attached here. The long-press
-            // wallet switcher lives on the wallet-home toolbar
-            // pill instead — see the type-level doc comment for
-            // the verification trail.
-            Tab(value: MainTab.wallet) {
-                WalletHomeView()
-                    // Zero-size UIKit installer. On first appear,
-                    // resolves the surrounding `UITabBarController`,
-                    // attaches a `UIContextMenuInteraction` to its
-                    // public `UITabBar`, and on long-press surfaces
-                    // the native iOS context menu built from
-                    // `buildWalletTabMenu()`. The menu's `UIAction`s
-                    // mutate `@State` flags on this view; SwiftUI
-                    // reacts via the modifiers below.
-                    //
-                    // **2026-06-16 — compact-width only.** In sidebar
-                    // mode (regular width) there is no UITabBar for the
-                    // installer to reach, so it would silently no-op.
-                    // We gate it to compact width to avoid the dead
-                    // reach-through; the native SwiftUI wallet-switch
-                    // `Menu` on `WalletHomeView`'s pill covers regular
-                    // width (it's shown there for the same reason).
-                    .background(alignment: .bottom) {
-                        if horizontalSizeClass == .compact {
-                            TabBarLongPressInstaller(tabIndex: 0) {
-                                buildWalletTabMenu()
-                            }
-                            .frame(width: 0, height: 0)
-                            .allowsHitTesting(false)
+        // 2026-06-23 — custom 1inch-style shell (replaces the native
+        // `TabView`, per user direction "fully custom 1inch bar"). The
+        // active screen fills the window; a floating `ApertureTabBar`
+        // (Wallet · Browser pill + the two-arrows Actions FAB) floats over
+        // it via `.safeAreaInset(.bottom)`. The FAB switches to Wallet and
+        // asks `WalletHomeView` to present the Actions sheet. The native
+        // `TabView` is gone, so the iPad sidebar + the UITabBar long-press
+        // installer no longer apply; the wallet long-press menu is now a
+        // SwiftUI `.contextMenu` on the bar's wallet item (`walletContextMenu`).
+        activeScreen
+            .safeAreaInset(edge: .bottom) {
+                ApertureTabBar(
+                    selected: resolvedTab,
+                    walletSpec: activeWallet?.avatarSpec
+                        ?? WalletAvatarSpec.auto(name: activeWallet?.name ?? "Wallet"),
+                    walletId: activeWallet?.id,
+                    onWallet: { select(.wallet) },
+                    onBrowser: { select(.browser) },
+                    onActions: {
+                        // Switch to Wallet first; bump on the next runloop so
+                        // `WalletHomeView` is mounted + observing before the
+                        // token changes (avoids missing the open when coming
+                        // from the Browser tab).
+                        select(.wallet)
+                        DispatchQueue.main.async {
+                            WalletShellSignal.shared.requestActions()
                         }
-                    }
-            } label: {
-                // **iPad — a normal "Home" tab (user direction 2026-06-17).**
-                // In the regular-width sidebar / top-tab layout the wallet
-                // avatar read as an odd green dot among the text tabs. iPad
-                // gets a standard labelled tab ("Home" + house glyph); iPhone
-                // keeps the active wallet's gradient avatar AS the Wallet
-                // tab's identity (the compact bottom bar where it belongs).
-                // The wallet identity + switcher still live on the
-                // wallet-home pill ("Wallet 1 ▾") in both.
-                if UIDevice.current.userInterfaceIdiom == .pad {
-                    Label("Home", systemImage: "house.fill")
-                } else {
-                    walletTabLabel
-                }
-                // 2026-06-09 — `popoverTip` REMOVED from the Tab
-                // label. iOS 26's new TabView renders its `label:`
-                // closure inside the UIKit tab-bar button image
-                // slot, which has no SwiftUI popover presentation
-                // context — the popover never anchored. The same
-                // `WalletTabSwitcherTip` is now rendered inline as
-                // a `TipView` from `WalletHomeView`'s content
-                // hierarchy, where a real SwiftUI parent exists.
+                    },
+                    walletMenu: { walletContextMenu }
+                )
             }
-
-            // MARK: - Swap
-            //
-            // 2026-06-15 — `SwapPlaceholderView` retired; replaced by the
-            // real swap surface. `SwapTabView` hosts `SwapView` full-screen
-            // (compose → live quote → honest Review → sign + broadcast).
-            // No wrapping `NavigationStack` here: `SwapView` provides its
-            // own `NavigationStack(path:)`, so wrapping would double-stack
-            // the bar. The wallet-home Swap action still presents `SwapView`
-            // as a sheet (default `isSheet: true`) — unchanged.
-            Tab("Swap", systemImage: "arrow.left.arrow.right", value: MainTab.swap) {
-                SwapTabView()
-            }
-
-            // MARK: - Browser
-            //
-            // 2026-06-10 — `BrowserPlaceholderView` retired; replaced
-            // by `BrowserHomeView` (Aperture's in-wallet dApp
-            // browser surface). The home view owns the URL field,
-            // favorites grid, recent list, connected sessions, and
-            // the router's four confirmation sheets. Pushing into
-            // `BrowserSessionView` carries the actively-browsed
-            // page; the wrapping `NavigationStack` here provides
-            // the push surface and the `.toolbar` ladder
-            // `BrowserHomeView` populates with the QR / settings
-            // icons.
-            Tab("Browser", systemImage: "globe", value: MainTab.browser) {
-                NavigationStack {
-                    BrowserHomeView()
-                }
-            }
-
-            // 2026-06-23 — Settings is no longer a tab. Per user direction
-            // it moved to the wallet-home toolbar (the gear on the app bar's
-            // trailing side), presented as a sheet from `WalletHomeView`.
-            // The bottom bar is now three tabs: Wallet · Swap · Browser.
-        }
-        // **Sidebar-adaptable (2026-06-16).** One native modifier turns
-        // the four `Tab(...)` into a size-class-adaptive shell: the
-        // EXACT Liquid Glass bottom tab bar at compact width (iPhone,
-        // iPad portrait, narrow Mac), the EXACT same four tabs lifted
-        // into a native Liquid Glass sidebar at regular width (iPad
-        // landscape, wide Mac) — each tab's existing NavigationStack
-        // becoming the detail pane. No NavigationSplitView rebuild; the
-        // system owns the morph. A no-op on compact-only iPhones.
-        .tabViewStyle(.sidebarAdaptable)
         // Fire a selection haptic on tab change. Per Rule #10 §A,
         // tab selection IS the canonical `.selection` haptic.
         .uniHaptic(.selection, trigger: selectedTabRaw)
@@ -349,6 +271,73 @@ struct MainTabView: View {
             )
             .uniAppEnvironment()
             .presentationBackground(UniColors.Background.primary)
+        }
+    }
+
+    // MARK: - Custom shell helpers (2026-06-23)
+
+    /// The active screen for the resolved tab. Only Wallet and Browser are
+    /// real destinations now (Swap moved into the Actions sheet; Settings is
+    /// a toolbar sheet on the wallet home).
+    @ViewBuilder
+    private var activeScreen: some View {
+        switch resolvedTab {
+        case .browser:
+            NavigationStack { BrowserHomeView() }
+        default:
+            WalletHomeView()
+        }
+    }
+
+    /// The persisted tab, collapsed to the two real destinations.
+    private var resolvedTab: MainTab {
+        (MainTab(rawValue: selectedTabRaw) == .browser) ? .browser : .wallet
+    }
+
+    /// Switch tabs; re-tapping the active Wallet item pops its stack (the
+    /// `TabReselectSignal` the home observes).
+    private func select(_ tab: MainTab) {
+        if resolvedTab == tab, tab == .wallet {
+            TabReselectSignal.shared.walletReselectToken &+= 1
+        }
+        selectedTabRaw = tab.rawValue
+    }
+
+    /// The wallet item's long-press menu — the SwiftUI-native replacement for
+    /// the old UITabBar `UIContextMenuInteraction` (there's no `UITabBar` now).
+    @ViewBuilder
+    private var walletContextMenu: some View {
+        if activeWallet != nil {
+            Button { isShowingPicker = true } label: {
+                Label("Customise icon", systemImage: "paintbrush")
+            }
+            Button { isShowingWalletSettings = true } label: {
+                Label("Wallet settings", systemImage: "gearshape")
+            }
+        }
+        if allWallets.count > 1 {
+            Menu {
+                ForEach(allWallets) { wallet in
+                    Button {
+                        activeWalletIdRaw = wallet.id.uuidString
+                    } label: {
+                        if wallet.id == activeWallet?.id {
+                            Label { Text(verbatim: wallet.name) } icon: { Image(systemName: "checkmark") }
+                        } else {
+                            Text(verbatim: wallet.name)
+                        }
+                    }
+                }
+            } label: {
+                Label("Switch wallet", systemImage: "rectangle.stack")
+            }
+        }
+        Divider()
+        Button { isShowingCreate = true } label: {
+            Label("Create new wallet", systemImage: "plus")
+        }
+        Button { isShowingImport = true } label: {
+            Label("Import existing wallet", systemImage: "square.and.arrow.down")
         }
     }
 

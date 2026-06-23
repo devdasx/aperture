@@ -1803,3 +1803,181 @@
 2026-06-21T04:29:43Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/PinCode/PinCodeView.swift	Try again in \(lockoutCountdown)
 2026-06-21T04:29:43Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/PinCode/PinCodeView.swift	\(n) attempts remaining
 2026-06-21T05:03:19Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SettingsView.swift	\(currency.symbol) · \(currency.code)
+2026-06-22T01:29:48Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/ImportWallet/MnemonicImport.swift	\(i + 1)
+2026-06-22T01:30:53Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/ImportWallet/MnemonicImport.swift	\(i + 1)
+2026-06-22T01:31:06Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/ImportWallet/MnemonicImport.swift	\(i + 1)
+2026-06-22T01:31:12Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/ImportWallet/MnemonicImport.swift	\(i + 1)
+2026-06-22T01:32:06Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/ImportWallet/MnemonicImport.swift	\(i + 1)
+2026-06-22T01:32:08Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/ImportWallet/MnemonicImport.swift	\(i + 1)
+2026-06-22T03:49:15Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/ResetApertureFlow.swift	Aperture is self-custodial. Your keys never leave this device, and we keep \(Text(
+2026-06-22T03:49:15Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/ResetApertureFlow.swift	care@aperturex.io
+2026-06-22T03:49:22Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/ResetApertureFlow.swift	Aperture is self-custodial. Your keys never leave this device, and we keep \(Text(
+2026-06-22T03:49:22Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/ResetApertureFlow.swift	\(Text(
+2026-06-22T03:49:22Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/ResetApertureFlow.swift	care@aperturex.io
+2026-06-22T03:49:30Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/ResetApertureFlow.swift	Aperture is self-custodial. Your keys never leave this device, and we keep \(Text(
+2026-06-22T03:49:30Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/ResetApertureFlow.swift	Type \(Text(verbatim: confirmWord).foregroundColor(UniColors.Text.primary).bold()) to continue
+2026-06-22T03:49:30Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/ResetApertureFlow.swift	\(Text(
+2026-06-22T03:49:30Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/ResetApertureFlow.swift	care@aperturex.io
+2026-06-22T17:31:35Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/ImportWallet/MnemonicImport.swift	Tap to type or paste your recovery phrase…
+2026-06-22T17:31:35Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/ImportWallet/MnemonicImport.swift	\(chip.id + 1)
+2026-06-22T17:38:44Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/ImportWallet/MnemonicImport.swift	Tap to type or paste your recovery phrase…
+2026-06-22T17:38:44Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/ImportWallet/MnemonicImport.swift	\(chip.id + 1)
+2026-06-22T17:38:47Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/ImportWallet/MnemonicImport.swift	Tap to type or paste your recovery phrase…
+2026-06-22T17:38:47Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/ImportWallet/MnemonicImport.swift	\(chip.id + 1)
+2026-06-23T01:09:46Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/ImportWallet/MnemonicImport.swift	\(chip.display)
+2026-06-23T01:11:32Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/ImportWallet/MnemonicImport.swift	\(chip.display)
+2026-06-23T01:11:39Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/ImportWallet/MnemonicImport.swift	\(chip.display)
+2026-06-23T01:12:21Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/ImportWallet/MnemonicImport.swift	\(chip.display)
+2026-06-23T01:12:27Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/ImportWallet/MnemonicImport.swift	\(chip.display)
+2026-06-23T01:13:16Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/ImportWallet/MnemonicImport.swift	\(chip.display)
+2026-06-23T01:32:40Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/ImportWallet/MnemonicImport.swift	\(chip.display)
+2026-06-23T01:32:46Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/ImportWallet/MnemonicImport.swift	\(chip.display)
+2026-06-23T01:32:51Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/ImportWallet/MnemonicImport.swift	\(chip.display)
+2026-06-23T01:33:01Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/ImportWallet/MnemonicImport.swift	\(chip.display)
+2026-06-23T01:33:13Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/ImportWallet/MnemonicImport.swift	\(chip.display)
+2026-06-23T01:33:24Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/ImportWallet/MnemonicImport.swift	\(chip.display)
+2026-06-23T01:33:54Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/ImportWallet/MnemonicImport.swift	\(chip.display)
+2026-06-23T01:34:06Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/ImportWallet/MnemonicImport.swift	\(chip.display)
+2026-06-23T01:43:44Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/ImportWallet/MnemonicImport.swift	\(chip.display)
+2026-06-23T01:43:53Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/ImportWallet/MnemonicImport.swift	\(chip.display)
+2026-06-23T01:44:04Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/ImportWallet/MnemonicImport.swift	\(chip.display)
+2026-06-23T01:56:29Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SettingsView.swift	\(currency.symbol) · \(currency.code)
+2026-06-23T01:56:38Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SettingsView.swift	\(currency.symbol) · \(currency.code)
+2026-06-23T01:56:48Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SettingsView.swift	\(currency.symbol) · \(currency.code)
+2026-06-23T01:57:29Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Switch wallet, currently \(activeWallet?.name ?? 
+2026-06-23T01:57:29Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	\(row.chain.displayName) details
+2026-06-23T01:57:29Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	\(row.symbol) details
+2026-06-23T01:57:45Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Switch wallet, currently \(activeWallet?.name ?? 
+2026-06-23T01:57:45Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	\(row.chain.displayName) details
+2026-06-23T01:57:45Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	\(row.symbol) details
+2026-06-23T01:57:58Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Switch wallet, currently \(activeWallet?.name ?? 
+2026-06-23T01:57:58Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	\(row.chain.displayName) details
+2026-06-23T01:57:58Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	\(row.symbol) details
+2026-06-23T01:58:20Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Switch wallet, currently \(activeWallet?.name ?? 
+2026-06-23T01:58:20Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	\(row.chain.displayName) details
+2026-06-23T01:58:20Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	\(row.symbol) details
+2026-06-23T01:58:29Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Switch wallet, currently \(activeWallet?.name ?? 
+2026-06-23T01:58:29Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	\(row.chain.displayName) details
+2026-06-23T01:58:29Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	\(row.symbol) details
+2026-06-23T01:58:57Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Switch wallet, currently \(activeWallet?.name ?? 
+2026-06-23T01:58:57Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	\(row.chain.displayName) details
+2026-06-23T01:58:57Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	\(row.symbol) details
+2026-06-23T02:06:46Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/ResetApertureFlow.swift	Aperture is self-custodial. Your keys never leave this device, and we keep \(Text(
+2026-06-23T02:06:46Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/ResetApertureFlow.swift	Type \(Text(verbatim: confirmWord).foregroundColor(UniColors.Text.primary).bold()) to continue
+2026-06-23T02:06:46Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/ResetApertureFlow.swift	\(Text(
+2026-06-23T02:06:46Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/ResetApertureFlow.swift	care@aperturex.io
+2026-06-23T02:06:46Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/ResetApertureFlow.swift	… \(Text(
+2026-06-23T02:12:16Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/PinCode/PinCodeView.swift	Try again in \(lockoutCountdown)
+2026-06-23T02:12:16Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/PinCode/PinCodeView.swift	Wrong passcode. \(attempts).
+2026-06-23T02:12:16Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/PinCode/PinCodeView.swift	\(n) attempts remaining
+2026-06-23T02:12:22Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/CreateWallet/RecoveryPhraseView.swift	\(Text(
+2026-06-23T02:16:21Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Switch wallet, currently \(activeWallet?.name ?? 
+2026-06-23T02:16:21Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	\(row.chain.displayName) details
+2026-06-23T02:16:21Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	\(row.symbol) details
+2026-06-23T02:16:38Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SettingsView.swift	\(currency.symbol) · \(currency.code)
+2026-06-23T02:16:44Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SettingsView.swift	\(currency.symbol) · \(currency.code)
+2026-06-23T02:16:52Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SettingsView.swift	\(currency.symbol) · \(currency.code)
+2026-06-23T02:17:05Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Switch wallet, currently \(activeWallet?.name ?? 
+2026-06-23T02:17:05Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	\(row.chain.displayName) details
+2026-06-23T02:17:05Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	\(row.symbol) details
+2026-06-23T02:21:31Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SettingsView.swift	\(currency.symbol) · \(currency.code)
+2026-06-23T02:21:41Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SettingsView.swift	\(currency.symbol) · \(currency.code)
+2026-06-23T02:21:47Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Settings/SettingsView.swift	\(currency.symbol) · \(currency.code)
+2026-06-23T02:28:03Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/BalanceCardView.swift	Switch wallet, currently \(walletName)
+2026-06-23T02:28:03Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/BalanceCardView.swift	Total balance \(value), \(dir) \(percentText) today
+2026-06-23T02:28:03Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/BalanceCardView.swift	Total balance \(value), no change today
+2026-06-23T02:28:03Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/BalanceCardView.swift	Total balance \(value). Add crypto to get started.
+2026-06-23T02:28:03Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/BalanceCardView.swift	\(currency)\(gap)\(integer)\(fraction)
+2026-06-23T02:28:03Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/BalanceCardView.swift	\(currencyRun)\(dots)
+2026-06-23T02:28:03Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/BalanceCardView.swift	\(integer)\(fraction)
+2026-06-23T02:28:03Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/BalanceCardView.swift	\(integer)\(fraction)\(gap)\(currency)
+2026-06-23T02:28:20Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/BalanceCardView.swift	Switch wallet, currently \(walletName)
+2026-06-23T02:28:20Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/BalanceCardView.swift	Total balance \(value), \(dir) \(percentText) today
+2026-06-23T02:28:20Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/BalanceCardView.swift	Total balance \(value), no change today
+2026-06-23T02:28:20Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/BalanceCardView.swift	Total balance \(value). Add crypto to get started.
+2026-06-23T02:28:20Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/BalanceCardView.swift	\(currency)\(gap)\(integer)\(fraction)
+2026-06-23T02:28:20Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/BalanceCardView.swift	\(currencyRun)\(dots)
+2026-06-23T02:28:20Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/BalanceCardView.swift	\(integer)\(fraction)
+2026-06-23T02:28:20Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/BalanceCardView.swift	\(integer)\(fraction)\(gap)\(currency)
+2026-06-23T02:28:28Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/BalanceCardView.swift	Switch wallet, currently \(walletName)
+2026-06-23T02:28:28Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/BalanceCardView.swift	Total balance \(value), \(dir) \(percentText) today
+2026-06-23T02:28:28Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/BalanceCardView.swift	Total balance \(value), no change today
+2026-06-23T02:28:28Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/BalanceCardView.swift	Total balance \(value). Add crypto to get started.
+2026-06-23T02:28:28Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/BalanceCardView.swift	\(currency)\(gap)\(integer)\(fraction)
+2026-06-23T02:28:28Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/BalanceCardView.swift	\(currencyRun)\(dots)
+2026-06-23T02:28:28Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/BalanceCardView.swift	\(integer)\(fraction)
+2026-06-23T02:28:28Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/BalanceCardView.swift	\(integer)\(fraction)\(gap)\(currency)
+2026-06-23T02:28:34Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/BalanceCardView.swift	Switch wallet, currently \(walletName)
+2026-06-23T02:28:34Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/BalanceCardView.swift	Total balance \(value), \(dir) \(percentText) today
+2026-06-23T02:28:34Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/BalanceCardView.swift	Total balance \(value), no change today
+2026-06-23T02:28:34Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/BalanceCardView.swift	Total balance \(value). Add crypto to get started.
+2026-06-23T02:28:34Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/BalanceCardView.swift	\(currency)\(gap)\(integer)\(fraction)
+2026-06-23T02:28:34Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/BalanceCardView.swift	\(currencyRun)\(dots)
+2026-06-23T02:28:34Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/BalanceCardView.swift	\(integer)\(fraction)
+2026-06-23T02:28:34Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/BalanceCardView.swift	\(integer)\(fraction)\(gap)\(currency)
+2026-06-23T02:28:46Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/BalanceCardView.swift	Switch wallet, currently \(walletName)
+2026-06-23T02:28:46Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/BalanceCardView.swift	Total balance \(value), \(dir) \(percentText) today
+2026-06-23T02:28:46Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/BalanceCardView.swift	Total balance \(value), no change today
+2026-06-23T02:28:46Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/BalanceCardView.swift	Total balance \(value). Add crypto to get started.
+2026-06-23T02:28:46Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/BalanceCardView.swift	\(currency)\(gap)\(integer)\(fraction)
+2026-06-23T02:28:46Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/BalanceCardView.swift	\(currencyRun)\(dots)
+2026-06-23T02:28:46Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/BalanceCardView.swift	\(integer)\(fraction)
+2026-06-23T02:28:46Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/BalanceCardView.swift	\(integer)\(fraction)\(gap)\(currency)
+2026-06-23T02:28:54Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/BalanceCardView.swift	Switch wallet, currently \(walletName)
+2026-06-23T02:28:54Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/BalanceCardView.swift	Total balance \(value), \(dir) \(percentText) today
+2026-06-23T02:28:54Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/BalanceCardView.swift	Total balance \(value), no change today
+2026-06-23T02:28:54Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/BalanceCardView.swift	Total balance \(value). Add crypto to get started.
+2026-06-23T02:28:54Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/BalanceCardView.swift	\(currency)\(gap)\(integer)\(fraction)
+2026-06-23T02:28:54Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/BalanceCardView.swift	\(currencyRun)\(dots)
+2026-06-23T02:28:54Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/BalanceCardView.swift	\(integer)\(fraction)
+2026-06-23T02:28:54Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/BalanceCardView.swift	\(integer)\(fraction)\(gap)\(currency)
+2026-06-23T02:29:04Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Switch wallet, currently \(activeWallet?.name ?? 
+2026-06-23T02:29:04Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	\(row.chain.displayName) details
+2026-06-23T02:29:04Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	\(row.symbol) details
+2026-06-23T02:29:12Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Switch wallet, currently \(activeWallet?.name ?? 
+2026-06-23T02:29:12Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	\(row.chain.displayName) details
+2026-06-23T02:29:12Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	\(row.symbol) details
+2026-06-23T02:29:26Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Switch wallet, currently \(activeWallet?.name ?? 
+2026-06-23T02:29:26Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	\(row.chain.displayName) details
+2026-06-23T02:29:26Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	\(row.symbol) details
+2026-06-23T02:30:01Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Switch wallet, currently \(activeWallet?.name ?? 
+2026-06-23T02:30:01Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	\(row.chain.displayName) details
+2026-06-23T02:30:01Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	\(row.symbol) details
+2026-06-23T02:43:40Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Switch wallet, currently \(activeWallet?.name ?? 
+2026-06-23T02:43:40Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	\(row.chain.displayName) details
+2026-06-23T02:43:40Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	\(row.symbol) details
+2026-06-23T02:43:55Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Switch wallet, currently \(activeWallet?.name ?? 
+2026-06-23T02:43:55Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	\(row.chain.displayName) details
+2026-06-23T02:43:55Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	\(row.symbol) details
+2026-06-23T03:20:31Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/BalanceCardView.swift	Switch wallet, currently \(walletName)
+2026-06-23T03:20:31Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/BalanceCardView.swift	Total balance \(value), \(dir) \(percentText) today
+2026-06-23T03:20:31Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/BalanceCardView.swift	Total balance \(value), no change today
+2026-06-23T03:20:31Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/BalanceCardView.swift	Total balance \(value). Add crypto to get started.
+2026-06-23T03:20:31Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/BalanceCardView.swift	\(currency)\(gap)\(integer)\(fraction)
+2026-06-23T03:20:31Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/BalanceCardView.swift	\(currencyRun)\(dots)
+2026-06-23T03:20:31Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/BalanceCardView.swift	\(integer)\(fraction)
+2026-06-23T03:20:31Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/BalanceCardView.swift	\(integer)\(fraction)\(gap)\(currency)
+2026-06-23T04:03:49Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Main/ApertureTabBar.swift	Actions
+2026-06-23T04:04:27Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletActionsSheet.swift	Actions
+2026-06-23T04:04:27Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletActionsSheet.swift	Save a Send to reuse its recipient, token, and amount in one tap. Your saved templates will appear here.
+2026-06-23T04:04:27Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletActionsSheet.swift	Templates
+2026-06-23T04:05:54Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletActionsSheet.swift	Actions
+2026-06-23T04:05:54Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletActionsSheet.swift	Save a Send to reuse its recipient, token, and amount in one tap. Your saved templates will appear here.
+2026-06-23T04:05:54Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletActionsSheet.swift	Templates
+2026-06-23T04:08:04Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Main/MainTabView.swift	checkmark
+2026-06-23T04:08:25Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Switch wallet, currently \(activeWallet?.name ?? 
+2026-06-23T04:08:25Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	\(row.chain.displayName) details
+2026-06-23T04:08:25Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	\(row.symbol) details
+2026-06-23T04:08:48Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Switch wallet, currently \(activeWallet?.name ?? 
+2026-06-23T04:08:48Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	\(row.chain.displayName) details
+2026-06-23T04:08:48Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	\(row.symbol) details
+2026-06-23T04:09:22Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Switch wallet, currently \(activeWallet?.name ?? 
+2026-06-23T04:09:22Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	\(row.chain.displayName) details
+2026-06-23T04:09:22Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	\(row.symbol) details
+2026-06-23T04:09:39Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Switch wallet, currently \(activeWallet?.name ?? 
+2026-06-23T04:09:39Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	\(row.chain.displayName) details
+2026-06-23T04:09:39Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	\(row.symbol) details
+2026-06-23T04:10:14Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Switch wallet, currently \(activeWallet?.name ?? 
+2026-06-23T04:10:14Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	\(row.chain.displayName) details
+2026-06-23T04:10:14Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	\(row.symbol) details
+2026-06-23T04:11:46Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Main/MainTabView.swift	checkmark
