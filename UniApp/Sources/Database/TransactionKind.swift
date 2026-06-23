@@ -8,32 +8,24 @@ import Foundation
 /// (optional `String`, additive column — pre-taxonomy rows decode
 /// `nil` and resolve through `defaultKind(for:)`).
 ///
-/// The two axes compose: a swap routinely persists as TWO ledger legs
-/// (an `.outgoing` leg in one asset and an `.incoming` leg in
-/// another, both `kind == .swap` under the same `txHash`); a
-/// self-transfer is one `.internal` leg with `kind == .selfTransfer`.
+/// A self-transfer is one `.internal` leg with `kind == .selfTransfer`;
+/// everything else is a plain `.transfer`.
 ///
-/// `failed` is NOT a kind — it stays on `TransactionStatus` (a swap
-/// can fail; a transfer can fail). Repository filters compose the
-/// three axes: sending = `direction == .outgoing`, receiving =
-/// `direction == .incoming`, failed = `status == .failed`,
-/// swap / bridge / self = `kind`.
-// **Swap / bridge classification (T-067, done 2026-06-18).** The chain
-// adapters still emit only direction, so `TransactionRepository.classifyKind`
-// recognizes swap/bridge legs by their counterparty: a transfer whose other
-// party is a known `SwapRouterAllowlist` router resolves to `.swap` (DEX
-// aggregator / LI.FI Diamond) or `.bridge` (dedicated cross-chain router).
-// A nil-kind re-scan UPGRADES a generic `.transfer` to its real class but
-// never downgrades an explicit one, so past activity relabels on the next
-// scan. Only curated allowlist addresses classify — an ordinary send/receive
-// is never mislabeled (Rule #16).
+/// `failed` is NOT a kind — it stays on `TransactionStatus`. Repository
+/// filters compose the axes: sending = `direction == .outgoing`,
+/// receiving = `direction == .incoming`, failed = `status == .failed`,
+/// self = `kind == .selfTransfer`.
+///
+/// 2026-06-23 — the router-allowlist classifier (which upgraded transfers to
+/// `.swap` / `.bridge`) was removed with the swap feature, so no leg is
+/// produced with those kinds anymore. `.bridge` is kept only so stored rows
+/// written before the removal still decode.
 enum TransactionKind: String, Codable, CaseIterable, Sendable {
     /// Plain value transfer (send / receive). The default for every
     /// non-`.internal` leg until an adapter classifies otherwise.
     case transfer
-    /// Asset exchange through a DEX router / aggregator on one chain.
-    case swap
-    /// Value moved across chains through a bridge contract.
+    /// Value moved across chains through a bridge contract. Dormant since
+    /// 2026-06-23 (kept for stored-row decoding only).
     case bridge
     /// Value moved between the user's own addresses (the adapters'
     /// `.internal` direction — every owned input AND output).

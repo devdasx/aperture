@@ -138,16 +138,14 @@ struct AssetDetailView: View {
     // first asks WHICH network (the picker), then dismisses it and opens the
     // flow pre-filled for the chosen network — reusing the same seeds the
     // per-network screen uses.
-    private enum PrefillAction { case send, receive, swap }
+    private enum PrefillAction { case send, receive }
     @State private var pendingAction: PrefillAction?
     @State private var chosenChain: SupportedChain?
     @State private var isShowingNetworkPicker = false
     @State private var isShowingSend = false
     @State private var isShowingReceive = false
-    @State private var isShowingSwap = false
     @State private var sendPath = NavigationPath()
     @State private var receivePath = NavigationPath()
-    @State private var swapPath = NavigationPath()
 
     /// Cap on the activity section — same convention the wallet home
     /// uses. When the asset has more than 50 transactions, a "View
@@ -229,14 +227,6 @@ struct AssetDetailView: View {
                 .presentationDragIndicator(.visible)
                 .presentationBackground(UniColors.Background.primary)
         }
-        .sheet(isPresented: $isShowingSwap, onDismiss: { swapPath = NavigationPath() }) {
-            SwapView(navigationPath: $swapPath, initialFromToken: swapSeedToken)
-                .id(sheetDirectionKey)
-                .uniAppEnvironment()
-                .uniSheetDetents([.large])
-                .presentationDragIndicator(.visible)
-                .presentationBackground(UniColors.Background.primary)
-        }
         .task(id: derivedKey) {
             let computed = computeDerived()
             derivedCache = computed
@@ -269,19 +259,11 @@ struct AssetDetailView: View {
 
     @ViewBuilder
     private func actionsSection(_ derived: DerivedState) -> some View {
-        // Show Swap only when at least one of this asset's networks is actually
-        // swappable (2026-06-20 user direction — assets on chains the swap
-        // provider doesn't cover, e.g. TRON/TON, must not show Swap at all).
-        // Uses the SAME networks the Swap picker would offer, so the button's
-        // presence and the picker's contents can never disagree.
-        let canSwap = derived.resolution.networks.contains { SwapChainMap.isSwappable($0.chain) }
         Section {
             WalletActionRegion(
                 canSend: activeWallet?.kind != .watchOnly,
-                canSwap: canSwap,
                 onSend: { beginAction(.send) },
-                onReceive: { beginAction(.receive) },
-                onSwap: { beginAction(.swap) }
+                onReceive: { beginAction(.receive) }
             )
             .listRowBackground(Color.clear)
             .listRowSeparator(.hidden)
@@ -306,8 +288,7 @@ struct AssetDetailView: View {
     }
 
     /// Networks offered for `action`: every supported network for Receive
-    /// (you can receive anywhere), only HELD networks for Send, and only
-    /// held + swappable for Swap (you can't move what you don't hold).
+    /// (you can receive anywhere), only HELD networks for Send.
     private func networkChoices(for action: PrefillAction) -> [AssetNetworkRow] {
         // Use the SAME resolution the body renders — `derivedCache` may
         // still be nil if the user taps an action before the `.task`
@@ -318,7 +299,6 @@ struct AssetDetailView: View {
         switch action {
         case .receive: return all
         case .send:    return all.filter { $0.isHeld }
-        case .swap:    return all.filter { $0.isHeld && SwapChainMap.isSwappable($0.chain) }
         }
     }
 
@@ -398,8 +378,6 @@ struct AssetDetailView: View {
             path.append(ReceiveDestination.qr(chain: chain, tokenSymbol: sendTokenSymbol, address: addr))
             receivePath = path
             isShowingReceive = true
-        case .swap:
-            isShowingSwap = true
         }
     }
 
@@ -410,25 +388,6 @@ struct AssetDetailView: View {
 
     private func address(for chain: SupportedChain) -> String? {
         activeWallet?.addresses.first { $0.chainRaw == chain.rawValue }?.address
-    }
-
-    /// FROM token to seed Swap with for the chosen network: the chain's native
-    /// sentinel for a coin, else this token's held contract + decimals. `nil`
-    /// falls back to Swap's own default (never a wrong token).
-    private var swapSeedToken: SwapToken? {
-        guard let chain = chosenChain else { return nil }
-        if identity.isNativeCoin { return SwapChainMap.nativeToken(for: chain) }
-        guard let balance = allHeldRows.first(where: {
-            $0.chain == chain
-                && $0.balance.tokenContract != nil
-                && $0.balance.tokenSymbol.caseInsensitiveCompare(identity.symbol) == .orderedSame
-        })?.balance, let contract = balance.tokenContract else {
-            return nil
-        }
-        return SwapToken.swappable(
-            chain: chain, contract: contract, symbol: identity.symbol,
-            name: assetDisplayName, decimals: balance.decimals, logoURI: nil
-        )
     }
 
     /// Re-runs when wallet, currency, or asset identity changes.

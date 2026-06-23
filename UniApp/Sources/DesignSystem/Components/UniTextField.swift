@@ -403,7 +403,7 @@ private struct LineLimitModifier: ViewModifier {
 ///
 /// **Rule #3 — native-only.** This is the system `ToolbarItemGroup(placement:
 /// .keyboard)` accessory, the canonical iOS pattern for dismissing a
-/// number-pad. It is the single shared home so every decimal field (Swap
+/// number-pad. It is the single shared home so every decimal field (Send
 /// amount, custom slippage, Send hero + per-recipient) gets the identical
 /// affordance rather than each re-rolling its own bar.
 ///

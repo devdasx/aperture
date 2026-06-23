@@ -75,7 +75,7 @@ struct UniButton: View {
         /// on the initializer; if either is `nil` the pill collapses to
         /// the `.toolbarPill` layout (text-only). 2026-06-09 addition.
         case walletPill
-        /// Wallet-home action triplet (Send / Receive / Swap). Circular
+        /// Wallet-home action pair (Send / Receive). Circular
         /// 56×56 glass-prominent surface, accent-tinted. Pairs with an
         /// external label rendered beneath by the call site. Circle
         /// hit-shape.
@@ -375,7 +375,7 @@ struct UniButton: View {
         .contentShape(Capsule())
     }
 
-    /// Wallet-home action circle (Send/Receive/Swap). 56×56 SF Symbol
+    /// Wallet-home action circle (Send/Receive). 56×56 SF Symbol
     /// inside a glass-prominent circle. The external `Text` label beneath
     /// is rendered by the call site, not by `UniButton`. When `isLoading`,
     /// the glyph is replaced by a `spinnerTint`-tinted `ProgressView` so

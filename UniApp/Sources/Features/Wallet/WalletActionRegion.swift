@@ -1,23 +1,17 @@
 import SwiftUI
 
-/// Send / Receive / Swap action triplet for the wallet-home screen.
-/// Three circular Liquid Glass buttons centered with labels beneath —
-/// the iOS Wallet / Apple-app pattern. `GlassEffectContainer` wraps them
-/// so the material reads as one cohesive surface.
+/// Send / Receive action pair for the asset-detail screens. Circular Liquid
+/// Glass buttons centered with labels beneath — the iOS Wallet / Apple-app
+/// pattern. `GlassEffectContainer` wraps them so the material reads as one
+/// cohesive surface. (The swap feature was removed 2026-06-23.)
 ///
-/// **Disabled state.** Watch-only wallets cannot send or swap (no
-/// signing key). Receive remains available because receiving doesn't
-/// require a key. `canSend` gates Send + Swap; Receive is always on.
+/// **Disabled state.** Watch-only wallets cannot send (no signing key).
+/// Receive remains available because receiving doesn't require a key.
+/// `canSend` gates Send; Receive is always on.
 struct WalletActionRegion: View {
     let canSend: Bool
-    /// Whether Swap applies here at all. `false` HIDES the Swap button
-    /// entirely (2026-06-20 user direction — an asset with no swappable
-    /// network must not show Swap). Defaults `true` so the wallet-home
-    /// keeps the full Send / Receive / Swap triplet.
-    var canSwap: Bool = true
     let onSend: () -> Void
     let onReceive: () -> Void
-    let onSwap: () -> Void
 
     var body: some View {
         GlassEffectContainer(spacing: UniSpacing.s) {
@@ -45,14 +39,6 @@ struct WalletActionRegion: View {
                     isEnabled: true,
                     action: onReceive
                 )
-                if canSwap {
-                    actionButton(
-                        icon: "arrow.left.arrow.right",
-                        label: "Swap",
-                        isEnabled: canSend,
-                        action: onSwap
-                    )
-                }
                 Spacer(minLength: 0)
             }
             .frame(maxWidth: .infinity)
