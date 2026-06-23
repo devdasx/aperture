@@ -140,21 +140,31 @@ struct MainTabView: View {
     private var selectedTab: Binding<MainTab> {
         Binding(
             get: {
-                // `.settings` is no longer a tab (2026-06-23). A value
-                // persisted from before the change resolves to the Wallet
-                // tab so the TabView never lands on a missing tab.
+                // `.settings` / `.swap` / `.actions` are not real tabs anymore
+                // (2026-06-23). Any such persisted/transient value resolves to
+                // the Wallet tab so the TabView never lands on a missing tab.
                 let resolved = MainTab(rawValue: selectedTabRaw) ?? .wallet
-                return resolved == .settings ? .wallet : resolved
+                return (resolved == .wallet || resolved == .browser) ? resolved : .wallet
             },
             set: { newValue in
+                // The Actions item is NOT a destination — tapping it opens the
+                // Send/Receive/Swap/Connect/Templates sheet on the wallet home
+                // and leaves the selection where it was (switching to Wallet so
+                // the home is mounted to present the sheet).
+                if newValue == .actions {
+                    selectedTabRaw = MainTab.wallet.rawValue
+                    DispatchQueue.main.async {
+                        WalletShellSignal.shared.requestActions()
+                    }
+                    return
+                }
                 // Re-tapping the already-selected Wallet tab pops its nav
                 // stack back to the home root — the standard iOS tab gesture,
                 // which `TabView` does NOT perform automatically for a
                 // NavigationStack (2026-06-18 user report). SwiftUI calls
                 // this setter with the SAME value on a re-tap, so detect it
                 // here and bump the shared token; `WalletHomeView` observes
-                // it and clears its path. (Swap / Browser are single screens
-                // with nothing to pop.)
+                // it and clears its path.
                 if newValue == (MainTab(rawValue: selectedTabRaw) ?? .wallet),
                    newValue == .wallet {
                     TabReselectSignal.shared.walletReselectToken &+= 1
@@ -180,36 +190,15 @@ struct MainTabView: View {
 
     var body: some View {
         TabView(selection: selectedTab) {
-            // MARK: - Wallet (custom avatar label)
+            // MARK: - Wallet (native icon — 2026-06-23)
             //
-            // The Wallet tab's `label:` closure renders the active
-            // wallet's `WalletAvatar` instead of a generic SF Symbol.
-            // The text "Wallet" stays — iOS tab bars show both glyph
-            // and text by default. The avatar replaces the glyph
-            // role; the text role is unchanged.
-            //
-            // `.contextMenu` is NOT attached here. The long-press
-            // wallet switcher lives on the wallet-home toolbar
-            // pill instead — see the type-level doc comment for
-            // the verification trail.
-            Tab(value: MainTab.wallet) {
+            // The wallet avatar moved OFF the bar (user direction): the Wallet
+            // tab is a plain native tab now (`wallet.pass.fill`). The wallet
+            // identity + switcher live on the wallet-home pill. The long-press
+            // wallet menu still installs onto the `UITabBar` at index 0
+            // (compact width only).
+            Tab("Wallet", systemImage: "wallet.pass.fill", value: MainTab.wallet) {
                 WalletHomeView()
-                    // Zero-size UIKit installer. On first appear,
-                    // resolves the surrounding `UITabBarController`,
-                    // attaches a `UIContextMenuInteraction` to its
-                    // public `UITabBar`, and on long-press surfaces
-                    // the native iOS context menu built from
-                    // `buildWalletTabMenu()`. The menu's `UIAction`s
-                    // mutate `@State` flags on this view; SwiftUI
-                    // reacts via the modifiers below.
-                    //
-                    // **2026-06-16 — compact-width only.** In sidebar
-                    // mode (regular width) there is no UITabBar for the
-                    // installer to reach, so it would silently no-op.
-                    // We gate it to compact width to avoid the dead
-                    // reach-through; the native SwiftUI wallet-switch
-                    // `Menu` on `WalletHomeView`'s pill covers regular
-                    // width (it's shown there for the same reason).
                     .background(alignment: .bottom) {
                         if horizontalSizeClass == .compact {
                             TabBarLongPressInstaller(tabIndex: 0) {
@@ -219,67 +208,31 @@ struct MainTabView: View {
                             .allowsHitTesting(false)
                         }
                     }
-            } label: {
-                // **iPad — a normal "Home" tab (user direction 2026-06-17).**
-                // In the regular-width sidebar / top-tab layout the wallet
-                // avatar read as an odd green dot among the text tabs. iPad
-                // gets a standard labelled tab ("Home" + house glyph); iPhone
-                // keeps the active wallet's gradient avatar AS the Wallet
-                // tab's identity (the compact bottom bar where it belongs).
-                // The wallet identity + switcher still live on the
-                // wallet-home pill ("Wallet 1 ▾") in both.
-                if UIDevice.current.userInterfaceIdiom == .pad {
-                    Label("Home", systemImage: "house.fill")
-                } else {
-                    walletTabLabel
-                }
-                // 2026-06-09 — `popoverTip` REMOVED from the Tab
-                // label. iOS 26's new TabView renders its `label:`
-                // closure inside the UIKit tab-bar button image
-                // slot, which has no SwiftUI popover presentation
-                // context — the popover never anchored. The same
-                // `WalletTabSwitcherTip` is now rendered inline as
-                // a `TipView` from `WalletHomeView`'s content
-                // hierarchy, where a real SwiftUI parent exists.
             }
 
-            // MARK: - Swap
+            // MARK: - Browser (normal tab, native bottom search — 2026-06-23)
             //
-            // 2026-06-15 — `SwapPlaceholderView` retired; replaced by the
-            // real swap surface. `SwapTabView` hosts `SwapView` full-screen
-            // (compose → live quote → honest Review → sign + broadcast).
-            // No wrapping `NavigationStack` here: `SwapView` provides its
-            // own `NavigationStack(path:)`, so wrapping would double-stack
-            // the bar. The wallet-home Swap action still presents `SwapView`
-            // as a sheet (default `isSheet: true`) — unchanged.
-            Tab("Swap", systemImage: "arrow.left.arrow.right", value: MainTab.swap) {
-                SwapTabView()
-            }
-
-            // MARK: - Browser
-            //
-            // 2026-06-10 — `BrowserPlaceholderView` retired; replaced
-            // by `BrowserHomeView` (Aperture's in-wallet dApp
-            // browser surface). The home view owns the URL field,
-            // favorites grid, recent list, connected sessions, and
-            // the router's four confirmation sheets. Pushing into
-            // `BrowserSessionView` carries the actively-browsed
-            // page; the wrapping `NavigationStack` here provides
-            // the push surface and the `.toolbar` ladder
-            // `BrowserHomeView` populates with the QR / settings
-            // icons.
-            // 2026-06-23 — Browser is the native iOS 26 **search tab**
-            // (`Tab(role: .search)`). It renders visually separated and morphs
-            // into the bottom domain search field that `BrowserHomeView`'s
-            // `.searchable` provides — the same bottom "Search Domain" morph
-            // 1inch shows. (A `.search`-role `Tab` takes no title/systemImage;
-            // the system supplies the search appearance.) The earlier custom
-            // bar hid that field because it wasn't a `TabView`; the native
-            // search tab brings it back.
-            Tab(value: MainTab.browser, role: .search) {
+            // A normal tab with the `safari` glyph (user direction). On iOS 26
+            // `BrowserHomeView`'s `.searchable` docks the domain search field at
+            // the BOTTOM, above the tab bar, with the tab bar staying — the
+            // native behavior the user asked for. NOT a `.search`-role tab, so
+            // the bar shows the safari icon (not a magnifier) and the tabs stay
+            // put instead of morphing away.
+            Tab("Browser", systemImage: "safari", value: MainTab.browser) {
                 NavigationStack {
                     BrowserHomeView()
                 }
+            }
+
+            // MARK: - Actions (sheet trigger, not a destination — 2026-06-23)
+            //
+            // Tapping this opens the Send / Receive / Swap / Connect / Templates
+            // sheet on the wallet home. The selection binding intercepts
+            // `.actions` (it never becomes the active tab), switches to Wallet,
+            // and asks `WalletHomeView` to present the sheet — so the content
+            // here is never shown.
+            Tab("Actions", systemImage: "arrow.left.arrow.right", value: MainTab.actions) {
+                Color.clear
             }
 
             // 2026-06-23 — Settings is no longer a tab. Per user direction
@@ -573,6 +526,10 @@ enum MainTab: String, Hashable, CaseIterable {
     case swap
     case browser
     case settings
+    /// Not a destination — the bar item that opens the Actions sheet
+    /// (2026-06-23). The selection binding intercepts it and never lands on
+    /// it; `WalletHomeView` presents the sheet in reaction.
+    case actions
 
     /// The `@AppStorage` / `UserDefaults` key the selected tab persists
     /// under. Single source of truth shared by `MainTabView`,

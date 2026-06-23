@@ -233,6 +233,14 @@ struct WalletHomeView: View {
     /// direction rebuilds, reset on dismiss.
     @State private var isShowingSwap: Bool = false
     @State private var swapPath: NavigationPath = NavigationPath()
+    // 2026-06-23 — the Actions sheet (Send/Receive/Swap/Connect/Templates),
+    // opened by the bar's Actions item via `WalletShellSignal.openActionsToken`.
+    // A tile sets `pendingQuickAction` + dismisses; `onDismiss` opens the real
+    // flow (dismiss-then-present, no sheet-over-sheet race).
+    @State private var isShowingActions: Bool = false
+    @State private var isShowingConnectScanner: Bool = false
+    @State private var pendingQuickAction: QuickAction? = nil
+    private enum QuickAction { case send, receive, swap, connect }
     /// Background-swap engine — drives the under-actions banner (2026-06-17).
     @State private var swapManager = SwapBackgroundManager.shared
     /// The background swap job whose status sheet is open, if any.
@@ -551,37 +559,10 @@ struct WalletHomeView: View {
                 // because toolbar items are navigation affordances, not
                 // commit CTAs (the rule's documented exception).
                 .toolbar {
-                    // Active wallet's avatar (its chosen color + glyph),
-                    // leading (2026-06-23 user direction) — moved here from
-                    // the balance card, replacing the fixed black app mark.
-                    // Tapping opens Customise wallet via `customiseTargetId`,
-                    // the same `WalletIconPickerSheet` the long-press menu and
-                    // the old card avatar used.
-                    ToolbarItem(placement: .topBarLeading) {
-                        Button {
-                            customiseTargetId = activeWallet?.id
-                        } label: {
-                            // Just the wallet's logo (symbol only — no disc), so
-                            // it reads bigger; the wallet's colour is carried by
-                            // the glass tint below instead of a disc.
-                            WalletAvatar(
-                                spec: activeAvatarSpec,
-                                size: .tabIcon,
-                                walletId: activeWallet?.id,
-                                symbolOnly: true
-                            )
-                        }
-                        // Native iOS 26 tinted Liquid Glass: the toolbar
-                        // auto-applies glass, and `.tint` colours it with the
-                        // wallet's chosen colour. `.glassProminent` makes it an
-                        // opaque coloured circle; NO `.glassEffect` here (that
-                        // would double-layer glass on a toolbar item).
-                        .buttonStyle(.glassProminent)
-                        .tint(activeAvatarTint)
-                        .buttonBorderShape(.circle)
-                        .disabled(activeWallet == nil)
-                        .accessibilityLabel(Text("Customise wallet"))
-                    }
+                    // 2026-06-23 — the wallet logo was removed from the nav bar
+                    // (user direction): the leading slot is empty, so the
+                    // navigation bar is fully native. Customise-wallet now lives
+                    // only on the long-press menu + Settings → Wallets.
                     // 2026-06-23 — Settings affordance. Per user
                     // direction Settings left the bottom tab bar and
                     // lives here, on the app bar's trailing side; the
@@ -717,6 +698,10 @@ struct WalletHomeView: View {
                         withAnimation(.snappy) { navigationPath.removeAll() }
                     }
                 }
+                .onChange(of: WalletShellSignal.shared.openActionsToken) { _, _ in
+                    // The bar's Actions item asks us to open the Actions sheet.
+                    isShowingActions = true
+                }
                 .onChange(of: currencyCode) { _, _ in
                     // Labels react immediately (the hero + unheld rows
                     // read `currencyCode` directly)…
@@ -823,6 +808,33 @@ struct WalletHomeView: View {
                 .uniSheetDetents([.large])
                 .presentationDragIndicator(.visible)
                 .presentationBackground(UniColors.Background.primary)
+        }
+        // Actions sheet (2026-06-23) — opened by the bar's Actions item. A tile
+        // sets `pendingQuickAction` + dismisses; `onDismiss` opens the real flow.
+        .sheet(isPresented: $isShowingActions, onDismiss: { applyPendingQuickAction() }) {
+            WalletActionsSheet(
+                canSend: activeWallet?.kind != .watchOnly,
+                onSend: { pendingQuickAction = .send; isShowingActions = false },
+                onReceive: { pendingQuickAction = .receive; isShowingActions = false },
+                onConnect: { pendingQuickAction = .connect; isShowingActions = false },
+                onSwap: { pendingQuickAction = .swap; isShowingActions = false }
+            )
+            .uniAppEnvironment()
+            .uniSheetDetents([.medium, .large])
+            .presentationDragIndicator(.visible)
+            .presentationBackground(UniColors.Background.primary)
+        }
+        // Connect (WalletConnect) scanner — the Actions sheet's Connect tile.
+        .sheet(isPresented: $isShowingConnectScanner) {
+            UniQRScannerSheet(
+                title: "Connect",
+                prompt: "Scan a WalletConnect QR code to connect a dApp.",
+                onConnect: { uri in
+                    isShowingConnectScanner = false
+                    Task { await DAppRequestRouter.shared.handleWalletConnectURI(uri) }
+                }
+            )
+            .uniAppEnvironment()
         }
         // Background-swap status (2026-06-17). Tapping the under-actions
         // banner reopens the live status of a swap running in
@@ -931,6 +943,20 @@ struct WalletHomeView: View {
                 .uniSheetDetents([.large])
                 .presentationBackground(UniColors.Background.primary)
         }
+    }
+
+    /// Open the flow chosen in the Actions sheet, AFTER it has dismissed —
+    /// presenting over a still-dismissing sheet drops the new one, so we hand
+    /// off in the Actions sheet's `onDismiss`.
+    private func applyPendingQuickAction() {
+        switch pendingQuickAction {
+        case .send:    isShowingSend = true
+        case .receive: isShowingReceive = true
+        case .swap:    isShowingSwap = true
+        case .connect: isShowingConnectScanner = true
+        case nil:      break
+        }
+        pendingQuickAction = nil
     }
 
     // MARK: - Layout
@@ -1206,20 +1232,9 @@ struct WalletHomeView: View {
                     ))
             }
 
-            WalletActionRegion(
-                canSend: activeWallet?.kind != .watchOnly,
-                onSend: { isShowingSend = true },
-                onReceive: { isShowingReceive = true },
-                onSwap: { isShowingSwap = true }
-            )
-            .listRowBackground(Color.clear)
-            .listRowSeparator(.hidden)
-            .listRowInsets(EdgeInsets(
-                top: 0,
-                leading: UniSpacing.m,
-                bottom: 0,
-                trailing: UniSpacing.m
-            ))
+            // 2026-06-23 — the Send / Receive / Swap circles moved off the
+            // home into the `WalletActionsSheet`, opened by the bar's Actions
+            // item. `WalletActionRegion` is no longer rendered here.
 
             // Background-swap banner (2026-06-17). When a swap is running in
             // `SwapBackgroundManager` — the user tapped "Run in the
@@ -2441,21 +2456,6 @@ struct WalletHomeView: View {
         // Only when NO valid active id is set (first launch / a cleared
         // pointer) do we heal to the first wallet.
         return allWallets.first(where: { walletExists(id: $0.id) })
-    }
-
-    /// The active wallet's avatar spec, with the same name-seeded fallback the
-    /// pill uses. Drives the app-bar logo button (symbol + tint colour).
-    private var activeAvatarSpec: WalletAvatarSpec {
-        activeWallet?.avatarSpec
-            ?? WalletAvatarSpec.auto(name: activeWallet?.name ?? "Wallet")
-    }
-
-    /// The wallet's chosen colour as a single tint for the app-bar Liquid
-    /// Glass logo button — the darker gradient stop, so the white logo stays
-    /// legible on the tinted glass.
-    private var activeAvatarTint: Color {
-        UniColors.WalletAvatar.gradientStops(for: activeAvatarSpec).last
-            ?? UniColors.Button.primaryTint
     }
 
     /// All balances belonging to the active wallet, sorted by fiat
