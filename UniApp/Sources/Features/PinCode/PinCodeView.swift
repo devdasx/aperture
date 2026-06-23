@@ -375,7 +375,7 @@ struct PinCodeView: View {
             let attempts = n == 1
                 ? Text("1 attempt remaining")
                 : Text("\(n) attempts remaining")
-            return Text("Wrong passcode. ") + attempts + Text(verbatim: ".")
+            return Text("Wrong passcode. \(attempts).")
         }
     }
 

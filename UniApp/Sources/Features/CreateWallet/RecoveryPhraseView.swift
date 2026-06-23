@@ -283,10 +283,7 @@ struct RecoveryPhraseView: View {
             UniHapticEngine.shared.play(.selection)
             isShowingOpenSource = true
         } label: {
-            (
-                Text("Open source. ").foregroundStyle(UniColors.Text.tertiary)
-                + Text("Learn more…").foregroundStyle(UniColors.Button.text)
-            )
+            Text("\(Text("Open source. ").foregroundStyle(UniColors.Text.tertiary))\(Text("Learn more…").foregroundStyle(UniColors.Button.text))")
             .font(UniTypography.footnote)
             .frame(maxWidth: .infinity, alignment: .leading)
             .contentShape(Rectangle())

@@ -200,6 +200,11 @@ struct ResetApertureFlow: View {
             VStack(spacing: UniSpacing.mPlus) {
                 heroGlyph("shield", tint: UniColors.Text.primary)
                 bigTitle("Before you continue", centered: true)
+                // Emphasis below uses `Text` string interpolation
+                // (`Text("… \(Text("x").bold()) …")`), the iOS 26-correct
+                // form — NOT the deprecated `Text + Text` `+` operator
+                // (removed in ad60889). If Xcode still flags a `+` here,
+                // it's a stale Issue-Navigator entry; rebuild to clear it.
                 subtitleRich(centered: true) {
                     Text("Aperture is self-custodial. Your keys never leave this device, and we keep \(Text("no copy").foregroundColor(UniColors.Text.primary).bold()). Without your recovery phrase or private key, any wallet erased here \(Text("can’t be recovered").foregroundColor(UniColors.Text.primary).bold()).")
                 }
