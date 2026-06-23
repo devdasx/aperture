@@ -67,8 +67,8 @@ enum SettingsDestination: Hashable, Codable {
 
 struct SettingsView: View {
     /// 2026-06-23 — Settings is no longer a tab; it's presented full screen
-    /// from the wallet-home toolbar's gear, so it gets a Done item again
-    /// (a full screen cover has no swipe-to-dismiss).
+    /// from the wallet-home toolbar's gear, so it gets the unified close
+    /// button again (a full screen cover has no swipe-to-dismiss).
     @Environment(\.dismiss) private var dismiss
 
     /// Settings is a top-level tab root (`MainTabView` — 2026-06-09)
@@ -274,10 +274,19 @@ struct SettingsView: View {
             .navigationTitle(Text("Settings"))
             .navigationBarTitleDisplayMode(.large)
             // 2026-06-23 — presented full screen from the wallet-home toolbar
-            // gear (no longer a tab), so a Done item closes it.
+            // gear (no longer a tab). Closes via Aperture's unified close
+            // button: a bare leading `xmark` glyph (no glass pill — see
+            // MISTAKES.md M-002), the same control the create / import covers
+            // use.
             .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("Done") { dismiss() }
+                ToolbarItem(placement: .topBarLeading) {
+                    Button {
+                        dismiss()
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 17, weight: .semibold))
+                    }
+                    .accessibilityLabel(Text("Close"))
                 }
             }
             .navigationDestination(for: SettingsDestination.self) { destination in
@@ -297,7 +306,7 @@ struct SettingsView: View {
                 case .about:                     AboutView()
                 }
             }
-            // Done item restored (2026-06-23): Settings is presented full
+            // Close button restored (2026-06-23): Settings is presented full
             // screen from the wallet-home toolbar gear, so it has a parent
             // presentation to dismiss back to (see the `.toolbar` above).
             // The deep-link stamp is still consumed on appear.
