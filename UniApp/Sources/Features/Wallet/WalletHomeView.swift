@@ -268,9 +268,9 @@ struct WalletHomeView: View {
     @State private var createPath: NavigationPath = NavigationPath()
     @State private var importPath: NavigationPath = NavigationPath()
     // 2026-06-23 — Settings returned to the wallet-home toolbar (the
-    // trailing gear) and off the bottom tab bar, so it's presented as a
-    // sheet again. `SettingsView` owns its own `NavigationStack`, so no
-    // path is threaded here.
+    // trailing gear) and off the bottom tab bar, presented full screen.
+    // `SettingsView` owns its own `NavigationStack`, so no path is
+    // threaded here.
     @State private var isShowingSettings: Bool = false
     @State private var isRefreshing: Bool = false
 
@@ -845,15 +845,14 @@ struct WalletHomeView: View {
                 .presentationDragIndicator(.visible)
                 .presentationBackground(UniColors.Background.primary)
         }
-        // App settings — presented from the trailing toolbar gear
-        // (2026-06-23, moved off the bottom tab bar). `SettingsView`
-        // owns its own NavigationStack + Done item.
-        .sheet(isPresented: $isShowingSettings) {
+        // App settings — presented full screen from the trailing
+        // toolbar gear (2026-06-23, moved off the bottom tab bar).
+        // `SettingsView` owns its own NavigationStack + background, and
+        // its Done item dismisses the cover (no swipe-down on a full
+        // screen cover, so the Done button is the dismiss affordance).
+        .fullScreenCover(isPresented: $isShowingSettings) {
             SettingsView()
                 .uniAppEnvironment()
-                .uniSheetDetents([.large])
-                .presentationDragIndicator(.visible)
-                .presentationBackground(UniColors.Background.primary)
         }
         .sheet(isPresented: $isShowingSwitcher, onDismiss: {
             // Dismiss-then-present: the create/import cover presents
