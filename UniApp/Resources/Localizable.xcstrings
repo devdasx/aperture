@@ -13685,9 +13685,6 @@
         }
       }
     },
-    "%@ Make sure every wallet you want to keep is backed up first." : {
-
-    },
     "%@ network" : {
       "localizations" : {
         "af" : {
@@ -70254,16 +70251,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Aperture is self-custodial. Your keys never leave this device, and we keep "
-          }
-        }
-      }
-    },
-    "Aperture is self-custodial. Your keys never leave this device, and we keep %@. Without your recovery phrase or private key, any wallet erased here %@." : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Aperture is self-custodial. Your keys never leave this device, and we keep %1$@. Without your recovery phrase or private key, any wallet erased here %2$@."
           }
         }
       }
@@ -231664,9 +231651,6 @@
         }
       }
     },
-    "Invalid recovery phrase — checksum failed" : {
-
-    },
     "Is this really your key?" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -324461,9 +324445,6 @@
         }
       }
     },
-    "Point your camera at a recovery-phrase QR code." : {
-
-    },
     "Point your camera at a WalletConnect QR code from any dApp." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -367860,9 +367841,6 @@
           }
         }
       }
-    },
-    "Scan recovery phrase" : {
-
     },
     "Scan to download Aperture" : {
       "extractionState" : "new",
@@ -430618,9 +430596,6 @@
         }
       }
     },
-    "Tap to type or paste your recovery phrase…" : {
-
-    },
     "Terms" : {
       "comment" : "Legal footer link — Terms of Service.",
       "extractionState" : "manual",
@@ -478994,9 +478969,6 @@
         }
       }
     },
-    "Type %@ to continue" : {
-
-    },
     "Type a URL to navigate, or any search term to search the web." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -494196,9 +494168,6 @@
           }
         }
       }
-    },
-    "Valid recovery phrase" : {
-
     },
     "Value" : {
       "localizations" : {
@@ -518166,7 +518135,7 @@
     "Wrong passcode." : {
 
     },
-    "Wrong passcode. %@." : {
+    "Wrong passcode. " : {
 
     },
     "xpub / ypub / zpub" : {
