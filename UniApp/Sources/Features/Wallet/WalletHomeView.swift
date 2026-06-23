@@ -233,15 +233,6 @@ struct WalletHomeView: View {
     /// direction rebuilds, reset on dismiss.
     @State private var isShowingSwap: Bool = false
     @State private var swapPath: NavigationPath = NavigationPath()
-    // 2026-06-23 — the 1inch-style Actions sheet (replaces the home's
-    // Send/Receive/Swap circles). The shell's FAB bumps
-    // `WalletShellSignal.openActionsToken`; this view presents the sheet, whose
-    // tiles set `pendingQuickAction` then dismiss → `applyPendingQuickAction`
-    // opens the matching flow (dismiss-then-present, no sheet-over-sheet race).
-    @State private var isShowingActions: Bool = false
-    @State private var isShowingConnectScanner: Bool = false
-    @State private var pendingQuickAction: QuickAction? = nil
-    private enum QuickAction { case send, receive, swap, connect }
     /// Background-swap engine — drives the under-actions banner (2026-06-17).
     @State private var swapManager = SwapBackgroundManager.shared
     /// The background swap job whose status sheet is open, if any.
@@ -726,10 +717,6 @@ struct WalletHomeView: View {
                         withAnimation(.snappy) { navigationPath.removeAll() }
                     }
                 }
-                .onChange(of: WalletShellSignal.shared.openActionsToken) { _, _ in
-                    // The shell's FAB asks us to open the Actions sheet.
-                    isShowingActions = true
-                }
                 .onChange(of: currencyCode) { _, _ in
                     // Labels react immediately (the hero + unheld rows
                     // read `currencyCode` directly)…
@@ -836,34 +823,6 @@ struct WalletHomeView: View {
                 .uniSheetDetents([.large])
                 .presentationDragIndicator(.visible)
                 .presentationBackground(UniColors.Background.primary)
-        }
-        // Actions sheet (2026-06-23) — opened by the shell's FAB. A tile sets
-        // `pendingQuickAction` + dismisses; `onDismiss` opens the real flow.
-        .sheet(isPresented: $isShowingActions, onDismiss: { applyPendingQuickAction() }) {
-            WalletActionsSheet(
-                canSend: activeWallet?.kind != .watchOnly,
-                onSend: { pendingQuickAction = .send; isShowingActions = false },
-                onReceive: { pendingQuickAction = .receive; isShowingActions = false },
-                onConnect: { pendingQuickAction = .connect; isShowingActions = false },
-                onSwap: { pendingQuickAction = .swap; isShowingActions = false }
-            )
-            .uniAppEnvironment()
-            .uniSheetDetents([.medium, .large])
-            .presentationDragIndicator(.visible)
-            .presentationBackground(UniColors.Background.primary)
-        }
-        // Connect (WalletConnect) scanner — the Actions sheet's Connect tile.
-        // Routes the scanned `wc:` URI through the shared dApp router.
-        .sheet(isPresented: $isShowingConnectScanner) {
-            UniQRScannerSheet(
-                title: "Connect",
-                prompt: "Scan a WalletConnect QR code to connect a dApp.",
-                onConnect: { uri in
-                    isShowingConnectScanner = false
-                    Task { await DAppRequestRouter.shared.handleWalletConnectURI(uri) }
-                }
-            )
-            .uniAppEnvironment()
         }
         // Background-swap status (2026-06-17). Tapping the under-actions
         // banner reopens the live status of a swap running in
@@ -972,20 +931,6 @@ struct WalletHomeView: View {
                 .uniSheetDetents([.large])
                 .presentationBackground(UniColors.Background.primary)
         }
-    }
-
-    /// Open the flow chosen in the Actions sheet, AFTER it has dismissed —
-    /// presenting a sheet over a still-dismissing one drops the new one, so we
-    /// hand off in the Actions sheet's `onDismiss`.
-    private func applyPendingQuickAction() {
-        switch pendingQuickAction {
-        case .send:    isShowingSend = true
-        case .receive: isShowingReceive = true
-        case .swap:    isShowingSwap = true
-        case .connect: isShowingConnectScanner = true
-        case nil:      break
-        }
-        pendingQuickAction = nil
     }
 
     // MARK: - Layout
@@ -1261,9 +1206,20 @@ struct WalletHomeView: View {
                     ))
             }
 
-            // 2026-06-23 — the Send / Receive / Swap circles moved off the
-            // home into the `WalletActionsSheet`, opened by the shell's FAB
-            // (1inch-style). `WalletActionRegion` is no longer rendered here.
+            WalletActionRegion(
+                canSend: activeWallet?.kind != .watchOnly,
+                onSend: { isShowingSend = true },
+                onReceive: { isShowingReceive = true },
+                onSwap: { isShowingSwap = true }
+            )
+            .listRowBackground(Color.clear)
+            .listRowSeparator(.hidden)
+            .listRowInsets(EdgeInsets(
+                top: 0,
+                leading: UniSpacing.m,
+                bottom: 0,
+                trailing: UniSpacing.m
+            ))
 
             // Background-swap banner (2026-06-17). When a swap is running in
             // `SwapBackgroundManager` — the user tapped "Run in the
