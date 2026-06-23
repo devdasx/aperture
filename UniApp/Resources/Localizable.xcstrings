@@ -37145,9 +37145,6 @@
         }
       }
     },
-    "Actions" : {
-
-    },
     "Activate" : {
 
     },
@@ -363505,9 +363502,6 @@
         }
       }
     },
-    "Save a Send to reuse its recipient, token, and amount in one tap. Your saved templates will appear here." : {
-
-    },
     "Save to Photos" : {
       "extractionState" : "new",
       "localizations" : {
@@ -366611,9 +366605,6 @@
           }
         }
       }
-    },
-    "Scan a WalletConnect QR code to connect a dApp." : {
-
     },
     "Scan address" : {
       "extractionState" : "manual",
@@ -430628,9 +430619,6 @@
       }
     },
     "Tap to type or paste your recovery phrase…" : {
-
-    },
-    "Templates" : {
 
     },
     "Terms" : {
