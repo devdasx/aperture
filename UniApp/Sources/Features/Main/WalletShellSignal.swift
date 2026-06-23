@@ -3,7 +3,7 @@ import SwiftUI
 /// Cross-view signal for the custom (1inch-style) app shell.
 ///
 /// The bottom bar's centre **Actions** FAB lives in `MainTabView`, but the
-/// Send / Receive / Swap / Connect flows it triggers live in `WalletHomeView`
+/// Send / Receive / Connect flows it triggers live in `WalletHomeView`
 /// (where they always have). Rather than hoist those flows up to the shell,
 /// the FAB switches to the Wallet tab and bumps `openActionsToken`;
 /// `WalletHomeView` observes it and presents the `WalletActionsSheet`. A shared

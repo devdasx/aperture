@@ -396,7 +396,7 @@ struct ImportSuccessView: View {
                 chain.displayName
             )
         case .watchOnly:
-            return String(localized: "View-only. Send, Swap and signing are disabled until you import this address's keys.")
+            return String(localized: "View-only. Send and signing are disabled until you import this address's keys.")
         }
     }
 }

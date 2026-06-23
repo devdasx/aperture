@@ -9,7 +9,7 @@ import Foundation
 /// `DisabledChainConnector`, a no-op that returns zero balance, no tokens, and
 /// no history without a network call. Their per-chain fetch connectors (and the
 /// Alchemy connector/service) were deleted. Addresses stay derivable (receive),
-/// and Send / Swap / dApp keep signing + broadcasting through their own RPC
+/// and Send / dApp keep signing + broadcasting through their own RPC
 /// path, not through this dispatcher.
 ///
 /// Every still-active `SupportedChain` case routes to its own connector
