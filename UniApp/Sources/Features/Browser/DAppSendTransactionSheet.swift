@@ -2,9 +2,9 @@ import SwiftUI
 
 /// Detail sheet for `eth_sendTransaction` (EVM). The user reads what the
 /// dApp asked for — from, to, value, gas, contract data — then "Confirm &
-/// send" signs it with the wallet key and broadcasts it on-chain (the same
-/// `SwapEVMSigner` + `BroadcastService` pipeline the in-app Swap uses, gated
-/// by biometrics), returning the real tx hash to the page (2026-06-17).
+/// send" signs it with the wallet key and broadcasts it on-chain (the
+/// `EVMContractCallSigner` + `BroadcastService` pipeline, gated by
+/// biometrics), returning the real tx hash to the page (2026-06-17).
 /// (Solana `signAndSendTransaction` is not wired yet and still returns an
 /// honest JSON-RPC error rather than a fabricated signature — Rule #16.)
 ///
@@ -246,8 +246,8 @@ struct DAppSendTransactionSheet: View {
     }
 
     /// Real send (2026-06-17). On "Confirm & send" the request is signed
-    /// with the wallet's key and broadcast on-chain via the same pipeline
-    /// the in-app Swap uses (`EVMDAppSigner.sendTransaction`), gated behind a
+    /// with the wallet's key and broadcast on-chain via
+    /// `EVMDAppSigner.sendTransaction`, gated behind a
     /// biometric check when available. The real tx hash is returned to the
     /// dApp via `router.approveSend(txHash:)`; a node rejection surfaces its
     /// honest reason inline and the request stays open to retry or cancel.

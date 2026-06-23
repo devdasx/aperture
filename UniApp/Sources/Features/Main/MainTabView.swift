@@ -3,17 +3,17 @@ import SwiftData
 import UIKit
 import TipKit
 
-/// The post-onboarding shell for Aperture. Hosts the three top-level
-/// tabs the user navigates between — **Wallet**, **Swap**, **Browser**
-/// — via the native iOS 26 `TabView` + `Tab(...)` API. **Settings is no
-/// longer a tab (2026-06-23):** it moved to the wallet-home toolbar's
-/// trailing gear and is presented full screen (the historical "why a
-/// TabView, not a sheet" note below predates that reversal).
+/// The post-onboarding shell for Aperture. Hosts the top-level tabs the user
+/// navigates between — **Wallet**, **Browser**, and the **Actions** trigger —
+/// via the native iOS 26 `TabView` + `Tab(...)` API. **Settings is no longer a
+/// tab (2026-06-23):** it moved to the wallet-home toolbar's trailing gear and
+/// is presented full screen (the historical "why a TabView, not a sheet" note
+/// below predates that reversal).
 ///
 /// **Design intent (one sentence, Rule #2 §D.1):** give the user one
 /// always-visible, thumb-reachable map of where they are in Aperture
-/// — so the wallet, the swap, the dApp browser, and the settings live
-/// at the same depth and feel like four faces of the same calm
+/// — so the wallet, the dApp browser, and the settings live
+/// at the same depth and feel like faces of the same calm
 /// surface, never one buried inside another.
 ///
 /// **2026-06-09 — Wallet tab is the active wallet's identity.** The
@@ -63,7 +63,7 @@ import TipKit
 /// `TabView { Tab { … } label: { … } }` shape with no manual chrome.
 ///
 /// **Selection persistence (`@AppStorage("selectedTab")`).** A user
-/// who leaves the app on the Swap tab returns to the Swap tab.
+/// who leaves the app on the Browser tab returns to the Browser tab.
 ///
 /// **RTL (Rule #11).** Native TabView automatically mirrors tab
 /// order under RTL — Settings becomes the leading tab in Arabic /
@@ -140,7 +140,7 @@ struct MainTabView: View {
     private var selectedTab: Binding<MainTab> {
         Binding(
             get: {
-                // `.settings` / `.swap` / `.actions` are not real tabs anymore
+                // `.settings` / `.actions` (and any legacy value) are not real tabs anymore
                 // (2026-06-23). Any such persisted/transient value resolves to
                 // the Wallet tab so the TabView never lands on a missing tab.
                 let resolved = MainTab(rawValue: selectedTabRaw) ?? .wallet
@@ -148,7 +148,7 @@ struct MainTabView: View {
             },
             set: { newValue in
                 // The Actions item is NOT a destination — tapping it opens the
-                // Send/Receive/Swap/Connect/Templates sheet on the wallet home
+                // Send/Receive/Connect/Templates sheet on the wallet home
                 // and leaves the selection where it was (switching to Wallet so
                 // the home is mounted to present the sheet).
                 if newValue == .actions {
@@ -226,7 +226,7 @@ struct MainTabView: View {
 
             // MARK: - Actions (sheet trigger, not a destination — 2026-06-23)
             //
-            // Tapping this opens the Send / Receive / Swap / Connect / Templates
+            // Tapping this opens the Send / Receive / Connect / Templates
             // sheet on the wallet home. The selection binding intercepts
             // `.actions` (it never becomes the active tab), switches to Wallet,
             // and asks `WalletHomeView` to present the sheet — so the content
@@ -238,7 +238,7 @@ struct MainTabView: View {
             // 2026-06-23 — Settings is no longer a tab. Per user direction
             // it moved to the wallet-home toolbar (the gear on the app bar's
             // trailing side), presented as a sheet from `WalletHomeView`.
-            // The bottom bar is now three tabs: Wallet · Swap · Browser.
+            // The bottom bar is now tabs: Wallet · Browser · Actions.
         }
         // **Sidebar-adaptable (2026-06-16).** One native modifier turns
         // the four `Tab(...)` into a size-class-adaptive shell: the
@@ -320,7 +320,7 @@ struct MainTabView: View {
     // that ships WITHOUT visible text — the per-wallet avatar IS
     // the identity, and adding "Wallet" underneath would compete
     // with the wallet name shown in the toolbar pill above. The
-    // other three tabs (Swap, Browser, Settings) keep their
+    // other tabs (Browser, Settings) keep their
     // `Label(_:systemImage:)` text by design — they are generic
     // sections, not personalized identities.
     //
@@ -518,12 +518,11 @@ struct MainTabView: View {
 /// persistence key.
 ///
 /// Order in the enum mirrors visual order in the tab bar (Wallet,
-/// Swap, Browser, Settings). RTL layout flips visual order
+/// Browser, Settings). RTL layout flips visual order
 /// automatically via SwiftUI — the enum declaration order does
 /// not change.
 enum MainTab: String, Hashable, CaseIterable {
     case wallet
-    case swap
     case browser
     case settings
     /// Not a destination — the bar item that opens the Actions sheet

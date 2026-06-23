@@ -7,7 +7,7 @@ import SwiftData
 ///
 /// User direction (2026-06-17): *"we'll create a row for each chain, with
 /// all its details, address, balances, transactions, sent, received,
-/// swap, self transfer, bridge, failed, utxos, private keys for each
+/// transfers, self transfer, bridge, failed, utxos, private keys for each
 /// chain … balance card should get its balances from each chain from its
 /// row."* This model is that row: the single denormalized snapshot of
 /// everything Aperture knows about one chain for one wallet, recomputed
@@ -89,8 +89,6 @@ final class ChainStateRecord {
     var txSentCount: Int
     /// Incoming transfers (direction `.incoming`, kind `.transfer`).
     var txReceivedCount: Int
-    /// Swaps (kind `.swap`, either direction).
-    var txSwapCount: Int
     /// Self-transfers (kind `.selfTransfer` / direction `.internal`).
     var txSelfTransferCount: Int
     /// Bridges (kind `.bridge`).
@@ -147,7 +145,6 @@ final class ChainStateRecord {
         fiatCurrencyCode: String = "USD",
         txSentCount: Int = 0,
         txReceivedCount: Int = 0,
-        txSwapCount: Int = 0,
         txSelfTransferCount: Int = 0,
         txBridgeCount: Int = 0,
         txFailedCount: Int = 0,
@@ -174,7 +171,6 @@ final class ChainStateRecord {
         self.fiatCurrencyCode = fiatCurrencyCode
         self.txSentCount = txSentCount
         self.txReceivedCount = txReceivedCount
-        self.txSwapCount = txSwapCount
         self.txSelfTransferCount = txSelfTransferCount
         self.txBridgeCount = txBridgeCount
         self.txFailedCount = txFailedCount

@@ -87,11 +87,11 @@ enum EVMDAppSigner {
     // MARK: - eth_sendTransaction (real sign + broadcast, 2026-06-17)
 
     /// Build, sign, and BROADCAST a dApp's `eth_sendTransaction` for real —
-    /// returning the on-chain tx hash. Reuses the exact pipeline the in-app
-    /// Swap uses: `SwapEVMSigner` builds + signs the tx (fresh pending nonce,
-    /// live gas price, the dApp's gas limit), the key is derived + scoped by
-    /// `SigningKeyProvider.withPrivateKey` off the main actor, and
-    /// `BroadcastService` submits it. EVM only; custody boundaries match the
+    /// returning the on-chain tx hash. `EVMContractCallSigner` builds + signs
+    /// the tx (fresh pending nonce, live gas price, the dApp's gas limit), the
+    /// key is derived + scoped by `SigningKeyProvider.withPrivateKey` off the
+    /// main actor, and `BroadcastService` submits it. EVM only; custody
+    /// boundaries match the
     /// message-signing path (mnemonic-backed, no BIP-39 passphrase) — anything
     /// else gets an honest error, never a fabricated hash (Rule #16).
     ///
@@ -110,20 +110,20 @@ enum EVMDAppSigner {
 
         let chain = request.chain
         let fromAddress = request.from
-        guard let nonce = await SwapAllowance.pendingNonce(address: fromAddress, chain: chain) else {
+        guard let nonce = await EVMContractCallSigner.pendingNonce(address: fromAddress, chain: chain) else {
             return .failure(.broadcastFailed("Couldn't read your account state. Try again in a moment."))
         }
-        guard let gasPrice = await SwapAllowance.gasPriceWei(chain: chain) else {
+        guard let gasPrice = await EVMContractCallSigner.gasPriceWei(chain: chain) else {
             return .failure(.broadcastFailed("Couldn't fetch the network fee right now. Try again."))
         }
         // The dApp supplies the gas LIMIT (hex); fall back to a safe ceiling
         // if absent/zero so a missing field never signs an intrinsic-gas
         // revert. A wrong limit reverts on-chain (refunding the unused gas),
         // never loses the principal.
-        let gasLimit = request.gasHex.flatMap(SwapEVMABI.quantityToUInt64).flatMap { $0 > 0 ? $0 : nil } ?? 500_000
-        let calldata = data(fromHex: SwapEVMABI.strip0x(request.dataHex)) ?? Data()
+        let gasLimit = request.gasHex.flatMap(EVMContractCallSigner.quantityToUInt64).flatMap { $0 > 0 ? $0 : nil } ?? 500_000
+        let calldata = data(fromHex: EVMContractCallSigner.strip0x(request.dataHex)) ?? Data()
 
-        let tx = SwapEVMSigner.UnsignedTx(
+        let tx = EVMContractCallSigner.UnsignedTx(
             chain: chain, nonce: nonce, to: request.to, valueHex: request.valueHex,
             data: calldata, gasLimit: gasLimit, gasPriceWei: gasPrice
         )
@@ -135,7 +135,7 @@ enum EVMDAppSigner {
                 try SigningKeyProvider.withPrivateKey(
                     wallet: descriptor, chain: chain, passphrase: nil, expectedAddress: fromAddress
                 ) { key in
-                    try SwapEVMSigner.sign(tx, privateKey: key)
+                    try EVMContractCallSigner.sign(tx, privateKey: key)
                 }
             }.value
         } catch let error as SigningError {

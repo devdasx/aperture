@@ -560,7 +560,7 @@ final class TransactionRecord {
     var addressId: UUID?
 
     /// Transaction taxonomy (2026-06-13, additive). Raw value of
-    /// `TransactionKind` — `"transfer"` / `"swap"` / `"bridge"` /
+    /// `TransactionKind` — `"transfer"` / `"bridge"` /
     /// `"selfTransfer"`. Optional so the column is an additive
     /// lightweight migration: rows written before the taxonomy
     /// existed decode `nil` and resolve through

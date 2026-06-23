@@ -1824,3 +1824,56 @@
 2026-06-23T04:38:50Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Switch wallet, currently \(activeWallet?.name ?? 
 2026-06-23T04:38:50Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	\(row.chain.displayName) details
 2026-06-23T04:38:50Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	\(row.symbol) details
+2026-06-23T09:44:52Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Switch wallet, currently \(activeWallet?.name ?? 
+2026-06-23T09:44:52Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	\(row.chain.displayName) details
+2026-06-23T09:44:52Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	\(row.symbol) details
+2026-06-23T09:45:23Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Switch wallet, currently \(activeWallet?.name ?? 
+2026-06-23T09:45:23Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	\(row.chain.displayName) details
+2026-06-23T09:45:23Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	\(row.symbol) details
+2026-06-23T09:45:37Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Switch wallet, currently \(activeWallet?.name ?? 
+2026-06-23T09:45:37Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	\(row.chain.displayName) details
+2026-06-23T09:45:37Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	\(row.symbol) details
+2026-06-23T09:46:34Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Switch wallet, currently \(activeWallet?.name ?? 
+2026-06-23T09:46:34Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	\(row.chain.displayName) details
+2026-06-23T09:46:34Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	\(row.symbol) details
+2026-06-23T09:46:56Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Switch wallet, currently \(activeWallet?.name ?? 
+2026-06-23T09:46:56Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	\(row.chain.displayName) details
+2026-06-23T09:46:56Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	\(row.symbol) details
+2026-06-23T09:47:50Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletActionsSheet.swift	Actions
+2026-06-23T09:47:50Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletActionsSheet.swift	Save a Send to reuse its recipient, token, and amount in one tap. Your saved templates will appear here.
+2026-06-23T09:47:50Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletActionsSheet.swift	Templates
+2026-06-23T09:48:01Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletActionsSheet.swift	Actions
+2026-06-23T09:48:01Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletActionsSheet.swift	Save a Send to reuse its recipient, token, and amount in one tap. Your saved templates will appear here.
+2026-06-23T09:48:01Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletActionsSheet.swift	Templates
+2026-06-23T09:49:19Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/AssetDetailView.swift	Total \(derived.displayName) balance
+2026-06-23T09:49:19Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/AssetDetailView.swift	View all \(rows.count) transactions
+2026-06-23T09:49:19Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/AssetDetailView.swift	\(WalletFormatting.native(row.amount, decimals: 8)) \(identity.symbol)
+2026-06-23T09:49:19Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/AssetDetailView.swift	\(amount) \(identity.symbol)
+2026-06-23T09:49:19Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/AssetDetailView.swift	\(rows.count)
+2026-06-23T09:49:41Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/AssetDetailView.swift	Total \(derived.displayName) balance
+2026-06-23T09:49:41Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/AssetDetailView.swift	View all \(rows.count) transactions
+2026-06-23T09:49:41Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/AssetDetailView.swift	\(WalletFormatting.native(row.amount, decimals: 8)) \(identity.symbol)
+2026-06-23T09:49:41Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/AssetDetailView.swift	\(amount) \(identity.symbol)
+2026-06-23T09:49:41Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/AssetDetailView.swift	\(rows.count)
+2026-06-23T09:50:11Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/AssetDetailView.swift	Total \(derived.displayName) balance
+2026-06-23T09:50:11Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/AssetDetailView.swift	View all \(rows.count) transactions
+2026-06-23T09:50:11Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/AssetDetailView.swift	\(WalletFormatting.native(row.amount, decimals: 8)) \(identity.symbol)
+2026-06-23T09:50:11Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/AssetDetailView.swift	\(amount) \(identity.symbol)
+2026-06-23T09:50:11Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/AssetDetailView.swift	\(rows.count)
+2026-06-23T09:50:37Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/AssetDetailView.swift	Total \(derived.displayName) balance
+2026-06-23T09:50:37Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/AssetDetailView.swift	View all \(rows.count) transactions
+2026-06-23T09:50:37Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/AssetDetailView.swift	\(WalletFormatting.native(row.amount, decimals: 8)) \(identity.symbol)
+2026-06-23T09:50:37Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/AssetDetailView.swift	\(amount) \(identity.symbol)
+2026-06-23T09:50:37Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/AssetDetailView.swift	\(rows.count)
+2026-06-23T09:51:04Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/AssetDetailView.swift	Total \(derived.displayName) balance
+2026-06-23T09:51:04Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/AssetDetailView.swift	View all \(rows.count) transactions
+2026-06-23T09:51:04Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/AssetDetailView.swift	\(WalletFormatting.native(row.amount, decimals: 8)) \(identity.symbol)
+2026-06-23T09:51:04Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/AssetDetailView.swift	\(amount) \(identity.symbol)
+2026-06-23T09:51:04Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/AssetDetailView.swift	\(rows.count)
+2026-06-23T09:51:27Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/AssetNetworkDetailView.swift	Not held on \(chain.displayName)
+2026-06-23T09:51:46Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/AssetNetworkDetailView.swift	Not held on \(chain.displayName)
+2026-06-23T09:51:57Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/AssetNetworkDetailView.swift	Not held on \(chain.displayName)
+2026-06-23T09:52:32Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/AssetNetworkDetailView.swift	Not held on \(chain.displayName)
+2026-06-23T10:11:01Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Switch wallet, currently \(activeWallet?.name ?? 
+2026-06-23T10:11:01Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	\(row.chain.displayName) details
+2026-06-23T10:11:01Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	\(row.symbol) details

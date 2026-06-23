@@ -33,7 +33,6 @@ actor ChainStateRepository {
         let tokenCount: Int
         let txSentCount: Int
         let txReceivedCount: Int
-        let txSwapCount: Int
         let txSelfTransferCount: Int
         let txBridgeCount: Int
         let txFailedCount: Int
@@ -172,7 +171,7 @@ actor ChainStateRepository {
             predicate: #Predicate { $0.addressId == addressId }
         )
         let txs = try readContext.fetch(txDescriptor)
-        var sent = 0, received = 0, swap = 0, selfT = 0, bridge = 0, failed = 0, pending = 0
+        var sent = 0, received = 0, selfT = 0, bridge = 0, failed = 0, pending = 0
         for tx in txs {
             let status = TransactionStatus(rawValue: tx.statusRaw) ?? .confirmed
             if status == .failed { failed += 1 }
@@ -180,7 +179,6 @@ actor ChainStateRepository {
             let kind = TransactionKind.effectiveKind(kindRaw: tx.kindRaw, directionRaw: tx.directionRaw)
             let direction = TransactionDirection(rawValue: tx.directionRaw) ?? .incoming
             switch kind {
-            case .swap: swap += 1
             case .bridge: bridge += 1
             case .selfTransfer: selfT += 1
             case .transfer:
@@ -236,7 +234,6 @@ actor ChainStateRepository {
             && record.fiatCurrencyCode == fiatCurrencyCode
             && record.txSentCount == sent
             && record.txReceivedCount == received
-            && record.txSwapCount == swap
             && record.txSelfTransferCount == selfT
             && record.txBridgeCount == bridge
             && record.txFailedCount == failed
@@ -258,7 +255,6 @@ actor ChainStateRepository {
         record.fiatCurrencyCode = fiatCurrencyCode
         record.txSentCount = sent
         record.txReceivedCount = received
-        record.txSwapCount = swap
         record.txSelfTransferCount = selfT
         record.txBridgeCount = bridge
         record.txFailedCount = failed
@@ -398,7 +394,6 @@ actor ChainStateRepository {
             tokenCount: record.tokenCount,
             txSentCount: record.txSentCount,
             txReceivedCount: record.txReceivedCount,
-            txSwapCount: record.txSwapCount,
             txSelfTransferCount: record.txSelfTransferCount,
             txBridgeCount: record.txBridgeCount,
             txFailedCount: record.txFailedCount,

@@ -224,10 +224,9 @@ struct ActivityRow: View {
     // MARK: - Trailing column
 
     /// Row title — the transaction verb, composed from kind + direction:
-    /// Swapped / Bridged / Self transfer / Received / Sent.
+    /// Bridged / Self transfer / Received / Sent.
     private var title: LocalizedStringKey {
         switch kind {
-        case .swap:         return "Swapped"
         case .bridge:       return "Bridged"
         case .selfTransfer: return "Self transfer"
         case .transfer:

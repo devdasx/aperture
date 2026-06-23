@@ -26,7 +26,6 @@ enum OnboardingIllustration: Sendable, Hashable {
     case recoveryPhrase
     case receive
     case send
-    case swap
     case privacy
     case threshold
 }
@@ -61,7 +60,6 @@ struct OnboardingIllustrationView: View {
             case .recoveryPhrase:  RecoveryPhraseIllustration(isActive: isActive)
             case .receive:         ReceiveIllustration(isActive: isActive)
             case .send:            SendIllustration(isActive: isActive)
-            case .swap:            SwapIllustration(isActive: isActive)
             case .privacy:         PrivacyIllustration(isActive: isActive)
             case .threshold:       ThresholdIllustration(isActive: isActive)
             }

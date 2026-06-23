@@ -205,15 +205,3 @@ extension ReceiveAsset: PickerAssetSortable {
     }
 }
 
-extension SwapAsset: PickerAssetSortable {
-    var sortSymbol: String {
-        switch self {
-        case let .token(symbol, _, _): return symbol
-        case let .native(chain):       return chain.ticker
-        }
-    }
-    var sortChainCount: Int {
-        if case let .token(_, _, networks) = self { return networks.count }
-        return 1
-    }
-}

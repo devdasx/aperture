@@ -267,7 +267,7 @@ private struct AppRoot: View {
 
     /// **App-level auto-refresh (2026-06-13).** The active wallet's
     /// balances + transaction history refresh every 10 s, from the app
-    /// root — so it runs on EVERY screen (Wallet / Swap / Browser /
+    /// root — so it runs on EVERY screen (Wallet / Browser /
     /// Settings), not just the wallet home, per the user's direction
     /// ("it should be on-app-level not only in the main screen … run
     /// every 10 seconds automatically, doesn't matter which screen").

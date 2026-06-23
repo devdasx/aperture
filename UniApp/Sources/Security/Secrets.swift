@@ -1,7 +1,7 @@
 import Foundation
 
-/// Runtime access to the API keys Aperture needs (Li.Fi swap/bridge,
-/// 0x/1inch swap alternates, 1rpc). The real values live in `Secrets.xcconfig`
+/// Runtime access to the API keys Aperture needs (1rpc, Infura). The real
+/// values live in `Secrets.xcconfig`
 /// (gitignored, local only); `project.yml` injects them into the app's
 /// `Info.plist` via `$(KEY)` substituted at build time, and this enum reads
 /// them back via `Bundle.main.object(forInfoDictionaryKey:)`.
@@ -20,16 +20,6 @@ enum Secrets {
         // it — treat as unset so callers degrade honestly.
         return trimmed.hasPrefix("$(") ? "" : trimmed
     }
-
-    /// Li.Fi — the swap + cross-chain bridge aggregator (EVM + Solana).
-    /// REQUIRED for Swap. https://docs.li.fi/ (API base: https://li.quest/v1)
-    static let lifiAPIKey: String = value("LIFI_API_KEY")
-
-    /// 0x swap API — optional alternate EVM swap aggregator.
-    static let zeroXAPIKey: String = value("ZEROX_API_KEY")
-
-    /// 1inch swap API — optional alternate EVM swap aggregator.
-    static let oneInchAPIKey: String = value("ONEINCH_API_KEY")
 
     /// 1rpc.io — authenticated multi-chain RPC. When set, the RPC registry
     /// uses the keyed path (`https://1rpc.io/<key>/<chain>`) for far higher
@@ -55,8 +45,5 @@ enum Secrets {
 
     // Alchemy keys were removed (2026-06-21): EVM data fetching is disabled and
     // `AlchemyConnector` / `AlchemyService` were deleted, so the key is dead.
-
-    /// `true` when the swap engine has the Li.Fi key it needs. Callers gate
-    /// on this and show an honest "Swap unavailable" state otherwise.
-    static var hasLifiKey: Bool { !lifiAPIKey.isEmpty }
+    // Li.Fi / 0x / 1inch swap keys were removed (2026-06-23) with the swap feature.
 }

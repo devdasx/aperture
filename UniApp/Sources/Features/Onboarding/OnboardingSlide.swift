@@ -85,12 +85,6 @@ struct OnboardingSlide: Identifiable, Sendable {
             body: "The network fee is displayed before you sign. No surprises after."
         ),
         OnboardingSlide(
-            id: 7,
-            illustration: .swap,
-            title: "Swap across chains in one flow.",
-            body: "Move value between networks without leaving the wallet."
-        ),
-        OnboardingSlide(
             id: 8,
             illustration: .privacy,
             title: "Aperture can't see your funds.",
