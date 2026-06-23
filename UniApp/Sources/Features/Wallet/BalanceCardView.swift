@@ -380,44 +380,53 @@ struct BalanceCardView: View {
             .accessibilityAddTraits(.isButton)
             .padding(.bottom, 14)
 
-        changeRow
+        // Hidden on a fresh / $0 wallet → show ONLY the masked figure + the
+        // "Balance hidden" pill. No empty flat chart, no range tabs
+        // (2026-06-23 user direction). A wallet with a real balance keeps the
+        // (flattened) chart + ranges even when hidden.
+        if !isHidden || totalFiat > 0 {
+            changeRow
 
-        // Full-bleed chart — negative inset cancels the card's 24pt
-        // horizontal pad so the curve bleeds to the card edges.
-        BalanceAreaChart(
-            values: chartValues,
-            xFractions: chartXFractions,
-            minValue: chartMin,
-            maxValue: chartMax,
-            sign: chartSign,
-            onScrub: { index in
-                let scrubbed: BalancePoint? = {
-                    guard let index, index >= 0, index < points.count else { return nil }
-                    return points[index]
-                }()
-                withAnimation(reduceMotion ? nil : .snappy(duration: 0.18)) {
-                    scrubModel.fiat = scrubbed?.fiat
-                    scrubModel.timestamp = scrubbed?.timestamp
+            // Full-bleed chart — negative inset cancels the card's 24pt
+            // horizontal pad so the curve bleeds to the card edges.
+            BalanceAreaChart(
+                values: chartValues,
+                xFractions: chartXFractions,
+                minValue: chartMin,
+                maxValue: chartMax,
+                sign: chartSign,
+                onScrub: { index in
+                    let scrubbed: BalancePoint? = {
+                        guard let index, index >= 0, index < points.count else { return nil }
+                        return points[index]
+                    }()
+                    withAnimation(reduceMotion ? nil : .snappy(duration: 0.18)) {
+                        scrubModel.fiat = scrubbed?.fiat
+                        scrubModel.timestamp = scrubbed?.timestamp
+                    }
+                },
+                onScrubBegin: {
+                    UniHapticEngine.shared.play(.contextualImpact(.whisper))
                 }
-            },
-            onScrubBegin: {
-                UniHapticEngine.shared.play(.contextualImpact(.whisper))
-            }
-        )
-        .frame(height: 120)
-        .padding(.horizontal, -UniSpacing.l)
-        .padding(.top, 14)
-        .allowsHitTesting(resolvedState == .value) // hidden chart isn't scrubbable
-        .accessibilityHidden(true)
+            )
+            .frame(height: 120)
+            .padding(.horizontal, -UniSpacing.l)
+            .padding(.top, 14)
+            .allowsHitTesting(resolvedState == .value) // hidden chart isn't scrubbable
+            .accessibilityHidden(true)
 
-        TimeRangeSelector(
-            selectedRaw: $selectedRangeRaw,
-            colorScheme: colorScheme
-        )
-        // +10pt breathing room between the chart and the range selector
-        // (2026-06-19 user direction) — was -6.
-        .padding(.top, 4)
-        .padding(.bottom, UniSpacing.balanceCardBottom)
+            TimeRangeSelector(
+                selectedRaw: $selectedRangeRaw,
+                colorScheme: colorScheme
+            )
+            // +10pt breathing room between the chart and the range selector
+            // (2026-06-19 user direction) — was -6.
+            .padding(.top, 4)
+            .padding(.bottom, UniSpacing.balanceCardBottom)
+        } else {
+            changeRow
+                .padding(.bottom, UniSpacing.balanceCardBottom)
+        }
     }
 
     /// The chart series — flattened to a single neutral mid value in the
