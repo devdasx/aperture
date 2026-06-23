@@ -59,8 +59,8 @@ struct TokenApproval: Identifiable, Sendable, Hashable {
 }
 
 /// The lifecycle of a single approval row's REVOKE action, owned per-row
-/// by the screen. Mirrors the small state machines the Send/Swap sheets
-/// use so the row can show idle → in-progress → honest success/failure
+/// by the screen. Mirrors the small state machine the Send sheet
+/// uses so the row can show idle → in-progress → honest success/failure
 /// (Rule #16 — a failure names what we couldn't do; a success carries the
 /// real tx hash, never a fabricated one).
 enum RevocationState: Sendable, Equatable {

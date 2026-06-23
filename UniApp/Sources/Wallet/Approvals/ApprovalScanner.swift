@@ -16,8 +16,8 @@ import OSLog
 ///   2. Collect the unique `(token contract, spender)` pairs from those
 ///      logs (spender = `topic2`, unpadded; token = the log's `address`).
 ///   3. For each pair, read the LIVE allowance with `eth_call` for
-///      `allowance(owner, spender)` (reusing `SwapAllowance.read` /
-///      `SwapEVMABI.allowanceCallData`). The log only proves an approval
+///      `allowance(owner, spender)` (reusing `EVMAllowanceReader.read` /
+///      `EVMERC20ABI.allowanceCallData`). The log only proves an approval
 ///      *happened*; the live `eth_call` proves what it is NOW. Keep only
 ///      allowances strictly greater than zero.
 ///
@@ -112,7 +112,7 @@ enum ApprovalScanner {
         // the fan-out modest and the cancellation checks frequent.
         for pair in pairs {
             if Task.isCancelled { return rows }
-            guard let allowanceHex = await SwapAllowance.read(
+            guard let allowanceHex = await EVMAllowanceReader.read(
                 token: pair.token, owner: owner, spender: pair.spender, chain: chain
             ) else { continue }
             guard isPositive(allowanceHex) else { continue }
@@ -258,7 +258,7 @@ enum ApprovalScanner {
     /// big-endian bytes (a u256 overflows `Decimal`) — any non-zero
     /// nibble means a live allowance.
     private static func isPositive(_ hex: String) -> Bool {
-        let stripped = SwapEVMABI.strip0x(hex)
+        let stripped = EVMERC20ABI.strip0x(hex)
         return stripped.contains { $0 != "0" }
     }
 
@@ -267,7 +267,7 @@ enum ApprovalScanner {
     /// zeros — robust to the `0x` prefix and to a node that left-pads to
     /// fewer/more than 64 chars.
     private static func isUnlimited(_ hex: String) -> Bool {
-        var stripped = SwapEVMABI.strip0x(hex)
+        var stripped = EVMERC20ABI.strip0x(hex)
         while stripped.first == "0" { stripped.removeFirst() }
         // uint256 max = 64 `f` nibbles. Treat anything that is all-`f`
         // and ≥ 64 nibbles as unlimited (some tokens approve 2^256-1).

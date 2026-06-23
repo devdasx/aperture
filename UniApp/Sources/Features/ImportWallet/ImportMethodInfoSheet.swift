@@ -88,7 +88,7 @@ enum ImportInfo: String, Identifiable, Sendable {
             return [
                 .init(icon: "eye",
                       lead: "See, don't sign",
-                      detail: "You can view balances and transaction history, but you can't send, swap, or sign anything — there's no private key."),
+                      detail: "You can view balances and transaction history, but you can't send or sign anything — there's no private key."),
                 .init(icon: "antenna.radiowaves.left.and.right",
                       lead: "An address or an extended key",
                       detail: "Add a single address, or an extended public key (xpub / zpub) to watch a whole Bitcoin account at once."),

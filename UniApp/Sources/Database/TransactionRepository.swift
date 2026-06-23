@@ -51,9 +51,10 @@ actor TransactionRepository {
     /// Upsert a transaction leg by `(txHash, addressId, tokenContract,
     /// tokenSymbol, direction)`. One on-chain transaction routinely
     /// produces SEVERAL ledger legs for the same address under the same
-    /// hash — a swap is an outgoing leg in one asset AND an incoming leg
-    /// in another (`EVMTransactionAdapter` returns the native txlist
-    /// entry plus every tokentx entry for the same hash) — so the asset
+    /// hash — a contract interaction can be an outgoing leg in one asset
+    /// AND an incoming leg in another (`EVMTransactionAdapter` returns the
+    /// native txlist entry plus every tokentx entry for the same hash) — so
+    /// the asset
     /// and direction are part of the row identity. Matching on
     /// `(txHash, addressId)` alone would collapse the legs into
     /// whichever arrived first and freeze its amount forever. If a row
@@ -64,14 +65,12 @@ actor TransactionRepository {
     /// row — distinguishing those needs a per-leg log index the
     /// adapters don't surface yet.)
     ///
-    /// **Taxonomy (2026-06-13; T-067 classification 2026-06-18).** `kind`
-    /// persists the transaction taxonomy (`TransactionKind`). When the caller
-    /// passes `nil` — every chain adapter — `classifyKind` derives it from the
-    /// counterparty: a known swap/bridge router → `.swap` / `.bridge`, a
-    /// `.internal` leg → `.selfTransfer`, everything else → `.transfer`. An
-    /// explicit non-nil `kind` overwrites the stored value; a nil-kind re-scan
-    /// backfills a `nil` row AND upgrades a generic `.transfer` to its real
-    /// `.swap` / `.bridge` class (never a downgrade).
+    /// **Taxonomy (2026-06-13).** `kind` persists the transaction taxonomy
+    /// (`TransactionKind`). When the caller passes `nil` — every chain adapter
+    /// — `classifyKind` derives it from direction: a `.internal` leg →
+    /// `.selfTransfer`, everything else → `.transfer`. An explicit non-nil
+    /// `kind` overwrites the stored value; a nil-kind re-scan backfills a
+    /// `nil` row only.
     func upsertTransaction(
         addressId: UUID,
         txHash: String,
@@ -112,7 +111,7 @@ actor TransactionRepository {
         // **Self-transfer reclassification (2026-06-16, Rule #24).** A
         // genuine self-transfer is classified `.internal` for BOTH legs by
         // the scanner (the spend AND the receive). But `directionRaw` is
-        // part of the leg identity (a swap is `.outgoing` in asset A +
+        // part of the leg identity (a contract call can be `.outgoing` in asset A +
         // `.incoming` in asset B for the same hash) — so a row written by
         // the PRE-2026-06-12 code as `.outgoing`/`.incoming` for a
         // self-send has a DIFFERENT identity than the now-correct
@@ -183,11 +182,9 @@ actor TransactionRepository {
             }
         }
 
-        // T-067 — when the adapter doesn't supply a kind, classify from the
-        // counterparty: a transfer whose other party is a known swap/bridge
-        // router is a swap/bridge leg, so the feed reads "Swapped"/"Bridged"
-        // instead of a bare "Sent"/"Received".
-        let resolvedKind = kind ?? Self.classifyKind(direction: direction, counterparty: counterparty)
+        // When the adapter doesn't supply a kind, fall back to the
+        // direction-derived default (`.selfTransfer` / `.transfer`).
+        let resolvedKind = kind ?? Self.classifyKind(direction: direction)
 
         if let existing {
             // **2026-06-13 — skip no-op writes.** The 10s poll re-finds
@@ -198,16 +195,10 @@ actor TransactionRepository {
             // backfill). Everything else is immutable once on-chain.
             // The kind this upsert settles on for the existing row: an
             // explicit caller kind reclassifies; a nil-kind touch backfills a
-            // pre-column row, and UPGRADES a generic `.transfer` to its real
-            // `.swap` / `.bridge` class once the counterparty is recognized
-            // (T-067) — but never downgrades an existing explicit classification.
+            // pre-column row; otherwise the stored kind is kept.
             let targetKindRaw: String? = {
                 if let kind { return kind.rawValue }
                 if existing.kindRaw == nil { return resolvedKind.rawValue }
-                if existing.kindRaw == TransactionKind.transfer.rawValue,
-                   resolvedKind == .swap || resolvedKind == .bridge {
-                    return resolvedKind.rawValue
-                }
                 return existing.kindRaw
             }()
             let kindWouldChange = existing.kindRaw != targetKindRaw
@@ -227,9 +218,8 @@ actor TransactionRepository {
             existing.statusRaw = status.rawValue
             existing.blockNumber = blockNumber
             existing.feeRaw = feeRaw
-            // Taxonomy: settle on the kind computed above (explicit caller
-            // kind, backfill, or the T-067 transfer→swap/bridge upgrade —
-            // never a downgrade).
+            // Taxonomy: settle on the kind computed above (an explicit caller
+            // kind, or a nil-row backfill — never a downgrade).
             existing.kindRaw = targetKindRaw
             // Don't touch direction / amount / counterparty / occurredAt —
             // those are immutable once a tx is on-chain.
@@ -261,32 +251,17 @@ actor TransactionRepository {
         if save { try modelContext.save() }
     }
 
-    /// Classify a transaction's `TransactionKind` from its counterparty when
-    /// the adapter didn't supply one (T-067 — chain history adapters emit only
-    /// direction). A transfer whose counterparty is a known swap/bridge router
-    /// is a swap/bridge leg, so the activity feed reads "Swapped" / "Bridged"
-    /// instead of the bare "Sent" / "Received".
+    /// Resolve a leg's `TransactionKind` when the adapter didn't supply one:
+    /// the direction-derived default (`.internal` → `.selfTransfer`, else
+    /// `.transfer`).
     ///
-    /// - A dedicated cross-chain bridge router → `.bridge`. Checked FIRST,
-    ///   because the LI.FI Diamond composes both swaps and bridges and also
-    ///   appears in the broader swap-router set.
-    /// - A same-chain DEX aggregator / LI.FI Diamond → `.swap`.
-    /// - A self-transfer stays `.selfTransfer`; anything else falls back to the
-    ///   direction default (`.transfer`).
-    ///
-    /// Honest by construction: only the curated `SwapRouterAllowlist` addresses
-    /// classify, so an ordinary send/receive is never mislabeled as a swap.
+    /// 2026-06-23 — the counterparty-based swap/bridge router classifier was
+    /// removed with the swap feature, so a transfer is never relabelled to
+    /// `.swap` / `.bridge` anymore.
     static func classifyKind(
-        direction: TransactionDirection,
-        counterparty: String
+        direction: TransactionDirection
     ) -> TransactionKind {
-        if direction == .internal { return .selfTransfer }
-        let cp = counterparty.lowercased()
-        if !cp.isEmpty {
-            if SwapRouterAllowlist.isBridgeRouter(cp) { return .bridge }
-            if SwapRouterAllowlist.isSwapRouter(cp) { return .swap }
-        }
-        return TransactionKind.defaultKind(for: direction)
+        TransactionKind.defaultKind(for: direction)
     }
 
     // MARK: - Transaction queries (2026-06-13 taxonomy surface)
@@ -316,7 +291,7 @@ actor TransactionRepository {
     /// - sending      → `direction: .outgoing`
     /// - receiving    → `direction: .incoming`
     /// - failed       → `status: .failed`
-    /// - swap / bridge / self-transfer → `kind:`
+    /// - bridge / self-transfer → `kind:`
     ///
     /// Status and direction filter in the store predicate (plain raw
     /// string equality). The `kind` filter resolves in memory via

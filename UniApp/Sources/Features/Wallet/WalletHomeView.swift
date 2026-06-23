@@ -5,8 +5,8 @@ import TipKit
 // MARK: - RootGate
 
 /// App-launch routing gate. Reads the wallet count reactively via
-/// `@Query`; routes to `MainTabView` (the four-tab shell — Wallet /
-/// Swap / Browser / Settings) if the user has at least one wallet,
+/// `@Query`; routes to `MainTabView` (the three-tab shell — Wallet /
+/// Browser / Settings) if the user has at least one wallet,
 /// otherwise to `OnboardingView`. When the create/import flows
 /// insert a `WalletRecord`, the gate flips automatically — no
 /// explicit navigation needed from those flows.
@@ -15,8 +15,8 @@ import TipKit
 /// wallets-exist branch.** Through 2026-06-08 this branch was
 /// `WalletHomeView()` directly; Settings was reached via a `.sheet`
 /// from the wallet-home toolbar's gear. Per direct user direction
-/// the shell is now a native iOS 26 `TabView` so Wallet / Swap /
-/// Browser / Settings sit at the same depth. `WalletHomeView` is
+/// the shell is now a native iOS 26 `TabView` so Wallet / Browser /
+/// Settings sit at the same depth. `WalletHomeView` is
 /// still the root of the Wallet tab; the Settings sheet is
 /// retired.
 ///
@@ -114,7 +114,7 @@ struct WalletHomeView: View {
     /// User-added custom tokens (2026-06-19). Merged into the home's
     /// token holdings so a token the user pasted into "Add custom token"
     /// shows in the Tokens section with its (scanned) balance — or a 0
-    /// placeholder — exactly like the catalog tokens, not only in Swap.
+    /// placeholder — exactly like the catalog tokens.
     @Query private var customTokenRecords: [CustomTokenRecord]
 
     // **Per-chain aggregate rows (2026-06-17).** The `chainStateRecords`
@@ -228,15 +228,6 @@ struct WalletHomeView: View {
     /// lives here so the sheet survives Rule #12 §G direction rebuilds.
     @State private var isShowingSend: Bool = false
     @State private var sendPath: NavigationPath = NavigationPath()
-    /// Drives the Swap sheet (the compose + live-quote surface). Its own
-    /// NavigationPath lives here so the sheet survives Rule #12 §G
-    /// direction rebuilds, reset on dismiss.
-    @State private var isShowingSwap: Bool = false
-    @State private var swapPath: NavigationPath = NavigationPath()
-    /// Background-swap engine — drives the under-actions banner (2026-06-17).
-    @State private var swapManager = SwapBackgroundManager.shared
-    /// The background swap job whose status sheet is open, if any.
-    @State private var openSwapJobId: SwapJob.ID?
     /// **Filter & Sort sheet (2026-06-09).** Drives the
     /// `.sheet(isPresented: $isShowingFilter)` block below. The sheet
     /// reads + writes preferences through `@AppStorage` against
@@ -558,7 +549,7 @@ struct WalletHomeView: View {
                 .toolbar {
                     // App mark in a black liquid-glass disc, leading
                     // (2026-06-20 user direction) — the same dark-glass
-                    // treatment as the Send / Receive / Swap action circles.
+                    // treatment as the Send / Receive action circles.
                     ToolbarItem(placement: .topBarLeading) {
                         ZStack {
                             Circle().fill(Color.black)
@@ -802,37 +793,6 @@ struct WalletHomeView: View {
                 .presentationDragIndicator(.visible)
                 .presentationBackground(UniColors.Background.primary)
         }
-        // Swap / Bridge — compose + live-quote sheet. Same `.large`-only
-        // detent + Rule #12 §G direction rebuild key + `.uniAppEnvironment()`
-        // as Send / Receive so theme + locale propagate into the sheet's
-        // own scope. Execution (sign + broadcast) is the next increment;
-        // the sheet's Review is an honest summary, not a fabricated swap.
-        .sheet(isPresented: $isShowingSwap, onDismiss: { swapPath = NavigationPath() }) {
-            SwapView(navigationPath: $swapPath)
-                .id(sheetDirectionKey)
-                .uniAppEnvironment()
-                .uniSheetDetents([.large])
-                .presentationDragIndicator(.visible)
-                .presentationBackground(UniColors.Background.primary)
-        }
-        // Background-swap status (2026-06-17). Tapping the under-actions
-        // banner reopens the live status of a swap running in
-        // `SwapBackgroundManager` — the same in-flight / done / failed surface
-        // the review flow shows.
-        .sheet(
-            isPresented: Binding(
-                get: { openSwapJobId != nil },
-                set: { if !$0 { openSwapJobId = nil } }
-            )
-        ) {
-            if let id = openSwapJobId {
-                SwapJobStatusView(jobId: id, onClose: { openSwapJobId = nil })
-                    .uniAppEnvironment()
-                    .uniSheetDetents([.large])
-                    .presentationDragIndicator(.visible)
-                    .presentationBackground(UniColors.Background.primary)
-            }
-        }
         // Filter & Sort sheet (2026-06-09). `.large` detent only per
         // M-008's nav-shaped-sheet rule. Rule #12 §G direction key +
         // `.uniAppEnvironment()` so theme + locale propagate into the
@@ -1068,7 +1028,7 @@ struct WalletHomeView: View {
     /// Increase Contrast — for free.
     ///
     /// **Why a separate Section instead of merging with the chrome
-    /// section.** The action region (Send / Receive / Swap) and the
+    /// section.** The action region (Send / Receive) and the
     /// holdings tab picker are Liquid Glass chrome that floats over
     /// the page color (Rule #2 §B.3); they keep their cleared row
     /// backgrounds. The hero + chart are content — they earn the
@@ -1193,8 +1153,7 @@ struct WalletHomeView: View {
             WalletActionRegion(
                 canSend: activeWallet?.kind != .watchOnly,
                 onSend: { isShowingSend = true },
-                onReceive: { isShowingReceive = true },
-                onSwap: { isShowingSwap = true }
+                onReceive: { isShowingReceive = true }
             )
             .listRowBackground(Color.clear)
             .listRowSeparator(.hidden)
@@ -1204,27 +1163,6 @@ struct WalletHomeView: View {
                 bottom: 0,
                 trailing: UniSpacing.m
             ))
-
-            // Background-swap banner (2026-06-17). When a swap is running in
-            // `SwapBackgroundManager` — the user tapped "Run in the
-            // background" — or has just finished, it shows here directly under
-            // the actions: tappable to reopen its live status, dismissable
-            // once it's done.
-            if let job = swapManager.bannerJob {
-                SwapBackgroundBanner(
-                    job: job,
-                    onOpen: { openSwapJobId = job.id },
-                    onDismiss: { swapManager.dismiss(job.id) }
-                )
-                .listRowBackground(Color.clear)
-                .listRowSeparator(.hidden)
-                .listRowInsets(EdgeInsets(
-                    top: UniSpacing.xs,
-                    leading: UniSpacing.m,
-                    bottom: 0,
-                    trailing: UniSpacing.m
-                ))
-            }
 
             // Coins ↔ Tokens segmented switcher. Native iOS
             // `.pickerStyle(.segmented)` — the same control iOS
@@ -3149,7 +3087,7 @@ enum WalletHomeDestination: Hashable, Codable {
     /// destination should be re-opened when the app restores the
     /// wallet-home stack on a fresh launch (within the 2-minute
     /// window). Restoring INTO the full Activity list, or a
-    /// half-started Send / Swap flow, is surprising — the user
+    /// half-started Send flow, is surprising — the user
     /// reported the app "opening the activity screen automatically"
     /// even when they had not deliberately left it there. Those are
     /// transient browse/action screens, not "where I was reading".

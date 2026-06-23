@@ -269,7 +269,7 @@ extension View {
     /// explicit-detent sheet in UniApp. Replaces the bare
     /// `.presentationDetents(_:)` call at the ~25 sheet sites that use
     /// fixed `[.large]` / `[.medium]` / `[.medium, .large]` detents
-    /// (Receive, Swap, Browser, Send review/fee, the Settings nav
+    /// (Receive, Browser, Send review/fee, the Settings nav
     /// sheets, etc.).
     ///
     /// **What it does, and why it's one modifier not 25 edits.** It
@@ -319,7 +319,7 @@ extension View {
     ///
     /// **iPad / Mac (fixed 2026-06-17) → `.page`.** `.fitted` sizes a
     /// regular-width sheet to its content's *intrinsic* size — and a full
-    /// navigation surface (Receive, Swap, the filter/options sheets, Settings
+    /// navigation surface (Receive, the filter/options sheets, Settings
     /// nav sheets) has no intrinsic size, so iPad collapsed it into a tiny
     /// centered card (user-reported). `.page` presents the standard large iPad
     /// page sheet that **scrolls** tall content instead of clipping it and

@@ -162,7 +162,7 @@ enum ScreenRestoration {
     /// The wallet-home stack to seed on a fresh launch, **truncated at
     /// the first non-`isColdLaunchRestorable` destination** (2026-06-14
     /// bug fix). This guarantees the app never auto-opens onto the
-    /// Activity list or a Send/Swap flow that lingered in the mirror —
+    /// Activity list or a Send flow that lingered in the mirror —
     /// it lands on home, or on the asset the user was actually reading.
     /// A decode failure (e.g. the pre-2026-06-14 `NavigationPath`-format
     /// blob still in `UserDefaults` on the first launch after the

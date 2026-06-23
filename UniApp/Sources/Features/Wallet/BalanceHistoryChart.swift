@@ -154,7 +154,7 @@ struct BalanceHistoryChart: View {
     /// user sees the full shape of their wallet's history; on
     /// subsequent launches we honor whatever they last picked. The
     /// storage key is namespaced under `walletHome*` so future chart
-    /// surfaces (asset detail, swap preview) can have their own
+    /// surfaces (e.g. asset detail) can have their own
     /// independent persistence without collision.
     @AppStorage("walletHomeBalanceHistoryRange")
     private var selectedRangeRaw: String = BalanceHistoryRange.all.rawValue

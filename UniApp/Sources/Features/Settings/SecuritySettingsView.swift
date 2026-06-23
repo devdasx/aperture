@@ -10,9 +10,8 @@ struct SecuritySettingsView: View {
     @AppStorage("biometricEnabled") private var biometricEnabled: Bool = false
     // Per-action Face ID gates (2026-06-20). Secure default ON; they only
     // take effect when Face ID is enabled. Enforced in SendReviewView /
-    // SwapReviewView / DAppSendTransactionSheet.
+    // DAppSendTransactionSheet.
     @AppStorage("requireBiometricForSend") private var requireForSend: Bool = true
-    @AppStorage("requireBiometricForSwap") private var requireForSwap: Bool = true
     @AppStorage("requireBiometricForDApp") private var requireForDApp: Bool = true
     // iOS-style "Erase Data": wipe the app after N failed lock-screen passcode
     // attempts. OFF by default; arming it shows a confirmation first. Enforced
@@ -174,7 +173,6 @@ struct SecuritySettingsView: View {
                 Section {
                     faceIDActionRow("Sending transactions", isOn: $requireForSend)
                     faceIDActionRow("Signing in dApps", isOn: $requireForDApp)
-                    faceIDActionRow("Swapping tokens", isOn: $requireForSwap)
                 } header: {
                     Text("Use Face ID For").font(UniTypography.footnote).foregroundStyle(UniColors.Text.tertiary)
                 } footer: {

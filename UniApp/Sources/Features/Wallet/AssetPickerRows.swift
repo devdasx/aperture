@@ -20,9 +20,8 @@ struct AssetPickerAssetRow: View {
     /// contract (nil for native coins → bundled chain mark).
     let logoChain: SupportedChain
     let logoContract: String?
-    /// Optional provider-supplied logo URL (Li.Fi `logoURI` / Jupiter
-    /// `icon`). Used for tokens NOT in Trust Wallet's repo (e.g. a token
-    /// found via the swap provider search), so they show a real mark
+    /// Optional provider-supplied logo URL. Used for tokens NOT in Trust
+    /// Wallet's repo, so they show a real mark
     /// instead of falling back to the initials chip. `CoinMark` prefers
     /// this when present; otherwise it resolves via Trust Wallet by
     /// chain+contract.

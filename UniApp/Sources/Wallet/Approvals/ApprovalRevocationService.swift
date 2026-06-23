@@ -11,15 +11,15 @@ import SwiftData
 ///      `.importedMnemonic`) without a never-persisted BIP-39 passphrase
 ///      can sign. Watch-only / single-key wallets get an honest refusal,
 ///      never a fabricated hash (Rule #16).
-///   2. Build `approve(spender, 0)` calldata via `SwapEVMABI`
+///   2. Build `approve(spender, 0)` calldata via `EVMERC20ABI`
 ///      (`approveSelector` 095ea7b3, 32-byte-padded spender + a 64-zero
 ///      amount word).
-///   3. Fetch a fresh pending nonce + live gas price (`SwapAllowance`).
-///      The gas LIMIT is a safe approve default — an `approve` is a
-///      ~46k-gas write; 100k is comfortable and a wrong limit reverts
-///      on-chain (refunding unused gas), never loses principal.
+///   3. Fetch a fresh pending nonce + live gas price
+///      (`EVMContractCallSigner`). The gas LIMIT is a safe approve default
+///      — an `approve` is a ~46k-gas write; 100k is comfortable and a wrong
+///      limit reverts on-chain (refunding unused gas), never loses principal.
 ///   4. Sign off the main actor: `SigningKeyProvider.withPrivateKey`
-///      derives + scopes the key, `SwapEVMSigner.sign` produces the
+///      derives + scopes the key, `EVMContractCallSigner.sign` produces the
 ///      Type-0 (legacy) signed tx. Key material lives only inside the
 ///      closure (Rule #17).
 ///   5. Broadcast via `BroadcastService` (shared `RPCClient`).
@@ -78,7 +78,7 @@ enum ApprovalRevocationService {
     }
 
     /// `approve(spender, amount)` amount word for a revoke: 64 zero
-    /// nibbles (uint256 zero). `SwapEVMABI.approveCallData` defaults to
+    /// nibbles (uint256 zero). `EVMERC20ABI.approveCallData` defaults to
     /// the MAX_UINT256 grant; we override with zero to REVOKE.
     private static let zeroAmountHex32 = String(repeating: "0", count: 64)
 
@@ -112,24 +112,24 @@ enum ApprovalRevocationService {
         guard chain.family == .evm else { return .failure(.walletCannotSign) }
 
         // 2. Build approve(spender, 0) calldata.
-        guard let callDataHex = SwapEVMABI.approveCallData(
+        guard let callDataHex = EVMERC20ABI.approveCallData(
             spender: approval.spender, amountHex32: zeroAmountHex32
-        ), let calldata = dataFromHex(SwapEVMABI.strip0x(callDataHex)), !calldata.isEmpty else {
+        ), let calldata = dataFromHex(EVMERC20ABI.strip0x(callDataHex)), !calldata.isEmpty else {
             return .failure(.invalidApproval)
         }
 
         // 3. Fresh pending nonce + live gas price (never sign against a
         //    stale value — Rule #27 §C).
-        guard let nonce = await SwapAllowance.pendingNonce(address: ownerAddress, chain: chain) else {
+        guard let nonce = await EVMContractCallSigner.pendingNonce(address: ownerAddress, chain: chain) else {
             return .failure(.preflightFailed("couldn't read your account state"))
         }
-        guard let gasPrice = await SwapAllowance.gasPriceWei(chain: chain) else {
+        guard let gasPrice = await EVMContractCallSigner.gasPriceWei(chain: chain) else {
             return .failure(.preflightFailed("couldn't fetch the network fee"))
         }
 
         // 4. Sign off the main actor. `valueHex` is "0x0" — an approve
         //    moves no native value; the token contract is the `to`.
-        let tx = SwapEVMSigner.UnsignedTx(
+        let tx = EVMContractCallSigner.UnsignedTx(
             chain: chain,
             nonce: nonce,
             to: approval.tokenContract,
@@ -145,7 +145,7 @@ enum ApprovalRevocationService {
                 try SigningKeyProvider.withPrivateKey(
                     wallet: wallet, chain: chain, passphrase: nil, expectedAddress: ownerAddress
                 ) { key in
-                    try SwapEVMSigner.sign(tx, privateKey: key)
+                    try EVMContractCallSigner.sign(tx, privateKey: key)
                 }
             }.value
         } catch let error as SigningError {

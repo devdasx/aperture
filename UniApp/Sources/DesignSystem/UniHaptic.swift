@@ -81,10 +81,10 @@ enum UniHaptic: Hashable, Sendable {
 
     // MARK: - Family D: stepwise
 
-    /// Stepper up, slider up, swap-amount up, picker advance.
+    /// Stepper up, slider up, picker advance.
     case increase
 
-    /// Stepper down, slider down, swap-amount down.
+    /// Stepper down, slider down.
     case decrease
 
     /// Snap-to-grid, snap-to-value, picker detent.

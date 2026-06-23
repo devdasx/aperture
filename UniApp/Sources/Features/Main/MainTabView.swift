@@ -3,14 +3,14 @@ import SwiftData
 import UIKit
 import TipKit
 
-/// The post-onboarding shell for Aperture. Hosts the four top-level
-/// tabs the user navigates between — **Wallet**, **Swap**, **Browser**,
+/// The post-onboarding shell for Aperture. Hosts the three top-level
+/// tabs the user navigates between — **Wallet**, **Browser**,
 /// **Settings** — via the native iOS 26 `TabView` + `Tab(...)` API.
 ///
 /// **Design intent (one sentence, Rule #2 §D.1):** give the user one
 /// always-visible, thumb-reachable map of where they are in Aperture
-/// — so the wallet, the swap, the dApp browser, and the settings live
-/// at the same depth and feel like four faces of the same calm
+/// — so the wallet, the dApp browser, and the settings live
+/// at the same depth and feel like three faces of the same calm
 /// surface, never one buried inside another.
 ///
 /// **2026-06-09 — Wallet tab is the active wallet's identity.** The
@@ -60,13 +60,13 @@ import TipKit
 /// `TabView { Tab { … } label: { … } }` shape with no manual chrome.
 ///
 /// **Selection persistence (`@AppStorage("selectedTab")`).** A user
-/// who leaves the app on the Swap tab returns to the Swap tab.
+/// who leaves the app on the Browser tab returns to the Browser tab.
 ///
 /// **RTL (Rule #11).** Native TabView automatically mirrors tab
 /// order under RTL — Settings becomes the leading tab in Arabic /
-/// Hebrew / Persian / Urdu — and the SF Symbols (`arrow.left.arrow.right`
-/// notably) auto-flip when directional. We do not, and must not,
-/// reorder the tabs manually based on layout direction.
+/// Hebrew / Persian / Urdu — and directional SF Symbols auto-flip.
+/// We do not, and must not, reorder the tabs manually based on layout
+/// direction.
 /// Cross-view signal for "the user re-tapped the active tab" (2026-06-18).
 /// `MainTabView` bumps `walletReselectToken` when the already-selected
 /// Wallet tab is tapped again; `WalletHomeView` observes it (via the
@@ -144,7 +144,7 @@ struct MainTabView: View {
                 // NavigationStack (2026-06-18 user report). SwiftUI calls
                 // this setter with the SAME value on a re-tap, so detect it
                 // here and bump the shared token; `WalletHomeView` observes
-                // it and clears its path. (Swap / Browser are single screens
+                // it and clears its path. (Browser is a single screen
                 // with nothing to pop.)
                 if newValue == (MainTab(rawValue: selectedTabRaw) ?? .wallet),
                    newValue == .wallet {
@@ -232,19 +232,6 @@ struct MainTabView: View {
                 // `WalletTabSwitcherTip` is now rendered inline as
                 // a `TipView` from `WalletHomeView`'s content
                 // hierarchy, where a real SwiftUI parent exists.
-            }
-
-            // MARK: - Swap
-            //
-            // 2026-06-15 — `SwapPlaceholderView` retired; replaced by the
-            // real swap surface. `SwapTabView` hosts `SwapView` full-screen
-            // (compose → live quote → honest Review → sign + broadcast).
-            // No wrapping `NavigationStack` here: `SwapView` provides its
-            // own `NavigationStack(path:)`, so wrapping would double-stack
-            // the bar. The wallet-home Swap action still presents `SwapView`
-            // as a sheet (default `isSheet: true`) — unchanged.
-            Tab("Swap", systemImage: "arrow.left.arrow.right", value: MainTab.swap) {
-                SwapTabView()
             }
 
             // MARK: - Browser
@@ -350,7 +337,7 @@ struct MainTabView: View {
     // that ships WITHOUT visible text — the per-wallet avatar IS
     // the identity, and adding "Wallet" underneath would compete
     // with the wallet name shown in the toolbar pill above. The
-    // other three tabs (Swap, Browser, Settings) keep their
+    // other two tabs (Browser, Settings) keep their
     // `Label(_:systemImage:)` text by design — they are generic
     // sections, not personalized identities.
     //
@@ -548,12 +535,10 @@ struct MainTabView: View {
 /// persistence key.
 ///
 /// Order in the enum mirrors visual order in the tab bar (Wallet,
-/// Swap, Browser, Settings). RTL layout flips visual order
-/// automatically via SwiftUI — the enum declaration order does
-/// not change.
+/// Browser, Settings). RTL layout flips visual order automatically
+/// via SwiftUI — the enum declaration order does not change.
 enum MainTab: String, Hashable, CaseIterable {
     case wallet
-    case swap
     case browser
     case settings
 

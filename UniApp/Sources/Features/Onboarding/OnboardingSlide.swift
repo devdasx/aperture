@@ -10,7 +10,6 @@ import SwiftUI
 ///   5. Recovery (the 24-word truth)
 ///   6. Receive (verb)
 ///   7. Send with real fees (verb + honesty)
-///   8. Swap across chains (the differentiator)
 ///   9. Privacy (non-custodial promise)
 ///  10. Threshold — where the two CTAs live.
 ///
@@ -83,12 +82,6 @@ struct OnboardingSlide: Identifiable, Sendable {
             illustration: .send,
             title: "Send with the real fee shown.",
             body: "The network fee is displayed before you sign. No surprises after."
-        ),
-        OnboardingSlide(
-            id: 7,
-            illustration: .swap,
-            title: "Swap across chains in one flow.",
-            body: "Move value between networks without leaving the wallet."
         ),
         OnboardingSlide(
             id: 8,

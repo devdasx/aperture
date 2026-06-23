@@ -49,7 +49,7 @@ struct ActivityRow: View {
     let occurredAt: Date
     let status: TransactionStatus
     /// Transaction taxonomy — drives the row TITLE (Sent / Received /
-    /// Swapped / Bridged / Self transfer) instead of the bare token
+    /// Bridged / Self transfer) instead of the bare token
     /// symbol (2026-06-18 user direction).
     let kind: TransactionKind
     /// The leg's value in the user's local currency (amount × current
@@ -224,10 +224,9 @@ struct ActivityRow: View {
     // MARK: - Trailing column
 
     /// Row title — the transaction verb, composed from kind + direction:
-    /// Swapped / Bridged / Self transfer / Received / Sent.
+    /// Bridged / Self transfer / Received / Sent.
     private var title: LocalizedStringKey {
         switch kind {
-        case .swap:         return "Swapped"
         case .bridge:       return "Bridged"
         case .selfTransfer: return "Self transfer"
         case .transfer:
