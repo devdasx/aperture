@@ -1,5 +1,4 @@
 import SwiftUI
-import UniformTypeIdentifiers
 
 // MARK: - Mnemonic entry step — single chip-flow field (design_handoff_import_flows)
 
@@ -43,8 +42,7 @@ struct MnemonicEntryView: View {
     @State private var focusDismissTask: Task<Void, Never>? = nil
     @State private var isShowingLeakedWarning = false
     @State private var isShowingPassphraseSheet = false
-    @State private var isShowingFileImporter = false
-    @State private var fileError: String? = nil
+    @State private var isShowingScanner = false
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -127,10 +125,6 @@ struct MnemonicEntryView: View {
         "\(words.joined(separator: "|"))#\(activeIndex)#\(draft)#\(focused ? 1 : 0)"
     }
 
-    private var fileErrorPresented: Binding<Bool> {
-        Binding(get: { fileError != nil }, set: { if !$0 { fileError = nil } })
-    }
-
     // MARK: Body
 
     var body: some View {
@@ -187,21 +181,16 @@ struct MnemonicEntryView: View {
             }
         }
         .uniHaptic(.success, trigger: canContinue)
-        .fileImporter(
-            isPresented: $isShowingFileImporter,
-            allowedContentTypes: [.plainText, .utf8PlainText, .text, .json, .data],
-            allowsMultipleSelection: false
-        ) { result in
-            handleFileImport(result)
-        }
-        .alert(
-            "Couldn’t read that file",
-            isPresented: fileErrorPresented,
-            presenting: fileError
-        ) { _ in
-            Button("OK", role: .cancel) {}
-        } message: { message in
-            Text(verbatim: message)
+        .sheet(isPresented: $isShowingScanner) {
+            UniQRScannerSheet(
+                title: "Scan recovery phrase",
+                prompt: "Point your camera at a recovery-phrase QR code.",
+                onRawDeliver: { scanned in
+                    fillFromText(scanned)
+                    isShowingScanner = false
+                }
+            )
+            .uniAppEnvironment()
         }
         .sheet(isPresented: $isShowingPassphraseSheet) {
             PassphraseSheet(
@@ -338,18 +327,23 @@ struct MnemonicEntryView: View {
 
     private var actionRow: some View {
         ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 10) {
-                actionChip("Paste", systemImage: "doc.on.clipboard") { pasteFromClipboard() }
-                actionChip("Upload file", systemImage: "arrow.up.doc") {
-                    UniHapticEngine.shared.play(.selection)
-                    isShowingFileImporter = true
+            GlassEffectContainer(spacing: 10) {
+                HStack(spacing: 10) {
+                    glassActionChip("Paste", systemImage: "doc.on.clipboard") {
+                        pasteFromClipboard()
+                    }
+                    glassActionChip("Scan", systemImage: "qrcode.viewfinder") {
+                        UniHapticEngine.shared.play(.selection)
+                        isShowingScanner = true
+                    }
                 }
             }
             .padding(.horizontal, 24)
         }
     }
 
-    private func actionChip(
+    /// Liquid-glass action chip (Paste / Scan).
+    private func glassActionChip(
         _ title: LocalizedStringKey,
         systemImage: String,
         action: @escaping () -> Void
@@ -362,14 +356,8 @@ struct MnemonicEntryView: View {
                     .font(.system(size: 14, weight: .semibold))
             }
             .foregroundStyle(UniColors.Text.primary)
-            .padding(.horizontal, 15)
-            .padding(.vertical, 9)
-            .background(
-                UniColors.Fill.secondary,
-                in: RoundedRectangle(cornerRadius: 12, style: .continuous)
-            )
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.glass)
     }
 
     // MARK: Validation line
@@ -401,19 +389,26 @@ struct MnemonicEntryView: View {
         }
     }
 
+    /// Modern, flat suggestion card — solid surface, hairline, **no shadow**.
+    /// The first (best) match reads as a filled accent chip; the rest are
+    /// neutral surface chips.
     private func suggestionPill(_ word: String, isPrimary: Bool) -> some View {
-        Button {
+        let shape = RoundedRectangle(cornerRadius: 13, style: .continuous)
+        return Button {
             UniHapticEngine.shared.play(.selection)
             commitSuggestion(word)
         } label: {
             Text(verbatim: word)
-                .font(.system(size: 15, weight: isPrimary ? .semibold : .regular))
-                .foregroundStyle(UniColors.Text.primary)
+                .font(.system(size: 15, weight: isPrimary ? .semibold : .medium))
+                .foregroundStyle(isPrimary ? UniColors.Button.primaryLabel : UniColors.Text.primary)
                 .padding(.horizontal, 18)
-                .padding(.vertical, 10)
-                .background(UniColors.Background.secondary, in: Capsule())
-                .overlay(Capsule().strokeBorder(UniColors.SeedGrid.hairline, lineWidth: 1))
-                .shadow(color: Color.black.opacity(0.08), radius: 6, y: 2)
+                .padding(.vertical, 11)
+                .background(isPrimary ? UniColors.Button.primaryTint : UniColors.Background.secondary, in: shape)
+                .overlay {
+                    if !isPrimary {
+                        shape.strokeBorder(UniColors.SeedGrid.hairline, lineWidth: 1)
+                    }
+                }
         }
         .buttonStyle(.plain)
     }
@@ -532,34 +527,7 @@ struct MnemonicEntryView: View {
         fillFromText(clipboard)
     }
 
-    private func handleFileImport(_ result: Result<[URL], Error>) {
-        guard case .success(let urls) = result, let url = urls.first else { return }
-        let scoped = url.startAccessingSecurityScopedResource()
-        defer { if scoped { url.stopAccessingSecurityScopedResource() } }
-        guard let data = try? Data(contentsOf: url) else {
-            fileError = "Aperture couldn’t open that file."
-            UniHapticEngine.shared.play(.warning)
-            return
-        }
-        guard let content = String(data: data, encoding: .utf8)
-                ?? String(data: data, encoding: .isoLatin1) else {
-            fileError = "That file isn’t readable text."
-            UniHapticEngine.shared.play(.warning)
-            return
-        }
-        let tokens = content.lowercased().split { !$0.isLetter }.map(String.init)
-        let bip = tokens.filter { BIP39Wordlist.english.contains($0) }
-        if [12, 15, 18, 21, 24].contains(tokens.count)
-            || [12, 15, 18, 21, 24].contains(bip.count)
-            || !bip.isEmpty {
-            fillFromText(content)
-        } else {
-            fileError = "No recovery phrase was found in that file."
-            UniHapticEngine.shared.play(.warning)
-        }
-    }
-
-    /// Parse a mnemonic out of arbitrary text (clipboard or file) and load it
+    /// Parse a mnemonic out of arbitrary text (clipboard or scan) and load it
     /// into the field. Prefers a clean BIP-39 subsequence when the source has
     /// surrounding text; otherwise loads the raw words so inline validation can
     /// flag the problem.
