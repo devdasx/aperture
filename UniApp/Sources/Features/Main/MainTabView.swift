@@ -3,9 +3,12 @@ import SwiftData
 import UIKit
 import TipKit
 
-/// The post-onboarding shell for Aperture. Hosts the four top-level
-/// tabs the user navigates between — **Wallet**, **Swap**, **Browser**,
-/// **Settings** — via the native iOS 26 `TabView` + `Tab(...)` API.
+/// The post-onboarding shell for Aperture. Hosts the three top-level
+/// tabs the user navigates between — **Wallet**, **Swap**, **Browser**
+/// — via the native iOS 26 `TabView` + `Tab(...)` API. **Settings is no
+/// longer a tab (2026-06-23):** it moved to the wallet-home toolbar's
+/// trailing gear and is presented as a sheet (the historical "why a
+/// TabView, not a sheet" note below predates that reversal).
 ///
 /// **Design intent (one sentence, Rule #2 §D.1):** give the user one
 /// always-visible, thumb-reachable map of where they are in Aperture
@@ -136,7 +139,13 @@ struct MainTabView: View {
     /// fiddling, future tab renames) fall back to `.wallet`.
     private var selectedTab: Binding<MainTab> {
         Binding(
-            get: { MainTab(rawValue: selectedTabRaw) ?? .wallet },
+            get: {
+                // `.settings` is no longer a tab (2026-06-23). A value
+                // persisted from before the change resolves to the Wallet
+                // tab so the TabView never lands on a missing tab.
+                let resolved = MainTab(rawValue: selectedTabRaw) ?? .wallet
+                return resolved == .settings ? .wallet : resolved
+            },
             set: { newValue in
                 // Re-tapping the already-selected Wallet tab pops its nav
                 // stack back to the home root — the standard iOS tab gesture,
@@ -265,10 +274,10 @@ struct MainTabView: View {
                 }
             }
 
-            // MARK: - Settings
-            Tab("Settings", systemImage: "gearshape.fill", value: MainTab.settings) {
-                SettingsView()
-            }
+            // 2026-06-23 — Settings is no longer a tab. Per user direction
+            // it moved to the wallet-home toolbar (the gear on the app bar's
+            // trailing side), presented as a sheet from `WalletHomeView`.
+            // The bottom bar is now three tabs: Wallet · Swap · Browser.
         }
         // **Sidebar-adaptable (2026-06-16).** One native modifier turns
         // the four `Tab(...)` into a size-class-adaptive shell: the

@@ -267,10 +267,11 @@ struct WalletHomeView: View {
     @State private var navigationPath: [WalletHomeDestination]
     @State private var createPath: NavigationPath = NavigationPath()
     @State private var importPath: NavigationPath = NavigationPath()
-    // Settings is now a top-level tab in `MainTabView` (2026-06-09);
-    // the wallet-home no longer presents it as a sheet. The previous
-    // `isShowingSettings` flag and `settingsPath` NavigationPath are
-    // retired in the same change.
+    // 2026-06-23 — Settings returned to the wallet-home toolbar (the
+    // trailing gear) and off the bottom tab bar, so it's presented as a
+    // sheet again. `SettingsView` owns its own `NavigationStack`, so no
+    // path is threaded here.
+    @State private var isShowingSettings: Bool = false
     @State private var isRefreshing: Bool = false
 
     /// Shared refresh-outcome surface (2026-06-12). The coordinator
@@ -325,12 +326,6 @@ struct WalletHomeView: View {
     /// from the long-press menu's "Customise wallet" row. Identifiable
     /// shim defined at the bottom of this file.
     @State private var customiseTargetId: UUID?
-
-    /// Shared tab-selection writer — the long-press menu's "Manage
-    /// wallets" row flips this to `.settings` to land the user on the
-    /// Settings tab. `MainTabView` reads the same `@AppStorage` key
-    /// reactively.
-    @AppStorage(MainTab.storageKey) private var selectedTabRaw: String = MainTab.wallet.rawValue
 
     /// Deep-link token consumed by `SettingsView` on appear. The
     /// long-press menu's "Manage wallets" row stamps `"wallets"`;
@@ -572,21 +567,20 @@ struct WalletHomeView: View {
                         .glassEffect(.regular, in: .circle)
                         .accessibilityLabel(Text("Aperture"))
                     }
-                    // 2026-06-09 — Filter & Sort affordance. Bare
-                    // 2026-06-09 — Filter & Sort affordance. Bare
-                    // `line.3.horizontal.decrease` (iOS-native filter
-                    // glyph; the same symbol Mail / Files / Photos
-                    // use). NOT `.circle` — `M-003` recurrence
-                    // discipline forbids `.circle` SF Symbols in any
-                    // toolbar surface. Tapping presents
-                    // `WalletHomeFilterSheet`; the sheet writes
-                    // through `@AppStorage`, this view re-renders.
+                    // 2026-06-23 — Settings affordance. Per user
+                    // direction Settings left the bottom tab bar and
+                    // lives here, on the app bar's trailing side; the
+                    // Filter & Sort control moved down into the
+                    // Coins/Tokens chrome (`holdingsChromeRow`). Tapping
+                    // presents `SettingsView` as a sheet. `gearshape`
+                    // (not `.circle` — `M-003` forbids `.circle` SF
+                    // Symbols in toolbar surfaces).
                     ToolbarItem(placement: .topBarTrailing) {
                         Button {
-                            isShowingFilter = true
+                            isShowingSettings = true
                         } label: {
-                            Image(systemName: "line.3.horizontal.decrease")
-                                .accessibilityLabel(Text("Filter and sort"))
+                            Image(systemName: "gearshape")
+                                .accessibilityLabel(Text("Settings"))
                         }
                     }
                 }
@@ -846,6 +840,16 @@ struct WalletHomeView: View {
             // is searching.
             WalletHomeFilterSheet(searchPreview: filterSearchText)
                 .id(sheetDirectionKey)
+                .uniAppEnvironment()
+                .uniSheetDetents([.large])
+                .presentationDragIndicator(.visible)
+                .presentationBackground(UniColors.Background.primary)
+        }
+        // App settings — presented from the trailing toolbar gear
+        // (2026-06-23, moved off the bottom tab bar). `SettingsView`
+        // owns its own NavigationStack + Done item.
+        .sheet(isPresented: $isShowingSettings) {
+            SettingsView()
                 .uniAppEnvironment()
                 .uniSheetDetents([.large])
                 .presentationDragIndicator(.visible)
@@ -1241,8 +1245,8 @@ struct WalletHomeView: View {
             // Also hidden while the total-failure error state owns
             // the holdings region — switching Coins/Tokens over an
             // error card would be a no-op (2026-06-12).
-            if filterViewMode == .split && !showsNetworkErrorState {
-                holdingsTabPicker
+            if !showsNetworkErrorState {
+                holdingsChromeRow
                     .listRowBackground(Color.clear)
                     .listRowSeparator(.hidden)
                     // Tightened vertical padding per 2026-06-09 user
@@ -1258,6 +1262,22 @@ struct WalletHomeView: View {
         }
     }
 
+    /// The Coins/Tokens segment paired with the Filter & Sort control
+    /// (2026-06-23 — the filter moved here from the nav bar, which now
+    /// carries Settings). In `.split` mode the segment leads and the
+    /// filter trails; in `.combined` mode there's no segment, so the
+    /// filter sits alone, trailing-aligned, and stays reachable.
+    private var holdingsChromeRow: some View {
+        HStack(spacing: UniSpacing.s) {
+            if filterViewMode == .split {
+                holdingsTabPicker
+            } else {
+                Spacer(minLength: 0)
+            }
+            filterButton
+        }
+    }
+
     /// Native segmented picker — Coins | Tokens.
     private var holdingsTabPicker: some View {
         Picker("Holdings tab", selection: $selectedHoldingsTab) {
@@ -1266,6 +1286,27 @@ struct WalletHomeView: View {
         }
         .pickerStyle(.segmented)
         .accessibilityLabel(Text("Switch between Coins and Tokens"))
+    }
+
+    /// Filter & Sort affordance, now beside the Coins/Tokens segment.
+    /// The native filter glyph (`line.3.horizontal.decrease`) in a
+    /// segment-height rounded fill so it reads as a sibling control of
+    /// the segmented picker; presents `WalletHomeFilterSheet`.
+    private var filterButton: some View {
+        Button {
+            isShowingFilter = true
+        } label: {
+            Image(systemName: "line.3.horizontal.decrease")
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(UniColors.Text.primary)
+                .frame(width: 44, height: 30)
+                .background(
+                    UniColors.Fill.tertiary,
+                    in: RoundedRectangle(cornerRadius: 8, style: .continuous)
+                )
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(Text("Filter and sort"))
     }
 
     // MARK: - Holdings section (native List)
@@ -2307,12 +2348,13 @@ struct WalletHomeView: View {
             Label("Add wallet", systemImage: "plus")
         }
 
-        // Manage wallets — flips the tab to Settings and stamps
-        // the deep-link token. `SettingsView` consumes it on
-        // appear and pushes onto its NavigationPath.
+        // Manage wallets — stamps the deep-link token, then presents
+        // the Settings sheet (2026-06-23 — Settings is no longer a
+        // tab). `SettingsView` consumes the token on appear and pushes
+        // Wallets onto its NavigationPath.
         Button {
             settingsDeepLink = "wallets"
-            selectedTabRaw = MainTab.settings.rawValue
+            isShowingSettings = true
         } label: {
             Label("Manage wallets", systemImage: "list.bullet")
         }
