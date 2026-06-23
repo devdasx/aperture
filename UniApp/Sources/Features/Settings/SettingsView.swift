@@ -66,6 +66,10 @@ enum SettingsDestination: Hashable, Codable {
 }
 
 struct SettingsView: View {
+    /// 2026-06-23 — Settings is no longer a tab; it's presented as a sheet
+    /// from the wallet-home toolbar's gear, so it gets a Done item again.
+    @Environment(\.dismiss) private var dismiss
+
     /// Settings is a top-level tab root (`MainTabView` — 2026-06-09)
     /// so its `NavigationStack` path is owned internally. The
     /// prior `@Binding var navigationPath: NavigationPath`
@@ -268,6 +272,13 @@ struct SettingsView: View {
             .background(UniColors.Background.primary)
             .navigationTitle(Text("Settings"))
             .navigationBarTitleDisplayMode(.large)
+            // 2026-06-23 — presented as a sheet from the wallet-home toolbar
+            // gear (no longer a tab), so a Done item closes it.
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Done") { dismiss() }
+                }
+            }
             .navigationDestination(for: SettingsDestination.self) { destination in
                 switch destination {
                 case .wallets:                   WalletsListView()
@@ -285,13 +296,10 @@ struct SettingsView: View {
                 case .about:                     AboutView()
                 }
             }
-            // No `.toolbar` Done item — as a tab root in
-            // `MainTabView`, Settings has no parent presentation to
-            // dismiss back to. The tab bar IS the back-stop; the
-            // user leaves Settings by tapping another tab. The prior
-            // Done item existed for the sheet-host era (the wallet-
-            // home's `.sheet { SettingsView }`) and is retired with
-            // the host.
+            // Done item restored (2026-06-23): Settings is presented as a
+            // sheet from the wallet-home toolbar gear again, so it has a
+            // parent presentation to dismiss back to (see the `.toolbar`
+            // above). The deep-link stamp is still consumed on appear.
             .onAppear { consumeDeepLink() }
             .onChange(of: settingsDeepLink) { _, _ in consumeDeepLink() }
             // Last-screen restoration mirror (2026-06-13). Every push
