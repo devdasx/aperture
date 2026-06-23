@@ -103,11 +103,18 @@ struct WalletAvatar: View {
     /// always render a persisted wallet pass `walletId:` so the
     /// custom-SVG branch can read the cache.
     let walletId: UUID?
+    /// When `true`, render ONLY the inner white symbol (glyph / monogram /
+    /// custom SVG) — no gradient disc, sheen, edge stroke, or badge. The
+    /// wallet-home app-bar button uses this so the logo sits directly on a
+    /// tinted Liquid Glass surface that carries the wallet's colour, instead
+    /// of the disc carrying it (2026-06-23 user direction).
+    let symbolOnly: Bool
 
-    init(spec: WalletAvatarSpec, size: Size, walletId: UUID? = nil) {
+    init(spec: WalletAvatarSpec, size: Size, walletId: UUID? = nil, symbolOnly: Bool = false) {
         self.spec = spec
         self.size = size
         self.walletId = walletId
+        self.symbolOnly = symbolOnly
     }
 
     // MARK: - Body
@@ -115,7 +122,15 @@ struct WalletAvatar: View {
     var body: some View {
         let diameter = size.diameter
 
-        ZStack {
+        if symbolOnly {
+            // Symbol-only — just the white logo, no disc. The surrounding
+            // surface (a tinted Liquid Glass toolbar button) carries the
+            // wallet's colour.
+            innerSymbol(diameter: diameter)
+                .frame(width: diameter, height: diameter)
+                .accessibilityHidden(true)
+        } else {
+            ZStack {
             // Layer 1: gradient disc (vertical top → bottom).
             Circle()
                 .fill(
@@ -191,13 +206,14 @@ struct WalletAvatar: View {
                     )
             }
         }
-        .frame(width: diameter, height: diameter)
-        // Decorative — VoiceOver announces the wallet name via the
-        // surrounding container's label. The disc itself carries no
-        // semantics that aren't already in the name. Per Rule #7
-        // §C the disc is a structural surface, not an icon — its
-        // meaning is "identity," carried by the symbol inside.
-        .accessibilityHidden(true)
+            .frame(width: diameter, height: diameter)
+            // Decorative — VoiceOver announces the wallet name via the
+            // surrounding container's label. The disc itself carries no
+            // semantics that aren't already in the name. Per Rule #7
+            // §C the disc is a structural surface, not an icon — its
+            // meaning is "identity," carried by the symbol inside.
+            .accessibilityHidden(true)
+        }
     }
 
     // MARK: - Inner symbol switch
@@ -317,6 +333,7 @@ extension WalletAvatar {
         )
         self.size = size
         self.walletId = nil
+        self.symbolOnly = false
         _ = symbol // referenced for documentation
     }
 }

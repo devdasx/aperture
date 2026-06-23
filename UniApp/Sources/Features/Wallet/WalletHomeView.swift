@@ -561,14 +561,24 @@ struct WalletHomeView: View {
                         Button {
                             customiseTargetId = activeWallet?.id
                         } label: {
+                            // Just the wallet's logo (symbol only — no disc), so
+                            // it reads bigger; the wallet's colour is carried by
+                            // the glass tint below instead of a disc.
                             WalletAvatar(
-                                spec: activeWallet?.avatarSpec
-                                    ?? WalletAvatarSpec.auto(name: activeWallet?.name ?? "Wallet"),
+                                spec: activeAvatarSpec,
                                 size: .tabIcon,
-                                walletId: activeWallet?.id
+                                walletId: activeWallet?.id,
+                                symbolOnly: true
                             )
                         }
-                        .buttonStyle(.plain)
+                        // Native iOS 26 tinted Liquid Glass: the toolbar
+                        // auto-applies glass, and `.tint` colours it with the
+                        // wallet's chosen colour. `.glassProminent` makes it an
+                        // opaque coloured circle; NO `.glassEffect` here (that
+                        // would double-layer glass on a toolbar item).
+                        .buttonStyle(.glassProminent)
+                        .tint(activeAvatarTint)
+                        .buttonBorderShape(.circle)
                         .disabled(activeWallet == nil)
                         .accessibilityLabel(Text("Customise wallet"))
                     }
@@ -2431,6 +2441,21 @@ struct WalletHomeView: View {
         // Only when NO valid active id is set (first launch / a cleared
         // pointer) do we heal to the first wallet.
         return allWallets.first(where: { walletExists(id: $0.id) })
+    }
+
+    /// The active wallet's avatar spec, with the same name-seeded fallback the
+    /// pill uses. Drives the app-bar logo button (symbol + tint colour).
+    private var activeAvatarSpec: WalletAvatarSpec {
+        activeWallet?.avatarSpec
+            ?? WalletAvatarSpec.auto(name: activeWallet?.name ?? "Wallet")
+    }
+
+    /// The wallet's chosen colour as a single tint for the app-bar Liquid
+    /// Glass logo button — the darker gradient stop, so the white logo stays
+    /// legible on the tinted glass.
+    private var activeAvatarTint: Color {
+        UniColors.WalletAvatar.gradientStops(for: activeAvatarSpec).last
+            ?? UniColors.Button.primaryTint
     }
 
     /// All balances belonging to the active wallet, sorted by fiat
