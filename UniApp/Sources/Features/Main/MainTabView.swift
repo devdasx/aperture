@@ -268,7 +268,15 @@ struct MainTabView: View {
             // the push surface and the `.toolbar` ladder
             // `BrowserHomeView` populates with the QR / settings
             // icons.
-            Tab("Browser", systemImage: "globe", value: MainTab.browser) {
+            // 2026-06-23 — Browser is the native iOS 26 **search tab**
+            // (`Tab(role: .search)`). It renders visually separated and morphs
+            // into the bottom domain search field that `BrowserHomeView`'s
+            // `.searchable` provides — the same bottom "Search Domain" morph
+            // 1inch shows. (A `.search`-role `Tab` takes no title/systemImage;
+            // the system supplies the search appearance.) The earlier custom
+            // bar hid that field because it wasn't a `TabView`; the native
+            // search tab brings it back.
+            Tab(value: MainTab.browser, role: .search) {
                 NavigationStack {
                     BrowserHomeView()
                 }
