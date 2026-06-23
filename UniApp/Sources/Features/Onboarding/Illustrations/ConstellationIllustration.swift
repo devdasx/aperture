@@ -20,7 +20,7 @@ import SwiftUI
 /// illustration no longer references them.
 ///
 /// One native `.symbolEffect(.bounce)` when this beat becomes active —
-/// matching every other SF-Symbol slide (vault, faceID, swap, …).
+/// matching every other SF-Symbol slide (vault, faceID, …).
 struct ConstellationIllustration: View {
     let isActive: Bool
 

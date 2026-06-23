@@ -49,7 +49,7 @@ struct ActivityRow: View {
     let occurredAt: Date
     let status: TransactionStatus
     /// Transaction taxonomy — drives the row TITLE (Sent / Received /
-    /// Swapped / Bridged / Self transfer) instead of the bare token
+    /// Bridged / Self transfer) instead of the bare token
     /// symbol (2026-06-18 user direction).
     let kind: TransactionKind
     /// The leg's value in the user's local currency (amount × current
