@@ -47,11 +47,6 @@ struct BalanceCardView: View {
     /// The active wallet's stable id — keys the per-wallet hidden flag.
     let walletId: UUID?
     let walletName: String
-    /// The active wallet's avatar spec (gradient + glyph). The card's
-    /// leading mark renders THIS — the user's chosen wallet color/icon,
-    /// the same as wallet management — instead of a fixed black logo
-    /// (2026-06-17 user direction).
-    let avatarSpec: WalletAvatarSpec
     /// The wallet's resting total fiat (the value when not scrubbing).
     let totalFiat: Decimal
     let currencyCode: String
@@ -111,14 +106,9 @@ struct BalanceCardView: View {
     @State private var xFractions: [Double] = []
     @State private var minValue: Double = 0
     @State private var maxValue: Double = 0
-    /// Presents `WalletIconPickerSheet` (Customise wallet) when the user taps
-    /// the wallet avatar in the header (2026-06-19).
-    @State private var isShowingIconPicker: Bool = false
-
     init(
         walletId: UUID?,
         walletName: String,
-        avatarSpec: WalletAvatarSpec,
         totalFiat: Decimal,
         currencyCode: String,
         lastUpdated: Date?,
@@ -133,7 +123,6 @@ struct BalanceCardView: View {
     ) {
         self.walletId = walletId
         self.walletName = walletName
-        self.avatarSpec = avatarSpec
         self.totalFiat = totalFiat
         self.currencyCode = currencyCode
         self.lastUpdated = lastUpdated
@@ -221,8 +210,11 @@ struct BalanceCardView: View {
     /// Which of the five states the card renders.
     private enum CardState: Equatable { case value, zero, hidden }
     private var resolvedState: CardState {
-        if totalFiat <= 0 { return .zero }   // Zero overrides change (handoff)
+        // Hiding always wins — the eye must hide the balance even on a fresh
+        // / $0 wallet. The zero state previously shadowed `.hidden` (it was
+        // checked first), so tapping the eye on a zero wallet did nothing.
         if isHidden { return .hidden }
+        if totalFiat <= 0 { return .zero }   // zero overrides the value/change state (handoff)
         return .value
     }
 
@@ -264,14 +256,6 @@ struct BalanceCardView: View {
         .accessibilityElement(children: .combine)
         .accessibilityLabel(accessibilityLabel)
         .task(id: rebuildKey) { await rebuild() }
-        .sheet(isPresented: $isShowingIconPicker) {
-            if let walletId {
-                WalletIconPickerSheet(walletId: walletId)
-                    .uniAppEnvironment()
-                    .uniSheetDetents([.large])
-                    .presentationBackground(UniColors.Background.primary)
-            }
-        }
     }
 
     /// "Updated 2 min ago" — the localized relative time of the last balance/
@@ -324,28 +308,10 @@ struct BalanceCardView: View {
     // MARK: - Header
 
     private var header: some View {
+        // 2026-06-23 — the wallet avatar moved OUT of the card and onto the
+        // app bar's leading side (it opens Customise wallet there now). The
+        // card header is just the name + last-updated + the eye.
         HStack(alignment: .top, spacing: 11) {
-            // The wallet's OWN avatar (gradient + glyph) — the color/icon
-            // the user picked in wallet management, not a fixed black
-            // logo (2026-06-17 user direction). `.row` is 36pt; the 1pt
-            // ring keeps the card's existing disc treatment.
-            // Tapping the avatar opens Customise wallet (2026-06-17 logo, now
-            // tappable per 2026-06-19 user direction). A nil walletId (no
-            // active wallet) leaves it inert.
-            Button {
-                guard walletId != nil else { return }
-                isShowingIconPicker = true
-            } label: {
-                WalletAvatar(spec: avatarSpec, size: .balanceHeader, walletId: walletId)
-                    .overlay(
-                        Circle().stroke(UniColors.BalanceCard.avatarRing(colorScheme), lineWidth: 1)
-                    )
-                    .contentShape(Circle())
-            }
-            .buttonStyle(.plain)
-            .disabled(walletId == nil)
-            .accessibilityLabel(Text("Customise wallet"))
-
             VStack(alignment: .leading, spacing: 1) {
                 // Name + chevron — one ≥44pt tap target → switcher.
                 Button(action: switchWallet) {

@@ -551,21 +551,26 @@ struct WalletHomeView: View {
                 // because toolbar items are navigation affordances, not
                 // commit CTAs (the rule's documented exception).
                 .toolbar {
-                    // App mark in a black liquid-glass disc, leading
-                    // (2026-06-20 user direction) — the same dark-glass
-                    // treatment as the Send / Receive / Swap action circles.
+                    // Active wallet's avatar (its chosen color + glyph),
+                    // leading (2026-06-23 user direction) — moved here from
+                    // the balance card, replacing the fixed black app mark.
+                    // Tapping opens Customise wallet via `customiseTargetId`,
+                    // the same `WalletIconPickerSheet` the long-press menu and
+                    // the old card avatar used.
                     ToolbarItem(placement: .topBarLeading) {
-                        ZStack {
-                            Circle().fill(Color.black)
-                            Image("IrisWatermarkWhite")
-                                .resizable()
-                                .renderingMode(.original)
-                                .scaledToFit()
-                                .frame(width: 16, height: 16)
+                        Button {
+                            customiseTargetId = activeWallet?.id
+                        } label: {
+                            WalletAvatar(
+                                spec: activeWallet?.avatarSpec
+                                    ?? WalletAvatarSpec.auto(name: activeWallet?.name ?? "Wallet"),
+                                size: .tabIcon,
+                                walletId: activeWallet?.id
+                            )
                         }
-                        .frame(width: 32, height: 32)
-                        .glassEffect(.regular, in: .circle)
-                        .accessibilityLabel(Text("Aperture"))
+                        .buttonStyle(.plain)
+                        .disabled(activeWallet == nil)
+                        .accessibilityLabel(Text("Customise wallet"))
                     }
                     // 2026-06-23 — Settings affordance. Per user
                     // direction Settings left the bottom tab bar and
@@ -1105,8 +1110,6 @@ struct WalletHomeView: View {
             BalanceCardLiveSection(
                 walletId: activeWallet?.id,
                 walletName: activeWallet?.name ?? String.apertureLocalized("Wallet"),
-                avatarSpec: activeWallet?.avatarSpec
-                    ?? WalletAvatarSpec.auto(name: activeWallet?.name ?? "Wallet"),
                 liveBalanceSum: liveBalanceSum,
                 currencyCode: currencyCode,
                 transactions: allTransactions,
@@ -2828,7 +2831,6 @@ struct WalletHomeView: View {
 private struct BalanceCardLiveSection: View {
     let walletId: UUID?
     let walletName: String
-    let avatarSpec: WalletAvatarSpec
     /// The parent's live balance-row sum (active currency) — the pre-aggregate
     /// fallback shown until the per-chain `ChainStateRecord` rows land.
     let liveBalanceSum: Decimal
@@ -2906,7 +2908,6 @@ private struct BalanceCardLiveSection: View {
         BalanceCardView(
             walletId: walletId,
             walletName: walletName,
-            avatarSpec: avatarSpec,
             totalFiat: totalFiat,
             currencyCode: currencyCode,
             lastUpdated: lastUpdated,
