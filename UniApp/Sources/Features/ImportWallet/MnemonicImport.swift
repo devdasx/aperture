@@ -1,132 +1,155 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 // MARK: - Mnemonic entry step — single chip-flow field (design_handoff_import_flows)
 
-/// Recovery-phrase entry, rebuilt to the updated import-flows handoff: a
-/// **single flat, full-width, square phrase field** that fills with **square
-/// word chips** as the user types — no per-word grid, no 12/24 control, no
-/// Paste button.
+/// Recovery-phrase entry: a **single flat, full-width, square phrase field**
+/// that fills with **square word chips** as the user types.
 ///
 /// - One edge-to-edge `--surface` field (0 corner radius, no shadow) whose
-///   height grows as chips wrap to new lines.
-/// - Each committed word is a square chip: a faint index number + the word,
-///   with a **green** 1.5px border (valid BIP-39 word) or **red** (not in the
-///   list, + red text). The **current** word is the `typing` chip — a 2px ink
-///   border, a blinking caret, and the gray inline **ghost** completion (shown
-///   only when the prefix uniquely matches one BIP-39 word).
-/// - **Length is auto-detected** — any valid BIP-39 length (12 / 15 / 18 / 21 /
-///   24) validates against its own checksum; nothing for the user to pick.
-/// - A **BIP-39 suggestion bar** sits above the keyboard; the app-bar **⋯**
-///   opens the optional passphrase sheet.
+///   height grows as chips wrap. Each committed word is a square chip (faint
+///   index + word) bordered **green** (valid BIP-39) or **red** (not-in-list,
+///   + red text); the current word is the 2px-ink `typing` chip with a blinking
+///   caret and the gray unique-prefix **ghost** completion.
+/// - **Tap any committed chip** to remove it and drop the cursor on that slot to
+///   re-enter it (then the cursor returns to the end).
+/// - A scrolled **Paste / Upload-file** action row sits under the field. Upload
+///   reads a text file and extracts a 12/15/18/21/24-word BIP-39 phrase.
+/// - **Length auto-detected** (12/15/18/21/24) + checksum-validated; nothing to
+///   pick. The app-bar **⋯** opens the optional passphrase sheet.
+/// - Custom **white** BIP-39 suggestion buttons float above the keyboard (not a
+///   keyboard accessory), each its own pill on a transparent row.
 ///
-/// All validation is real: `BIP39Wordlist` membership per word, `BIP39.validate`
-/// checksum for the whole phrase, and the `KnownLeakedSeeds` blocklist.
+/// The phrase is held as an array of committed `words` plus a separate `draft`
+/// for the slot at `activeIndex` — this is what lets a tapped chip be edited
+/// in place. A hidden single-line field drives the keyboard; a zero-width
+/// sentinel prefix lets us detect Backspace on an empty draft (edit the
+/// previous chip).
 struct MnemonicEntryView: View {
     @Bindable var state: ImportWalletState
     let onContinue: () -> Void
 
-    /// The full phrase as typed — one space-separated string driving the hidden
-    /// field. The chips are derived from it.
-    @State private var text: String = ""
-    @FocusState private var focused: Bool
+    /// Committed words (no empties). The active slot's live text lives in
+    /// `draft`, inserted at `activeIndex` — never stored here.
+    @State private var words: [String] = []
+    /// Live text for the slot at `activeIndex`.
+    @State private var draft: String = ""
+    /// Where the active (typing) slot sits, `0...words.count`.
+    @State private var activeIndex: Int = 0
+    /// Bound text of the hidden field — always `sentinel + draft`.
+    @State private var fieldText: String = "\u{200B}"
 
+    @FocusState private var focused: Bool
     @State private var focusDismissTask: Task<Void, Never>? = nil
-    @State private var isShowingLeakedWarning: Bool = false
-    @State private var isShowingPassphraseSheet: Bool = false
+    @State private var isShowingLeakedWarning = false
+    @State private var isShowingPassphraseSheet = false
+    @State private var isShowingFileImporter = false
+    @State private var fileError: String? = nil
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
+    /// Zero-width space that prefixes the hidden field so a Backspace on an
+    /// empty draft (which deletes the sentinel) is detectable.
+    private let sentinel = "\u{200B}"
+
     // MARK: Derived
 
-    /// Lowercased words parsed from the field (the last one may be in-progress).
-    private var words: [String] {
-        text.lowercased()
-            .components(separatedBy: .whitespacesAndNewlines)
-            .filter { !$0.isEmpty }
+    /// The full ordered phrase: committed words with the live draft inserted at
+    /// the active slot.
+    private var phrase: [String] {
+        var arr = words
+        if !draft.isEmpty { arr.insert(draft, at: min(activeIndex, arr.count)) }
+        return arr
     }
 
-    /// The in-progress (current) word — the trailing token when the field does
-    /// not end on whitespace.
-    private var currentWord: String {
-        guard let last = text.last, !last.isWhitespace else { return "" }
-        return words.last ?? ""
-    }
-
-    private var lengthValid: Bool { [12, 15, 18, 21, 24].contains(words.count) }
-
+    private var lengthValid: Bool { [12, 15, 18, 21, 24].contains(phrase.count) }
     private var allReal: Bool {
-        !words.isEmpty && words.allSatisfy { BIP39Wordlist.english.contains($0) }
+        !phrase.isEmpty && phrase.allSatisfy { BIP39Wordlist.english.contains($0) }
     }
-
-    private var checksumValid: Bool { lengthValid && BIP39.validate(words) }
+    private var checksumValid: Bool { lengthValid && BIP39.validate(phrase) }
     private var canContinue: Bool { checksumValid }
-    private var isLeakedPhrase: Bool { KnownLeakedSeeds.isLeaked(mnemonic: words) }
+    private var isLeakedPhrase: Bool { KnownLeakedSeeds.isLeaked(mnemonic: phrase) }
 
-    /// Up to 3 BIP-39 matches for the current word (the suggestion bar).
+    /// Up to 3 BIP-39 matches for the current word (the suggestion row).
     private var suggestions: [String] {
-        SortedBIP39Words.matches(prefix: currentWord, limit: 3)
+        SortedBIP39Words.matches(prefix: draft, limit: 3)
     }
 
-    /// The inline ghost completion — the remainder of the unique BIP-39 word
-    /// the current word prefixes, or `""` when empty / ambiguous / complete.
+    /// The inline ghost completion — the remainder of the unique BIP-39 word the
+    /// draft prefixes, or `""` when empty / ambiguous / complete.
     private var ghost: String {
-        let prefix = currentWord
-        guard !prefix.isEmpty else { return "" }
-        let matches = SortedBIP39Words.matches(prefix: prefix, limit: 2)
-        guard matches.count == 1, matches[0] != prefix else { return "" }
-        return String(matches[0].dropFirst(prefix.count))
+        guard !draft.isEmpty else { return "" }
+        let matches = SortedBIP39Words.matches(prefix: draft, limit: 2)
+        guard matches.count == 1, matches[0] != draft else { return "" }
+        return String(matches[0].dropFirst(draft.count))
     }
 
-    private enum ChipStatus { case valid, invalid, typing }
+    private enum ChipKind { case valid, invalid, typing }
     private struct ChipModel: Identifiable {
-        let id: Int          // 0-based slot
+        let id: Int            // committed index, or -1 for the typing chip
+        let display: Int       // 1-based number
         let word: String
-        let status: ChipStatus
+        let kind: ChipKind
+        let committedIndex: Int?
         let ghost: String
         let caret: Bool
     }
 
-    /// The chips to render: committed words (green / red) + the current typing
-    /// chip while the field is focused.
+    /// The ordered chips: committed words (green / red) with the typing chip
+    /// spliced in at `activeIndex` while focused.
     private var chips: [ChipModel] {
         var result: [ChipModel] = []
-        let cw = currentWord
-        let committed = focused ? (cw.isEmpty ? words : Array(words.dropLast())) : words
-        for (i, w) in committed.enumerated() {
+        var display = 1
+        let cut = min(activeIndex, words.count)
+        func appendCommitted(_ wi: Int) {
+            let w = words[wi]
             result.append(ChipModel(
-                id: i, word: w,
-                status: BIP39Wordlist.english.contains(w) ? .valid : .invalid,
-                ghost: "", caret: false
+                id: wi, display: display, word: w,
+                kind: BIP39Wordlist.english.contains(w) ? .valid : .invalid,
+                committedIndex: wi, ghost: "", caret: false
             ))
+            display += 1
         }
+        for wi in 0..<cut { appendCommitted(wi) }
         if focused {
             result.append(ChipModel(
-                id: committed.count, word: cw, status: .typing, ghost: ghost, caret: true
+                id: -1, display: display, word: draft, kind: .typing,
+                committedIndex: nil, ghost: ghost, caret: true
             ))
+            display += 1
         }
+        for wi in cut..<words.count { appendCommitted(wi) }
         return result
+    }
+
+    /// Drives the field-growth / chip animation.
+    private var phraseSignature: String {
+        "\(words.joined(separator: "|"))#\(activeIndex)#\(draft)#\(focused ? 1 : 0)"
+    }
+
+    private var fileErrorPresented: Binding<Bool> {
+        Binding(get: { fileError != nil }, set: { if !$0 { fileError = nil } })
     }
 
     // MARK: Body
 
     var body: some View {
-        VStack(spacing: 0) {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 14) {
-                    phraseField
-                    if lengthValid, allReal {
-                        validationLine.padding(.horizontal, 24)
-                    }
-                    hiddenField
+        ScrollView {
+            VStack(alignment: .leading, spacing: 14) {
+                phraseField
+                actionRow
+                if lengthValid, allReal {
+                    validationLine.padding(.horizontal, 24)
                 }
-                .padding(.top, 10)
-                // Forced LTR + English so the chips fill 1→N and digits render
-                // ASCII regardless of the app's locale.
-                .environment(\.layoutDirection, .leftToRight)
-                .environment(\.locale, Locale(identifier: "en"))
+                hiddenField
             }
-            .scrollIndicators(.hidden)
+            .padding(.top, 10)
+            // Forced LTR + English so chips fill 1→N and digits render ASCII
+            // regardless of the app locale.
+            .environment(\.layoutDirection, .leftToRight)
+            .environment(\.locale, Locale(identifier: "en"))
         }
+        .scrollIndicators(.hidden)
         .background(UniColors.Background.primary)
         .navigationTitle("Recovery phrase")
         .navigationBarTitleDisplayMode(.inline)
@@ -142,31 +165,44 @@ struct MnemonicEntryView: View {
                     state.mnemonicPassphrase.isEmpty ? "Add passphrase" : "Edit passphrase"
                 ))
             }
-            ToolbarItemGroup(placement: .keyboard) {
-                suggestionBar
-            }
         }
-        .safeAreaInset(edge: .bottom) {
-            GlassEffectContainer(spacing: UniSpacing.s) {
-                UniButton(title: "Continue", variant: .primary, isEnabled: canContinue) {
-                    if isLeakedPhrase {
-                        isShowingLeakedWarning = true
-                    } else {
-                        onContinue()
-                    }
-                }
-            }
-            .padding(.horizontal, 24)
-            .padding(.bottom, UniSpacing.l)
-        }
+        .safeAreaInset(edge: .bottom) { bottomBar }
         .onAppear {
-            if text.isEmpty {
-                text = state.mnemonicWords.filter { !$0.isEmpty }.joined(separator: " ")
+            if words.isEmpty, draft.isEmpty {
+                let restored = state.mnemonicWords.filter { !$0.isEmpty }
+                words = restored
+                activeIndex = restored.count
+                fieldText = sentinel
             }
             focused = true
         }
-        .onChange(of: text) { _, newValue in handleTextChange(newValue) }
+        .onChange(of: focused) { _, isFocused in
+            // On blur, fold the in-progress word into `words` so it renders as a
+            // committed chip (the typing chip only shows while focused).
+            if !isFocused, !draft.isEmpty {
+                insertCommitted(draft)
+                draft = ""
+                fieldText = sentinel
+                state.mnemonicWords = phrase
+            }
+        }
         .uniHaptic(.success, trigger: canContinue)
+        .fileImporter(
+            isPresented: $isShowingFileImporter,
+            allowedContentTypes: [.plainText, .utf8PlainText, .text, .json, .data],
+            allowsMultipleSelection: false
+        ) { result in
+            handleFileImport(result)
+        }
+        .alert(
+            "Couldn’t read that file",
+            isPresented: fileErrorPresented,
+            presenting: fileError
+        ) { _ in
+            Button("OK", role: .cancel) {}
+        } message: { message in
+            Text(verbatim: message)
+        }
         .sheet(isPresented: $isShowingPassphraseSheet) {
             PassphraseSheet(
                 passphrase: $state.mnemonicPassphrase,
@@ -180,7 +216,7 @@ struct MnemonicEntryView: View {
             LeakedSeedWarningSheet(
                 kind: .mnemonic,
                 onChooseDifferent: {
-                    text = ""
+                    clearAll()
                     isShowingLeakedWarning = false
                     focused = true
                 },
@@ -193,6 +229,29 @@ struct MnemonicEntryView: View {
             .intrinsicHeightSheet()
             .presentationBackground(UniColors.Background.primary)
         }
+    }
+
+    // MARK: Bottom bar (Continue + floating suggestions)
+
+    private var bottomBar: some View {
+        VStack(spacing: 10) {
+            GlassEffectContainer(spacing: UniSpacing.s) {
+                UniButton(title: "Continue", variant: .primary, isEnabled: canContinue) {
+                    if isLeakedPhrase {
+                        isShowingLeakedWarning = true
+                    } else {
+                        onContinue()
+                    }
+                }
+            }
+            // Custom white suggestion pills — float above the keyboard, NOT a
+            // keyboard accessory; the row itself has no background.
+            if focused, !draft.isEmpty, !suggestions.isEmpty {
+                suggestionRow
+            }
+        }
+        .padding(.horizontal, 24)
+        .padding(.bottom, UniSpacing.l)
     }
 
     // MARK: Phrase field (chip flow)
@@ -224,21 +283,21 @@ struct MnemonicEntryView: View {
         .background(UniColors.Background.secondary)
         .contentShape(Rectangle())
         .onTapGesture { focused = true }
-        .animation(reduceMotion ? nil : .spring(response: 0.34, dampingFraction: 0.82), value: text)
+        .animation(reduceMotion ? nil : .spring(response: 0.34, dampingFraction: 0.82), value: phraseSignature)
     }
 
     @ViewBuilder
     private func chipView(_ chip: ChipModel) -> some View {
-        let isInvalid = chip.status == .invalid
+        let isInvalid = chip.kind == .invalid
         let border: Color = {
-            switch chip.status {
+            switch chip.kind {
             case .valid:   return UniColors.PinLock.positive
             case .invalid: return UniColors.Reset.danger
             case .typing:  return UniColors.Text.primary
             }
         }()
         HStack(spacing: 6) {
-            Text(verbatim: "\(chip.id + 1)")
+            Text(verbatim: "\(chip.display)")
                 .font(.system(size: 11, weight: .bold).monospacedDigit())
                 .foregroundStyle(isInvalid ? UniColors.Reset.danger : UniColors.SeedGrid.faint)
             HStack(spacing: 0) {
@@ -253,9 +312,13 @@ struct MnemonicEntryView: View {
         }
         .padding(.horizontal, 13)
         .frame(height: 34)
-        .background(chip.status == .typing ? UniColors.Background.secondary : UniColors.SeedGrid.hairline)
+        .background(chip.kind == .typing ? UniColors.Background.secondary : UniColors.SeedGrid.hairline)
         .overlay {
-            Rectangle().strokeBorder(border, lineWidth: chip.status == .typing ? 2 : 1.5)
+            Rectangle().strokeBorder(border, lineWidth: chip.kind == .typing ? 2 : 1.5)
+        }
+        .contentShape(Rectangle())
+        .onTapGesture {
+            if let ci = chip.committedIndex { editWord(at: ci) }
         }
     }
 
@@ -269,6 +332,44 @@ struct MnemonicEntryView: View {
                 .opacity(on ? 1 : 0)
                 .padding(.leading, 1)
         }
+    }
+
+    // MARK: Action row (Paste / Upload file)
+
+    private var actionRow: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 10) {
+                actionChip("Paste", systemImage: "doc.on.clipboard") { pasteFromClipboard() }
+                actionChip("Upload file", systemImage: "arrow.up.doc") {
+                    UniHapticEngine.shared.play(.selection)
+                    isShowingFileImporter = true
+                }
+            }
+            .padding(.horizontal, 24)
+        }
+    }
+
+    private func actionChip(
+        _ title: LocalizedStringKey,
+        systemImage: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            HStack(spacing: 7) {
+                Image(systemName: systemImage)
+                    .font(.system(size: 14, weight: .semibold))
+                Text(title)
+                    .font(.system(size: 14, weight: .semibold))
+            }
+            .foregroundStyle(UniColors.Text.primary)
+            .padding(.horizontal, 15)
+            .padding(.vertical, 9)
+            .background(
+                UniColors.Fill.secondary,
+                in: RoundedRectangle(cornerRadius: 12, style: .continuous)
+            )
+        }
+        .buttonStyle(.plain)
     }
 
     // MARK: Validation line
@@ -286,42 +387,44 @@ struct MnemonicEntryView: View {
         .foregroundStyle(checksumValid ? UniColors.PinLock.positive : UniColors.Reset.danger)
     }
 
-    // MARK: Suggestion bar (keyboard accessory)
+    // MARK: Suggestion row (custom white pills, detached from keyboard)
 
-    @ViewBuilder
-    private var suggestionBar: some View {
-        if focused, !currentWord.isEmpty, !suggestions.isEmpty {
-            HStack(spacing: 0) {
+    private var suggestionRow: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
                 ForEach(Array(suggestions.enumerated()), id: \.element) { index, word in
-                    if index > 0 {
-                        Rectangle()
-                            .fill(UniColors.SeedGrid.hairline)
-                            .frame(width: 1, height: 22)
-                    }
-                    Button {
-                        UniHapticEngine.shared.play(.selection)
-                        commitSuggestion(word)
-                    } label: {
-                        Text(verbatim: word)
-                            .font(.system(size: 15, weight: index == 0 ? .bold : .semibold))
-                            .foregroundStyle(UniColors.Text.primary)
-                            .frame(maxWidth: .infinity)
-                            .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
+                    suggestionPill(word, isPrimary: index == 0)
                 }
             }
-            .frame(maxWidth: .infinity)
+            .padding(.vertical, 4)
+            .padding(.horizontal, 2)
         }
+    }
+
+    private func suggestionPill(_ word: String, isPrimary: Bool) -> some View {
+        Button {
+            UniHapticEngine.shared.play(.selection)
+            commitSuggestion(word)
+        } label: {
+            Text(verbatim: word)
+                .font(.system(size: 15, weight: isPrimary ? .semibold : .regular))
+                .foregroundStyle(UniColors.Text.primary)
+                .padding(.horizontal, 18)
+                .padding(.vertical, 10)
+                .background(UniColors.Background.secondary, in: Capsule())
+                .overlay(Capsule().strokeBorder(UniColors.SeedGrid.hairline, lineWidth: 1))
+                .shadow(color: Color.black.opacity(0.08), radius: 6, y: 2)
+        }
+        .buttonStyle(.plain)
     }
 
     // MARK: Hidden input
 
-    /// The near-invisible field that holds the phrase text and drives the
-    /// system keyboard. The chip field is the visible surface; the system paste
-    /// menu / keyboard fills this directly (no Paste button needed).
+    /// The near-invisible single-line field that holds `sentinel + draft` and
+    /// drives the keyboard. Return fires `.onSubmit`; the sentinel lets us catch
+    /// Backspace on an empty draft.
     private var hiddenField: some View {
-        TextField("", text: $text)
+        TextField("", text: $fieldText)
             .focused($focused)
             .textInputAutocapitalization(.never)
             .autocorrectionDisabled(true)
@@ -330,52 +433,169 @@ struct MnemonicEntryView: View {
             .textContentType(.password)
             .frame(width: 1, height: 1)
             .opacity(0.02)
+            .onChange(of: fieldText) { _, new in handleFieldChange(new) }
             .onSubmit { acceptGhostAndAdvance() }
     }
 
     // MARK: Input handling
 
-    private func handleTextChange(_ raw: String) {
-        // Normalize: lowercase, keep letters + whitespace only. Newlines from a
-        // line-delimited paste count as whitespace here — `words` /
-        // `currentWord` both split on `.whitespacesAndNewlines`, so they
-        // tokenize as word separators rather than merging adjacent words. The
-        // Return key itself never reaches the (single-line) field; it fires
-        // `.onSubmit` → `acceptGhostAndAdvance()` instead.
-        let cleaned = raw.lowercased().filter { $0.isLetter || $0.isWhitespace }
-        if cleaned != raw {
-            text = cleaned
+    private func handleFieldChange(_ new: String) {
+        guard new.hasPrefix(sentinel) else {
+            // Sentinel deleted → Backspace on an empty draft: edit the
+            // previous chip.
+            backspaceOnEmpty()
+            fieldText = sentinel + draft
             return
         }
-        state.mnemonicWords = words
-        if BIP39Wordlist.english.contains(currentWord) {
-            // A complete valid word just resolved (e.g. via space or full type).
-            UniHapticEngine.shared.play(.selection)
+        let raw = String(new.dropFirst(sentinel.count))
+            .lowercased()
+            .filter { $0.isLetter || $0.isWhitespace }
+        if raw.contains(where: { $0.isWhitespace }) {
+            commitTokens(from: raw)
+        } else if raw != draft {
+            draft = raw
+            fieldText = sentinel + raw
+            syncState()
         }
-        scheduleAutoDismiss()
     }
 
-    /// Accept the unique ghost completion for the current word (if any), commit
-    /// it with a trailing space, and keep the keyboard up for the next word.
+    /// Split a whitespace-bearing buffer into words: everything before the final
+    /// separator commits; a trailing fragment (no closing space) stays the draft.
+    private func commitTokens(from raw: String) {
+        let endsWithSpace = raw.last?.isWhitespace ?? false
+        let tokens = raw.split(whereSeparator: { $0.isWhitespace }).map(String.init)
+        let toCommit = endsWithSpace ? tokens : Array(tokens.dropLast())
+        for word in toCommit { insertCommitted(word) }
+        draft = endsWithSpace ? "" : (tokens.last ?? "")
+        fieldText = sentinel + draft
+        if !toCommit.isEmpty { UniHapticEngine.shared.play(.selection) }
+        syncState()
+    }
+
+    /// Place `word` at the active slot, then return the cursor to the end.
+    private func insertCommitted(_ word: String) {
+        words.insert(word, at: min(activeIndex, words.count))
+        activeIndex = words.count
+    }
+
+    /// Backspace on an empty draft pulls the previous committed word back into
+    /// the draft so it can be re-edited.
+    private func backspaceOnEmpty() {
+        guard draft.isEmpty, activeIndex > 0 else { return }
+        activeIndex -= 1
+        draft = words.remove(at: activeIndex)
+        syncState()
+    }
+
+    /// Accept the unique ghost completion (if any), commit the word, keep typing.
     private func acceptGhostAndAdvance() {
-        let cw = currentWord
-        if !cw.isEmpty, !ghost.isEmpty {
-            text = String(text.dropLast(cw.count)) + cw + ghost + " "
+        if !draft.isEmpty {
+            insertCommitted(draft + ghost)
+            draft = ""
+            fieldText = sentinel
             UniHapticEngine.shared.play(.selection)
-        } else if !cw.isEmpty {
-            text += " "
+            syncState()
         }
-        // `.onSubmit` resigns first responder — re-focus so the user keeps typing.
+        // `.onSubmit` resigns first responder — re-focus to keep going.
         focused = true
     }
 
     private func commitSuggestion(_ word: String) {
-        let cw = currentWord
-        if cw.isEmpty {
-            text += word + " "
-        } else {
-            text = String(text.dropLast(cw.count)) + word + " "
+        insertCommitted(word)
+        draft = ""
+        fieldText = sentinel
+        syncState()
+    }
+
+    /// Remove the tapped word and drop the cursor on its slot to re-enter it.
+    private func editWord(at index: Int) {
+        var target = index
+        // Don't lose an in-progress draft when switching slots.
+        if !draft.isEmpty {
+            let dropped = draft
+            words.insert(dropped, at: min(activeIndex, words.count))
+            if activeIndex <= target { target += 1 }
+            draft = ""
         }
+        guard words.indices.contains(target) else { return }
+        words.remove(at: target)
+        activeIndex = target
+        fieldText = sentinel
+        focused = true
+        UniHapticEngine.shared.play(.selection)
+        syncState()
+    }
+
+    private func pasteFromClipboard() {
+        UniHapticEngine.shared.play(.selection)
+        guard let clipboard = UIPasteboard.general.string, !clipboard.isEmpty else { return }
+        fillFromText(clipboard)
+    }
+
+    private func handleFileImport(_ result: Result<[URL], Error>) {
+        guard case .success(let urls) = result, let url = urls.first else { return }
+        let scoped = url.startAccessingSecurityScopedResource()
+        defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+        guard let data = try? Data(contentsOf: url) else {
+            fileError = "Aperture couldn’t open that file."
+            UniHapticEngine.shared.play(.warning)
+            return
+        }
+        guard let content = String(data: data, encoding: .utf8)
+                ?? String(data: data, encoding: .isoLatin1) else {
+            fileError = "That file isn’t readable text."
+            UniHapticEngine.shared.play(.warning)
+            return
+        }
+        let tokens = content.lowercased().split { !$0.isLetter }.map(String.init)
+        let bip = tokens.filter { BIP39Wordlist.english.contains($0) }
+        if [12, 15, 18, 21, 24].contains(tokens.count)
+            || [12, 15, 18, 21, 24].contains(bip.count)
+            || !bip.isEmpty {
+            fillFromText(content)
+        } else {
+            fileError = "No recovery phrase was found in that file."
+            UniHapticEngine.shared.play(.warning)
+        }
+    }
+
+    /// Parse a mnemonic out of arbitrary text (clipboard or file) and load it
+    /// into the field. Prefers a clean BIP-39 subsequence when the source has
+    /// surrounding text; otherwise loads the raw words so inline validation can
+    /// flag the problem.
+    private func fillFromText(_ raw: String) {
+        let tokens = raw.lowercased().split { !$0.isLetter }.map(String.init)
+        guard !tokens.isEmpty else { return }
+        let bip = tokens.filter { BIP39Wordlist.english.contains($0) }
+        let chosen: [String]
+        if [12, 15, 18, 21, 24].contains(tokens.count) {
+            chosen = tokens
+        } else if [12, 15, 18, 21, 24].contains(bip.count) {
+            chosen = bip
+        } else {
+            chosen = tokens
+        }
+        words = chosen
+        draft = ""
+        activeIndex = chosen.count
+        fieldText = sentinel
+        syncState()
+        UniHapticEngine.shared.play(canContinue ? .success : .selection)
+        if !canContinue { focused = true }
+    }
+
+    private func clearAll() {
+        words = []
+        draft = ""
+        activeIndex = 0
+        fieldText = sentinel
+        state.mnemonicWords = []
+    }
+
+    /// Push the ordered phrase into shared state + arm the auto-dismiss.
+    private func syncState() {
+        state.mnemonicWords = phrase
+        scheduleAutoDismiss()
     }
 
     /// Auto-dismiss the keyboard once the whole phrase validates, revealing the
