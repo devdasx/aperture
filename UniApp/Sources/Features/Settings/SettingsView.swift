@@ -66,8 +66,9 @@ enum SettingsDestination: Hashable, Codable {
 }
 
 struct SettingsView: View {
-    /// 2026-06-23 — Settings is no longer a tab; it's presented as a sheet
-    /// from the wallet-home toolbar's gear, so it gets a Done item again.
+    /// 2026-06-23 — Settings is no longer a tab; it's presented full screen
+    /// from the wallet-home toolbar's gear, so it gets a Done item again
+    /// (a full screen cover has no swipe-to-dismiss).
     @Environment(\.dismiss) private var dismiss
 
     /// Settings is a top-level tab root (`MainTabView` — 2026-06-09)
@@ -272,7 +273,7 @@ struct SettingsView: View {
             .background(UniColors.Background.primary)
             .navigationTitle(Text("Settings"))
             .navigationBarTitleDisplayMode(.large)
-            // 2026-06-23 — presented as a sheet from the wallet-home toolbar
+            // 2026-06-23 — presented full screen from the wallet-home toolbar
             // gear (no longer a tab), so a Done item closes it.
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
@@ -296,10 +297,10 @@ struct SettingsView: View {
                 case .about:                     AboutView()
                 }
             }
-            // Done item restored (2026-06-23): Settings is presented as a
-            // sheet from the wallet-home toolbar gear again, so it has a
-            // parent presentation to dismiss back to (see the `.toolbar`
-            // above). The deep-link stamp is still consumed on appear.
+            // Done item restored (2026-06-23): Settings is presented full
+            // screen from the wallet-home toolbar gear, so it has a parent
+            // presentation to dismiss back to (see the `.toolbar` above).
+            // The deep-link stamp is still consumed on appear.
             .onAppear { consumeDeepLink() }
             .onChange(of: settingsDeepLink) { _, _ in consumeDeepLink() }
             // Last-screen restoration mirror (2026-06-13). Every push

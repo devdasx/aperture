@@ -7,7 +7,7 @@ import TipKit
 /// tabs the user navigates between — **Wallet**, **Swap**, **Browser**
 /// — via the native iOS 26 `TabView` + `Tab(...)` API. **Settings is no
 /// longer a tab (2026-06-23):** it moved to the wallet-home toolbar's
-/// trailing gear and is presented as a sheet (the historical "why a
+/// trailing gear and is presented full screen (the historical "why a
 /// TabView, not a sheet" note below predates that reversal).
 ///
 /// **Design intent (one sentence, Rule #2 §D.1):** give the user one
