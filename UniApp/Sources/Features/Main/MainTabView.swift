@@ -152,6 +152,12 @@ struct MainTabView: View {
     /// (the Liquid-Glass-style left↔right move).
     @Namespace private var tabHighlight
 
+    /// **Custom-bar sizing (single source of truth).** The left pill and the
+    /// Actions circle are BOTH framed to `barHeight`, so they can never differ.
+    /// `tabWidth` is each Wallet/Browser cell's width. Tune these two numbers.
+    private let barHeight: CGFloat = 60
+    private let tabWidth: CGFloat = 84
+
     /// Computed binding that round-trips the persisted raw through
     /// the `MainTab` enum. Unknown rawValues (manual UserDefaults
     /// fiddling, future tab renames) fall back to `.wallet`.
@@ -347,17 +353,17 @@ struct MainTabView: View {
     // won't resize the system bar). Tune the frame sizes / paddings to taste.
     private var customBar: some View {
         HStack(spacing: UniSpacing.s) {
-            // Left — Wallet · Browser in one glass capsule.
-            HStack(spacing: UniSpacing.xxs) {
+            // Left — Wallet · Browser in one glass capsule, framed to barHeight.
+            HStack(spacing: 0) {
                 barButton(.wallet, systemImage: "wallet.pass.fill", name: "Wallet")
                 barButton(.browser, systemImage: "safari", name: "Browser")
             }
-            .padding(UniSpacing.xxs)
+            .frame(height: barHeight)
             .glassEffect(.regular, in: .capsule)
 
             Spacer(minLength: 0)
 
-            // Right — the Actions launcher (zoom source).
+            // Right — the Actions launcher (zoom source), also barHeight tall.
             actionsButton
         }
         .padding(.horizontal, UniSpacing.m)
@@ -382,14 +388,17 @@ struct MainTabView: View {
             Image(systemName: systemImage)
                 .font(.system(size: 22, weight: .semibold))
                 .foregroundStyle(isActive ? UniColors.Text.primary : UniColors.Icon.secondary)
-                .frame(width: 64, height: 52)
+                // Fill the full bar height + the wider tab width.
+                .frame(width: tabWidth, height: barHeight)
                 .background {
                     // ONE highlight shared across both tabs via matchedGeometryEffect:
                     // it animates its frame from the old tab to the new one, so the
                     // glass pill appears to slide across rather than pop in/out.
+                    // Inset 6pt so it floats inside the glass capsule, not flush.
                     if isActive {
                         Capsule(style: .continuous)
                             .fill(UniColors.Background.primary)
+                            .padding(6)
                             .matchedGeometryEffect(id: "activeTabHighlight", in: tabHighlight)
                     }
                 }
@@ -409,13 +418,13 @@ struct MainTabView: View {
             isShowingActions = true
         } label: {
             Image(systemName: "arrow.left.arrow.right")
-                .font(.system(size: 22, weight: .semibold))
+                .font(.system(size: 20, weight: .semibold))
                 .foregroundStyle(UniColors.Text.primary)
-                // 60×60 — the SAME height as the left pill (52 content + 2×4
-                // padding), so the bar reads as one row. Uses `.glassEffect`
-                // (not `.buttonStyle(.glass)`, which auto-pads to a different
-                // size) so the height matches exactly.
-                .frame(width: 60, height: 60)
+                // Framed to `barHeight` × `barHeight` — IDENTICAL height to the
+                // left pill (both framed to `barHeight`), so they CAN'T differ.
+                // The wide two-arrows glyph is set 2pt smaller than the pill icons
+                // (20 vs 22) so it doesn't read as visually larger.
+                .frame(width: barHeight, height: barHeight)
                 .glassEffect(.regular.interactive(), in: .circle)
                 .contentShape(Circle())
         }
