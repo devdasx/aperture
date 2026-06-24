@@ -134,44 +134,30 @@ struct MainTabView: View {
     @State private var createPath: NavigationPath = NavigationPath()
     @State private var importPath: NavigationPath = NavigationPath()
 
-    /// **Actions button (2026-06-24).** A native Liquid-Glass circular button
-    /// floating bottom-trailing over the bar — the 1inch-style action launcher.
-    /// It lives here (not as a tab) so the picker can zoom natively out of it:
-    /// `matchedTransitionSource` on the button ↔ `navigationTransition(.zoom)`
-    /// on the sheet, both in this view sharing one `@Namespace`, driven by local
-    /// `@State` (a tab item can't be a zoom source on iOS 26, and the
-    /// `@Observable`-driven variant of the zoom is broken — FB21812568).
-    @State private var isShowingActions: Bool = false
-    /// The tile the user tapped; applied in the picker's `onDismiss` so the
-    /// wallet-home flow opens only after the picker has fully dismissed.
-    @State private var pendingActionFlow: WalletShellSignal.Flow?
-    @Namespace private var actionsZoom
-    private let actionsZoomID = "actions"
-    /// Drives the sliding active-tab highlight in the custom bar — the single
-    /// highlight capsule animates between Wallet/Browser via `matchedGeometryEffect`
-    /// (the Liquid-Glass-style left↔right move).
-    @Namespace private var tabHighlight
-
-    /// **Custom-bar sizing (single source of truth).** The left pill and the
-    /// Actions circle are BOTH framed to `barHeight`, so they can never differ.
-    /// `tabWidth` is each Wallet/Browser cell's width. Tune these two numbers.
-    private let barHeight: CGFloat = 60
-    private let tabWidth: CGFloat = 84
-
     /// Computed binding that round-trips the persisted raw through
     /// the `MainTab` enum. Unknown rawValues (manual UserDefaults
     /// fiddling, future tab renames) fall back to `.wallet`.
     private var selectedTab: Binding<MainTab> {
         Binding(
             get: {
-                // Only Wallet / Browser are real tabs now (Settings → toolbar,
-                // Actions → floating glass button). Any other persisted/legacy
-                // value resolves to the Wallet tab so the TabView never lands on
-                // a missing tab.
+                // `.settings` / `.actions` (and any legacy value) are not real tabs anymore
+                // (2026-06-23). Any such persisted/transient value resolves to
+                // the Wallet tab so the TabView never lands on a missing tab.
                 let resolved = MainTab(rawValue: selectedTabRaw) ?? .wallet
                 return (resolved == .wallet || resolved == .browser) ? resolved : .wallet
             },
             set: { newValue in
+                // The Actions item is NOT a destination — tapping it opens the
+                // Send/Receive/Connect/Templates sheet on the wallet home
+                // and leaves the selection where it was (switching to Wallet so
+                // the home is mounted to present the sheet).
+                if newValue == .actions {
+                    selectedTabRaw = MainTab.wallet.rawValue
+                    DispatchQueue.main.async {
+                        WalletShellSignal.shared.requestActions()
+                    }
+                    return
+                }
                 // Re-tapping the already-selected Wallet tab pops its nav
                 // stack back to the home root — the standard iOS tab gesture,
                 // which `TabView` does NOT perform automatically for a
@@ -204,85 +190,68 @@ struct MainTabView: View {
 
     var body: some View {
         TabView(selection: selectedTab) {
-            // MARK: - Wallet (icon-only — 2026-06-24)
+            // MARK: - Wallet (native icon — 2026-06-23)
             //
-            // Icon-only by direction (2026-06-24: "remove the texts at all").
-            // iOS 26's `Tab(value:content:label:)` takes a `label:` closure;
-            // rendering ONLY the SF Symbol (no `Text`) makes the native Liquid
-            // Glass bar show the glyph alone. The VoiceOver name is preserved via
-            // `.accessibilityLabel`. The long-press wallet menu still installs
-            // onto the `UITabBar` at index 0 (compact width only).
-            Tab(value: MainTab.wallet) {
+            // The wallet avatar moved OFF the bar (user direction): the Wallet
+            // tab is a plain native tab now (`wallet.pass.fill`). The wallet
+            // identity + switcher live on the wallet-home pill. The long-press
+            // wallet menu still installs onto the `UITabBar` at index 0
+            // (compact width only).
+            Tab("Wallet", systemImage: "wallet.pass.fill", value: MainTab.wallet) {
                 WalletHomeView()
-                    // Hide the system tab bar — the custom bar (below) replaces it.
-                    .toolbar(.hidden, for: .tabBar)
-            } label: {
-                Image(systemName: "wallet.pass.fill")
-                    .accessibilityLabel(Text("Wallet"))
+                    .background(alignment: .bottom) {
+                        if horizontalSizeClass == .compact {
+                            TabBarLongPressInstaller(tabIndex: 0) {
+                                buildWalletTabMenu()
+                            }
+                            .frame(width: 0, height: 0)
+                            .allowsHitTesting(false)
+                        }
+                    }
             }
 
-            // MARK: - Browser (icon-only — 2026-06-24)
+            // MARK: - Browser (normal tab, native bottom search — 2026-06-23)
             //
-            // The `safari` glyph, icon-only. On iOS 26 `BrowserHomeView`'s
-            // `.searchable` docks the domain search field at the bottom above the
-            // bar; this is NOT a `.search`-role tab, so the bar keeps the safari
-            // icon and the tabs stay put instead of morphing away.
-            Tab(value: MainTab.browser) {
+            // A normal tab with the `safari` glyph (user direction). On iOS 26
+            // `BrowserHomeView`'s `.searchable` docks the domain search field at
+            // the BOTTOM, above the tab bar, with the tab bar staying — the
+            // native behavior the user asked for. NOT a `.search`-role tab, so
+            // the bar shows the safari icon (not a magnifier) and the tabs stay
+            // put instead of morphing away.
+            Tab("Browser", systemImage: "safari", value: MainTab.browser) {
                 NavigationStack {
                     BrowserHomeView()
                 }
-                // Hide the system tab bar — the custom bar (below) replaces it.
-                // The browser's `.searchable` lives in the nav bar (top), so the
-                // custom bottom bar never hides it.
-                .toolbar(.hidden, for: .tabBar)
-            } label: {
-                Image(systemName: "safari")
-                    .accessibilityLabel(Text("Browser"))
             }
 
-            // 2026-06-23 — Settings is no longer a tab (wallet-home toolbar gear).
-            // 2026-06-24 — Actions is no longer a tab either; it's in the custom bar.
+            // MARK: - Actions (sheet trigger, not a destination — 2026-06-23)
+            //
+            // Tapping this opens the Send / Receive / Connect / Templates
+            // sheet on the wallet home. The selection binding intercepts
+            // `.actions` (it never becomes the active tab), switches to Wallet,
+            // and asks `WalletHomeView` to present the sheet — so the content
+            // here is never shown.
+            Tab("Actions", systemImage: "arrow.left.arrow.right", value: MainTab.actions) {
+                Color.clear
+            }
+
+            // 2026-06-23 — Settings is no longer a tab. Per user direction
+            // it moved to the wallet-home toolbar (the gear on the app bar's
+            // trailing side), presented as a sheet from `WalletHomeView`.
+            // The bottom bar is now tabs: Wallet · Browser · Actions.
         }
+        // **Sidebar-adaptable (2026-06-16).** One native modifier turns
+        // the four `Tab(...)` into a size-class-adaptive shell: the
+        // EXACT Liquid Glass bottom tab bar at compact width (iPhone,
+        // iPad portrait, narrow Mac), the EXACT same four tabs lifted
+        // into a native Liquid Glass sidebar at regular width (iPad
+        // landscape, wide Mac) — each tab's existing NavigationStack
+        // becoming the detail pane. No NavigationSplitView rebuild; the
+        // system owns the morph. A no-op on compact-only iPhones.
+        .tabViewStyle(.sidebarAdaptable)
         // Fire a selection haptic on tab change. Per Rule #10 §A,
         // tab selection IS the canonical `.selection` haptic.
         .uniHaptic(.selection, trigger: selectedTabRaw)
-        // **Custom bottom bar (2026-06-24, user direction — bigger, 1inch-style).**
-        // The system tab bar is hidden (above) and replaced with a larger
-        // Liquid-Glass bar docked via `safeAreaInset` — the only way to control
-        // the bar's SIZE, which iOS 26 doesn't expose for the system bar. The
-        // `TabView` still owns content, state, and the browser's native search;
-        // this is purely the visual control. `safeAreaInset` reserves the space
-        // so no content is ever hidden behind the bar.
-        .safeAreaInset(edge: .bottom) {
-            customBar
-        }
-        // **Actions picker — zooms out of the button.** Local `@State` trigger +
-        // shared `actionsZoom` namespace = the import-passphrase pattern. On
-        // dismiss, the chosen flow is handed to the wallet home (see below).
-        .sheet(isPresented: $isShowingActions, onDismiss: {
-            // The picker has FULLY dismissed — now open the chosen flow on the
-            // wallet home (switch to Wallet so it's mounted). Deferring to
-            // `onDismiss` preserves the dismiss-then-present ordering across the
-            // two views (you can't present one sheet while another dismisses).
-            if let flow = pendingActionFlow {
-                pendingActionFlow = nil
-                selectedTabRaw = MainTab.wallet.rawValue
-                WalletShellSignal.shared.requestFlow(flow)
-            }
-        }) {
-            WalletActionsSheet(
-                canSend: activeWallet?.kind != .watchOnly,
-                onSend: { pendingActionFlow = .send; isShowingActions = false },
-                onReceive: { pendingActionFlow = .receive; isShowingActions = false },
-                onConnect: { pendingActionFlow = .connect; isShowingActions = false }
-            )
-            .uniAppEnvironment()
-            .uniSheetDetents([.medium, .large])
-            .presentationDragIndicator(.visible)
-            .presentationBackground(UniColors.Background.primary)
-            // Native iOS 26 zoom — the picker morphs out of the Actions button.
-            .navigationTransition(.zoom(sourceID: actionsZoomID, in: actionsZoom))
-        }
         // Wallet icon picker — surfaced by the "Customise icon" item
         // in the long-press context menu. Reuses
         // `WalletIconPickerSheet`, the same primitive presented from
@@ -342,101 +311,6 @@ struct MainTabView: View {
             .uniAppEnvironment()
             .presentationBackground(UniColors.Background.primary)
         }
-    }
-
-    // MARK: - Custom bottom bar (2026-06-24 — bigger, 1inch-style, native glass)
-    //
-    // Wallet · Browser sit in a left glass capsule (active tab highlighted); the
-    // Actions launcher is a separate glass circle on the right — the 1inch split
-    // layout, all native (`.glassEffect`, SF Symbols). The sizes here are
-    // deliberately larger than the system bar (that's the whole point — iOS 26
-    // won't resize the system bar). Tune the frame sizes / paddings to taste.
-    private var customBar: some View {
-        HStack(spacing: UniSpacing.s) {
-            // Left — Wallet · Browser. The `GlassEffectContainer` lets the active
-            // highlight's glass MORPH between tabs natively (Liquid-Glass flow)
-            // via `glassEffectID` (see `barButton`).
-            GlassEffectContainer(spacing: 0) {
-                HStack(spacing: 0) {
-                    barButton(.wallet, systemImage: "wallet.pass.fill", name: "Wallet")
-                    barButton(.browser, systemImage: "safari", name: "Browser")
-                }
-                .frame(height: barHeight)
-                .glassEffect(.regular, in: .capsule)
-            }
-
-            Spacer(minLength: 0)
-
-            // Right — the Actions launcher (zoom source), also barHeight tall.
-            actionsButton
-        }
-        .padding(.horizontal, UniSpacing.m)
-        .padding(.top, UniSpacing.xs)
-    }
-
-    /// One tab inside the left glass capsule. The active tab gets a solid
-    /// highlight; re-tapping the active Wallet tab pops its stack to root (the
-    /// same gesture the system bar gave us).
-    private func barButton(_ tab: MainTab, systemImage: String, name: LocalizedStringKey) -> some View {
-        let isActive = (MainTab(rawValue: selectedTabRaw) ?? .wallet) == tab
-        return Button {
-            if tab == .wallet, isActive {
-                TabReselectSignal.shared.walletReselectToken &+= 1
-            }
-            // Animate the selection so the active highlight SLIDES between tabs
-            // (the Liquid-Glass left↔right move) instead of snapping.
-            withAnimation(.snappy(duration: 0.34)) {
-                selectedTabRaw = tab.rawValue
-            }
-        } label: {
-            Image(systemName: systemImage)
-                .font(.system(size: 22, weight: .semibold))
-                .foregroundStyle(isActive ? UniColors.Text.primary : UniColors.Icon.secondary)
-                // Fill the full bar height + the wider tab width.
-                .frame(width: tabWidth, height: barHeight)
-                .background {
-                    // The active highlight is a GLASS element with a stable
-                    // `glassEffectID`. Inside the `GlassEffectContainer` above,
-                    // when the active tab changes the glass MORPHS to the new
-                    // position — the native iOS 26 Liquid-Glass flow (default
-                    // `.matchedGeometry` glass transition), not a rigid slide.
-                    if isActive {
-                        Capsule(style: .continuous)
-                            .fill(Color.clear)
-                            .glassEffect(.regular, in: .capsule)
-                            .glassEffectID("activeTab", in: tabHighlight)
-                            .padding(6)
-                    }
-                }
-                .contentShape(Capsule(style: .continuous))
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(Text(name))
-    }
-
-    // MARK: - Actions launcher (the bar's right glass button — zoom source)
-    //
-    // `matchedTransitionSource(id:in:)` here pairs with the picker sheet's
-    // `navigationTransition(.zoom(sourceID:in:))` (above), sharing the
-    // `actionsZoom` namespace, so the picker scales out of THIS button.
-    private var actionsButton: some View {
-        Button {
-            isShowingActions = true
-        } label: {
-            Image(systemName: "arrow.left.arrow.right")
-                .font(.system(size: 20, weight: .semibold))
-                .foregroundStyle(UniColors.Text.primary)
-                // Framed to `barHeight` × `barHeight` — IDENTICAL height to the
-                // left pill (both framed to `barHeight`), so they CAN'T differ.
-                // The wide two-arrows glyph is set 2pt smaller than the pill icons
-                // (20 vs 22) so it doesn't read as visually larger.
-                .frame(width: barHeight, height: barHeight)
-                .glassEffect(.regular.interactive(), in: .circle)
-                .contentShape(Circle())
-        }
-        .buttonStyle(.plain)
-        .matchedTransitionSource(id: actionsZoomID, in: actionsZoom)
-        .accessibilityLabel(Text("Actions"))
     }
 
     // MARK: - Wallet tab label (avatar only — no "Wallet" text)
