@@ -359,12 +359,18 @@ struct MainTabView: View {
             Image(systemName: "arrow.left.arrow.right")
                 .font(.system(size: 20, weight: .semibold))
         }
-        .buttonStyle(.glassProminent)
+        // `.glass` (regular) = the SAME translucent Liquid-Glass material as the
+        // tab-bar pill, so the button reads as part of the bar. NOT
+        // `.glassProminent` (that's the filled/dark style that rendered black).
+        .buttonStyle(.glass)
         .buttonBorderShape(.circle)
         .controlSize(.large)
         .matchedTransitionSource(id: actionsZoomID, in: actionsZoom)
+        // Sit it on the bar's row, trailing edge. The bottom inset lifts it off
+        // the home-indicator safe area to the floating bar's height — tune this
+        // one value if it's a hair high/low against the pill.
         .padding(.trailing, UniSpacing.l)
-        .padding(.bottom, UniSpacing.xs)
+        .padding(.bottom, UniSpacing.s)
         .accessibilityLabel(Text("Actions"))
     }
 
