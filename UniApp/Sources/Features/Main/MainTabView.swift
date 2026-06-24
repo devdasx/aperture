@@ -204,15 +204,8 @@ struct MainTabView: View {
             // onto the `UITabBar` at index 0 (compact width only).
             Tab(value: MainTab.wallet) {
                 WalletHomeView()
-                    .background(alignment: .bottom) {
-                        if horizontalSizeClass == .compact {
-                            TabBarLongPressInstaller(tabIndex: 0) {
-                                buildWalletTabMenu()
-                            }
-                            .frame(width: 0, height: 0)
-                            .allowsHitTesting(false)
-                        }
-                    }
+                    // Hide the system tab bar — the custom bar (below) replaces it.
+                    .toolbar(.hidden, for: .tabBar)
             } label: {
                 Image(systemName: "wallet.pass.fill")
                     .accessibilityLabel(Text("Wallet"))
@@ -228,32 +221,30 @@ struct MainTabView: View {
                 NavigationStack {
                     BrowserHomeView()
                 }
+                // Hide the system tab bar — the custom bar (below) replaces it.
+                // The browser's `.searchable` lives in the nav bar (top), so the
+                // custom bottom bar never hides it.
+                .toolbar(.hidden, for: .tabBar)
             } label: {
                 Image(systemName: "safari")
                     .accessibilityLabel(Text("Browser"))
             }
 
             // 2026-06-23 — Settings is no longer a tab (wallet-home toolbar gear).
-            // 2026-06-24 — Actions is no longer a tab either: it's the floating
-            // glass button below, so the picker can zoom out of it natively.
+            // 2026-06-24 — Actions is no longer a tab either; it's in the custom bar.
         }
-        // **Sidebar-adaptable (2026-06-16).** One native modifier turns
-        // the four `Tab(...)` into a size-class-adaptive shell: the
-        // EXACT Liquid Glass bottom tab bar at compact width (iPhone,
-        // iPad portrait, narrow Mac), the EXACT same four tabs lifted
-        // into a native Liquid Glass sidebar at regular width (iPad
-        // landscape, wide Mac) — each tab's existing NavigationStack
-        // becoming the detail pane. No NavigationSplitView rebuild; the
-        // system owns the morph. A no-op on compact-only iPhones.
-        .tabViewStyle(.sidebarAdaptable)
         // Fire a selection haptic on tab change. Per Rule #10 §A,
         // tab selection IS the canonical `.selection` haptic.
         .uniHaptic(.selection, trigger: selectedTabRaw)
-        // **Actions button (2026-06-24).** Floats over the bar, bottom-trailing —
-        // the 1inch-style action launcher, as a NATIVE Liquid-Glass button (not a
-        // tab, so the picker can zoom out of it).
-        .overlay(alignment: .bottomTrailing) {
-            actionsButton
+        // **Custom bottom bar (2026-06-24, user direction — bigger, 1inch-style).**
+        // The system tab bar is hidden (above) and replaced with a larger
+        // Liquid-Glass bar docked via `safeAreaInset` — the only way to control
+        // the bar's SIZE, which iOS 26 doesn't expose for the system bar. The
+        // `TabView` still owns content, state, and the browser's native search;
+        // this is purely the visual control. `safeAreaInset` reserves the space
+        // so no content is ever hidden behind the bar.
+        .safeAreaInset(edge: .bottom) {
+            customBar
         }
         // **Actions picker — zooms out of the button.** Local `@State` trigger +
         // shared `actionsZoom` namespace = the import-passphrase pattern. On
@@ -343,34 +334,77 @@ struct MainTabView: View {
         }
     }
 
-    // MARK: - Actions button (floating Liquid-Glass launcher — 2026-06-24)
+    // MARK: - Custom bottom bar (2026-06-24 — bigger, 1inch-style, native glass)
     //
-    // A native iOS 26 Liquid-Glass circular button, floating bottom-trailing
-    // over the bar (the 1inch-style action launcher). It is the zoom SOURCE for
-    // the picker sheet: `matchedTransitionSource(id:in:)` here pairs with the
-    // sheet's `navigationTransition(.zoom(sourceID:in:))` above, sharing the
-    // `actionsZoom` namespace, so the picker scales out of this button. The
-    // trailing/bottom padding sits it at the bar's level on the right; tune to
-    // taste against the device.
+    // Wallet · Browser sit in a left glass capsule (active tab highlighted); the
+    // Actions launcher is a separate glass circle on the right — the 1inch split
+    // layout, all native (`.glassEffect`, SF Symbols). The sizes here are
+    // deliberately larger than the system bar (that's the whole point — iOS 26
+    // won't resize the system bar). Tune the frame sizes / paddings to taste.
+    private var customBar: some View {
+        HStack(spacing: UniSpacing.s) {
+            // Left — Wallet · Browser in one glass capsule.
+            HStack(spacing: UniSpacing.xxs) {
+                barButton(.wallet, systemImage: "wallet.pass.fill", name: "Wallet")
+                barButton(.browser, systemImage: "safari", name: "Browser")
+            }
+            .padding(UniSpacing.xxs)
+            .glassEffect(.regular, in: .capsule)
+
+            Spacer(minLength: 0)
+
+            // Right — the Actions launcher (zoom source).
+            actionsButton
+        }
+        .padding(.horizontal, UniSpacing.m)
+        .padding(.top, UniSpacing.xs)
+    }
+
+    /// One tab inside the left glass capsule. The active tab gets a solid
+    /// highlight; re-tapping the active Wallet tab pops its stack to root (the
+    /// same gesture the system bar gave us).
+    private func barButton(_ tab: MainTab, systemImage: String, name: LocalizedStringKey) -> some View {
+        let isActive = (MainTab(rawValue: selectedTabRaw) ?? .wallet) == tab
+        return Button {
+            if tab == .wallet, isActive {
+                TabReselectSignal.shared.walletReselectToken &+= 1
+            }
+            selectedTabRaw = tab.rawValue
+        } label: {
+            Image(systemName: systemImage)
+                .font(.system(size: 22, weight: .semibold))
+                .foregroundStyle(isActive ? UniColors.Text.primary : UniColors.Icon.secondary)
+                .frame(width: 64, height: 52)
+                .background {
+                    if isActive {
+                        Capsule(style: .continuous).fill(UniColors.Background.primary)
+                    }
+                }
+                .contentShape(Capsule(style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(Text(name))
+    }
+
+    // MARK: - Actions launcher (the bar's right glass button — zoom source)
+    //
+    // `matchedTransitionSource(id:in:)` here pairs with the picker sheet's
+    // `navigationTransition(.zoom(sourceID:in:))` (above), sharing the
+    // `actionsZoom` namespace, so the picker scales out of THIS button.
     private var actionsButton: some View {
         Button {
             isShowingActions = true
         } label: {
             Image(systemName: "arrow.left.arrow.right")
-                .font(.system(size: 20, weight: .semibold))
+                .font(.system(size: 22, weight: .semibold))
+                .frame(width: 56, height: 56)
+                .contentShape(Circle())
         }
-        // `.glass` (regular) = the SAME translucent Liquid-Glass material as the
-        // tab-bar pill, so the button reads as part of the bar. NOT
-        // `.glassProminent` (that's the filled/dark style that rendered black).
+        // `.glass` (regular) = the same translucent material as the pill, NOT the
+        // filled/dark `.glassProminent` (which rendered black).
         .buttonStyle(.glass)
         .buttonBorderShape(.circle)
-        .controlSize(.large)
         .matchedTransitionSource(id: actionsZoomID, in: actionsZoom)
-        // Sit it on the bar's row, trailing edge. The bottom inset lifts it off
-        // the home-indicator safe area to the floating bar's height — tune this
-        // one value if it's a hair high/low against the pill.
-        .padding(.trailing, UniSpacing.l)
-        .padding(.bottom, UniSpacing.s)
         .accessibilityLabel(Text("Actions"))
     }
 
