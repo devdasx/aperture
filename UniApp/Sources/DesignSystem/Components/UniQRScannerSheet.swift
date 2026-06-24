@@ -32,8 +32,8 @@ import UniformTypeIdentifiers
 struct UniQRScannerSheet: View {
     /// Inline title (default "Scan").
     var title: LocalizedStringKey = "Scan"
-    /// Hint under the reticle while scanning.
-    var prompt: LocalizedStringKey = "Scan any QR code · Wallet address or WalletConnect"
+    /// Hint shown above the bottom controls while scanning.
+    var prompt: LocalizedStringKey = "You can scan a WalletConnect, an address or a payment request"
     /// **Raw-deliver mode.** When set, ANY decoded payload (camera / gallery /
     /// paste) is handed straight back and the scanner closes — no
     /// classification, no result sheet. Used by the Send recipient field, which
@@ -85,7 +85,7 @@ struct UniQRScannerSheet: View {
         }
     }
 
-    // MARK: - Top bar (close · title · torch)
+    // MARK: - Top bar (close only — flash/gallery moved to the bottom)
 
     private var topBar: some View {
         VStack {
@@ -95,21 +95,38 @@ struct UniQRScannerSheet: View {
                     dismiss()
                 }
                 Spacer()
-                Text(title)
-                    .font(UniTypography.body.weight(.semibold))
-                    .foregroundStyle(.white)
-                Spacer()
-                if permissionState == .granted, cameraView?.isTorchAvailable ?? false {
-                    circleControl(systemImage: isTorchOn ? "flashlight.on.fill" : "flashlight.off.fill", filled: isTorchOn) {
-                        toggleTorch()
-                    }
-                } else {
-                    Color.clear.frame(width: 40, height: 40)
-                }
             }
             .padding(.horizontal, UniSpacing.l)
             .padding(.top, UniSpacing.s)
             Spacer()
+        }
+    }
+
+    // MARK: - Bottom controls (flash · gallery — granted state)
+    //
+    // The reference layout: a flash toggle bottom-left and a gallery button
+    // bottom-right, the prompt centred above. Both are 40×40 glass circles
+    // matching the close button, so the chrome reads as one family.
+    private var bottomControls: some View {
+        HStack {
+            if cameraView?.isTorchAvailable ?? false {
+                circleControl(
+                    systemImage: isTorchOn ? "bolt.fill" : "bolt.slash.fill",
+                    filled: isTorchOn
+                ) { toggleTorch() }
+            } else {
+                Color.clear.frame(width: 40, height: 40)
+            }
+            Spacer()
+            PhotosPicker(selection: $photoItem, matching: .images, photoLibrary: .shared()) {
+                Image(systemName: "photo.on.rectangle")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .frame(width: 40, height: 40)
+                    .glassEffect(.regular, in: .circle)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(Text("Gallery"))
         }
     }
 
@@ -183,14 +200,15 @@ struct UniQRScannerSheet: View {
             VStack(spacing: UniSpacing.l) {
                 Spacer()
                 if detection == nil {
+                    noteLine
                     Text(prompt)
                         .font(UniTypography.subheadline)
-                        .foregroundStyle(.white.opacity(0.85))
+                        .foregroundStyle(.white.opacity(0.9))
                         .multilineTextAlignment(.center)
                         .padding(.horizontal, UniSpacing.xl)
-                    noteLine
-                    actionBar(showsTorch: true)
-                        .padding(.bottom, UniSpacing.l)
+                    bottomControls
+                        .padding(.horizontal, UniSpacing.l)
+                        .padding(.bottom, UniSpacing.s)
                 }
             }
 
