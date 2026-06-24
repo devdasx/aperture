@@ -147,6 +147,10 @@ struct MainTabView: View {
     @State private var pendingActionFlow: WalletShellSignal.Flow?
     @Namespace private var actionsZoom
     private let actionsZoomID = "actions"
+    /// Drives the sliding active-tab highlight in the custom bar — the single
+    /// highlight capsule animates between Wallet/Browser via `matchedGeometryEffect`
+    /// (the Liquid-Glass-style left↔right move).
+    @Namespace private var tabHighlight
 
     /// Computed binding that round-trips the persisted raw through
     /// the `MainTab` enum. Unknown rawValues (manual UserDefaults
@@ -369,15 +373,24 @@ struct MainTabView: View {
             if tab == .wallet, isActive {
                 TabReselectSignal.shared.walletReselectToken &+= 1
             }
-            selectedTabRaw = tab.rawValue
+            // Animate the selection so the active highlight SLIDES between tabs
+            // (the Liquid-Glass left↔right move) instead of snapping.
+            withAnimation(.snappy(duration: 0.34)) {
+                selectedTabRaw = tab.rawValue
+            }
         } label: {
             Image(systemName: systemImage)
                 .font(.system(size: 22, weight: .semibold))
                 .foregroundStyle(isActive ? UniColors.Text.primary : UniColors.Icon.secondary)
                 .frame(width: 64, height: 52)
                 .background {
+                    // ONE highlight shared across both tabs via matchedGeometryEffect:
+                    // it animates its frame from the old tab to the new one, so the
+                    // glass pill appears to slide across rather than pop in/out.
                     if isActive {
-                        Capsule(style: .continuous).fill(UniColors.Background.primary)
+                        Capsule(style: .continuous)
+                            .fill(UniColors.Background.primary)
+                            .matchedGeometryEffect(id: "activeTabHighlight", in: tabHighlight)
                     }
                 }
                 .contentShape(Capsule(style: .continuous))
@@ -397,13 +410,16 @@ struct MainTabView: View {
         } label: {
             Image(systemName: "arrow.left.arrow.right")
                 .font(.system(size: 22, weight: .semibold))
-                .frame(width: 56, height: 56)
+                .foregroundStyle(UniColors.Text.primary)
+                // 60×60 — the SAME height as the left pill (52 content + 2×4
+                // padding), so the bar reads as one row. Uses `.glassEffect`
+                // (not `.buttonStyle(.glass)`, which auto-pads to a different
+                // size) so the height matches exactly.
+                .frame(width: 60, height: 60)
+                .glassEffect(.regular.interactive(), in: .circle)
                 .contentShape(Circle())
         }
-        // `.glass` (regular) = the same translucent material as the pill, NOT the
-        // filled/dark `.glassProminent` (which rendered black).
-        .buttonStyle(.glass)
-        .buttonBorderShape(.circle)
+        .buttonStyle(.plain)
         .matchedTransitionSource(id: actionsZoomID, in: actionsZoom)
         .accessibilityLabel(Text("Actions"))
     }
