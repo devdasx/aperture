@@ -369,7 +369,7 @@ struct AssetDetailView: View {
         case .send:
             guard let addr = address(for: chain) else { return }
             var path = NavigationPath()
-            path.append(SendDestination.recipient(chain: chain, tokenSymbol: sendTokenSymbol, fromAddress: addr))
+            path.append(SendDestination.recipient(chain: chain, tokenSymbol: sendTokenSymbol, fromAddress: addr, prefillRecipient: nil))
             sendPath = path
             isShowingSend = true
         case .receive:

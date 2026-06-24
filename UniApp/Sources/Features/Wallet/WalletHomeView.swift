@@ -234,6 +234,12 @@ struct WalletHomeView: View {
     // flow (dismiss-then-present, no sheet-over-sheet race).
     @State private var isShowingActions: Bool = false
     @State private var isShowingConnectScanner: Bool = false
+    /// The app-bar **Aperture Scanner** (leading toolbar). Auto-detects an
+    /// address (any supported chain) → Send, or a `wc:` URI → WalletConnect.
+    @State private var isShowingScanner: Bool = false
+    /// A scanned address staged to open Send pre-filled, applied in the
+    /// scanner's `onDismiss` (dismiss-then-present, like the Actions flow).
+    @State private var scanPrefill: SendView.ScanPrefill?
     @State private var pendingQuickAction: QuickAction? = nil
     private enum QuickAction { case send, receive, connect }
     /// **Filter & Sort sheet (2026-06-09).** Drives the
@@ -550,10 +556,19 @@ struct WalletHomeView: View {
                 // because toolbar items are navigation affordances, not
                 // commit CTAs (the rule's documented exception).
                 .toolbar {
-                    // 2026-06-23 — the wallet logo was removed from the nav bar
-                    // (user direction): the leading slot is empty, so the
-                    // navigation bar is fully native. Customise-wallet now lives
-                    // only on the long-press menu + Settings → Wallets.
+                    // 2026-06-24 — Scan affordance (leading). Opens the unified
+                    // Aperture Scanner: auto-detects an address (any supported
+                    // chain) → Send pre-filled, or a `wc:` URI → WalletConnect.
+                    // `viewfinder` (not `.circle` — `M-003` forbids `.circle`
+                    // SF Symbols in toolbar surfaces).
+                    ToolbarItem(placement: .topBarLeading) {
+                        Button {
+                            isShowingScanner = true
+                        } label: {
+                            Image(systemName: "qrcode.viewfinder")
+                                .accessibilityLabel(Text("Scan"))
+                        }
+                    }
                     // 2026-06-23 — Settings affordance. Per user
                     // direction Settings left the bottom tab bar and
                     // lives here, on the app bar's trailing side; the
@@ -779,13 +794,32 @@ struct WalletHomeView: View {
         // `.large`-only detent, same Rule #12 §G direction rebuild key +
         // `.uniAppEnvironment()` so theme + locale propagate into the
         // sheet's own scope.
-        .sheet(isPresented: $isShowingSend, onDismiss: { sendPath = NavigationPath() }) {
-            SendView(navigationPath: $sendPath)
+        .sheet(isPresented: $isShowingSend, onDismiss: { sendPath = NavigationPath(); scanPrefill = nil }) {
+            SendView(navigationPath: $sendPath, prefill: scanPrefill)
                 .id(sheetDirectionKey)
                 .uniAppEnvironment()
                 .uniSheetDetents([.large])
                 .presentationDragIndicator(.visible)
                 .presentationBackground(UniColors.Background.primary)
+        }
+        // App-bar Aperture Scanner (leading toolbar). Full auto-detect: a `wc:`
+        // URI pairs WalletConnect; a wallet address (any supported chain) opens
+        // Send pre-filled. The chosen action is staged and applied in
+        // `onDismiss` so we never present Send over a still-dismissing scanner.
+        .sheet(isPresented: $isShowingScanner, onDismiss: {
+            if scanPrefill != nil { isShowingSend = true }
+        }) {
+            UniQRScannerSheet(
+                onConnect: { uri in
+                    isShowingScanner = false
+                    Task { await DAppRequestRouter.shared.handleWalletConnectURI(uri) }
+                },
+                onSend: { chain, address in
+                    scanPrefill = SendView.ScanPrefill(chain: chain, recipient: address)
+                    isShowingScanner = false
+                }
+            )
+            .uniAppEnvironment()
         }
         // Actions sheet (2026-06-23) — opened by the bar's Actions item. A tile
         // sets `pendingQuickAction` + dismisses; `onDismiss` opens the real flow.

@@ -158,7 +158,8 @@ struct AssetNetworkDetailView: View {
         path.append(SendDestination.recipient(
             chain: chain,
             tokenSymbol: sendTokenSymbol,
-            fromAddress: address
+            fromAddress: address,
+            prefillRecipient: nil
         ))
         sendPath = path
         isShowingSend = true
