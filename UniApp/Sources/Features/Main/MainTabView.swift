@@ -190,14 +190,15 @@ struct MainTabView: View {
 
     var body: some View {
         TabView(selection: selectedTab) {
-            // MARK: - Wallet (native icon — 2026-06-23)
+            // MARK: - Wallet (icon-only — 2026-06-24)
             //
-            // The wallet avatar moved OFF the bar (user direction): the Wallet
-            // tab is a plain native tab now (`wallet.pass.fill`). The wallet
-            // identity + switcher live on the wallet-home pill. The long-press
-            // wallet menu still installs onto the `UITabBar` at index 0
-            // (compact width only).
-            Tab("Wallet", systemImage: "wallet.pass.fill", value: MainTab.wallet) {
+            // Icon-only by direction (2026-06-24: "remove the texts at all").
+            // iOS 26's `Tab(value:content:label:)` takes a `label:` closure;
+            // rendering ONLY the SF Symbol (no `Text`) makes the native Liquid
+            // Glass bar show the glyph alone. The VoiceOver name is preserved via
+            // `.accessibilityLabel`. The long-press wallet menu still installs
+            // onto the `UITabBar` at index 0 (compact width only).
+            Tab(value: MainTab.wallet) {
                 WalletHomeView()
                     .background(alignment: .bottom) {
                         if horizontalSizeClass == .compact {
@@ -208,37 +209,51 @@ struct MainTabView: View {
                             .allowsHitTesting(false)
                         }
                     }
+            } label: {
+                Image(systemName: "wallet.pass.fill")
+                    .accessibilityLabel(Text("Wallet"))
             }
 
-            // MARK: - Browser (normal tab, native bottom search — 2026-06-23)
+            // MARK: - Browser (icon-only — 2026-06-24)
             //
-            // A normal tab with the `safari` glyph (user direction). On iOS 26
-            // `BrowserHomeView`'s `.searchable` docks the domain search field at
-            // the BOTTOM, above the tab bar, with the tab bar staying — the
-            // native behavior the user asked for. NOT a `.search`-role tab, so
-            // the bar shows the safari icon (not a magnifier) and the tabs stay
-            // put instead of morphing away.
-            Tab("Browser", systemImage: "safari", value: MainTab.browser) {
+            // The `safari` glyph, icon-only. On iOS 26 `BrowserHomeView`'s
+            // `.searchable` docks the domain search field at the bottom above the
+            // bar; this is NOT a `.search`-role tab, so the bar keeps the safari
+            // icon and the tabs stay put instead of morphing away.
+            Tab(value: MainTab.browser) {
                 NavigationStack {
                     BrowserHomeView()
                 }
+            } label: {
+                Image(systemName: "safari")
+                    .accessibilityLabel(Text("Browser"))
             }
 
-            // MARK: - Actions (sheet trigger, not a destination — 2026-06-23)
+            // MARK: - Actions (trailing-separated, native `.search` role — 2026-06-24)
             //
-            // Tapping this opens the Send / Receive / Connect / Templates
-            // sheet on the wallet home. The selection binding intercepts
-            // `.actions` (it never becomes the active tab), switches to Wallet,
-            // and asks `WalletHomeView` to present the sheet — so the content
-            // here is never shown.
-            Tab("Actions", systemImage: "arrow.left.arrow.right", value: MainTab.actions) {
+            // Moved to the RIGHT, visually separated from Wallet / Browser — the
+            // way iOS 26 renders a `Tab(role: .search)`. That role is the ONLY
+            // native way to pull one tab out to the trailing edge as a standalone
+            // Liquid Glass button (the same primitive Apple Maps / Photos use for
+            // Search — verified against the iOS 26 SDK: `TabRole.search` is the
+            // sole public case). We give it the two-arrows glyph instead of a
+            // magnifier and keep it icon-only; `Tab(value:role:content:label:)`
+            // lets a role-tagged tab carry a custom label.
+            //
+            // It is NOT a destination: the selection binding intercepts `.actions`
+            // — it never becomes the active tab, so the native search-field morph
+            // never fires — switches to Wallet, and asks `WalletHomeView` to
+            // present the Send / Receive / Connect / Templates sheet (native sheet
+            // animation). The `Color.clear` content here is never shown.
+            Tab(value: MainTab.actions, role: .search) {
                 Color.clear
+            } label: {
+                Image(systemName: "arrow.left.arrow.right")
+                    .accessibilityLabel(Text("Actions"))
             }
 
-            // 2026-06-23 — Settings is no longer a tab. Per user direction
-            // it moved to the wallet-home toolbar (the gear on the app bar's
-            // trailing side), presented as a sheet from `WalletHomeView`.
-            // The bottom bar is now tabs: Wallet · Browser · Actions.
+            // 2026-06-23 — Settings is no longer a tab; it lives on the
+            // wallet-home toolbar (trailing gear), presented as a sheet.
         }
         // **Sidebar-adaptable (2026-06-16).** One native modifier turns
         // the four `Tab(...)` into a size-class-adaptive shell: the
