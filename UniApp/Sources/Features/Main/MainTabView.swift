@@ -134,30 +134,34 @@ struct MainTabView: View {
     @State private var createPath: NavigationPath = NavigationPath()
     @State private var importPath: NavigationPath = NavigationPath()
 
+    /// **Actions button (2026-06-24).** A native Liquid-Glass circular button
+    /// floating bottom-trailing over the bar — the 1inch-style action launcher.
+    /// It lives here (not as a tab) so the picker can zoom natively out of it:
+    /// `matchedTransitionSource` on the button ↔ `navigationTransition(.zoom)`
+    /// on the sheet, both in this view sharing one `@Namespace`, driven by local
+    /// `@State` (a tab item can't be a zoom source on iOS 26, and the
+    /// `@Observable`-driven variant of the zoom is broken — FB21812568).
+    @State private var isShowingActions: Bool = false
+    /// The tile the user tapped; applied in the picker's `onDismiss` so the
+    /// wallet-home flow opens only after the picker has fully dismissed.
+    @State private var pendingActionFlow: WalletShellSignal.Flow?
+    @Namespace private var actionsZoom
+    private let actionsZoomID = "actions"
+
     /// Computed binding that round-trips the persisted raw through
     /// the `MainTab` enum. Unknown rawValues (manual UserDefaults
     /// fiddling, future tab renames) fall back to `.wallet`.
     private var selectedTab: Binding<MainTab> {
         Binding(
             get: {
-                // `.settings` / `.actions` (and any legacy value) are not real tabs anymore
-                // (2026-06-23). Any such persisted/transient value resolves to
-                // the Wallet tab so the TabView never lands on a missing tab.
+                // Only Wallet / Browser are real tabs now (Settings → toolbar,
+                // Actions → floating glass button). Any other persisted/legacy
+                // value resolves to the Wallet tab so the TabView never lands on
+                // a missing tab.
                 let resolved = MainTab(rawValue: selectedTabRaw) ?? .wallet
                 return (resolved == .wallet || resolved == .browser) ? resolved : .wallet
             },
             set: { newValue in
-                // The Actions item is NOT a destination — tapping it opens the
-                // Send/Receive/Connect/Templates sheet on the wallet home
-                // and leaves the selection where it was (switching to Wallet so
-                // the home is mounted to present the sheet).
-                if newValue == .actions {
-                    selectedTabRaw = MainTab.wallet.rawValue
-                    DispatchQueue.main.async {
-                        WalletShellSignal.shared.requestActions()
-                    }
-                    return
-                }
                 // Re-tapping the already-selected Wallet tab pops its nav
                 // stack back to the home root — the standard iOS tab gesture,
                 // which `TabView` does NOT perform automatically for a
@@ -229,31 +233,9 @@ struct MainTabView: View {
                     .accessibilityLabel(Text("Browser"))
             }
 
-            // MARK: - Actions (trailing-separated, native `.search` role — 2026-06-24)
-            //
-            // Moved to the RIGHT, visually separated from Wallet / Browser — the
-            // way iOS 26 renders a `Tab(role: .search)`. That role is the ONLY
-            // native way to pull one tab out to the trailing edge as a standalone
-            // Liquid Glass button (the same primitive Apple Maps / Photos use for
-            // Search — verified against the iOS 26 SDK: `TabRole.search` is the
-            // sole public case). We give it the two-arrows glyph instead of a
-            // magnifier and keep it icon-only; `Tab(value:role:content:label:)`
-            // lets a role-tagged tab carry a custom label.
-            //
-            // It is NOT a destination: the selection binding intercepts `.actions`
-            // — it never becomes the active tab, so the native search-field morph
-            // never fires — switches to Wallet, and asks `WalletHomeView` to
-            // present the Send / Receive / Connect / Templates sheet (native sheet
-            // animation). The `Color.clear` content here is never shown.
-            Tab(value: MainTab.actions, role: .search) {
-                Color.clear
-            } label: {
-                Image(systemName: "arrow.left.arrow.right")
-                    .accessibilityLabel(Text("Actions"))
-            }
-
-            // 2026-06-23 — Settings is no longer a tab; it lives on the
-            // wallet-home toolbar (trailing gear), presented as a sheet.
+            // 2026-06-23 — Settings is no longer a tab (wallet-home toolbar gear).
+            // 2026-06-24 — Actions is no longer a tab either: it's the floating
+            // glass button below, so the picker can zoom out of it natively.
         }
         // **Sidebar-adaptable (2026-06-16).** One native modifier turns
         // the four `Tab(...)` into a size-class-adaptive shell: the
@@ -267,6 +249,39 @@ struct MainTabView: View {
         // Fire a selection haptic on tab change. Per Rule #10 §A,
         // tab selection IS the canonical `.selection` haptic.
         .uniHaptic(.selection, trigger: selectedTabRaw)
+        // **Actions button (2026-06-24).** Floats over the bar, bottom-trailing —
+        // the 1inch-style action launcher, as a NATIVE Liquid-Glass button (not a
+        // tab, so the picker can zoom out of it).
+        .overlay(alignment: .bottomTrailing) {
+            actionsButton
+        }
+        // **Actions picker — zooms out of the button.** Local `@State` trigger +
+        // shared `actionsZoom` namespace = the import-passphrase pattern. On
+        // dismiss, the chosen flow is handed to the wallet home (see below).
+        .sheet(isPresented: $isShowingActions, onDismiss: {
+            // The picker has FULLY dismissed — now open the chosen flow on the
+            // wallet home (switch to Wallet so it's mounted). Deferring to
+            // `onDismiss` preserves the dismiss-then-present ordering across the
+            // two views (you can't present one sheet while another dismisses).
+            if let flow = pendingActionFlow {
+                pendingActionFlow = nil
+                selectedTabRaw = MainTab.wallet.rawValue
+                WalletShellSignal.shared.requestFlow(flow)
+            }
+        }) {
+            WalletActionsSheet(
+                canSend: activeWallet?.kind != .watchOnly,
+                onSend: { pendingActionFlow = .send; isShowingActions = false },
+                onReceive: { pendingActionFlow = .receive; isShowingActions = false },
+                onConnect: { pendingActionFlow = .connect; isShowingActions = false }
+            )
+            .uniAppEnvironment()
+            .uniSheetDetents([.medium, .large])
+            .presentationDragIndicator(.visible)
+            .presentationBackground(UniColors.Background.primary)
+            // Native iOS 26 zoom — the picker morphs out of the Actions button.
+            .navigationTransition(.zoom(sourceID: actionsZoomID, in: actionsZoom))
+        }
         // Wallet icon picker — surfaced by the "Customise icon" item
         // in the long-press context menu. Reuses
         // `WalletIconPickerSheet`, the same primitive presented from
@@ -326,6 +341,31 @@ struct MainTabView: View {
             .uniAppEnvironment()
             .presentationBackground(UniColors.Background.primary)
         }
+    }
+
+    // MARK: - Actions button (floating Liquid-Glass launcher — 2026-06-24)
+    //
+    // A native iOS 26 Liquid-Glass circular button, floating bottom-trailing
+    // over the bar (the 1inch-style action launcher). It is the zoom SOURCE for
+    // the picker sheet: `matchedTransitionSource(id:in:)` here pairs with the
+    // sheet's `navigationTransition(.zoom(sourceID:in:))` above, sharing the
+    // `actionsZoom` namespace, so the picker scales out of this button. The
+    // trailing/bottom padding sits it at the bar's level on the right; tune to
+    // taste against the device.
+    private var actionsButton: some View {
+        Button {
+            isShowingActions = true
+        } label: {
+            Image(systemName: "arrow.left.arrow.right")
+                .font(.system(size: 20, weight: .semibold))
+        }
+        .buttonStyle(.glassProminent)
+        .buttonBorderShape(.circle)
+        .controlSize(.large)
+        .matchedTransitionSource(id: actionsZoomID, in: actionsZoom)
+        .padding(.trailing, UniSpacing.l)
+        .padding(.bottom, UniSpacing.xs)
+        .accessibilityLabel(Text("Actions"))
     }
 
     // MARK: - Wallet tab label (avatar only — no "Wallet" text)
