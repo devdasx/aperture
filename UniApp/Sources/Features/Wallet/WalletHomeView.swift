@@ -228,14 +228,11 @@ struct WalletHomeView: View {
     /// lives here so the sheet survives Rule #12 §G direction rebuilds.
     @State private var isShowingSend: Bool = false
     @State private var sendPath: NavigationPath = NavigationPath()
-    // 2026-06-23 — the Actions sheet (Send/Receive/Connect/Templates),
-    // opened by the bar's Actions item via `WalletShellSignal.openActionsToken`.
-    // A tile sets `pendingQuickAction` + dismisses; `onDismiss` opens the real
-    // flow (dismiss-then-present, no sheet-over-sheet race).
-    @State private var isShowingActions: Bool = false
+    // 2026-06-24 — the Actions picker now lives in `MainTabView` (so it can zoom
+    // out of the floating Actions button). When the user picks a tile, the shell
+    // bumps `WalletShellSignal.flowToken` with the chosen flow once the picker
+    // has fully dismissed; we observe it (below) and open the matching surface.
     @State private var isShowingConnectScanner: Bool = false
-    @State private var pendingQuickAction: QuickAction? = nil
-    private enum QuickAction { case send, receive, connect }
     /// **Filter & Sort sheet (2026-06-09).** Drives the
     /// `.sheet(isPresented: $isShowingFilter)` block below. The sheet
     /// reads + writes preferences through `@AppStorage` against
@@ -689,9 +686,16 @@ struct WalletHomeView: View {
                         withAnimation(.snappy) { navigationPath.removeAll() }
                     }
                 }
-                .onChange(of: WalletShellSignal.shared.openActionsToken) { _, _ in
-                    // The bar's Actions item asks us to open the Actions sheet.
-                    isShowingActions = true
+                .onChange(of: WalletShellSignal.shared.flowToken) { _, _ in
+                    // The shell's Actions picker dismissed with a chosen flow —
+                    // open the matching surface (the picker is already gone, so
+                    // there's no sheet-over-sheet race).
+                    switch WalletShellSignal.shared.pendingFlow {
+                    case .send:    isShowingSend = true
+                    case .receive: isShowingReceive = true
+                    case .connect: isShowingConnectScanner = true
+                    case nil:      break
+                    }
                 }
                 .onChange(of: currencyCode) { _, _ in
                     // Labels react immediately (the hero + unheld rows
@@ -786,20 +790,6 @@ struct WalletHomeView: View {
                 .uniSheetDetents([.large])
                 .presentationDragIndicator(.visible)
                 .presentationBackground(UniColors.Background.primary)
-        }
-        // Actions sheet (2026-06-23) — opened by the bar's Actions item. A tile
-        // sets `pendingQuickAction` + dismisses; `onDismiss` opens the real flow.
-        .sheet(isPresented: $isShowingActions, onDismiss: { applyPendingQuickAction() }) {
-            WalletActionsSheet(
-                canSend: activeWallet?.kind != .watchOnly,
-                onSend: { pendingQuickAction = .send; isShowingActions = false },
-                onReceive: { pendingQuickAction = .receive; isShowingActions = false },
-                onConnect: { pendingQuickAction = .connect; isShowingActions = false }
-            )
-            .uniAppEnvironment()
-            .uniSheetDetents([.medium, .large])
-            .presentationDragIndicator(.visible)
-            .presentationBackground(UniColors.Background.primary)
         }
         // Connect (WalletConnect) scanner — the Actions sheet's Connect tile.
         .sheet(isPresented: $isShowingConnectScanner) {
@@ -902,19 +892,6 @@ struct WalletHomeView: View {
                 .uniSheetDetents([.large])
                 .presentationBackground(UniColors.Background.primary)
         }
-    }
-
-    /// Open the flow chosen in the Actions sheet, AFTER it has dismissed —
-    /// presenting over a still-dismissing sheet drops the new one, so we hand
-    /// off in the Actions sheet's `onDismiss`.
-    private func applyPendingQuickAction() {
-        switch pendingQuickAction {
-        case .send:    isShowingSend = true
-        case .receive: isShowingReceive = true
-        case .connect: isShowingConnectScanner = true
-        case nil:      break
-        }
-        pendingQuickAction = nil
     }
 
     // MARK: - Layout
