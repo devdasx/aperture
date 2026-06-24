@@ -353,13 +353,17 @@ struct MainTabView: View {
     // won't resize the system bar). Tune the frame sizes / paddings to taste.
     private var customBar: some View {
         HStack(spacing: UniSpacing.s) {
-            // Left — Wallet · Browser in one glass capsule, framed to barHeight.
-            HStack(spacing: 0) {
-                barButton(.wallet, systemImage: "wallet.pass.fill", name: "Wallet")
-                barButton(.browser, systemImage: "safari", name: "Browser")
+            // Left — Wallet · Browser. The `GlassEffectContainer` lets the active
+            // highlight's glass MORPH between tabs natively (Liquid-Glass flow)
+            // via `glassEffectID` (see `barButton`).
+            GlassEffectContainer(spacing: 0) {
+                HStack(spacing: 0) {
+                    barButton(.wallet, systemImage: "wallet.pass.fill", name: "Wallet")
+                    barButton(.browser, systemImage: "safari", name: "Browser")
+                }
+                .frame(height: barHeight)
+                .glassEffect(.regular, in: .capsule)
             }
-            .frame(height: barHeight)
-            .glassEffect(.regular, in: .capsule)
 
             Spacer(minLength: 0)
 
@@ -391,15 +395,17 @@ struct MainTabView: View {
                 // Fill the full bar height + the wider tab width.
                 .frame(width: tabWidth, height: barHeight)
                 .background {
-                    // ONE highlight shared across both tabs via matchedGeometryEffect:
-                    // it animates its frame from the old tab to the new one, so the
-                    // glass pill appears to slide across rather than pop in/out.
-                    // Inset 6pt so it floats inside the glass capsule, not flush.
+                    // The active highlight is a GLASS element with a stable
+                    // `glassEffectID`. Inside the `GlassEffectContainer` above,
+                    // when the active tab changes the glass MORPHS to the new
+                    // position — the native iOS 26 Liquid-Glass flow (default
+                    // `.matchedGeometry` glass transition), not a rigid slide.
                     if isActive {
                         Capsule(style: .continuous)
-                            .fill(UniColors.Background.primary)
+                            .fill(Color.clear)
+                            .glassEffect(.regular, in: .capsule)
+                            .glassEffectID("activeTab", in: tabHighlight)
                             .padding(6)
-                            .matchedGeometryEffect(id: "activeTabHighlight", in: tabHighlight)
                     }
                 }
                 .contentShape(Capsule(style: .continuous))
