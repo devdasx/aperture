@@ -154,7 +154,7 @@ final class DAppRequestRouter {
             guard let chain = Self.supportedEVMChain(forChainId: requestedId) else {
                 return .failure(DAppRequestError(
                     code: 4902,
-                    message: "Unrecognized chain ID \(requestedHex) — Aperture doesn't support this chain"
+                    message: String(format: String(localized: "Unrecognized chain ID %@ — Aperture doesn't support this chain"), requestedHex)
                 ))
             }
             selectedEVMChain = chain
@@ -356,7 +356,7 @@ final class DAppRequestRouter {
         // a truthy-but-invalid value it would accept and then fail to sign
         // with. Mirrors how EVM eth_accounts returns [] when there's no address.
         guard solanaAddress() != nil else {
-            return .failure(DAppRequestError(code: 4100, message: "This wallet has no Solana account"))
+            return .failure(DAppRequestError(code: 4100, message: String(localized: "This wallet has no Solana account")))
         }
         if connectedHosts.contains(origin.host),
            let pubkey = solanaAddress() {
@@ -398,7 +398,7 @@ final class DAppRequestRouter {
         // nothing to sign from — refuse rather than enqueuing a request with
         // an empty `from`.
         guard let from = solanaAddress() else {
-            return .failure(DAppRequestError(code: 4100, message: "This wallet has no Solana account"))
+            return .failure(DAppRequestError(code: 4100, message: String(localized: "This wallet has no Solana account")))
         }
         return await withCheckedContinuation { (cont: CheckedContinuation<DAppRequestResult, Never>) in
             enqueue(.sendTransaction(.init(
@@ -435,7 +435,7 @@ final class DAppRequestRouter {
             addr = [activeAddress()].compactMap { $0 } as [String]
         case .solana:
             guard let pubkey = solanaAddress() else {
-                resume(.failure(DAppRequestError(code: 4100, message: "This wallet has no Solana account")))
+                resume(.failure(DAppRequestError(code: 4100, message: String(localized: "This wallet has no Solana account"))))
                 return
             }
             addr = ["publicKey": pubkey]
