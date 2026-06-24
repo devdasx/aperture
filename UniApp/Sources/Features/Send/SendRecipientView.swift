@@ -42,6 +42,12 @@ struct SendRecipientView: View {
     let tokenSymbol: String?
     let fromAddress: String
     let recents: RecentRecipientsIndex
+    /// Seeds the first recipient field when this step is entered from a scan
+    /// (the app-bar Aperture Scanner hands back the validated address). `nil` in
+    /// the manual flow. Applied once on appear via `handleIncoming` so it runs
+    /// the same validation / address-poisoning / resolution path as an in-view
+    /// scan.
+    var initialRecipient: String? = nil
     /// Proceed to the amount step with the resolved recipient list.
     let onContinue: (_ recipients: [SendRecipientEntry]) -> Void
 
@@ -69,6 +75,9 @@ struct SendRecipientView: View {
     /// polite `.selection` beat for every "address landed / sheet opened"
     /// gesture on this screen.
     @State private var selectionTapCount: Int = 0
+    /// Guards the one-time `initialRecipient` prefill so it doesn't re-run if
+    /// the view re-appears.
+    @State private var didConsumeInitial: Bool = false
 
     private var maxRecipients: Int { ChainSendCapability.maxRecipients(for: chain) }
     private var isMulti: Bool { maxRecipients > 1 }
@@ -124,6 +133,16 @@ struct SendRecipientView: View {
         // field the user emptied and left. Keyed on focus-change (not
         // mid-keystroke) so it never deletes the field being edited.
         .onChange(of: focusedEntry) { _, _ in pruneEmptyUnfocused() }
+        // Seed the recipient from a scan (app-bar Aperture Scanner) exactly once,
+        // through the same path an in-view scan takes (validation + poisoning +
+        // resolution).
+        .onAppear {
+            guard !didConsumeInitial,
+                  let seed = initialRecipient?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  !seed.isEmpty else { return }
+            didConsumeInitial = true
+            handleIncoming(seed)
+        }
         .scrollIndicators(.hidden)
         .scrollDismissesKeyboard(.interactively)
         .background(SendBloomBackground())

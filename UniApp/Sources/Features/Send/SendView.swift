@@ -25,6 +25,15 @@ struct SendView: View {
     /// the user's position.
     @Binding var navigationPath: NavigationPath
 
+    /// **Scan prefill (2026-06-24).** When the Send sheet is opened from the
+    /// app-bar Aperture Scanner, this seeds the flow straight to the recipient
+    /// step for the scanned `chain`, with the scanned address pre-filled. `nil`
+    /// for the normal "tap Send" flow (which starts at the asset picker).
+    var prefill: ScanPrefill? = nil
+
+    /// Seeds the scan prefill exactly once.
+    @State private var didSeedPrefill: Bool = false
+
     /// Dismisses the whole Send sheet — the honest Review "Done" action
     /// while signing/broadcast is the next increment.
     @Environment(\.dismiss) private var dismiss
@@ -76,7 +85,7 @@ struct SendView: View {
                     // Native coin: the network IS the chain — skip the
                     // network picker and go straight to the recipient step.
                     navigationPath.append(
-                        SendDestination.recipient(chain: chain, tokenSymbol: nil, fromAddress: address)
+                        SendDestination.recipient(chain: chain, tokenSymbol: nil, fromAddress: address, prefillRecipient: nil)
                     )
                 },
                 onSelectToken: { asset in
@@ -102,16 +111,17 @@ struct SendView: View {
                                 return nil
                             }()
                             navigationPath.append(
-                                SendDestination.recipient(chain: chain, tokenSymbol: symbol, fromAddress: address)
+                                SendDestination.recipient(chain: chain, tokenSymbol: symbol, fromAddress: address, prefillRecipient: nil)
                             )
                         }
                     )
-                case let .recipient(chain, tokenSymbol, fromAddress):
+                case let .recipient(chain, tokenSymbol, fromAddress, prefillRecipient):
                     SendRecipientView(
                         chain: chain,
                         tokenSymbol: tokenSymbol,
                         fromAddress: fromAddress,
                         recents: recents,
+                        initialRecipient: prefillRecipient,
                         onContinue: { recipients in
                             navigationPath.append(
                                 SendDestination.amount(
@@ -152,6 +162,19 @@ struct SendView: View {
         .task(id: holdingsKey) {
             holdings = AssetPickerHoldings(wallet: activeWallet)
             recents = RecentRecipientsIndex(wallet: activeWallet)
+        }
+        // Scan prefill: jump straight to the recipient step for the scanned
+        // chain with the address pre-filled. Once only, and only if the wallet
+        // actually has an address on that chain (else the normal asset picker
+        // shows). Same `address(for:)` lookup the manual flow uses.
+        .onAppear {
+            guard !didSeedPrefill, let prefill else { return }
+            didSeedPrefill = true
+            guard navigationPath.isEmpty, let addr = address(for: prefill.chain) else { return }
+            navigationPath.append(SendDestination.recipient(
+                chain: prefill.chain, tokenSymbol: nil, fromAddress: addr,
+                prefillRecipient: prefill.recipient
+            ))
         }
         .alert(
             Text("No address for this network"),
@@ -217,6 +240,13 @@ struct SendView: View {
             $0.chainRaw == chain.rawValue && !$0.address.isEmpty
         })?.address
     }
+
+    /// A recipient seed handed in from the app-bar Aperture Scanner: the chain
+    /// the scanned address belongs to + the validated address itself.
+    struct ScanPrefill: Equatable {
+        let chain: SupportedChain
+        let recipient: String
+    }
 }
 
 // MARK: - Destinations
@@ -225,7 +255,9 @@ struct SendView: View {
 /// NavigationPath persists across Rule #12 §G direction-flip rebuilds.
 enum SendDestination: Hashable, Codable {
     case networkPicker(SendAsset)
-    case recipient(chain: SupportedChain, tokenSymbol: String?, fromAddress: String)
+    /// `prefillRecipient` seeds the recipient field when the step is entered from
+    /// a scan (the app-bar Aperture Scanner). `nil` for the normal manual flow.
+    case recipient(chain: SupportedChain, tokenSymbol: String?, fromAddress: String, prefillRecipient: String?)
     case amount(chain: SupportedChain, tokenSymbol: String?, fromAddress: String, recipients: [SendRecipientEntry])
     /// Step 5 — review the assembled, validated draft (`SendDraft` is
     /// Codable + Hashable, so it rides the path across Rule #12 §G rebuilds).
