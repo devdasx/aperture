@@ -683,19 +683,7 @@ struct MnemonicReviewView: View {
 
     @State private var derivedAddresses: [SupportedChain: String] = [:]
     @State private var balances: [SupportedChain: ChainBalance] = [:]
-    /// Discovered fungible tokens per chain (ERC-20 / SPL today;
-    /// TRC-20 / TON jettons / Cosmos IBC follow). Keyed by chain so
-    /// rendering can group tokens under their chain row.
-    @State private var tokens: [SupportedChain: [TokenBalance]] = [:]
     @State private var isDeriving = true
-    @State private var scanState: ScanState = .idle
-    @State private var rescanTrigger: Int = 0
-
-    /// Real on-chain balance scanner backed by `RPCClient` + per-family
-    /// adapters. Each chain scans independently and streams its row to
-    /// the UI as soon as both its balance and its USD price land — a
-    /// slow / failing chain doesn't block the others.
-    private let scanner = RealRPCBalanceScanner()
 
     private var sortedChains: [SupportedChain] {
         derivedAddresses.keys.sorted { $0.displayName < $1.displayName }
@@ -732,21 +720,6 @@ struct MnemonicReviewView: View {
         .background(UniColors.Background.primary)
         .navigationTitle("Review wallet")
         .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                HStack(spacing: UniSpacing.xs) {
-                    Button {
-                        rescanTrigger &+= 1
-                    } label: {
-                        Image(systemName: "arrow.clockwise")
-                            .font(.system(size: 17, weight: .semibold))
-                            .symbolEffect(.rotate, options: .nonRepeating, value: rescanTrigger)
-                    }
-                    .accessibilityLabel(Text("Rescan balances"))
-                    .disabled(isDeriving)
-                }
-            }
-        }
         .safeAreaInset(edge: .bottom) {
             // Nav-bar back chevron is the only "go back" affordance —
             // every iOS user already knows it, so a duplicated
@@ -760,10 +733,6 @@ struct MnemonicReviewView: View {
         }
         .task {
             await deriveAddresses()
-            await runScan()
-        }
-        .onChange(of: rescanTrigger) { _, _ in
-            Task { await runScan() }
         }
     }
 
@@ -790,18 +759,6 @@ struct MnemonicReviewView: View {
                         address: address,
                         balance: balances[chain]
                     )
-                    // Token sub-rows for this chain — render under
-                    // the native row, sorted by fiat-value desc so
-                    // the largest holdings surface first. Empty
-                    // when none discovered.
-                    let chainTokens = (tokens[chain] ?? []).sorted { a, b in
-                        (a.fiatBalance ?? 0) > (b.fiatBalance ?? 0)
-                    }
-                    if !chainTokens.isEmpty {
-                        ForEach(chainTokens) { token in
-                            ReviewTokenRow(token: token)
-                        }
-                    }
                     if chain != sortedChains.last {
                         UniDivider()
                     }
@@ -821,48 +778,7 @@ struct MnemonicReviewView: View {
                 alignment: .leading
             )
             .fixedSize(horizontal: false, vertical: true)
-            UniFootnote(
-                text: "Balances are read directly from each chain's public RPC. Aperture has no servers — but the public providers may log your IP and the queried address.",
-                alignment: .leading
-            )
-            .fixedSize(horizontal: false, vertical: true)
         }
-    }
-
-    private func runScan() async {
-        guard !derivedAddresses.isEmpty else { return }
-        scanState = .scanning
-        // Clear the prior round so the rows revert to the loading
-        // state for visual continuity.
-        balances = [:]
-        tokens = [:]
-        let currency = CurrencyPreference.currency(for: currencyCode)
-            ?? CurrencyPreference.all[0]
-        // Stream per-chain rows as soon as each one's balance + USD
-        // price land. A slow / failing chain doesn't block the rest;
-        // the user sees rows fill in progressively instead of one
-        // big "everything appears at once" jump. Tokens stream
-        // alongside natives — `USDC` on Ethereum may arrive before
-        // `ETH` itself if Coinbase prices it faster.
-        let stream = scanner.streamScan(
-            addresses: derivedAddresses,
-            currency: currency
-        )
-        for await row in stream {
-            switch row {
-            case .native(let chainBalance):
-                balances[chainBalance.chain] = chainBalance
-            case .token(let tokenBalance):
-                var existing = tokens[tokenBalance.chain] ?? []
-                // Replace any prior entry for the same contract
-                // (the stream may yield refreshes; one source of
-                // truth per (chain, contract)).
-                existing.removeAll { $0.contract == tokenBalance.contract }
-                existing.append(tokenBalance)
-                tokens[tokenBalance.chain] = existing
-            }
-        }
-        scanState = .completed
     }
 
     private func deriveAddresses() async {
@@ -877,6 +793,21 @@ struct MnemonicReviewView: View {
         await MainActor.run {
             self.derivedAddresses = addresses
             self.state.derivedAddressesFromMnemonic = addresses
+            // Balance fetching removed (2026-06-25): seed a zero balance per
+            // derived chain so each row shows a clean 0 (no fiat) instead of a
+            // forever-spinner. No network is touched — the value is honest 0.
+            let now = Date()
+            self.balances = addresses.reduce(into: [:]) { acc, pair in
+                acc[pair.key] = ChainBalance(
+                    chain: pair.key,
+                    address: pair.value,
+                    nativeBalance: 0,
+                    fiatBalance: nil,
+                    fiatCurrencyCode: currencyCode,
+                    isUsed: false,
+                    lastUpdated: now
+                )
+            }
             self.isDeriving = false
         }
     }

@@ -6,31 +6,6 @@ import CommonCrypto
 struct SolanaChainAdapter: Sendable {
     let client: RPCClient
 
-    /// Native SOL balance — lamports / 10^9.
-    func fetchAccountSummary(address: String) async throws(RPCError) -> ChainAccountSummary {
-        let data = try await client.callJSONResultData(
-            chain: .solana,
-            method: "getBalance",
-            params: [address]
-        )
-        let dict = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] ?? [:]
-        let lamports = (dict["value"] as? NSNumber)?.int64Value ?? 0
-        let sol = NSDecimalNumber(value: lamports).decimalValue / 1_000_000_000
-        return ChainAccountSummary(nativeBalance: sol, isUsed: sol > 0)
-    }
-
-    /// Raw SPL token discovery via `getTokenAccountsByOwner`. Returns
-    /// every fungible SPL token the owner address holds, decoded into
-    /// `(mint, amount, decimals)` triples. Aperture pairs each mint
-    /// with a small built-in metadata registry for symbol/name; mints
-    /// the registry doesn't know fall through to a truncated mint
-    /// display (honest about what we don't know).
-    struct SPLTokenAccount: Sendable {
-        let mint: String
-        let amount: Decimal       // canonical units, already decoded
-        let decimals: Int
-    }
-
     /// Legacy SPL Token program id (43 chars, decodes to 32 bytes).
     static let splTokenProgramId = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
     /// Token-2022 program id — 43 chars, decodes to a canonical 32-byte
@@ -46,95 +21,6 @@ struct SolanaChainAdapter: Sendable {
     /// `MISTAKES.md` M-016 for the 2026-06-12 audit that reverted the
     /// `Z`-terminated misconception.
     static let splToken2022ProgramId = "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
-
-    func fetchTokenAccounts(address: String) async throws(RPCError) -> [SPLTokenAccount] {
-        // `getTokenAccountsByOwner` filtered by `programId` returns
-        // ONLY that program's accounts, and token accounts live under
-        // one of TWO owner programs — legacy SPL Token and Token-2022.
-        // The Solana JSON-RPC `getTokenAccountsByOwner` filter accepts
-        // EITHER `programId` OR `mint`, exactly ONE per call (verified
-        // against solana.com/docs/rpc/http/gettokenaccountsbyowner),
-        // so enumerating both standards is inherently two requests —
-        // both must be queried and merged, otherwise Token-2022
-        // holdings (PYUSD, AUSD, DUSD, USDG) are invisible.
-        //
-        // **Rule #28 — independent calls run in PARALLEL.** The two
-        // requests share nothing: different `programId` filter, no
-        // ordering dependency, and the merge (`legacy + token2022`)
-        // is order-independent for display. Running them with
-        // `async let` halves the wall-clock of the SPL token-discovery
-        // step. Both still dispatch through the shared `client`
-        // (→ `RPCClient.shared`), so the per-endpoint `RateLimiter`
-        // token bucket bounds total in-flight requests exactly as
-        // before — two concurrent acquires are serialized at the
-        // bucket actor and each still consumes one token. Verified
-        // live against `api.mainnet-beta.solana.com`: a known holder
-        // returns 3,796 legacy + 393 Token-2022 accounts — both
-        // standards carry real holdings that must merge.
-        //
-        // **Typed-throws bridge.** Awaiting an `async let` re-types the
-        // child's error as `any Error` (Swift 6 does not yet propagate
-        // the child task's concrete `throws(RPCError)` through the
-        // binding), so the merge is wrapped in a `do/catch` that
-        // re-throws the real `RPCError` and maps the impossible
-        // non-`RPCError` case to a typed value — keeping this
-        // function's `throws(RPCError)` contract. A failure in either
-        // standard surfaces as "balances unknown", never a partial
-        // silent merge. M-017: the Token-2022 id is the 43-char `…Eb`
-        // form; do not regress to the bogus 44-char `…EbZ`.
-        async let legacy = fetchTokenAccounts(address: address, programId: Self.splTokenProgramId)
-        async let token2022 = fetchTokenAccounts(address: address, programId: Self.splToken2022ProgramId)
-        do {
-            return try await legacy + token2022
-        } catch let error as RPCError {
-            throw error
-        } catch {
-            // Unreachable: both children only throw `RPCError`.
-            throw RPCError.decodingFailed("SPL token discovery failed: \(error.localizedDescription)")
-        }
-    }
-
-    private func fetchTokenAccounts(address: String, programId: String) async throws(RPCError) -> [SPLTokenAccount] {
-        let filter: [String: Sendable] = [
-            "programId": programId,
-        ]
-        let opts: [String: Sendable] = [
-            "encoding": "jsonParsed",
-        ]
-        let data = try await client.callJSONResultData(
-            chain: .solana,
-            method: "getTokenAccountsByOwner",
-            params: [address, filter, opts]
-        )
-        guard let dict = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
-              let value = dict["value"] as? [[String: Any]] else {
-            return []
-        }
-        return value.compactMap { item in
-            guard let account = item["account"] as? [String: Any],
-                  let acctData = account["data"] as? [String: Any],
-                  let parsed = acctData["parsed"] as? [String: Any],
-                  let info = parsed["info"] as? [String: Any],
-                  let mint = info["mint"] as? String,
-                  let tokenAmount = info["tokenAmount"] as? [String: Any],
-                  let amountStr = tokenAmount["amount"] as? String,
-                  let raw = Decimal(string: amountStr) else {
-                return nil
-            }
-            let decimals = (tokenAmount["decimals"] as? NSNumber)?.intValue ?? 0
-            let amount = decimals == 0 ? raw : raw / Self.pow10(decimals)
-            // Filter out zero-balance accounts — Solana keeps
-            // closed-but-rent-exempt token accounts hanging around.
-            guard amount > 0 else { return nil }
-            return SPLTokenAccount(mint: mint, amount: amount, decimals: decimals)
-        }
-    }
-
-    private static func pow10(_ n: Int) -> Decimal {
-        var result = Decimal(1)
-        for _ in 0..<n { result *= 10 }
-        return result
-    }
 
     // MARK: - Mint info + Metaplex metadata (for Custom Tokens)
 
@@ -330,38 +216,7 @@ struct SolanaChainAdapter: Sendable {
         Base58.encode(Data(bytes))
     }
 
-    /// First-page of recent signatures via `getSignaturesForAddress`.
-    func fetchRecentTransactions(address: String, limit: Int = 25) async throws(RPCError) -> [SolanaRawTransaction] {
-        let params: [Sendable] = [address, ["limit": limit]]
-        let data = try await client.callJSONResultData(
-            chain: .solana,
-            method: "getSignaturesForAddress",
-            params: params
-        )
-        let array = (try? JSONSerialization.jsonObject(with: data)) as? [[String: Any]] ?? []
-        return array.map { dict in
-            let sig = dict["signature"] as? String ?? ""
-            let slot = (dict["slot"] as? NSNumber)?.int64Value
-            let blockTime = (dict["blockTime"] as? NSNumber)?.doubleValue
-            let hasErr = dict["err"] != nil && !(dict["err"] is NSNull)
-            return SolanaRawTransaction(
-                txHash: sig,
-                blockNumber: slot,
-                occurredAt: blockTime.map { Date(timeIntervalSince1970: $0) } ?? Date(),
-                status: hasErr ? .failed : .confirmed
-            )
-        }
-    }
 }
-
-struct SolanaRawTransaction: Sendable {
-    let txHash: String
-    let blockNumber: Int64?
-    let occurredAt: Date
-    let status: SolanaTxStatus
-}
-
-enum SolanaTxStatus: Sendable { case pending, confirmed, failed }
 
 /// Decoded SPL mint config — `decimals` + `supply` + the SPL standard
 /// (legacy `splToken` vs `splToken2022`). Required for Custom Tokens
