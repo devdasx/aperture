@@ -401,17 +401,6 @@ private struct AboutView: View {
                         .foregroundStyle(UniColors.Text.secondary)
                 }
                 .padding(.vertical, UniSpacing.xxs)
-
-                HStack {
-                    Text("Prices")
-                        .font(UniTypography.body)
-                        .foregroundStyle(UniColors.Text.primary)
-                    Spacer()
-                    Text(verbatim: "Coinbase")
-                        .font(UniTypography.subheadline)
-                        .foregroundStyle(UniColors.Text.secondary)
-                }
-                .padding(.vertical, UniSpacing.xxs)
             }
 
             // Legal + support — each opens the live page on aperturex.io

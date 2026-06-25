@@ -1,320 +1,56 @@
 import Foundation
-import OSLog
 import SwiftData
 
-/// The one pricing front door. Every consumer that needs "unit price
-/// of SYMBOL in the user's currency" — the balance scanner's shared
-/// batch, the currency-change re-price pass — calls
-/// `unitPrices(symbols:currencyCode:)` and gets prices **already
-/// denominated in the active currency**, so `fiatValueCached` is
-/// always written in the currency the user currently has selected.
+/// The one pricing front door. Every consumer that needs "unit price of
+/// SYMBOL in the user's currency" — the Send review/amount fiat estimate,
+/// the wallet/activity rows, the currency-change re-price pass — calls
+/// `unitPrices(symbols:currencyCode:)` or `crossRate(from:to:)`.
 ///
-/// **The ladder** (per symbol, per currency — each rung only runs for
-/// the symbols the previous rung failed to resolve):
-///
-/// 1. **Coinbase** — USD spot batch × FX rate (identity when the
-///    target IS USD, i.e. a direct quote). Coinbase reliably covers
-///    ticker→USD; `FXRateService` (open.er-api.com) covers USD→every
-///    long-tail fiat (JOD, EGP, NGN, …).
-/// 2. **Per-currency persisted cache** — `CachedPriceRecord` keyed
-///    `"SYMBOL-FIAT"`. A stale price the user has seen before beats
-///    no price (`isStale` marks it internally; honesty per Rule #16
-///    is carried by the row's "Last synced" footer).
-/// 3. **CoinGecko** — independent public API, one batched
-///    `simple/price` call (direct vs_currency when CoinGecko supports
-///    the fiat, else its USD value × FX).
-/// 4. **Balance-derived per-unit** — caller-side
-///    (`WalletRefreshCoordinator.repriceWallet`): re-denominate the
-///    row's own cached fiat via `crossRate(from:to:)` when every
-///    fetch rung failed.
-/// 5. **Omit** — the symbol is absent from the result; the row
-///    renders its native amount with no fiat ("Price unavailable",
-///    never a fabricated number).
-///
-/// Fresh results from rungs 1 and 3 are persisted back into the
-/// per-currency cache so rung 2 works the next time this currency is
-/// active — that is what makes a previously-used currency survive a
-/// full Coinbase outage.
-///
-/// **Parallelism.** Rung 1's two halves (Coinbase batch — itself
-/// 3-chunk/8-wide bounded — and the FX rate) run concurrently via
-/// `async let` ("promise.all"); rung 3 is one batched call.
-/// Cancellation propagates: every rung boundary checks
-/// `Task.isCancelled`, and `URLSession` aborts in-flight requests of
-/// a cancelled task.
+/// **2026-06-25 — price fetching removed (data-fetching-layer removal).**
+/// All in-app and remote price retrieval is gone: the Render/neon price
+/// server client (`RemotePriceService`), the FX cross, and the local
+/// cache/historical fallback rungs. This facade is *retained* — Send and the
+/// wallet/activity UI call it directly — but it now resolves **no prices**, so
+/// every fiat value renders empty ("Price unavailable") and no network runs.
+/// The signatures (`unitPrices`, `crossRate`), `static let shared`,
+/// `ResolvedPrice`, and `init(container:)` are kept verbatim so all call sites
+/// compile unchanged.
 actor TokenPricingEngine {
 
-    private static let log = Logger(subsystem: "com.thuglife.aperture", category: "pricing")
-
-    /// App-wide shared instance so the Coinbase TTL cache, the FX
-    /// rates cache, and the CoinGecko TTL cache accumulate across
-    /// every scan and re-price instead of resetting per refresh.
+    /// App-wide shared instance, retained for the existing call sites. Holds
+    /// no pricing state anymore.
     static let shared = TokenPricingEngine()
 
-    /// One resolved unit price, denominated in the requested currency.
+    /// One resolved unit price, denominated in the requested currency. Kept
+    /// because consumers reference `TokenPricingEngine.ResolvedPrice` / `.amount`.
     struct ResolvedPrice: Sendable {
         /// Price of 1 unit of the token in the requested currency.
         let amount: Decimal
-        /// `"coinbase"` / `"cache"` / `"coingecko"` — surfaces in the
-        /// persisted record's `source` column (Rule #16 §A: name your
-        /// data source).
+        /// Data source label (e.g. `"neon"` / `"cache"`). Retained for the type.
         let source: String
-        /// `true` when served from the persisted per-currency cache
-        /// (rung 2) — i.e. not a live quote.
+        /// `true` when not a live quote. Retained for the type.
         let isStale: Bool
     }
 
-    /// The wallet's sole price source (2026-06-17). Replaces the in-app
-    /// Coinbase / CoinGecko / FX calls — all of those (with fallback) now
-    /// live on the independent Render price server, and the app reads only
-    /// from it. The local cache rungs below are the offline fallback.
-    private let remoteService: RemotePriceService
-
-    /// Injected for tests; `nil` resolves lazily to
-    /// `ApertureDatabase.shared.container` on first cache access.
+    /// Retained so existing callers (including tests) that pass a container
+    /// still compile. Unused now that no pricing data is read or written.
     private let injectedContainer: ModelContainer?
-    private var cachedRepository: PriceCacheRepository?
-    private var cachedSnapshotRepository: PriceSnapshotRepository?
-    private var cachedHistoricalRepository: HistoricalPriceRepository?
 
-    init(
-        container: ModelContainer? = nil,
-        remoteService: RemotePriceService = RemotePriceService()
-    ) {
+    init(container: ModelContainer? = nil) {
         self.injectedContainer = container
-        self.remoteService = remoteService
     }
 
-    // MARK: - Public API
+    // MARK: - Public API (no-data facade — price fetching removed)
 
-    /// Resolve unit prices for `symbols` in `currencyCode`, walking
-    /// the ladder documented on the type. Symbols missing from the
-    /// returned map could not be priced by any fetch/cache rung —
-    /// the caller applies rung 4 (balance-derived) or rung 5 (omit).
+    /// Price fetching is removed: always resolves nothing, so every caller's
+    /// fiat side renders empty without any network call.
     func unitPrices(symbols: [String], currencyCode: String) async -> [String: ResolvedPrice] {
-        let code = currencyCode.uppercased()
-        let unique = Array(Set(symbols.map { $0.uppercased() }))
-        guard !unique.isEmpty else { return [:] }
-
-        var resolved: [String: ResolvedPrice] = [:]
-
-        // Rung 1 — the Aperture price server (neon-backed). ONE request
-        // returns every requested symbol already denominated in `code`
-        // (USD price × FX, computed server-side from several providers with
-        // fallback). This replaces the in-app Coinbase + CoinGecko + FX
-        // calls — the app's only price source. The local cache rungs below
-        // are the offline fallback for when the server is unreachable.
-        if !Task.isCancelled, let remote = await remoteService.prices(currency: code, symbols: unique) {
-            for symbol in unique {
-                if let price = remote.prices[symbol], price > 0 {
-                    resolved[symbol] = ResolvedPrice(amount: price, source: "neon", isStale: false)
-                }
-            }
-        }
-
-        var missing = Set(unique).subtracting(resolved.keys)
-
-        // Rung 2 — persisted per-currency cache. Only consulted for
-        // the symbols rung 1 missed (Coinbase gap, rate limit, or a
-        // failed FX fetch). A stale price the user has already seen
-        // in this currency beats no price.
-        if !missing.isEmpty, !Task.isCancelled {
-            let repo = await repository()
-            if let cached = try? await repo.prices(symbols: Array(missing), fiat: code) {
-                for (symbol, entry) in cached where entry.price > 0 {
-                    let upper = symbol.uppercased()
-                    guard missing.contains(upper) else { continue }
-                    resolved[upper] = ResolvedPrice(
-                        amount: entry.price,
-                        source: "cache",
-                        isStale: true
-                    )
-                    missing.remove(upper)
-                }
-            }
-        }
-
-        // Rung 2.5 — **cross-currency cache fallback (2026-06-13).**
-        // The per-currency cache above only answers in `code`. A token
-        // we priced in a DIFFERENT currency (e.g. BTC/JOD before the
-        // user switched to USD) still has a last-known price on disk —
-        // FX-convert it rather than surfacing "Price unavailable". This
-        // is the user's explicit contract: "in case the API failed we
-        // can use the old price we have in the database." Only the
-        // symbols rung 1+2 missed reach here, and only when we can get
-        // an FX cross from the cached price's own currency to `code`.
-        if !missing.isEmpty, !Task.isCancelled {
-            let repo = await repository()
-            if let anyCurrency = try? await repo.latestPriceAnyCurrency(symbols: Array(missing)) {
-                for (symbol, entry) in anyCurrency {
-                    guard missing.contains(symbol) else { continue }
-                    let from = entry.fiat.uppercased()
-                    let converted: Decimal?
-                    if from == code {
-                        converted = entry.price  // (shouldn't happen — rung 2 caught it — but safe)
-                    } else if let cross = await crossRate(from: from, to: code), cross > 0 {
-                        converted = entry.price * cross
-                    } else {
-                        converted = nil
-                    }
-                    if let converted, converted > 0 {
-                        resolved[symbol] = ResolvedPrice(
-                            amount: converted,
-                            source: "cache-fx",
-                            isStale: true
-                        )
-                        missing.remove(symbol)
-                    }
-                }
-            }
-        }
-
-        // Rung 3 — REMOVED (2026-06-17). The in-app CoinGecko price API is
-        // gone; the price server already aggregates CoinGecko + Coinbase +
-        // CryptoCompare with fallback. Anything the server didn't return is
-        // served from the local cache rungs (offline fallback) or the
-        // historical-close net below.
-
-        // Rung 4 — **historical daily-close fallback (2026-06-13).**
-        // The final net behind every live + cache + CoinGecko rung. The
-        // chart values holdings from `HistoricalPriceRecord` (daily
-        // closes), so if a close exists, the user can SEE a price — and
-        // a balance row must therefore never read "Price unavailable"
-        // for that token. The user reported exactly this: BTC/ETH rows
-        // said "Price unavailable" while the chart showed US$92.95 /
-        // US$50.16. We take the latest close in `code` (or any currency
-        // × FX) for anything still missing. Marked stale (it's
-        // yesterday's close, not a live quote) and NOT re-persisted to
-        // the spot cache — it already lives in the historical table.
-        if !missing.isEmpty, !Task.isCancelled {
-            let histRepo = await historicalRepository()
-            // Same-currency closes first.
-            if let closes = try? await histRepo.latestClose(symbols: Array(missing), fiat: code) {
-                for (symbol, price) in closes where price > 0 {
-                    guard missing.contains(symbol) else { continue }
-                    resolved[symbol] = ResolvedPrice(amount: price, source: "history", isStale: true)
-                    missing.remove(symbol)
-                }
-            }
-            // Cross-currency closes (FX-converted) for whatever remains.
-            if !missing.isEmpty,
-               let crossCloses = try? await histRepo.latestCloseAnyCurrency(symbols: Array(missing)) {
-                for (symbol, entry) in crossCloses {
-                    guard missing.contains(symbol) else { continue }
-                    let from = entry.fiat.uppercased()
-                    let converted: Decimal?
-                    if from == code {
-                        converted = entry.price
-                    } else if let cross = await crossRate(from: from, to: code), cross > 0 {
-                        converted = entry.price * cross
-                    } else {
-                        converted = nil
-                    }
-                    if let converted, converted > 0 {
-                        resolved[symbol] = ResolvedPrice(amount: converted, source: "history-fx", isStale: true)
-                        missing.remove(symbol)
-                    }
-                }
-            }
-        }
-
-        // Persist every LIVE quote under (symbol, currency) so rung 2
-        // answers for this currency on the next failure — this is the
-        // "preset price for this token for the current currency"
-        // contract. Cache-served entries are already on disk.
-        let fresh = resolved.filter { !$0.value.isStale }
-        if !fresh.isEmpty {
-            let repo = await repository()
-            let entries = fresh.map { (symbol: $0.key, fiat: code, price: $0.value.amount, source: $0.value.source) }
-            do {
-                try await repo.upsertMany(entries)
-            } catch {
-                Self.log.error("price-cache bulk upsert failed for \(code, privacy: .public): \(String(describing: error), privacy: .public)")
-            }
-
-            // 2026-06-13 — append the same LIVE quotes to the
-            // immutable `PriceSnapshotRecord` history (the cache row
-            // above is overwritten in place; the snapshot table is
-            // what makes "price change in the last 24h" and
-            // balance-change attribution answerable from local data).
-            // Cache-served (stale) entries are deliberately excluded —
-            // re-recording an old observation as a new one would
-            // forge the timeline. Failures log and never block the
-            // pricing ladder.
-            let snapshotRepo = await snapshotRepository()
-            let snapshotEntries = entries.map {
-                (symbol: $0.symbol, currencyCode: $0.fiat, price: $0.price, source: $0.source)
-            }
-            do {
-                try await snapshotRepo.record(snapshotEntries)
-            } catch {
-                Self.log.error("price-snapshot record failed for \(code, privacy: .public): \(String(describing: error), privacy: .public)")
-            }
-        }
-
-        if !missing.isEmpty {
-            Self.log.info("unpriced after full ladder (\(code, privacy: .public)): \(missing.sorted().joined(separator: ","), privacy: .public)")
-        }
-        return resolved
+        [:]
     }
 
-    /// Fiat→fiat cross rate via the USD pivot
-    /// (`rate(USD→to) / rate(USD→from)`). Used by the
-    /// balance-derived rung (4): re-denominating a row's cached fiat
-    /// from the currency it was scanned under into the active one.
-    /// Returns `nil` when either leg is unavailable — the caller
-    /// omits rather than fabricates.
+    /// FX fetching is removed: identity for the same currency, otherwise `nil`
+    /// (callers omit rather than fabricate a converted value).
     func crossRate(from sourceCode: String, to targetCode: String) async -> Decimal? {
-        let source = sourceCode.uppercased()
-        let target = targetCode.uppercased()
-        guard source != target else { return 1 }
-        guard
-            let toTarget = await remoteService.fxRate(currency: target),
-            let toSource = await remoteService.fxRate(currency: source),
-            toSource > 0, toTarget > 0
-        else {
-            return nil
-        }
-        return toTarget / toSource
-    }
-
-    // MARK: - Lazy repository
-
-    /// `PriceCacheRepository` bound to the injected container, or to
-    /// the app-wide store on first use. `ApertureDatabase.shared` is
-    /// `@MainActor`; its `container` is an immutable `let` created at
-    /// app launch, read here via one main-actor hop.
-    private func repository() async -> PriceCacheRepository {
-        if let cachedRepository { return cachedRepository }
-        let repo = PriceCacheRepository(modelContainer: await resolvedContainer())
-        cachedRepository = repo
-        return repo
-    }
-
-    /// `PriceSnapshotRepository` bound to the same container as the
-    /// cache repository — the append-only observation log the 24h
-    /// change surface reads (see the snapshot hook in `unitPrices`).
-    private func snapshotRepository() async -> PriceSnapshotRepository {
-        if let cachedSnapshotRepository { return cachedSnapshotRepository }
-        let repo = PriceSnapshotRepository(modelContainer: await resolvedContainer())
-        cachedSnapshotRepository = repo
-        return repo
-    }
-
-    /// `HistoricalPriceRepository` bound to the same container — the
-    /// daily-close table the chart values holdings from. The pricing
-    /// ladder's final fallback reads its latest close so a row is never
-    /// "Price unavailable" when the chart can show a price.
-    private func historicalRepository() async -> HistoricalPriceRepository {
-        if let cachedHistoricalRepository { return cachedHistoricalRepository }
-        let repo = HistoricalPriceRepository(modelContainer: await resolvedContainer())
-        cachedHistoricalRepository = repo
-        return repo
-    }
-
-    /// Shared container resolution for the lazy repositories.
-    private func resolvedContainer() async -> ModelContainer {
-        if let injectedContainer { return injectedContainer }
-        return await MainActor.run { ApertureDatabase.shared.container }
+        sourceCode.uppercased() == targetCode.uppercased() ? 1 : nil
     }
 }

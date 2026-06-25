@@ -1,18 +1,13 @@
 import SwiftUI
 
-/// Settings → Privacy. Three rows in v1:
-/// 1. **Background balance refresh** toggle (`@AppStorage("backgroundBalanceRefresh")`).
-///    Note: the actual `BGTaskScheduler` wiring lands as T-041 — for
-///    now this toggle persists the preference but no background task
-///    is scheduled. The Settings copy is honest about the current
-///    state.
-/// 2. **Prices** — read-only "Coinbase" disclosure row that opens the
-///    Coinbase public API page externally per Rule #3 (no in-app
-///    browser).
-/// 3. **What Aperture doesn't collect** — Rule #16-style boundary
-///    statement sheet, the load-bearing honest claim of the project.
+/// Settings → Privacy. After the data-fetching layer was removed
+/// (2026-06-25) the screen has a single row: **What Aperture doesn't
+/// collect** — a Rule #16-style boundary statement sheet, the
+/// load-bearing honest claim of the project. The former background
+/// balance-refresh toggle and the Coinbase price disclosure were retired
+/// with the fetching they described — the app no longer fetches
+/// balances, transaction history, or prices at all.
 struct PrivacySettingsView: View {
-    @AppStorage("backgroundBalanceRefresh") private var backgroundRefresh: Bool = true
     @AppStorage("languagePreference") private var languageCode: String = LanguagePreference.systemCode
     @State private var isShowingBoundarySheet: Bool = false
 
@@ -24,43 +19,6 @@ struct PrivacySettingsView: View {
 
     var body: some View {
         List {
-            Section {
-                UniToggle(isOn: $backgroundRefresh) {
-                    HStack(spacing: UniSpacing.s) {
-                        Image(systemName: "arrow.clockwise")
-                            .font(.system(size: 18, weight: .regular))
-                            .foregroundStyle(UniColors.Icon.secondary)
-                            .frame(width: 28, alignment: .center)
-                            .accessibilityHidden(true)
-                        Text("Background refresh")
-                            .font(UniTypography.body)
-                            .foregroundStyle(UniColors.Text.primary)
-                    }
-                }
-                .tint(UniColors.Button.primaryTint)
-                .padding(.vertical, UniSpacing.xxs)
-                .listRowBackground(UniColors.Background.secondary)
-            } footer: {
-                Text("When enabled, Aperture will fetch balances in the background by talking to public chain RPC providers. The providers may log the request — Aperture itself records nothing about you.")
-                    .font(UniTypography.footnote)
-                    .foregroundStyle(UniColors.Text.tertiary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-
-            Section {
-                SettingsRowShared(
-                    systemImage: "dollarsign.arrow.circlepath",
-                    title: "Prices",
-                    trailing: "Coinbase"
-                )
-                .listRowBackground(UniColors.Background.secondary)
-            } footer: {
-                Text("Fiat prices are read from Coinbase's public price API. Aperture sends only the token ticker and your selected currency code — never an address or amount.")
-                    .font(UniTypography.footnote)
-                    .foregroundStyle(UniColors.Text.tertiary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-
             Section {
                 Button {
                     isShowingBoundarySheet = true

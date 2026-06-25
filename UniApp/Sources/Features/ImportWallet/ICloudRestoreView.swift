@@ -372,14 +372,6 @@ struct ICloudRestoreView: View {
                 _ = try? await repo.updateAvatar(id: walletId, spec: avatar)
             }
             state.zeroSensitiveInput()
-            // Kick the restored wallet's first balance/history refresh so it
-            // doesn't read $0 until relaunch (mirrors the typed-import path).
-            let fiat = UserDefaults.standard.string(forKey: CurrencyPreference.storageKey)
-                ?? CurrencyPreference.defaultCode
-            Task {
-                await WalletRefreshCoordinator(container: container)
-                    .refreshWallet(walletId: walletId, fiatCode: fiat)
-            }
             UniHapticEngine.shared.play(.contextualImpact(.consequential))
             onImported(walletId)
         } catch {

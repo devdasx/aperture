@@ -232,9 +232,6 @@ struct AssetDetailView: View {
             derivedCache = computed
             await loadDustPrices(symbols: computed.assetScopedTransactions.map(\.tokenSymbol))
         }
-        .task(id: historicalEnsureKey) {
-            await ensureHistoricalPricesLoaded()
-        }
     }
 
     /// This asset's filtered transactions with sub-$0.01-USD dust removed
@@ -388,40 +385,6 @@ struct AssetDetailView: View {
 
     private func address(for chain: SupportedChain) -> String? {
         activeWallet?.addresses.first { $0.chainRaw == chain.rawValue }?.address
-    }
-
-    /// Re-runs when wallet, currency, or asset identity changes.
-    private var historicalEnsureKey: String {
-        [
-            activeWallet?.id.uuidString ?? "",
-            currencyCode,
-            identity.symbol,
-            identity.nativeChain?.rawValue ?? "token"
-        ].joined(separator: "|")
-    }
-
-    /// Asset-scoped variant of `WalletHomeView.ensureHistoricalPricesLoaded`.
-    /// Fetches Coinbase historical closes only for the symbols
-    /// involved in THIS asset (the chart on this screen is
-    /// asset-scoped, so we don't need history for unrelated
-    /// tokens). For native coins that's `chain.ticker`; for token
-    /// assets that's `identity.symbol`.
-    private func ensureHistoricalPricesLoaded() async {
-        let symbol = identity.symbol.uppercased()
-        // What the store already covers for this fiat (DB-derived).
-        let existing = Set(historicalPrices
-            .filter { $0.fiat == currencyCode }
-            .map { $0.symbol.uppercased() })
-
-        // Rule #27 §A — the view never calls the network. It asks the
-        // sync layer to fill the gap; the chart re-renders live off the
-        // `historicalPrices` `@Query` once the coordinator writes.
-        let coordinator = WalletRefreshCoordinator(container: modelContext.container)
-        await coordinator.syncHistoricalCloses(
-            symbols: [symbol],
-            fiat: currencyCode,
-            alreadyHave: existing
-        )
     }
 
     // MARK: - Hero card section

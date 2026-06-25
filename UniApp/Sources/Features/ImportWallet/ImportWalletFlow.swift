@@ -179,7 +179,6 @@ struct ImportWalletFlow: View {
         guard !isCommitting else { return }
         isCommitting = true
         let repository = WalletRepository(modelContainer: modelContext.container)
-        let container = modelContext.container
         Task { @MainActor in
             defer { isCommitting = false }
             do {
@@ -188,27 +187,9 @@ struct ImportWalletFlow: View {
                 // the plaintext inputs have no reason to outlive the
                 // flow.
                 state.zeroSensitiveInput()
-                // Fire the imported wallet's FIRST balance + history
-                // refresh here, with the known-good id (2026-06-12).
-                // Belt and braces for the wallet-home's own
-                // `.task(id: activeWalletIdRaw)` auto-refresh: its
-                // `@Query` lags this actor-context insert in the
-                // merge window right after persist, which is how an
-                // imported wallet used to show $0.00 until relaunch.
-                // `WalletRefreshRegistry` single-flights per wallet,
-                // so when the home fires too, both await the same
-                // pipeline — the overlap costs nothing.
-                let fiatCode = UserDefaults.standard.string(forKey: CurrencyPreference.storageKey)
-                    ?? CurrencyPreference.defaultCode
-                Task {
-                    await WalletRefreshCoordinator(container: container)
-                        .refreshWallet(walletId: walletId, fiatCode: fiatCode)
-                }
                 // Show the success screen as the terminal step instead of
-                // dismissing straight onto the (still-scanning) wallet —
-                // the first refresh above runs in the background while the
-                // user reads the result, and its "Continue to wallet" CTA
-                // fires `onCompleted`, dismissing the cover (2026-06-19).
+                // dismissing straight onto the wallet; its "Continue to
+                // wallet" CTA fires `onCompleted`, dismissing the cover.
                 navigationPath.append(
                     ImportDestination.success(walletId: walletId, result: result)
                 )

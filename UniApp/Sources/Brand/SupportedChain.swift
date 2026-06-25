@@ -67,7 +67,8 @@ enum SupportedChain: String, CaseIterable, Hashable, Sendable, Codable {
     /// history, and prices — is disabled for this chain. The address still
     /// derives (Receive) and Send still works through its own RPC + signing
     /// path; only the wallet-home balance / holdings / activity data is
-    /// suppressed, and the chain routes to the no-op `DisabledChainConnector`.
+    /// suppressed. The whole fetching layer (connectors, scanners, price
+    /// services, refresh coordinator) was removed on 2026-06-25.
     ///
     /// **2026-06-25 — disabled for EVERY supported chain (user direction).** No
     /// chain fetches balances / history / prices anymore. Listed granularly by

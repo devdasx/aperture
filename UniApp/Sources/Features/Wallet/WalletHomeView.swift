@@ -279,38 +279,18 @@ struct WalletHomeView: View {
     @State private var isShowingSettings: Bool = false
     @State private var isRefreshing: Bool = false
 
-    /// Shared refresh-outcome surface (2026-06-12). The coordinator
-    /// publishes the chains whose balance scan yielded nothing (after
-    /// its bounded retry pass) here; this view reads it to choose
-    /// between the normal holdings list, the partial-failure
-    /// footnote, and the total-failure "Couldn't reach the network"
-    /// state. `@Observable` — property reads in `body` register
-    /// dependencies; no `@State` wrapper needed for a singleton.
-    private let refreshState = WalletRefreshState.shared
-
-    /// `true` while any refresh pipeline is in flight — the local
-    /// flag covers refreshes this view started; the shared flag
-    /// covers a replacement pipeline still running after a cancelled
-    /// run's completion flipped the local flag back early.
+    /// `true` while a refresh this view started is in flight. Refresh now
+    /// fetches nothing (data-fetching layer removed 2026-06-25), so this stays
+    /// `false`; kept because the Retry control still reads it.
     private var isAnyRefreshInFlight: Bool {
-        isRefreshing || refreshState.isRefreshing
+        isRefreshing
     }
 
-    /// The published refresh outcome only speaks for the wallet it
-    /// ran against — never let wallet A's failure paint wallet B.
-    private var refreshOutcomeAppliesToActiveWallet: Bool {
-        refreshState.lastRefreshWalletId != nil
-            && refreshState.lastRefreshWalletId == activeWallet?.id
-    }
-
-    /// Total failure on a wallet with nothing persisted (the fresh
-    /// import whose every chain failed): rendering the all-supported
-    /// $0.00 list would claim "you hold nothing" when the truth is
-    /// "we couldn't ask." Show the honest error state instead.
+    /// Network-error state retired with the data-fetching layer (2026-06-25):
+    /// with no balance scan there is no scan failure to surface, so the honest
+    /// holdings / empty states always render.
     private var showsNetworkErrorState: Bool {
-        refreshOutcomeAppliesToActiveWallet
-            && !refreshState.lastRefreshFailedChains.isEmpty
-            && allHeldRows.isEmpty
+        false
     }
 
     // MARK: - Long-press wallet switcher (the Telegram / Instagram pattern)
@@ -751,24 +731,6 @@ struct WalletHomeView: View {
                 // Swift type-checker's complexity budget.
                 .onChange(of: "\(assetRecords.count)-\(customTokenRecords.count)") { _, _ in
                     rebuildDisplayRows()
-                }
-                .onChange(of: refreshState.isRefreshing) { wasRefreshing, isRefreshing in
-                    // A refresh pipeline this view did NOT await just
-                    // completed — the import flow's post-persist
-                    // refresh, or a replacement pipeline after a
-                    // cancelled pull. The post-`runRefresh` rebuild
-                    // never runs for those, and a re-pricing pass can
-                    // change row CONTENT without moving the count
-                    // proxies above. Rebuild when the completed
-                    // refresh belongs to the active wallet
-                    // (2026-06-12). One cheap call per refresh
-                    // completion — no per-frame work.
-                    guard wasRefreshing, !isRefreshing else { return }
-                    guard let completedId = refreshState.lastRefreshWalletId else { return }
-                    let activeId = UUID(uuidString: activeWalletIdRaw) ?? activeWallet?.id
-                    if completedId == activeId {
-                        rebuildDisplayRows()
-                    }
                 }
         }
         // Settings is now reached via the four-tab shell (`MainTabView`
@@ -2598,45 +2560,9 @@ struct WalletHomeView: View {
     /// silently to today's spot via the reconstructor's fallback
     /// chain.
     private func ensureHistoricalPricesLoaded() async {
-        // Collect unique symbols from held balances + tx history.
-        var symbols = Set<String>()
-        for entry in allHeldRows {
-            symbols.insert(entry.balance.tokenSymbol.uppercased())
-        }
-        for tx in allTransactions {
-            symbols.insert(tx.tokenSymbol.uppercased())
-        }
-        guard !symbols.isEmpty else { return }
-
-        // Symbols we already have history for in the target fiat —
-        // skip those.
-        let existing = Set(historicalPrices
-            .filter { $0.fiat == currencyCode }
-            .map { $0.symbol.uppercased() })
-
-        // Rule #27 §A — the view does NOT touch the network. It hands
-        // the sync layer the desired symbols + what the store already
-        // has (both DB-derived) and lets the coordinator own the fetch,
-        // the store write, and the freshness stamp.
-        // **Part 4.6 — age-driven history depth.** The default 400 days
-        // (~13 months) starves `All` (and the older end of `1Y`) on a wallet
-        // older than that: its early period has no price coverage, so the chart
-        // goes flat/straight there. Drive `days` from the wallet's OLDEST
-        // transaction so the full lifetime is covered. Capped at ~5.5y so a
-        // single request stays bounded (the server's own max also applies);
-        // deeper history beyond the cap is the deferred chunking case.
-        // `allTransactions` is newest-first, so `.last` is the oldest.
-        let oldestTxDate = allTransactions.last?.occurredAt
-        let lifetimeDays = oldestTxDate.map { Int(ceil(Date().timeIntervalSince($0) / 86_400)) + 5 } ?? 400
-        let days = min(max(400, lifetimeDays), 2_000)
-
-        let coordinator = WalletRefreshCoordinator(container: modelContext.container)
-        await coordinator.syncHistoricalCloses(
-            symbols: Array(symbols),
-            fiat: currencyCode,
-            alreadyHave: existing,
-            days: days
-        )
+        // Historical-price fetch removed with the data-fetching layer
+        // (2026-06-25). The chart values holdings only from whatever is already
+        // stored (now nothing), so it renders a flat baseline with no fetch.
     }
 
     // MARK: - Refresh
@@ -2650,41 +2576,12 @@ struct WalletHomeView: View {
     /// published on `WalletRefreshState.shared`, which this view
     /// observes to render the honest network-error surfaces.
     private func runRefresh(userInitiated: Bool = false) async {
-        guard let walletId = await resolveRefreshWalletId() else { return }
-        await MainActor.run { isRefreshing = true }
-        let coordinator = WalletRefreshCoordinator(container: modelContext.container)
-        await coordinator.refreshWallet(
-            walletId: walletId,
-            fiatCode: currencyCode,
-            userInitiated: userInitiated
-        )
-        await MainActor.run {
-            isRefreshing = false
-            // A refresh can re-price existing balance rows without
-            // changing row counts, which the count-based change proxy
-            // can't see — rebuild the memoized DISPLAY projections
-            // explicitly now that the coordinator has finished writing.
-            // Transactions need no rebuild — they read live from the
-            // top-level `@Query`.
-            rebuildDisplayRows()
-            // **2026-06-10 handoff signature.** Pull-to-refresh
-            // complete fires the iris-settle pattern (soft tick →
-            // medium tap). Per Rule #10 §I, signatures are gated
-            // through `UniHapticEngine` so the AppStorage toggle
-            // and Reduce Motion are both honored.
-            //
-            // **userInitiated-only (2026-06-12).** Silent automatic
-            // refreshes (on appear, on wallet switch, post-import)
-            // used to fire this too — a phantom buzz with no touch
-            // behind it (part of the user's "haptics while doing
-            // nothing" report). A settle haptic answers the user's
-            // own pull; the system's background work stays silent.
-            //
-            // Also skipped while a replacement pipeline is still
-            // running (this run was cancelled by a user pull, or
-            // superseded by a wallet switch) — "settled" before the
-            // spinner stops would be a lie in the hand (2026-06-12).
-            if userInitiated, !refreshState.isRefreshing {
+        // Refresh removed with the data-fetching layer (2026-06-25): there are
+        // no balances / history to pull. The screen renders from stored data
+        // only; a user-initiated pull just settles with its haptic.
+        guard await resolveRefreshWalletId() != nil else { return }
+        if userInitiated {
+            await MainActor.run {
                 UniHapticEngine.shared.play(.signature(.irisSettle))
             }
         }

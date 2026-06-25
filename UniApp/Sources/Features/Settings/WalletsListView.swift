@@ -398,17 +398,10 @@ struct WalletsListView: View {
         UniHapticEngine.shared.play(.success)
     }
 
-    /// Real refresh of THIS wallet — balances across every chain + history,
-    /// in the background, via the canonical coordinator.
+    /// Refresh removed with the data-fetching layer (2026-06-25) — no
+    /// balances / history to pull. Kept as a haptic-only acknowledgement.
     private func refresh(_ wallet: WalletRecord) {
         UniHapticEngine.shared.play(.selection)
-        let container = modelContext.container
-        let fiat = currencyCode
-        let id = wallet.id
-        Task {
-            await WalletRefreshCoordinator(container: container)
-                .refreshWallet(walletId: id, fiatCode: fiat)
-        }
     }
 
     private func requestDelete(_ wallet: WalletRecord) {

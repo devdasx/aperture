@@ -116,16 +116,6 @@ struct UniAppApp: App {
                 .environment(\.autoLockController, lockController)
                 .onChange(of: scenePhase) { _, newPhase in
                     lockController.handleScenePhaseChange(newPhase)
-                    // Stop any in-flight multi-chain refresh the instant we
-                    // background, so it can't run to completion + drain the
-                    // radio/CPU off-screen (2026-06-18 "hot in background"
-                    // fix). The auto-refresh loop already stops via its
-                    // `autoRefreshGate` scenePhase gate; this cancels the
-                    // work that was ALREADY running (the unstructured
-                    // registry Task that `await task.value` doesn't cancel).
-                    if newPhase == .background {
-                        WalletRefreshRegistry.cancelAll()
-                    }
                 }
                 // Biometric drift detection per user direction
                 // 2026-06-06. If the user changed their Face ID
@@ -265,28 +255,9 @@ private struct AppRoot: View {
 
     @Environment(\.autoLockController) private var lockController
 
-    /// **App-level auto-refresh (2026-06-13).** The active wallet's
-    /// balances + transaction history refresh every 10 s, from the app
-    /// root — so it runs on EVERY screen (Wallet / Browser /
-    /// Settings), not just the wallet home, per the user's direction
-    /// ("it should be on-app-level not only in the main screen … run
-    /// every 10 seconds automatically, doesn't matter which screen").
-    /// The work is the normal `WalletRefreshCoordinator` pipeline —
-    /// fully async/off-main (publicnode `eth_getLogs` + `balanceOf`), and
-    /// the `WalletRefreshRegistry` dedupes so a 10 s tick that lands on
-    /// top of a still-running refresh JOINS it rather than stacking a
-    /// second pipeline. Gated to the foreground + unlocked + past-splash
-    /// state so it never burns battery/network in the background.
+    /// Drives the lock overlay's scene-phase handling (see the
+    /// `onChange(of: scenePhase)` above).
     @Environment(\.scenePhase) private var scenePhase
-    @AppStorage("activeWalletId") private var activeWalletIdRaw: String = ""
-    @AppStorage(CurrencyPreference.storageKey) private var currencyCode: String = CurrencyPreference.defaultCode
-
-    /// Re-keys the auto-refresh `.task` whenever a gating condition
-    /// flips — foreground/background, splash, lock, or the active
-    /// wallet. The loop only runs while `active && !splash && !locked`.
-    private var autoRefreshGate: String {
-        "\(scenePhase)|\(isShowingSplash)|\(lockController.isLocked)|\(activeWalletIdRaw)"
-    }
 
     /// The detached overlay window hosting `AppLockView` above the main
     /// window (see the type doc for why
@@ -362,11 +333,6 @@ private struct AppRoot: View {
         .onChange(of: isLockSurfaceVisible) { _, visible in
             syncLockOverlay(lockVisible: visible)
         }
-        // App-level 10 s auto-refresh — runs on every screen. Re-keyed
-        // by `autoRefreshGate` so it stops the moment we background,
-        // lock, or hit the splash, and restarts (against the new wallet)
-        // when those clear. See `autoRefreshGate`'s doc.
-        .task(id: autoRefreshGate) { await runAutoRefreshLoop() }
         // App-wide Reset Aperture (design_handoff_reset) — presented HERE, at
         // the app root above `RootGate`, NOT from the Settings tab. That's what
         // lets the erasing→factory-fresh morph survive the wipe: once the wipe
@@ -380,43 +346,6 @@ private struct AppRoot: View {
             ResetApertureFlow(onClose: { ResetFlowGate.shared.isPresenting = false })
                 .id(rootDirectionKey)
                 .uniAppEnvironment()
-        }
-    }
-
-    /// Auto-refresh interval. **Eased 10 s → 30 s (2026-06-16)** as part
-    /// of the rate-limit-storm fix: each tick fans a full ~24-chain scan
-    /// (native + nonce + Multicall3 token batch per chain) plus a
-    /// per-address history sweep across the RPC fleet. At 10 s those
-    /// cycles overlapped and compounded the per-IP burst that tripped
-    /// providers' throttles (and contributed to the `nw_protocol` socket
-    /// flood). 30 s is still well inside "live" — the active screen's own
-    /// `.task` does the immediate first scan on appear, every refresh
-    /// updates the store reactively (Rule #25 live-update is preserved),
-    /// and the `WalletRefreshRegistry` still dedupes overlapping ticks —
-    /// while cutting the steady-state fan-out frequency 3×.
-    private static let autoRefreshInterval: Duration = .seconds(30)
-
-    /// The auto-refresh loop. Sleeps first (the active screen's own
-    /// `.task` does the immediate first scan on appear), then refreshes
-    /// every `autoRefreshInterval` for as long as the foreground/unlocked
-    /// gate holds. Cancelled automatically when `autoRefreshGate`
-    /// changes (background, lock, splash, wallet switch).
-    private func runAutoRefreshLoop() async {
-        // Gate: foreground, past splash, unlocked, and a real wallet.
-        guard scenePhase == .active,
-              !isShowingSplash,
-              !lockController.isLocked,
-              let walletId = UUID(uuidString: activeWalletIdRaw)
-        else { return }
-
-        let container = ApertureDatabase.shared.container
-        while !Task.isCancelled {
-            try? await Task.sleep(for: Self.autoRefreshInterval)
-            if Task.isCancelled { return }
-            // Non-user-initiated: joins any in-flight refresh via the
-            // registry instead of cancel-and-replacing it.
-            await WalletRefreshCoordinator(container: container)
-                .refreshWallet(walletId: walletId, fiatCode: currencyCode)
         }
     }
 

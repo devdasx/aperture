@@ -3,32 +3,17 @@ import Foundation
 import SwiftData
 @testable import Aperture
 
-/// **End-to-end PERSISTENCE test for the per-chain connector split.**
+/// **SwiftData persistence tests for the storage layer.**
 ///
-/// The 24 `*ConnectorTests` prove each chain's connector FETCHES real
-/// on-chain balance + history. This suite proves the second half the
-/// user asked for — that fetched data flows through the REAL refresh
-/// pipeline and actually LANDS in SwiftData, then reads back through the
-/// exact query surface the wallet UI's `@Query` uses.
-///
-/// The path under test is the full production sink:
-///
-///   ChainConnector (per-chain)
-///     → RealRPCBalanceScanner.streamScan / RealRPCTransactionScanner.scan
-///       → WalletRefreshCoordinator.refreshWallet
-///         → TransactionRepository.upsertBalance / upsertTransaction
-///           → SwiftData
-///             → TransactionRepository.transactions(walletId:) + address.balances
-///
-/// It seeds an isolated temporary SQLite `ModelContainer` with a watch-only wallet
-/// pointing at a permanently-funded public address, drives the real
-/// `refreshWallet`, and asserts the rows persisted. This exercises the
-/// connector→coordinator→DB seam a green build cannot: a connector that
-/// emitted a `TransactionEvent` / `TokenBalance` shape the upsert dedup
-/// rejected would compile fine yet fail here.
-///
-/// `.serialized` so the two real-network refreshes don't contend on the
-/// shared `RPCClient.shared` rate limiter / circuit breakers.
+/// The data-fetching layer (connectors, scanners, refresh coordinator) was
+/// removed on 2026-06-25, so this suite no longer drives a live refresh. What
+/// remains exercises the storage seams a green build cannot, all against an
+/// isolated temporary SQLite `ModelContainer`:
+///   - UTXO snapshot persistence (`ChainStateRepository.replaceUTXOs` —
+///     snapshot semantics, spent outputs dropped on replace).
+///   - Targeted `ChainStateRepository.rebuild` isolation + cross-`@ModelActor`
+///     fiat-staleness read-back through the wallet UI's `@Query` surface.
+///   - `ChainKeyVault` round-trip + the encrypted key-blob storage path.
 @Suite(.serialized)
 struct RefreshPipelinePersistenceTests {
 
@@ -67,71 +52,6 @@ struct RefreshPipelinePersistenceTests {
         context.insert(addr)
         try context.save()
         return wallet.id
-    }
-
-    /// All persisted balance rows for the wallet, read from a FRESH
-    /// context — the same way the UI's `@Query` sees committed rows.
-    private func balanceRows(_ container: ModelContainer, walletId: UUID) -> [TokenBalanceRecord] {
-        let context = ModelContext(container)
-        var descriptor = FetchDescriptor<WalletRecord>(
-            predicate: #Predicate { $0.id == walletId }
-        )
-        descriptor.fetchLimit = 1
-        guard let wallet = try? context.fetch(descriptor).first else { return [] }
-        return wallet.addresses.flatMap { $0.balances }
-    }
-
-    // MARK: - Active-chain persistence
-
-    @Test("Sui: real refresh persists native balance into SwiftData")
-    func suiRefreshPersistsBalance() async throws {
-        let container = try makeContainer()
-        let walletId = try seedWallet(container, chain: .sui, address: Self.suiAddress)
-
-        await WalletRefreshCoordinator(container: container)
-            .refreshWallet(walletId: walletId, fiatCode: "USD", userInitiated: true)
-
-        let rows = balanceRows(container, walletId: walletId)
-        let native = rows.first {
-            $0.tokenContract == nil && $0.tokenSymbol == SupportedChain.sui.ticker
-        }
-        let nativeRow = try #require(native, "no native SUI balance row persisted after refresh")
-        let amount = Decimal(string: nativeRow.rawBalance) ?? 0
-        #expect(amount > 0, "Sui hot-wallet native balance persisted as \"\(nativeRow.rawBalance)\" (expected > 0)")
-
-        // Per-chain aggregate row recomputed from the SAME refresh — this
-        // is the row the balance card reads.
-        let chainRepo = ChainStateRepository(modelContainer: container)
-        let suiState = try #require(
-            try await chainRepo.chainState(walletId: walletId, chain: .sui),
-            "no ChainStateRecord for sui after refresh"
-        )
-        #expect((Decimal(string: suiState.nativeBalanceRaw) ?? 0) > 0,
-                "sui chain row native balance \"\(suiState.nativeBalanceRaw)\"")
-        #expect(suiState.txTotalCount > 0, "sui chain row recorded no transactions")
-    }
-
-    // MARK: - Disabled-chain honesty
-
-    @Test("Disabled EVM/Bitcoin refreshes do not write wallet-home balance or chain-state rows")
-    func disabledChainsDoNotPersistRefreshRows() async throws {
-        let container = try makeContainer()
-        let ethWalletId = try seedWallet(container, chain: .ethereum, address: Self.ethAddress)
-        let btcWalletId = try seedWallet(container, chain: .bitcoin, address: Self.btcAddress)
-
-        await WalletRefreshCoordinator(container: container)
-            .refreshWallet(walletId: ethWalletId, fiatCode: "USD", userInitiated: true)
-        await WalletRefreshCoordinator(container: container)
-            .refreshWallet(walletId: btcWalletId, fiatCode: "USD", userInitiated: true)
-
-        #expect(balanceRows(container, walletId: ethWalletId).isEmpty)
-        #expect(balanceRows(container, walletId: btcWalletId).isEmpty)
-        let txRepo = TransactionRepository(modelContainer: container)
-        #expect(try await txRepo.transactions(walletId: ethWalletId).isEmpty)
-        #expect(try await txRepo.transactions(walletId: btcWalletId).isEmpty)
-        let chainRepo = ChainStateRepository(modelContainer: container)
-        #expect(try await chainRepo.chainState(walletId: ethWalletId, chain: .ethereum) == nil)
-        #expect(try await chainRepo.chainState(walletId: btcWalletId, chain: .bitcoin) == nil)
     }
 
     // MARK: - UTXO persistence (deterministic — the genesis address can't)
@@ -263,45 +183,6 @@ struct RefreshPipelinePersistenceTests {
         let after = try #require(try await chainRepo.chainState(walletId: walletId, chain: chain))
         #expect(after.totalFiat == 5000, "rebuild must re-read sibling-committed fiat — got \(after.totalFiat)")
         #expect(after.nativeFiat == 5000)
-    }
-
-    // MARK: - Pricing via the independent Render/neon price server
-
-    /// The app now reads prices ONLY from the Aperture price server (user
-    /// direction 2026-06-17). Verifies a fresh `TokenPricingEngine` (empty
-    /// cache, so no local fallback can mask it) prices core assets from the
-    /// server, in USD and in a non-USD currency (FX applied server-side).
-    @Test("TokenPricingEngine prices from the remote server (USD + EUR)")
-    func remotePricingFromServer() async throws {
-        let container = try makeContainer()
-        let engine = TokenPricingEngine(container: container)
-
-        let usd = await engine.unitPrices(symbols: ["BTC", "ETH", "USDC"], currencyCode: "USD")
-        #expect((usd["BTC"]?.amount ?? 0) > 0, "BTC unpriced from server")
-        #expect((usd["ETH"]?.amount ?? 0) > 0, "ETH unpriced from server")
-        #expect((usd["USDC"]?.amount ?? 0) > 0, "USDC unpriced from server")
-        #expect(usd["BTC"]?.source == "neon", "BTC price should be sourced from the server (got \(usd["BTC"]?.source ?? "nil"))")
-
-        // Non-USD: FX applied server-side, so EUR-BTC differs from USD-BTC.
-        let eur = await engine.unitPrices(symbols: ["BTC"], currencyCode: "EUR")
-        #expect((eur["BTC"]?.amount ?? 0) > 0, "BTC unpriced in EUR")
-    }
-
-    /// The price chart now sources daily closes from the server too (no more
-    /// direct Coinbase candles). Verifies the app→server history path returns
-    /// candles in USD AND in an exotic currency (JOD) that the old per-fiat
-    /// Coinbase path could never chart.
-    @Test("RemoteHistoricalPriceService returns server candles (USD + exotic currency)")
-    func remoteHistoryFromServer() async throws {
-        let service = RemoteHistoricalPriceService()
-
-        let usd = await service.fetchDailyCloses(symbol: "BTC", fiat: "USD", days: 14)
-        #expect(!usd.isEmpty, "no BTC/USD candles from server")
-        #expect((usd.first?.close ?? 0) > 0, "BTC/USD candle has non-positive close")
-
-        // Exotic currency the old Coinbase per-fiat path could never chart.
-        let jod = await service.fetchDailyCloses(symbol: "BTC", fiat: "JOD", days: 14)
-        #expect(!jod.isEmpty, "no BTC/JOD candles — exotic-currency chart still broken")
     }
 
     // MARK: - Encryption (the user-chosen "encrypted key blob in DB" path)
