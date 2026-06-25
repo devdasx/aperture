@@ -277,11 +277,18 @@ struct PrivateKeyReviewView: View {
                         .fill(UniColors.Background.secondary)
                 )
             UniBody(
-                text: "Other chains stay outside Aperture. Import their keys or your recovery phrase to add them.",
+                text: importScopeText,
                 color: UniColors.Text.secondary
             )
             .fixedSize(horizontal: false, vertical: true)
         }
+    }
+
+    private var importScopeText: LocalizedStringKey {
+        if chain.family == .evm {
+            return "This key will be available on every supported EVM network. Non-EVM chains stay outside Aperture until you import their keys or your recovery phrase."
+        }
+        return "Other chains stay outside Aperture. Import their keys or your recovery phrase to add them."
     }
 
     private func errorState(_ error: KeyImportError) -> some View {

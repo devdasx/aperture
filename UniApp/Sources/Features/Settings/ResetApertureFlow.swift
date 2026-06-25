@@ -158,7 +158,7 @@ struct ResetApertureFlow: View {
         card {
             eraseRow("creditcard", "Wallets", "Every wallet you’ve created, imported, or are watching.")
             hair
-            eraseRow("key", "Keys & Recovery Phrases", "Permanently removed from this device’s Secure Enclave.")
+            eraseRow("key", "Keys & Recovery Phrases", "Permanently removed from this device’s Keychain.")
             hair
             eraseRow("clock.arrow.circlepath", "Transactions & Balances", "Your full history, contacts, and cached balances.")
             hair

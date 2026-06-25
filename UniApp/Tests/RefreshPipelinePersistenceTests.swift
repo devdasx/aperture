@@ -20,7 +20,7 @@ import SwiftData
 ///           → SwiftData
 ///             → TransactionRepository.transactions(walletId:) + address.balances
 ///
-/// It seeds an in-memory `ModelContainer` with a watch-only wallet
+/// It seeds an isolated temporary SQLite `ModelContainer` with a watch-only wallet
 /// pointing at a permanently-funded public address, drives the real
 /// `refreshWallet`, and asserts the rows persisted. This exercises the
 /// connector→coordinator→DB seam a green build cannot: a connector that
@@ -34,18 +34,14 @@ struct RefreshPipelinePersistenceTests {
 
     // Permanently-funded, high-history PUBLIC addresses (watch-only — no
     // seed material; the pipeline only ever reads).
-    //
-    // vitalik.eth — large, always-positive ETH balance + many ERC-20s.
+    static let suiAddress = "0x935029ca5219502a47ac9b69f556ccf6e2198b5e7815cf50f68846f723739cbd"
     static let ethAddress = "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045"
-    // Bitcoin genesis (Satoshi) — non-zero balance, thousands of inbound txs.
     static let btcAddress = "1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa"
 
-    // MARK: - Fixture (proven in-memory idiom — SyncStatusRepositoryTests)
+    // MARK: - Fixture
 
     private func makeContainer() throws -> ModelContainer {
-        let schema = Schema(ApertureSchemaV1.models)
-        let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
-        return try ModelContainer(for: schema, configurations: [config])
+        try TestModelContainerFactory.makeContainer()
     }
 
     /// Seed one watch-only wallet with a single address on `chain`, save,
@@ -85,82 +81,63 @@ struct RefreshPipelinePersistenceTests {
         return wallet.addresses.flatMap { $0.balances }
     }
 
-    // MARK: - EVM family (native + token persistence + EVM contract seam)
+    // MARK: - Active-chain persistence
 
-    @Test("Ethereum: real refresh persists native ETH balance into SwiftData")
-    func ethereumRefreshPersistsBalance() async throws {
+    @Test("Sui: real refresh persists native balance into SwiftData")
+    func suiRefreshPersistsBalance() async throws {
         let container = try makeContainer()
-        let walletId = try seedWallet(container, chain: .ethereum, address: Self.ethAddress)
+        let walletId = try seedWallet(container, chain: .sui, address: Self.suiAddress)
 
         await WalletRefreshCoordinator(container: container)
             .refreshWallet(walletId: walletId, fiatCode: "USD", userInitiated: true)
 
         let rows = balanceRows(container, walletId: walletId)
         let native = rows.first {
-            $0.tokenContract == nil && $0.tokenSymbol == SupportedChain.ethereum.ticker
+            $0.tokenContract == nil && $0.tokenSymbol == SupportedChain.sui.ticker
         }
-        let nativeRow = try #require(native, "no native ETH balance row persisted after refresh")
+        let nativeRow = try #require(native, "no native SUI balance row persisted after refresh")
         let amount = Decimal(string: nativeRow.rawBalance) ?? 0
-        #expect(amount > 0, "vitalik.eth native balance persisted as \"\(nativeRow.rawBalance)\" (expected > 0)")
+        #expect(amount > 0, "Sui hot-wallet native balance persisted as \"\(nativeRow.rawBalance)\" (expected > 0)")
 
         // Per-chain aggregate row recomputed from the SAME refresh — this
         // is the row the balance card reads.
         let chainRepo = ChainStateRepository(modelContainer: container)
-        let ethState = try #require(
-            try await chainRepo.chainState(walletId: walletId, chain: .ethereum),
-            "no ChainStateRecord for ethereum after refresh"
+        let suiState = try #require(
+            try await chainRepo.chainState(walletId: walletId, chain: .sui),
+            "no ChainStateRecord for sui after refresh"
         )
-        #expect((Decimal(string: ethState.nativeBalanceRaw) ?? 0) > 0,
-                "ethereum chain row native balance \"\(ethState.nativeBalanceRaw)\"")
-        #expect(ethState.txTotalCount > 0, "ethereum chain row recorded no transactions")
+        #expect((Decimal(string: suiState.nativeBalanceRaw) ?? 0) > 0,
+                "sui chain row native balance \"\(suiState.nativeBalanceRaw)\"")
+        #expect(suiState.txTotalCount > 0, "sui chain row recorded no transactions")
     }
 
-    // MARK: - UTXO family (native + transaction-history persistence seam)
+    // MARK: - Disabled-chain honesty
 
-    @Test("Bitcoin: real refresh persists native BTC balance + transaction history into SwiftData")
-    func bitcoinRefreshPersistsBalanceAndHistory() async throws {
+    @Test("Disabled EVM/Bitcoin refreshes do not write wallet-home balance or chain-state rows")
+    func disabledChainsDoNotPersistRefreshRows() async throws {
         let container = try makeContainer()
-        let walletId = try seedWallet(container, chain: .bitcoin, address: Self.btcAddress)
+        let ethWalletId = try seedWallet(container, chain: .ethereum, address: Self.ethAddress)
+        let btcWalletId = try seedWallet(container, chain: .bitcoin, address: Self.btcAddress)
 
         await WalletRefreshCoordinator(container: container)
-            .refreshWallet(walletId: walletId, fiatCode: "USD", userInitiated: true)
+            .refreshWallet(walletId: ethWalletId, fiatCode: "USD", userInitiated: true)
+        await WalletRefreshCoordinator(container: container)
+            .refreshWallet(walletId: btcWalletId, fiatCode: "USD", userInitiated: true)
 
-        // Native BTC balance row persisted, positive.
-        let rows = balanceRows(container, walletId: walletId)
-        let native = rows.first {
-            $0.tokenContract == nil && $0.tokenSymbol == SupportedChain.bitcoin.ticker
-        }
-        let nativeRow = try #require(native, "no native BTC balance row persisted after refresh")
-        #expect((Decimal(string: nativeRow.rawBalance) ?? 0) > 0,
-                "BTC genesis balance persisted as \"\(nativeRow.rawBalance)\" (expected > 0)")
-
-        // Transaction history persisted AND readable through the exact
-        // query surface the wallet UI drives (`transactions(walletId:)`).
+        #expect(balanceRows(container, walletId: ethWalletId).isEmpty)
+        #expect(balanceRows(container, walletId: btcWalletId).isEmpty)
         let txRepo = TransactionRepository(modelContainer: container)
-        let txs = try await txRepo.transactions(walletId: walletId)
-        #expect(!txs.isEmpty, "BTC genesis transaction history did not persist / read back")
-
-        // Per-chain aggregate row, including persisted UTXOs (BTC genesis is
-        // funded, so it has unspent outputs).
+        #expect(try await txRepo.transactions(walletId: ethWalletId).isEmpty)
+        #expect(try await txRepo.transactions(walletId: btcWalletId).isEmpty)
         let chainRepo = ChainStateRepository(modelContainer: container)
-        let btcState = try #require(
-            try await chainRepo.chainState(walletId: walletId, chain: .bitcoin),
-            "no ChainStateRecord for bitcoin after refresh"
-        )
-        #expect((Decimal(string: btcState.nativeBalanceRaw) ?? 0) > 0, "bitcoin chain row native balance")
-        #expect(btcState.txTotalCount > 0, "bitcoin chain row recorded no transactions")
-        // NOTE: UTXO persistence is proven deterministically in
-        // `utxoPersistenceAggregatesInChainRow` below — NOT here. The
-        // genesis address has tens of thousands of dust UTXOs, which Esplora
-        // rejects with HTTP 400 on `/utxo` (verified). That's a pathological
-        // outlier, not the production case (real wallets have a handful of
-        // UTXOs), so asserting a live fetch against it would be a false red.
+        #expect(try await chainRepo.chainState(walletId: ethWalletId, chain: .ethereum) == nil)
+        #expect(try await chainRepo.chainState(walletId: btcWalletId, chain: .bitcoin) == nil)
     }
 
     // MARK: - UTXO persistence (deterministic — the genesis address can't)
 
-    @Test("UTXO persistence: replaceUTXOs + rebuild reflects count/total in the chain row")
-    func utxoPersistenceAggregatesInChainRow() async throws {
+    @Test("UTXO persistence: replaceUTXOs stores a snapshot and drops spent outputs")
+    func utxoPersistenceStoresSnapshot() async throws {
         let container = try makeContainer()
         let walletId = try seedWallet(container, chain: .bitcoin, address: Self.btcAddress)
         let repo = ChainStateRepository(modelContainer: container)
@@ -175,20 +152,24 @@ struct RefreshPipelinePersistenceTests {
         #expect(written.count == 2)
         #expect(written.totalSats == 350_000)
 
-        try await repo.rebuild(walletId: walletId, fiatCurrencyCode: "USD")
-        let state = try #require(try await repo.chainState(walletId: walletId, chain: .bitcoin))
-        #expect(state.utxoCount == 2, "chain row did not reflect persisted UTXO count")
-        #expect(state.utxoTotalSats == 350_000, "chain row UTXO total wrong")
+        let context = ModelContext(container)
+        var descriptor = FetchDescriptor<ChainUTXORecord>(
+            predicate: #Predicate { $0.walletId == walletId && $0.chainRaw == "bitcoin" }
+        )
+        #expect(try context.fetch(descriptor).count == 2)
 
         // Snapshot semantics: replacing with a smaller set (one spent) must
         // drop the stale output, not accumulate.
         _ = try await repo.replaceUTXOs(
             walletId: walletId, chain: .bitcoin, address: Self.btcAddress, utxos: [utxos[0]]
         )
-        try await repo.rebuild(walletId: walletId, fiatCurrencyCode: "USD")
-        let after = try #require(try await repo.chainState(walletId: walletId, chain: .bitcoin))
-        #expect(after.utxoCount == 1, "replaceUTXOs must drop spent outputs (snapshot semantics)")
-        #expect(after.utxoTotalSats == 100_000)
+        let freshContext = ModelContext(container)
+        descriptor = FetchDescriptor<ChainUTXORecord>(
+            predicate: #Predicate { $0.walletId == walletId && $0.chainRaw == "bitcoin" }
+        )
+        let after = try freshContext.fetch(descriptor)
+        #expect(after.count == 1, "replaceUTXOs must drop spent outputs (snapshot semantics)")
+        #expect(after.first?.valueSats == 100_000)
     }
 
     // MARK: - Live per-chain commit (targeted rebuild)
@@ -207,37 +188,37 @@ struct RefreshPipelinePersistenceTests {
             hasPassphrase: false, colorTag: "default", sortOrder: 0, requiresBackup: false
         )
         context.insert(wallet)
-        let ethAddr = WalletAddressRecord(chainRaw: SupportedChain.ethereum.rawValue, address: "0xeth")
-        ethAddr.wallet = wallet
-        context.insert(ethAddr)
-        let btcAddr = WalletAddressRecord(chainRaw: SupportedChain.bitcoin.rawValue, address: "bc1qbtc")
-        btcAddr.wallet = wallet
-        context.insert(btcAddr)
+        let suiAddr = WalletAddressRecord(chainRaw: SupportedChain.sui.rawValue, address: "0xsui")
+        suiAddr.wallet = wallet
+        context.insert(suiAddr)
+        let nearAddr = WalletAddressRecord(chainRaw: SupportedChain.near.rawValue, address: "near")
+        nearAddr.wallet = wallet
+        context.insert(nearAddr)
         try context.save()
         let walletId = wallet.id
 
-        // Stage a native ETH balance row.
+        // Stage a native SUI balance row.
         let txRepo = TransactionRepository(modelContainer: container)
         try await txRepo.upsertBalance(
-            addressId: ethAddr.id, tokenSymbol: SupportedChain.ethereum.ticker,
+            addressId: suiAddr.id, tokenSymbol: SupportedChain.sui.ticker,
             tokenContract: nil, decimals: 0, rawBalance: "1.5",
             fiatValueCached: 3000, fiatCurrencyCode: "USD"
         )
 
         let repo = ChainStateRepository(modelContainer: container)
-        // Rebuild ONLY ethereum.
-        try await repo.rebuild(walletId: walletId, fiatCurrencyCode: "USD", onlyChains: [.ethereum])
-        let eth = try await repo.chainState(walletId: walletId, chain: .ethereum)
-        let btc = try await repo.chainState(walletId: walletId, chain: .bitcoin)
-        #expect(eth != nil, "ethereum row should exist after a targeted ethereum rebuild")
-        #expect((eth.map { Decimal(string: $0.nativeBalanceRaw) ?? 0 } ?? 0) > 0,
-                "ethereum row should carry the staged balance")
-        #expect(btc == nil, "bitcoin row must NOT be created by an ethereum-only rebuild")
+        // Rebuild ONLY Sui.
+        try await repo.rebuild(walletId: walletId, fiatCurrencyCode: "USD", onlyChains: [.sui])
+        let sui = try await repo.chainState(walletId: walletId, chain: .sui)
+        let near = try await repo.chainState(walletId: walletId, chain: .near)
+        #expect(sui != nil, "sui row should exist after a targeted sui rebuild")
+        #expect((sui.map { Decimal(string: $0.nativeBalanceRaw) ?? 0 } ?? 0) > 0,
+                "sui row should carry the staged balance")
+        #expect(near == nil, "near row must NOT be created by a sui-only rebuild")
 
-        // Rebuild ONLY bitcoin → its row appears now.
-        try await repo.rebuild(walletId: walletId, fiatCurrencyCode: "USD", onlyChains: [.bitcoin])
-        let btc2 = try await repo.chainState(walletId: walletId, chain: .bitcoin)
-        #expect(btc2 != nil, "bitcoin row should exist after a targeted bitcoin rebuild")
+        // Rebuild ONLY Near → its row appears now.
+        try await repo.rebuild(walletId: walletId, fiatCurrencyCode: "USD", onlyChains: [.near])
+        let near2 = try await repo.chainState(walletId: walletId, chain: .near)
+        #expect(near2 != nil, "near row should exist after a targeted near rebuild")
     }
 
     // MARK: - Balance-$0 regression (cross-@ModelActor fiat staleness)
@@ -251,7 +232,7 @@ struct RefreshPipelinePersistenceTests {
     @Test("rebuild re-reads fiat a sibling context committed (balance-​$0 regression)")
     func rebuildReadsSiblingContextFiat() async throws {
         let container = try makeContainer()
-        let walletId = try seedWallet(container, chain: .ethereum, address: Self.ethAddress)
+        let walletId = try seedWallet(container, chain: .sui, address: Self.suiAddress)
 
         let context = ModelContext(container)
         var descriptor = FetchDescriptor<WalletRecord>(predicate: #Predicate { $0.id == walletId })
@@ -260,26 +241,26 @@ struct RefreshPipelinePersistenceTests {
 
         let txRepo = TransactionRepository(modelContainer: container)
         let chainRepo = ChainStateRepository(modelContainer: container)
-        let eth = SupportedChain.ethereum
+        let chain = SupportedChain.sui
 
         // 1) The nil-fiat phase: a balance row exists at fiat 0.
         try await txRepo.upsertBalance(
-            addressId: addressId, tokenSymbol: eth.ticker, tokenContract: nil,
+            addressId: addressId, tokenSymbol: chain.ticker, tokenContract: nil,
             decimals: 0, rawBalance: "2.0", fiatValueCached: 0, fiatCurrencyCode: "USD"
         )
         // 2) First rebuild — chainRepo's context caches the row at fiat 0.
         try await chainRepo.rebuild(walletId: walletId, fiatCurrencyCode: "USD")
-        let before = try await chainRepo.chainState(walletId: walletId, chain: eth)
+        let before = try await chainRepo.chainState(walletId: walletId, chain: chain)
         #expect(before?.totalFiat == 0, "sanity: fiat not priced yet")
 
         // 3) The priced re-yield: txRepo (sibling context) updates the SAME row.
         try await txRepo.upsertBalance(
-            addressId: addressId, tokenSymbol: eth.ticker, tokenContract: nil,
+            addressId: addressId, tokenSymbol: chain.ticker, tokenContract: nil,
             decimals: 0, rawBalance: "2.0", fiatValueCached: 5000, fiatCurrencyCode: "USD"
         )
         // 4) Second rebuild MUST see the new fiat (the bug: it read a stale 0).
         try await chainRepo.rebuild(walletId: walletId, fiatCurrencyCode: "USD")
-        let after = try #require(try await chainRepo.chainState(walletId: walletId, chain: eth))
+        let after = try #require(try await chainRepo.chainState(walletId: walletId, chain: chain))
         #expect(after.totalFiat == 5000, "rebuild must re-read sibling-committed fiat — got \(after.totalFiat)")
         #expect(after.nativeFiat == 5000)
     }

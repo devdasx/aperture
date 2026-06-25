@@ -36,6 +36,10 @@
 (function () {
     "use strict";
 
+    if (window.location.protocol !== "https:") {
+        return;
+    }
+
     if (window.aperture && window.aperture.__installed__) {
         return; // Re-injection guard — `WKUserScript` reinjects on doc start.
     }
@@ -115,7 +119,7 @@
             if (method === "eth_requestAccounts" || method === "eth_accounts") {
                 if (Array.isArray(result) && result.length > 0) {
                     self.selectedAddress = result[0];
-                    self._emit("accountsChanged", [result]);
+                    self._emit("accountsChanged", result);
                 }
             } else if (method === "eth_chainId") {
                 if (typeof result === "string" && result !== self.chainId) {

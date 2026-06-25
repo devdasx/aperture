@@ -21,6 +21,10 @@ struct DAppSignTypedDataSheet: View {
 
     @Environment(\.dismiss) private var dismiss
 
+    /// Per-action Face ID gate. Only applies once the user has enabled an
+    /// in-app passcode; otherwise there is no app credential to verify.
+    @AppStorage("requireBiometricForDApp") private var requireForDApp: Bool = true
+
     /// Decoded JSON for the key-value preview. Computed once on
     /// init and stored in `@State` so the view's body doesn't
     /// re-parse on every evaluation.
@@ -29,6 +33,7 @@ struct DAppSignTypedDataSheet: View {
     /// True while the signature is being produced — drives the Sign CTA's
     /// native loading spinner and suppresses Cancel so the two can't race.
     @State private var isSigning = false
+    @State private var isShowingPinGate = false
 
     var body: some View {
         NavigationStack {
@@ -64,10 +69,37 @@ struct DAppSignTypedDataSheet: View {
             .safeAreaInset(edge: .bottom) {
                 actionRegion
             }
+            .fullScreenCover(isPresented: $isShowingPinGate) {
+                pinGateCover
+            }
             .onAppear {
                 decodedPreview = TypedDataPreview.decode(request.rawJSON)
             }
         }
+    }
+
+    private var pinGateCover: some View {
+        NavigationStack {
+            PinCodeView(
+                mode: .verify,
+                onComplete: { _ in
+                    isShowingPinGate = false
+                    performSign()
+                },
+                onCancel: { isShowingPinGate = false },
+                allowsBiometrics: requireForDApp
+            )
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button { isShowingPinGate = false } label: {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 17, weight: .semibold))
+                    }
+                    .accessibilityLabel(Text("Cancel"))
+                }
+            }
+        }
+        .uniAppEnvironment()
     }
 
     // MARK: - Sections
@@ -193,18 +225,10 @@ struct DAppSignTypedDataSheet: View {
                         isLoading: isSigning,
                         isEnabled: !isSigning
                     ) {
-                        isSigning = true
-                        Task {
-                            defer { isSigning = false }
-                            do {
-                                let signature = try await EVMDAppSigner.signTypedData(
-                                    json: request.rawJSON
-                                )
-                                router.approveSign(signedHex: signature)
-                            } catch {
-                                router.failPending(EVMDAppSigner.requestError(for: error))
-                            }
-                            dismiss()
+                        if PinCodeStorage.hasPin {
+                            isShowingPinGate = true
+                        } else {
+                            performSign()
                         }
                     }
                     UniButton(title: "Cancel", variant: .secondary, isEnabled: !isSigning) {
@@ -221,6 +245,25 @@ struct DAppSignTypedDataSheet: View {
                 .opacity(0.92)
                 .ignoresSafeArea(edges: .bottom)
         )
+    }
+
+    private func performSign() {
+        guard !isSigning else { return }
+        isSigning = true
+        Task {
+            defer { isSigning = false }
+            do {
+                let signature = try await EVMDAppSigner.signTypedData(
+                    json: request.rawJSON,
+                    chain: request.chain,
+                    expectedAddress: request.from
+                )
+                router.approveSign(signedHex: signature)
+            } catch {
+                router.failPending(EVMDAppSigner.requestError(for: error))
+            }
+            dismiss()
+        }
     }
 }
 

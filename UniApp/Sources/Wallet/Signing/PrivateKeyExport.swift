@@ -34,20 +34,19 @@ enum PrivateKeyExport {
 
     /// Derive + format the private key for one `(wallet, chain)`.
     ///
-    /// Passes `expectedAddress: nil` so the canonical default-derivation-path
-    /// key is exported (address parity is a *signing* safety check, not an
-    /// export concern). Throws via `SigningKeyProvider` when no secret is
-    /// available on this device or the wallet can't sign.
+    /// Passes the displayed account address into `SigningKeyProvider` so export
+    /// uses the same key↔address parity guard as transaction signing.
     nonisolated static func exportKey(
         wallet: WalletDescriptor,
         chain: SupportedChain,
+        expectedAddress: String,
         passphrase: String? = nil
     ) throws -> (value: String, format: String) {
         try SigningKeyProvider.withPrivateKey(
             wallet: wallet,
             chain: chain,
             passphrase: passphrase,
-            expectedAddress: nil
+            expectedAddress: expectedAddress
         ) { privateKey in
             let keyData = privateKey.data
             switch chain.family {
@@ -84,7 +83,12 @@ enum PrivateKeyExport {
         passphrase: String? = nil
     ) -> [Row] {
         chains.map { entry in
-            if let result = try? exportKey(wallet: wallet, chain: entry.chain, passphrase: passphrase) {
+            if let result = try? exportKey(
+                wallet: wallet,
+                chain: entry.chain,
+                expectedAddress: entry.address,
+                passphrase: passphrase
+            ) {
                 return Row(chain: entry.chain, address: entry.address, value: result.value, format: result.format)
             }
             return Row(chain: entry.chain, address: entry.address, value: nil, format: "—")

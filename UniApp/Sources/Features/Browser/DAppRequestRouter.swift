@@ -55,10 +55,10 @@ final class DAppRequestRouter {
     /// to this; the user's choice resolves the in-flight continuation.
     var pendingRequest: PendingRequest?
 
-    /// Connection state per page host. Once a dApp's host is in the
-    /// allowed set, `eth_accounts` returns the active wallet's address
-    /// without prompting again.
-    private var connectedHosts: Set<String> = []
+    /// Connection state per security origin (`scheme://host[:port]`).
+    /// Host-only grants let `http://example.com` inherit a grant made to
+    /// `https://example.com`; the wallet bridge must not do that.
+    private var connectedOriginKeys: Set<String> = []
 
     /// SwiftData context for persisting in-app-browser connections to
     /// `ConnectedDAppRecord`. Set once from the browser session view's
@@ -105,6 +105,12 @@ final class DAppRequestRouter {
             title: pageTitle.flatMap { $0.isEmpty ? nil : $0 } ?? pageURL?.host ?? "dApp",
             iconURL: pageURL.flatMap { faviconURL(for: $0) }
         )
+        guard origin.isSecureForWalletBridge else {
+            return .failure(DAppRequestError(
+                code: 4100,
+                message: "Aperture only connects to HTTPS dApps"
+            ))
+        }
         switch channel {
         case "eth":
             return await handleEVM(method: method, params: params, origin: origin)
@@ -132,7 +138,7 @@ final class DAppRequestRouter {
         case "eth_requestAccounts":
             return await requestEVMConnect(origin: origin)
         case "eth_accounts":
-            return .success(connectedHosts.contains(origin.host) ? [activeAddress()].compactMap { $0 } : [])
+            return .success(isConnected(origin) ? [activeAddress()].compactMap { $0 } : [])
         case "eth_chainId":
             return .success(activeChainIdHex())
         case "net_version":
@@ -157,19 +163,42 @@ final class DAppRequestRouter {
                     message: String(format: String(localized: "Unrecognized chain ID %@ — Aperture doesn't support this chain"), requestedHex)
                 ))
             }
+            guard activeAddress(on: chain) != nil else {
+                return .failure(DAppRequestError(
+                    code: 4100,
+                    message: String(format: String(localized: "This wallet has no %@ account"), chain.displayName)
+                ))
+            }
             selectedEVMChain = chain
             return .success(activeChainIdHex())
         case "wallet_addEthereumChain":
-            // We support every registered chain natively; no-op.
+            guard let first = params.first as? [String: Any],
+                  let requestedHex = first["chainId"] as? String,
+                  let requestedId = Self.chainIdInt(fromHex: requestedHex) else {
+                return .failure(.invalidParams)
+            }
+            guard let chain = Self.supportedEVMChain(forChainId: requestedId) else {
+                return .failure(DAppRequestError(
+                    code: 4902,
+                    message: String(format: String(localized: "Unrecognized chain ID %@ — Aperture doesn't support this chain"), requestedHex)
+                ))
+            }
+            guard activeAddress(on: chain) != nil else {
+                return .failure(DAppRequestError(
+                    code: 4100,
+                    message: String(format: String(localized: "This wallet has no %@ account"), chain.displayName)
+                ))
+            }
+            selectedEVMChain = chain
             return .success(NSNull())
         case "personal_sign", "eth_sign":
-            guard connectedHosts.contains(origin.host) else { return .failure(.unauthorized) }
+            guard isConnected(origin) else { return .failure(.unauthorized) }
             return await requestEVMSignMessage(params: params, origin: origin, method: method)
         case "eth_signTypedData_v4", "eth_signTypedData":
-            guard connectedHosts.contains(origin.host) else { return .failure(.unauthorized) }
+            guard isConnected(origin) else { return .failure(.unauthorized) }
             return await requestEVMSignTypedData(params: params, origin: origin)
         case "eth_sendTransaction":
-            guard connectedHosts.contains(origin.host) else { return .failure(.unauthorized) }
+            guard isConnected(origin) else { return .failure(.unauthorized) }
             return await requestEVMSendTransaction(params: params, origin: origin)
         case "eth_estimateGas", "eth_gasPrice", "eth_blockNumber", "eth_getBalance",
              "eth_call", "eth_getTransactionByHash", "eth_getTransactionReceipt",
@@ -185,7 +214,7 @@ final class DAppRequestRouter {
 
     private func requestEVMConnect(origin: DAppOrigin) async -> DAppRequestResult {
         // Already connected → return cached address immediately.
-        if connectedHosts.contains(origin.host),
+        if isConnected(origin),
            let addr = activeAddress() {
             return .success([addr])
         }
@@ -195,7 +224,8 @@ final class DAppRequestRouter {
             enqueue(.connect(.init(
                 id: UUID(),
                 origin: origin,
-                permissions: [.readAddress, .signMessages, .signTransactions]
+                permissions: [.readAddress, .signMessages, .signTransactions],
+                chain: activeChain()
             )), continuation: cont)
         }
     }
@@ -208,12 +238,29 @@ final class DAppRequestRouter {
         // personal_sign:  [message, address]
         // eth_sign:        [address, message]
         let messageHex: String
+        let requestedAddress: String
         if method == "personal_sign" {
-            guard let msg = params.first as? String else { return .failure(.invalidParams) }
-            messageHex = msg
+            guard params.count >= 2,
+                  let first = params[0] as? String,
+                  let second = params[1] as? String else { return .failure(.invalidParams) }
+            if Self.isHexAddress(first) {
+                requestedAddress = first
+                messageHex = second
+            } else {
+                messageHex = first
+                requestedAddress = second
+            }
         } else {
-            guard params.count >= 2, let msg = params[1] as? String else { return .failure(.invalidParams) }
+            guard params.count >= 2,
+                  let address = params[0] as? String,
+                  let msg = params[1] as? String else { return .failure(.invalidParams) }
+            requestedAddress = address
             messageHex = msg
+        }
+        let chain = activeChain()
+        guard Self.isHexAddress(requestedAddress),
+              activeAddress(on: chain)?.caseInsensitiveCompare(requestedAddress) == .orderedSame else {
+            return .failure(DAppRequestError(code: 4100, message: "Requested signing address does not match the active wallet"))
         }
         let preview = Self.decodeMessage(hex: messageHex)
         return await withCheckedContinuation { (cont: CheckedContinuation<DAppRequestResult, Never>) in
@@ -222,14 +269,21 @@ final class DAppRequestRouter {
                 origin: origin,
                 messagePreview: preview,
                 rawHex: messageHex,
-                chain: activeChain()
+                from: requestedAddress,
+                chain: chain
             )), continuation: cont)
         }
     }
 
     private func requestEVMSignTypedData(params: [Any], origin: DAppOrigin) async -> DAppRequestResult {
         // eth_signTypedData_v4: [address, jsonOrObject]
-        guard params.count >= 2 else { return .failure(.invalidParams) }
+        guard params.count >= 2,
+              let requestedAddress = params[0] as? String else { return .failure(.invalidParams) }
+        let chain = activeChain()
+        guard Self.isHexAddress(requestedAddress),
+              activeAddress(on: chain)?.caseInsensitiveCompare(requestedAddress) == .orderedSame else {
+            return .failure(DAppRequestError(code: 4100, message: "Requested signing address does not match the active wallet"))
+        }
         let payload: String
         if let s = params[1] as? String {
             payload = s
@@ -245,7 +299,8 @@ final class DAppRequestRouter {
                 id: UUID(),
                 origin: origin,
                 rawJSON: payload,
-                chain: activeChain()
+                from: requestedAddress,
+                chain: chain
             )), continuation: cont)
         }
     }
@@ -271,6 +326,10 @@ final class DAppRequestRouter {
         let valueHex = (tx["value"] as? String) ?? "0x0"
         let dataHex = (tx["data"] as? String) ?? "0x"
         let gasHex = tx["gas"] as? String
+        let chain = activeChain()
+        guard activeAddress(on: chain)?.caseInsensitiveCompare(from) == .orderedSame else {
+            return .failure(DAppRequestError(code: 4100, message: "Transaction sender does not match the active wallet"))
+        }
         return await withCheckedContinuation { (cont: CheckedContinuation<DAppRequestResult, Never>) in
             enqueue(.sendTransaction(.init(
                 id: UUID(),
@@ -280,7 +339,7 @@ final class DAppRequestRouter {
                 valueHex: valueHex,
                 dataHex: dataHex,
                 gasHex: gasHex,
-                chain: activeChain()
+                chain: chain
             )), continuation: cont)
         }
     }
@@ -336,14 +395,14 @@ final class DAppRequestRouter {
         case "connect":
             return await requestSolanaConnect(origin: origin)
         case "disconnect":
-            connectedHosts.remove(origin.host)
+            connectedOriginKeys.remove(origin.securityKey)
             removeConnection(host: origin.host)
             return .success(NSNull())
         case "signMessage":
-            guard connectedHosts.contains(origin.host) else { return .failure(.unauthorized) }
+            guard isConnected(origin) else { return .failure(.unauthorized) }
             return await requestSolanaSignMessage(params: params, origin: origin)
         case "signTransaction", "signAndSendTransaction", "signAllTransactions":
-            guard connectedHosts.contains(origin.host) else { return .failure(.unauthorized) }
+            guard isConnected(origin) else { return .failure(.unauthorized) }
             return await requestSolanaSignTransaction(params: params, origin: origin, method: method)
         default:
             return .failure(.unsupportedMethod)
@@ -358,7 +417,7 @@ final class DAppRequestRouter {
         guard solanaAddress() != nil else {
             return .failure(DAppRequestError(code: 4100, message: String(localized: "This wallet has no Solana account")))
         }
-        if connectedHosts.contains(origin.host),
+        if isConnected(origin),
            let pubkey = solanaAddress() {
             return .success(["publicKey": pubkey])
         }
@@ -367,6 +426,7 @@ final class DAppRequestRouter {
                 id: UUID(),
                 origin: origin,
                 permissions: [.readAddress, .signMessages, .signTransactions],
+                chain: .solana,
                 channel: .solana
             )), continuation: cont)
         }
@@ -378,12 +438,16 @@ final class DAppRequestRouter {
             return .failure(.invalidParams)
         }
         let preview = Self.decodeMessage(hex: hex)
+        guard let from = solanaAddress() else {
+            return .failure(DAppRequestError(code: 4100, message: String(localized: "This wallet has no Solana account")))
+        }
         return await withCheckedContinuation { (cont: CheckedContinuation<DAppRequestResult, Never>) in
             enqueue(.signMessage(.init(
                 id: UUID(),
                 origin: origin,
                 messagePreview: preview,
                 rawHex: hex,
+                from: from,
                 chain: .solana
             )), continuation: cont)
         }
@@ -422,7 +486,7 @@ final class DAppRequestRouter {
     /// settings → "Connected dApps", then returns the address (EVM
     /// channel) or `{publicKey:...}` (Solana channel) via the
     /// continuation.
-    func approveConnect(host: String, channel: ConnectChannel) {
+    func approveConnect(origin: DAppOrigin, channel: ConnectChannel) {
         // Resolve the address to reveal BEFORE recording the connection, so a
         // Solana approve with no derived address fails honestly — never
         // handing the dApp an empty publicKey and never leaving a
@@ -432,7 +496,11 @@ final class DAppRequestRouter {
         let addr: any Sendable
         switch channel {
         case .evm:
-            addr = [activeAddress()].compactMap { $0 } as [String]
+            guard let evmAddress = activeAddress(on: activeChain()) else {
+                resume(.failure(DAppRequestError(code: 4100, message: String(localized: "This wallet has no account for the selected network"))))
+                return
+            }
+            addr = [evmAddress] as [String]
         case .solana:
             guard let pubkey = solanaAddress() else {
                 resume(.failure(DAppRequestError(code: 4100, message: String(localized: "This wallet has no Solana account"))))
@@ -441,22 +509,19 @@ final class DAppRequestRouter {
             addr = ["publicKey": pubkey]
         }
 
-        connectedHosts.insert(host)
+        connectedOriginKeys.insert(origin.securityKey)
 
         // Persist the connection. The full origin (name / url / icon)
         // lives on the currently-presented `.connect` request — read it
         // back so the persisted row carries the dApp's human-readable
         // identity, not just its host.
-        if case .connect(let request)? = pendingRequest, request.origin.host == host {
+        if case .connect(let request)? = pendingRequest, request.origin.securityKey == origin.securityKey {
             persistConnection(origin: request.origin, channel: channel)
         } else {
             // Defensive: approve was called without a matching presented
             // request (shouldn't happen via the sheet). Still record a
             // minimal row so the connection is honestly reflected.
-            persistConnection(
-                origin: DAppOrigin(host: host, url: "", title: host, iconURL: nil),
-                channel: channel
-            )
+            persistConnection(origin: origin, channel: channel)
         }
 
         resume(.success(addr))
@@ -552,10 +617,32 @@ final class DAppRequestRouter {
     /// `@Environment(\.modelContext)`. Idempotent — re-setting it to the
     /// same container's context is harmless. Keeping the wiring here
     /// (rather than threading a context parameter through every approve
-    /// path) is the least invasive shape: the sheet's
-    /// `router.approveConnect(host:channel:)` call site stays unchanged.
+    /// path) is the least invasive shape: the sheet only passes the approved
+    /// origin and channel back to the router.
     func setModelContext(_ context: ModelContext) {
         modelContext = context
+        restorePersistedConnections(from: context)
+    }
+
+    /// Rehydrate live authorizations from persisted injected connections.
+    /// The persisted row keeps the original URL, so origin grants remain
+    /// scheme/host/port scoped; malformed or non-HTTPS legacy rows are ignored.
+    private func restorePersistedConnections(from context: ModelContext) {
+        let descriptor = FetchDescriptor<ConnectedDAppRecord>()
+        do {
+            for record in try context.fetch(descriptor) where record.transport == "injected" {
+                let origin = DAppOrigin(
+                    host: record.host,
+                    url: record.url,
+                    title: record.name.isEmpty ? record.host : record.name,
+                    iconURL: record.iconURL
+                )
+                guard origin.isSecureForWalletBridge else { continue }
+                connectedOriginKeys.insert(origin.securityKey)
+            }
+        } catch {
+            log.error("Failed to restore persisted dApp connections: \(String(describing: error), privacy: .public)")
+        }
     }
 
     /// Upsert a `ConnectedDAppRecord` for an approved connection,
@@ -563,7 +650,7 @@ final class DAppRequestRouter {
     /// `name` / `iconURL` / `chainLabel` if the host already has one,
     /// else insert. Best-effort — a persistence failure must never turn
     /// a successful connection into a user-visible error, so it's logged
-    /// and swallowed (the in-memory `connectedHosts` set already made
+    /// and swallowed (the in-memory origin allow-set already made
     /// the connection live for this session).
     private func persistConnection(origin: DAppOrigin, channel: ConnectChannel) {
         guard let context = modelContext else { return }
@@ -628,14 +715,18 @@ final class DAppRequestRouter {
     /// inside the dApp's own UI. After this, `eth_accounts` returns
     /// `[]` for the host until the user re-connects.
     func disconnect(host: String) {
-        connectedHosts.remove(host)
+        connectedOriginKeys = connectedOriginKeys.filter { DAppOrigin.host(fromSecurityKey: $0) != host }
         removeConnection(host: host)
     }
 
     // MARK: - Active wallet helpers
 
     private func activeAddress() -> String? {
-        ActiveWalletReader.shared.currentEVMAddress()
+        activeAddress(on: activeChain())
+    }
+
+    private func activeAddress(on chain: SupportedChain) -> String? {
+        ActiveWalletReader.shared.currentEVMAddress(chain: chain)
     }
 
     private func solanaAddress() -> String? {
@@ -671,6 +762,10 @@ final class DAppRequestRouter {
         "0x" + String(activeChainIdInt(), radix: 16)
     }
 
+    private func isConnected(_ origin: DAppOrigin) -> Bool {
+        connectedOriginKeys.contains(origin.securityKey)
+    }
+
     /// Parse an EIP-3326 `chainId` hex string ("0x1", "0xa4b1", …).
     private static func chainIdInt(fromHex hex: String) -> Int? {
         guard hex.hasPrefix("0x") || hex.hasPrefix("0X") else { return nil }
@@ -681,6 +776,13 @@ final class DAppRequestRouter {
     /// when Aperture doesn't support the chain (→ JSON-RPC 4902).
     private static func supportedEVMChain(forChainId id: Int) -> SupportedChain? {
         evmChainIds.first(where: { $0.value == id })?.key
+    }
+
+    private static func isHexAddress(_ raw: String) -> Bool {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.hasPrefix("0x")
+            && trimmed.count == 42
+            && trimmed.dropFirst(2).allSatisfy(\.isHexDigit)
     }
 
     // MARK: - Utilities
@@ -741,12 +843,13 @@ extension DAppRequestRouter {
         let id: UUID
         let origin: DAppOrigin
         let permissions: [Permission]
+        let chain: SupportedChain
         /// Which channel the dApp is asking to connect through.
         /// Added 2026-06-10 so the confirmation sheet
         /// (`DAppConnectSheet`) knows whether to surface the EVM
-        /// address (`currentEVMAddress`) or the Solana address
+        /// address (`currentEVMAddress(chain:)`) or the Solana address
         /// (`currentSolanaAddress`) AND knows which `ConnectChannel`
-        /// to pass to `router.approveConnect(host:channel:)`.
+        /// to pass to `router.approveConnect(origin:channel:)`.
         /// Defaults to `.evm` so any pre-existing caller that
         /// hasn't set the field still compiles and surfaces an EVM
         /// connect.
@@ -756,11 +859,13 @@ extension DAppRequestRouter {
             id: UUID,
             origin: DAppOrigin,
             permissions: [Permission],
+            chain: SupportedChain = .ethereum,
             channel: ConnectChannel = .evm
         ) {
             self.id = id
             self.origin = origin
             self.permissions = permissions
+            self.chain = chain
             self.channel = channel
         }
 
@@ -776,6 +881,7 @@ extension DAppRequestRouter {
         let origin: DAppOrigin
         let messagePreview: String
         let rawHex: String
+        let from: String
         let chain: SupportedChain
     }
 
@@ -783,6 +889,7 @@ extension DAppRequestRouter {
         let id: UUID
         let origin: DAppOrigin
         let rawJSON: String
+        let from: String
         let chain: SupportedChain
     }
 
@@ -809,4 +916,29 @@ struct DAppOrigin: Hashable, Sendable {
     let url: String
     let title: String
     let iconURL: String?
+
+    var isSecureForWalletBridge: Bool {
+        guard let components = URLComponents(string: url),
+              components.scheme?.lowercased() == "https",
+              let host = components.host,
+              !host.isEmpty else { return false }
+        return true
+    }
+
+    var securityKey: String {
+        guard let components = URLComponents(string: url),
+              let scheme = components.scheme?.lowercased(),
+              let host = components.host?.lowercased(),
+              !host.isEmpty else {
+            return "invalid://\(self.host.lowercased())"
+        }
+        if let port = components.port {
+            return "\(scheme)://\(host):\(port)"
+        }
+        return "\(scheme)://\(host)"
+    }
+
+    static func host(fromSecurityKey key: String) -> String? {
+        URLComponents(string: key)?.host
+    }
 }

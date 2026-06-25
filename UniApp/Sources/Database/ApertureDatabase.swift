@@ -47,47 +47,12 @@ final class ApertureDatabase {
     private let log = Logger(subsystem: "com.thuglife.aperture", category: "database")
 
     private init() {
-        let schema = Schema([
-            WalletRecord.self,
-            WalletAddressRecord.self,
-            TransactionRecord.self,
-            TokenBalanceRecord.self,
-            CachedPriceRecord.self,
-            BiometricEnrollmentRecord.self,
-            AppMetadataRecord.self,
-            CustomTokenRecord.self,
-            BrowserHistoryRecord.self,
-            BrowserBookmarkRecord.self,
-            // 2026-06-17 — persistent in-app-browser dApp connections.
-            // Mirrors the `ApertureSchemaV1.models` registration: the
-            // container is built from THIS array, so the entity must be
-            // listed here too for `@Query`/`ModelContext` to resolve it
-            // at runtime. Adding an entity is an additive lightweight
-            // migration.
-            ConnectedDAppRecord.self,
-            // 2026-06-13 — `HistoricalPriceRecord` had shipped in
-            // `ApertureSchemaV1.models` but was MISSING from this
-            // container schema, so the chart's daily-close table was
-            // never registered with the store (`@Query` /
-            // `HistoricalPriceRepository` against the main container
-            // had no entity to resolve). Registered now; adding an
-            // entity is an additive lightweight migration.
-            HistoricalPriceRecord.self,
-            // 2026-06-13 — persistent-database rebuild additions:
-            // append-only price observations (24h change surface) and
-            // per-wallet portfolio-value chart snapshots.
-            PriceSnapshotRecord.self,
-            WalletChartSnapshotRecord.self,
-            // 2026-06-13 — local-first freshness ledger (Rule #27). Adding
-            // an entity is an additive lightweight migration.
-            SyncStatusRecord.self,
-            // 2026-06-13 — local-first asset universe (Rule #27 §D):
-            // supported chains + tokens, seeded from the static registries.
-            ChainRecord.self,
-            AssetRecord.self,
-            // 2026-06-13 — local-first settings (Rule #27 §D).
-            AppSettingsRecord.self
-        ])
+        // Single source of truth for persisted SwiftData models. Keeping a
+        // second hand-written list here let the runtime container drift from
+        // `ApertureSchemaV1.models` (notably ChainState/UTXO rows), which
+        // broke tests and meant registered repositories could target models
+        // the live app container did not actually know about.
+        let schema = Schema(ApertureSchemaV1.models)
         let storeURL = Self.defaultStoreURL()
         let onDiskConfig = ModelConfiguration(
             schema: schema,

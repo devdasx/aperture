@@ -220,18 +220,20 @@ extension SendExecutor {
 
     // MARK: - NEAR
 
-    /// Access-key nonce (`query` view_access_key) + recent block hash
-    /// (`block {finality:final}`). The tx nonce is access-key nonce + 1.
+    /// Exact signer access-key nonce (`query` view_access_key) + recent block
+    /// hash (`block {finality:final}`). The tx nonce is access-key nonce + 1.
     /// Doc: docs.near.org/api/rpc/access-keys + …/block.
-    nonisolated func refreshNear(draft: SendDraft) async throws -> TransactionSigner.JustInTimeData {
+    nonisolated func refreshNear(
+        draft: SendDraft,
+        wallet: WalletDescriptor,
+        passphrase: String?
+    ) async throws -> TransactionSigner.JustInTimeData {
         do {
-            // Public key (base58 "ed25519:…") of the signer for the
-            // access-key lookup. The compose layer stores the from-address
-            // = implicit/named account; the access key is the wallet's
-            // ed25519 public key. We read it from the latest block + the
-            // account's access keys via view_access_key_list as a fallback,
-            // but the simplest correct path is view_access_key with the
-            // wallet's public key. Derive the public key string here.
+            let signerPublicKey = try await nearSignerPublicKey(
+                wallet: wallet,
+                passphrase: passphrase,
+                expectedAddress: draft.fromAddress
+            )
             let blockData = try await RPCClient.shared.callJSONResultData(
                 chain: .near, method: "block", paramsObject: ["finality": "final"]
             )
@@ -241,30 +243,17 @@ extension SendExecutor {
                 throw SigningError.justInTimeRefreshFailed("NEAR block hash unavailable")
             }
 
-            // Access-key nonce via view_access_key_list (lists all keys with
-            // their nonces — robust when we don't have the exact key string
-            // pre-resolved). Take the max nonce among full-access keys.
-            let keysData = try await RPCClient.shared.callJSONResultData(
+            let keyData = try await RPCClient.shared.callJSONResultData(
                 chain: .near, method: "query",
                 paramsObject: [
-                    "request_type": "view_access_key_list",
+                    "request_type": "view_access_key",
                     "finality": "final",
                     "account_id": draft.fromAddress,
+                    "public_key": signerPublicKey,
                 ]
             )
-            guard let keysRoot = (try? JSONSerialization.jsonObject(with: keysData)) as? [String: Any],
-                  let keys = keysRoot["keys"] as? [[String: Any]], !keys.isEmpty else {
-                throw SigningError.justInTimeRefreshFailed("NEAR access keys unavailable")
-            }
-            // Max nonce across the account's full-access keys (the nonce
-            // can be an NSNumber or a numeric String depending on provider).
-            let nonce = keys.compactMap { key -> UInt64? in
-                guard let ak = key["access_key"] as? [String: Any] else { return nil }
-                if let n = ak["nonce"] as? NSNumber { return n.uint64Value }
-                if let s = ak["nonce"] as? String { return UInt64(s) }
-                return nil
-            }.max()
-            guard let nonce else {
+            guard let keyRoot = (try? JSONSerialization.jsonObject(with: keyData)) as? [String: Any],
+                  let nonce = Self.nearNonce(from: keyRoot) else {
                 throw SigningError.justInTimeRefreshFailed("NEAR access-key nonce unavailable")
             }
             return TransactionSigner.JustInTimeData(
@@ -273,6 +262,34 @@ extension SendExecutor {
         } catch let rpc as RPCError {
             throw SigningError.justInTimeRefreshFailed(rpc.userFacingLabel)
         }
+    }
+
+    private nonisolated func nearSignerPublicKey(
+        wallet: WalletDescriptor,
+        passphrase: String?,
+        expectedAddress: String
+    ) async throws -> String {
+        try await Task.detached(priority: .userInitiated) {
+            try SigningKeyProvider.withPrivateKey(
+                wallet: wallet,
+                chain: .near,
+                passphrase: passphrase,
+                expectedAddress: expectedAddress
+            ) { privateKey in
+                let publicKey = privateKey.getPublicKeyEd25519().data
+                return "ed25519:" + WalletCore.Base58.encodeNoCheck(data: publicKey)
+            }
+        }.value
+    }
+
+    private nonisolated static func nearNonce(from root: [String: Any]) -> UInt64? {
+        if let n = root["nonce"] as? NSNumber { return n.uint64Value }
+        if let s = root["nonce"] as? String { return UInt64(s) }
+        if let accessKey = root["access_key"] as? [String: Any] {
+            if let n = accessKey["nonce"] as? NSNumber { return n.uint64Value }
+            if let s = accessKey["nonce"] as? String { return UInt64(s) }
+        }
+        return nil
     }
 
     // MARK: - Polkadot

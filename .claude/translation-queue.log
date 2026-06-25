@@ -1877,3 +1877,338 @@
 2026-06-23T10:11:01Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Switch wallet, currently \(activeWallet?.name ?? 
 2026-06-23T10:11:01Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	\(row.chain.displayName) details
 2026-06-23T10:11:01Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	\(row.symbol) details
+2026-06-24T02:22:08Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Main/MainTabView.swift	Actions
+2026-06-24T02:22:08Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Main/MainTabView.swift	Browser
+2026-06-24T02:22:08Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Main/MainTabView.swift	Wallet
+2026-06-24T02:40:46Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Main/MainTabView.swift	Actions
+2026-06-24T02:40:46Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Main/MainTabView.swift	Browser
+2026-06-24T02:40:46Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Main/MainTabView.swift	Wallet
+2026-06-24T02:41:02Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Main/MainTabView.swift	Actions
+2026-06-24T02:41:02Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Main/MainTabView.swift	Browser
+2026-06-24T02:41:02Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Main/MainTabView.swift	Wallet
+2026-06-24T02:41:53Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Main/MainTabView.swift	Browser
+2026-06-24T02:41:53Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Main/MainTabView.swift	Wallet
+2026-06-24T02:42:09Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Main/MainTabView.swift	Browser
+2026-06-24T02:42:09Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Main/MainTabView.swift	Wallet
+2026-06-24T02:42:49Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Main/MainTabView.swift	Actions
+2026-06-24T02:42:49Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Main/MainTabView.swift	Browser
+2026-06-24T02:42:49Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Main/MainTabView.swift	Wallet
+2026-06-24T02:43:11Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Add wallet
+2026-06-24T02:43:11Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Coins
+2026-06-24T02:43:11Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Customise wallet
+2026-06-24T02:43:11Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Filter and sort
+2026-06-24T02:43:11Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Hide
+2026-06-24T02:43:11Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Holdings
+2026-06-24T02:43:11Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Manage wallets
+2026-06-24T02:43:11Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Pinned
+2026-06-24T02:43:11Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Recent activity
+2026-06-24T02:43:11Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Settings
+2026-06-24T02:43:11Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Show all
+2026-06-24T02:43:11Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Show all supported assets
+2026-06-24T02:43:11Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Shows the full transaction history
+2026-06-24T02:43:11Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Switch between Coins and Tokens
+2026-06-24T02:43:11Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Switch wallet, currently \(activeWallet?.name ?? 
+2026-06-24T02:43:11Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Tokens
+2026-06-24T02:43:11Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Unpin
+2026-06-24T02:43:11Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	View all
+2026-06-24T02:43:11Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	\(row.chain.displayName) details
+2026-06-24T02:43:11Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	\(row.symbol) details
+2026-06-24T02:43:23Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Add wallet
+2026-06-24T02:43:23Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Coins
+2026-06-24T02:43:23Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Customise wallet
+2026-06-24T02:43:23Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Filter and sort
+2026-06-24T02:43:23Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Hide
+2026-06-24T02:43:23Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Holdings
+2026-06-24T02:43:23Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Manage wallets
+2026-06-24T02:43:23Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Pinned
+2026-06-24T02:43:23Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Recent activity
+2026-06-24T02:43:23Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Settings
+2026-06-24T02:43:23Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Show all
+2026-06-24T02:43:23Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Show all supported assets
+2026-06-24T02:43:23Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Shows the full transaction history
+2026-06-24T02:43:23Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Switch between Coins and Tokens
+2026-06-24T02:43:23Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Switch wallet, currently \(activeWallet?.name ?? 
+2026-06-24T02:43:23Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Tokens
+2026-06-24T02:43:23Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Unpin
+2026-06-24T02:43:23Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	View all
+2026-06-24T02:43:23Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	\(row.chain.displayName) details
+2026-06-24T02:43:23Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	\(row.symbol) details
+2026-06-24T02:44:05Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Add wallet
+2026-06-24T02:44:05Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Coins
+2026-06-24T02:44:05Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Customise wallet
+2026-06-24T02:44:05Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Filter and sort
+2026-06-24T02:44:05Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Hide
+2026-06-24T02:44:05Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Holdings
+2026-06-24T02:44:05Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Manage wallets
+2026-06-24T02:44:05Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Pinned
+2026-06-24T02:44:05Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Recent activity
+2026-06-24T02:44:05Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Settings
+2026-06-24T02:44:05Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Show all
+2026-06-24T02:44:05Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Show all supported assets
+2026-06-24T02:44:05Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Shows the full transaction history
+2026-06-24T02:44:05Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Switch between Coins and Tokens
+2026-06-24T02:44:05Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Switch wallet, currently \(activeWallet?.name ?? 
+2026-06-24T02:44:05Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Tokens
+2026-06-24T02:44:05Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Unpin
+2026-06-24T02:44:05Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	View all
+2026-06-24T02:44:05Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	\(row.chain.displayName) details
+2026-06-24T02:44:05Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	\(row.symbol) details
+2026-06-24T02:44:18Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Add wallet
+2026-06-24T02:44:18Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Coins
+2026-06-24T02:44:18Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Customise wallet
+2026-06-24T02:44:18Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Filter and sort
+2026-06-24T02:44:18Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Hide
+2026-06-24T02:44:18Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Holdings
+2026-06-24T02:44:18Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Manage wallets
+2026-06-24T02:44:18Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Pinned
+2026-06-24T02:44:18Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Recent activity
+2026-06-24T02:44:18Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Settings
+2026-06-24T02:44:18Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Show all
+2026-06-24T02:44:18Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Show all supported assets
+2026-06-24T02:44:18Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Shows the full transaction history
+2026-06-24T02:44:18Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Switch between Coins and Tokens
+2026-06-24T02:44:18Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Switch wallet, currently \(activeWallet?.name ?? 
+2026-06-24T02:44:18Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Tokens
+2026-06-24T02:44:18Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Unpin
+2026-06-24T02:44:18Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	View all
+2026-06-24T02:44:18Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	\(row.chain.displayName) details
+2026-06-24T02:44:18Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	\(row.symbol) details
+2026-06-24T02:54:42Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Main/MainTabView.swift	Actions
+2026-06-24T02:54:42Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Main/MainTabView.swift	Browser
+2026-06-24T02:54:42Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Main/MainTabView.swift	Wallet
+2026-06-24T03:05:56Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Main/MainTabView.swift	Actions
+2026-06-24T03:05:56Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Main/MainTabView.swift	Browser
+2026-06-24T03:05:56Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Main/MainTabView.swift	Wallet
+2026-06-24T03:06:29Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Main/MainTabView.swift	Actions
+2026-06-24T03:06:29Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Main/MainTabView.swift	Browser
+2026-06-24T03:06:29Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Main/MainTabView.swift	Wallet
+2026-06-24T03:07:50Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Main/MainTabView.swift	Actions
+2026-06-24T03:07:50Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Main/MainTabView.swift	Browser
+2026-06-24T03:07:50Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Main/MainTabView.swift	Wallet
+2026-06-24T03:07:50Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Main/MainTabView.swift	safari
+2026-06-24T03:07:50Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Main/MainTabView.swift	wallet.pass.fill
+2026-06-24T03:13:07Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Main/MainTabView.swift	Actions
+2026-06-24T03:13:07Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Main/MainTabView.swift	Browser
+2026-06-24T03:13:07Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Main/MainTabView.swift	Wallet
+2026-06-24T03:13:07Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Main/MainTabView.swift	safari
+2026-06-24T03:13:07Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Main/MainTabView.swift	wallet.pass.fill
+2026-06-24T03:13:52Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Main/MainTabView.swift	Actions
+2026-06-24T03:13:52Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Main/MainTabView.swift	Browser
+2026-06-24T03:13:52Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Main/MainTabView.swift	Wallet
+2026-06-24T03:13:52Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Main/MainTabView.swift	safari
+2026-06-24T03:13:52Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Main/MainTabView.swift	wallet.pass.fill
+2026-06-24T03:14:04Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Main/MainTabView.swift	Actions
+2026-06-24T03:14:04Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Main/MainTabView.swift	Browser
+2026-06-24T03:14:04Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Main/MainTabView.swift	Wallet
+2026-06-24T03:14:04Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Main/MainTabView.swift	safari
+2026-06-24T03:14:04Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Main/MainTabView.swift	wallet.pass.fill
+2026-06-24T03:26:03Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Main/MainTabView.swift	Actions
+2026-06-24T03:26:03Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Main/MainTabView.swift	Browser
+2026-06-24T03:26:03Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Main/MainTabView.swift	Wallet
+2026-06-24T03:26:03Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Main/MainTabView.swift	safari
+2026-06-24T03:26:03Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Main/MainTabView.swift	wallet.pass.fill
+2026-06-24T03:26:15Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Main/MainTabView.swift	Actions
+2026-06-24T03:26:15Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Main/MainTabView.swift	Browser
+2026-06-24T03:26:15Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Main/MainTabView.swift	Wallet
+2026-06-24T03:26:15Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Main/MainTabView.swift	safari
+2026-06-24T03:26:15Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Main/MainTabView.swift	wallet.pass.fill
+2026-06-24T03:27:10Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Main/MainTabView.swift	Actions
+2026-06-24T03:27:10Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Main/MainTabView.swift	Browser
+2026-06-24T03:27:10Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Main/MainTabView.swift	Wallet
+2026-06-24T03:27:10Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Main/MainTabView.swift	safari
+2026-06-24T03:27:10Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Main/MainTabView.swift	wallet.pass.fill
+2026-06-24T03:27:45Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Main/MainTabView.swift	Actions
+2026-06-24T03:27:45Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Main/MainTabView.swift	Browser
+2026-06-24T03:27:45Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Main/MainTabView.swift	Wallet
+2026-06-24T03:27:45Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Main/MainTabView.swift	safari
+2026-06-24T03:27:45Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Main/MainTabView.swift	wallet.pass.fill
+2026-06-24T05:58:47Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Main/MainTabView.swift	Actions
+2026-06-24T05:58:47Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Main/MainTabView.swift	Browser
+2026-06-24T05:58:47Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Main/MainTabView.swift	Wallet
+2026-06-24T05:58:47Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Main/MainTabView.swift	safari
+2026-06-24T05:58:47Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Main/MainTabView.swift	wallet.pass.fill
+2026-06-24T05:58:57Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Main/MainTabView.swift	Actions
+2026-06-24T05:58:57Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Main/MainTabView.swift	Browser
+2026-06-24T05:58:57Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Main/MainTabView.swift	Wallet
+2026-06-24T05:58:57Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Main/MainTabView.swift	safari
+2026-06-24T05:58:57Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Main/MainTabView.swift	wallet.pass.fill
+2026-06-24T11:49:38Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendView.swift	No address for this network
+2026-06-24T11:49:38Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendView.swift	OK
+2026-06-24T11:49:38Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendView.swift	This wallet has no \(chain.displayName) address yet, so there's nothing to send from on this network. Aperture may still be deriving your accounts — try again in a moment.
+2026-06-24T11:49:57Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendView.swift	No address for this network
+2026-06-24T11:49:57Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendView.swift	OK
+2026-06-24T11:49:57Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendView.swift	This wallet has no \(chain.displayName) address yet, so there's nothing to send from on this network. Aperture may still be deriving your accounts — try again in a moment.
+2026-06-24T11:50:05Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendView.swift	No address for this network
+2026-06-24T11:50:05Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendView.swift	OK
+2026-06-24T11:50:05Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendView.swift	This wallet has no \(chain.displayName) address yet, so there's nothing to send from on this network. Aperture may still be deriving your accounts — try again in a moment.
+2026-06-24T11:50:15Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendView.swift	No address for this network
+2026-06-24T11:50:15Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendView.swift	OK
+2026-06-24T11:50:15Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendView.swift	This wallet has no \(chain.displayName) address yet, so there's nothing to send from on this network. Aperture may still be deriving your accounts — try again in a moment.
+2026-06-24T11:50:49Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/AssetNetworkDetailView.swift	Activity
+2026-06-24T11:50:49Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/AssetNetworkDetailView.swift	Filter and sort
+2026-06-24T11:50:49Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/AssetNetworkDetailView.swift	Not held on \(chain.displayName)
+2026-06-24T11:50:49Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/AssetNetworkDetailView.swift	Your address
+2026-06-24T11:51:12Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/AssetDetailView.swift	Balance hidden
+2026-06-24T11:51:12Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/AssetDetailView.swift	Filter and sort
+2026-06-24T11:51:12Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/AssetDetailView.swift	Networks
+2026-06-24T11:51:12Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/AssetDetailView.swift	Networks where you don't hold this asset are hidden. Toggle off Only with balance to see all networks.
+2026-06-24T11:51:12Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/AssetDetailView.swift	Not held
+2026-06-24T11:51:12Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/AssetDetailView.swift	Recent activity
+2026-06-24T11:51:12Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/AssetDetailView.swift	Total \(derived.displayName) balance
+2026-06-24T11:51:12Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/AssetDetailView.swift	View all
+2026-06-24T11:51:12Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/AssetDetailView.swift	View all \(rows.count) transactions
+2026-06-24T11:51:12Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/AssetDetailView.swift	\(WalletFormatting.native(row.amount, decimals: 8)) \(identity.symbol)
+2026-06-24T11:51:12Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/AssetDetailView.swift	\(amount) \(identity.symbol)
+2026-06-24T11:51:12Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/AssetDetailView.swift	\(rows.count)
+2026-06-24T11:51:26Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	Couldn't find \(name). Check the spelling, or paste the address.
+2026-06-24T11:51:26Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	First time sending here — double-check it. Transactions can't be reversed.
+2026-06-24T11:51:26Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	Recipient \(index)
+2026-06-24T11:51:26Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	Remove recipient
+2026-06-24T11:51:26Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	Resolving…
+2026-06-24T11:51:26Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	Same as an earlier recipient
+2026-06-24T11:51:26Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	Sent here once before
+2026-06-24T11:51:26Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	Sent once
+2026-06-24T11:51:26Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	That looks like a \(other.displayName) address — but you're sending on \(chain.displayName). Funds sent to the wrong network can't be recovered.
+2026-06-24T11:51:26Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	That's not a valid \(chain.displayName) address.
+2026-06-24T11:51:26Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	Use this recipient
+2026-06-24T11:51:26Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	\(name)  →  \(SendRecipientView.shorten(address))
+2026-06-24T11:51:39Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	Couldn't find \(name). Check the spelling, or paste the address.
+2026-06-24T11:51:39Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	First time sending here — double-check it. Transactions can't be reversed.
+2026-06-24T11:51:39Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	Recipient \(index)
+2026-06-24T11:51:39Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	Remove recipient
+2026-06-24T11:51:39Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	Resolving…
+2026-06-24T11:51:39Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	Same as an earlier recipient
+2026-06-24T11:51:39Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	Sent here once before
+2026-06-24T11:51:39Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	Sent once
+2026-06-24T11:51:39Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	That looks like a \(other.displayName) address — but you're sending on \(chain.displayName). Funds sent to the wrong network can't be recovered.
+2026-06-24T11:51:39Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	That's not a valid \(chain.displayName) address.
+2026-06-24T11:51:39Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	Use this recipient
+2026-06-24T11:51:39Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	\(name)  →  \(SendRecipientView.shorten(address))
+2026-06-24T11:51:56Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	Couldn't find \(name). Check the spelling, or paste the address.
+2026-06-24T11:51:56Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	First time sending here — double-check it. Transactions can't be reversed.
+2026-06-24T11:51:56Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	Recipient \(index)
+2026-06-24T11:51:56Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	Remove recipient
+2026-06-24T11:51:56Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	Resolving…
+2026-06-24T11:51:56Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	Same as an earlier recipient
+2026-06-24T11:51:56Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	Sent here once before
+2026-06-24T11:51:56Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	Sent once
+2026-06-24T11:51:56Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	That looks like a \(other.displayName) address — but you're sending on \(chain.displayName). Funds sent to the wrong network can't be recovered.
+2026-06-24T11:51:56Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	That's not a valid \(chain.displayName) address.
+2026-06-24T11:51:56Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	Use this recipient
+2026-06-24T11:51:56Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendRecipientView.swift	\(name)  →  \(SendRecipientView.shorten(address))
+2026-06-24T11:52:14Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendView.swift	No address for this network
+2026-06-24T11:52:14Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendView.swift	OK
+2026-06-24T11:52:14Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendView.swift	This wallet has no \(chain.displayName) address yet, so there's nothing to send from on this network. Aperture may still be deriving your accounts — try again in a moment.
+2026-06-24T11:52:55Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendView.swift	No address for this network
+2026-06-24T11:52:55Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendView.swift	OK
+2026-06-24T11:52:55Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendView.swift	This wallet has no \(chain.displayName) address yet, so there's nothing to send from on this network. Aperture may still be deriving your accounts — try again in a moment.
+2026-06-24T11:53:15Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendView.swift	No address for this network
+2026-06-24T11:53:15Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendView.swift	OK
+2026-06-24T11:53:15Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Send/SendView.swift	This wallet has no \(chain.displayName) address yet, so there's nothing to send from on this network. Aperture may still be deriving your accounts — try again in a moment.
+2026-06-24T11:53:58Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Add wallet
+2026-06-24T11:53:58Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Coins
+2026-06-24T11:53:58Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Customise wallet
+2026-06-24T11:53:58Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Filter and sort
+2026-06-24T11:53:58Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Hide
+2026-06-24T11:53:58Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Holdings
+2026-06-24T11:53:58Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Manage wallets
+2026-06-24T11:53:58Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Pinned
+2026-06-24T11:53:58Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Recent activity
+2026-06-24T11:53:58Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Settings
+2026-06-24T11:53:58Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Show all
+2026-06-24T11:53:58Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Show all supported assets
+2026-06-24T11:53:58Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Shows the full transaction history
+2026-06-24T11:53:58Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Switch between Coins and Tokens
+2026-06-24T11:53:58Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Switch wallet, currently \(activeWallet?.name ?? 
+2026-06-24T11:53:58Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Tokens
+2026-06-24T11:53:58Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Unpin
+2026-06-24T11:53:58Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	View all
+2026-06-24T11:53:58Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	\(row.chain.displayName) details
+2026-06-24T11:53:58Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	\(row.symbol) details
+2026-06-24T11:54:26Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Add wallet
+2026-06-24T11:54:26Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Coins
+2026-06-24T11:54:26Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Customise wallet
+2026-06-24T11:54:26Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Filter and sort
+2026-06-24T11:54:26Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Hide
+2026-06-24T11:54:26Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Holdings
+2026-06-24T11:54:26Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Manage wallets
+2026-06-24T11:54:26Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Pinned
+2026-06-24T11:54:26Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Recent activity
+2026-06-24T11:54:26Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Scan
+2026-06-24T11:54:26Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Settings
+2026-06-24T11:54:26Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Show all
+2026-06-24T11:54:26Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Show all supported assets
+2026-06-24T11:54:26Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Shows the full transaction history
+2026-06-24T11:54:26Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Switch between Coins and Tokens
+2026-06-24T11:54:26Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Switch wallet, currently \(activeWallet?.name ?? 
+2026-06-24T11:54:26Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Tokens
+2026-06-24T11:54:26Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Unpin
+2026-06-24T11:54:26Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	View all
+2026-06-24T11:54:26Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	\(row.chain.displayName) details
+2026-06-24T11:54:26Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	\(row.symbol) details
+2026-06-24T11:54:57Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Add wallet
+2026-06-24T11:54:57Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Coins
+2026-06-24T11:54:57Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Customise wallet
+2026-06-24T11:54:57Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Filter and sort
+2026-06-24T11:54:57Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Hide
+2026-06-24T11:54:57Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Holdings
+2026-06-24T11:54:57Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Manage wallets
+2026-06-24T11:54:57Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Pinned
+2026-06-24T11:54:57Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Recent activity
+2026-06-24T11:54:57Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Scan
+2026-06-24T11:54:57Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Settings
+2026-06-24T11:54:57Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Show all
+2026-06-24T11:54:57Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Show all supported assets
+2026-06-24T11:54:57Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Shows the full transaction history
+2026-06-24T11:54:57Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Switch between Coins and Tokens
+2026-06-24T11:54:57Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Switch wallet, currently \(activeWallet?.name ?? 
+2026-06-24T11:54:57Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Tokens
+2026-06-24T11:54:57Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	Unpin
+2026-06-24T11:54:57Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	View all
+2026-06-24T11:54:57Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	\(row.chain.displayName) details
+2026-06-24T11:54:57Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/Features/Wallet/WalletHomeView.swift	\(row.symbol) details
+2026-06-24T14:27:10Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/DesignSystem/Components/UniQRScannerSheet.swift	Camera access needed
+2026-06-24T14:27:10Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/DesignSystem/Components/UniQRScannerSheet.swift	Cancel
+2026-06-24T14:27:10Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/DesignSystem/Components/UniQRScannerSheet.swift	Code not recognized
+2026-06-24T14:27:10Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/DesignSystem/Components/UniQRScannerSheet.swift	Connect
+2026-06-24T14:27:10Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/DesignSystem/Components/UniQRScannerSheet.swift	Connect this dApp to your wallet.
+2026-06-24T14:27:10Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/DesignSystem/Components/UniQRScannerSheet.swift	Copied
+2026-06-24T14:27:10Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/DesignSystem/Components/UniQRScannerSheet.swift	Enable camera
+2026-06-24T14:27:10Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/DesignSystem/Components/UniQRScannerSheet.swift	Gallery
+2026-06-24T14:27:10Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/DesignSystem/Components/UniQRScannerSheet.swift	Paste
+2026-06-24T14:27:10Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/DesignSystem/Components/UniQRScannerSheet.swift	Requesting camera access…
+2026-06-24T14:27:10Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/DesignSystem/Components/UniQRScannerSheet.swift	Send
+2026-06-24T14:27:10Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/DesignSystem/Components/UniQRScannerSheet.swift	That isn't a wallet address or a WalletConnect code.
+2026-06-24T14:27:10Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/DesignSystem/Components/UniQRScannerSheet.swift	Try again
+2026-06-24T14:27:10Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/DesignSystem/Components/UniQRScannerSheet.swift	Turn on camera access in Settings to scan. You can still pick a QR from your photos or paste one.
+2026-06-24T14:27:10Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/DesignSystem/Components/UniQRScannerSheet.swift	WalletConnect
+2026-06-24T14:27:31Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/DesignSystem/Components/UniQRScannerSheet.swift	Camera access needed
+2026-06-24T14:27:31Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/DesignSystem/Components/UniQRScannerSheet.swift	Cancel
+2026-06-24T14:27:31Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/DesignSystem/Components/UniQRScannerSheet.swift	Code not recognized
+2026-06-24T14:27:31Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/DesignSystem/Components/UniQRScannerSheet.swift	Connect
+2026-06-24T14:27:31Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/DesignSystem/Components/UniQRScannerSheet.swift	Connect this dApp to your wallet.
+2026-06-24T14:27:31Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/DesignSystem/Components/UniQRScannerSheet.swift	Copied
+2026-06-24T14:27:31Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/DesignSystem/Components/UniQRScannerSheet.swift	Enable camera
+2026-06-24T14:27:31Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/DesignSystem/Components/UniQRScannerSheet.swift	Gallery
+2026-06-24T14:27:31Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/DesignSystem/Components/UniQRScannerSheet.swift	Paste
+2026-06-24T14:27:31Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/DesignSystem/Components/UniQRScannerSheet.swift	Requesting camera access…
+2026-06-24T14:27:31Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/DesignSystem/Components/UniQRScannerSheet.swift	Send
+2026-06-24T14:27:31Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/DesignSystem/Components/UniQRScannerSheet.swift	That isn't a wallet address or a WalletConnect code.
+2026-06-24T14:27:31Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/DesignSystem/Components/UniQRScannerSheet.swift	Try again
+2026-06-24T14:27:31Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/DesignSystem/Components/UniQRScannerSheet.swift	Turn on camera access in Settings to scan. You can still pick a QR from your photos or paste one.
+2026-06-24T14:27:31Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/DesignSystem/Components/UniQRScannerSheet.swift	WalletConnect
+2026-06-24T14:27:48Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/DesignSystem/Components/UniQRScannerSheet.swift	Camera access needed
+2026-06-24T14:27:48Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/DesignSystem/Components/UniQRScannerSheet.swift	Cancel
+2026-06-24T14:27:48Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/DesignSystem/Components/UniQRScannerSheet.swift	Code not recognized
+2026-06-24T14:27:48Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/DesignSystem/Components/UniQRScannerSheet.swift	Connect
+2026-06-24T14:27:48Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/DesignSystem/Components/UniQRScannerSheet.swift	Connect this dApp to your wallet.
+2026-06-24T14:27:48Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/DesignSystem/Components/UniQRScannerSheet.swift	Copied
+2026-06-24T14:27:48Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/DesignSystem/Components/UniQRScannerSheet.swift	Enable camera
+2026-06-24T14:27:48Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/DesignSystem/Components/UniQRScannerSheet.swift	Gallery
+2026-06-24T14:27:48Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/DesignSystem/Components/UniQRScannerSheet.swift	Paste
+2026-06-24T14:27:48Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/DesignSystem/Components/UniQRScannerSheet.swift	Requesting camera access…
+2026-06-24T14:27:48Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/DesignSystem/Components/UniQRScannerSheet.swift	Send
+2026-06-24T14:27:48Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/DesignSystem/Components/UniQRScannerSheet.swift	That isn't a wallet address or a WalletConnect code.
+2026-06-24T14:27:48Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/DesignSystem/Components/UniQRScannerSheet.swift	Try again
+2026-06-24T14:27:48Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/DesignSystem/Components/UniQRScannerSheet.swift	Turn on camera access in Settings to scan. You can still pick a QR from your photos or paste one.
+2026-06-24T14:27:48Z	/Users/thuglifex/Documents/UniApp/UniApp/Sources/DesignSystem/Components/UniQRScannerSheet.swift	WalletConnect

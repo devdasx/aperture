@@ -15,18 +15,20 @@ final class ActiveWalletReader {
 
     private init() {}
 
-    /// The EVM address (Ethereum / Arbitrum / Base / etc.) of the
-    /// active wallet, EIP-55 checksummed. `nil` when no wallet is
-    /// active or the wallet has no EVM address derived.
+    /// The EVM address for a specific EVM chain of the active wallet,
+    /// EIP-55 checksummed. `nil` when no wallet is active, the chain is
+    /// not EVM, or the wallet has no address derived for that chain.
+    func currentEVMAddress(chain: SupportedChain) -> String? {
+        guard chain.family == .evm,
+              let wallet = activeWallet() else { return nil }
+        let chainRaw = chain.rawValue
+        return wallet.addresses.first(where: { $0.chainRaw == chainRaw })?.address
+    }
+
+    /// Legacy default for callers that have not selected an EVM chain yet.
+    /// Prefer `currentEVMAddress(chain:)` anywhere a chain is known.
     func currentEVMAddress() -> String? {
-        guard let wallet = activeWallet() else { return nil }
-        for address in wallet.addresses {
-            guard let chain = SupportedChain(rawValue: address.chainRaw) else { continue }
-            if chain.family == .evm {
-                return address.address
-            }
-        }
-        return nil
+        currentEVMAddress(chain: .ethereum)
     }
 
     /// The Solana address (base58) of the active wallet. `nil` when

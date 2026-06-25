@@ -219,15 +219,45 @@ struct DAppSendTransactionSheet: View {
                     text: "Contract data",
                     color: UniColors.Text.tertiary
                 )
-                Text(verbatim: functionSelector)
-                    .font(.system(.callout, design: .monospaced))
-                    .foregroundStyle(UniColors.Text.primary)
-                    .textSelection(.enabled)
+                if let decoded = decodedContractCall {
+                    dappDataRow(label: "Function", value: decoded.name)
+                    ForEach(decoded.fields, id: \.label) { field in
+                        dappDataRow(label: field.label, value: field.value)
+                    }
+                    dappDataRow(label: "Selector", value: decoded.selector)
+                    if decoded.isApproval {
+                        UniFootnote(
+                            text: "This call can grant another address permission to move tokens or NFTs. Verify the spender before signing.",
+                            color: UniColors.Status.warningForeground
+                        )
+                    }
+                } else {
+                    Text(verbatim: functionSelector)
+                        .font(.system(.callout, design: .monospaced))
+                        .foregroundStyle(UniColors.Text.primary)
+                        .textSelection(.enabled)
+                }
                 UniFootnote(
-                    text: "Aperture doesn't decode contract calls without the source. Read the selector against the dApp's docs.",
+                    text: decodedContractCall == nil
+                        ? "Aperture doesn't recognize this selector. Read it against the dApp's docs before signing."
+                        : "Decoded from common token/NFT selectors. Amounts are raw contract units because token decimals are not in calldata.",
                     color: UniColors.Text.tertiary
                 )
             }
+        }
+    }
+
+    private func dappDataRow(label: String, value: String) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: UniSpacing.s) {
+            Text(verbatim: label)
+                .font(UniTypography.footnote)
+                .foregroundStyle(UniColors.Text.secondary)
+                .frame(width: 96, alignment: .leading)
+            Text(verbatim: value)
+                .font(.system(.callout, design: value.hasPrefix("0x") ? .monospaced : .default))
+                .foregroundStyle(UniColors.Text.primary)
+                .textSelection(.enabled)
+            Spacer(minLength: 0)
         }
     }
 
@@ -390,6 +420,136 @@ struct DAppSendTransactionSheet: View {
             return String(raw.prefix(10))
         }
         return raw
+    }
+
+    private var decodedContractCall: DecodedContractCall? {
+        DecodedContractCall.decode(request.dataHex)
+    }
+}
+
+private struct DecodedContractCall {
+    struct Field {
+        let label: String
+        let value: String
+    }
+
+    let selector: String
+    let name: String
+    let fields: [Field]
+    let isApproval: Bool
+
+    static func decode(_ dataHex: String) -> DecodedContractCall? {
+        var clean = dataHex.lowercased()
+        if clean.hasPrefix("0x") { clean.removeFirst(2) }
+        guard clean.count >= 8 else { return nil }
+        let selector = "0x" + clean.prefix(8)
+        let words = abiWords(String(clean.dropFirst(8)))
+
+        switch selector {
+        case "0xa9059cbb":
+            return DecodedContractCall(
+                selector: selector,
+                name: "ERC-20 transfer(address,uint256)",
+                fields: [
+                    Field(label: "Recipient", value: address(words[safe: 0])),
+                    Field(label: "Amount raw", value: uint(words[safe: 1])),
+                ],
+                isApproval: false
+            )
+        case "0x095ea7b3":
+            return DecodedContractCall(
+                selector: selector,
+                name: "ERC-20 approve(address,uint256)",
+                fields: [
+                    Field(label: "Spender", value: address(words[safe: 0])),
+                    Field(label: "Allowance", value: uint(words[safe: 1])),
+                ],
+                isApproval: true
+            )
+        case "0x23b872dd":
+            return DecodedContractCall(
+                selector: selector,
+                name: "transferFrom(address,address,uint256)",
+                fields: [
+                    Field(label: "From", value: address(words[safe: 0])),
+                    Field(label: "To", value: address(words[safe: 1])),
+                    Field(label: "Amount raw", value: uint(words[safe: 2])),
+                ],
+                isApproval: false
+            )
+        case "0x42842e0e", "0xb88d4fde":
+            return DecodedContractCall(
+                selector: selector,
+                name: "ERC-721 safeTransferFrom(...)",
+                fields: [
+                    Field(label: "From", value: address(words[safe: 0])),
+                    Field(label: "To", value: address(words[safe: 1])),
+                    Field(label: "Token ID", value: uint(words[safe: 2])),
+                ],
+                isApproval: false
+            )
+        case "0xa22cb465":
+            return DecodedContractCall(
+                selector: selector,
+                name: "ERC-721/1155 setApprovalForAll(address,bool)",
+                fields: [
+                    Field(label: "Operator", value: address(words[safe: 0])),
+                    Field(label: "Approved", value: bool(words[safe: 1])),
+                ],
+                isApproval: true
+            )
+        case "0xd505accf", "0x8fcbaf0c":
+            return DecodedContractCall(
+                selector: selector,
+                name: "permit(...)",
+                fields: [
+                    Field(label: "Owner", value: address(words[safe: 0])),
+                    Field(label: "Spender", value: address(words[safe: 1])),
+                    Field(label: "Amount raw", value: uint(words[safe: 2])),
+                ],
+                isApproval: true
+            )
+        case "0x3593564c", "0x24856bc3":
+            return DecodedContractCall(
+                selector: selector,
+                name: "Universal Router execute(...)",
+                fields: [],
+                isApproval: false
+            )
+        default:
+            return nil
+        }
+    }
+
+    private static func abiWords(_ hex: String) -> [String] {
+        stride(from: 0, to: hex.count, by: 64).map { offset in
+            let start = hex.index(hex.startIndex, offsetBy: offset)
+            let end = hex.index(start, offsetBy: min(64, hex.distance(from: start, to: hex.endIndex)))
+            return String(hex[start..<end])
+        }
+    }
+
+    private static func address(_ word: String?) -> String {
+        guard let word, word.count == 64 else { return "Unavailable" }
+        return "0x" + word.suffix(40)
+    }
+
+    private static func uint(_ word: String?) -> String {
+        guard let word, !word.isEmpty else { return "Unavailable" }
+        if word.allSatisfy({ $0 == "f" }) { return "Unlimited" }
+        let trimmed = word.drop { $0 == "0" }
+        return trimmed.isEmpty ? "0" : "0x" + trimmed
+    }
+
+    private static func bool(_ word: String?) -> String {
+        guard let word, word.count == 64 else { return "Unavailable" }
+        return word.suffix(1) == "1" ? "true" : "false"
+    }
+}
+
+private extension Array {
+    subscript(safe index: Int) -> Element? {
+        indices.contains(index) ? self[index] : nil
     }
 }
 

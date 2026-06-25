@@ -1,14 +1,12 @@
 import Foundation
 import OSLog
 
-/// Actor wrapping the Reown (formerly WalletConnect) Swift SDK. Aperture
-/// uses the **WalletKit** API — the wallet-side surface of the
-/// WalletConnect v2 Sign protocol — so external dApps can pair with
-/// the wallet via a `wc:` deep link / QR code.
+/// WalletConnect boundary. The SDK integration is intentionally disabled
+/// until its Swift package resolves cleanly and the real WalletKit calls are
+/// wired; pairing fails honestly instead of pretending a session exists.
 ///
-/// Project ID: `9c08a06e7615d64e7e86ea0197777a96` — provided by the
-/// user. Per Rule #3 §B's explicit-approval clause, this SDK
-/// integration is the project's first WalletConnect dependency.
+/// Project ID retained for the future SDK integration:
+/// `9c08a06e7615d64e7e86ea0197777a96`.
 ///
 /// **Why a wrapper.** Reown's SDK is large (60k+ LOC). Feature code
 /// reaches through this single class for three reasons:
@@ -54,33 +52,12 @@ final class WalletConnectClient {
 
     private init() {}
 
-    /// Configure the SDK with the project's metadata. Idempotent.
-    /// Called once at app launch and again whenever the configuration
-    /// drifts (e.g. the active wallet changes).
+    /// Configure the SDK with the project's metadata. Currently a no-op:
+    /// without a working WalletKit dependency, this client must stay
+    /// unconfigured so pair attempts fail instead of faking success.
     func configureIfNeeded() async {
         guard !isConfigured else { return }
-        // ReownAppKit / ReownWalletKit configuration lands here once
-        // the SPM dependency resolves. The shape:
-        //
-        //   let meta = AppMetadata(
-        //     name: "Aperture",
-        //     description: "Self-custody crypto wallet",
-        //     url: "https://aperture.app",
-        //     icons: ["https://aperture.app/icon.png"]
-        //   )
-        //   Networking.configure(
-        //     groupIdentifier: "group.com.thuglife.aperture",
-        //     projectId: Self.projectID,
-        //     socketFactory: DefaultSocketFactory()
-        //   )
-        //   WalletKit.configure(metadata: meta, crypto: ...)
-        //
-        // For now we leave the SDK uninitialized — the wrapper still
-        // exposes the surface so the UI can present a "WalletConnect
-        // initializing…" state honestly. The next session lands the
-        // real `WalletKit.configure(...)` call.
-        isConfigured = true
-        log.info("WalletConnectClient configured with project ID \(Self.projectID, privacy: .private)")
+        log.info("WalletConnect SDK unavailable; pairing remains disabled")
     }
 
     /// Pair with a `wc:` URI. Throws if the URI is malformed or the
@@ -90,9 +67,8 @@ final class WalletConnectClient {
         guard uri.hasPrefix("wc:") else {
             throw WalletConnectError.invalidURI
         }
-        log.info("WalletConnect pair requested for \(uri.prefix(64), privacy: .public)…")
-        // try await WalletKit.instance.pair(uri: WalletConnectURI(string: uri))
-        // — call lands once the SPM resolves.
+        log.info("WalletConnect pair rejected because SDK is unavailable for \(uri.prefix(64), privacy: .public)…")
+        throw WalletConnectError.sdkUnavailable
     }
 
     /// Disconnect an active session.
@@ -102,8 +78,8 @@ final class WalletConnectClient {
         activeSessions.removeAll { $0.id == sessionId }
     }
 
-    /// Lightweight session model. Mirrors the SDK's `Session` so the
-    /// view layer doesn't import Reown directly.
+    /// Lightweight session model. Mirrors the future SDK `Session` so the
+    /// view layer does not need to change when WalletConnect is re-enabled.
     struct Session: Identifiable, Sendable {
         let id: String          // SDK topic id
         let name: String
@@ -117,6 +93,7 @@ final class WalletConnectClient {
 enum WalletConnectError: Error {
     case invalidURI
     case notConfigured
+    case sdkUnavailable
     case pairingFailed(String)
     case sessionExpired
 }

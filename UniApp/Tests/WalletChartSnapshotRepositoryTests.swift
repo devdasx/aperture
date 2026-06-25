@@ -3,7 +3,7 @@ import Foundation
 import SwiftData
 @testable import Aperture
 
-/// `WalletChartSnapshotRepository` contract tests against an in-memory
+/// `WalletChartSnapshotRepository` contract tests against an isolated temporary
 /// SwiftData store:
 ///
 /// 1. Capture throttle — at most one snapshot per (wallet, currency)
@@ -20,26 +20,14 @@ import SwiftData
 @Suite struct WalletChartSnapshotRepositoryTests {
 
     private func makeRepository() throws -> WalletChartSnapshotRepository {
-        let config = ModelConfiguration(isStoredInMemoryOnly: true)
-        let container = try ModelContainer(
-            for: WalletChartSnapshotRecord.self,
-            configurations: config
-        )
+        let container = try TestModelContainerFactory.makeContainer()
         return WalletChartSnapshotRepository(modelContainer: container)
     }
 
     /// Container that also carries the wallet graph, for the
     /// `captureFromPersistedBalances` tests.
     private func makeWalletContainer() throws -> ModelContainer {
-        let config = ModelConfiguration(isStoredInMemoryOnly: true)
-        return try ModelContainer(
-            for: WalletRecord.self,
-            WalletAddressRecord.self,
-            TransactionRecord.self,
-            TokenBalanceRecord.self,
-            WalletChartSnapshotRecord.self,
-            configurations: config
-        )
+        try TestModelContainerFactory.makeContainer()
     }
 
     // MARK: - Capture throttle

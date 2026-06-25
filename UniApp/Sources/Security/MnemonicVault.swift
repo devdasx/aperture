@@ -8,7 +8,7 @@ import OSLog
 /// wallets, the original private-key string (hex or WIF) for key-import
 /// wallets. Mirrors `SeedVault`'s shape (AES-GCM 256-bit cipher,
 /// per-wallet symmetric key stored as a separate Keychain item, ACL
-/// `kSecAttrAccessibleWhenUnlockedThisDeviceOnly`).
+/// `kSecAttrAccessibleWhenPasscodeSetThisDeviceOnly`).
 ///
 /// **Why this exists.** Seed/key derivation is one-way: the 64-byte
 /// `SeedVault` slot cannot be reversed to the original mnemonic or the
@@ -214,7 +214,7 @@ enum MnemonicVault {
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
             kSecAttrAccount as String: account,
-            kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly,
+            kSecAttrAccessible as String: kSecAttrAccessibleWhenPasscodeSetThisDeviceOnly,
             kSecValueData as String: data
         ]
         let status = SecItemAdd(query as CFDictionary, nil)

@@ -138,7 +138,7 @@ struct SendExecutor {
         wallet: WalletDescriptor,
         passphrase: String?
     ) async throws -> SignedTransaction {
-        let jit = try await refreshJustInTime(draft: draft)
+        let jit = try await refreshJustInTime(draft: draft, wallet: wallet, passphrase: passphrase)
         // Detached so the PBKDF2 seed stretch + secp256k1/ed25519 sign
         // run off any actor (Rule #28). Only Sendable values cross in;
         // the SignedTransaction crosses back.
@@ -158,7 +158,9 @@ struct SendExecutor {
     /// off-main (this method is `nonisolated`); the per-chain fetchers live
     /// in `SendExecutor+JustInTime.swift`.
     private nonisolated func refreshJustInTime(
-        draft: SendDraft
+        draft: SendDraft,
+        wallet: WalletDescriptor,
+        passphrase: String?
     ) async throws -> TransactionSigner.JustInTimeData {
         switch draft.chain.family {
         case .evm:
@@ -204,7 +206,7 @@ struct SendExecutor {
         case .tron:     return try await refreshTron(draft: draft)
         case .cosmos:   return try await refreshCosmos(draft: draft)
         case .aptos:    return try await refreshAptos(draft: draft)
-        case .near:     return try await refreshNear(draft: draft)
+        case .near:     return try await refreshNear(draft: draft, wallet: wallet, passphrase: passphrase)
         case .polkadot: return try await refreshPolkadot(draft: draft)
         case .ton:      return try await refreshTON(draft: draft)
         }

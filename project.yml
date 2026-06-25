@@ -30,22 +30,6 @@ packages:
   WalletCore:
     url: https://github.com/trustwallet/wallet-core
     from: "4.2.0"
-  # 2026-06-10 — Reown (formerly WalletConnect) Swift SDK.
-  # Rule #3 §B allowed exception: "Network-specific RPC SDKs"
-  # — Reown WalletKit implements the WalletConnect v2 Sign
-  # protocol for wallet apps. Aperture acts as the WALLET in
-  # the WalletConnect topology (dApps connect TO us); the
-  # protocol's pairing/session/encryption layers are 60k+ LOC
-  # of vetted code that re-implementing in-house would (a)
-  # take months, (b) introduce supply-chain risk against the
-  # canonical implementation, (c) break interop the moment the
-  # Reown team ships a protocol version bump. The user supplied
-  # the project ID (9c08a06e7615d64e7e86ea0197777a96) for
-  # explicit pre-approval per Rule #3 §B's "explicit approval
-  # logged" clause.
-  ReownSwift:
-    url: https://github.com/reown-com/reown-swift
-    from: "1.6.0"
 
 targets:
   UniApp:
@@ -60,16 +44,10 @@ targets:
         product: WalletCore
       - package: WalletCore
         product: WalletCoreSwiftProtobuf
-      # WalletConnect v2 — wallet side (formerly Web3Wallet).
-      # Exposes `ReownWalletKit.shared` for session pairing,
-      # request handling, and approval responses.
-      - package: ReownSwift
-        product: ReownWalletKit
-    # API keys (Li.Fi swap/bridge, 1rpc, …) come from Secrets.xcconfig —
-    # LOCAL ONLY, gitignored. The committed Secrets.xcconfig.template
-    # documents the required keys. Values are injected into the app's
-    # Info.plist (the `info` block below) via `$(KEY)` substituted at build
-    # time from the xcconfig, and read at runtime by `Secrets.swift`.
+    # API keys (1rpc + Infura) come from Secrets.xcconfig — LOCAL ONLY,
+    # gitignored. Values are injected into the app's Info.plist (the `info`
+    # block below) via `$(KEY)` substituted at build time from the xcconfig,
+    # and read at runtime by `Secrets.swift`.
     # NEVER commit Secrets.xcconfig.
     configFiles:
       Debug: Secrets.xcconfig
@@ -110,9 +88,6 @@ targets:
         NSPhotoLibraryAddUsageDescription: "Aperture saves a QR image to your Photos only when you tap Save — so you can move a key or recovery phrase to another device. It never reads your photo library."
         # Secret API keys — `$(KEY)` substituted from Secrets.xcconfig at
         # build time; the source plist never contains the real values.
-        LIFI_API_KEY: "$(LIFI_API_KEY)"
-        ZEROX_API_KEY: "$(ZEROX_API_KEY)"
-        ONEINCH_API_KEY: "$(ONEINCH_API_KEY)"
         ONERPC_API_KEY: "$(ONERPC_API_KEY)"
         INFURA_API_KEY: "$(INFURA_API_KEY)"
     # iCloud → CloudKit, for the encrypted wallet-backup feature (the blob

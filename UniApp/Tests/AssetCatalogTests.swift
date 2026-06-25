@@ -13,9 +13,7 @@ import SwiftData
 @Suite struct AssetCatalogTests {
 
     private func makeContainer() throws -> ModelContainer {
-        let schema = Schema(ApertureSchemaV1.models)
-        let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
-        return try ModelContainer(for: schema, configurations: [config])
+        try TestModelContainerFactory.makeContainer()
     }
 
     @Test("seeded AssetRecord set equals the static AssetCatalog exactly")
