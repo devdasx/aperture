@@ -64,22 +64,30 @@ enum SupportedChain: String, CaseIterable, Hashable, Sendable, Codable {
     }
 
     /// Whether on-chain DATA fetching — native + token balances, transaction
-    /// history, and prices — is disabled for this chain (2026-06-21 user
-    /// direction). The address still derives (Receive) and Send still works
-    /// through its own RPC + signing path; only the wallet-home
-    /// balance / holdings / activity data is suppressed, and the chain routes
-    /// to the no-op `DisabledChainConnector`.
+    /// history, and prices — is disabled for this chain. The address still
+    /// derives (Receive) and Send still works through its own RPC + signing
+    /// path; only the wallet-home balance / holdings / activity data is
+    /// suppressed, and the chain routes to the no-op `DisabledChainConnector`.
     ///
-    /// Currently: every EVM chain, the whole Bitcoin family (BTC / BCH / LTC /
-    /// DOGE), Tron, Solana, and Stellar. (Solana + Stellar are named by case,
-    /// not family — Sui shares their `.ed25519` family but stays active.) The
-    /// active chains are XRPL, Aptos, Near, Polkadot, Sui, and Ton.
+    /// **2026-06-25 — disabled for EVERY supported chain (user direction).** No
+    /// chain fetches balances / history / prices anymore. Listed granularly by
+    /// family below so a single line can be removed to re-enable one chain:
+    ///   - `.evm`      — Ethereum, Arbitrum, Base, Optimism, Scroll, zkSync,
+    ///                   Polygon, BNB, opBNB, Avalanche, Celo
+    ///   - `.bitcoin`  — BTC / BCH / LTC / DOGE
+    ///   - `.ed25519`  — Solana, Stellar, Sui
+    ///   - `.ripple`   — XRPL
+    ///   - `.aptos` · `.near` · `.polkadot` · `.ton` · `.tron`
     var fetchingDisabled: Bool {
         family == .evm
             || family == .bitcoin
-            || self == .tron
-            || self == .solana
-            || self == .stellar
+            || family == .ed25519   // Solana · Stellar · Sui
+            || family == .ripple    // XRPL
+            || family == .aptos
+            || family == .near
+            || family == .polkadot
+            || family == .ton
+            || family == .tron
     }
 
     /// Whether the chain supports BIP-32 extended public keys
