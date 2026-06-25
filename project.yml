@@ -81,7 +81,7 @@ targets:
         # Required for LocalAuthentication biometric prompt (without it the
         # app crashes on the first Face ID call) + AVCaptureSession QR scan.
         NSFaceIDUsageDescription: "Aperture uses Face ID to unlock the app and confirm transactions, so you don't have to type your PIN every time."
-        NSCameraUsageDescription: "Aperture uses the camera to scan WalletConnect QR codes from dApps so you can pair them with this wallet."
+        NSCameraUsageDescription: "Aperture uses the camera to scan wallet addresses and payment QR codes."
         # Required to save a key / recovery-phrase QR image to the photo
         # library (the Add-only entitlement) — without it the first save
         # call crashes. We only ever ADD an image; we never read the library.

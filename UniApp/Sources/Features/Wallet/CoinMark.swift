@@ -188,8 +188,7 @@ struct CoinMark: View {
     /// Fetch + decode a single mark URL off-main, or `nil` when the URL
     /// is absent, the download 404s, or the bytes don't decode. Delegates
     /// to `CoinMarkImageCache.resolveImage(for:)` — the one shared
-    /// fetch→cache→persist→decode path used by BOTH coin/token marks and
-    /// browser dApp logos, so the two cache + persist identically.
+    /// fetch→cache→persist→decode path used by coin/token marks.
     private func preparedImage(for url: URL?) async -> UIImage? {
         guard let url else { return nil }
         return await CoinMarkImageCache.shared.resolveImage(for: url)
@@ -257,11 +256,9 @@ final class CoinMarkImageCache: @unchecked Sendable {
     }
 
     /// Resolve a display-ready, decoded image for `url` using the ONE
-    /// fetch→cache→persist path coin/token marks use — shared verbatim by
-    /// `CoinMark` (coins/tokens) and `BrowserFaviconView` (browser dApp
-    /// logos) so both cache + persist identically (2026-06-18, user
+    /// fetch→cache→persist path coin/token marks use (2026-06-18, user
     /// direction: "get the icons for tokens and coins in same way … cache
-    /// and persist them in same way, and same for the browser dapps logos").
+    /// and persist them in same way").
     ///
     /// The path, in order:
     ///   1. **This session's decoded cache** (synchronous, zero work) — a

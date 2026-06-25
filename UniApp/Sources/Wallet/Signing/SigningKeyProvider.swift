@@ -6,9 +6,8 @@ import WalletCore
 ///
 /// **Why this exists / how it maps onto the proven pattern.** This is
 /// the Aperture analogue of Stabro's `KeyManager.signTransaction(...)`
-/// key-access path (`HDWallet(mnemonic:passphrase:) → getKeyForCoin`)
-/// and is structurally identical to the app's already-shipped
-/// `EVMDAppSigner` custody path. The derivation matches
+/// key-access path (`HDWallet(mnemonic:passphrase:) → getKeyForCoin`).
+/// The derivation matches
 /// `WalletCoreKeyImportService` EXACTLY (same `HDWallet`, same
 /// `CoinType` via `ChainCoinType`, same `getKeyForCoin`) so the key the
 /// signer uses always corresponds to the address the importer derived

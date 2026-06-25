@@ -8,11 +8,9 @@ import SwiftData
 struct SecuritySettingsView: View {
     @AppStorage("pinEnabled") private var pinEnabled: Bool = false
     @AppStorage("biometricEnabled") private var biometricEnabled: Bool = false
-    // Per-action Face ID gates (2026-06-20). Secure default ON; they only
-    // take effect when Face ID is enabled. Enforced in SendReviewView /
-    // DAppSendTransactionSheet.
+    // Per-action Face ID gate (2026-06-20). Secure default ON; only takes
+    // effect when Face ID is enabled. Enforced in SendReviewView.
     @AppStorage("requireBiometricForSend") private var requireForSend: Bool = true
-    @AppStorage("requireBiometricForDApp") private var requireForDApp: Bool = true
     // iOS-style "Erase Data": wipe the app after N failed lock-screen passcode
     // attempts. OFF by default; arming it shows a confirmation first. Enforced
     // in `AppLockView` against `PinCodeStorage`'s dedicated unlock counter.
@@ -172,7 +170,6 @@ struct SecuritySettingsView: View {
             if biometricAvailable {
                 Section {
                     faceIDActionRow("Sending transactions", isOn: $requireForSend)
-                    faceIDActionRow("Signing in dApps", isOn: $requireForDApp)
                 } header: {
                     Text("Use Face ID For").font(UniTypography.footnote).foregroundStyle(UniColors.Text.tertiary)
                 } footer: {

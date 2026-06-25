@@ -67,10 +67,7 @@ enum FreshInstallGuard {
     ///    — every service literal in the codebase must appear here.
     ///    As of 2026-06-13 the only files touching Keychain are
     ///    `SeedVault`, `MnemonicVault`, `WalletManifestStore`,
-    ///    `PinCodeStorage`, and this guard. (The Reown/WalletConnect
-    ///    SDK is not yet configured — `WalletConnectClient` is a
-    ///    stub; when it goes live its Keychain service(s) must be
-    ///    added here.)
+    ///    `PinCodeStorage`, and this guard.
     private static let knownServices: [String] = [
         "com.thuglife.aperture.seed.cipher",       // SeedVault.cipherService — encrypted BIP-39 seeds
         "com.thuglife.aperture.seed.key",          // SeedVault.keyService — AES-GCM keys

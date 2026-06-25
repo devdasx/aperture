@@ -432,7 +432,7 @@ actor WalletRepository {
     /// one, the successor id is written to `UserDefaults` BEFORE
     /// `modelContext.save()` commits the delete — so no main-actor
     /// observer (`WalletHomeView`'s `.task(id: activeWalletIdRaw)`,
-    /// the Receive sheet, the Browser signer) ever resolves the
+    /// the Receive sheet) ever resolves the
     /// deleted id. The successor itself is never mid-delete, so it
     /// resolves against the store even before the main context's
     /// `@Query` merge lands.

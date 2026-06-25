@@ -103,25 +103,6 @@ import SwiftData
                 name: "Test Token",
                 decimals: 18
             ))
-        } else if model == BrowserHistoryRecord.self {
-            context.insert(BrowserHistoryRecord(
-                url: "https://example.org",
-                title: "Example",
-                host: "example.org"
-            ))
-        } else if model == BrowserBookmarkRecord.self {
-            context.insert(BrowserBookmarkRecord(
-                url: "https://example.org",
-                title: "Example",
-                host: "example.org"
-            ))
-        } else if model == ConnectedDAppRecord.self {
-            context.insert(ConnectedDAppRecord(
-                host: "app.example.org",
-                name: "Example dApp",
-                url: "https://app.example.org",
-                chainLabel: "Ethereum"
-            ))
         } else if model == HistoricalPriceRecord.self {
             context.insert(HistoricalPriceRecord(
                 symbol: "BTC",
@@ -272,9 +253,6 @@ import SwiftData
             "BiometricEnrollmentRecord",
             "AppMetadataRecord",
             "CustomTokenRecord",
-            "BrowserHistoryRecord",
-            "BrowserBookmarkRecord",
-            "ConnectedDAppRecord",
             "HistoricalPriceRecord",
             "PriceSnapshotRecord",
             "WalletChartSnapshotRecord",

@@ -1,19 +1,18 @@
 import SwiftUI
 
 /// The 1inch-style **Actions** bottom sheet (2026-06-23 user direction) — the
-/// home's Send / Receive circles moved here, joined by Connect, as a grid of
-/// label-+-corner-icon cells separated by hairlines. Below the grid sits the
-/// **Templates** section (saved Send blueprints — the real feature lands in a
-/// later phase; for now it shows the empty state).
+/// home's Send / Receive circles moved here, as a grid of label-+-corner-icon
+/// cells separated by hairlines. Below the grid sits the **Templates** section
+/// (saved Send blueprints — the real feature lands in a later phase; for now
+/// it shows the empty state).
 ///
 /// The sheet owns no flows: each tile calls back to `WalletHomeView`, which
-/// dismisses this sheet and presents the matching Send / Receive / Connect
-/// surface (the dismiss-then-present hand-off).
+/// dismisses this sheet and presents the matching Send / Receive surface
+/// (the dismiss-then-present hand-off).
 struct WalletActionsSheet: View {
     let canSend: Bool
     let onSend: () -> Void
     let onReceive: () -> Void
-    let onConnect: () -> Void
 
     @Environment(\.colorScheme) private var colorScheme
 
@@ -43,10 +42,6 @@ struct WalletActionsSheet: View {
                 cell("Receive", systemImage: "arrow.down.left", enabled: true, action: onReceive)
                 vHair
                 cell("Send", systemImage: "arrow.up.right", enabled: canSend, action: onSend)
-            }
-            UniDivider()
-            HStack(spacing: 0) {
-                cell("Connect", systemImage: "qrcode.viewfinder", enabled: true, action: onConnect)
             }
             UniDivider()
         }
