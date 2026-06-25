@@ -186,8 +186,8 @@ enum ENSResolver {
     // MARK: - Keccak-256 (WalletCore) + hex helpers
 
     /// keccak256 via WalletCore's `Hash.keccak256(data:)`. The app
-    /// already links WalletCore (key import, dApp signing) — this is the
-    /// same primitive Ethereum uses everywhere (NOT NIST SHA3-256).
+    /// already links WalletCore (key import, transaction signing) — this is
+    /// the same primitive Ethereum uses everywhere (NOT NIST SHA3-256).
     private static func keccak256(_ bytes: [UInt8]) -> [UInt8] {
         [UInt8](Hash.keccak256(data: Data(bytes)))
     }

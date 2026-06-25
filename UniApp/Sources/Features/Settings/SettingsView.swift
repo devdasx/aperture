@@ -34,7 +34,6 @@ enum SettingsDestination: Hashable, Codable {
     case security
     case autoLock
     case privacy
-    case connectionApprovals
     case hideSmallBalances
 
     case language
@@ -58,7 +57,7 @@ enum SettingsDestination: Hashable, Codable {
         case .security:
             return false
         case .wallets, .walletDetail, .autoLock, .privacy,
-             .connectionApprovals, .hideSmallBalances,
+             .hideSmallBalances,
              .language, .appearance, .currency, .preferences, .help, .about:
             return true
         }
@@ -229,20 +228,6 @@ struct SettingsView: View {
                     .listRowBackground(UniColors.Background.secondary)
                 }
 
-                // Section 4b — Connected dApps (manage browser + WalletConnect
-                // connections). On-chain token approvals were removed with EVM
-                // data fetching (2026-06-21).
-                Section {
-                    NavigationLink(value: SettingsDestination.connectionApprovals) {
-                        SettingsRow(
-                            systemImage: "app.connected.to.app.below.fill",
-                            title: "Connected dApps",
-                            trailing: nil
-                        )
-                    }
-                    .listRowBackground(UniColors.Background.secondary)
-                }
-
                 // Section 5 — Help & About
                 Section {
                     NavigationLink(value: SettingsDestination.help) {
@@ -296,7 +281,6 @@ struct SettingsView: View {
                 case .security:                  SecuritySettingsView()
                 case .autoLock:                  AutoLockPickerView()
                 case .privacy:                   PrivacySettingsView()
-                case .connectionApprovals:       ConnectionApprovalsView()
                 case .hideSmallBalances:         HideSmallBalancesPicker()
                 case .language:                  LanguagePickerView()
                 case .appearance:                AppearancePickerView()

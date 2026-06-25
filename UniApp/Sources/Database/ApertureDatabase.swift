@@ -372,7 +372,7 @@ final class ApertureDatabase {
     /// never migrates to a new device via any backup. If the store
     /// were backed up, a restored phone would present wallets that
     /// look fully capable but can never sign — and the user's full
-    /// transaction history + dApp browsing metadata would ride along
+    /// transaction history would ride along
     /// in their backups. Excluding the store keeps the on-disk
     /// posture aligned with the Keychain posture: a restored device
     /// starts clean and onboards honestly.

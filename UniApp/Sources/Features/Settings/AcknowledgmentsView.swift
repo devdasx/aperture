@@ -149,7 +149,7 @@ struct PrivacyPolicyPlaceholderSheet: View {
                 )
                 .fixedSize(horizontal: false, vertical: true)
                 UniBody(
-                    text: "Network traffic from this app goes only to public chain RPC providers — to broadcast the transactions you send, estimate fees, resolve names, and look up token details — and to any dApp you open in the browser. Aperture fetches no balances, transaction history, or prices. Those providers may log the requests on their side — Aperture itself records nothing.",
+                    text: "Network traffic from this app goes only to public chain RPC providers — to broadcast the transactions you send, estimate fees, resolve names, and look up token details. Aperture fetches no balances, transaction history, or prices. Those providers may log the requests on their side — Aperture itself records nothing.",
                     color: UniColors.Text.secondary
                 )
                 .fixedSize(horizontal: false, vertical: true)

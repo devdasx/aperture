@@ -269,8 +269,7 @@ extension View {
     /// explicit-detent sheet in UniApp. Replaces the bare
     /// `.presentationDetents(_:)` call at the ~25 sheet sites that use
     /// fixed `[.large]` / `[.medium]` / `[.medium, .large]` detents
-    /// (Receive, Browser, Send review/fee, the Settings nav
-    /// sheets, etc.).
+    /// (Receive, Send review/fee, the Settings nav sheets, etc.).
     ///
     /// **What it does, and why it's one modifier not 25 edits.** It
     /// applies the passed `detents` exactly as before AND adds the

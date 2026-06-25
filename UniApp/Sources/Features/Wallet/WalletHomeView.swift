@@ -5,8 +5,8 @@ import TipKit
 // MARK: - RootGate
 
 /// App-launch routing gate. Reads the wallet count reactively via
-/// `@Query`; routes to `MainTabView` (the four-tab shell — Wallet /
-/// Browser / Settings) if the user has at least one wallet,
+/// `@Query`; routes to `MainTabView` (the post-onboarding shell) if
+/// the user has at least one wallet,
 /// otherwise to `OnboardingView`. When the create/import flows
 /// insert a `WalletRecord`, the gate flips automatically — no
 /// explicit navigation needed from those flows.
@@ -15,8 +15,7 @@ import TipKit
 /// wallets-exist branch.** Through 2026-06-08 this branch was
 /// `WalletHomeView()` directly; Settings was reached via a `.sheet`
 /// from the wallet-home toolbar's gear. Per direct user direction
-/// the shell is now a native iOS 26 `TabView` so Wallet /
-/// Browser / Settings sit at the same depth. `WalletHomeView` is
+/// the shell is now a native iOS 26 `TabView`. `WalletHomeView` is
 /// still the root of the Wallet tab; the Settings sheet is
 /// retired.
 ///
@@ -233,15 +232,14 @@ struct WalletHomeView: View {
     // A tile sets `pendingQuickAction` + dismisses; `onDismiss` opens the real
     // flow (dismiss-then-present, no sheet-over-sheet race).
     @State private var isShowingActions: Bool = false
-    @State private var isShowingConnectScanner: Bool = false
-    /// The app-bar **Aperture Scanner** (leading toolbar). Auto-detects an
-    /// address (any supported chain) → Send, or a `wc:` URI → WalletConnect.
+    /// The app-bar **Aperture Scanner** (leading toolbar). Auto-detects a
+    /// wallet address (any supported chain) → Send.
     @State private var isShowingScanner: Bool = false
     /// A scanned address staged to open Send pre-filled, applied in the
     /// scanner's `onDismiss` (dismiss-then-present, like the Actions flow).
     @State private var scanPrefill: SendView.ScanPrefill?
     @State private var pendingQuickAction: QuickAction? = nil
-    private enum QuickAction { case send, receive, connect }
+    private enum QuickAction { case send, receive }
     /// **Filter & Sort sheet (2026-06-09).** Drives the
     /// `.sheet(isPresented: $isShowingFilter)` block below. The sheet
     /// reads + writes preferences through `@AppStorage` against
@@ -537,8 +535,8 @@ struct WalletHomeView: View {
                 // commit CTAs (the rule's documented exception).
                 .toolbar {
                     // 2026-06-24 — Scan affordance (leading). Opens the unified
-                    // Aperture Scanner: auto-detects an address (any supported
-                    // chain) → Send pre-filled, or a `wc:` URI → WalletConnect.
+                    // Aperture Scanner: auto-detects a wallet address (any
+                    // supported chain) → Send pre-filled.
                     // `viewfinder` (not `.circle` — `M-003` forbids `.circle`
                     // SF Symbols in toolbar surfaces).
                     ToolbarItem(placement: .topBarLeading) {
@@ -764,18 +762,14 @@ struct WalletHomeView: View {
                 .presentationDragIndicator(.visible)
                 .presentationBackground(UniColors.Background.primary)
         }
-        // App-bar Aperture Scanner (leading toolbar). Full auto-detect: a `wc:`
-        // URI pairs WalletConnect; a wallet address (any supported chain) opens
-        // Send pre-filled. The chosen action is staged and applied in
-        // `onDismiss` so we never present Send over a still-dismissing scanner.
+        // App-bar Aperture Scanner (leading toolbar). Auto-detects a wallet
+        // address (any supported chain) and opens Send pre-filled. The chosen
+        // action is staged and applied in `onDismiss` so we never present Send
+        // over a still-dismissing scanner.
         .sheet(isPresented: $isShowingScanner, onDismiss: {
             if scanPrefill != nil { isShowingSend = true }
         }) {
             UniQRScannerSheet(
-                onConnect: { uri in
-                    isShowingScanner = false
-                    Task { await DAppRequestRouter.shared.handleWalletConnectURI(uri) }
-                },
                 onSend: { chain, address in
                     scanPrefill = SendView.ScanPrefill(chain: chain, recipient: address)
                     isShowingScanner = false
@@ -789,25 +783,12 @@ struct WalletHomeView: View {
             WalletActionsSheet(
                 canSend: activeWallet?.kind != .watchOnly,
                 onSend: { pendingQuickAction = .send; isShowingActions = false },
-                onReceive: { pendingQuickAction = .receive; isShowingActions = false },
-                onConnect: { pendingQuickAction = .connect; isShowingActions = false }
+                onReceive: { pendingQuickAction = .receive; isShowingActions = false }
             )
             .uniAppEnvironment()
             .uniSheetDetents([.medium, .large])
             .presentationDragIndicator(.visible)
             .presentationBackground(UniColors.Background.primary)
-        }
-        // Connect (WalletConnect) scanner — the Actions sheet's Connect tile.
-        .sheet(isPresented: $isShowingConnectScanner) {
-            UniQRScannerSheet(
-                title: "Connect",
-                prompt: "Scan a WalletConnect QR code to connect a dApp.",
-                onConnect: { uri in
-                    isShowingConnectScanner = false
-                    Task { await DAppRequestRouter.shared.handleWalletConnectURI(uri) }
-                }
-            )
-            .uniAppEnvironment()
         }
         // Filter & Sort sheet (2026-06-09). `.large` detent only per
         // M-008's nav-shaped-sheet rule. Rule #12 §G direction key +
@@ -907,7 +888,6 @@ struct WalletHomeView: View {
         switch pendingQuickAction {
         case .send:    isShowingSend = true
         case .receive: isShowingReceive = true
-        case .connect: isShowingConnectScanner = true
         case nil:      break
         }
         pendingQuickAction = nil

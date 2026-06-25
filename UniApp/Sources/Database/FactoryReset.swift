@@ -1,13 +1,10 @@
 import Foundation
 import SwiftData
 import OSLog
-// WebKit is imported ONLY for the wipe: the dApp browser persists
-// cookies/storage in the default `WKWebsiteDataStore`, which must go for a
-// reset to equal a first install. TipKit's own datastore ("shown once"
-// counters) can only be reset BEFORE `Tips.configure()` runs — which already
-// happened at launch — so that reset is deferred to the next launch via
-// `tipKitResetFlagKey` (see `UniAppApp`), not attempted mid-session.
-import WebKit
+// TipKit's own datastore ("shown once" counters) can only be reset BEFORE
+// `Tips.configure()` runs — which already happened at launch — so that reset
+// is deferred to the next launch via `tipKitResetFlagKey` (see `UniAppApp`),
+// not attempted mid-session.
 
 // MARK: - FactoryReset
 
@@ -48,8 +45,8 @@ import WebKit
 ///
 /// **What this type does NOT cover** (owned by `resetAll()` directly):
 /// Keychain (`SeedVault` / `MnemonicVault` / `PinCodeStorage` /
-/// `WalletManifestStore`), `UserDefaults`, the WKWebView website data
-/// store, the TipKit datastore, and the `CoinMarkCache` disk cache.
+/// `WalletManifestStore`), `UserDefaults`, the TipKit datastore, and
+/// the `CoinMarkCache` disk cache.
 /// `ResetCompletenessTests` pins this type's contract.
 enum FactoryReset {
 
@@ -88,8 +85,8 @@ enum FactoryReset {
     /// progress. After it returns, the app's persistent state is
     /// indistinguishable from a first install: every SwiftData table empty,
     /// every Aperture Keychain item gone, the full `UserDefaults` domain
-    /// removed, the dApp browser's website data cleared, the TipKit datastore
-    /// reset, and the token-logo disk cache deleted. `RootGate` observes the
+    /// removed, the TipKit datastore reset, and the token-logo disk cache
+    /// deleted. `RootGate` observes the
     /// wallet count flip to zero and routes back to onboarding.
     ///
     /// **Order is the safety contract.** The SwiftData wallet deletion runs
@@ -131,12 +128,7 @@ enum FactoryReset {
         onStageComplete(.keys)
 
         // STAGE 3 — settings & cache. Best-effort.
-        // dApp-browser website data: cookies, local/session storage, caches.
-        await WKWebsiteDataStore.default().removeData(
-            ofTypes: WKWebsiteDataStore.allWebsiteDataTypes(),
-            modifiedSince: .distantPast
-        )
-        // Foundation-level network residue outside WKWebView.
+        // Foundation-level network residue.
         URLCache.shared.removeAllCachedResponses()
         HTTPCookieStorage.shared.removeCookies(since: .distantPast)
         // Token-logo disk cache (Caches/AperturePaint/CoinMarks).

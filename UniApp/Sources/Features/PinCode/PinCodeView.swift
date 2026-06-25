@@ -75,7 +75,7 @@ struct PinCodeView: View {
     /// Per user direction 2026-06-13, the passcode-only gates are:
     /// the Settings → Security entry gate, wallet removal, and Reset
     /// Aperture. Face ID-first remains the policy everywhere else
-    /// (app unlock, secret reveals, transaction signing, dApps).
+    /// (app unlock, secret reveals, transaction signing).
     ///
     /// Ignored in `.set` / `.confirm` modes — they never offer
     /// biometrics regardless. This stays the ONE PIN surface per

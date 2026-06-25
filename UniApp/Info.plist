@@ -23,7 +23,7 @@
 	<key>INFURA_API_KEY</key>
 	<string>$(INFURA_API_KEY)</string>
 	<key>NSCameraUsageDescription</key>
-	<string>Aperture uses the camera to scan WalletConnect QR codes from dApps so you can pair them with this wallet.</string>
+	<string>Aperture uses the camera to scan wallet addresses and payment QR codes.</string>
 	<key>NSFaceIDUsageDescription</key>
 	<string>Aperture uses Face ID to unlock the app and confirm transactions, so you don't have to type your PIN every time.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>

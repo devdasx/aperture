@@ -85,9 +85,9 @@ enum UniColors {
         /// accent is monochrome (Cloud `#F5F5F7` in dark mode), so
         /// white-on-accent is invisible there — for text on an
         /// accent-tinted surface use `Button.primaryLabel`, which
-        /// adapts. Existing consumers (`BrowserQRScanSheet`, white
-        /// over the camera feed) are correct with white and should
-        /// migrate to the honestly-named `onMedia` below.
+        /// adapts. Existing consumers (white over the camera feed) are
+        /// correct with white and should migrate to the honestly-named
+        /// `onMedia` below.
         static let onTint = Color.white
         /// Always-white text over media (camera feed, imagery) that is
         /// dark in both appearances. The properly-named home for the

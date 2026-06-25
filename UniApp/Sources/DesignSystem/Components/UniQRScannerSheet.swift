@@ -17,7 +17,6 @@ import UniformTypeIdentifiers
 ///   Solana, XRP, TON, TRON, Aptos, Sui, Stellar, NEAR, Polkadot…): the reticle
 ///   locks to a green ring and a glass sheet rises with the chain icon, the
 ///   address, and **Copy / Send**.
-/// - **WalletConnect** (`wc:` URI): a blue ring + **Cancel / Connect**.
 /// - **Unrecognized**: a red ring + **Paste / Try again**.
 ///
 /// **Three real ways in (Rule #3 — all native):** live camera (AVFoundation),
@@ -33,14 +32,12 @@ struct UniQRScannerSheet: View {
     /// Inline title (default "Scan").
     var title: LocalizedStringKey = "Scan"
     /// Hint shown above the bottom controls while scanning.
-    var prompt: LocalizedStringKey = "You can scan a WalletConnect, an address or a payment request"
+    var prompt: LocalizedStringKey = "You can scan a wallet address or a payment request"
     /// **Raw-deliver mode.** When set, ANY decoded payload (camera / gallery /
     /// paste) is handed straight back and the scanner closes — no
     /// classification, no result sheet. Used by the Send recipient field, which
     /// validates downstream against its already-chosen chain.
     var onRawDeliver: ((String) -> Void)? = nil
-    /// Standalone WalletConnect connect (Browser / global scan).
-    var onConnect: ((String) -> Void)? = nil
     /// Standalone "Send to this address" — opens the send flow pre-filled. When
     /// nil the address sheet shows only Copy.
     var onSend: ((SupportedChain, String) -> Void)? = nil
@@ -223,9 +220,8 @@ struct UniQRScannerSheet: View {
     /// Map a detection to the reticle ring color.
     private func ringStatus(_ d: ScannerDetection) -> ScannerReticle.Status {
         switch d {
-        case .address:       return .ok
-        case .walletConnect: return .walletConnect
-        case .unrecognized:  return .error
+        case .address:      return .ok
+        case .unrecognized: return .error
         }
     }
 
@@ -239,8 +235,6 @@ struct UniQRScannerSheet: View {
                 switch detection {
                 case .address(let chain, let value):
                     addressResult(chain: chain, value: value)
-                case .walletConnect(let uri):
-                    walletConnectResult(uri: uri)
                 case .unrecognized:
                     unrecognizedResult
                 }
@@ -288,32 +282,6 @@ struct UniQRScannerSheet: View {
     }
 
     @ViewBuilder
-    private func walletConnectResult(uri: String) -> some View {
-        HStack(spacing: UniSpacing.s) {
-            Image(systemName: "link.circle.fill")
-                .font(.system(size: 36))
-                .foregroundStyle(Color(red: 0.23, green: 0.55, blue: 0.96))
-            VStack(alignment: .leading, spacing: 2) {
-                Text("WalletConnect")
-                    .font(.system(size: 17, weight: .bold))
-                    .foregroundStyle(.white)
-                Text("Connect this dApp to your wallet.")
-                    .font(UniTypography.footnote)
-                    .foregroundStyle(.white.opacity(0.7))
-            }
-            Spacer(minLength: 0)
-        }
-        HStack(spacing: UniSpacing.s) {
-            pillButton("Cancel", systemImage: nil, dark: false) { resumeScanning() }
-            pillButton("Connect", systemImage: "bolt.fill", dark: true, tint: Color(red: 0.23, green: 0.55, blue: 0.96)) {
-                UniHapticEngine.shared.play(.success)
-                onConnect?(uri)
-                dismiss()
-            }
-        }
-    }
-
-    @ViewBuilder
     private var unrecognizedResult: some View {
         HStack(spacing: UniSpacing.s) {
             Image(systemName: "exclamationmark.triangle.fill")
@@ -323,7 +291,7 @@ struct UniQRScannerSheet: View {
                 Text("Code not recognized")
                     .font(.system(size: 17, weight: .bold))
                     .foregroundStyle(.white)
-                Text("That isn't a wallet address or a WalletConnect code.")
+                Text("That isn't a wallet address.")
                     .font(UniTypography.footnote)
                     .foregroundStyle(.white.opacity(0.7))
                     .fixedSize(horizontal: false, vertical: true)
@@ -417,7 +385,7 @@ struct UniQRScannerSheet: View {
         let result = ScannerClassifier.classify(payload)
         UniHapticEngine.shared.play(.selection)
         switch result {
-        case .address, .walletConnect:
+        case .address:
             UniHapticEngine.shared.play(.success)
         case .unrecognized:
             UniHapticEngine.shared.play(.error)
@@ -530,17 +498,15 @@ struct UniQRScannerSheet: View {
 /// What a scanned payload turned out to be.
 enum ScannerDetection: Equatable {
     case address(chain: SupportedChain, value: String)
-    case walletConnect(uri: String)
     case unrecognized
 }
 
-/// Classifies a raw scanned payload across every supported chain + WalletConnect.
+/// Classifies a raw scanned payload across every supported chain.
 /// Uses Trust Wallet Core's real per-chain address validation (no regex guess).
 enum ScannerClassifier {
     static func classify(_ raw: String) -> ScannerDetection {
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return .unrecognized }
-        if trimmed.lowercased().hasPrefix("wc:") { return .walletConnect(uri: trimmed) }
 
         let address = strippedAddress(from: trimmed)
         guard !address.isEmpty else { return .unrecognized }
@@ -601,14 +567,13 @@ nonisolated private struct ActionBarLabel: View {
 /// The reticle: a centered square cutout in a dimmed scrim. While scanning it
 /// shows four white corner brackets and an animated scan beam; on a detection
 /// the brackets give way to a single full rounded ring in the status color
-/// (green OK · blue WalletConnect · red error), per the handoff.
+/// (green OK · red error), per the handoff.
 private struct ScannerReticle: View {
-    enum Status { case ok, walletConnect, error
+    enum Status { case ok, error
         var color: Color {
             switch self {
-            case .ok:            return Color(red: 0.18, green: 0.82, blue: 0.50)
-            case .walletConnect: return Color(red: 0.23, green: 0.55, blue: 0.96)
-            case .error:         return Color(red: 1.0, green: 0.36, blue: 0.32)
+            case .ok:    return Color(red: 0.18, green: 0.82, blue: 0.50)
+            case .error: return Color(red: 1.0, green: 0.36, blue: 0.32)
             }
         }
     }
