@@ -42,7 +42,7 @@ enum BrowserURLNormalizer {
 
         // Looks like a real URL — has a scheme.
         if let scheme = scheme(of: trimmed),
-           ["http", "https", "ftp"].contains(scheme.lowercased()) {
+           ["http", "https"].contains(scheme.lowercased()) {
             if let url = URL(string: trimmed) {
                 return .url(url)
             }

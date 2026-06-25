@@ -6,9 +6,9 @@ import Security
 /// plus a 16-byte random salt — **never plaintext**. iterations = 100,000
 /// (OWASP 2023 PBKDF2-SHA256 minimum recommendation).
 ///
-/// Why Keychain, not `UserDefaults` / `@AppStorage`: Keychain encrypts
-/// at-rest using the Secure Enclave when available. `UserDefaults` is
-/// plain plist on disk. PIN material — even hashed — belongs in Keychain
+/// Why Keychain, not `UserDefaults` / `@AppStorage`: Keychain items are
+/// protected by iOS data protection; `UserDefaults` is a plain plist on disk.
+/// PIN material — even hashed — belongs in Keychain
 /// (`kSecAttrAccessibleWhenUnlockedThisDeviceOnly`).
 ///
 /// **Native-only (Rule #3).** PBKDF2 is implemented as a pure-Swift loop

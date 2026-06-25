@@ -36,12 +36,7 @@ import SwiftData
     // MARK: - Container
 
     private func makeContainer() throws -> ModelContainer {
-        let schema = Schema(ApertureSchemaV1.models)
-        let config = ModelConfiguration(
-            schema: schema,
-            isStoredInMemoryOnly: true
-        )
-        return try ModelContainer(for: schema, configurations: [config])
+        try TestModelContainerFactory.makeContainer()
     }
 
     // MARK: - Representative factories
@@ -119,6 +114,13 @@ import SwiftData
                 url: "https://example.org",
                 title: "Example",
                 host: "example.org"
+            ))
+        } else if model == ConnectedDAppRecord.self {
+            context.insert(ConnectedDAppRecord(
+                host: "app.example.org",
+                name: "Example dApp",
+                url: "https://app.example.org",
+                chainLabel: "Ethereum"
             ))
         } else if model == HistoricalPriceRecord.self {
             context.insert(HistoricalPriceRecord(
@@ -272,6 +274,7 @@ import SwiftData
             "CustomTokenRecord",
             "BrowserHistoryRecord",
             "BrowserBookmarkRecord",
+            "ConnectedDAppRecord",
             "HistoricalPriceRecord",
             "PriceSnapshotRecord",
             "WalletChartSnapshotRecord",

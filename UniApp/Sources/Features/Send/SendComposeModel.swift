@@ -664,7 +664,7 @@ final class SendComposeModel {
             recipients: recipientAmounts,
             fee: fee,
             selectedUTXOs: utxosForDraft,
-            changeAddress: nil, // own fresh change addr resolved at sign time
+            changeAddress: fromAddress, // no fresh change path is stored yet
             changeSats: changeSats,
             opReturn: opReturnData,
             signalsRBF: capability.supportsUTXO && chain != .dogecoin && chain != .bitcoinCash,

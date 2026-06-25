@@ -5,17 +5,12 @@ import WalletCore
 /// Real EVM signing for the dApp browser's confirmation sheets —
 /// `personal_sign` / `eth_sign` (EIP-191) and `eth_signTypedData_v4`
 /// (EIP-712). Resolves the active wallet, reconstructs the Ethereum
-/// key from the on-device mnemonic, signs, and returns the 65-byte
+/// key from the app's scoped signing provider, signs, and returns the 65-byte
 /// `r || s || v` signature as 0x-hex.
 ///
 /// **Custody boundaries (Rule #16, honest by construction).**
-///   - Only wallets backed by a mnemonic can sign (`created` /
-///     `importedMnemonic`). Watch-only and single-key imports get an
-///     honest error — never a fabricated signature.
-///   - Wallets whose mnemonic is no longer on the device (the user
-///     completed backup, so `MnemonicVault` deleted the local copy)
-///     and wallets protected by a BIP-39 passphrase (never persisted)
-///     also get an honest error rather than a wrong-key signature.
+///   - `SigningKeyProvider` enforces wallet kind, passphrase availability,
+///     imported-key decoding, and key↔address parity before any signature.
 ///   - Key material stays scoped to the signing call: the mnemonic
 ///     and the derived `PrivateKey` are locals that drop at function
 ///     exit. Nothing key-, mnemonic-, or signature-shaped is logged.
@@ -27,6 +22,7 @@ enum EVMDAppSigner {
         case walletCannotSign
         case mnemonicUnavailable
         case invalidPayload
+        case addressMismatch
         case signingFailed
         /// The tx was signed but the node rejected/failed the broadcast —
         /// carries the node's honest reason (nonce too low, insufficient
@@ -36,28 +32,31 @@ enum EVMDAppSigner {
 
     // MARK: - Public surface (async — preferred)
 
-    /// EIP-191 personal message signature, with the heavy section
-    /// (BIP-39 PBKDF2 seed derivation + HD key derivation + secp256k1
-    /// sign — 15–50 ms) executed OFF the main actor via `@concurrent`
-    /// (2026-06-12). Wallet resolution and the Keychain/vault read
-    /// stay on `@MainActor` (`MnemonicVault` is main-actor-bound);
-    /// only Sendable value types cross the boundary, and the mnemonic
-    /// words remain locals that drop at function exit.
-    static func signPersonalMessage(messageHex: String) async throws(SignerError) -> String {
-        let words = try loadSigningWords()
-        return try await deriveAndSignDetached(
+    /// EIP-191 personal message signature. The active wallet is resolved on
+    /// the main actor, then key derivation and secp256k1 signing run off-main
+    /// through `SigningKeyProvider` with `expectedAddress` parity enforced.
+    static func signPersonalMessage(
+        messageHex: String,
+        chain: SupportedChain,
+        expectedAddress: String
+    ) async throws(SignerError) -> String {
+        try await signDigest(
             digest: personalMessageDigest(messageHex: messageHex),
-            words: words
+            chain: chain,
+            expectedAddress: expectedAddress
         )
     }
 
     /// EIP-712 typed-data signature (`eth_signTypedData_v4`) with the
     /// key-derivation + signing pipeline off the main actor — see
-    /// `signPersonalMessage(messageHex:) async`.
-    static func signTypedData(json: String) async throws(SignerError) -> String {
+    /// `signPersonalMessage(messageHex:chain:expectedAddress:) async`.
+    static func signTypedData(
+        json: String,
+        chain: SupportedChain,
+        expectedAddress: String
+    ) async throws(SignerError) -> String {
         let digest = try typedDataDigest(json: json)
-        let words = try loadSigningWords()
-        return try await deriveAndSignDetached(digest: digest, words: words)
+        return try await signDigest(digest: digest, chain: chain, expectedAddress: expectedAddress)
     }
 
     /// Map a signer failure to the JSON-RPC error the page receives.
@@ -77,6 +76,8 @@ enum EVMDAppSigner {
             return DAppRequestError(code: 4200, message: "Aperture can't sign this request yet")
         case .invalidPayload:
             return .invalidParams
+        case .addressMismatch:
+            return DAppRequestError(code: 4100, message: "Requested signing address does not match the active wallet")
         case .signingFailed:
             return .internalError
         case .broadcastFailed(let detail):
@@ -102,10 +103,7 @@ enum EVMDAppSigner {
     ) async -> Result<String, SignerError> {
         guard request.chain.family == .evm else { return .failure(.walletCannotSign) }
         guard let record = activeWallet() else { return .failure(.noActiveWallet) }
-        switch record.kind {
-        case .created, .importedMnemonic: break
-        case .importedKey, .watchOnly:     return .failure(.walletCannotSign)
-        }
+        if record.kind == .watchOnly { return .failure(.walletCannotSign) }
         guard !record.hasPassphrase else { return .failure(.mnemonicUnavailable) }
 
         let chain = request.chain
@@ -176,60 +174,38 @@ enum EVMDAppSigner {
         return digest
     }
 
-    /// Resolve the active wallet, enforce the custody boundaries, and
-    /// load the mnemonic words from the vault. Stays on `@MainActor`
-    /// — SwiftData lookup + `MnemonicVault` (main-actor-bound). The
-    /// returned words are `Sendable` and must stay locals at every
-    /// call site (key material never outlives the signing call).
-    private static func loadSigningWords() throws(SignerError) -> [String] {
-        guard let record = activeWallet() else { throw .noActiveWallet }
-        switch record.kind {
-        case .created, .importedMnemonic:
-            break
-        case .importedKey, .watchOnly:
-            throw .walletCannotSign
-        }
-        // A BIP-39 passphrase is never persisted (schema contract) —
-        // deriving with an empty passphrase would sign with the WRONG
-        // key. Honest refusal until a passphrase prompt flow exists.
-        guard !record.hasPassphrase else { throw .mnemonicUnavailable }
-
-        let stored = (try? MnemonicVault.loadMnemonic(for: record.id)) ?? nil
-        guard let words = stored, !words.isEmpty else {
-            // Backed-up wallets keep only the derived seed on device;
-            // the phrase itself is gone by design.
-            throw .mnemonicUnavailable
-        }
-        return words
-    }
-
-    /// `deriveAndSign` on the global concurrent executor — the
-    /// PBKDF2-HMAC-SHA512 seed stretch (2048 iterations), HD key
-    /// derivation, and secp256k1 sign run off the main actor so the
-    /// confirmation sheet's dismiss animation never drops frames.
-    @concurrent
-    private nonisolated static func deriveAndSignDetached(
+    private static func signDigest(
         digest: Data,
-        words: [String]
+        chain: SupportedChain,
+        expectedAddress: String
     ) async throws(SignerError) -> String {
-        try deriveAndSign(digest: digest, words: words)
-    }
-
-    /// Sign a 32-byte digest with the Ethereum key derived from
-    /// `words`. Pure compute, no UI state — `nonisolated` so both the
-    /// main-thread legacy path and the `@concurrent` path share one
-    /// implementation. Returns 0x-hex of `r || s || v` with `v`
-    /// adjusted to 27/28. The mnemonic and the derived `PrivateKey`
-    /// are locals that drop at function exit; nothing key-shaped is
-    /// logged or retained.
-    private nonisolated static func deriveAndSign(
-        digest: Data,
-        words: [String]
-    ) throws(SignerError) -> String {
-        guard let wallet = HDWallet(mnemonic: words.joined(separator: " "), passphrase: "") else {
+        guard chain.family == .evm else { throw .walletCannotSign }
+        guard let record = activeWallet() else { throw .noActiveWallet }
+        let descriptor = WalletDescriptor(record: record)
+        do {
+            return try await Task.detached(priority: .userInitiated) {
+                try SigningKeyProvider.withPrivateKey(
+                    wallet: descriptor,
+                    chain: chain,
+                    passphrase: nil,
+                    expectedAddress: expectedAddress
+                ) { privateKey in
+                    try sign(digest: digest, privateKey: privateKey)
+                }
+            }.value
+        } catch let error as SignerError {
+            throw error
+        } catch let error as SigningError {
+            throw signerError(for: error)
+        } catch {
             throw .signingFailed
         }
-        let privateKey = wallet.getKeyForCoin(coin: .ethereum)
+    }
+
+    private nonisolated static func sign(
+        digest: Data,
+        privateKey: PrivateKey
+    ) throws(SignerError) -> String {
         guard var signature = privateKey.sign(digest: digest, curve: .secp256k1),
               signature.count == 65 else {
             throw .signingFailed
@@ -238,6 +214,22 @@ enum EVMDAppSigner {
         // Ethereum's `v` convention is 27/28.
         signature[signature.count - 1] += 27
         return "0x" + signature.map { String(format: "%02x", $0) }.joined()
+    }
+
+    private static func signerError(for error: SigningError) -> SignerError {
+        switch error {
+        case .noWallet:
+            return .noActiveWallet
+        case .walletCannotSign, .invalidPrivateKey, .unsupportedCoin:
+            return .walletCannotSign
+        case .secretUnavailable, .invalidMnemonic:
+            return .mnemonicUnavailable
+        case .keyAddressMismatch:
+            return .addressMismatch
+        case .malformedDraft, .signingFailed, .justInTimeRefreshFailed,
+             .broadcastFailed, .broadcastAmbiguous, .chainNotWired:
+            return .signingFailed
+        }
     }
 
     // MARK: - Helpers

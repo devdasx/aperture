@@ -13,10 +13,10 @@ import OSLog
 ///
 /// 1. **One app-wide key, not per-wallet.** The blobs live in the DB keyed
 ///    by `(walletId, chain)`; a single master symmetric key in the
-///    Keychain seals all of them. The chain keys are unreadable without the
-///    master key, which carries the same
-///    `WhenUnlockedThisDeviceOnly` ACL `SeedVault` uses (device-unlocked,
-///    never synced — see `SeedVault` for why not the passcode-set class).
+    ///    Keychain seals all of them. The chain keys are unreadable without the
+    ///    master key, which carries the same
+    ///    `WhenPasscodeSetThisDeviceOnly` ACL `SeedVault` uses (device-local,
+    ///    never synced).
 /// 2. **Not `@MainActor`.** Encryption runs inside
 ///    `SigningKeyProvider.withPrivateKey`'s `nonisolated` closure (off the
 ///    main thread per Rule #28) and from the off-main refresh coordinator,
@@ -106,7 +106,7 @@ enum ChainKeyVault {
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: keyService,
             kSecAttrAccount as String: keyAccount,
-            kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly,
+            kSecAttrAccessible as String: kSecAttrAccessibleWhenPasscodeSetThisDeviceOnly,
             kSecValueData as String: data
         ]
         let status = SecItemAdd(query as CFDictionary, nil)

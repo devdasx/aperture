@@ -159,6 +159,10 @@ struct TonConnector: ChainConnector {
                 data = try await client.callREST(chain: chain, path: path, query: query)
             } catch {
                 if case .cancelled = error { throw error }
+                if RPCError.isHTTPNotFound(error) {
+                    Self.log.warning("TON history endpoint returned 404 — keeping \(events.count, privacy: .public) events")
+                    break
+                }
                 // Keep the pages already fetched on a mid-pagination
                 // failure; only the first page failing is a hard error.
                 if cursorLt == nil { throw error }

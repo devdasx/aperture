@@ -171,9 +171,9 @@ final class BrowserBookmarkRecord {
 /// **Composite uniqueness on `host`.** Re-connecting the same dApp
 /// updates the existing row (`connectedAt = now`, refreshes `name` /
 /// `iconURL` / `chainLabel`) rather than appending a duplicate — the
-/// same upsert-by-host shape as `BrowserHistoryRecord`. The in-memory
-/// `connectedHosts: Set<String>` in the router is keyed by host too, so
-/// the persisted row and the live allow-set stay one-to-one.
+/// same upsert-by-host shape as `BrowserHistoryRecord`. The router's live
+/// allow-set is stricter (`scheme://host[:port]`); this persisted row is
+/// display/revocation state grouped by host.
 ///
 /// **Lifecycle.** Inserted/updated on connect; deleted on disconnect
 /// (the EVM session teardown, the Solana `disconnect` RPC, or the user's
@@ -192,9 +192,8 @@ final class ConnectedDAppRecord {
 
     /// Hostname — the "primary key" semantically. Duplicates by host
     /// collapse into one row via the upsert in
-    /// `DAppRequestRouter.approveConnect(...)`. Matches the router's
-    /// `connectedHosts` set keying so the persisted row and the live
-    /// allow-set never drift.
+    /// `DAppRequestRouter.approveConnect(...)`. The live router allow-set is
+    /// origin-scoped; this host key is for display and bulk revocation.
     @Attribute(.unique) var host: String
 
     /// User-facing name — the page `<title>` reported when the user

@@ -110,7 +110,7 @@ struct DAppConnectSheet: View {
     /// chain family from the request's channel.
     private var activeAddress: String? {
         switch request.channel {
-        case .evm:    return ActiveWalletReader.shared.currentEVMAddress()
+        case .evm:    return ActiveWalletReader.shared.currentEVMAddress(chain: request.chain)
         case .solana: return ActiveWalletReader.shared.currentSolanaAddress()
         }
     }
@@ -164,7 +164,7 @@ struct DAppConnectSheet: View {
                 VStack(spacing: UniSpacing.s) {
                     UniButton(title: "Connect", variant: .primary) {
                         router.approveConnect(
-                            host: request.origin.host,
+                            origin: request.origin,
                             channel: request.channel
                         )
                         dismiss()

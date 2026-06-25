@@ -624,7 +624,7 @@ private struct SendSentView: View {
 
     private var heroBody: LocalizedStringKey {
         if isFailed {
-            return "The transaction reverted on-chain. Nothing was sent — your funds did not move."
+            return "The transaction failed. If it reached the network, gas or fees may still have been spent."
         }
         if isPending {
             return "Broadcast to the \(transaction.chain.displayName) network. Confirming may take a moment — you can safely leave this screen."
@@ -741,7 +741,7 @@ private struct SendFailedView: View {
     let onRetry: () -> Void
     let onClose: () -> Void
 
-    /// `true` when we can honestly say the funds did NOT move. Every
+    /// `true` when we can honestly say nothing was broadcast. Every
     /// pre-broadcast failure qualifies (the executor only reaches broadcast
     /// after a clean sign), AND a definitive node rejection
     /// (`.broadcastFailed` — a structured decode/validation/nonce/fee
@@ -810,7 +810,7 @@ private struct SendFailedView: View {
                 .fixedSize(horizontal: false, vertical: true)
             if nothingWasSent {
                 Label {
-                    Text("Nothing was sent — your funds didn't move.")
+                    Text("Nothing was broadcast from this device.")
                         .font(UniTypography.footnote)
                         .foregroundStyle(UniColors.Text.secondary)
                 } icon: {

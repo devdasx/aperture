@@ -23,9 +23,14 @@ struct DAppSignMessageSheet: View {
 
     @Environment(\.dismiss) private var dismiss
 
+    /// Per-action Face ID gate. Only applies once the user has enabled an
+    /// in-app passcode; otherwise there is no app credential to verify.
+    @AppStorage("requireBiometricForDApp") private var requireForDApp: Bool = true
+
     /// True while the signature is being produced — drives the Sign CTA's
     /// native loading spinner and suppresses Cancel so the two can't race.
     @State private var isSigning = false
+    @State private var isShowingPinGate = false
 
     var body: some View {
         NavigationStack {
@@ -55,7 +60,34 @@ struct DAppSignMessageSheet: View {
             .safeAreaInset(edge: .bottom) {
                 actionRegion
             }
+            .fullScreenCover(isPresented: $isShowingPinGate) {
+                pinGateCover
+            }
         }
+    }
+
+    private var pinGateCover: some View {
+        NavigationStack {
+            PinCodeView(
+                mode: .verify,
+                onComplete: { _ in
+                    isShowingPinGate = false
+                    performSign()
+                },
+                onCancel: { isShowingPinGate = false },
+                allowsBiometrics: requireForDApp
+            )
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button { isShowingPinGate = false } label: {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 17, weight: .semibold))
+                    }
+                    .accessibilityLabel(Text("Cancel"))
+                }
+            }
+        }
+        .uniAppEnvironment()
     }
 
     // MARK: - Sections
@@ -129,29 +161,10 @@ struct DAppSignMessageSheet: View {
                         isLoading: isSigning,
                         isEnabled: !isSigning
                     ) {
-                        if request.chain.family == .evm {
-                            isSigning = true
-                            Task {
-                                defer { isSigning = false }
-                                do {
-                                    let signature = try await EVMDAppSigner.signPersonalMessage(
-                                        messageHex: request.rawHex
-                                    )
-                                    router.approveSign(signedHex: signature)
-                                } catch {
-                                    router.failPending(EVMDAppSigner.requestError(for: error))
-                                }
-                                dismiss()
-                            }
+                        if PinCodeStorage.hasPin {
+                            isShowingPinGate = true
                         } else {
-                            // Solana message signing isn't wired yet —
-                            // honest 4200 rejection, never a fake
-                            // signature.
-                            router.failPending(DAppRequestError(
-                                code: 4200,
-                                message: "Aperture can't sign this request yet"
-                            ))
-                            dismiss()
+                            performSign()
                         }
                     }
                     UniButton(title: "Cancel", variant: .secondary, isEnabled: !isSigning) {
@@ -168,5 +181,34 @@ struct DAppSignMessageSheet: View {
                 .opacity(0.92)
                 .ignoresSafeArea(edges: .bottom)
         )
+    }
+
+    private func performSign() {
+        guard !isSigning else { return }
+        if request.chain.family == .evm {
+            isSigning = true
+            Task {
+                defer { isSigning = false }
+                do {
+                    let signature = try await EVMDAppSigner.signPersonalMessage(
+                        messageHex: request.rawHex,
+                        chain: request.chain,
+                        expectedAddress: request.from
+                    )
+                    router.approveSign(signedHex: signature)
+                } catch {
+                    router.failPending(EVMDAppSigner.requestError(for: error))
+                }
+                dismiss()
+            }
+        } else {
+            // Solana message signing isn't wired yet — honest 4200
+            // rejection, never a fake signature.
+            router.failPending(DAppRequestError(
+                code: 4200,
+                message: "Aperture can't sign this request yet"
+            ))
+            dismiss()
+        }
     }
 }

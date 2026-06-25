@@ -6,8 +6,9 @@ import OSLog
 /// private CloudKit database (2026-06-19 backup handoff; CloudKit chosen
 /// 2026-06-19). The blob is already end-to-end encrypted by
 /// `WalletBackupCrypto` before it gets here — CloudKit only ever sees
-/// ciphertext + non-secret metadata, and the private database is the user's
-/// own iCloud, readable by no one else (not Apple, not Aperture).
+/// ciphertext + non-secret metadata in the user's private iCloud database.
+/// Apple operates CloudKit; the recovery phrase remains protected by
+/// app-side encryption before upload.
 ///
 /// **Capability (one-time, owner step).** This requires the **iCloud →
 /// CloudKit** capability on the app target, container

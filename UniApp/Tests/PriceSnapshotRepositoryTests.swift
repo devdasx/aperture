@@ -3,7 +3,7 @@ import Foundation
 import SwiftData
 @testable import Aperture
 
-/// `PriceSnapshotRepository` contract tests against an in-memory
+/// `PriceSnapshotRepository` contract tests against an isolated temporary
 /// SwiftData store:
 ///
 /// 1. `record` appends observations; `latest` returns the newest.
@@ -15,11 +15,9 @@ import SwiftData
 ///    rows to the last observation per (symbol, currency, day).
 @Suite struct PriceSnapshotRepositoryTests {
 
-    /// Fresh repository over a fresh in-memory store per test —
-    /// no shared state, no disk.
+    /// Fresh repository over a fresh temporary store per test — no shared state.
     private func makeRepository() throws -> PriceSnapshotRepository {
-        let config = ModelConfiguration(isStoredInMemoryOnly: true)
-        let container = try ModelContainer(for: PriceSnapshotRecord.self, configurations: config)
+        let container = try TestModelContainerFactory.makeContainer()
         return PriceSnapshotRepository(modelContainer: container)
     }
 

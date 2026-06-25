@@ -12,9 +12,7 @@ import SwiftData
 @Suite struct SyncStatusRepositoryTests {
 
     private func makeContainer() throws -> ModelContainer {
-        let schema = Schema(ApertureSchemaV1.models)
-        let config = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true)
-        return try ModelContainer(for: schema, configurations: [config])
+        try TestModelContainerFactory.makeContainer()
     }
 
     private func fetch(

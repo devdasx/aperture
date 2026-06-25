@@ -7,10 +7,10 @@ import SwiftUI
 /// tile to open the dApp in `BrowserSessionView` (where the real EIP-1193
 /// provider injects `window.ethereum` / `window.solana`).
 ///
-/// **Logos.** The favicon resolves at runtime from the dApp's host via a
-/// reliable PNG favicon endpoint, with the letter-chip fallback in
-/// `BrowserFaviconView`. The eight curated `BrowserFavorite`s additionally
-/// ship bundled logos so they're always present even offline.
+    /// **Logos.** The favicon resolves at runtime from the dApp's own host,
+    /// with the letter-chip fallback in `BrowserFaviconView`. The eight
+    /// curated `BrowserFavorite`s additionally ship bundled logos so they're
+    /// always present even offline.
 ///
 /// Generated 2026-06-17 from a parallel category-by-category compilation
 /// (268 dApps). Curated, not exhaustive — real entries only.
@@ -21,10 +21,10 @@ struct BrowserDApp: Identifiable, Hashable, Sendable {
     let host: String
     let category: BrowserDAppCategory
 
-    /// Favicon as a reliable PNG (any host), with letter fallback handled by
+    /// Site-owned favicon, with letter fallback handled by
     /// `BrowserFaviconView`. Build-time-agnostic — fetched on demand + cached.
     var faviconURL: URL? {
-        URL(string: "https://www.google.com/s2/favicons?domain=\(host)&sz=128")
+        URL(string: "https://\(host)/favicon.ico")
     }
 
     init(_ name: String, _ urlString: String, _ host: String, _ category: BrowserDAppCategory) {

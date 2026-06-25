@@ -295,12 +295,12 @@ struct BrowserHomeView: View {
 
     /// `favoriteBookmarks` hydrated into the grid's `BrowserFavorite` shape.
     /// URLs are validated (no force-unwrap — these are user data), and a
-    /// missing favicon falls back to the favicon service.
+    /// missing favicon falls back to the site's own `/favicon.ico`.
     private var favorites: [BrowserFavorite] {
         favoriteBookmarks.compactMap { record in
             guard let url = URL(string: record.url) else { return nil }
             let icon = record.iconURL.flatMap(URL.init(string:))
-                ?? URL(string: "https://www.google.com/s2/favicons?domain=\(record.host)&sz=128")
+                ?? URL(string: "https://\(record.host)/favicon.ico")
             guard let iconURL = icon else { return nil }
             return BrowserFavorite(
                 id: record.host,
@@ -489,7 +489,7 @@ struct BrowserHomeView: View {
                 url: dapp.url.absoluteString,
                 title: dapp.name,
                 host: dapp.host,
-                iconURL: "https://www.google.com/s2/favicons?domain=\(dapp.host)&sz=128",
+                iconURL: "https://\(dapp.host)/favicon.ico",
                 sortOrder: nextOrder,
                 isFavorite: true
             ))
@@ -511,11 +511,7 @@ struct BrowserHomeView: View {
             case .walletConnect:
                 await walletConnect.disconnect(sessionId: session.id)
             case .injected:
-                // Injected sessions disconnect when the page goes
-                // away. Surfacing a per-row disconnect requires
-                // the router to revoke `connectedHosts`; the
-                // bridge work adds the affordance.
-                break
+                router.disconnect(host: session.dAppHost)
             }
         }
     }
@@ -524,11 +520,17 @@ struct BrowserHomeView: View {
     /// client's active sessions into one sorted list. Stable id
     /// ordering — newest first.
     private var connectedSessions: [BrowserSession] {
-        // Today: the router doesn't surface its injected sessions
-        // through a public property (the bridge work adds them as
-        // a real publisher). We project the WalletConnect client's
-        // active sessions through the shared `BrowserSession`
-        // shape; future expansion adds the injected ones here.
+        let injected = connectedDApps.map { record in
+            BrowserSession(
+                id: "injected:\(record.host)",
+                dAppName: record.name.isEmpty ? record.host : record.name,
+                dAppIcon: record.iconURL.flatMap(URL.init(string:)),
+                dAppHost: record.host,
+                chain: SupportedChain.allCases.first(where: { $0.displayName == record.chainLabel }) ?? .ethereum,
+                connectedAt: record.connectedAt,
+                transport: .injected
+            )
+        }
         let wc = walletConnect.activeSessions.map { session in
             BrowserSession(
                 id: session.id,
@@ -540,7 +542,7 @@ struct BrowserHomeView: View {
                 transport: .walletConnect
             )
         }
-        return wc.sorted { $0.connectedAt > $1.connectedAt }
+        return (injected + wc).sorted { $0.connectedAt > $1.connectedAt }
     }
 
     /// Bind the router's `pendingRequest` slot to a `.sheet(item:)`
