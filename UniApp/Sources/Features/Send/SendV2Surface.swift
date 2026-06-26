@@ -140,7 +140,7 @@ struct SendV2PrimaryButton: View {
     }
 
     var body: some View {
-        Button(action: action) {
+        Button(action: runAction) {
             HStack(spacing: UniSpacing.xs) {
                 if let systemImage {
                     Image(systemName: systemImage)
@@ -165,6 +165,16 @@ struct SendV2PrimaryButton: View {
         .buttonStyle(.plain)
         .disabled(!isEnabled)
     }
+
+    private func runAction() {
+        if KeyboardDismissal.dismiss() {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) {
+                action()
+            }
+        } else {
+            action()
+        }
+    }
 }
 
 // MARK: - Ghost (text) button
@@ -184,7 +194,7 @@ struct SendV2GhostButton: View {
     }
 
     var body: some View {
-        Button(action: action) {
+        Button(action: runAction) {
             Text(title)
                 .font(UniTypography.buttonLabel)
                 .foregroundStyle(isDanger ? UniColors.Send.negative : UniColors.Button.text)
@@ -193,5 +203,15 @@ struct SendV2GhostButton: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+    }
+
+    private func runAction() {
+        if KeyboardDismissal.dismiss() {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) {
+                action()
+            }
+        } else {
+            action()
+        }
     }
 }

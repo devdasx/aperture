@@ -93,7 +93,8 @@ enum BiometricEnrollmentTracker {
                     meta.requiresBiometricReenrollment = true
                     try context.save()
                 }
-                UserDefaults.standard.set(false, forKey: "biometricEnabled")
+                UserDefaults.standard.set(false, forKey: PinCodePreference.biometricEnabledKey)
+                UserDefaults.standard.set(false, forKey: PinCodePreference.requireBiometricForSendKey)
             }
             return mismatch
         } catch {

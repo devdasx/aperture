@@ -14,6 +14,7 @@ import SwiftData
 struct BiometricReenrollmentBanner: View {
     @Environment(\.modelContext) private var modelContext
     @AppStorage("biometricEnabled") private var biometricEnabled: Bool = false
+    @AppStorage(PinCodePreference.requireBiometricForSendKey) private var requireForSend: Bool = true
 
     var body: some View {
         HStack(alignment: .top, spacing: UniSpacing.s) {
@@ -66,6 +67,7 @@ struct BiometricReenrollmentBanner: View {
         case .success:
             BiometricEnrollmentTracker.acknowledgeReenrollment(in: modelContext.container)
             biometricEnabled = true
+            requireForSend = true
         case .failure:
             // Silent on failure — user cancelled or failed, banner
             // stays so they can try again. No error theatre.

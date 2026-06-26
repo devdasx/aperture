@@ -1,9 +1,9 @@
 import SwiftUI
 
-/// Send / Receive action pair for the asset-detail screens. Circular Liquid
-/// Glass buttons centered with labels beneath — the iOS Wallet / Apple-app
-/// pattern. `GlassEffectContainer` wraps them so the material reads as one
-/// cohesive surface. (The swap feature was removed 2026-06-23.)
+/// Send / Receive action pair for asset-detail screens, plus an optional Scan
+/// action for wallet home. Circular Liquid Glass buttons centered with labels
+/// beneath — the iOS Wallet / Apple-app pattern. `GlassEffectContainer` wraps
+/// them so the material reads as one cohesive surface.
 ///
 /// **Disabled state.** Watch-only wallets cannot send (no signing key).
 /// Receive remains available because receiving doesn't require a key.
@@ -12,6 +12,7 @@ struct WalletActionRegion: View {
     let canSend: Bool
     let onSend: () -> Void
     let onReceive: () -> Void
+    var onScan: (() -> Void)? = nil
 
     var body: some View {
         GlassEffectContainer(spacing: UniSpacing.s) {
@@ -39,6 +40,14 @@ struct WalletActionRegion: View {
                     isEnabled: true,
                     action: onReceive
                 )
+                if let onScan {
+                    actionButton(
+                        icon: "qrcode.viewfinder",
+                        label: "Scan",
+                        isEnabled: true,
+                        action: onScan
+                    )
+                }
                 Spacer(minLength: 0)
             }
             .frame(maxWidth: .infinity)

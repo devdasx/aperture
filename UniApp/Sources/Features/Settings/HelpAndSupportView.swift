@@ -115,10 +115,7 @@ struct HelpAndSupportView: View {
     ) -> some View {
         Link(destination: url) {
             HStack(spacing: UniSpacing.s) {
-                Image(systemName: systemImage)
-                    .font(.system(size: 18, weight: .regular))
-                    .foregroundStyle(UniColors.Icon.secondary)
-                    .frame(width: 28, alignment: .center)
+                SettingsIconTile(systemImage: systemImage, tint: .blue)
                     .accessibilityHidden(true)
 
                 Text(title)

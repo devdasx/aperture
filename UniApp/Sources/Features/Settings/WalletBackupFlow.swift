@@ -31,6 +31,10 @@ struct WalletBackupFlow: View {
     /// keeps it (2026-06-20). nil from paths that don't have it yet (create
     /// flow); the restore UI then derives a colored disc from the name.
     var avatar: WalletAvatarSpec? = nil
+    /// When set, the flow starts directly in the selected method. Used from
+    /// wallet details where the user already tapped "iCloud backup" or
+    /// "Manual backup"; nil keeps the chooser for create/export/reset flows.
+    var startingMethod: WalletBackupMethod? = nil
     let onClose: () -> Void
     /// `true` when run from wallet CREATION (the wallet isn't persisted yet):
     /// the manual path skips `markManualBackupComplete` (there's no record to
@@ -64,6 +68,7 @@ struct WalletBackupFlow: View {
         walletName: String,
         words: [String],
         avatar: WalletAvatarSpec? = nil,
+        startingMethod: WalletBackupMethod? = nil,
         onClose: @escaping () -> Void,
         isNewWallet: Bool = false,
         onBackedUp: ((WalletBackupMethod) -> Void)? = nil
@@ -72,6 +77,7 @@ struct WalletBackupFlow: View {
         self.walletName = walletName
         self.words = words
         self.avatar = avatar
+        self.startingMethod = startingMethod
         self.onClose = onClose
         self.isNewWallet = isNewWallet
         self.onBackedUp = onBackedUp
@@ -89,6 +95,7 @@ struct WalletBackupFlow: View {
         /// `[Step]` is only `Hashable` (not `Codable`), so it is never
         /// persisted — the password stays in memory only.
         case iCloudProgress(password: String)
+        case manualSafety
         case manualWriteDown
         case manualVerify
         case manualConfirmed
@@ -96,11 +103,7 @@ struct WalletBackupFlow: View {
 
     var body: some View {
         NavigationStack(path: $path) {
-            ChooseMethodScreen(
-                onICloud: { path.append(.iCloudPassword) },
-                onManual: { path.append(.manualWriteDown) },
-                onClose: onClose
-            )
+            rootScreen
             .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
             .navigationDestination(for: Step.self) { step in
@@ -110,6 +113,28 @@ struct WalletBackupFlow: View {
             }
         }
         .background(UniColors.Background.primary.ignoresSafeArea())
+    }
+
+    @ViewBuilder
+    private var rootScreen: some View {
+        switch startingMethod {
+        case nil:
+            ChooseMethodScreen(
+                onICloud: { path.append(.iCloudPassword) },
+                onManual: { path.append(.manualSafety) },
+                onClose: onClose
+            )
+        case .iCloud?:
+            ICloudPasswordScreen { password in
+                path.append(.iCloudProgress(password: password))
+            }
+            .toolbar { closeToolbar }
+        case .manual?:
+            ManualSafetyScreen(
+                onContinue: { path.append(.manualWriteDown) },
+                onClose: onClose
+            )
+        }
     }
 
     @ViewBuilder
@@ -128,6 +153,11 @@ struct WalletBackupFlow: View {
                 password: password,
                 onDone: { complete(.iCloud) }
             )
+        case .manualSafety:
+            ManualSafetyScreen(
+                onContinue: { path.append(.manualWriteDown) },
+                onClose: onClose
+            )
         case .manualWriteDown:
             ManualWriteDownScreen(words: words) {
                 path.append(.manualVerify)
@@ -141,6 +171,17 @@ struct WalletBackupFlow: View {
             )
         case .manualConfirmed:
             BackupConfirmedScreen(onDone: { complete(.manual) })
+        }
+    }
+
+    @ToolbarContentBuilder
+    private var closeToolbar: some ToolbarContent {
+        ToolbarItem(placement: .topBarLeading) {
+            Button { onClose() } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 17, weight: .semibold))
+            }
+            .accessibilityLabel(Text("Close"))
         }
     }
 }
@@ -382,6 +423,106 @@ private struct ICloudPasswordScreen: View {
             RoundedRectangle(cornerRadius: UniRadius.card, style: .continuous)
                 .fill(UniColors.Background.secondary)
         )
+    }
+}
+
+// MARK: - Manual · 1 · Safety
+
+private struct ManualSafetyScreen: View {
+    let onContinue: () -> Void
+    let onClose: () -> Void
+
+    @State private var didAcknowledge = false
+
+    var body: some View {
+        VStack(spacing: 0) {
+            ScrollView {
+                VStack(alignment: .leading, spacing: UniSpacing.l) {
+                    VStack(spacing: UniSpacing.xs) {
+                        Image(systemName: "lock.shield")
+                            .font(.system(size: 38, weight: .regular))
+                            .symbolRenderingMode(.hierarchical)
+                            .foregroundStyle(UniColors.Text.primary)
+                            .frame(width: 84, height: 84)
+                            .background(Circle().fill(UniColors.Text.primary.opacity(0.10)))
+                            .accessibilityHidden(true)
+
+                        Text("Protect your recovery phrase")
+                            .font(.system(size: 25, weight: .bold))
+                            .foregroundStyle(UniColors.Text.primary)
+                            .multilineTextAlignment(.center)
+
+                        Text("Before you write it down, make sure you understand how to keep it safe.")
+                            .font(UniTypography.body)
+                            .foregroundStyle(UniColors.Text.secondary)
+                            .multilineTextAlignment(.center)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.top, UniSpacing.m)
+
+                    UniCard {
+                        VStack(alignment: .leading, spacing: UniSpacing.m) {
+                            UniFeatureRow(
+                                systemImage: "pencil.line",
+                                title: "Write it on paper.",
+                                detail: "Do not save it in Notes, screenshots, photos, or cloud files."
+                            )
+                            UniDivider()
+                            UniFeatureRow(
+                                systemImage: "wifi.slash",
+                                title: "Keep it offline.",
+                                detail: "Anything connected to the internet can be copied or stolen."
+                            )
+                            UniDivider()
+                            UniFeatureRow(
+                                systemImage: "person.2.slash",
+                                title: "Never share it.",
+                                detail: "Aperture, Apple, exchanges, and support teams never need these words."
+                            )
+                            UniDivider()
+                            UniFeatureRow(
+                                systemImage: "xmark.octagon",
+                                title: "There is no reset.",
+                                detail: "If you lose every copy, nobody can restore the wallet for you."
+                            )
+                        }
+                    }
+
+                    UniToggle(isOn: $didAcknowledge) {
+                        Text("I understand if I lose my recovery phrase, I lose my crypto.")
+                            .font(UniTypography.subheadline)
+                            .foregroundStyle(UniColors.Text.primary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .tint(UniColors.Button.primaryTint)
+                    .uniHaptic(.selection, trigger: didAcknowledge)
+                    .padding(.horizontal, UniSpacing.m)
+                }
+                .padding(.horizontal, UniSpacing.l)
+                .padding(.bottom, UniSpacing.l)
+            }
+
+            UniButton(title: "Continue", variant: .primary, isEnabled: didAcknowledge) {
+                onContinue()
+            }
+            .padding(.horizontal, UniSpacing.l)
+            .padding(.top, UniSpacing.s)
+            .padding(.bottom, UniSpacing.m)
+        }
+        .background(UniColors.Background.primary.ignoresSafeArea())
+        .toolbar { closeToolbar }
+    }
+
+    @ToolbarContentBuilder
+    private var closeToolbar: some ToolbarContent {
+        ToolbarItem(placement: .topBarLeading) {
+            Button { onClose() } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 17, weight: .semibold))
+            }
+            .accessibilityLabel(Text("Close"))
+        }
     }
 }
 

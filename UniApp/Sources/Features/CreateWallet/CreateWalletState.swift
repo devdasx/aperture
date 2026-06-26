@@ -197,21 +197,11 @@ final class CreateWalletState {
         // Keychain first — if this fails, the database is untouched.
         try SeedVault.storeSeed(seed, for: walletId)
 
-        // ALWAYS store the mnemonic in `MnemonicVault` so the user
-        // can re-view it from Settings → Wallets → "View recovery
-        // phrase" at any time. The vault uses AES-GCM 256-bit with
-        // the per-wallet symmetric key in Keychain under
-        // `kSecAttrAccessibleWhenPasscodeSetThisDeviceOnly` — the
-        // phrase is encrypted at rest, accessible only on this
-        // passcode-protected device, and never leaves the iPhone. The
-        // earlier contract (delete after backup verification) was
-        // contrary to the user's mental model: a self-custody
-        // wallet you re-imported on a new device should be able to
-        // show you the phrase you typed in. The encrypted local
-        // copy is the honest extension of "your iPhone is your
-        // wallet". User deletion / Reset Aperture still wipes the
-        // entry per `WalletDetailView.deleteWallet` and
-        // `AdvancedSettingsView.resetAperture`.
+        // Write the legacy Keychain phrase copy for signing/export
+        // compatibility. The canonical user-readable copy is also written
+        // into `WalletSecretRecord` by `insertCreatedWallet(...)`, encrypted
+        // with an app-owned device-local key that is not derived from the app
+        // passcode or Face ID.
         do {
             try MnemonicVault.storeMnemonic(lowercasedWords, for: walletId)
         } catch {
@@ -260,6 +250,7 @@ final class CreateWalletState {
                 colorTag: "default",
                 requiresBackup: requiresBackup,
                 manualBackupCompleted: manualBackup,
+                mnemonicWords: lowercasedWords,
                 addresses: addressEntries
             )
         } catch {
@@ -269,7 +260,8 @@ final class CreateWalletState {
         }
 
         // The wallet is now fully persisted (seed in Keychain,
-        // mnemonic encrypted in Keychain, metadata in SwiftData).
+        // mnemonic encrypted in SwiftData + compatibility Keychain storage,
+        // metadata in SwiftData).
         // Make it the active wallet immediately so the user lands
         // on it after WalletReadyView and so the refresh coordinator
         // starts pulling balances/history/tokens for it. Persisted

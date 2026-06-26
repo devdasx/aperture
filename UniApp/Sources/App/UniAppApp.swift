@@ -329,6 +329,7 @@ private struct AppRoot: View {
         .environment(\.appPhase, isShowingSplash ? .splash : .onboarding)
         .onAppear {
             mountLockOverlayWindowIfNeeded()
+            syncLockOverlay(lockVisible: isLockSurfaceVisible)
         }
         .onChange(of: isLockSurfaceVisible) { _, visible in
             syncLockOverlay(lockVisible: visible)
@@ -356,13 +357,11 @@ private struct AppRoot: View {
                 logoNamespace: logoNamespace,
                 phase: .splash,
                 onSplashComplete: {
-                    // **2026-06-10 handoff signature.** Splash →
-                    // home is the irisSettle moment (per the
-                    // handoff: "Logo lands in onboarding (splash
-                    // hand-off)"). Fires the soft-tick → medium-tap
-                    // pattern, gated by UniHapticEngine for both
-                    // AppStorage opt-out and Reduce Motion.
-                    UniHapticEngine.shared.play(.signature(.irisSettle))
+                    // Do not start Core Haptics during cold launch. iOS can
+                    // still be attaching audio/keyboard services at this
+                    // point, and booting a CHHapticEngine here produces
+                    // AudioConverterService console noise on real devices and
+                    // simulators. User-initiated haptics stay lazy.
                     isShowingSplash = false
                     // Let the lock overlay take over: on a locked
                     // cold launch `AppLockView` becomes visible the
@@ -429,15 +428,38 @@ private struct AppRoot: View {
     /// is invisible to touches and the content window behaves exactly
     /// as if the overlay didn't exist.
     private func syncLockOverlay(lockVisible: Bool) {
-        lockOverlayWindow?.isUserInteractionEnabled = lockVisible
-        guard lockVisible, let scene = lockOverlayWindow?.windowScene else { return }
-        // Drop any active text focus in the content window the moment
-        // the lock lands. The keyboard lives in its own system window
-        // ABOVE the overlay; leaving a field focused would keep the
-        // keyboard floating over the lock and let key taps reach a
-        // hidden input while locked.
-        for contentWindow in scene.windows where contentWindow !== lockOverlayWindow {
-            contentWindow.endEditing(true)
+        guard let overlayWindow = lockOverlayWindow,
+              let scene = overlayWindow.windowScene
+        else { return }
+
+        overlayWindow.isUserInteractionEnabled = lockVisible
+
+        if lockVisible {
+            // The native keyboard can only attach to a first responder
+            // inside the key window. The lock surface is hosted in this
+            // detached overlay window, so it must become key while the
+            // passcode UI is interactive.
+            if !overlayWindow.isKeyWindow {
+                overlayWindow.makeKeyAndVisible()
+            }
+            // Drop any active text focus in the content window the moment
+            // the lock lands. The keyboard lives in its own system window
+            // ABOVE the overlay; leaving a field focused would keep the
+            // keyboard floating over the lock and let key taps reach a
+            // hidden input while locked.
+            for contentWindow in scene.windows where contentWindow !== overlayWindow {
+                contentWindow.endEditing(true)
+            }
+        } else {
+            overlayWindow.endEditing(true)
+            if overlayWindow.isKeyWindow {
+                let contentWindow = scene.windows.first {
+                    $0 !== overlayWindow &&
+                    !$0.isHidden &&
+                    $0.windowLevel == .normal
+                }
+                contentWindow?.makeKey()
+            }
         }
     }
 }

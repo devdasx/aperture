@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 /// Unified button component. All variants wrap native `Button` + iOS 26 system
 /// styles (`.buttonStyle(.glass / .glassProminent / .plain)`). Per `CLAUDE.md`
@@ -91,6 +92,15 @@ struct UniButton: View {
             case .toolbarPill:   return .selection
             case .walletPill:    return .selection
             case .actionCircle:  return .contextualImpact(.commit)
+            }
+        }
+
+        fileprivate var dismissesKeyboardBeforeAction: Bool {
+            switch self {
+            case .primary, .destructive:
+                return true
+            case .secondary, .tertiary, .toolbarPill, .walletPill, .actionCircle:
+                return false
             }
         }
     }
@@ -223,12 +233,26 @@ struct UniButton: View {
     private var buttonBody: some View {
         Button {
             tapCount &+= 1
-            action()
+            runAction()
         } label: {
             label
         }
         .modifier(VariantStyle(variant: variant, isActive: isActive, tintOverride: tint))
         .disabled(!isEnabled || isLoading)
+    }
+
+    private func runAction() {
+        guard variant.dismissesKeyboardBeforeAction else {
+            action()
+            return
+        }
+        if KeyboardDismissal.dismiss() {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) {
+                action()
+            }
+        } else {
+            action()
+        }
     }
 
     /// Single source of truth for rendering the label string — picks
@@ -488,5 +512,18 @@ struct UniButton: View {
                 content
             }
         }
+    }
+}
+
+enum KeyboardDismissal {
+    @discardableResult
+    @MainActor
+    static func dismiss() -> Bool {
+        UIApplication.shared.sendAction(
+            #selector(UIResponder.resignFirstResponder),
+            to: nil,
+            from: nil,
+            for: nil
+        )
     }
 }

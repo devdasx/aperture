@@ -145,7 +145,8 @@ struct WalletDeleteSheet: View {
                         // entirely — nothing is touched.
                         isShowingPasscodeGate = false
                     },
-                    allowsBiometrics: false
+                    allowsBiometrics: false,
+                    showsNavigationControls: false
                 )
                 .toolbar {
                     ToolbarItem(placement: .topBarLeading) {

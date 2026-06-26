@@ -1,6 +1,7 @@
 import SwiftUI
 import SwiftData
 import Observation
+import UIKit
 
 /// Drives the full-screen Reset Aperture flow, which is presented at the APP
 /// ROOT (above `RootGate`), NOT from the Settings tab. Presenting it at the
@@ -58,7 +59,7 @@ struct ResetApertureFlow: View {
     @State private var stagesDone: Set<FactoryReset.Stage> = []
     @State private var isComplete = false
     @State private var eraseError: String?
-    @FocusState private var confirmFocused: Bool
+    @State private var confirmFocused = false
 
     @State private var backupTarget: BackupTarget?
     @State private var exportTarget: ExportTarget?
@@ -117,7 +118,8 @@ struct ResetApertureFlow: View {
                         step = .erasing
                     },
                     onCancel: { isShowingPinGate = false },
-                    allowsBiometrics: true
+                    allowsBiometrics: true,
+                    showsNavigationControls: false
                 )
                 .toolbar {
                     ToolbarItem(placement: .topBarLeading) {
@@ -147,7 +149,7 @@ struct ResetApertureFlow: View {
             VStack(spacing: UniSpacing.mPlus) {
                 heroGlyph("trash", tint: danger)
                 bigTitle("Reset Aperture", centered: true)
-                subtitle("Resetting removes all content from this device and returns Aperture to its original state. This can’t be undone.", centered: true)
+                subtitle("Resetting removes wallets, keys, passcode state, balances, and private activity from this device. Public market data and price caches stay available.", centered: true)
                 eraseList
             }
             .frame(maxWidth: .infinity)
@@ -160,13 +162,36 @@ struct ResetApertureFlow: View {
             hair
             eraseRow("key", "Keys & Recovery Phrases", "Permanently removed from this device’s Keychain.")
             hair
-            eraseRow("clock.arrow.circlepath", "Transactions & Balances", "Your full history, contacts, and cached balances.")
+            eraseRow("clock.arrow.circlepath", "Transactions & Balances", "Your wallet history, contacts, cached balances, and portfolio snapshots.")
             hair
-            eraseRow("gearshape", "Settings", "Networks, passcode, and all preferences.")
+            eraseRow("gearshape", "Security & Wallet Settings", "Passcode, biometric state, active-wallet pointers, and wallet-specific filters.")
+            hair
+            keepRow("chart.line.uptrend.xyaxis", "Kept: Markets & Prices", "Public price caches, market charts, asset catalog data, and downloaded token marks.")
         }
     }
 
     private func eraseRow(_ symbol: String, _ title: LocalizedStringKey, _ subtitle: LocalizedStringKey) -> some View {
+        HStack(alignment: .top, spacing: 14) {
+            Image(systemName: symbol)
+                .font(.system(size: 19, weight: .regular))
+                .foregroundStyle(UniColors.Text.primary)
+                .frame(width: 24, height: 24)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.system(size: 15.5, weight: .semibold))
+                    .foregroundStyle(UniColors.Text.primary)
+                Text(subtitle)
+                    .font(.system(size: 12.5))
+                    .foregroundStyle(UniColors.Text.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 17)
+        .padding(.vertical, 15)
+    }
+
+    private func keepRow(_ symbol: String, _ title: LocalizedStringKey, _ subtitle: LocalizedStringKey) -> some View {
         HStack(alignment: .top, spacing: 14) {
             Image(systemName: symbol)
                 .font(.system(size: 19, weight: .regular))
@@ -298,9 +323,16 @@ struct ResetApertureFlow: View {
         case .importedKey:
             exportTarget = ExportTarget(id: wallet.id)
         case .created, .importedMnemonic:
-            let words = (try? MnemonicVault.loadMnemonic(for: wallet.id)) ?? nil
-            guard let words, !words.isEmpty else { return }
-            backupTarget = BackupTarget(id: wallet.id, name: wallet.name, words: words, avatar: wallet.avatarSpec)
+            let id = wallet.id
+            let name = wallet.name
+            let avatar = wallet.avatarSpec
+            let container = modelContext.container
+            Task { @MainActor in
+                let words = try? await WalletSecretRepository(modelContainer: container)
+                    .loadMnemonic(for: id)
+                guard let words, !words.isEmpty else { return }
+                backupTarget = BackupTarget(id: id, name: name, words: words, avatar: avatar)
+            }
         case .watchOnly:
             break
         }
@@ -323,56 +355,143 @@ struct ResetApertureFlow: View {
                 dangerButton("Continue", isEnabled: allAcknowledged) { step = .confirm }
             }
         ) {
-            VStack(alignment: .leading, spacing: UniSpacing.s) {
-                bigTitle("Confirm you understand", centered: false)
-                subtitle("Acknowledge each item to continue.", centered: false)
-                card {
-                    ackRow("All wallets will be erased", "Wallets, keys, and recovery phrases are removed from this device.", isOn: $ackWallets)
-                    hair
-                    ackRow("This can’t be undone", "Aperture keeps no backup. Erased wallets are gone for good.", isOn: $ackIrreversible)
-                    hair
-                    ackRow("My wallets are backed up", "I have the recovery phrase for every wallet I want to keep.", isOn: $ackBackedUp)
+            VStack(alignment: .leading, spacing: UniSpacing.mPlus) {
+                acknowledgeIntro
+                VStack(spacing: UniSpacing.s) {
+                    ackRow(
+                        symbol: "wallet.pass",
+                        title: "All wallets will be erased",
+                        isOn: $ackWallets
+                    ) {
+                        Text("\(Text("Every wallet profile").foregroundColor(UniColors.Text.primary).bold()) on this iPhone will be removed, including created, imported, and watch-only wallets.")
+                    }
+                    ackRow(
+                        symbol: "key.slash",
+                        title: "Keys cannot be recovered",
+                        isOn: $ackIrreversible
+                    ) {
+                        Text("Aperture keeps \(Text("no cloud backup").foregroundColor(UniColors.Text.primary).bold()). Deleted recovery phrases and private keys are gone for good.")
+                    }
+                    ackRow(
+                        symbol: "checkmark.shield",
+                        title: "My wallets are backed up",
+                        isOn: $ackBackedUp
+                    ) {
+                        Text("I have saved the \(Text("recovery phrase or private key").foregroundColor(UniColors.Text.primary).bold()) for every wallet I want to keep.")
+                    }
                 }
             }
         }
     }
 
-    private func ackRow(_ title: LocalizedStringKey, _ subtitle: LocalizedStringKey, isOn: Binding<Bool>) -> some View {
+    private var acknowledgeIntro: some View {
+        VStack(alignment: .leading, spacing: UniSpacing.m) {
+            HStack(spacing: UniSpacing.xs) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.system(size: 12, weight: .bold))
+                Text("Destructive reset")
+                    .font(.system(size: 12, weight: .bold))
+            }
+            .foregroundStyle(danger)
+            .padding(.horizontal, 11)
+            .padding(.vertical, 7)
+            .background(UniColors.Reset.dangerWash, in: Capsule(style: .continuous))
+
+            HStack(alignment: .top, spacing: UniSpacing.m) {
+                ZStack {
+                    Circle()
+                        .fill(UniColors.Reset.dangerWash)
+                    Image(systemName: "trash")
+                        .font(.system(size: 27, weight: .semibold))
+                        .foregroundStyle(danger)
+                }
+                .frame(width: 58, height: 58)
+                .accessibilityHidden(true)
+
+                VStack(alignment: .leading, spacing: UniSpacing.xs) {
+                    Text("Confirm you understand")
+                        .font(.system(size: 30, weight: .bold))
+                        .tracking(-0.4)
+                        .foregroundStyle(UniColors.Text.primary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Text("Resetting Aperture deletes \(Text("local wallet data, encrypted secrets, cached activity, and security state").foregroundColor(UniColors.Text.primary).bold()) from this device.")
+                        .font(.system(size: 15, weight: .medium))
+                        .foregroundColor(UniColors.Text.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+        }
+        .accessibilityElement(children: .combine)
+    }
+
+    private func ackRow(
+        symbol: String,
+        title: LocalizedStringKey,
+        isOn: Binding<Bool>,
+        detail: @escaping () -> Text
+    ) -> some View {
         Button {
             let wasAll = allAcknowledged
             isOn.wrappedValue.toggle()
             UniHapticEngine.shared.play(isOn.wrappedValue ? .selection : .contextualImpact(.whisper))
             if !wasAll && allAcknowledged { UniHapticEngine.shared.play(.contextualImpact(.commit)) }
         } label: {
-            HStack(spacing: 14) {
+            HStack(alignment: .top, spacing: UniSpacing.s) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 15, style: .continuous)
+                        .fill(isOn.wrappedValue ? danger : UniColors.Fill.quaternary)
+                    Image(systemName: symbol)
+                        .font(.system(size: 20, weight: .semibold))
+                        .foregroundStyle(isOn.wrappedValue ? UniColors.Reset.onDanger : UniColors.Text.secondary)
+                }
+                .frame(width: 46, height: 46)
+                .accessibilityHidden(true)
+
                 VStack(alignment: .leading, spacing: 3) {
                     Text(title)
-                        .font(.system(size: 15.5, weight: .semibold))
+                        .font(.system(size: 16.5, weight: .bold))
                         .foregroundStyle(UniColors.Text.primary)
-                    Text(subtitle)
-                        .font(.system(size: 12.5))
-                        .foregroundStyle(UniColors.Text.secondary)
+                    detail()
+                        .font(.system(size: 13.5, weight: .medium))
+                        .foregroundColor(UniColors.Text.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                         .multilineTextAlignment(.leading)
+                    HStack(spacing: 5) {
+                        Image(systemName: isOn.wrappedValue ? "checkmark.seal.fill" : "circle.dashed")
+                            .font(.system(size: 11.5, weight: .bold))
+                        Text(isOn.wrappedValue ? "Confirmed" : "Tap to confirm")
+                            .font(.system(size: 11.5, weight: .bold))
+                    }
+                    .foregroundStyle(isOn.wrappedValue ? danger : UniColors.Text.tertiary)
+                    .padding(.top, 5)
                 }
                 Spacer(minLength: 0)
                 ZStack {
                     Circle()
-                        .strokeBorder(isOn.wrappedValue ? danger : UniColors.Text.tertiary, lineWidth: 2)
+                        .strokeBorder(isOn.wrappedValue ? danger : UniColors.Fill.quaternary, lineWidth: 2)
                         .background(Circle().fill(isOn.wrappedValue ? danger : .clear))
-                        .frame(width: 27, height: 27)
+                        .frame(width: 30, height: 30)
                     if isOn.wrappedValue {
                         Image(systemName: "checkmark")
-                            .font(.system(size: 13, weight: .bold))
+                            .font(.system(size: 13.5, weight: .bold))
                             .foregroundStyle(UniColors.Reset.onDanger)
                     }
                 }
+                .padding(.top, 8)
             }
-            .padding(.horizontal, 17)
-            .padding(.vertical, 16)
+            .padding(16)
+            .background(
+                isOn.wrappedValue ? UniColors.Reset.dangerWash : UniColors.Background.secondary,
+                in: RoundedRectangle(cornerRadius: 20, style: .continuous)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 20, style: .continuous)
+                    .strokeBorder(isOn.wrappedValue ? danger.opacity(0.45) : UniColors.Separator.regular, lineWidth: 1)
+            )
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .animation(.smooth(duration: 0.22), value: isOn.wrappedValue)
     }
 
     // MARK: - 4 · Confirm (type RESET + Face ID)
@@ -400,21 +519,22 @@ struct ResetApertureFlow: View {
                             .fill(UniColors.Background.secondary)
                         RoundedRectangle(cornerRadius: 16, style: .continuous)
                             .strokeBorder(danger, lineWidth: 2)
-                        TextField("", text: $typed)
-                            .font(.system(size: 21, weight: .bold).monospaced())
-                            .foregroundStyle(danger)
-                            .tint(danger)
-                            .multilineTextAlignment(.center)
-                            .tracking(4)
-                            .textInputAutocapitalization(.characters)
-                            .autocorrectionDisabled()
-                            .focused($confirmFocused)
+                        ResetConfirmationTextField(
+                            text: $typed,
+                            isFocused: $confirmFocused,
+                            tint: danger
+                        )
                             .padding(.horizontal, 16)
                             .onChange(of: typed) { _, newValue in
-                                if newValue == confirmWord, !didFireTypedHaptic {
+                                let normalized = Self.normalizedResetConfirmation(newValue)
+                                if normalized != newValue {
+                                    typed = normalized
+                                    return
+                                }
+                                if normalized == confirmWord, !didFireTypedHaptic {
                                     didFireTypedHaptic = true
                                     UniHapticEngine.shared.play(.success)
-                                } else if newValue != confirmWord {
+                                } else if normalized != confirmWord {
                                     didFireTypedHaptic = false
                                 }
                             }
@@ -454,6 +574,10 @@ struct ResetApertureFlow: View {
             guard !Task.isCancelled else { return }
             isShowingPinGate = true
         }
+    }
+
+    private static func normalizedResetConfirmation(_ value: String) -> String {
+        value.uppercased(with: Locale(identifier: "en_US_POSIX"))
     }
 
     // MARK: - 5 · Erasing → Factory fresh (one morphing screen)
@@ -799,5 +923,132 @@ struct ResetApertureFlow: View {
     /// Secondary CTA — the unified `.glass` button (no longer bare text).
     private func ghostButton(_ title: LocalizedStringKey, action: @escaping () -> Void) -> some View {
         UniButton(title: title, variant: .secondary, action: action)
+    }
+}
+
+// MARK: - Reset confirmation input
+
+/// UIKit-backed field for the destructive RESET confirmation. SwiftUI can ask
+/// for `.characters` capitalization, but it cannot pin the keyboard language;
+/// this field forces an English text input mode when one exists and normalizes
+/// every typed or pasted value to uppercase.
+private struct ResetConfirmationTextField: UIViewRepresentable {
+    @Binding var text: String
+    @Binding var isFocused: Bool
+    let tint: Color
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(self)
+    }
+
+    func makeUIView(context: Context) -> EnglishUppercaseUITextField {
+        let field = EnglishUppercaseUITextField(frame: .zero)
+        field.delegate = context.coordinator
+        field.addTarget(context.coordinator, action: #selector(Coordinator.editingChanged(_:)), for: .editingChanged)
+        field.keyboardType = .asciiCapable
+        field.autocapitalizationType = .allCharacters
+        field.autocorrectionType = .no
+        field.spellCheckingType = .no
+        field.smartDashesType = .no
+        field.smartInsertDeleteType = .no
+        field.smartQuotesType = .no
+        field.textContentType = nil
+        field.returnKeyType = .done
+        field.textAlignment = .center
+        field.backgroundColor = .clear
+        field.borderStyle = .none
+        field.adjustsFontForContentSizeCategory = false
+        field.accessibilityLabel = String.apertureLocalized("Type RESET to continue")
+        return field
+    }
+
+    func updateUIView(_ field: EnglishUppercaseUITextField, context: Context) {
+        context.coordinator.parent = self
+        let normalized = Self.normalized(text)
+        let uiTint = UIColor(tint)
+        let paragraphStyle = NSMutableParagraphStyle()
+        paragraphStyle.alignment = .center
+        field.defaultTextAttributes = [
+            .font: UIFont.monospacedSystemFont(ofSize: 21, weight: .bold),
+            .foregroundColor: uiTint,
+            .kern: 4,
+            .paragraphStyle: paragraphStyle
+        ]
+        field.tintColor = uiTint
+        field.textColor = uiTint
+        field.font = .monospacedSystemFont(ofSize: 21, weight: .bold)
+        field.textAlignment = .center
+        field.contentHorizontalAlignment = .center
+
+        if field.text != normalized {
+            field.text = normalized
+        }
+        if text != normalized {
+            DispatchQueue.main.async {
+                text = normalized
+            }
+        }
+
+        if isFocused, !field.isFirstResponder {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
+                guard UIApplication.shared.applicationState == .active,
+                      field.window != nil,
+                      !field.isFirstResponder
+                else { return }
+                field.becomeFirstResponder()
+            }
+        } else if !isFocused, field.isFirstResponder {
+            DispatchQueue.main.async {
+                field.resignFirstResponder()
+            }
+        }
+    }
+
+    private static func normalized(_ value: String) -> String {
+        value.uppercased(with: Locale(identifier: "en_US_POSIX"))
+    }
+
+    final class Coordinator: NSObject, UITextFieldDelegate {
+        var parent: ResetConfirmationTextField
+
+        init(_ parent: ResetConfirmationTextField) {
+            self.parent = parent
+        }
+
+        @objc func editingChanged(_ field: UITextField) {
+            let normalized = ResetConfirmationTextField.normalized(field.text ?? "")
+            if field.text != normalized {
+                field.text = normalized
+            }
+            if parent.text != normalized {
+                parent.text = normalized
+            }
+        }
+
+        func textFieldDidBeginEditing(_ textField: UITextField) {
+            parent.isFocused = true
+        }
+
+        func textFieldDidEndEditing(_ textField: UITextField) {
+            parent.isFocused = false
+        }
+
+        func textFieldShouldReturn(_ textField: UITextField) -> Bool {
+            textField.resignFirstResponder()
+            parent.isFocused = false
+            return false
+        }
+    }
+}
+
+private final class EnglishUppercaseUITextField: UITextField {
+    override var textInputMode: UITextInputMode? {
+        for mode in UITextInputMode.activeInputModes {
+            guard let language = mode.primaryLanguage?.lowercased() else { continue }
+            if language == "en" || language.hasPrefix("en-") {
+                return mode
+            }
+        }
+        return super.textInputMode
     }
 }

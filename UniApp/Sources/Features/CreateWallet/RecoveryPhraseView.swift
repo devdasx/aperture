@@ -300,7 +300,7 @@ struct RecoveryPhraseView: View {
 #if canImport(UIKit)
         // `.expirationDate` tells iOS to auto-clear the pasteboard — the
         // only honest way to put a recovery phrase on the clipboard.
-        UIPasteboard.general.setItems(
+        SafePasteboard.setItems(
             [[UTType.plainText.identifier: phrase]],
             options: [.expirationDate: Date().addingTimeInterval(20)]
         )

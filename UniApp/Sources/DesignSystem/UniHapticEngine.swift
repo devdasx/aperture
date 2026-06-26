@@ -99,6 +99,7 @@ final class UniHapticEngine {
     /// for signatures, by `UIAccessibility.isReduceMotionEnabled`.
     func play(_ haptic: UniHaptic) {
         guard isHapticsEnabled else { return }
+        guard isAppActive else { return }
         switch haptic {
         case .signature(let signature):
             playSignature(signature)
@@ -121,6 +122,7 @@ final class UniHapticEngine {
     /// stays warm for the next beat.
     func fire(_ haptic: UniHaptic) {
         guard isHapticsEnabled else { return }
+        guard isAppActive else { return }
         switch haptic {
         case .selection:
             selectionGenerator.selectionChanged()
@@ -176,6 +178,15 @@ final class UniHapticEngine {
 
     private var isReduceMotionEnabled: Bool {
         UIAccessibility.isReduceMotionEnabled
+    }
+
+    /// Core Haptics and UIKit feedback generators are foreground-only
+    /// affordances. Starting a `CHHapticEngine` while the scene is leaving the
+    /// foreground produces AudioSession/CoreHaptics console errors; dropping
+    /// those beats is correct because the user cannot feel app feedback while
+    /// the app is backgrounded.
+    private var isAppActive: Bool {
+        UIApplication.shared.applicationState == .active
     }
 
     // MARK: - Signature playback
@@ -235,6 +246,7 @@ final class UniHapticEngine {
     /// engine can't be created/started.
     private func ensureEngine() -> CHHapticEngine? {
         if let engine { return engine }
+        guard isAppActive else { return nil }
         guard CHHapticEngine.capabilitiesForHardware().supportsHaptics else { return nil }
         do {
             let e = try CHHapticEngine()
@@ -286,6 +298,7 @@ final class UniHapticEngine {
     // MARK: - Consequential (double-beat) impact
 
     private func playConsequential() {
+        guard isAppActive else { return }
         heavyImpact.impactOccurred(intensity: 1.0)
         heavyImpact.prepare()
         // Second beat 80ms later — structured MainActor sleep instead
@@ -293,6 +306,7 @@ final class UniHapticEngine {
         // generator so the follow-through never misses its window.
         Task {
             try? await Task.sleep(for: .milliseconds(80))
+            guard self.isAppActive else { return }
             self.mediumImpact.impactOccurred(intensity: 1.0)
             self.mediumImpact.prepare()
         }
@@ -343,6 +357,7 @@ final class UniHapticEngine {
     /// is data, not vocabulary.
     func playScrubTick(intensity: Float) {
         guard isHapticsEnabled else { return }
+        guard isAppActive else { return }
         guard !isReduceMotionEnabled else { return }
         guard CHHapticEngine.capabilitiesForHardware().supportsHaptics else {
             // Fallback for the rare device without Core Haptics. The
@@ -401,6 +416,7 @@ final class UniHapticEngine {
     /// tap impact so it lands as resolution, not as commitment.
     func playScrubRelease() {
         guard isHapticsEnabled else { return }
+        guard isAppActive else { return }
         guard !isReduceMotionEnabled else { return }
         guard CHHapticEngine.capabilitiesForHardware().supportsHaptics else {
             // Fallback — light impact at 0.4 intensity matches the soft
@@ -491,6 +507,7 @@ final class UniHapticEngine {
     private static let frustrationSilenceCount = 2
 
     private func playError() {
+        guard isAppActive else { return }
         let now = Date()
         // Drop timestamps older than the window.
         recentErrors.removeAll { now.timeIntervalSince($0) > Self.frustrationWindow }
@@ -520,5 +537,45 @@ final class UniHapticEngine {
 
         notificationGenerator.notificationOccurred(.error)
         notificationGenerator.prepare()
+    }
+}
+
+// MARK: - Safe foreground pasteboard access
+
+/// Small foreground gate around `UIPasteboard.general`. iOS can make the
+/// process-local general pasteboard temporarily unavailable while the app is
+/// resigning active or backgrounded; direct reads in that window emit
+/// PBErrorDomain console noise. User-initiated paste/copy is meaningful only
+/// while the app is active, so inactive access becomes a quiet no-op.
+@MainActor
+enum SafePasteboard {
+    private static var isAvailable: Bool {
+        UIApplication.shared.applicationState == .active
+    }
+
+    static var string: String? {
+        guard isAvailable else { return nil }
+        return UIPasteboard.general.string
+    }
+
+    static var trimmedString: String? {
+        guard let value = string?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !value.isEmpty else { return nil }
+        return value
+    }
+
+    static func setString(_ value: String) {
+        guard isAvailable else { return }
+        UIPasteboard.general.string = value
+    }
+
+    static func setItems(_ items: [[String: Any]], options: [UIPasteboard.OptionsKey: Any] = [:]) {
+        guard isAvailable else { return }
+        UIPasteboard.general.setItems(items, options: options)
+    }
+
+    static func clear() {
+        guard isAvailable else { return }
+        UIPasteboard.general.items = []
     }
 }

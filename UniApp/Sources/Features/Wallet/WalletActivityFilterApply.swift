@@ -17,12 +17,14 @@ import Foundation
 ///
 ///     1. Network selection — drop if chain ∉ selectedNetworks (when set)
 ///     2. Symbol selection  — drop if symbol ∉ selectedSymbols (when set)
-///     3. Direction         — drop if direction doesn't match
-///     4. Status            — drop if status doesn't match
-///     5. Time range        — preset cutoff OR explicit custom window
-///     6. Search            — drop if no field contains the query
-///     7. Amount range      — drop if fiat value is outside [min, max]
-///     8. Sort              — per the chosen comparator (fiat for value sorts)
+///     3. Asset class       — native coins vs tokens
+///     4. Direction         — drop if direction doesn't match
+///     5. Status            — drop if status doesn't match
+///     6. Kind              — transfer / self-transfer / bridge
+///     7. Time range        — preset cutoff OR explicit custom window
+///     8. Search            — drop if no field contains the query
+///     9. Amount range      — drop if fiat value is outside [min, max]
+///    10. Sort              — per the chosen comparator (fiat for value sorts)
 enum WalletActivityFilterApply {
 
     /// Apply the full filter + sort pipeline.
@@ -57,7 +59,17 @@ enum WalletActivityFilterApply {
             rows = rows.filter { inputs.selectedSymbols.contains($0.tokenSymbol.uppercased()) }
         }
 
-        // 3. Direction.
+        // 3. Asset class. `nil` / empty contract is the native coin row.
+        switch inputs.assetClass {
+        case .all:
+            break
+        case .coins:
+            rows = rows.filter { ($0.tokenContract ?? "").isEmpty }
+        case .tokens:
+            rows = rows.filter { !($0.tokenContract ?? "").isEmpty }
+        }
+
+        // 4. Direction.
         switch inputs.direction {
         case .all:
             break
@@ -65,9 +77,11 @@ enum WalletActivityFilterApply {
             rows = rows.filter { $0.directionRaw == TransactionDirection.incoming.rawValue }
         case .outgoing:
             rows = rows.filter { $0.directionRaw == TransactionDirection.outgoing.rawValue }
+        case .internal:
+            rows = rows.filter { $0.directionRaw == TransactionDirection.internal.rawValue }
         }
 
-        // 4. Status.
+        // 5. Status.
         switch inputs.status {
         case .all:
             break
@@ -75,7 +89,15 @@ enum WalletActivityFilterApply {
             rows = rows.filter { $0.statusRaw == inputs.status.rawValue }
         }
 
-        // 5. Time range — preset cutoff OR explicit custom window.
+        // 6. Kind.
+        switch inputs.kind {
+        case .all:
+            break
+        case .transfer, .selfTransfer, .bridge:
+            rows = rows.filter { $0.kind.rawValue == inputs.kind.rawValue }
+        }
+
+        // 7. Time range — preset cutoff OR explicit custom window.
         if inputs.timeRange == .custom {
             if let start = inputs.customStart {
                 rows = rows.filter { $0.occurredAt >= start }
@@ -92,7 +114,7 @@ enum WalletActivityFilterApply {
             }
         }
 
-        // 6. Search — case-insensitive substring over counterparty,
+        // 8. Search — case-insensitive substring over counterparty,
         //    symbol, and tx hash. `searchText` arrives lowercased.
         let query = inputs.searchText
         if !query.isEmpty {
@@ -117,7 +139,7 @@ enum WalletActivityFilterApply {
             }
         }
 
-        // 7. Amount range (fiat, display currency). When a bound is
+        // 9. Amount range (fiat, display currency). When a bound is
         //    active, a row whose fiat we can't compute is dropped — it
         //    can't be proven to satisfy "≥ $X" (honesty over a guess).
         if inputs.hasAmountBound {
@@ -129,7 +151,7 @@ enum WalletActivityFilterApply {
             }
         }
 
-        // 8. Sort.
+        // 10. Sort.
         rows.sort(by: comparator(inputs.sortKey, fiatById: fiatById))
         return rows
     }

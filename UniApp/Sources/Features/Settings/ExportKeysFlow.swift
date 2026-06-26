@@ -41,9 +41,10 @@ struct ExportChainEntry: Hashable, Sendable {
 enum ExportClipboard {
     static let clearSeconds: Int = 20
 
+    @MainActor
     static func copy(_ secret: String) {
         #if canImport(UIKit)
-        UIPasteboard.general.setItems(
+        SafePasteboard.setItems(
             [[UTType.plainText.identifier: secret]],
             options: [.expirationDate: Date().addingTimeInterval(TimeInterval(clearSeconds))]
         )
@@ -104,6 +105,8 @@ private struct RecoveryPhraseRevealScreen: View {
     let walletId: UUID
     let walletName: String
     let onDone: () -> Void
+
+    @Environment(\.modelContext) private var modelContext
 
     @State private var words: [String] = []
     @State private var loadError: String?
@@ -292,9 +295,9 @@ private struct RecoveryPhraseRevealScreen: View {
     private func load() async {
         let id = walletId
         do {
-            let loaded = try await Task.detached(priority: .userInitiated) {
-                try MnemonicVault.loadMnemonic(for: id) ?? []
-            }.value
+            let container = modelContext.container
+            let loaded = try await WalletSecretRepository(modelContainer: container)
+                .loadMnemonic(for: id) ?? []
             words = loaded
             if words.isEmpty {
                 loadError = String.apertureLocalized("No phrase is stored for this wallet.")
