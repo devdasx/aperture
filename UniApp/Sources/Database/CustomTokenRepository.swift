@@ -15,9 +15,8 @@ import SwiftData
 ///
 /// **Read consistency.** `fetchAll(chain:)` and `fetchByContract(...)`
 /// take a snapshot at call time — repeat callers of `fetchAll` after
-/// an `add` see the new row. Per-chain scanner loops in
-/// `RealRPCBalanceScanner` instantiate the repository per scan, so
-/// the most recent additions are visible to the next refresh.
+/// an `add` see the new row. Callers get plain-value snapshots so they
+/// can safely cross actor boundaries without holding SwiftData models.
 @ModelActor
 actor CustomTokenRepository {
 
@@ -75,8 +74,7 @@ actor CustomTokenRepository {
     ///
     /// Returns a snapshot of plain-value `CustomTokenSnapshot`
     /// structs (Sendable) so callers across actor boundaries don't
-    /// hold `@Model` references. The scanner loop in
-    /// `RealRPCBalanceScanner` consumes the snapshot form.
+    /// hold `@Model` references.
     func fetchAll(chain: SupportedChain? = nil) throws -> [CustomTokenSnapshot] {
         let descriptor = FetchDescriptor<CustomTokenRecord>(
             sortBy: [SortDescriptor(\.symbol, order: .forward)]

@@ -10,7 +10,7 @@ import UniformTypeIdentifiers
 
 /// **Aperture Scanner** — the single, unified, full-screen camera scanner for
 /// every QR surface in the app (2026-06-20 rebuild, `design_handoff_scanner`).
-/// A full-bleed dark viewfinder with a corner-bracket reticle + scan beam that
+/// A full-bleed dark viewfinder with a corner-bracket reticle that
 /// auto-detects what it sees and acts:
 ///
 /// - **Wallet address** (every supported chain — EVM `0x…`, Bitcoin family,
@@ -99,28 +99,27 @@ struct UniQRScannerSheet: View {
         }
     }
 
-    // MARK: - Bottom controls (flash · gallery — granted state)
+    // MARK: - Bottom controls (flash · paste · gallery)
     //
-    // The reference layout: a flash toggle bottom-left and a gallery button
-    // bottom-right, the prompt centred above. Both are 40×40 glass circles
-    // matching the close button, so the chrome reads as one family.
+    // The full-screen scanner keeps its secondary entry points inside real
+    // tappable controls: torch when available, Paste, and Gallery.
     private var bottomControls: some View {
-        HStack {
+        HStack(spacing: UniSpacing.s) {
             if cameraView?.isTorchAvailable ?? false {
                 circleControl(
                     systemImage: isTorchOn ? "bolt.fill" : "bolt.slash.fill",
                     filled: isTorchOn
                 ) { toggleTorch() }
-            } else {
-                Color.clear.frame(width: 40, height: 40)
             }
-            Spacer()
+
+            Button { pasteFromClipboard() } label: {
+                ScannerBottomActionLabel(title: "Paste", systemImage: "doc.on.clipboard")
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(Text("Paste"))
+
             PhotosPicker(selection: $photoItem, matching: .images, photoLibrary: .shared()) {
-                Image(systemName: "photo.on.rectangle")
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundStyle(.white)
-                    .frame(width: 40, height: 40)
-                    .glassEffect(.regular, in: .circle)
+                ScannerBottomActionLabel(title: "Gallery", systemImage: "photo.on.rectangle")
             }
             .buttonStyle(.plain)
             .accessibilityLabel(Text("Gallery"))
@@ -179,7 +178,8 @@ struct UniQRScannerSheet: View {
             .buttonStyle(.plain)
             .padding(.horizontal, UniSpacing.l)
             Spacer()
-            actionBar(showsTorch: false)
+            bottomControls
+                .padding(.horizontal, UniSpacing.l)
                 .padding(.bottom, UniSpacing.l)
         }
     }
@@ -191,7 +191,12 @@ struct UniQRScannerSheet: View {
             QRScannerCameraView(onDecode: handleDecode(_:), onReady: { cameraView = $0 })
                 .ignoresSafeArea()
 
+            ScannerCameraShadow()
+                .ignoresSafeArea()
+                .allowsHitTesting(false)
+
             ScannerReticle(status: detection.map(ringStatus), reduceMotion: reduceMotion)
+                .ignoresSafeArea()
                 .allowsHitTesting(false)
 
             VStack(spacing: UniSpacing.l) {
@@ -205,13 +210,15 @@ struct UniQRScannerSheet: View {
                         .padding(.horizontal, UniSpacing.xl)
                     bottomControls
                         .padding(.horizontal, UniSpacing.l)
-                        .padding(.bottom, UniSpacing.s)
+                        .padding(.bottom, UniSpacing.l)
                 }
             }
+            .zIndex(2)
 
             if let detection {
                 resultSheet(for: detection)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
+                    .zIndex(3)
             }
         }
         .animation(reduceMotion ? nil : .spring(response: 0.4, dampingFraction: 0.82), value: detection)
@@ -348,26 +355,6 @@ struct UniQRScannerSheet: View {
         }
     }
 
-    // MARK: - Action bar (Gallery / Paste)
-
-    @ViewBuilder
-    private func actionBar(showsTorch: Bool) -> some View {
-        GlassEffectContainer(spacing: UniSpacing.s) {
-            HStack(spacing: UniSpacing.s) {
-                PhotosPicker(selection: $photoItem, matching: .images, photoLibrary: .shared()) {
-                    ActionBarLabel(title: "Gallery", systemImage: "photo.on.rectangle")
-                }
-                .buttonStyle(.glass)
-
-                Button { pasteFromClipboard() } label: {
-                    ActionBarLabel(title: "Paste", systemImage: "doc.on.clipboard")
-                }
-                .buttonStyle(.glass)
-            }
-        }
-        .padding(.horizontal, UniSpacing.xl)
-    }
-
     // MARK: - Decode / classify / deliver
 
     private func handleDecode(_ payload: String) {
@@ -440,8 +427,7 @@ struct UniQRScannerSheet: View {
 
     private func pasteFromClipboard() {
         clearNote()
-        guard let pasted = UIPasteboard.general.string?.trimmingCharacters(in: .whitespacesAndNewlines),
-              !pasted.isEmpty else { setNote("Nothing to paste."); return }
+        guard let pasted = SafePasteboard.trimmedString else { setNote("Nothing to paste."); return }
         UniHapticEngine.shared.play(.contextualImpact(.commit))
         handleDecode(pasted)
     }
@@ -453,7 +439,7 @@ struct UniQRScannerSheet: View {
     }
 
     private func copyAddress(_ value: String) {
-        UIPasteboard.general.setItems(
+        SafePasteboard.setItems(
             [[UTType.plainText.identifier: value]],
             options: [.expirationDate: Date().addingTimeInterval(120)]
         )
@@ -544,30 +530,61 @@ enum ScannerClassifier {
     }
 }
 
-// MARK: - Action-bar label
+// MARK: - Bottom control label
 
-nonisolated private struct ActionBarLabel: View {
+nonisolated private struct ScannerBottomActionLabel: View {
     let title: LocalizedStringKey
     let systemImage: String
 
     var body: some View {
-        VStack(spacing: UniSpacing.xxs) {
-            Image(systemName: systemImage).font(.system(size: 20, weight: .regular))
-            Text(title).font(UniTypography.caption1.weight(.medium))
+        HStack(spacing: 7) {
+            Image(systemName: systemImage)
+                .font(.system(size: 15, weight: .semibold))
+            Text(title)
+                .font(.system(size: 14, weight: .semibold))
         }
         .foregroundStyle(.white)
-        .frame(maxWidth: .infinity)
-        .frame(height: 56)
+        .padding(.horizontal, 16)
+        .frame(height: 40)
+        .background(.ultraThinMaterial, in: Capsule(style: .continuous))
+        .overlay(
+            Capsule(style: .continuous)
+                .strokeBorder(.white.opacity(0.16), lineWidth: 1)
+        )
         .contentShape(Capsule())
     }
 }
 
-// MARK: - Scanner reticle (corner brackets → full status ring + scan beam)
+// MARK: - Camera shadow
+
+private struct ScannerCameraShadow: View {
+    var body: some View {
+        VStack(spacing: 0) {
+            LinearGradient(
+                colors: [Color.black.opacity(0.62), Color.black.opacity(0.18), .clear],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+            .frame(height: 190)
+
+            Spacer(minLength: 0)
+
+            LinearGradient(
+                colors: [.clear, Color.black.opacity(0.24), Color.black.opacity(0.78)],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+            .frame(height: 270)
+        }
+        .accessibilityHidden(true)
+    }
+}
+
+// MARK: - Scanner reticle (corner brackets → full status ring)
 
 /// The reticle: a centered square cutout in a dimmed scrim. While scanning it
-/// shows four white corner brackets and an animated scan beam; on a detection
-/// the brackets give way to a single full rounded ring in the status color
-/// (green OK · red error), per the handoff.
+/// shows four white corner brackets; on a detection the brackets give way to a
+/// single full rounded ring in the status color (green OK · red error).
 private struct ScannerReticle: View {
     enum Status { case ok, error
         var color: Color {
@@ -584,8 +601,6 @@ private struct ScannerReticle: View {
     private let bracketLength: CGFloat = 30
     private let bracketWidth: CGFloat = 4
     private let radius: CGFloat = 34
-
-    @State private var beam: CGFloat = 0
 
     var body: some View {
         GeometryReader { geo in
@@ -607,27 +622,10 @@ private struct ScannerReticle: View {
                         .shadow(color: status.color.opacity(0.6), radius: 12)
                 } else {
                     cornerBrackets(in: rect)
-                    if !reduceMotion { scanBeam(in: rect) }
                 }
             }
             .accessibilityHidden(true)
-            .onAppear {
-                guard !reduceMotion else { return }
-                withAnimation(.easeInOut(duration: 2.2).repeatForever(autoreverses: true)) { beam = 1 }
-            }
         }
-    }
-
-    private func scanBeam(in rect: CGRect) -> some View {
-        let y = rect.minY + 8 + (rect.height - 16) * beam
-        return LinearGradient(
-            colors: [.clear, Color.white.opacity(0.0), Color.white.opacity(0.85), Color.white.opacity(0.0)],
-            startPoint: .leading, endPoint: .trailing
-        )
-        .frame(width: rect.width - 16, height: 2)
-        .overlay(Rectangle().fill(Color.white.opacity(0.9)).frame(height: 1.5))
-        .position(x: rect.midX, y: y)
-        .mask(RoundedRectangle(cornerRadius: radius, style: .continuous).frame(width: rect.width, height: rect.height).position(x: rect.midX, y: rect.midY))
     }
 
     @ViewBuilder

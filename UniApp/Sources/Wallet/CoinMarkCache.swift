@@ -180,8 +180,8 @@ actor CoinMarkCache {
     /// corrupt upstream logo therefore stops re-downloading and
     /// re-decoding for the session — the initials chip shows instead —
     /// while still eventually re-trying once the TTL lapses in case the
-    /// repo fixes the asset. `clearAll()` resets the negative cache, so
-    /// a factory reset re-tries immediately.
+    /// repo fixes the asset. `clearAll()` resets the negative cache for
+    /// explicit cache-maintenance callers.
     func markUndecodable(url: URL) {
         let key = url.absoluteString
         memory[key] = nil
@@ -190,12 +190,9 @@ actor CoinMarkCache {
         negativeUntil[key] = Date().addingTimeInterval(Self.decodeFailedTTL)
     }
 
-    /// Factory-reset surface (Settings → Advanced → Reset Aperture).
-    /// Cancels in-flight downloads, drops the in-memory caches, and
-    /// removes the on-disk mark directory. The marks themselves are
-    /// public brand assets, but a factory-state device must not carry
-    /// the previous owner's "which tokens did they hold" inference
-    /// that a populated cache directory would allow.
+    /// Explicit cache-maintenance surface. Reset Aperture intentionally no
+    /// longer calls this: token marks are public, reproducible brand assets
+    /// and should survive wallet resets with the rest of the market cache.
     ///
     /// Best-effort by design: a cancelled download that races the
     /// directory removal can re-write at most one file, and the
@@ -353,9 +350,8 @@ actor CoinMarkCache {
     /// initials chip until re-fetched (the user: "some tokens without
     /// icons … cached and persisted"). Application Support is durable app
     /// data the system never evicts, so once a mark is downloaded it stays
-    /// for good. `clearAll()` (factory reset) still wipes it. Excluded from
-    /// iCloud backup below — these are reproducible public brand assets, no
-    /// need to bloat the user's backup.
+    /// for good. Excluded from iCloud backup below — these are reproducible
+    /// public brand assets, no need to bloat the user's backup.
     nonisolated static var diskDirectory: URL {
         let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
         var dir = base.appendingPathComponent("AperturePaint/CoinMarks", isDirectory: true)

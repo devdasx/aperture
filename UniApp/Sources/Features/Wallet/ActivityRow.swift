@@ -142,7 +142,7 @@ struct ActivityRow: View {
 
     private func copyToPasteboard(_ value: String) {
 #if canImport(UIKit)
-        UIPasteboard.general.string = value
+        SafePasteboard.setString(value)
 #endif
         UniHapticEngine.shared.play(.success)
     }

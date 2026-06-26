@@ -87,6 +87,7 @@ actor WalletRepository {
         colorTag: String,
         requiresBackup: Bool,
         manualBackupCompleted: Bool = false,
+        mnemonicWords: [String]? = nil,
         addresses: [(chainRaw: String, address: String)] = []
     ) throws -> PersistentIdentifier {
         try ensureDurableStore()
@@ -101,6 +102,9 @@ actor WalletRepository {
             requiresBackup: requiresBackup,
             manualBackupCompleted: manualBackupCompleted
         )
+        if let mnemonicWords {
+            try WalletSecretPersistence.upsertMnemonic(mnemonicWords, for: id, in: modelContext)
+        }
         modelContext.insert(record)
         // Persist per-chain addresses (same shape as the import path).
         // A wallet created without an addresses array (legacy callers /
@@ -129,6 +133,7 @@ actor WalletRepository {
         mnemonicWordCount: Int,
         hasPassphrase: Bool,
         colorTag: String,
+        mnemonicWords: [String]? = nil,
         addresses: [(chainRaw: String, address: String)]
     ) throws -> PersistentIdentifier {
         try ensureDurableStore()
@@ -142,6 +147,9 @@ actor WalletRepository {
             sortOrder: try nextSortOrder(),
             requiresBackup: false
         )
+        if let mnemonicWords {
+            try WalletSecretPersistence.upsertMnemonic(mnemonicWords, for: id, in: modelContext)
+        }
         modelContext.insert(record)
         for entry in addresses {
             let addr = WalletAddressRecord(
@@ -169,6 +177,7 @@ actor WalletRepository {
         id: UUID,
         name: String,
         colorTag: String,
+        privateKey: String? = nil,
         addresses: [(chainRaw: String, address: String)]
     ) throws -> PersistentIdentifier {
         try ensureDurableStore()
@@ -182,6 +191,9 @@ actor WalletRepository {
             sortOrder: try nextSortOrder(),
             requiresBackup: false
         )
+        if let privateKey {
+            try WalletSecretPersistence.upsertPrivateKey(privateKey, for: id, in: modelContext)
+        }
         modelContext.insert(record)
         for entry in addresses {
             let addr = WalletAddressRecord(chainRaw: entry.chainRaw, address: entry.address)
@@ -377,6 +389,39 @@ actor WalletRepository {
         }
     }
 
+    /// Backfill the encrypted SwiftData secret table from the legacy
+    /// Keychain-backed mnemonic/private-key vault. New create/import writes
+    /// the DB row in the same transaction as the wallet; this migration covers
+    /// wallets that already existed before the DB-backed secret table shipped.
+    /// If the legacy item is already gone, there is no reversible way to
+    /// reconstruct the original phrase from the seed, so that wallet remains
+    /// honestly unavailable for manual backup until the user re-imports it.
+    func backfillWalletSecretsFromLegacyKeychain() throws {
+        let rows = try modelContext.fetch(FetchDescriptor<WalletRecord>())
+        var didChange = false
+        for wallet in rows {
+            switch wallet.kind {
+            case .created, .importedMnemonic:
+                guard !WalletSecretPersistence.hasSecret(kind: .mnemonic, for: wallet.id, in: modelContext),
+                      let words = try? MnemonicVault.loadMnemonic(for: wallet.id),
+                      !words.isEmpty else { continue }
+                try WalletSecretPersistence.upsertMnemonic(words, for: wallet.id, in: modelContext)
+                didChange = true
+            case .importedKey:
+                guard !WalletSecretPersistence.hasSecret(kind: .privateKey, for: wallet.id, in: modelContext),
+                      let key = try? MnemonicVault.loadPrivateKey(for: wallet.id),
+                      !key.isEmpty else { continue }
+                try WalletSecretPersistence.upsertPrivateKey(key, for: wallet.id, in: modelContext)
+                didChange = true
+            case .watchOnly:
+                continue
+            }
+        }
+        if didChange {
+            try modelContext.save()
+        }
+    }
+
     /// Rename a wallet. Returns `true` if the wallet was found and
     /// updated; `false` if the id did not match (e.g. wallet was
     /// deleted concurrently).
@@ -464,10 +509,14 @@ actor WalletRepository {
         guard let record = try modelContext.fetch(descriptor).first else {
             // Idempotent — the record is already gone. Still sweep any
             // chart snapshots left behind for this id (primitive-keyed,
-            // no cascade — a crash between a prior delete's save and
-            // its cleanup could have orphaned them), then report
-            // whoever is active now so callers can still route.
+            // no cascade) and encrypted secret rows left behind for
+            // this id (also primitive-keyed), then report whoever is
+            // active now so callers can still route.
             try? deleteChartSnapshots(walletId: walletId, save: true)
+            try? WalletSecretPersistence.deleteAll(for: walletId, in: modelContext)
+            if modelContext.hasChanges {
+                try? modelContext.save()
+            }
             return await MainActor.run { ActiveWalletPointer.currentId }
         }
 
@@ -514,6 +563,7 @@ actor WalletRepository {
             // vaults before the save risked the opposite: a failed
             // save would leave a visible, healthy-looking wallet
             // whose signing material was already destroyed forever.
+            try WalletSecretPersistence.deleteAll(for: walletId, in: modelContext)
             modelContext.delete(record)
             try modelContext.save()
         } catch {
@@ -593,8 +643,8 @@ actor WalletRepository {
     /// primitive `walletId` and does NOT cascade, so it's wiped
     /// explicitly in the same save. The `AppMetadataRecord` and
     /// `BiometricEnrollmentRecord` singletons are left in place by
-    /// THIS method — the full factory reset path
-    /// (`FactoryReset.wipeAllModels`) wipes those structurally.
+    /// THIS method — the full reset path
+    /// (`FactoryReset.wipeResettableModels`) wipes those structurally.
     /// Caller is responsible for the matching Keychain wipes via
     /// `allWalletIds()` first.
     func deleteAllWallets() throws {
@@ -607,6 +657,8 @@ actor WalletRepository {
             FetchDescriptor<WalletChartSnapshotRecord>()
         )
         for snapshot in snapshots { modelContext.delete(snapshot) }
+        let secrets = try modelContext.fetch(FetchDescriptor<WalletSecretRecord>())
+        for secret in secrets { modelContext.delete(secret) }
         try modelContext.save()
         // Also wipe the Keychain manifest — otherwise the next launch
         // would happily "restore" the wallets the user just nuked.

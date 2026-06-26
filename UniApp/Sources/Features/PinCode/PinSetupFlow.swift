@@ -80,6 +80,8 @@ struct PinSetupFlow: View {
 
     @AppStorage(PinCodePreference.biometricEnabledKey)
     private var biometricEnabled: Bool = PinCodePreference.defaultValue
+    @AppStorage(PinCodePreference.requireBiometricForSendKey)
+    private var requireForSend: Bool = true
 
     @State private var biometricService = BiometricService()
 
@@ -126,7 +128,8 @@ struct PinSetupFlow: View {
                         },
                         onCancel: {
                             isShowingSkipWarning = true
-                        }
+                        },
+                        showsNavigationControls: false
                     )
                     .transition(stepTransition)
 
@@ -147,7 +150,8 @@ struct PinSetupFlow: View {
                             // dead-end — the prior pin is the only
                             // truth and we shouldn't make them guess it.
                             revertToSet()
-                        }
+                        },
+                        showsNavigationControls: false
                     )
                     .transition(stepTransition)
 
@@ -163,6 +167,8 @@ struct PinSetupFlow: View {
                         onSkip: {
                             // Don't set `biometricEnabled = true` — leave
                             // the default `false`. Advance.
+                            biometricEnabled = false
+                            requireForSend = false
                             finishSuccessfully()
                         }
                     )
@@ -184,6 +190,7 @@ struct PinSetupFlow: View {
                     PinCodeStorage.clear()
                     pinEnabled = false
                     biometricEnabled = false
+                    requireForSend = false
                     onFinish()
                 }
             )
@@ -316,7 +323,7 @@ struct PinSetupFlow: View {
         let pin = pendingSetPin
         pendingSetPin = "" // never linger
         commitTask?.cancel()
-        commitTask = Task {
+        commitTask = Task { @MainActor in
             let success = await PinCodeStorage.setPin(pin)
             guard !Task.isCancelled else {
                 // The flow went away mid-commit (user backed out of the
@@ -362,8 +369,10 @@ struct PinSetupFlow: View {
         guard !Task.isCancelled else { return }
         if case .success = result {
             biometricEnabled = true
+            requireForSend = true
         } else {
             biometricEnabled = false
+            requireForSend = false
         }
         finishSuccessfully()
     }

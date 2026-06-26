@@ -56,7 +56,7 @@ struct CoinMark: View {
     // scroll. With ~400 token rows that can be 400 main-thread
     // decodes per scroll session. Decoding off-main + caching the
     // already-decoded UIImage gives `Image(uiImage:)` a free render.
-    @State private var prepared: UIImage?
+    @State private var prepared: PreparedMark?
 
     var body: some View {
         // A native coin's logo is BUNDLED in the asset catalog
@@ -93,9 +93,10 @@ struct CoinMark: View {
         // first load on THIS instance; the shared cache covers every later
         // render of the same mark this session (so scrolling re-uses pixels
         // instead of re-rendering each time).
+        let preparedImage = prepared?.url == url ? prepared?.image : nil
         let cached = url.flatMap { CoinMarkImageCache.shared.image(for: $0) }
         return Group {
-            if let image = prepared ?? cached {
+            if let image = preparedImage ?? cached {
                 Image(uiImage: image)
                     .resizable()
                     // `.fill` so padded Trust Wallet marks cover the disc
@@ -109,7 +110,10 @@ struct CoinMark: View {
         }
         .task(id: url) {
             // Already decoded this session → nothing to do; the cache paints it.
-            if let url, CoinMarkImageCache.shared.image(for: url) != nil { return }
+            if let url, let image = CoinMarkImageCache.shared.image(for: url) {
+                prepared = PreparedMark(url: url, image: image)
+                return
+            }
             await loadFromCache(url: url)
         }
     }
@@ -172,7 +176,11 @@ struct CoinMark: View {
     private func loadFromCache(url: URL?) async {
         if let image = await preparedImage(for: url) {
             if let url { CoinMarkImageCache.shared.store(image, for: url) }
-            await MainActor.run { self.prepared = image }
+            await MainActor.run {
+                if let url {
+                    self.prepared = PreparedMark(url: url, image: image)
+                }
+            }
             return
         }
         let fallback = fallbackURL
@@ -182,7 +190,9 @@ struct CoinMark: View {
         // keyed on the primary url still hits the synchronous cache.
         CoinMarkImageCache.shared.store(image, for: fallback)
         if let url { CoinMarkImageCache.shared.store(image, for: url) }
-        await MainActor.run { self.prepared = image }
+        await MainActor.run {
+            self.prepared = PreparedMark(url: url ?? fallback, image: image)
+        }
     }
 
     /// Fetch + decode a single mark URL off-main, or `nil` when the URL
@@ -213,6 +223,11 @@ struct CoinMark: View {
         let trimmed = tokenSymbol.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmed.isEmpty { return "—" }
         return String(trimmed.prefix(3)).uppercased()
+    }
+
+    private struct PreparedMark {
+        let url: URL
+        let image: UIImage
     }
 }
 

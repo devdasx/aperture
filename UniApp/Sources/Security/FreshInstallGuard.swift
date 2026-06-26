@@ -75,6 +75,7 @@ enum FreshInstallGuard {
         "com.thuglife.aperture.mnemonic.key",      // MnemonicVault.keyService — AES-GCM keys
         "com.thuglife.aperture.privatekey.cipher", // MnemonicVault.privateKeyCipherService — encrypted imported key strings
         "com.thuglife.aperture.privatekey.key",    // MnemonicVault.privateKeyKeyService — AES-GCM keys (imported keys)
+        "com.thuglife.aperture.wallet-secret.master-key", // WalletSecretCrypto — AES-GCM master key for SwiftData secret rows
         "com.thuglife.aperture.wallet-manifest",   // WalletManifestStore.service — wallet list metadata
         "com.thuglife.aperture.pin",               // PinCodeStorage.service — PBKDF2 hash + salt + failure record
         "com.thuglife.aperture.pin.smoketest",     // PinCodeStorage.smokeCheckService — DEBUG smoke check

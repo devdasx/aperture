@@ -10,7 +10,7 @@ struct SecuritySettingsView: View {
     @AppStorage("biometricEnabled") private var biometricEnabled: Bool = false
     // Per-action Face ID gate (2026-06-20). Secure default ON; only takes
     // effect when Face ID is enabled. Enforced in SendReviewView.
-    @AppStorage("requireBiometricForSend") private var requireForSend: Bool = true
+    @AppStorage(PinCodePreference.requireBiometricForSendKey) private var requireForSend: Bool = true
     // iOS-style "Erase Data": wipe the app after N failed lock-screen passcode
     // attempts. OFF by default; arming it shows a confirmation first. Enforced
     // in `AppLockView` against `PinCodeStorage`'s dedicated unlock counter.
@@ -31,22 +31,22 @@ struct SecuritySettingsView: View {
     /// Security itself must be gated behind passcode, the same way
     /// Apple gates Settings → Touch ID & Passcode.
     ///
-    /// **PIN or Face ID since 2026-06-17 (user direction):** the gate
-    /// passes `allowsBiometrics: biometricEnabled`, so `PinCodeView
-    /// (.verify)` offers Face ID (with a passcode fallback) when Face ID
-    /// is enabled, and is passcode-only otherwise. This reverses the
-    /// 2026-06-13 passcode-only gate. `isUnlocked` is `false` on first
-    /// appear; the fullScreenCover below shows the verify keypad. On
-    /// successful verify we flip the flag and dismiss the cover,
-    /// revealing the real settings list. If the user cancels the verify,
-    /// the navigation pops back to the Settings root.
+    /// **Passcode-only since 2026-06-25 (user direction):** even when
+    /// Face ID is enabled for app unlock or sending, entering Security
+    /// must require the typed app passcode. The gate passes
+    /// `allowsBiometrics: false`, so `PinCodeView(.verify)` never
+    /// auto-prompts Face ID and never renders the biometric keypad key.
+    /// `isUnlocked` is `false` on first appear; the fullScreenCover below
+    /// shows the verify keypad. On successful verify we flip the flag and
+    /// dismiss the cover, revealing the real settings list. If the user
+    /// cancels the verify, the navigation pops back to the Settings root.
     ///
     /// **Cold-launch restoration (2026-06-17):** the Security route is
     /// excluded from `ScreenRestoration`'s Settings stack
     /// (`SettingsDestination.isColdLaunchRestorable == false`), so
     /// closing + reopening the app never lands back inside Security —
     /// the user returns to the Settings root and re-enters with a fresh
-    /// PIN / Face ID prompt.
+    /// passcode prompt.
     ///
     /// **The flag means "this visit is authorized" (2026-06-13).**
     /// A user who enters with NO passcode set is authorized by
@@ -76,6 +76,7 @@ struct SecuritySettingsView: View {
         .navigationBarTitleDisplayMode(.large)
         .onAppear {
             biometricAvailable = BiometricService().isAvailable
+            syncBiometricActionTogglesWithMaster()
             // No passcode ⇒ nothing to gate ⇒ the visit is
             // authorized for its whole lifetime, including after a
             // passcode is created mid-visit (see `isUnlocked` doc).
@@ -95,13 +96,12 @@ struct SecuritySettingsView: View {
                         // to the previous Settings level.
                         dismiss()
                     },
-                    // PIN or Face ID per user direction 2026-06-17
-                    // ("i've to enter pin code or face id (if one of
-                    // both enabled)"). When Face ID is enabled the
-                    // verify screen offers it with a passcode fallback;
-                    // otherwise it's passcode-only. Reverses the prior
-                    // 2026-06-13 passcode-only gate.
-                    allowsBiometrics: biometricEnabled
+                    // Passcode-only per user direction 2026-06-25.
+                    // Face ID may be enabled inside Security for app
+                    // unlock / send actions, but it cannot be used to
+                    // enter this screen.
+                    allowsBiometrics: false,
+                    showsNavigationControls: false
                 )
                 .toolbar {
                     ToolbarItem(placement: .topBarLeading) {
@@ -216,7 +216,7 @@ struct SecuritySettingsView: View {
                     .buttonStyle(.plain)
                     .listRowBackground(UniColors.Background.secondary)
                 } footer: {
-                    Text("Turning off the passcode removes the lock from this iPhone's copy of your wallets. Your seed and mnemonic stay encrypted in Keychain — but anyone with this phone unlocked can open Aperture without proving they own it.")
+                    Text("Turning off the passcode removes the lock from this iPhone's copy of your wallets. Your wallet secrets stay encrypted locally — but anyone with this phone unlocked can open Aperture without proving they own it.")
                         .font(UniTypography.footnote)
                         .foregroundStyle(UniColors.Text.tertiary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -234,7 +234,8 @@ struct SecuritySettingsView: View {
                         SettingsRowShared(
                             systemImage: "lock.rotation",
                             title: "Auto-lock",
-                            trailing: LocalizedStringKey(AutoLockPreference.option(for: autoLockRaw).label)
+                            trailing: LocalizedStringKey(AutoLockPreference.option(for: autoLockRaw).label),
+                            iconTint: .purple
                         )
                     }
                     .listRowBackground(UniColors.Background.secondary)
@@ -290,7 +291,7 @@ struct SecuritySettingsView: View {
                 onSuccess: {
                     PinCodeStorage.clear()
                     pinEnabled = false
-                    biometricEnabled = false
+                    setBiometricEnabled(false)
                     isShowingDisableVerify = false
                 },
                 onCancel: { isShowingDisableVerify = false }
@@ -330,7 +331,7 @@ struct SecuritySettingsView: View {
                 if newValue {
                     Task { await tryEnableBiometric() }
                 } else {
-                    biometricEnabled = false
+                    setBiometricEnabled(false)
                 }
             }
         )) {
@@ -416,10 +417,22 @@ struct SecuritySettingsView: View {
             reason: LocalizedStringResource("Enable Face ID for Aperture.")
         )
         if case .success = outcome {
-            biometricEnabled = true
+            setBiometricEnabled(true)
             BiometricEnrollmentTracker.captureSnapshot(in: modelContext.container)
         } else {
-            biometricEnabled = false
+            setBiometricEnabled(false)
+        }
+    }
+
+    private func setBiometricEnabled(_ enabled: Bool) {
+        biometricEnabled = enabled
+        requireForSend = enabled
+    }
+
+    private func syncBiometricActionTogglesWithMaster() {
+        guard pinEnabled, biometricEnabled else {
+            requireForSend = false
+            return
         }
     }
 }
@@ -432,13 +445,11 @@ struct SettingsRowShared: View {
     let systemImage: String
     let title: LocalizedStringKey
     let trailing: LocalizedStringKey?
+    var iconTint: Color = .blue
 
     var body: some View {
         HStack(spacing: UniSpacing.s) {
-            Image(systemName: systemImage)
-                .font(.system(size: 18, weight: .regular))
-                .foregroundStyle(UniColors.Icon.secondary)
-                .frame(width: 28, alignment: .center)
+            SettingsIconTile(systemImage: systemImage, tint: iconTint)
                 .accessibilityHidden(true)
             Text(title)
                 .font(UniTypography.body)
@@ -528,7 +539,8 @@ struct PinChangeFlow: View {
                         onComplete: { _ in
                             step = .setNew
                         },
-                        onCancel: { onFinish() }
+                        onCancel: { onFinish() },
+                        showsNavigationControls: false
                     )
                 case .setNew:
                     PinCodeView(
@@ -536,7 +548,8 @@ struct PinChangeFlow: View {
                         onComplete: { newPin in
                             step = .confirmNew(expected: newPin)
                         },
-                        onCancel: { onFinish() }
+                        onCancel: { onFinish() },
+                        showsNavigationControls: false
                     )
                 case .confirmNew(let expected):
                     PinCodeView(
@@ -548,7 +561,8 @@ struct PinChangeFlow: View {
                         onCancel: { onFinish() },
                         onConfirmMismatch: {
                             step = .setNew
-                        }
+                        },
+                        showsNavigationControls: false
                     )
                 }
             }
@@ -599,7 +613,8 @@ struct PinDisableVerifyFlow: View {
             PinCodeView(
                 mode: .verify,
                 onComplete: { _ in onSuccess() },
-                onCancel: { onCancel() }
+                onCancel: { onCancel() },
+                showsNavigationControls: false
             )
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {

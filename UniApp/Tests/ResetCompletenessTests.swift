@@ -3,18 +3,17 @@ import Foundation
 import SwiftData
 @testable import Aperture
 
-/// Factory-reset completeness contract (user direction 2026-06-13:
-/// *"when resetting the app everything in the app should be removed
-/// like we've installed the app now for the first time"*).
+/// Reset completeness contract.
 ///
 /// **What is tested here.** The SwiftData tier of the wipe —
-/// `FactoryReset.wipeAllModels(in:)`, the exact helper
-/// `AdvancedSettingsView.resetAll()` calls. One representative row of
-/// EVERY model type in `ApertureSchemaV1.models` is inserted, the
-/// structural wipe runs, and every table must come back empty. The
-/// factory lookup is itself structural: a model type added to the
-/// schema without a representative factory FAILS the test — so wipe
-/// coverage and test coverage grow in lockstep.
+/// `FactoryReset.wipeResettableModels(in:)`, the exact SwiftData helper
+/// Reset Aperture calls after the wallet repository drops wallet rows.
+/// One representative row of EVERY model type in `ApertureSchemaV1.models`
+/// is inserted. Resettable/private rows must be deleted; public market /
+/// price / catalog rows must survive. The factory lookup is itself
+/// structural: a model type added to the schema without a representative
+/// factory FAILS the test, so reset policy and schema coverage grow in
+/// lockstep.
 ///
 /// **What CANNOT be tested in-memory (the honest boundary).** The
 /// non-SwiftData tiers of `resetAll()` are real-device state with no
@@ -44,7 +43,7 @@ import SwiftData
     /// Insert one representative row for `model`. Returns `false` when
     /// no factory exists — which is the test's structural tripwire: a
     /// model added to `ApertureSchemaV1.models` without a factory here
-    /// fails `wipeAllModelsEmptiesEveryTable` with a named message.
+    /// fails the reset-policy test with a named message.
     ///
     /// Rows are deliberately UNRELATED to each other (no
     /// relationships set) so no cascade fires during the wipe and
@@ -62,6 +61,12 @@ import SwiftData
                 colorTag: "default",
                 sortOrder: 0,
                 requiresBackup: false
+            ))
+        } else if model == WalletSecretRecord.self {
+            context.insert(WalletSecretRecord(
+                walletId: UUID(),
+                kind: .mnemonic,
+                cipherData: Data([0x01])
             ))
         } else if model == WalletAddressRecord.self {
             context.insert(WalletAddressRecord(
@@ -129,6 +134,38 @@ import SwiftData
                 domainRaw: SyncDomain.balances.rawValue,
                 scopeId: "test"
             ))
+        } else if model == MarketAssetRecord.self {
+            context.insert(MarketAssetRecord(asset: MarketAsset(
+                symbol: "BTC",
+                name: "Bitcoin",
+                providerId: "bitcoin",
+                rank: 1,
+                price: 1,
+                currencyCode: "USD",
+                priceChange24hPercent: 0,
+                priceChange24hAmount: 0,
+                marketCap: 1,
+                volume24h: 1,
+                circulatingSupply: 1,
+                ath: 1,
+                high24h: 1,
+                low24h: 1,
+                imageURLString: nil,
+                about: "Test market row",
+                sparkline: [MarketPoint(date: Date(), price: 1)],
+                source: "test",
+                lastUpdatedAt: Date()
+            )))
+        } else if model == MarketChartCacheRecord.self {
+            context.insert(MarketChartCacheRecord(
+                symbol: "BTC",
+                range: .oneDay,
+                currencyCode: "USD",
+                samples: [MarketPoint(date: Date(), price: 1)],
+                source: "test"
+            ))
+        } else if model == MarketWatchlistRecord.self {
+            context.insert(MarketWatchlistRecord(symbol: "BTC"))
         } else if model == ChainRecord.self {
             context.insert(ChainRecord(
                 chainRaw: "ethereum",
@@ -185,8 +222,8 @@ import SwiftData
 
     // MARK: - The wipe contract
 
-    @Test("FactoryReset.wipeAllModels empties every table in ApertureSchemaV1.models")
-    func wipeAllModelsEmptiesEveryTable() throws {
+    @Test("FactoryReset deletes private rows and preserves public cache rows")
+    func resetPolicyDeletesPrivateRowsAndPreservesPublicCaches() throws {
         let container = try makeContainer()
         let context = ModelContext(container)
 
@@ -200,6 +237,20 @@ import SwiftData
                 "No representative factory for \(String(describing: model)) — add one to ResetCompletenessTests so the reset wipe stays provably complete."
             )
         }
+
+        // Extra SyncStatus rows prove the partial retention policy:
+        // wallet-scoped rows are private and deleted; global price/history
+        // freshness rows are public-cache metadata and retained.
+        context.insert(SyncStatusRecord(
+            key: "prices|\(SyncDomain.globalScope)",
+            domainRaw: SyncDomain.prices.rawValue,
+            scopeId: SyncDomain.globalScope
+        ))
+        context.insert(SyncStatusRecord(
+            key: "historical|\(SyncDomain.globalScope)",
+            domainRaw: SyncDomain.historical.rawValue,
+            scopeId: SyncDomain.globalScope
+        ))
         try context.save()
 
         // 2. Sanity: every table is non-empty before the wipe (an
@@ -212,24 +263,45 @@ import SwiftData
             )
         }
 
-        // 3. The same structural wipe `resetAll()` runs.
-        try FactoryReset.wipeAllModels(in: context)
+        // 3. The same SwiftData reset helper Reset Aperture runs.
+        try FactoryReset.wipeResettableModels(in: context)
 
-        // 4. Factory state: every table empty.
+        let resettable = Set(FactoryReset.resettableSwiftDataModels.map { String(describing: $0) })
+        let preserved = Set(FactoryReset.preservedSwiftDataModels.map { String(describing: $0) })
+
+        // 4. Private state is gone; public cache/reference state remains.
         for model in ApertureSchemaV1.models {
-            #expect(
-                try rowCount(of: model, in: context) == 0,
-                "\(String(describing: model)) still has rows after FactoryReset.wipeAllModels — the reset is incomplete."
-            )
+            let name = String(describing: model)
+            if name == "SyncStatusRecord" {
+                #expect(try rowCount(of: model, in: context) == 2)
+            } else if resettable.contains(name) {
+                #expect(
+                    try rowCount(of: model, in: context) == 0,
+                    "\(name) still has rows after FactoryReset.wipeResettableModels — private reset is incomplete."
+                )
+            } else if preserved.contains(name) {
+                #expect(
+                    try rowCount(of: model, in: context) > 0,
+                    "\(name) was removed by reset even though it is public cache/reference data."
+                )
+            } else {
+                Issue.record("\(name) has no reset policy — add it to resettableSwiftDataModels or preservedSwiftDataModels.")
+            }
         }
+
+        let remainingSyncRows = try context.fetch(FetchDescriptor<SyncStatusRecord>())
+        #expect(Set(remainingSyncRows.map(\.key)) == [
+            "prices|\(SyncDomain.globalScope)",
+            "historical|\(SyncDomain.globalScope)"
+        ])
     }
 
-    @Test("wipeAllModels on an already-empty store is a no-op, not an error")
-    func wipeAllModelsIdempotentOnEmptyStore() throws {
+    @Test("wipeResettableModels on an already-empty store is a no-op, not an error")
+    func wipeResettableModelsIdempotentOnEmptyStore() throws {
         let container = try makeContainer()
         let context = ModelContext(container)
-        try FactoryReset.wipeAllModels(in: context)
-        try FactoryReset.wipeAllModels(in: context)
+        try FactoryReset.wipeResettableModels(in: context)
+        try FactoryReset.wipeResettableModels(in: context)
         for model in ApertureSchemaV1.models {
             #expect(try rowCount(of: model, in: context) == 0)
         }
@@ -246,6 +318,7 @@ import SwiftData
         let names = Set(ApertureSchemaV1.models.map { String(describing: $0) })
         let expected: Set<String> = [
             "WalletRecord",
+            "WalletSecretRecord",
             "WalletAddressRecord",
             "TransactionRecord",
             "TokenBalanceRecord",
@@ -260,6 +333,9 @@ import SwiftData
             "ChainRecord",
             "AssetRecord",
             "AppSettingsRecord",
+            "MarketAssetRecord",
+            "MarketChartCacheRecord",
+            "MarketWatchlistRecord",
             "ChainStateRecord",
             "ChainUTXORecord",
         ]
@@ -287,6 +363,7 @@ import SwiftData
             "com.thuglife.aperture.mnemonic.key",      // MnemonicVault
             "com.thuglife.aperture.privatekey.cipher", // MnemonicVault
             "com.thuglife.aperture.privatekey.key",    // MnemonicVault
+            "com.thuglife.aperture.wallet-secret.master-key", // WalletSecretCrypto
             "com.thuglife.aperture.wallet-manifest",   // WalletManifestStore
             "com.thuglife.aperture.pin",               // PinCodeStorage
             "com.thuglife.aperture.pin.smoketest",     // PinCodeStorage (DEBUG)

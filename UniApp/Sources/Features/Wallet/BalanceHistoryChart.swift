@@ -231,17 +231,6 @@ struct BalanceHistoryChart: View {
             // the chart body, so a long scrub never re-runs the
             // reconstruction-gating `rebuildKey` or re-projects values).
             //
-            // Negative horizontal padding so ONLY the sparkline
-            // bleeds out beyond the card's normal inset
-            // (`UniSpacing.l`) to land at 5pt from the card
-            // edge. Computed as `-(UniSpacing.l - 5)` so the
-            // visible curve has exactly 5pt of edge gap. Delta
-            // caption above and period pill below stay at the
-            // normal padding so they align with everything else
-            // inside the card. Per 2026-06-09 user direction:
-            // "the padding 5 pixels should be only for chart,
-            // for other layouts in inside the card should be
-            // same as before."
             // Pre-task fallback: the zero baseline projects to two
             // zero values (min = max = 0), exactly what
             // `rebuildPoints()` would produce for the same input.
@@ -275,8 +264,8 @@ struct BalanceHistoryChart: View {
                     }
                 }
             )
+            .frame(maxWidth: .infinity, alignment: .center)
             .frame(height: 140)
-            .padding(.horizontal, -(UniSpacing.l - 5))
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(Text("Balance history chart"))
             .accessibilityValue(chartAccessibilityValue(points: points))

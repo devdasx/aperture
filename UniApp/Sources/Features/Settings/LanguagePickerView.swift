@@ -11,6 +11,25 @@ struct LanguagePickerView: View {
     @Environment(\.locale) private var currentLocale
     @State private var searchText: String = ""
 
+    private var isSearching: Bool {
+        !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private var suggestedLanguages: [SupportedLanguage] {
+        languages(for: [
+            LanguagePreference.regionalLanguageCode(),
+            LanguagePreference.preferredSystemLanguageCode()
+        ].compactMap { $0 } + LanguagePreference.mostUsedCodes)
+    }
+
+    private var suggestedLanguageCodes: Set<String> {
+        Set(suggestedLanguages.map(\.code))
+    }
+
+    private var remainingLanguages: [SupportedLanguage] {
+        LanguagePreference.all.filter { !suggestedLanguageCodes.contains($0.code) }
+    }
+
     private var filteredLanguages: [SupportedLanguage] {
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !query.isEmpty else { return LanguagePreference.all }
@@ -25,48 +44,29 @@ struct LanguagePickerView: View {
 
     var body: some View {
         List {
-            Section {
-                LanguageRow(
-                    code: LanguagePreference.systemCode,
-                    flag: nil,
-                    nativeName: "System",
-                    // Pass `locale:` explicitly. `String(localized:)`
-                    // without it resolves through `Bundle.main`'s
-                    // launch-time `preferredLocalizations`, which
-                    // does NOT honor SwiftUI's `\.environment(\.locale)`.
-                    // Aperture changes the in-app language via the
-                    // environment binding only (no `AppleLanguages`
-                    // UserDefaults rewrite, which would require an
-                    // app restart). Passing `locale: currentLocale`
-                    // routes the lookup through the user-selected
-                    // language. Same fix pattern needed at every
-                    // `String(localized:)` site whose output reaches
-                    // a `Text` view in the UI.
-                    localizedName: String(localized: "Use iOS system language", locale: currentLocale),
-                    isRTL: false,
-                    isSelected: languageCode == LanguagePreference.systemCode,
-                    isSystemRow: true
-                ) {
-                    languageCode = LanguagePreference.systemCode
+            if isSearching {
+                Section {
+                    languageRows(filteredLanguages)
                 }
-                .listRowBackground(UniColors.Background.secondary)
-            }
+            } else {
+                Section {
+                    languageRows(suggestedLanguages)
+                } header: {
+                    Text("Most used")
+                        .font(UniTypography.footnote)
+                        .foregroundStyle(UniColors.Text.tertiary)
+                }
 
-            Section {
-                ForEach(filteredLanguages) { language in
-                    let localized = currentLocale.localizedString(forLanguageCode: language.code) ?? language.englishName
-                    LanguageRow(
-                        code: language.code,
-                        flag: language.flag,
-                        nativeName: language.nativeName,
-                        localizedName: localized,
-                        isRTL: language.isRTL,
-                        isSelected: languageCode == language.code,
-                        isSystemRow: false
-                    ) {
-                        languageCode = language.code
-                    }
-                    .listRowBackground(UniColors.Background.secondary)
+                Section {
+                    systemRow
+                }
+
+                Section {
+                    languageRows(remainingLanguages)
+                } header: {
+                    Text("All languages")
+                        .font(UniTypography.footnote)
+                        .foregroundStyle(UniColors.Text.tertiary)
                 }
             }
         }
@@ -77,6 +77,60 @@ struct LanguagePickerView: View {
         .navigationBarTitleDisplayMode(.large)
         .searchable(text: $searchText, prompt: Text("Search"))
         .uniHaptic(.selection, trigger: languageCode)
+    }
+
+    private var systemRow: some View {
+        LanguageRow(
+            code: LanguagePreference.systemCode,
+            flag: nil,
+            nativeName: "System",
+            // Pass `locale:` explicitly. `String(localized:)`
+            // without it resolves through `Bundle.main`'s
+            // launch-time `preferredLocalizations`, which
+            // does NOT honor SwiftUI's `\.environment(\.locale)`.
+            // Aperture changes the in-app language via the
+            // environment binding only (no `AppleLanguages`
+            // UserDefaults rewrite, which would require an
+            // app restart). Passing `locale: currentLocale`
+            // routes the lookup through the user-selected
+            // language. Same fix pattern needed at every
+            // `String(localized:)` site whose output reaches
+            // a `Text` view in the UI.
+            localizedName: String(localized: "Use iOS system language", locale: currentLocale),
+            isRTL: false,
+            isSelected: languageCode == LanguagePreference.systemCode,
+            isSystemRow: true
+        ) {
+            languageCode = LanguagePreference.systemCode
+        }
+        .listRowBackground(UniColors.Background.secondary)
+    }
+
+    @ViewBuilder
+    private func languageRows(_ languages: [SupportedLanguage]) -> some View {
+        ForEach(languages) { language in
+            let localized = currentLocale.localizedString(forLanguageCode: language.code) ?? language.englishName
+            LanguageRow(
+                code: language.code,
+                flag: language.flag,
+                nativeName: language.nativeName,
+                localizedName: localized,
+                isRTL: language.isRTL,
+                isSelected: languageCode == language.code,
+                isSystemRow: false
+            ) {
+                languageCode = language.code
+            }
+            .listRowBackground(UniColors.Background.secondary)
+        }
+    }
+
+    private func languages(for codes: [String]) -> [SupportedLanguage] {
+        var seen: Set<String> = []
+        return codes.compactMap { code in
+            guard seen.insert(code).inserted else { return nil }
+            return LanguagePreference.language(for: code)
+        }
     }
 }
 

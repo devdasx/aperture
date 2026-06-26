@@ -227,19 +227,12 @@ struct WalletHomeView: View {
     /// lives here so the sheet survives Rule #12 §G direction rebuilds.
     @State private var isShowingSend: Bool = false
     @State private var sendPath: NavigationPath = NavigationPath()
-    // 2026-06-23 — the Actions sheet (Send/Receive/Connect/Templates),
-    // opened by the bar's Actions item via `WalletShellSignal.openActionsToken`.
-    // A tile sets `pendingQuickAction` + dismisses; `onDismiss` opens the real
-    // flow (dismiss-then-present, no sheet-over-sheet race).
-    @State private var isShowingActions: Bool = false
-    /// The app-bar **Aperture Scanner** (leading toolbar). Auto-detects a
-    /// wallet address (any supported chain) → Send.
+    /// The wallet-home **Aperture Scanner** action. Auto-detects a wallet
+    /// address on any supported chain and opens Send.
     @State private var isShowingScanner: Bool = false
     /// A scanned address staged to open Send pre-filled, applied in the
-    /// scanner's `onDismiss` (dismiss-then-present, like the Actions flow).
+    /// scanner's `onDismiss` (dismiss-then-present).
     @State private var scanPrefill: SendView.ScanPrefill?
-    @State private var pendingQuickAction: QuickAction? = nil
-    private enum QuickAction { case send, receive }
     /// **Filter & Sort sheet (2026-06-09).** Drives the
     /// `.sheet(isPresented: $isShowingFilter)` block below. The sheet
     /// reads + writes preferences through `@AppStorage` against
@@ -270,11 +263,7 @@ struct WalletHomeView: View {
     @State private var navigationPath: [WalletHomeDestination]
     @State private var createPath: NavigationPath = NavigationPath()
     @State private var importPath: NavigationPath = NavigationPath()
-    // 2026-06-23 — Settings returned to the wallet-home toolbar (the
-    // trailing gear) and off the bottom tab bar, presented full screen.
-    // `SettingsView` owns its own `NavigationStack`, so no path is
-    // threaded here.
-    @State private var isShowingSettings: Bool = false
+    @AppStorage(MainTab.storageKey) private var selectedTabRaw: String = MainTab.wallet.rawValue
     @State private var isRefreshing: Bool = false
 
     /// `true` while a refresh this view started is in flight. Refresh now
@@ -317,10 +306,11 @@ struct WalletHomeView: View {
 
     /// Active tab for the holdings region. Per the 2026-06-09 user
     /// direction, the home no longer shows Coins AND Tokens as
-    /// stacked List sections — a native segmented switcher sits
-    /// under the action region and the user picks which collection
-    /// to view. Defaults to `.coins` because that's the broader
-    /// vocabulary (every chain has one); Tokens is the deeper dive.
+    /// stacked List sections — a native segmented switcher sits at
+    /// the top of the holdings list and the user picks which
+    /// collection to view. Defaults to `.coins` because that's the
+    /// broader vocabulary (every chain has one); Tokens is the
+    /// deeper dive.
     @State private var selectedHoldingsTab: HoldingsTab = .coins
 
     /// 2026-06-09 — scrubbed fiat from `BalanceHistoryChart`, now an
@@ -524,46 +514,7 @@ struct WalletHomeView: View {
             listSurface
                 .navigationTitle("")
                 .navigationBarTitleDisplayMode(.inline)
-                // 2026-06-17 — the toolbar holds ONLY the Filter & Sort
-                // affordance (user direction). The 3-dots overflow menu
-                // (Hide balance / Lock wallet) was removed: hide-balance
-                // still lives on the balance card's eye toggle, and
-                // auto-lock runs from `AutoLockController` without a manual
-                // toolbar entry. Per Rule #19 §C the toolbar item is a plain
-                // `Button` with an SF Symbol label — not a `UniButton` —
-                // because toolbar items are navigation affordances, not
-                // commit CTAs (the rule's documented exception).
-                .toolbar {
-                    // 2026-06-24 — Scan affordance (leading). Opens the unified
-                    // Aperture Scanner: auto-detects a wallet address (any
-                    // supported chain) → Send pre-filled.
-                    // `viewfinder` (not `.circle` — `M-003` forbids `.circle`
-                    // SF Symbols in toolbar surfaces).
-                    ToolbarItem(placement: .topBarLeading) {
-                        Button {
-                            isShowingScanner = true
-                        } label: {
-                            Image(systemName: "qrcode.viewfinder")
-                                .accessibilityLabel(Text("Scan"))
-                        }
-                    }
-                    // 2026-06-23 — Settings affordance. Per user
-                    // direction Settings left the bottom tab bar and
-                    // lives here, on the app bar's trailing side; the
-                    // Filter & Sort control moved down into the
-                    // Coins/Tokens chrome (`holdingsChromeRow`). Tapping
-                    // presents `SettingsView` as a sheet. `gearshape`
-                    // (not `.circle` — `M-003` forbids `.circle` SF
-                    // Symbols in toolbar surfaces).
-                    ToolbarItem(placement: .topBarTrailing) {
-                        Button {
-                            isShowingSettings = true
-                        } label: {
-                            Image(systemName: "gearshape")
-                                .accessibilityLabel(Text("Settings"))
-                        }
-                    }
-                }
+                .toolbar(horizontalSizeClass == .compact ? .hidden : .visible, for: .navigationBar)
                 .navigationDestination(for: WalletHomeDestination.self) { destination in
                     switch destination {
                     case .transaction(let id):                  TransactionDetailView(transactionId: id)
@@ -682,10 +633,6 @@ struct WalletHomeView: View {
                         withAnimation(.snappy) { navigationPath.removeAll() }
                     }
                 }
-                .onChange(of: WalletShellSignal.shared.openActionsToken) { _, _ in
-                    // The bar's Actions item asks us to open the Actions sheet.
-                    isShowingActions = true
-                }
                 .onChange(of: currencyCode) { _, _ in
                     // Labels react immediately (the hero + unheld rows
                     // read `currencyCode` directly)…
@@ -762,11 +709,11 @@ struct WalletHomeView: View {
                 .presentationDragIndicator(.visible)
                 .presentationBackground(UniColors.Background.primary)
         }
-        // App-bar Aperture Scanner (leading toolbar). Auto-detects a wallet
-        // address (any supported chain) and opens Send pre-filled. The chosen
-        // action is staged and applied in `onDismiss` so we never present Send
-        // over a still-dismissing scanner.
-        .sheet(isPresented: $isShowingScanner, onDismiss: {
+        // Wallet-home Aperture Scanner. Auto-detects a wallet address on any
+        // supported chain and opens Send pre-filled. The chosen action is
+        // staged and applied in `onDismiss` so we never present Send over a
+        // still-dismissing full-screen scanner.
+        .fullScreenCover(isPresented: $isShowingScanner, onDismiss: {
             if scanPrefill != nil { isShowingSend = true }
         }) {
             UniQRScannerSheet(
@@ -776,19 +723,6 @@ struct WalletHomeView: View {
                 }
             )
             .uniAppEnvironment()
-        }
-        // Actions sheet (2026-06-23) — opened by the bar's Actions item. A tile
-        // sets `pendingQuickAction` + dismisses; `onDismiss` opens the real flow.
-        .sheet(isPresented: $isShowingActions, onDismiss: { applyPendingQuickAction() }) {
-            WalletActionsSheet(
-                canSend: activeWallet?.kind != .watchOnly,
-                onSend: { pendingQuickAction = .send; isShowingActions = false },
-                onReceive: { pendingQuickAction = .receive; isShowingActions = false }
-            )
-            .uniAppEnvironment()
-            .uniSheetDetents([.medium, .large])
-            .presentationDragIndicator(.visible)
-            .presentationBackground(UniColors.Background.primary)
         }
         // Filter & Sort sheet (2026-06-09). `.large` detent only per
         // M-008's nav-shaped-sheet rule. Rule #12 §G direction key +
@@ -807,15 +741,6 @@ struct WalletHomeView: View {
                 .uniSheetDetents([.large])
                 .presentationDragIndicator(.visible)
                 .presentationBackground(UniColors.Background.primary)
-        }
-        // App settings — presented full screen from the trailing
-        // toolbar gear (2026-06-23, moved off the bottom tab bar).
-        // `SettingsView` owns its own NavigationStack + background, and
-        // its Done item dismisses the cover (no swipe-down on a full
-        // screen cover, so the Done button is the dismiss affordance).
-        .fullScreenCover(isPresented: $isShowingSettings) {
-            SettingsView()
-                .uniAppEnvironment()
         }
         .sheet(isPresented: $isShowingSwitcher, onDismiss: {
             // Dismiss-then-present: the create/import cover presents
@@ -879,18 +804,6 @@ struct WalletHomeView: View {
                 .uniSheetDetents([.large])
                 .presentationBackground(UniColors.Background.primary)
         }
-    }
-
-    /// Open the flow chosen in the Actions sheet, AFTER it has dismissed —
-    /// presenting over a still-dismissing sheet drops the new one, so we hand
-    /// off in the Actions sheet's `onDismiss`.
-    private func applyPendingQuickAction() {
-        switch pendingQuickAction {
-        case .send:    isShowingSend = true
-        case .receive: isShowingReceive = true
-        case nil:      break
-        }
-        pendingQuickAction = nil
     }
 
     // MARK: - Layout
@@ -1004,11 +917,12 @@ struct WalletHomeView: View {
     ///
     /// Branches on `filterViewModeRaw`:
     /// - `.split` — the original shape: a segmented Coins/Tokens
-    ///   switcher in chrome, only the selected section renders below.
+    ///   switcher as the first holdings row, only the selected
+    ///   section renders below.
     /// - `.combined` — one unified section with every coin AND every
     ///   token mixed, sorted by the user's chosen key + direction.
-    ///   The segmented switcher disappears (see `chromeSection`
-    ///   below).
+    ///   The segmented switcher disappears and only the filter
+    ///   affordance stays in the holdings control row.
     @ViewBuilder
     private var holdingsBody: some View {
         if showsNetworkErrorState {
@@ -1020,10 +934,7 @@ struct WalletHomeView: View {
         } else {
             switch filterViewMode {
             case .split:
-                switch selectedHoldingsTab {
-                case .coins:  coinsSection
-                case .tokens: tokensSection
-                }
+                splitHoldingsSection
             case .combined:
                 combinedSection
             }
@@ -1121,8 +1032,8 @@ struct WalletHomeView: View {
     // never reused this. Removed as part of the native perf fix — it read
     // the old parent `totalFiat` (now computed inside `BalanceCardLiveSection`).
 
-    /// Floating chrome rows — biometric banner, glass action triplet,
-    /// Coins/Tokens segmented switcher. Cleared row backgrounds and
+    /// Floating chrome rows — biometric banner and glass action triplet.
+    /// Cleared row backgrounds and
     /// hidden separators so they float over the page color rather
     /// than sitting inside an inset card. The balance + chart live
     /// in `balanceCardSection` above; this section is purely chrome.
@@ -1166,45 +1077,25 @@ struct WalletHomeView: View {
                     ))
             }
 
-            // 2026-06-23 — the Send / Receive circles moved off the home into
-            // the `WalletActionsSheet`, opened by the bar's Actions item.
-            // `WalletActionRegion` is no longer rendered here.
-
-            // Coins ↔ Tokens segmented switcher. Native iOS
-            // `.pickerStyle(.segmented)` — the same control iOS
-            // Settings uses for its "Display & Brightness" Light /
-            // Dark toggle. Swipe / tap to change the active tab;
-            // `holdingsBody` renders the matching section.
-            //
-            // 2026-06-09 — only renders in `.split` view mode. In
-            // `.combined` mode the picker would be a no-op (one
-            // mixed list, no tab to switch) and would read as
-            // visual noise; the filter sheet's "Style → Combined"
-            // choice IS the affordance, and the picker disappears
-            // to honor it.
-            // Also hidden while the total-failure error state owns
-            // the holdings region — switching Coins/Tokens over an
-            // error card would be a no-op (2026-06-12).
-            if !showsNetworkErrorState {
-                holdingsChromeRow
-                    .listRowBackground(Color.clear)
-                    .listRowSeparator(.hidden)
-                    // Tightened vertical padding per 2026-06-09 user
-                    // direction so the picker sits closer to the action
-                    // region above and the section below.
-                    .listRowInsets(EdgeInsets(
-                        top: UniSpacing.xxs,
-                        leading: UniSpacing.m,
-                        bottom: UniSpacing.xxs,
-                        trailing: UniSpacing.m
-                    ))
-            }
+            WalletActionRegion(
+                canSend: activeWallet?.kind != .watchOnly,
+                onSend: { isShowingSend = true },
+                onReceive: { isShowingReceive = true },
+                onScan: { isShowingScanner = true }
+            )
+            .listRowBackground(Color.clear)
+            .listRowSeparator(.hidden)
+            .listRowInsets(EdgeInsets(
+                top: 0,
+                leading: UniSpacing.m,
+                bottom: 0,
+                trailing: UniSpacing.m
+            ))
         }
     }
 
-    /// The Coins/Tokens segment paired with the Filter & Sort control
-    /// (2026-06-23 — the filter moved here from the nav bar, which now
-    /// carries Settings). In `.split` mode the segment leads and the
+    /// The Coins/Tokens segment paired with the Filter & Sort control.
+    /// In `.split` mode the segment leads and the
     /// filter trails; in `.combined` mode there's no segment, so the
     /// filter sits alone, trailing-aligned, and stays reachable.
     private var holdingsChromeRow: some View {
@@ -1216,6 +1107,20 @@ struct WalletHomeView: View {
             }
             filterButton
         }
+    }
+
+    /// Native first row for the holdings card. The Coins/Tokens
+    /// segment and Filter control live with the assets now instead
+    /// of floating between the action buttons and the list.
+    private var holdingsControlsListRow: some View {
+        holdingsChromeRow
+            .listRowSeparator(.hidden)
+            .listRowInsets(EdgeInsets(
+                top: UniSpacing.xs,
+                leading: UniSpacing.m,
+                bottom: UniSpacing.xs,
+                trailing: UniSpacing.m
+            ))
     }
 
     /// Native segmented picker — Coins | Tokens.
@@ -1251,20 +1156,46 @@ struct WalletHomeView: View {
 
     // MARK: - Holdings section (native List)
 
-    // MARK: - Coins section (native coins, 10-row cap + Show all)
+    /// Stable split-mode holdings card. The Coins/Tokens picker is a
+    /// permanent first row; only the asset rows underneath it change.
+    ///
+    /// Previously the picker lived inside `coinsSection` /
+    /// `tokensSection`, so tapping the segment replaced the entire
+    /// `Section` tree, including the control row itself. List diffing
+    /// then animated cell teardown/re-insertion around the picker,
+    /// which made the switch feel jumpy. Keeping one section identity
+    /// lets the native segmented control animate its thumb while the
+    /// rows below swap without list-cell transition noise.
+    @ViewBuilder
+    private var splitHoldingsSection: some View {
+        Section {
+            holdingsControlsListRow
 
-    /// Coins section — one `AssetRow` per `coinHoldings` row.
+            Group {
+                switch selectedHoldingsTab {
+                case .coins:
+                    coinRows
+                case .tokens:
+                    tokenRows
+                }
+            }
+            .transaction { transaction in
+                transaction.animation = nil
+                transaction.disablesAnimations = true
+            }
+        }
+    }
+
+    // MARK: - Coins rows (native coins, 10-row cap + Show all)
+
+    /// Coin rows — one `AssetRow` per supported native chain.
     /// Capped at `holdingsDisplayCap` (10). When the wallet holds
     /// more than 10 coins, the trailing "Show all" navigation row
     /// pushes to `WalletHomeDestination.allSupported`. When the
     /// wallet holds 10 or fewer, no trailing row (everything held
     /// fits in the section).
-    ///
-    /// Section header `"COINS"` rendered uppercase by
-    /// `.listStyle(.insetGrouped)` — same chrome iOS Settings uses
-    /// for its "MOBILE DATA" / "GENERAL" labels.
     @ViewBuilder
-    private var coinsSection: some View {
+    private var coinRows: some View {
         // The user's Filter & Sort preferences are applied off-body
         // via the pure `WalletHomeFilterApply.apply(coins:with:)`
         // helper inside `rebuildFilteredRows()`; this section just
@@ -1274,84 +1205,54 @@ struct WalletHomeView: View {
         // drops hidden chains / hidden assets / zero balances per
         // the toggles. Pinned rows ride at the head of the array.
         let allRows = filteredCoinRows
-        // Re-partition so the view can render Pinned + non-pinned
-        // as two separate `Section`s (the apply helper concatenates
-        // them, but the rendering needs them apart so the "Pinned"
-        // header lives above the pinned rows).
         let pinnedSet = filterInputs.pinnedAssets
         let (pinned, nonPinned) = WalletHomeFilterApply.partitionPinned(coins: allRows, pinned: pinnedSet)
         let nonPinnedDisplayed = Array(nonPinned.prefix(holdingsDisplayCap))
         let hasMore = nonPinned.count > holdingsDisplayCap
 
-        // Pinned section — header only renders when at least one
-        // coin is pinned. Pinned rows never count against the
-        // 10-row cap; they're the user's stated priority.
-        if !pinned.isEmpty {
-            Section {
-                // **2026-06-09 perf.** Stable identity via
-                // `chain.rawValue` instead of `.enumerated().offset`.
-                // The offset shifts every time the array re-sorts (every
-                // body render under the current state-storm), which
-                // destroyed + recreated every row → re-ran `.task(id:)`
-                // on every `CoinMark` → re-fetched + re-decoded every
-                // token icon every body render. Stable id = SwiftUI
-                // reuses the row + the icon view + the cached image.
-                ForEach(pinned, id: \.chain.rawValue) { row in
-                    coinNavigationRow(row)
-                }
-            } header: {
-                Text("Pinned")
-            }
+        // **2026-06-09 perf.** Stable identity via
+        // `chain.rawValue` instead of `.enumerated().offset`.
+        // The offset shifts every time the array re-sorts, which
+        // destroys + recreates every row and re-runs icon tasks.
+        // Stable id = SwiftUI reuses the row + icon view.
+        ForEach(pinned, id: \.chain.rawValue) { row in
+            coinNavigationRow(row)
         }
 
-        Section {
-            ForEach(nonPinnedDisplayed, id: \.chain.rawValue) { row in
-                coinNavigationRow(row)
-            }
-            if hasMore { showAllRow }
+        ForEach(nonPinnedDisplayed, id: \.chain.rawValue) { row in
+            coinNavigationRow(row)
         }
-        // No section header — the segmented picker in chrome is
+        if hasMore { showAllRow }
+        // No section header — the segmented picker in the holdings row is
         // the canonical "you're looking at Coins" affordance now
         // (2026-06-09). Stacking a "Coins" header on top of an
         // already-selected "Coins" tab would be noise.
     }
 
-    // MARK: - Tokens section (registry tokens, 10-row cap + Show all)
+    // MARK: - Tokens rows (registry tokens, 10-row cap + Show all)
 
-    /// Tokens section — one `TokenHoldingRow` per `tokenHoldings`
-    /// row. Capped at `holdingsDisplayCap` (10) with the same
-    /// "Show all" trailing-row rule. Rows display the token symbol,
-    /// the chain it lives on, the native amount, and the fiat
-    /// equivalent. Treeline-free — these are top-level rows in the
-    /// flat layout, not nested under a chain.
+    /// Token rows — one supported display token per row. Capped at
+    /// `holdingsDisplayCap` (10) with the same "Show all" trailing-row
+    /// rule as coins.
     @ViewBuilder
-    private var tokensSection: some View {
-        // Memoized filter + sort — same rationale as `coinsSection`.
-        // Pinned tokens get their own Section above the rest with
-        // the "Pinned" header.
+    private var tokenRows: some View {
+        // Memoized filter + sort — same rationale as `coinRows`.
+        // Pinned tokens stay at the head of this stable section.
         let allRows = filteredTokenRows
         let pinnedSet = filterInputs.pinnedAssets
         let (pinned, nonPinned) = WalletHomeFilterApply.partitionPinned(tokens: allRows, pinned: pinnedSet)
         let nonPinnedDisplayed = Array(nonPinned.prefix(holdingsDisplayCap))
         let hasMore = nonPinned.count > holdingsDisplayCap
 
-        if !pinned.isEmpty {
-            Section {
-                ForEach(pinned, id: \.id) { row in
-                    tokenNavigationRow(row)
-                }
-            } header: {
-                Text("Pinned")
-            }
+        ForEach(pinned, id: \.id) { row in
+            tokenNavigationRow(row)
         }
 
-        Section {
-            ForEach(nonPinnedDisplayed, id: \.id) { row in
-                tokenNavigationRow(row)
-            }
-            if hasMore { showAllRow }
+        ForEach(nonPinnedDisplayed, id: \.id) { row in
+            tokenNavigationRow(row)
         }
-        // Header omitted — see the coinsSection note above.
+        if hasMore { showAllRow }
+        // Header omitted — see the coinRows note above.
     }
 
     // MARK: - Navigation row wrappers (asset-detail routing)
@@ -1446,8 +1347,8 @@ struct WalletHomeView: View {
     /// **Combined holdings section** — every coin + every token in
     /// one unified, filter-sorted list. Renders only when the
     /// Filter & Sort sheet's "Style" is `.combined`. The Coins /
-    /// Tokens segmented switcher disappears (see `chromeSection`)
-    /// because the picker would be a no-op in this mode.
+    /// Tokens segmented switcher disappears from the holdings control
+    /// row because the picker would be a no-op in this mode.
     ///
     /// **Why one ForEach and not two stacked Sections.** The whole
     /// point of `.combined` is "one portfolio, sorted by my chosen
@@ -1478,6 +1379,8 @@ struct WalletHomeView: View {
         // Pinned rows always at the head, regardless of group-by.
         if !pinned.isEmpty {
             Section {
+                holdingsControlsListRow
+
                 ForEach(pinned, id: \.id) { item in
                     combinedRow(item)
                 }
@@ -1494,6 +1397,10 @@ struct WalletHomeView: View {
             let displayed = Array(nonPinned.prefix(holdingsDisplayCap))
             let hasMore = nonPinned.count > holdingsDisplayCap
             Section {
+                if pinned.isEmpty {
+                    holdingsControlsListRow
+                }
+
                 ForEach(displayed, id: \.id) { item in
                     combinedRow(item)
                 }
@@ -1505,8 +1412,17 @@ struct WalletHomeView: View {
             // each section, rows retain their pre-sorted order
             // (the merged sort that `combinedFilteredRows` produced).
             let groups = groupByChain(nonPinned)
+            if groups.isEmpty && pinned.isEmpty {
+                Section {
+                    holdingsControlsListRow
+                }
+            }
             ForEach(groups, id: \.chain) { group in
                 Section {
+                    if pinned.isEmpty && group.chain == groups.first?.chain {
+                        holdingsControlsListRow
+                    }
+
                     ForEach(group.items, id: \.id) { item in
                         combinedRow(item)
                     }
@@ -2288,13 +2204,12 @@ struct WalletHomeView: View {
             Label("Add wallet", systemImage: "plus")
         }
 
-        // Manage wallets — stamps the deep-link token, then presents
-        // the Settings sheet (2026-06-23 — Settings is no longer a
-        // tab). `SettingsView` consumes the token on appear and pushes
-        // Wallets onto its NavigationPath.
+        // Manage wallets — stamps the deep-link token, then switches to
+        // the Settings tab. `SettingsView` consumes the token on appear and
+        // pushes Wallets onto its NavigationPath.
         Button {
             settingsDeepLink = "wallets"
-            isShowingSettings = true
+            selectedTabRaw = MainTab.settings.rawValue
         } label: {
             Label("Manage wallets", systemImage: "list.bullet")
         }

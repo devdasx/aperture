@@ -132,13 +132,11 @@ final class ImportWalletState {
                 words: mnemonicWords,
                 passphrase: mnemonicPassphrase
             )
-            // Encrypt + Keychain-write the seed AND the mnemonic OFF the
-            // main actor (2026-06-17). AES-GCM seal + four `SecItemAdd`
-            // writes used to run here on `@MainActor` and hitched the
-            // import commit; they're now on a background task. The
-            // mnemonic copy lets the user re-view the phrase from
-            // Settings → Wallets → "View recovery phrase" (AES-GCM 256
-            // + `WhenPasscodeSetThisDeviceOnly` — device-local, locked).
+            // Encrypt + Keychain-write the seed and legacy mnemonic copy OFF
+            // the main actor. The canonical user-readable mnemonic is written
+            // into `WalletSecretRecord` by `insertImportedMnemonicWallet(...)`,
+            // encrypted with an app-owned device-local key that is not derived
+            // from the app passcode or Face ID.
             try await Self.storeMnemonicKeyMaterial(
                 seed: seed,
                 mnemonic: mnemonicWords,
@@ -155,6 +153,7 @@ final class ImportWalletState {
                     mnemonicWordCount: mnemonicWordCount.rawValue,
                     hasPassphrase: !mnemonicPassphrase.isEmpty,
                     colorTag: "default",
+                    mnemonicWords: mnemonicWords,
                     addresses: addressEntries
                 )
             } catch {
@@ -190,7 +189,9 @@ final class ImportWalletState {
             // / WIF, trimmed) so the user can re-view it from Settings →
             // Wallets → "View private key"; the SeedVault slot holds only
             // the decoded raw bytes, which can't render back to WIF /
-            // base58. Both AES-GCM 256 + `WhenPasscodeSetThisDeviceOnly`.
+            // base58. The canonical user-readable key string is also written
+            // into `WalletSecretRecord` by `insertImportedKeyWallet(...)`,
+            // encrypted with an app-owned device-local key.
             try await Self.storePrivateKeyMaterial(
                 privateKeyRaw: privateKeyRaw,
                 chain: chain,
@@ -214,6 +215,7 @@ final class ImportWalletState {
                     id: walletId,
                     name: resolvedName,
                     colorTag: "default",
+                    privateKey: privateKeyRaw.trimmingCharacters(in: .whitespacesAndNewlines),
                     addresses: keyAddresses
                 )
             } catch {
@@ -276,9 +278,8 @@ final class ImportWalletState {
 
     /// Zero the sensitive in-memory inputs once persistence has
     /// succeeded (or the entry surface is abandoned). The seed / key
-    /// bytes now live encrypted in Keychain; the plaintext words,
-    /// passphrase, and raw key string have no reason to outlive the
-    /// flow.
+    /// bytes live encrypted locally; the plaintext words, passphrase,
+    /// and raw key string have no reason to outlive the flow.
     func zeroSensitiveInput() {
         mnemonicWords = []
         mnemonicPassphrase = ""

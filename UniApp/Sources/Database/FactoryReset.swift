@@ -1,25 +1,20 @@
 import Foundation
 import SwiftData
 import OSLog
-// TipKit's own datastore ("shown once" counters) can only be reset BEFORE
-// `Tips.configure()` runs — which already happened at launch — so that reset
-// is deferred to the next launch via `tipKitResetFlagKey` (see `UniAppApp`),
-// not attempted mid-session.
 
 // MARK: - FactoryReset
 
-/// The single structural SwiftData wipe behind "Reset Aperture"
-/// (Settings → Advanced → `AdvancedSettingsView.resetAll()`).
+/// The reset executor behind "Reset Aperture" and the optional Erase Data
+/// lock-screen wipe.
 ///
-/// **The contract (user direction 2026-06-13, verbatim):** *"when
-/// resetting the app everything in the app should be removed like
-/// we've installed the app now for the first time."* For the SwiftData
-/// tier, "everything" is defined structurally: every model type listed
-/// in `ApertureSchemaV1.models` gets its table emptied. A table added
-/// to the schema tomorrow is covered automatically — there is no
-/// per-table call site to forget (the bug class this type retires:
-/// `PriceSnapshotRecord`, `WalletChartSnapshotRecord`, and
-/// `HistoricalPriceRecord` had shipped without a reset wipe).
+/// **Reset policy (2026-06-25).** Reset is a custody/privacy wipe, not a
+/// cache purge. It removes wallets, addresses, balances, transactions,
+/// encrypted per-chain key blobs, wallet-scoped chart data, security state,
+/// and user-created wallet configuration. It intentionally preserves public
+/// / reproducible data: spot-price caches, historical prices, market rows,
+/// market charts, the asset catalog, and token-logo bytes. Those records
+/// contain no keys, no addresses, and no wallet ids, and keeping them avoids
+/// making a reset feel like a cold reinstall with empty markets.
 ///
 /// **Why fetch-and-delete, not `ModelContext.delete(model:)`.** The
 /// batch-delete form routes around the context on some store kinds
@@ -34,19 +29,16 @@ import OSLog
 /// `save()` so a mid-wipe failure never publishes a half-wiped store
 /// from this call — the caller decides whether to retry or surface.
 ///
-/// **Singletons included, deliberately.** `AppMetadataRecord` and
-/// `BiometricEnrollmentRecord` are wiped too: their values
-/// (`firstLaunchAt`, the enrollment snapshot) describe the *previous*
-/// owner. `ApertureDatabase.bootstrap()` recreates both on the next
-/// launch with first-install values, and every in-session consumer
-/// tolerates their absence (`AdvancedSettingsView` reads the metadata
-/// row optionally; `BiometricEnrollmentTracker.fetchOrCreate`
-/// self-heals a missing row).
+/// **Singletons included, deliberately.** `AppMetadataRecord`,
+/// `AppSettingsRecord`, and `BiometricEnrollmentRecord` are wiped: their
+/// values describe the previous app/security session. `ApertureDatabase`
+/// and `SettingsStore` recreate them from the surviving non-sensitive
+/// defaults on the next launch / next sync.
 ///
 /// **What this type does NOT cover** (owned by `resetAll()` directly):
 /// Keychain (`SeedVault` / `MnemonicVault` / `PinCodeStorage` /
-/// `WalletManifestStore`), `UserDefaults`, the TipKit datastore, and
-/// the `CoinMarkCache` disk cache.
+/// `WalletManifestStore` / `ChainKeyVault`), selected `UserDefaults`
+/// cleanup, and transient Foundation URL/cookie caches.
 /// `ResetCompletenessTests` pins this type's contract.
 enum FactoryReset {
 
@@ -56,19 +48,64 @@ enum FactoryReset {
     /// The reset flow's progress ring fills one third per stage as each
     /// genuinely completes (handoff rule #4 — honest progress, not a timer).
     enum Stage: CaseIterable, Sendable {
-        /// SwiftData wallets + every model table. The failable custody gate.
+        /// SwiftData wallets + wallet-scoped/private tables. The failable custody gate.
         case wallets
         /// Keychain seed / mnemonic / private-key material + the PIN records.
         case keys
-        /// Web data, URL/cookie caches, token-logo cache, UserDefaults.
+        /// URL/cookie caches and resettable UserDefaults.
         case settings
     }
 
-    /// UserDefaults marker that asks the NEXT launch to reset TipKit's "seen"
-    /// datastore before it configures TipKit — the only valid moment to reset
-    /// it. Set during the wipe AFTER the UserDefaults domain is cleared (so it
-    /// survives), and consumed once in `UniAppApp.init`.
+    /// Legacy UserDefaults marker consumed by `UniAppApp.init` for devices
+    /// that ran an older reset build. Current resets preserve TipKit state as
+    /// normal non-wallet app data and no longer set this flag.
     static let tipKitResetFlagKey = "apertureNeedsTipKitReset"
+
+    /// SwiftData tables that must be empty after reset. These are either
+    /// wallet-owned, security/session-owned, or user-authored configuration.
+    /// Public quote / market / catalog tables are intentionally absent.
+    static let resettableSwiftDataModels: [any PersistentModel.Type] = [
+        WalletRecord.self,
+        WalletSecretRecord.self,
+        WalletAddressRecord.self,
+        TransactionRecord.self,
+        TokenBalanceRecord.self,
+        BiometricEnrollmentRecord.self,
+        AppMetadataRecord.self,
+        CustomTokenRecord.self,
+        WalletChartSnapshotRecord.self,
+        AppSettingsRecord.self,
+        ChainStateRecord.self,
+        ChainUTXORecord.self
+    ]
+
+    /// Public, reproducible data intentionally retained across reset.
+    /// `SyncStatusRecord` is partially retained: only global price/history
+    /// freshness rows survive; wallet-scoped rows are deleted.
+    static let preservedSwiftDataModels: [any PersistentModel.Type] = [
+        CachedPriceRecord.self,
+        HistoricalPriceRecord.self,
+        PriceSnapshotRecord.self,
+        SyncStatusRecord.self,
+        ChainRecord.self,
+        AssetRecord.self,
+        MarketAssetRecord.self,
+        MarketChartCacheRecord.self,
+        MarketWatchlistRecord.self
+    ]
+
+    /// Non-sensitive preferences/cache-version keys that should survive a
+    /// reset. Security state, active wallet pointers, deep links, onboarding
+    /// state, filter state, and API keys are intentionally not listed.
+    private static let preservedUserDefaultsKeys: Set<String> = [
+        "themePreference",
+        "languagePreference",
+        CurrencyPreference.storageKey,
+        HapticPreference.storageKey,
+        "backgroundBalanceRefresh",
+        "walletHomeBalanceHistoryRange",
+        "aperture.historicalPriceCacheVersion"
+    ]
 
     /// The **complete** factory wipe — the single routine behind BOTH
     /// "Reset Aperture" (Settings) and "Erase Data" (auto-wipe after repeated
@@ -82,12 +119,10 @@ enum FactoryReset {
 
     /// The complete factory wipe, reporting each real deletion `Stage` as it
     /// finishes so the Reset-Aperture UI's progress ring reflects honest
-    /// progress. After it returns, the app's persistent state is
-    /// indistinguishable from a first install: every SwiftData table empty,
-    /// every Aperture Keychain item gone, the full `UserDefaults` domain
-    /// removed, the TipKit datastore reset, and the token-logo disk cache
-    /// deleted. `RootGate` observes the
-    /// wallet count flip to zero and routes back to onboarding.
+    /// progress. After it returns, all custody and wallet-linked state is
+    /// gone, while public market / price / asset cache data remains.
+    /// `RootGate` observes the wallet count flip to zero and routes back to
+    /// onboarding.
     ///
     /// **Order is the safety contract.** The SwiftData wallet deletion runs
     /// FIRST and is the ONLY step that throws — if it fails, NOTHING has been
@@ -106,14 +141,15 @@ enum FactoryReset {
         // SwiftData rows are gone (once the rows go, the ids are lost).
         let walletIds = (try? await repo.allWalletIds()) ?? []
 
-        // STAGE 1 — wallets & history. The custody gate. `deleteAllWallets()`
+        // STAGE 1 — wallets & wallet-scoped history. The custody gate. `deleteAllWallets()`
         // refuses the in-memory fallback store, drops every wallet (with
         // cascades) plus the primitive-keyed chart snapshots, and clears the
         // Keychain wallet manifest. Throws ⇒ nothing destroyed yet.
         try await repo.deleteAllWallets()
-        // Structural wipe of EVERY model in `ApertureSchemaV1.models`.
-        do { try wipeAllModels(in: modelContext) }
-        catch { log.error("Full wipe: structural model wipe failed: \(String(describing: error), privacy: .public)") }
+        // Clear every remaining private / wallet-scoped SwiftData table, while
+        // preserving public market and price caches.
+        do { try wipeResettableModels(in: modelContext) }
+        catch { log.error("Reset: resettable model wipe failed: \(String(describing: error), privacy: .public)") }
         onStageComplete(.wallets)
 
         // STAGE 2 — keys & phrases (Keychain). Best-effort; idempotent (a
@@ -125,52 +161,87 @@ enum FactoryReset {
         }
         // Keychain — PIN hash + salt + both failure records.
         PinCodeStorage.clear()
+        // Keychain — app-wide key that opens per-chain encrypted key blobs.
+        ChainKeyVault.clear()
+        // Keychain — app-wide key that opens encrypted SwiftData wallet
+        // secret rows. The rows are wiped in stage 1; clearing the key keeps
+        // reset's custody wipe complete even if a row deletion was retried.
+        WalletSecretCrypto.clearMasterKey()
         onStageComplete(.keys)
 
         // STAGE 3 — settings & cache. Best-effort.
         // Foundation-level network residue.
         URLCache.shared.removeAllCachedResponses()
         HTTPCookieStorage.shared.removeCookies(since: .distantPast)
-        // Token-logo disk cache (Caches/AperturePaint/CoinMarks).
-        await CoinMarkCache.shared.clearAll()
-        // Wipe every @AppStorage key (active-wallet pointer, tab, theme/
-        // language/currency, pin/biometric/erase flags, restoration stamps,
-        // and the fresh-install marker — so the NEXT launch re-runs the
-        // fresh-install Keychain purge as a second idempotent sweep). Done
-        // before the onboarding flag so it only flips after the data is gone.
+        // Wipe @AppStorage / UserDefaults except for non-sensitive display
+        // preferences and cache-version keys. Active-wallet pointers, security
+        // flags, restoration paths, wallet filters, and onboarding state must
+        // not survive.
+        let preservedDefaults = snapshotPreservedUserDefaults()
         if let bundleId = Bundle.main.bundleIdentifier {
             UserDefaults.standard.removePersistentDomain(forName: bundleId)
         }
-        // Ask the next launch to reset TipKit's "seen" datastore (it can't be
-        // reset mid-session — `Tips.configure()` already ran, so
-        // `Tips.resetDatastore()` here would throw `tipsDatastoreAlreadyConfigured`).
-        // Set AFTER the domain wipe so the marker itself survives.
-        UserDefaults.standard.set(true, forKey: tipKitResetFlagKey)
+        restorePreservedUserDefaults(preservedDefaults)
         onStageComplete(.settings)
         log.notice("Full wipe completed: \(walletIds.count, privacy: .public) wallets purged.")
     }
 
-    /// Empty every table named by `ApertureSchemaV1.models`, committing
-    /// all deletions in one save. Throws if a fetch or the final save
-    /// fails — nothing is committed in that case.
-    static func wipeAllModels(in context: ModelContext) throws {
-        for model in ApertureSchemaV1.models {
+    /// Empty resettable/private SwiftData tables, preserving public market /
+    /// price / catalog caches. Throws if a fetch or final save fails.
+    static func wipeResettableModels(in context: ModelContext) throws {
+        for model in resettableSwiftDataModels {
             try wipeRows(of: model, in: context)
         }
+        try wipeWalletScopedSyncStatusRows(in: context)
         if context.hasChanges {
             try context.save()
         }
     }
 
-    /// Delete every row of one model type. No save — `wipeAllModels`
-    /// batches the commit. (The `any PersistentModel.Type` existential
-    /// from the schema list is opened into the generic here, SE-0352.)
+    /// Delete every row of one model type. No save — `wipeResettableModels`
+    /// batches the commit.
     private static func wipeRows<T: PersistentModel>(
         of type: T.Type,
         in context: ModelContext
     ) throws {
         for row in try context.fetch(FetchDescriptor<T>()) {
             context.delete(row)
+        }
+    }
+
+    /// Delete wallet-scoped sync rows while preserving global public cache
+    /// freshness (`prices|global`, `historical|global`).
+    private static func wipeWalletScopedSyncStatusRows(in context: ModelContext) throws {
+        for row in try context.fetch(FetchDescriptor<SyncStatusRecord>()) {
+            guard shouldPreserveSyncStatus(row) else {
+                context.delete(row)
+                continue
+            }
+        }
+    }
+
+    private static func shouldPreserveSyncStatus(_ row: SyncStatusRecord) -> Bool {
+        guard row.scopeId == SyncDomain.globalScope,
+              let domain = SyncDomain(rawValue: row.domainRaw)
+        else { return false }
+        return domain == .prices || domain == .historical
+    }
+
+    private static func snapshotPreservedUserDefaults() -> [String: Any] {
+        let defaults = UserDefaults.standard
+        var snapshot: [String: Any] = [:]
+        for key in preservedUserDefaultsKeys {
+            if let value = defaults.object(forKey: key) {
+                snapshot[key] = value
+            }
+        }
+        return snapshot
+    }
+
+    private static func restorePreservedUserDefaults(_ snapshot: [String: Any]) {
+        let defaults = UserDefaults.standard
+        for (key, value) in snapshot {
+            defaults.set(value, forKey: key)
         }
     }
 }

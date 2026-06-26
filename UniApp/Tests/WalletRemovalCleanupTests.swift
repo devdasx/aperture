@@ -80,11 +80,13 @@ import SwiftData
         let walletB = UUID()
         try await repo.insertCreatedWallet(
             id: walletA, name: "A", mnemonicWordCount: 12,
-            hasPassphrase: false, colorTag: "default", requiresBackup: false
+            hasPassphrase: false, colorTag: "default", requiresBackup: false,
+            mnemonicWords: ["abandon", "ability", "able"]
         )
         try await repo.insertCreatedWallet(
             id: walletB, name: "B", mnemonicWordCount: 12,
-            hasPassphrase: false, colorTag: "default", requiresBackup: false
+            hasPassphrase: false, colorTag: "default", requiresBackup: false,
+            mnemonicWords: ["about", "above", "absent"]
         )
 
         // Timelines: A in two currencies, B in one — the deletion must
@@ -109,6 +111,17 @@ import SwiftData
         #expect(aEUR.isEmpty, "wallet A's EUR chart snapshots must not survive its deletion")
         #expect(bUSD.count == 1, "wallet B's timeline must be untouched by A's deletion")
         #expect(bUSD.first?.fiatValue == 50)
+        let secretContext = ModelContext(store.container)
+        let walletASecretKey = WalletSecretRecord.storageKey(walletId: walletA, kind: .mnemonic)
+        let walletBSecretKey = WalletSecretRecord.storageKey(walletId: walletB, kind: .mnemonic)
+        let walletASecrets = try secretContext.fetch(FetchDescriptor<WalletSecretRecord>(
+            predicate: #Predicate { $0.key == walletASecretKey }
+        ))
+        let walletBSecrets = try secretContext.fetch(FetchDescriptor<WalletSecretRecord>(
+            predicate: #Predicate { $0.key == walletBSecretKey }
+        ))
+        #expect(walletASecrets.isEmpty, "wallet A's encrypted phrase row must not survive its deletion")
+        #expect(walletBSecrets.count == 1, "wallet B's encrypted phrase row must be untouched by A's deletion")
 
         // Cleanup: empty the store so the manifest sync ends cleared.
         try await repo.deleteAllWallets()
@@ -149,7 +162,8 @@ import SwiftData
         let walletA = UUID()
         try await repo.insertCreatedWallet(
             id: walletA, name: "A", mnemonicWordCount: 12,
-            hasPassphrase: false, colorTag: "default", requiresBackup: false
+            hasPassphrase: false, colorTag: "default", requiresBackup: false,
+            mnemonicWords: ["abandon", "ability", "able"]
         )
         try await chartRepo.record(walletId: walletA, currencyCode: "USD", fiatValue: 1, capturedAt: Date())
         // Plus an orphan for a wallet with no record — the full reset
@@ -162,5 +176,7 @@ import SwiftData
         #expect(try await repo.allWalletIds().isEmpty)
         #expect(try await chartRepo.series(walletId: walletA, currencyCode: "USD").isEmpty)
         #expect(try await chartRepo.series(walletId: ghost, currencyCode: "USD").isEmpty)
+        let secretContext = ModelContext(store.container)
+        #expect(try secretContext.fetchCount(FetchDescriptor<WalletSecretRecord>()) == 0)
     }
 }

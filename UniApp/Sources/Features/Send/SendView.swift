@@ -18,6 +18,9 @@ import SwiftData
 /// the seam where the next increment — amount entry + recipient — lands.
 struct SendView: View {
     @Query(sort: \WalletRecord.sortOrder) private var allWallets: [WalletRecord]
+    @Query(sort: [SortDescriptor(\CustomTokenRecord.symbol, order: .forward)])
+    private var customTokenRecords: [CustomTokenRecord]
+    @Query private var assetRecords: [AssetRecord]
     @AppStorage("activeWalletId") private var activeWalletIdRaw: String = ""
 
     /// The sheet's own NavigationPath — lives on the sheet root so it can
@@ -31,8 +34,16 @@ struct SendView: View {
     /// for the normal "tap Send" flow (which starts at the asset picker).
     var prefill: ScanPrefill? = nil
 
+    /// **Asset prefill.** When another surface already knows the asset
+    /// (for example Markets → Bitcoin → Send BTC), seed the Send flow past
+    /// the asset picker. Native coins go straight to recipient; tokens with
+    /// one supported network also go straight to recipient; multi-network
+    /// tokens open the network picker.
+    var assetPrefill: AssetPrefill? = nil
+
     /// Seeds the scan prefill exactly once.
     @State private var didSeedPrefill: Bool = false
+    @State private var didSeedAssetPrefill: Bool = false
 
     /// Dismisses the whole Send sheet — the honest Review "Done" action
     /// while signing/broadcast is the next increment.
@@ -78,18 +89,10 @@ struct SendView: View {
                 holdings: holdings,
                 currencyCode: currencyCode,
                 onSelectNative: { chain in
-                    guard let address = address(for: chain) else {
-                        presentMissingAddress(chain)
-                        return
-                    }
-                    // Native coin: the network IS the chain — skip the
-                    // network picker and go straight to the recipient step.
-                    navigationPath.append(
-                        SendDestination.recipient(chain: chain, tokenSymbol: nil, fromAddress: address, prefillRecipient: nil)
-                    )
+                    openNative(chain)
                 },
                 onSelectToken: { asset in
-                    navigationPath.append(SendDestination.networkPicker(asset))
+                    openToken(asset)
                 }
             )
             .navigationTitle("Send")
@@ -102,17 +105,11 @@ struct SendView: View {
                         holdings: holdings,
                         currencyCode: currencyCode,
                         onSelectNetwork: { chain in
-                            guard let address = address(for: chain) else {
-                                presentMissingAddress(chain)
-                                return
-                            }
                             let symbol: String? = {
                                 if case let .token(symbol, _, _) = asset { return symbol }
                                 return nil
                             }()
-                            navigationPath.append(
-                                SendDestination.recipient(chain: chain, tokenSymbol: symbol, fromAddress: address, prefillRecipient: nil)
-                            )
+                            openNetwork(chain, tokenSymbol: symbol)
                         }
                     )
                 case let .recipient(chain, tokenSymbol, fromAddress, prefillRecipient):
@@ -163,18 +160,11 @@ struct SendView: View {
             holdings = AssetPickerHoldings(wallet: activeWallet)
             recents = RecentRecipientsIndex(wallet: activeWallet)
         }
-        // Scan prefill: jump straight to the recipient step for the scanned
-        // chain with the address pre-filled. Once only, and only if the wallet
-        // actually has an address on that chain (else the normal asset picker
-        // shows). Same `address(for:)` lookup the manual flow uses.
-        .onAppear {
-            guard !didSeedPrefill, let prefill else { return }
-            didSeedPrefill = true
-            guard navigationPath.isEmpty, let addr = address(for: prefill.chain) else { return }
-            navigationPath.append(SendDestination.recipient(
-                chain: prefill.chain, tokenSymbol: nil, fromAddress: addr,
-                prefillRecipient: prefill.recipient
-            ))
+        // Prefills: jump past already-known choices exactly once. Scan
+        // prefill wins because it carries a recipient too; asset prefill
+        // is used by surfaces like Markets that already know BTC/USDT.
+        .task(id: prefillSeedKey) {
+            seedPrefillsIfNeeded()
         }
         .alert(
             Text("No address for this network"),
@@ -185,6 +175,86 @@ struct SendView: View {
         } message: { chain in
             Text("This wallet has no \(chain.displayName) address yet, so there's nothing to send from on this network. Aperture may still be deriving your accounts — try again in a moment.")
         }
+    }
+
+    private var prefillSeedKey: String {
+        [
+            activeWalletIdRaw,
+            availableChains.map(\.rawValue).joined(separator: ","),
+            "\(assetRecords.count)",
+            "\(customTokenRecords.count)",
+            prefill.map { "scan:\($0.chain.rawValue):\($0.recipient)" } ?? "scan:nil",
+            assetPrefill.map { "asset:\($0.symbol):\($0.nativeChain?.rawValue ?? "token")" } ?? "asset:nil",
+            "\(didSeedPrefill)",
+            "\(didSeedAssetPrefill)"
+        ].joined(separator: "|")
+    }
+
+    private func seedPrefillsIfNeeded() {
+        guard navigationPath.isEmpty else { return }
+
+        if !didSeedPrefill, let prefill {
+            didSeedPrefill = true
+            openNative(prefill.chain, prefillRecipient: prefill.recipient)
+            return
+        }
+
+        guard !didSeedAssetPrefill, let assetPrefill else { return }
+
+        if let chain = assetPrefill.nativeChain {
+            didSeedAssetPrefill = true
+            openNative(chain)
+            return
+        }
+
+        guard let token = matchingToken(for: assetPrefill) else { return }
+        didSeedAssetPrefill = true
+        openToken(token)
+    }
+
+    private func matchingToken(for prefill: AssetPrefill) -> SendAsset? {
+        let symbol = prefill.symbol.uppercased()
+        return SendAsset.tokens(
+            availableChains: Set(availableChains),
+            customTokens: customTokenRecords.map { CustomTokenSnapshot(from: $0) },
+            catalogAssets: AssetCatalog.assets(from: assetRecords)
+        )
+        .first { asset in
+            guard case let .token(tokenSymbol, _, _) = asset else { return false }
+            return tokenSymbol.uppercased() == symbol
+        }
+    }
+
+    private func openNative(_ chain: SupportedChain, prefillRecipient: String? = nil) {
+        openNetwork(chain, tokenSymbol: nil, prefillRecipient: prefillRecipient)
+    }
+
+    private func openToken(_ asset: SendAsset) {
+        guard case let .token(symbol, _, chains) = asset else { return }
+        if chains.count == 1, let chain = chains.first {
+            openNetwork(chain, tokenSymbol: symbol)
+        } else {
+            navigationPath.append(SendDestination.networkPicker(asset))
+        }
+    }
+
+    private func openNetwork(
+        _ chain: SupportedChain,
+        tokenSymbol: String?,
+        prefillRecipient: String? = nil
+    ) {
+        guard let address = address(for: chain) else {
+            presentMissingAddress(chain)
+            return
+        }
+        navigationPath.append(
+            SendDestination.recipient(
+                chain: chain,
+                tokenSymbol: tokenSymbol,
+                fromAddress: address,
+                prefillRecipient: prefillRecipient
+            )
+        )
     }
 
     private func presentMissingAddress(_ chain: SupportedChain) {
@@ -246,6 +316,20 @@ struct SendView: View {
     struct ScanPrefill: Equatable {
         let chain: SupportedChain
         let recipient: String
+    }
+
+    /// Asset seed handed in by a caller that already knows what the
+    /// user intends to send.
+    struct AssetPrefill: Equatable {
+        let symbol: String
+        let name: String
+        let nativeChain: SupportedChain?
+
+        init(symbol: String, name: String, nativeChain: SupportedChain? = nil) {
+            self.symbol = symbol.uppercased()
+            self.name = name
+            self.nativeChain = nativeChain
+        }
     }
 }
 

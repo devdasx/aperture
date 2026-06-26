@@ -28,6 +28,7 @@ enum ApertureSchemaV1: VersionedSchema {
     static var models: [any PersistentModel.Type] {
         [
             WalletRecord.self,
+            WalletSecretRecord.self,
             WalletAddressRecord.self,
             TransactionRecord.self,
             TokenBalanceRecord.self,
@@ -52,6 +53,13 @@ enum ApertureSchemaV1: VersionedSchema {
             // authoritative settings row, kept in sync with @AppStorage
             // by SettingsStore.
             AppSettingsRecord.self,
+            // 2026-06-25 — local-first Markets cache. Live quotes and
+            // charts are refreshed from public providers, then persisted
+            // here so the Markets tab can fall back to the last known real
+            // data when every provider is unavailable.
+            MarketAssetRecord.self,
+            MarketChartCacheRecord.self,
+            MarketWatchlistRecord.self,
             // 2026-06-17 — per-chain aggregate + UTXO persistence (user
             // direction "a row for each chain with all its details"):
             // `ChainStateRecord` is the denormalized one-row-per-(wallet,
@@ -339,6 +347,51 @@ final class WalletRecord {
             walletKind: kind
         )
     }
+}
+
+// MARK: - WalletSecretRecord
+
+/// Encrypted user-readable wallet secrets stored in SwiftData.
+///
+/// `WalletRecord` still carries only metadata, while this table stores the
+/// AES-GCM ciphertext for the phrase/key the user expects Aperture to show
+/// again for manual backup, recovery-phrase export, and private-key export.
+/// The encryption key is device-local and app-owned, not derived from the
+/// app passcode or Face ID, so disabling those app locks cannot delete these
+/// rows. The plaintext never lives in SwiftData.
+@Model
+final class WalletSecretRecord {
+    /// Stable unique key: `<wallet UUID>|<kind raw>`.
+    @Attribute(.unique) var key: String
+    var walletId: UUID
+    var kindRaw: String
+    var cipherData: Data
+    var createdAt: Date
+    var updatedAt: Date
+
+    init(
+        walletId: UUID,
+        kind: WalletSecretKind,
+        cipherData: Data,
+        createdAt: Date = Date(),
+        updatedAt: Date = Date()
+    ) {
+        self.key = WalletSecretRecord.storageKey(walletId: walletId, kind: kind)
+        self.walletId = walletId
+        self.kindRaw = kind.rawValue
+        self.cipherData = cipherData
+        self.createdAt = createdAt
+        self.updatedAt = updatedAt
+    }
+
+    static func storageKey(walletId: UUID, kind: WalletSecretKind) -> String {
+        "\(walletId.uuidString)|\(kind.rawValue)"
+    }
+}
+
+enum WalletSecretKind: String, Codable, Sendable, CaseIterable {
+    case mnemonic
+    case privateKey
 }
 
 /// How a wallet came into being. Drives the wallet-row icon and the
@@ -976,4 +1029,3 @@ final class HistoricalPriceRecord {
         self.key = "\(upperSymbol)-\(upperFiat)-\(dayKey)"
     }
 }
-

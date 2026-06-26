@@ -38,6 +38,7 @@ import SwiftUI
 struct OnboardingView: View {
     @State private var currentIndex: Int = 0
     @State private var isShowingSettings: Bool = false
+    @State private var hasOpened: Bool = false
     /// Toggles the `OpenSourceSheet`. Presented from the welcome slide's
     /// restrained "Open source" badge — the first security-touching
     /// anchor a user sees per session (Rule #16 §A.4 / §C).
@@ -177,6 +178,12 @@ struct OnboardingView: View {
                 }
             }
         }
+        .opacity(hasOpened ? 1 : 0)
+        .animation(.easeInOut(duration: 0.24), value: hasOpened)
+        .onAppear {
+            guard !hasOpened else { return }
+            hasOpened = true
+        }
         .sheet(isPresented: $isShowingSettings, onDismiss: {
             settingsPath = NavigationPath()
         }) {
@@ -187,8 +194,8 @@ struct OnboardingView: View {
             // re-pushes the same picker the user was on.
             // Pre-wallet Settings — slim variant carrying only the
             // rows that make sense before any wallet exists
-            // (Language, Appearance, Currency, Haptic, Help, About,
-            // Acknowledgments). The post-wallet sections (Wallets,
+            // (Language, Appearance, Haptic, Help, About). The
+            // post-wallet sections (Wallets,
             // Security, Privacy, Hide-balance toggles, Advanced) are
             // only reachable from the wallet home's `SettingsView`.
             OnboardingSettingsView(navigationPath: $settingsPath)

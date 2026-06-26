@@ -43,7 +43,7 @@ struct SendReviewView: View {
     let onClose: () -> Void
 
     @AppStorage("biometricEnabled") private var biometricEnabled: Bool = false
-    @AppStorage("requireBiometricForSend") private var requireForSend: Bool = true
+    @AppStorage(PinCodePreference.requireBiometricForSendKey) private var requireForSend: Bool = true
 
     /// The send state machine. `.review` is the resting state.
     @State private var phase: Phase = .review
@@ -369,27 +369,29 @@ struct SendReviewView: View {
     // MARK: - PIN-fallback cover
 
     private var pinVerifyCover: some View {
-        PinCodeView(
-            mode: .verify,
-            onComplete: { _ in
-                isShowingPinVerify = false
-                afterAuthSuccess()
-            },
-            onCancel: {
-                isShowingPinVerify = false
-                phase = .review
-            },
-            onForgotPin: {
-                // A forgotten PIN can't be reset (Rule #16). Cancel the
-                // send and return the user to Review; the forgot path
-                // lives in the lock screen, not mid-send.
-                isShowingPinVerify = false
-                phase = .review
-            },
-            // Face ID auto-prompts here only when the user kept "Require
-            // Face ID for sending" on; off → passcode-only (no biometric).
-            allowsBiometrics: requireForSend
-        )
+        NavigationStack {
+            PinCodeView(
+                mode: .verify,
+                onComplete: { _ in
+                    isShowingPinVerify = false
+                    afterAuthSuccess()
+                },
+                onCancel: {
+                    isShowingPinVerify = false
+                    phase = .review
+                },
+                onForgotPin: {
+                    // A forgotten PIN can't be reset (Rule #16). Cancel the
+                    // send and return the user to Review; the forgot path
+                    // lives in the lock screen, not mid-send.
+                    isShowingPinVerify = false
+                    phase = .review
+                },
+                // Face ID auto-prompts here only when the user kept "Require
+                // Face ID for sending" on; off → passcode-only (no biometric).
+                allowsBiometrics: requireForSend
+            )
+        }
         .background(UniColors.Background.primary.ignoresSafeArea())
         .uniAppEnvironment()
     }
@@ -699,7 +701,7 @@ private struct SendSentView: View {
     }
 
     private func copyHash() {
-        UIPasteboard.general.setItems(
+        SafePasteboard.setItems(
             [[UTType.plainText.identifier: transaction.txHash]],
             options: [.expirationDate: Date().addingTimeInterval(120)]
         )

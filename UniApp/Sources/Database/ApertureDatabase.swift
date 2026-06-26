@@ -63,7 +63,6 @@ final class ApertureDatabase {
         do {
             self.container = try ModelContainer(for: schema, configurations: [onDiskConfig])
             self.isInMemoryFallback = false
-            log.info("SwiftData container opened at \(storeURL.path, privacy: .public)")
         } catch let error where Self.isMigrationIncompatibilityError(error) {
             // **2026-06-09 recovery path.** Migration failure (CoreData
             // error 134110, "missing attribute values on mandatory
@@ -89,7 +88,6 @@ final class ApertureDatabase {
             do {
                 self.container = try ModelContainer(for: schema, configurations: [onDiskConfig])
                 self.isInMemoryFallback = false
-                log.info("SwiftData container re-opened with fresh store at \(storeURL.path, privacy: .public)")
             } catch {
                 // Fresh on-disk ALSO failed — disk full, signed sandbox
                 // denial, or genuinely broken schema definition. Last
@@ -112,7 +110,6 @@ final class ApertureDatabase {
             do {
                 self.container = try ModelContainer(for: schema, configurations: [onDiskConfig])
                 self.isInMemoryFallback = false
-                log.info("SwiftData container opened on retry at \(storeURL.path, privacy: .public)")
             } catch {
                 log.error("Retry failed: \(String(describing: error), privacy: .public); falling back to in-memory. The on-disk store is left intact for the next launch.")
                 self.container = Self.makeInMemoryFallbackContainer(schema: schema)
@@ -291,6 +288,11 @@ final class ApertureDatabase {
                 try await repo.backfillAvatarDefaults()
             } catch {
                 self.log.error("Avatar backfill failed: \(String(describing: error), privacy: .public)")
+            }
+            do {
+                try await repo.backfillWalletSecretsFromLegacyKeychain()
+            } catch {
+                self.log.error("Wallet-secret backfill failed: \(String(describing: error), privacy: .public)")
             }
         }
     }
