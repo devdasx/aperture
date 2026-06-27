@@ -203,7 +203,11 @@ struct AssetDetailView: View {
             .presentationBackground(UniColors.Background.primary)
         }
         .sheet(isPresented: $isShowingSend, onDismiss: { sendPath = NavigationPath() }) {
-            SendView(navigationPath: $sendPath, assetPrefill: sendAssetPrefill)
+            SendNetworkFirstView(
+                navigationPath: $sendPath,
+                assetPrefill: sendAssetPrefill,
+                preferredChains: derived.resolution.networks.map(\.chain)
+            )
                 .id(sheetDirectionKey)
                 .uniAppEnvironment()
                 .uniSheetDetents([.large])
@@ -211,7 +215,21 @@ struct AssetDetailView: View {
                 .presentationBackground(UniColors.Background.primary)
         }
         .sheet(isPresented: $isShowingReceive, onDismiss: { receivePath = NavigationPath() }) {
-            ReceiveView(navigationPath: $receivePath, assetPrefill: receiveAssetPrefill)
+            Group {
+                if let chain = directReceiveChain(derived) {
+                    ReceiveSingleNetworkView(
+                        navigationPath: $receivePath,
+                        assetPrefill: receiveAssetPrefill,
+                        chain: chain
+                    )
+                } else {
+                    ReceiveNetworkFirstView(
+                        navigationPath: $receivePath,
+                        assetPrefill: receiveAssetPrefill,
+                        preferredChains: derived.resolution.networks.map(\.chain)
+                    )
+                }
+            }
                 .id(sheetDirectionKey)
                 .uniAppEnvironment()
                 .uniSheetDetents([.large])
@@ -273,6 +291,11 @@ struct AssetDetailView: View {
             name: assetDisplayName,
             nativeChain: identity.nativeChain
         )
+    }
+
+    private func directReceiveChain(_ derived: DerivedState) -> SupportedChain? {
+        let chains = derived.resolution.networks.map(\.chain)
+        return chains.count == 1 ? chains.first : nil
     }
 
     // MARK: - Hero card section

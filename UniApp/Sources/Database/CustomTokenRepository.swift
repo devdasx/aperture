@@ -34,7 +34,6 @@ actor CustomTokenRepository {
         symbol: String,
         name: String,
         decimals: Int,
-        iconURL: String? = nil,
         metadataFromChain: Bool = true
     ) throws {
         if try fetchRecord(chain: chain, contract: contract) != nil {
@@ -47,7 +46,7 @@ actor CustomTokenRepository {
             symbol: symbol,
             name: name,
             decimals: decimals,
-            iconURL: iconURL,
+            iconURL: nil,
             addedAt: Date(),
             metadataFromChain: metadataFromChain
         )
@@ -150,7 +149,6 @@ struct CustomTokenSnapshot: Sendable, Hashable, Identifiable {
     let symbol: String
     let name: String
     let decimals: Int
-    let iconURL: String?
     let addedAt: Date
     let metadataFromChain: Bool
 
@@ -161,7 +159,6 @@ struct CustomTokenSnapshot: Sendable, Hashable, Identifiable {
         self.symbol = record.symbol
         self.name = record.name
         self.decimals = record.decimals
-        self.iconURL = record.iconURL
         self.addedAt = record.addedAt
         self.metadataFromChain = record.metadataFromChain
     }

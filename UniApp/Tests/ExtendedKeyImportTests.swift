@@ -1,5 +1,6 @@
 import Testing
 import Foundation
+import WalletCore
 @testable import Aperture
 
 /// Tests for real watch-only extended-public-key (xpub / ypub / zpub)
@@ -19,6 +20,43 @@ import Foundation
 struct ExtendedKeyImportTests {
 
     private let service = WalletCoreKeyImportService()
+
+    @Test("Mnemonic derives Bitcoin and Ethereum BIP-44 account xpubs")
+    func mnemonicDerivesBitcoinAndEthereumXPubs() throws {
+        let mnemonic = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about"
+        let keys = try MnemonicExtendedPublicKeyDeriver.derive(fromMnemonic: mnemonic)
+
+        #expect(keys.bitcoin.chain == .bitcoin)
+        #expect(keys.bitcoin.derivationPath == "m/44'/0'/0'")
+        #expect(keys.bitcoin.xpub == "xpub6BosfCnifzxcFwrSzQiqu2DBVTshkCXacvNsWGYJVVhhawA7d4R5WSWGFNbi8Aw6ZRc1brxMyWMzG3DSSSSoekkudhUd9yLb6qx39T9nMdj")
+
+        #expect(keys.ethereum.chain == .ethereum)
+        #expect(keys.ethereum.derivationPath == "m/44'/60'/0'")
+        #expect(keys.ethereum.xpub.hasPrefix("xpub"))
+        #expect(keys.ethereum.xpub != keys.bitcoin.xpub)
+
+        let bitcoinPublicKey = try #require(HDWallet.getPublicKeyFromExtended(
+            extended: keys.bitcoin.xpub,
+            coin: .bitcoin,
+            derivationPath: "m/44'/0'/0'/0/0"
+        ))
+        let bitcoinAddress = try #require(BitcoinAddress(
+            publicKey: bitcoinPublicKey,
+            prefix: CoinType.bitcoin.p2pkhPrefix
+        )?.description)
+        #expect(bitcoinAddress == "1LqBGSKuX5yYUonjxT5qGfpUsXKYYWeabA")
+
+        let ethereumPublicKey = try #require(HDWallet.getPublicKeyFromExtended(
+            extended: keys.ethereum.xpub,
+            coin: .ethereum,
+            derivationPath: "m/44'/60'/0'/0/0"
+        ))
+        let ethereumAddress = AnyAddress(
+            publicKey: ethereumPublicKey,
+            coin: .ethereum
+        ).description
+        #expect(ethereumAddress == "0x9858EfFD232B4033E47d90003D41EC34EcaEda94")
+    }
 
     /// `xpub` → BIP-44 legacy P2PKH ("1…") receive addresses.
     @Test("xpub derives real BIP-44 P2PKH addresses (no stub placeholder)")

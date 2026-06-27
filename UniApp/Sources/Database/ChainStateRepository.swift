@@ -45,6 +45,15 @@ actor ChainStateRepository {
         let syncStateRaw: String
     }
 
+    struct AddressedUTXO: Sendable {
+        let address: String
+        let txid: String
+        let vout: Int
+        let valueSats: Int64
+        let scriptHex: String?
+        let confirmed: Bool
+    }
+
     // MARK: - Rebuild (recompute every chain's aggregate from the store)
 
     /// Recompute and upsert the aggregate row for EVERY chain the wallet
@@ -162,7 +171,8 @@ actor ChainStateRepository {
                 nativeDecimals = row.decimals
                 nativeFiat = inCurrency ? row.fiatValueCached : 0
             } else {
-                tokenCount += 1
+                let rawAmount = Decimal(string: row.rawBalance) ?? 0
+                if rawAmount > 0 { tokenCount += 1 }
             }
         }
 
@@ -296,6 +306,43 @@ actor ChainStateRepository {
                 walletId: walletId,
                 chainRaw: chainRaw,
                 address: address,
+                txid: utxo.txid,
+                vout: utxo.vout,
+                valueSatsRaw: String(utxo.valueSats),
+                scriptHex: utxo.scriptHex,
+                confirmed: utxo.confirmed
+            ))
+        }
+        try modelContext.save()
+        return (utxos.count, total)
+    }
+
+    /// Replace the persisted UTXO set while preserving the owning address
+    /// for every output. HD Bitcoin scans cover receive/change addresses,
+    /// so flattening all UTXOs onto the wallet's first address would lose
+    /// the input-address mapping needed by Bitcoin-family signing.
+    @discardableResult
+    func replaceAddressedUTXOs(
+        walletId: UUID,
+        chain: SupportedChain,
+        utxos: [AddressedUTXO]
+    ) throws -> (count: Int, totalSats: Int64) {
+        let chainRaw = chain.rawValue
+        let existingDescriptor = FetchDescriptor<ChainUTXORecord>(
+            predicate: #Predicate { $0.walletId == walletId && $0.chainRaw == chainRaw }
+        )
+        for stale in try modelContext.fetch(existingDescriptor) {
+            modelContext.delete(stale)
+        }
+
+        var total: Int64 = 0
+        for utxo in utxos {
+            let (sum, overflow) = total.addingReportingOverflow(utxo.valueSats)
+            total = overflow ? Int64.max : sum
+            modelContext.insert(ChainUTXORecord(
+                walletId: walletId,
+                chainRaw: chainRaw,
+                address: utxo.address,
                 txid: utxo.txid,
                 vout: utxo.vout,
                 valueSatsRaw: String(utxo.valueSats),

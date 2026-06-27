@@ -406,7 +406,7 @@ struct OnboardingView: View {
                     delay: 0.36
                 ))
 
-                UniButton(title: "I already have a wallet", variant: .secondary) {
+                UniButton(title: "Import wallet", variant: .secondary) {
                     activeFlow = .importWallet
                 }
                 .modifier(OnboardingStaggeredFadeIn(
@@ -420,23 +420,61 @@ struct OnboardingView: View {
     // MARK: - Legal footer
 
     private var legalFooter: some View {
-        HStack(spacing: UniSpacing.xxs) {
-            UniCaption(text: "By continuing, you agree to our")
-
-            // T-004 / T-005 — open the live Terms / Privacy pages on
-            // aperturex.io in the system browser (the same canonical URLs
-            // Settings → About uses). `Link` is the native affordance for an
-            // external destination (Rule #19 §C) — no custom navigation.
-            Link(destination: ApertureWeb.termsURL) {
-                UniCaption(text: "Terms", color: UniColors.Button.text)
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: UniSpacing.xxs) {
+                legalPrefix
+                legalTermsLink
+                legalAnd
+                legalPrivacyLink
             }
 
-            UniCaption(text: "and")
-
-            Link(destination: ApertureWeb.privacyURL) {
-                UniCaption(text: "Privacy", color: UniColors.Button.text)
+            VStack(spacing: UniSpacing.xxs) {
+                legalPrefix
+                HStack(spacing: UniSpacing.xxs) {
+                    legalTermsLink
+                    legalAnd
+                    legalPrivacyLink
+                }
             }
         }
+        .multilineTextAlignment(.center)
+        .frame(maxWidth: .infinity)
+        .padding(.horizontal, UniSpacing.s)
+    }
+
+    private var legalPrefix: some View {
+        Text("By continuing, you agree to our")
+            .font(UniTypography.caption1)
+            .foregroundStyle(UniColors.Text.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+
+    private var legalAnd: some View {
+        Text("and")
+            .font(UniTypography.caption1)
+            .foregroundStyle(UniColors.Text.secondary)
+    }
+
+    private var legalTermsLink: some View {
+        Link(destination: ApertureWeb.termsURL) {
+            Text("Terms")
+                .font(UniTypography.caption1)
+                .foregroundStyle(UniColors.Button.text)
+                .frame(minHeight: 44)
+                .contentShape(Rectangle())
+        }
+        .accessibilityLabel(Text("Terms"))
+    }
+
+    private var legalPrivacyLink: some View {
+        Link(destination: ApertureWeb.privacyURL) {
+            Text("Privacy")
+                .font(UniTypography.caption1)
+                .foregroundStyle(UniColors.Button.text)
+                .frame(minHeight: 44)
+                .contentShape(Rectangle())
+        }
+        .accessibilityLabel(Text("Privacy"))
     }
 }
 

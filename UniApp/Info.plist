@@ -20,6 +20,8 @@
 	<string>$(MARKETING_VERSION)</string>
 	<key>CFBundleVersion</key>
 	<string>$(CURRENT_PROJECT_VERSION)</string>
+	<key>ETHERSCAN_API_KEY</key>
+	<string>$(ETHERSCAN_API_KEY)</string>
 	<key>INFURA_API_KEY</key>
 	<string>$(INFURA_API_KEY)</string>
 	<key>NSCameraUsageDescription</key>
@@ -30,6 +32,8 @@
 	<string>Aperture saves a QR image to your Photos only when you tap Save — so you can move a key or recovery phrase to another device. It never reads your photo library.</string>
 	<key>ONERPC_API_KEY</key>
 	<string>$(ONERPC_API_KEY)</string>
+	<key>TRONSCAN_API_KEY</key>
+	<string>$(TRONSCAN_API_KEY)</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

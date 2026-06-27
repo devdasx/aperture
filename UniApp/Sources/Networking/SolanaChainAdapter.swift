@@ -81,7 +81,7 @@ struct SolanaChainAdapter: Sendable {
             supply |= UInt64(bytes[36 + i]) << (8 * i)
         }
         let decimals = Int(bytes[44])
-        let standard: SolanaTokenRegistry.Standard = owner == Self.splToken2022ProgramId
+        let standard: SolanaTokenStandard = owner == Self.splToken2022ProgramId
             ? .splToken2022
             : .splToken
         return SolanaMintInfo(decimals: decimals, supply: supply, standard: standard)
@@ -222,10 +222,15 @@ struct SolanaChainAdapter: Sendable {
 /// (legacy `splToken` vs `splToken2022`). Required for Custom Tokens
 /// so the Add sheet can render the decimals honestly and the scanner
 /// can pick the right token program for balance reads.
+enum SolanaTokenStandard: Sendable, Equatable {
+    case splToken
+    case splToken2022
+}
+
 struct SolanaMintInfo: Sendable, Equatable {
     let decimals: Int
     let supply: UInt64
-    let standard: SolanaTokenRegistry.Standard
+    let standard: SolanaTokenStandard
 }
 
 /// Decoded Metaplex token metadata — `name` + `symbol`. Best-effort

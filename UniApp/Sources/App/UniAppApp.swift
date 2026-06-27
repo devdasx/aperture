@@ -42,6 +42,9 @@ struct UniAppApp: App {
     /// first frame is on screen, before any biometric-gated surface
     /// can realistically be reached.
     init() {
+        let appInitStart = Date()
+        Self.diagnostic(.info, "App init started")
+
         // 0) Fresh-install guard. iOS Keychain items survive app
         //    deletion by default; without this call a user who
         //    deletes Aperture and re-installs would see their old
@@ -53,7 +56,9 @@ struct UniAppApp: App {
         //    our known service identifiers. Runs BEFORE every other
         //    bootstrap call so vaults read against a known-empty
         //    Keychain on first launch after install.
+        let freshInstallStart = Date()
         FreshInstallGuard.purgeKeychainIfFreshInstall()
+        Self.diagnostic(.debug, "Fresh-install guard finished", start: freshInstallStart)
 
         // 0.5) Last-screen restoration resolve (2026-06-13). Reads the
         //    "user left the app at T" stamp written on every real
@@ -65,18 +70,24 @@ struct UniAppApp: App {
         //    screen. Must run before `WindowGroup` constructs the
         //    first view tree — `SettingsView` / `WalletHomeView` read
         //    the persisted paths in their `init`s.
+        let restorationStart = Date()
         ScreenRestoration.resolveOnLaunch()
+        Self.diagnostic(.debug, "Screen restoration resolved", start: restorationStart)
 
         // 1) Locale-driven currency seed (Rule #16 — the user's iPhone
         //    configuration is the wallet's first impression).
+        let currencyStart = Date()
         CurrencyPreference.bootstrapIfNeeded()
+        Self.diagnostic(.debug, "Currency preference bootstrapped", start: currencyStart)
 
         // 2) SwiftData container — synchronous open. `shared` is a
         //    `static let`; first access constructs the container and
         //    opens the SQLite file. `bootstrap()` then writes the
         //    singleton AppMetadata + BiometricEnrollment rows on first
         //    install (idempotent on subsequent launches).
+        let databaseStart = Date()
         ApertureDatabase.shared.bootstrap()
+        Self.diagnostic(.debug, "Database bootstrap requested", start: databaseStart)
 
         // 3) TipKit data store for first-time-feature hints. The
         //    `WalletTabSwitcherTip` reads its eligibility rule against
@@ -93,13 +104,17 @@ struct UniAppApp: App {
         // valid moment, immediately BEFORE `Tips.configure()` — so a reset
         // wallet truly sees first-time tips again. One-shot: clear the marker.
         if UserDefaults.standard.bool(forKey: FactoryReset.tipKitResetFlagKey) {
+            Self.diagnostic(.info, "TipKit datastore reset requested by factory-reset marker")
             try? Tips.resetDatastore()
             UserDefaults.standard.removeObject(forKey: FactoryReset.tipKitResetFlagKey)
         }
+        let tipsStart = Date()
         try? Tips.configure([
             .displayFrequency(.immediate),
             .datastoreLocation(.applicationDefault)
         ])
+        Self.diagnostic(.debug, "TipKit configured", start: tipsStart)
+        Self.diagnostic(.info, "App init finished", start: appInitStart)
     }
 
     var body: some Scene {
@@ -128,9 +143,12 @@ struct UniAppApp: App {
                 // `App.init()` because the check does blocking
                 // Keychain I/O (2026-06-10).
                 .task {
+                    let startupTaskStart = Date()
+                    Self.diagnostic(.info, "Root startup task started")
                     BiometricEnrollmentTracker.checkForDrift(
                         in: ApertureDatabase.shared.container
                     )
+                    Self.diagnostic(.debug, "Biometric drift check finished")
                     // Data fetching is disabled for some chains (2026-06-21 —
                     // EVM + Bitcoin family + Tron) — clear any balances /
                     // history / UTXOs persisted before the cutover. One-shot,
@@ -139,6 +157,7 @@ struct UniAppApp: App {
                     await Task.detached(priority: .utility) {
                         DisabledChainDataPurge.runIfNeeded(container: container)
                     }.value
+                    Self.diagnostic(.info, "Root startup task finished", start: startupTaskStart)
                 }
         }
         // The app fills the screen natively on iPad (full-screen) and the
@@ -152,6 +171,24 @@ struct UniAppApp: App {
         // window itself is free to fill the display. `UIApplicationSupports
         // MultipleScenes` stays `false` (the lock-overlay UIWindow assumes a
         // single scene).
+    }
+
+    private static func diagnostic(
+        _ level: DiagnosticsLogLevel,
+        _ message: String,
+        start: Date? = nil,
+        metadata: [String: String] = [:]
+    ) {
+        var metadata = metadata
+        if let start {
+            metadata["elapsedMs"] = DiagnosticsLogStore.elapsedMilliseconds(since: start)
+        }
+        DiagnosticsLogStore.shared.record(
+            level,
+            category: "launch",
+            message: message,
+            metadata: metadata
+        )
     }
 }
 

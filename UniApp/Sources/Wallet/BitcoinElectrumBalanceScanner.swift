@@ -1,0 +1,1059 @@
+import CryptoKit
+import Foundation
+import Network
+import OSLog
+import SwiftData
+import WalletCore
+
+actor BitcoinElectrumBalanceScanner {
+    private let log = Logger(subsystem: "com.thuglife.aperture", category: "bitcoin-electrum")
+
+    func scanAndPersist(
+        walletId: UUID,
+        currencyCode: String,
+        modelContainer: ModelContainer
+    ) async throws {
+        let targetRepository = BitcoinWalletScanTargetRepository(modelContainer: modelContainer)
+        let plan = try await targetRepository.scanPlan(walletId: walletId)
+        guard let plan, !plan.targets.isEmpty else { return }
+
+        async let prices = TokenPricingEngine.shared.unitPrices(
+            symbols: ["BTC"],
+            currencyCode: currencyCode
+        )
+        async let liveScan = BitcoinElectrumClient.scanFirst(
+            servers: BitcoinElectrumServer.defaults,
+            targets: plan.targets
+        )
+
+        let (priceMap, result) = try await (prices, liveScan)
+        let scans = result.scans
+        let totalSats = scans.reduce(Int64(0)) { partial, scan in
+            let addressTotal = scan.totalSats
+            let (sum, overflow) = partial.addingReportingOverflow(addressTotal)
+            return overflow ? Int64.max : sum
+        }
+        let isUsed = totalSats > 0 || scans.contains { $0.historyCount > 0 }
+        let fiat = fiatValue(
+            sats: totalSats,
+            prices: priceMap
+        )
+
+        let txRepo = TransactionRepository(modelContainer: modelContainer)
+        try await txRepo.upsertBalance(
+            addressId: plan.primaryAddressId,
+            tokenSymbol: SupportedChain.bitcoin.ticker,
+            tokenContract: nil,
+            decimals: SupportedChain.bitcoin.nativeDecimals,
+            rawBalance: String(totalSats),
+            fiatValueCached: fiat,
+            fiatCurrencyCode: currencyCode,
+            save: false
+        )
+        try await txRepo.markScanComplete(
+            addressId: plan.primaryAddressId,
+            isUsed: isUsed,
+            save: false
+        )
+        try await txRepo.flush()
+
+        let utxos = scans.flatMap { scan in
+            scan.utxos.map { utxo in
+                ChainStateRepository.AddressedUTXO(
+                    address: scan.address,
+                    txid: utxo.txHash,
+                    vout: utxo.txPosition,
+                    valueSats: utxo.valueSats,
+                    scriptHex: scan.scriptHex,
+                    confirmed: utxo.height > 0
+                )
+            }
+        }
+        _ = try await ChainStateRepository(modelContainer: modelContainer)
+            .replaceAddressedUTXOs(
+                walletId: walletId,
+                chain: .bitcoin,
+                utxos: utxos
+            )
+        _ = try await ChainStateRepository(modelContainer: modelContainer).rebuild(
+            walletId: walletId,
+            fiatCurrencyCode: currencyCode,
+            onlyChains: [.bitcoin],
+            failedChains: [],
+            interim: false
+        )
+
+        log.debug(
+            "Bitcoin Electrum scan succeeded via \(result.serverDescription, privacy: .public): \(scans.count, privacy: .public) addresses, \(utxos.count, privacy: .public) utxos"
+        )
+    }
+
+    private func fiatValue(
+        sats: Int64,
+        prices: [String: TokenPricingEngine.ResolvedPrice]
+    ) -> Decimal? {
+        guard let price = prices[SupportedChain.bitcoin.ticker] else { return nil }
+        guard let amount = EVMHexQuantity.decimalAmount(
+            rawBalance: String(sats),
+            decimals: SupportedChain.bitcoin.nativeDecimals
+        ) else { return nil }
+        return amount * price.amount
+    }
+}
+
+@ModelActor
+private actor BitcoinWalletScanTargetRepository {
+    private let gapLimit = 20
+
+    func scanPlan(walletId: UUID) throws -> BitcoinElectrumScanPlan? {
+        var walletDescriptor = FetchDescriptor<WalletRecord>(
+            predicate: #Predicate { $0.id == walletId }
+        )
+        walletDescriptor.fetchLimit = 1
+        guard let wallet = try modelContext.fetch(walletDescriptor).first else { return nil }
+
+        let bitcoinAddresses = wallet.addresses
+            .filter { $0.chainRaw == SupportedChain.bitcoin.rawValue }
+        guard let primary = bitcoinAddresses.first else { return nil }
+
+        var targets: [BitcoinElectrumScanTarget] = []
+        func append(address: String, path: String) {
+            guard !targets.contains(where: { $0.address == address }),
+                  let target = try? BitcoinElectrumScanTarget(address: address, path: path) else {
+                return
+            }
+            targets.append(target)
+        }
+        for address in bitcoinAddresses {
+            append(address: address.address, path: address.derivationPath)
+        }
+
+        switch wallet.kind {
+        case .created, .importedMnemonic:
+            if !wallet.hasPassphrase,
+               let words = loadMnemonic(walletId: wallet.id),
+               let derived = try? BitcoinHDAddressDeriver.deriveFromMnemonic(
+                    words,
+                    gapLimit: gapLimit
+               ) {
+                for target in derived {
+                    append(address: target.address, path: target.path)
+                }
+            }
+        case .importedKey:
+            if let keyString = loadPrivateKey(walletId: wallet.id) {
+                for target in (try? BitcoinHDAddressDeriver.deriveFromPrivateKeyInput(
+                    keyString,
+                    gapLimit: gapLimit
+                )) ?? [] {
+                    append(address: target.address, path: target.path)
+                }
+            }
+        case .watchOnly:
+            break
+        }
+
+        guard !targets.isEmpty else { return nil }
+        return BitcoinElectrumScanPlan(
+            primaryAddressId: primary.id,
+            targets: targets
+        )
+    }
+
+    private func loadMnemonic(walletId: UUID) -> [String]? {
+        if let words = try? WalletSecretPersistence.loadMnemonic(for: walletId, in: modelContext),
+           !words.isEmpty {
+            return words
+        }
+        return (try? MnemonicVault.loadMnemonic(for: walletId)) ?? nil
+    }
+
+    private func loadPrivateKey(walletId: UUID) -> String? {
+        if let key = try? WalletSecretPersistence.loadPrivateKey(for: walletId, in: modelContext),
+           !key.isEmpty {
+            return key
+        }
+        return (try? MnemonicVault.loadPrivateKey(for: walletId)) ?? nil
+    }
+}
+
+private struct BitcoinElectrumScanPlan: Sendable {
+    let primaryAddressId: UUID
+    let targets: [BitcoinElectrumScanTarget]
+}
+
+private struct BitcoinElectrumScanTarget: Sendable {
+    let address: String
+    let path: String
+    let scriptHex: String
+    let scriptHash: String
+
+    init(address: String, path: String) throws {
+        let script = BitcoinScript.lockScriptForAddress(address: address, coin: .bitcoin).data
+        guard !script.isEmpty else { throw BitcoinElectrumError.invalidAddress(address) }
+        let digest = SHA256.hash(data: script)
+        self.address = address
+        self.path = path
+        self.scriptHex = script.apertureBitcoinHex
+        self.scriptHash = Data(Data(digest).reversed()).apertureBitcoinHex
+    }
+}
+
+private enum BitcoinAccountKind: CaseIterable, Sendable {
+    case bip44
+    case bip49
+    case bip84
+
+    var purpose: Purpose {
+        switch self {
+        case .bip44: return .bip44
+        case .bip49: return .bip49
+        case .bip84: return .bip84
+        }
+    }
+
+    var publicVersion: HDVersion {
+        switch self {
+        case .bip44: return .xpub
+        case .bip49: return .ypub
+        case .bip84: return .zpub
+        }
+    }
+
+    static func fromExtendedPrivateVersion(_ version: UInt32) -> BitcoinAccountKind? {
+        switch version {
+        case 0x0488_ADE4: return .bip44
+        case 0x049D_7878: return .bip49
+        case 0x04B2_430C: return .bip84
+        default: return nil
+        }
+    }
+}
+
+private enum BitcoinHDAddressDeriver {
+    struct DerivedTarget: Sendable {
+        let address: String
+        let path: String
+    }
+
+    static func deriveFromMnemonic(
+        _ words: [String],
+        gapLimit: Int
+    ) throws -> [DerivedTarget] {
+        guard let wallet = HDWallet(
+            mnemonic: words.joined(separator: " "),
+            passphrase: ""
+        ) else {
+            throw BitcoinElectrumError.invalidMnemonic
+        }
+
+        var targets: [DerivedTarget] = []
+        targets.reserveCapacity(BitcoinAccountKind.allCases.count * 2 * gapLimit)
+        for kind in BitcoinAccountKind.allCases {
+            let publicKey = wallet.getExtendedPublicKey(
+                purpose: kind.purpose,
+                coin: .bitcoin,
+                version: kind.publicVersion
+            )
+            targets.append(contentsOf: try deriveFromExtendedPublicKey(
+                publicKey,
+                kind: kind,
+                gapLimit: gapLimit
+            ))
+        }
+        return targets
+    }
+
+    static func deriveFromPrivateKeyInput(
+        _ raw: String,
+        gapLimit: Int
+    ) throws -> [DerivedTarget] {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let extended = try? BitcoinExtendedPrivateKeyConverter.publicExtendedKey(from: trimmed) {
+            return try deriveFromExtendedPublicKey(
+                extended.publicKey,
+                kind: extended.kind,
+                gapLimit: gapLimit
+            )
+        }
+
+        let keyData = try BitcoinPrivateKeyDecoder.decode(trimmed)
+        guard let privateKey = PrivateKey(data: keyData) else {
+            throw BitcoinElectrumError.invalidPrivateKey
+        }
+        let address = AnyAddress(
+            publicKey: privateKey.getPublicKey(coinType: .bitcoin),
+            coin: .bitcoin
+        ).description
+        guard !address.isEmpty else { throw BitcoinElectrumError.addressFailed }
+        return [DerivedTarget(address: address, path: "imported-key")]
+    }
+
+    private static func deriveFromExtendedPublicKey(
+        _ publicKey: String,
+        kind: BitcoinAccountKind,
+        gapLimit: Int
+    ) throws -> [DerivedTarget] {
+        var targets: [DerivedTarget] = []
+        targets.reserveCapacity(2 * gapLimit)
+        for change in UInt32(0)...UInt32(1) {
+            for index in 0..<UInt32(gapLimit) {
+                let path = DerivationPath(
+                    purpose: kind.purpose,
+                    coin: CoinType.bitcoin.slip44Id,
+                    account: 0,
+                    change: change,
+                    address: index
+                ).description
+                guard let childPublicKey = HDWallet.getPublicKeyFromExtended(
+                    extended: publicKey,
+                    coin: .bitcoin,
+                    derivationPath: path
+                ) else {
+                    throw BitcoinElectrumError.derivationFailed(path)
+                }
+                targets.append(DerivedTarget(
+                    address: try address(publicKey: childPublicKey, kind: kind),
+                    path: path
+                ))
+            }
+        }
+        return targets
+    }
+
+    private static func address(
+        publicKey: PublicKey,
+        kind: BitcoinAccountKind
+    ) throws -> String {
+        switch kind {
+        case .bip44:
+            guard let address = BitcoinAddress(
+                publicKey: publicKey,
+                prefix: CoinType.bitcoin.p2pkhPrefix
+            ) else {
+                throw BitcoinElectrumError.addressFailed
+            }
+            return address.description
+        case .bip49:
+            return BitcoinAddress.compatibleAddress(
+                publicKey: publicKey,
+                prefix: CoinType.bitcoin.p2shPrefix
+            ).description
+        case .bip84:
+            return CoinType.bitcoin.deriveAddressFromPublicKey(publicKey: publicKey)
+        }
+    }
+}
+
+private enum BitcoinExtendedPrivateKeyConverter {
+    private static let versionMap: [UInt32: UInt32] = [
+        0x0488_ADE4: 0x0488_B21E,
+        0x049D_7878: 0x049D_7CB2,
+        0x04B2_430C: 0x04B2_4746
+    ]
+
+    static func publicExtendedKey(
+        from privateExtendedKey: String
+    ) throws -> (publicKey: String, kind: BitcoinAccountKind) {
+        guard let payload = WalletCore.Base58.decode(string: privateExtendedKey),
+              payload.count == 78 else {
+            throw BitcoinElectrumError.invalidExtendedKey
+        }
+        let privateVersion = payload.apertureBitcoinUInt32BE(at: 0)
+        guard let publicVersion = versionMap[privateVersion],
+              let kind = BitcoinAccountKind.fromExtendedPrivateVersion(privateVersion) else {
+            throw BitcoinElectrumError.unsupportedExtendedPrivateVersion(privateVersion)
+        }
+
+        let privateKeyPayload = payload.subdata(in: 45..<78)
+        guard privateKeyPayload.count == 33, privateKeyPayload.first == 0 else {
+            throw BitcoinElectrumError.invalidExtendedKey
+        }
+        guard let privateKey = PrivateKey(data: Data(privateKeyPayload.dropFirst())) else {
+            throw BitcoinElectrumError.invalidPrivateKey
+        }
+        let publicKey = privateKey.getPublicKeySecp256k1(compressed: true).data
+        guard publicKey.count == 33 else { throw BitcoinElectrumError.invalidPublicKey }
+
+        var publicPayload = Data()
+        publicPayload.append(publicVersion.apertureBitcoinBigEndianData)
+        publicPayload.append(payload.subdata(in: 4..<45))
+        publicPayload.append(publicKey)
+        return (WalletCore.Base58.encode(data: publicPayload), kind)
+    }
+}
+
+private enum BitcoinPrivateKeyDecoder {
+    static func decode(_ raw: String) throws -> Data {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        let hex = trimmed.hasPrefix("0x") || trimmed.hasPrefix("0X")
+            ? String(trimmed.dropFirst(2))
+            : trimmed
+        if hex.count == 64,
+           hex.allSatisfy(\.isHexDigit),
+           let data = Data(apertureBitcoinHex: hex) {
+            return try validate(data)
+        }
+
+        guard let payload = WalletCore.Base58.decode(string: trimmed) else {
+            throw BitcoinElectrumError.invalidPrivateKey
+        }
+        let isUncompressedWIF = payload.count == 33
+        let isCompressedWIF = payload.count == 34 && payload.last == 0x01
+        guard payload.first == 0x80, isUncompressedWIF || isCompressedWIF else {
+            throw BitcoinElectrumError.invalidPrivateKey
+        }
+        return try validate(Data(payload.dropFirst().prefix(32)))
+    }
+
+    private static func validate(_ keyData: Data) throws -> Data {
+        guard keyData.count == 32,
+              PrivateKey.isValid(data: keyData, curve: CoinType.bitcoin.curve) else {
+            throw BitcoinElectrumError.invalidPrivateKey
+        }
+        return keyData
+    }
+}
+
+private struct BitcoinElectrumServer: Sendable {
+    let host: String
+    let port: UInt16
+    let tls: Bool
+
+    static let defaults: [BitcoinElectrumServer] = [
+        BitcoinElectrumServer(host: "fulcrum.grey.pw", port: 51002, tls: true),
+        BitcoinElectrumServer(host: "electrum.blockstream.info", port: 50002, tls: true),
+        BitcoinElectrumServer(host: "bitcoin.lu.ke", port: 50002, tls: true),
+        BitcoinElectrumServer(host: "electrum.emzy.de", port: 50002, tls: true),
+        BitcoinElectrumServer(host: "mainnet.foundationdevices.com", port: 50002, tls: true),
+        BitcoinElectrumServer(host: "btc.lastingcoin.net", port: 50002, tls: true),
+        BitcoinElectrumServer(host: "vmd71287.contaboserver.net", port: 50002, tls: true),
+        BitcoinElectrumServer(host: "de.poiuty.com", port: 50002, tls: true),
+        BitcoinElectrumServer(host: "electrum.jochen-hoenicke.de", port: 50006, tls: true),
+        BitcoinElectrumServer(host: "btc.cr.ypto.tech", port: 50002, tls: true),
+        BitcoinElectrumServer(host: "e.keff.org", port: 50002, tls: true),
+        BitcoinElectrumServer(host: "vmd104014.contaboserver.net", port: 50002, tls: true),
+        BitcoinElectrumServer(host: "e2.keff.org", port: 50002, tls: true),
+        BitcoinElectrumServer(host: "fulcrum.sethforprivacy.com", port: 50002, tls: true),
+        BitcoinElectrumServer(host: "electrum.coinext.com.br", port: 50002, tls: true)
+    ]
+}
+
+private actor BitcoinElectrumClient {
+    private let server: BitcoinElectrumServer
+    private let connection: NWConnection
+    private let queue = DispatchQueue(label: "Aperture.BitcoinElectrumClient")
+    private var receiveBuffer = Data()
+    private var nextID = 1
+    private var pending: [Int: @Sendable (Result<BitcoinElectrumJSONValue, Error>) -> Void] = [:]
+
+    var serverDescription: String {
+        "\(server.host):\(server.port)"
+    }
+
+    private init(server: BitcoinElectrumServer) {
+        self.server = server
+        let parameters: NWParameters = server.tls ? .tls : .tcp
+        self.connection = NWConnection(
+            host: NWEndpoint.Host(server.host),
+            port: NWEndpoint.Port(rawValue: server.port)!,
+            using: parameters
+        )
+    }
+
+    static func scanFirst(
+        servers: [BitcoinElectrumServer],
+        targets: [BitcoinElectrumScanTarget]
+    ) async throws -> BitcoinElectrumLiveScanResult {
+        var lastError: Error?
+        for server in servers {
+            do {
+                let client = try await connect(to: server)
+                defer { Task { await client.close() } }
+                let scans = try await client.scan(targets: targets)
+                return BitcoinElectrumLiveScanResult(
+                    serverDescription: "\(server.host):\(server.port)",
+                    scans: scans
+                )
+            } catch {
+                lastError = error
+            }
+        }
+        throw lastError ?? BitcoinElectrumError.connectionFailed
+    }
+
+    static func connect(to server: BitcoinElectrumServer) async throws -> BitcoinElectrumClient {
+        let client = BitcoinElectrumClient(server: server)
+        do {
+            try await client.connect()
+            return client
+        } catch {
+            await client.close()
+            throw error
+        }
+    }
+
+    func connect() async throws {
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            let resumeBox = BitcoinElectrumContinuationBox()
+            connection.stateUpdateHandler = { [weak self] state in
+                switch state {
+                case .ready:
+                    guard resumeBox.resumeOnce() else { return }
+                    continuation.resume()
+                    Task { await self?.receiveLoop() }
+                case .failed(let error):
+                    guard resumeBox.resumeOnce() else { return }
+                    continuation.resume(throwing: error)
+                case .cancelled:
+                    guard resumeBox.resumeOnce() else { return }
+                    continuation.resume(throwing: BitcoinElectrumError.connectionFailed)
+                default:
+                    break
+                }
+            }
+            connection.start(queue: queue)
+            Task {
+                try? await Task.sleep(nanoseconds: 5_000_000_000)
+                guard resumeBox.resumeOnce() else { return }
+                connection.cancel()
+                continuation.resume(throwing: BitcoinElectrumError.requestTimedOut("connect(\(server.host):\(server.port))"))
+            }
+        }
+        _ = try await request(
+            method: "server.version",
+            params: [.string("Aperture"), .string("1.4")]
+        )
+    }
+
+    func close() {
+        connection.cancel()
+        let callbacks = pending.values
+        pending.removeAll()
+        for callback in callbacks {
+            callback(.failure(BitcoinElectrumError.connectionFailed))
+        }
+    }
+
+    func scan(targets: [BitcoinElectrumScanTarget]) async throws -> [BitcoinElectrumAddressScan] {
+        guard !targets.isEmpty else { return [] }
+        let unspentRequests = targets.map { target in
+            BitcoinElectrumBatchRequestSpec(
+                method: "blockchain.scripthash.listunspent",
+                params: [.string(target.scriptHash)]
+            )
+        }
+        let historyRequests = targets.map { target in
+            BitcoinElectrumBatchRequestSpec(
+                method: "blockchain.scripthash.get_history",
+                params: [.string(target.scriptHash)]
+            )
+        }
+
+        async let unspentResponsesTask = requestBatch(unspentRequests)
+        async let historyResponsesTask = requestBatch(historyRequests)
+        let (unspentResponses, historyResponses) = try await (unspentResponsesTask, historyResponsesTask)
+
+        var scans: [BitcoinElectrumAddressScan] = []
+        scans.reserveCapacity(targets.count)
+        for index in targets.indices {
+            let target = targets[index]
+            guard case let .array(utxoItems) = unspentResponses[index].result,
+                  case let .array(historyItems) = historyResponses[index].result else {
+                throw BitcoinElectrumError.invalidResponse
+            }
+            let utxoList = try utxoItems.map(BitcoinElectrumUTXO.init(json:))
+            let historyList = try historyItems.map(BitcoinElectrumHistoryItem.init(json:))
+            scans.append(BitcoinElectrumAddressScan(
+                address: target.address,
+                path: target.path,
+                scriptHex: target.scriptHex,
+                confirmedSats: BitcoinElectrumAddressScan.sum(utxos: utxoList.filter { $0.height > 0 }),
+                unconfirmedSats: BitcoinElectrumAddressScan.sum(utxos: utxoList.filter { $0.height <= 0 }),
+                utxos: utxoList,
+                historyCount: historyList.count
+            ))
+        }
+        return scans
+    }
+
+    private func request(method: String, params: [BitcoinElectrumJSONValue]) async throws -> BitcoinElectrumJSONValue {
+        let id = nextID
+        nextID += 1
+        let request = BitcoinElectrumJSONRequest(id: id, method: method, params: params)
+        var payload = try JSONEncoder().encode(request)
+        payload.append(0x0A)
+
+        return try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<BitcoinElectrumJSONValue, Error>) in
+            pending[id] = { result in
+                continuation.resume(with: result)
+            }
+            connection.send(content: payload, completion: .contentProcessed { [weak self] error in
+                guard let error else { return }
+                Task { await self?.resume(id: id, throwing: error) }
+            })
+            Task { [weak self] in
+                try? await Task.sleep(nanoseconds: 12_000_000_000)
+                await self?.resume(id: id, throwing: BitcoinElectrumError.requestTimedOut(method))
+            }
+        }
+    }
+
+    private func requestBatch(_ specs: [BitcoinElectrumBatchRequestSpec]) async throws -> [BitcoinElectrumBatchResponse] {
+        guard !specs.isEmpty else { return [] }
+
+        var requests: [BitcoinElectrumPendingBatchRequest] = []
+        var wireRequests: [BitcoinElectrumJSONRequest] = []
+        requests.reserveCapacity(specs.count)
+        wireRequests.reserveCapacity(specs.count)
+        for spec in specs {
+            let id = nextID
+            nextID += 1
+            wireRequests.append(BitcoinElectrumJSONRequest(id: id, method: spec.method, params: spec.params))
+            requests.append(BitcoinElectrumPendingBatchRequest(id: id, spec: spec))
+        }
+        var payload = try JSONEncoder().encode(wireRequests)
+        payload.append(0x0A)
+
+        let ids = requests.map(\.id)
+        let batchBox = BitcoinElectrumBatchResponseBox(ids: ids)
+        for id in ids {
+            pending[id] = { result in
+                batchBox.complete(id: id, result: result)
+            }
+        }
+
+        connection.send(content: payload, completion: .contentProcessed { [weak self] error in
+            guard let error else { return }
+            Task { await self?.fail(ids: ids, error: error) }
+        })
+        Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 30_000_000_000)
+            await self?.fail(ids: ids, error: BitcoinElectrumError.requestTimedOut("batch(\(specs.count))"))
+        }
+
+        let results = try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<[Int: BitcoinElectrumJSONValue], Error>) in
+            batchBox.wait(continuation)
+        }
+        return try requests.map { request in
+            guard let result = results[request.id] else {
+                throw BitcoinElectrumError.invalidResponse
+            }
+            return BitcoinElectrumBatchResponse(id: request.id, result: result)
+        }
+    }
+
+    private func receiveLoop() {
+        connection.receive(minimumIncompleteLength: 1, maximumLength: 128 * 1024) { [weak self] content, _, isComplete, error in
+            Task {
+                if let content, !content.isEmpty {
+                    await self?.handleReceived(content)
+                }
+                if let error {
+                    await self?.failAll(error)
+                    return
+                }
+                if isComplete {
+                    await self?.failAll(BitcoinElectrumError.connectionFailed)
+                    return
+                }
+                await self?.receiveLoop()
+            }
+        }
+    }
+
+    private func handleReceived(_ content: Data) {
+        receiveBuffer.append(content)
+        let newline = Data([0x0A])
+        while let range = receiveBuffer.range(of: newline) {
+            let line = receiveBuffer.subdata(in: receiveBuffer.startIndex..<range.lowerBound)
+            receiveBuffer.removeSubrange(receiveBuffer.startIndex..<range.upperBound)
+            guard !line.isEmpty else { continue }
+            do {
+                if line.first == 0x5B {
+                    let responses = try JSONDecoder().decode([BitcoinElectrumJSONResponse].self, from: line)
+                    for response in responses { handle(response) }
+                } else {
+                    let response = try JSONDecoder().decode(BitcoinElectrumJSONResponse.self, from: line)
+                    handle(response)
+                }
+            } catch {
+                failAll(error)
+            }
+        }
+    }
+
+    private func handle(_ response: BitcoinElectrumJSONResponse) {
+        guard let id = response.id else { return }
+        if let error = response.error {
+            resume(id: id, throwing: BitcoinElectrumError.rpcError(error.message))
+        } else if let result = response.result {
+            resume(id: id, returning: result)
+        } else {
+            resume(id: id, throwing: BitcoinElectrumError.invalidResponse)
+        }
+    }
+
+    private func resume(id: Int, returning value: BitcoinElectrumJSONValue) {
+        pending.removeValue(forKey: id)?(.success(value))
+    }
+
+    private func resume(id: Int, throwing error: Error) {
+        pending.removeValue(forKey: id)?(.failure(error))
+    }
+
+    private func fail(ids: [Int], error: Error) {
+        for id in ids {
+            pending.removeValue(forKey: id)?(.failure(error))
+        }
+    }
+
+    private func failAll(_ error: Error) {
+        let callbacks = pending.values
+        pending.removeAll()
+        for callback in callbacks {
+            callback(.failure(error))
+        }
+    }
+}
+
+private struct BitcoinElectrumBatchRequestSpec: Sendable {
+    let method: String
+    let params: [BitcoinElectrumJSONValue]
+}
+
+private struct BitcoinElectrumPendingBatchRequest: Sendable {
+    let id: Int
+    let spec: BitcoinElectrumBatchRequestSpec
+}
+
+private struct BitcoinElectrumBatchResponse: Sendable {
+    let id: Int
+    let result: BitcoinElectrumJSONValue
+}
+
+private final class BitcoinElectrumBatchResponseBox: @unchecked Sendable {
+    private let lock = NSLock()
+    private var remaining: Set<Int>
+    private var results: [Int: BitcoinElectrumJSONValue] = [:]
+    private var continuation: CheckedContinuation<[Int: BitcoinElectrumJSONValue], Error>?
+    private var completion: Result<[Int: BitcoinElectrumJSONValue], Error>?
+
+    init(ids: [Int]) {
+        self.remaining = Set(ids)
+    }
+
+    func wait(_ continuation: CheckedContinuation<[Int: BitcoinElectrumJSONValue], Error>) {
+        lock.lock()
+        if let completion {
+            lock.unlock()
+            continuation.resume(with: completion)
+            return
+        }
+        self.continuation = continuation
+        lock.unlock()
+    }
+
+    func complete(id: Int, result: Result<BitcoinElectrumJSONValue, Error>) {
+        lock.lock()
+        if completion != nil {
+            lock.unlock()
+            return
+        }
+
+        switch result {
+        case .success(let value):
+            results[id] = value
+            remaining.remove(id)
+            guard remaining.isEmpty else {
+                lock.unlock()
+                return
+            }
+            completion = .success(results)
+        case .failure(let error):
+            completion = .failure(error)
+        }
+
+        let continuation = self.continuation
+        let completion = self.completion
+        self.continuation = nil
+        lock.unlock()
+
+        if let completion {
+            continuation?.resume(with: completion)
+        }
+    }
+}
+
+private struct BitcoinElectrumAddressScan: Sendable {
+    let address: String
+    let path: String
+    let scriptHex: String
+    let confirmedSats: Int64
+    let unconfirmedSats: Int64
+    let utxos: [BitcoinElectrumUTXO]
+    let historyCount: Int
+
+    var totalSats: Int64 {
+        let (sum, overflow) = confirmedSats.addingReportingOverflow(unconfirmedSats)
+        return overflow ? Int64.max : sum
+    }
+
+    static func sum(utxos: [BitcoinElectrumUTXO]) -> Int64 {
+        utxos.reduce(Int64(0)) { partial, utxo in
+            let (sum, overflow) = partial.addingReportingOverflow(utxo.valueSats)
+            return overflow ? Int64.max : sum
+        }
+    }
+}
+
+private struct BitcoinElectrumLiveScanResult: Sendable {
+    let serverDescription: String
+    let scans: [BitcoinElectrumAddressScan]
+}
+
+private struct BitcoinElectrumUTXO: Sendable {
+    let txHash: String
+    let txPosition: Int
+    let height: Int
+    let valueSats: Int64
+
+    init(json: BitcoinElectrumJSONValue) throws {
+        guard case let .object(object) = json,
+              let txHash = object["tx_hash"]?.stringValue,
+              let txPosition = object["tx_pos"]?.intValue,
+              let height = object["height"]?.intValue,
+              let valueSats = object["value"]?.int64Value else {
+            throw BitcoinElectrumError.invalidResponse
+        }
+        self.txHash = txHash
+        self.txPosition = txPosition
+        self.height = height
+        self.valueSats = valueSats
+    }
+}
+
+private struct BitcoinElectrumHistoryItem: Sendable {
+    let txHash: String
+    let height: Int
+
+    init(json: BitcoinElectrumJSONValue) throws {
+        guard case let .object(object) = json,
+              let txHash = object["tx_hash"]?.stringValue,
+              let height = object["height"]?.intValue else {
+            throw BitcoinElectrumError.invalidResponse
+        }
+        self.txHash = txHash
+        self.height = height
+    }
+}
+
+private struct BitcoinElectrumJSONRequest: Encodable {
+    let jsonrpc = "2.0"
+    let id: Int
+    let method: String
+    let params: [BitcoinElectrumJSONValue]
+}
+
+private struct BitcoinElectrumJSONResponse: Decodable {
+    let id: Int?
+    let result: BitcoinElectrumJSONValue?
+    let error: BitcoinElectrumJSONError?
+}
+
+private struct BitcoinElectrumJSONError: Decodable {
+    let code: Int?
+    let message: String
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        if let message = try? container.decode(String.self) {
+            self.code = nil
+            self.message = message
+            return
+        }
+
+        if let object = try? container.decode([String: BitcoinElectrumJSONValue].self) {
+            self.code = object["code"]?.intValue
+            self.message = object["message"]?.stringValue
+                ?? object["error"]?.stringValue
+                ?? "\(object)"
+            return
+        }
+
+        if let value = try? container.decode(BitcoinElectrumJSONValue.self) {
+            self.code = nil
+            self.message = "\(value)"
+            return
+        }
+
+        throw BitcoinElectrumError.invalidResponse
+    }
+}
+
+private enum BitcoinElectrumJSONValue: Codable, Sendable {
+    case string(String)
+    case integer(Int64)
+    case double(Double)
+    case bool(Bool)
+    case object([String: BitcoinElectrumJSONValue])
+    case array([BitcoinElectrumJSONValue])
+    case null
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        if container.decodeNil() {
+            self = .null
+        } else if let value = try? container.decode(String.self) {
+            self = .string(value)
+        } else if let value = try? container.decode(Int64.self) {
+            self = .integer(value)
+        } else if let value = try? container.decode(Double.self) {
+            self = .double(value)
+        } else if let value = try? container.decode(Bool.self) {
+            self = .bool(value)
+        } else if let value = try? container.decode([String: BitcoinElectrumJSONValue].self) {
+            self = .object(value)
+        } else if let value = try? container.decode([BitcoinElectrumJSONValue].self) {
+            self = .array(value)
+        } else {
+            throw BitcoinElectrumError.invalidResponse
+        }
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        switch self {
+        case .string(let value):
+            try container.encode(value)
+        case .integer(let value):
+            try container.encode(value)
+        case .double(let value):
+            try container.encode(value)
+        case .bool(let value):
+            try container.encode(value)
+        case .object(let value):
+            try container.encode(value)
+        case .array(let value):
+            try container.encode(value)
+        case .null:
+            try container.encodeNil()
+        }
+    }
+
+    var stringValue: String? {
+        if case let .string(value) = self { return value }
+        return nil
+    }
+
+    var intValue: Int? {
+        if let value = int64Value { return Int(value) }
+        return nil
+    }
+
+    var int64Value: Int64? {
+        switch self {
+        case .integer(let value):
+            return value
+        case .double(let value):
+            return Int64(value)
+        default:
+            return nil
+        }
+    }
+}
+
+private enum BitcoinElectrumError: Error, CustomStringConvertible {
+    case invalidMnemonic
+    case invalidExtendedKey
+    case unsupportedExtendedPrivateVersion(UInt32)
+    case invalidPrivateKey
+    case invalidPublicKey
+    case derivationFailed(String)
+    case addressFailed
+    case invalidAddress(String)
+    case connectionFailed
+    case requestTimedOut(String)
+    case rpcError(String)
+    case invalidResponse
+
+    var description: String {
+        switch self {
+        case .invalidMnemonic:
+            return "Invalid Bitcoin mnemonic"
+        case .invalidExtendedKey:
+            return "Invalid Bitcoin extended key"
+        case .unsupportedExtendedPrivateVersion(let version):
+            return "Unsupported Bitcoin extended private-key version: \(String(format: "0x%08x", version))"
+        case .invalidPrivateKey:
+            return "Invalid Bitcoin private key"
+        case .invalidPublicKey:
+            return "Invalid Bitcoin public key"
+        case .derivationFailed(let path):
+            return "Bitcoin derivation failed for \(path)"
+        case .addressFailed:
+            return "Bitcoin address derivation failed"
+        case .invalidAddress(let address):
+            return "Invalid Bitcoin address: \(address)"
+        case .connectionFailed:
+            return "Bitcoin Electrum connection failed"
+        case .requestTimedOut(let method):
+            return "Bitcoin Electrum request timed out: \(method)"
+        case .rpcError(let message):
+            return "Bitcoin Electrum RPC error: \(message)"
+        case .invalidResponse:
+            return "Invalid Bitcoin Electrum response"
+        }
+    }
+}
+
+private final class BitcoinElectrumContinuationBox: @unchecked Sendable {
+    private let lock = NSLock()
+    private var didResume = false
+
+    func resumeOnce() -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        guard !didResume else { return false }
+        didResume = true
+        return true
+    }
+}
+
+private extension Data {
+    var apertureBitcoinHex: String {
+        map { String(format: "%02x", $0) }.joined()
+    }
+
+    init?(apertureBitcoinHex hex: String) {
+        guard hex.count % 2 == 0 else { return nil }
+        var bytes = Data()
+        bytes.reserveCapacity(hex.count / 2)
+        var index = hex.startIndex
+        while index < hex.endIndex {
+            let next = hex.index(index, offsetBy: 2)
+            guard let byte = UInt8(hex[index..<next], radix: 16) else { return nil }
+            bytes.append(byte)
+            index = next
+        }
+        self = bytes
+    }
+
+    func apertureBitcoinUInt32BE(at offset: Int) -> UInt32 {
+        UInt32(self[offset]) << 24
+            | UInt32(self[offset + 1]) << 16
+            | UInt32(self[offset + 2]) << 8
+            | UInt32(self[offset + 3])
+    }
+}
+
+private extension UInt32 {
+    var apertureBitcoinBigEndianData: Data {
+        Data([
+            UInt8((self >> 24) & 0xFF),
+            UInt8((self >> 16) & 0xFF),
+            UInt8((self >> 8) & 0xFF),
+            UInt8(self & 0xFF)
+        ])
+    }
+}

@@ -6,9 +6,9 @@ import SwiftUI
 ///   - an Apple-authored **SF Symbol** (`Image(systemName:)`), or
 ///   - a real **bundled brand asset** from `Assets.xcassets/` (reserved for
 ///     screens that show specific brand marks — currently used by the
-///     wordmark illustration; the chain-logo PNGs bundled under
-///     `Assets.xcassets/Crypto/` are kept for the future wallet/portfolio
-///     view, not consumed here).
+///     wordmark illustration; token and network PNGs bundled under
+///     `Assets.xcassets/Tokens/` and `Assets.xcassets/Networks/` are
+///     reserved for wallet surfaces, not consumed here).
 ///
 /// Hand-building icons / logos / illustrations from `Shape` / `Path` /
 /// `Canvas` primitives is **forbidden** (Rule #7 Part C). Structural shapes
@@ -49,11 +49,7 @@ struct OnboardingIllustrationView: View {
         Group {
             switch kind {
             case .wordmark:
-                WordmarkIllustration(
-                    isActive: isActive,
-                    logoNamespace: logoNamespace,
-                    phase: phase
-                )
+                WordmarkIllustration()
             case .constellation:   ConstellationIllustration(isActive: isActive)
             case .vault:           VaultIllustration(isActive: isActive)
             case .faceID:          FaceIDIllustration(isActive: isActive)
@@ -64,7 +60,7 @@ struct OnboardingIllustrationView: View {
             case .threshold:       ThresholdIllustration(isActive: isActive)
             }
         }
-        .frame(height: 200)
+        .frame(height: kind == .wordmark ? 144 : 200)
         .frame(maxWidth: .infinity)
         .accessibilityHidden(true)
     }

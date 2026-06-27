@@ -7,8 +7,8 @@ import Foundation
 /// domain `tiny-keccak` reference.
 ///
 /// **Why a shared file (Rule #3 native-only, no SPM).** Several
-/// surfaces in Aperture need Keccak: `CoinMarkCache` (Trust Wallet
-/// URL building), `ContractValidator` (EVM checksum verification),
+/// surfaces in Aperture need Keccak: token-logo URL normalization,
+/// `ContractValidator` (EVM checksum verification),
 /// future EVM signing paths. Each used to inline its own copy; one
 /// shared helper means one audit surface.
 ///

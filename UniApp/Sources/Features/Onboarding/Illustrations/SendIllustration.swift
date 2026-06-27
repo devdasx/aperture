@@ -24,7 +24,7 @@ struct SendIllustration: View {
                     .foregroundStyle(UniColors.Brand.mark)
                     .symbolEffect(.bounce, options: .nonRepeating, value: isActive)
 
-                Image("eth")
+                Image("token_eth")
                     .resizable()
                     .scaledToFit()
                     .frame(width: 36, height: 36)

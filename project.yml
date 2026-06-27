@@ -44,14 +44,13 @@ targets:
         product: WalletCore
       - package: WalletCore
         product: WalletCoreSwiftProtobuf
-    # API keys (1rpc + Infura) come from Secrets.xcconfig — LOCAL ONLY,
-    # gitignored. Values are injected into the app's Info.plist (the `info`
-    # block below) via `$(KEY)` substituted at build time from the xcconfig,
-    # and read at runtime by `Secrets.swift`.
-    # NEVER commit Secrets.xcconfig.
+    # API keys default to the committed, empty template so a fresh clone can
+    # generate/open/build immediately. Do not commit real key values; local
+    # builds can still provide keys through a private xcconfig if this wiring
+    # is overridden locally.
     configFiles:
-      Debug: Secrets.xcconfig
-      Release: Secrets.xcconfig
+      Debug: Secrets.xcconfig.template
+      Release: Secrets.xcconfig.template
     # Explicit Info.plist instead of GENERATE_INFOPLIST_FILE: Xcode only
     # injects a fixed allow-list of INFOPLIST_KEY_* settings, so arbitrary
     # custom keys (our API keys) need a real plist carrying `$(KEY)` tokens
@@ -86,10 +85,12 @@ targets:
         # library (the Add-only entitlement) — without it the first save
         # call crashes. We only ever ADD an image; we never read the library.
         NSPhotoLibraryAddUsageDescription: "Aperture saves a QR image to your Photos only when you tap Save — so you can move a key or recovery phrase to another device. It never reads your photo library."
-        # Secret API keys — `$(KEY)` substituted from Secrets.xcconfig at
+        # Secret API keys — `$(KEY)` substituted from the xcconfig at
         # build time; the source plist never contains the real values.
         ONERPC_API_KEY: "$(ONERPC_API_KEY)"
         INFURA_API_KEY: "$(INFURA_API_KEY)"
+        ETHERSCAN_API_KEY: "$(ETHERSCAN_API_KEY)"
+        TRONSCAN_API_KEY: "$(TRONSCAN_API_KEY)"
     # iCloud → CloudKit, for the encrypted wallet-backup feature (the blob
     # store in CloudKitBackupStore). Container auto-creates under the team's
     # account when the capability is enabled in signing; record types
