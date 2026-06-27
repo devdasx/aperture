@@ -11,6 +11,7 @@ import SwiftData
 /// list doesn't carry chrome it doesn't need.
 struct WalletsListView: View {
     @Query(sort: \WalletRecord.sortOrder) private var wallets: [WalletRecord]
+    @Query private var secretRows: [WalletSecretRecord]
     /// Live per-token balances — the SAME source the wallet-home hero uses for
     /// its `liveBalanceSum`, so this list shows the same number as the home
     /// (2026-06-20 fix). The previous `ChainStateRecord` aggregate could be
@@ -29,7 +30,18 @@ struct WalletsListView: View {
     @AppStorage("walletsListShowImportedMnemonic") private var showImportedMnemonic: Bool = true
     @AppStorage("walletsListShowImportedKey") private var showImportedKey: Bool = true
     @AppStorage("walletsListShowWatchOnly") private var showWatchOnly: Bool = true
-    @AppStorage("walletsListOnlyUnbackedUp") private var onlyUnbackedUp: Bool = false
+    @AppStorage("walletsListActiveScope") private var activeScopeRaw: String = WalletsListActiveScope.all.rawValue
+    @AppStorage("walletsListVisibilityScope") private var visibilityScopeRaw: String = WalletsListVisibilityScope.all.rawValue
+    @AppStorage("walletsListBackupScope") private var backupScopeRaw: String = WalletsListBackupScope.all.rawValue
+    @AppStorage("walletsListOnlyUnbackedUp") private var legacyOnlyUnbackedUp: Bool = false
+    @AppStorage("walletsListBalanceScope") private var balanceScopeRaw: String = WalletsListBalanceScope.all.rawValue
+    @AppStorage("walletsListMinFiat") private var minFiatRaw: String = ""
+    @AppStorage("walletsListMaxFiat") private var maxFiatRaw: String = ""
+    @AppStorage("walletsListNetworkScope") private var networkScopeRaw: String = WalletsListNetworkScope.all.rawValue
+    @AppStorage("walletsListSelectedNetworks") private var selectedNetworksJSON: String = WalletsListFilterSupport.defaultSelectedJSON
+    @AppStorage("walletsListSecretScope") private var secretScopeRaw: String = WalletsListSecretScope.all.rawValue
+    @AppStorage("walletsListOnlyPassphrase") private var onlyPassphrase: Bool = false
+    @AppStorage("walletsListDateRange") private var dateRangeRaw: String = WalletsListDateRange.all.rawValue
     @State private var isShowingFilter: Bool = false
 
     /// `true` when any non-default filter/sort is active — surfaces a dot on
@@ -38,7 +50,18 @@ struct WalletsListView: View {
         sortKeyRaw != WalletsListSortKey.custom.rawValue
             || !sortAscending
             || !showCreated || !showImportedMnemonic || !showImportedKey || !showWatchOnly
-            || onlyUnbackedUp
+            || activeScopeRaw != WalletsListActiveScope.all.rawValue
+            || visibilityScopeRaw != WalletsListVisibilityScope.all.rawValue
+            || backupScopeRaw != WalletsListBackupScope.all.rawValue
+            || legacyOnlyUnbackedUp
+            || balanceScopeRaw != WalletsListBalanceScope.all.rawValue
+            || !minFiatRaw.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            || !maxFiatRaw.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            || networkScopeRaw != WalletsListNetworkScope.all.rawValue
+            || !WalletsListFilterSupport.decode(selectedNetworksJSON).isEmpty
+            || secretScopeRaw != WalletsListSecretScope.all.rawValue
+            || onlyPassphrase
+            || dateRangeRaw != WalletsListDateRange.all.rawValue
     }
 
     private func kindShown(_ kind: WalletKind) -> Bool {
@@ -62,6 +85,17 @@ struct WalletsListView: View {
             sorted = list.sorted { fiatBalance(for: $0) < fiatBalance(for: $1) }
         case .dateAdded:
             sorted = list.sorted { $0.createdAt < $1.createdAt }
+        case .dateUpdated:
+            sorted = list.sorted { $0.updatedAt < $1.updatedAt }
+        case .walletType:
+            sorted = list.sorted { lhs, rhs in
+                if lhs.kindRaw == rhs.kindRaw {
+                    return lhs.name.localizedStandardCompare(rhs.name) == .orderedAscending
+                }
+                return lhs.kindRaw < rhs.kindRaw
+            }
+        case .networks:
+            sorted = list.sorted { networkCount(for: $0) < networkCount(for: $1) }
         }
         return sortAscending ? sorted : sorted.reversed()
     }
@@ -78,6 +112,10 @@ struct WalletsListView: View {
             total += balance.fiatValueCached
         }
         return total
+    }
+
+    private func networkCount(for wallet: WalletRecord) -> Int {
+        Set(wallet.addresses.map(\.chainRaw)).count
     }
 
     @State private var searchText: String = ""
@@ -120,14 +158,123 @@ struct WalletsListView: View {
 
     private var filteredWallets: [WalletRecord] {
         var result = wallets.filter { kindShown($0.kind) }
-        if onlyUnbackedUp {
-            result = result.filter { $0.requiresBackup }
+
+        result = result.filter { wallet in
+            matchesActiveScope(wallet)
+                && matchesVisibilityScope(wallet)
+                && matchesBackupScope(wallet)
+                && matchesBalanceScope(wallet)
+                && matchesNetworkScope(wallet)
+                && matchesSecretScope(wallet)
+                && matchesDateRange(wallet)
         }
+
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
         if !query.isEmpty {
             result = result.filter { $0.name.localizedStandardContains(query) }
         }
         return sortWallets(result)
+    }
+
+    private func matchesActiveScope(_ wallet: WalletRecord) -> Bool {
+        let scope = WalletsListActiveScope(rawValue: activeScopeRaw) ?? .all
+        let isActive = wallet.id.uuidString == activeWalletIdRaw
+        switch scope {
+        case .all:      return true
+        case .active:   return isActive
+        case .inactive: return !isActive
+        }
+    }
+
+    private func matchesVisibilityScope(_ wallet: WalletRecord) -> Bool {
+        let scope = WalletsListVisibilityScope(rawValue: visibilityScopeRaw) ?? .all
+        switch scope {
+        case .all:     return true
+        case .visible: return !wallet.isHidden
+        case .hidden:  return wallet.isHidden
+        }
+    }
+
+    private func matchesBackupScope(_ wallet: WalletRecord) -> Bool {
+        let scope = legacyOnlyUnbackedUp
+            ? WalletsListBackupScope.needsBackup
+            : (WalletsListBackupScope(rawValue: backupScopeRaw) ?? .all)
+        switch scope {
+        case .all:
+            return true
+        case .needsBackup:
+            return wallet.requiresBackup
+        case .backedUp:
+            return !wallet.requiresBackup
+        case .manualBackup:
+            return wallet.manualBackupCompleted == true
+        }
+    }
+
+    private func matchesBalanceScope(_ wallet: WalletRecord) -> Bool {
+        let balance = fiatBalance(for: wallet)
+        let scope = WalletsListBalanceScope(rawValue: balanceScopeRaw) ?? .all
+        switch scope {
+        case .all:
+            break
+        case .withBalance:
+            guard balance > 0 else { return false }
+        case .empty:
+            guard balance == 0 else { return false }
+        }
+        if let minimum = Self.parseFiatAmount(minFiatRaw), balance < minimum {
+            return false
+        }
+        if let maximum = Self.parseFiatAmount(maxFiatRaw), balance > maximum {
+            return false
+        }
+        return true
+    }
+
+    private func matchesNetworkScope(_ wallet: WalletRecord) -> Bool {
+        let walletNetworks = Set(wallet.addresses.map(\.chainRaw))
+        let scope = WalletsListNetworkScope(rawValue: networkScopeRaw) ?? .all
+        switch scope {
+        case .all:
+            break
+        case .singleNetwork:
+            guard walletNetworks.count == 1 else { return false }
+        case .multiNetwork:
+            guard walletNetworks.count > 1 else { return false }
+        }
+
+        let selectedNetworks = WalletsListFilterSupport.decode(selectedNetworksJSON)
+        guard !selectedNetworks.isEmpty else { return true }
+        return !selectedNetworks.isDisjoint(with: walletNetworks)
+    }
+
+    private func matchesSecretScope(_ wallet: WalletRecord) -> Bool {
+        if onlyPassphrase, !wallet.hasPassphrase {
+            return false
+        }
+
+        let scope = WalletsListSecretScope(rawValue: secretScopeRaw) ?? .all
+        switch scope {
+        case .all:
+            return true
+        case .canSign:
+            return walletHasStoredSecret(wallet)
+        case .noSigningKey:
+            return !walletHasStoredSecret(wallet)
+        }
+    }
+
+    private func matchesDateRange(_ wallet: WalletRecord) -> Bool {
+        let range = WalletsListDateRange(rawValue: dateRangeRaw) ?? .all
+        guard let cutoff = range.cutoff(from: Date()) else { return true }
+        return wallet.createdAt >= cutoff
+    }
+
+    private static func parseFiatAmount(_ raw: String) -> Decimal? {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        if let value = Decimal(string: trimmed) { return value }
+        return Decimal(string: trimmed.replacingOccurrences(of: ",", with: "."))
     }
 
     var body: some View {
@@ -281,7 +428,8 @@ struct WalletsListView: View {
                         DispatchQueue.main.async { loadAndPresentBackup() }
                     },
                     onCancel: { isShowingBackupPasscode = false },
-                    allowsBiometrics: true
+                    allowsBiometrics: true,
+                    showsNavigationControls: false
                 )
                 .toolbar {
                     ToolbarItem(placement: .topBarLeading) {
@@ -373,10 +521,11 @@ struct WalletsListView: View {
 
     private func entryRow(systemImage: String, title: LocalizedStringKey) -> some View {
         HStack(spacing: UniSpacing.s) {
-            Image(systemName: systemImage)
-                .font(.system(size: 17, weight: .regular))
-                .foregroundStyle(UniColors.Icon.accent)
-                .frame(width: 28, alignment: .center)
+            SettingsIconTile(
+                systemImage: systemImage,
+                tint: .blue,
+                compactTint: UniColors.Icon.accent
+            )
             Text(title)
                 .font(UniTypography.body)
                 .foregroundStyle(UniColors.Text.primary)
@@ -446,12 +595,12 @@ struct WalletsListView: View {
     @MainActor
     private func loadAndPresentBackup() {
         guard let id = backupTargetId else { return }
+        let container = modelContext.container
         Task { @MainActor in
-            let loaded = try? await Task.detached(priority: .userInitiated) {
-                try MnemonicVault.loadMnemonic(for: id)
-            }.value
+            let loaded = try? await WalletSecretRepository(modelContainer: container)
+                .loadMnemonic(for: id)
             guard let words = loaded, !words.isEmpty else {
-                errorAlertMessage = String.apertureLocalized("Couldn't read this wallet's phrase to back it up. Try restarting Aperture.")
+                errorAlertMessage = String.apertureLocalized("This wallet's saved recovery phrase is not available on this iPhone. Re-import the phrase to restore local backup access.")
                 return
             }
             backupWords = words
@@ -463,11 +612,22 @@ struct WalletsListView: View {
     private func walletHasStoredSecret(_ wallet: WalletRecord) -> Bool {
         switch wallet.kind {
         case .importedKey:
-            return MnemonicVault.hasPrivateKey(for: wallet.id)
+            return hasStoredSecret(kind: .privateKey, for: wallet.id)
         case .created, .importedMnemonic:
-            return MnemonicVault.hasMnemonic(for: wallet.id)
+            return hasStoredSecret(kind: .mnemonic, for: wallet.id)
         case .watchOnly:
             return false
+        }
+    }
+
+    private func hasStoredSecret(kind: WalletSecretKind, for walletId: UUID) -> Bool {
+        let key = WalletSecretRecord.storageKey(walletId: walletId, kind: kind)
+        if secretRows.contains(where: { $0.key == key }) { return true }
+        switch kind {
+        case .mnemonic:
+            return MnemonicVault.hasMnemonic(for: walletId)
+        case .privateKey:
+            return MnemonicVault.hasPrivateKey(for: walletId)
         }
     }
 
@@ -509,6 +669,9 @@ enum WalletsListSortKey: String, CaseIterable, Identifiable {
     case name
     case balance
     case dateAdded   // createdAt
+    case dateUpdated
+    case walletType
+    case networks
 
     var id: String { rawValue }
 
@@ -518,7 +681,163 @@ enum WalletsListSortKey: String, CaseIterable, Identifiable {
         case .name:      return "Name"
         case .balance:   return "Balance"
         case .dateAdded: return "Date added"
+        case .dateUpdated: return "Last updated"
+        case .walletType:  return "Wallet type"
+        case .networks:    return "Networks"
         }
+    }
+}
+
+enum WalletsListActiveScope: String, CaseIterable, Identifiable {
+    case all
+    case active
+    case inactive
+
+    var id: String { rawValue }
+
+    var label: LocalizedStringKey {
+        switch self {
+        case .all:      return "All"
+        case .active:   return "Active"
+        case .inactive: return "Inactive"
+        }
+    }
+}
+
+enum WalletsListVisibilityScope: String, CaseIterable, Identifiable {
+    case all
+    case visible
+    case hidden
+
+    var id: String { rawValue }
+
+    var label: LocalizedStringKey {
+        switch self {
+        case .all:     return "All"
+        case .visible: return "Visible"
+        case .hidden:  return "Hidden"
+        }
+    }
+}
+
+enum WalletsListBackupScope: String, CaseIterable, Identifiable {
+    case all
+    case needsBackup
+    case backedUp
+    case manualBackup
+
+    var id: String { rawValue }
+
+    var label: LocalizedStringKey {
+        switch self {
+        case .all:          return "All"
+        case .needsBackup:  return "Needs backup"
+        case .backedUp:     return "Backed up"
+        case .manualBackup: return "Manual backup done"
+        }
+    }
+}
+
+enum WalletsListBalanceScope: String, CaseIterable, Identifiable {
+    case all
+    case withBalance
+    case empty
+
+    var id: String { rawValue }
+
+    var label: LocalizedStringKey {
+        switch self {
+        case .all:         return "All"
+        case .withBalance: return "With balance"
+        case .empty:       return "Empty"
+        }
+    }
+}
+
+enum WalletsListNetworkScope: String, CaseIterable, Identifiable {
+    case all
+    case singleNetwork
+    case multiNetwork
+
+    var id: String { rawValue }
+
+    var label: LocalizedStringKey {
+        switch self {
+        case .all:           return "All"
+        case .singleNetwork: return "Single network"
+        case .multiNetwork:  return "Multi-network"
+        }
+    }
+}
+
+enum WalletsListSecretScope: String, CaseIterable, Identifiable {
+    case all
+    case canSign
+    case noSigningKey
+
+    var id: String { rawValue }
+
+    var label: LocalizedStringKey {
+        switch self {
+        case .all:          return "All"
+        case .canSign:      return "Can sign"
+        case .noSigningKey: return "No signing key"
+        }
+    }
+}
+
+enum WalletsListDateRange: String, CaseIterable, Identifiable {
+    case all
+    case day
+    case week
+    case month
+    case year
+
+    var id: String { rawValue }
+
+    var label: LocalizedStringKey {
+        switch self {
+        case .all:   return "All"
+        case .day:   return "24h"
+        case .week:  return "7d"
+        case .month: return "30d"
+        case .year:  return "1y"
+        }
+    }
+
+    func cutoff(from reference: Date) -> Date? {
+        let calendar = Calendar.current
+        switch self {
+        case .all:
+            return nil
+        case .day:
+            return calendar.date(byAdding: .day, value: -1, to: reference)
+        case .week:
+            return calendar.date(byAdding: .day, value: -7, to: reference)
+        case .month:
+            return calendar.date(byAdding: .day, value: -30, to: reference)
+        case .year:
+            return calendar.date(byAdding: .year, value: -1, to: reference)
+        }
+    }
+}
+
+enum WalletsListFilterSupport {
+    static let defaultSelectedJSON = "[]"
+
+    static func decode(_ json: String) -> Set<String> {
+        guard let data = json.data(using: .utf8),
+              let array = try? JSONDecoder().decode([String].self, from: data)
+        else { return [] }
+        return Set(array)
+    }
+
+    static func encode(_ set: Set<String>) -> String {
+        let sorted = Array(set).sorted()
+        guard let data = try? JSONEncoder().encode(sorted),
+              let json = String(data: data, encoding: .utf8)
+        else { return defaultSelectedJSON }
+        return json
     }
 }
 
@@ -535,18 +854,36 @@ struct WalletsListFilterSheet: View {
     @AppStorage("walletsListShowImportedMnemonic") private var showImportedMnemonic: Bool = true
     @AppStorage("walletsListShowImportedKey") private var showImportedKey: Bool = true
     @AppStorage("walletsListShowWatchOnly") private var showWatchOnly: Bool = true
-    @AppStorage("walletsListOnlyUnbackedUp") private var onlyUnbackedUp: Bool = false
+    @AppStorage("walletsListActiveScope") private var activeScopeRaw: String = WalletsListActiveScope.all.rawValue
+    @AppStorage("walletsListVisibilityScope") private var visibilityScopeRaw: String = WalletsListVisibilityScope.all.rawValue
+    @AppStorage("walletsListBackupScope") private var backupScopeRaw: String = WalletsListBackupScope.all.rawValue
+    @AppStorage("walletsListOnlyUnbackedUp") private var legacyOnlyUnbackedUp: Bool = false
+    @AppStorage("walletsListBalanceScope") private var balanceScopeRaw: String = WalletsListBalanceScope.all.rawValue
+    @AppStorage("walletsListMinFiat") private var minFiatRaw: String = ""
+    @AppStorage("walletsListMaxFiat") private var maxFiatRaw: String = ""
+    @AppStorage("walletsListNetworkScope") private var networkScopeRaw: String = WalletsListNetworkScope.all.rawValue
+    @AppStorage("walletsListSelectedNetworks") private var selectedNetworksJSON: String = WalletsListFilterSupport.defaultSelectedJSON
+    @AppStorage("walletsListSecretScope") private var secretScopeRaw: String = WalletsListSecretScope.all.rawValue
+    @AppStorage("walletsListOnlyPassphrase") private var onlyPassphrase: Bool = false
+    @AppStorage("walletsListDateRange") private var dateRangeRaw: String = WalletsListDateRange.all.rawValue
+    @AppStorage(CurrencyPreference.storageKey) private var currencyCode: String = CurrencyPreference.defaultCode
 
     @State private var isShowingResetConfirm: Bool = false
 
     private var isCustomSort: Bool { sortKeyRaw == WalletsListSortKey.custom.rawValue }
+    private var selectedNetworkCount: Int { WalletsListFilterSupport.decode(selectedNetworksJSON).count }
+    private var availableNetworkCount: Int { SupportedChain.allCases.count }
 
     var body: some View {
         NavigationStack {
             List {
                 sortSection
+                statusSection
                 kindSection
-                backupSection
+                holdingsSection
+                networksSection
+                securitySection
+                dateSection
                 resetSection
             }
             .listStyle(.insetGrouped)
@@ -571,6 +908,7 @@ struct WalletsListFilterSheet: View {
             } message: {
                 Text("This clears every filter and sort choice.")
             }
+            .onAppear(perform: migrateLegacyBackupFilter)
         }
     }
 
@@ -607,15 +945,125 @@ struct WalletsListFilterSheet: View {
         }
     }
 
-    private var backupSection: some View {
+    private var statusSection: some View {
         Section {
-            Toggle(isOn: $onlyUnbackedUp) {
-                Text("Only wallets that need backup").font(UniTypography.body).foregroundStyle(UniColors.Text.primary)
+            Picker(selection: $activeScopeRaw) {
+                ForEach(WalletsListActiveScope.allCases) { scope in
+                    Text(scope.label).tag(scope.rawValue)
+                }
+            } label: {
+                Text("Active state").font(UniTypography.body).foregroundStyle(UniColors.Text.primary)
+            }
+            .listRowBackground(UniColors.Background.secondary)
+
+            Picker(selection: $visibilityScopeRaw) {
+                ForEach(WalletsListVisibilityScope.allCases) { scope in
+                    Text(scope.label).tag(scope.rawValue)
+                }
+            } label: {
+                Text("Visibility").font(UniTypography.body).foregroundStyle(UniColors.Text.primary)
+            }
+            .listRowBackground(UniColors.Background.secondary)
+        } header: {
+            Text("Status").font(UniTypography.footnote).foregroundStyle(UniColors.Text.tertiary)
+        }
+    }
+
+    private var holdingsSection: some View {
+        Section {
+            Picker(selection: $balanceScopeRaw) {
+                ForEach(WalletsListBalanceScope.allCases) { scope in
+                    Text(scope.label).tag(scope.rawValue)
+                }
+            } label: {
+                Text("Balance").font(UniTypography.body).foregroundStyle(UniColors.Text.primary)
+            }
+            .listRowBackground(UniColors.Background.secondary)
+
+            amountField(placeholder: "Minimum", text: $minFiatRaw)
+                .listRowBackground(UniColors.Background.secondary)
+
+            amountField(placeholder: "Maximum", text: $maxFiatRaw)
+                .listRowBackground(UniColors.Background.secondary)
+        } header: {
+            Text("Holdings").font(UniTypography.footnote).foregroundStyle(UniColors.Text.tertiary)
+        } footer: {
+            Text("Balance filters use cached wallet totals in \(currencyCode).")
+                .font(UniTypography.footnote)
+                .foregroundStyle(UniColors.Text.tertiary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private var networksSection: some View {
+        Section {
+            Picker(selection: $networkScopeRaw) {
+                ForEach(WalletsListNetworkScope.allCases) { scope in
+                    Text(scope.label).tag(scope.rawValue)
+                }
+            } label: {
+                Text("Coverage").font(UniTypography.body).foregroundStyle(UniColors.Text.primary)
+            }
+            .listRowBackground(UniColors.Background.secondary)
+
+            NavigationLink {
+                WalletsListNetworkFilterView(selectedNetworksJSON: $selectedNetworksJSON)
+            } label: {
+                filterLink(
+                    systemImage: "globe",
+                    title: "Networks",
+                    readout: networkReadout
+                )
+            }
+            .listRowBackground(UniColors.Background.secondary)
+        } header: {
+            Text("Networks").font(UniTypography.footnote).foregroundStyle(UniColors.Text.tertiary)
+        }
+    }
+
+    private var securitySection: some View {
+        Section {
+            Picker(selection: $backupScopeRaw) {
+                ForEach(WalletsListBackupScope.allCases) { scope in
+                    Text(scope.label).tag(scope.rawValue)
+                }
+            } label: {
+                Text("Backup").font(UniTypography.body).foregroundStyle(UniColors.Text.primary)
+            }
+            .onChange(of: backupScopeRaw) { _, _ in legacyOnlyUnbackedUp = false }
+            .listRowBackground(UniColors.Background.secondary)
+
+            Picker(selection: $secretScopeRaw) {
+                ForEach(WalletsListSecretScope.allCases) { scope in
+                    Text(scope.label).tag(scope.rawValue)
+                }
+            } label: {
+                Text("Signing key").font(UniTypography.body).foregroundStyle(UniColors.Text.primary)
+            }
+            .listRowBackground(UniColors.Background.secondary)
+
+            Toggle(isOn: $onlyPassphrase) {
+                Text("Only wallets with passphrase").font(UniTypography.body).foregroundStyle(UniColors.Text.primary)
             }
             .tint(UniColors.Button.primaryTint)
             .listRowBackground(UniColors.Background.secondary)
         } header: {
-            Text("Backup").font(UniTypography.footnote).foregroundStyle(UniColors.Text.tertiary)
+            Text("Security").font(UniTypography.footnote).foregroundStyle(UniColors.Text.tertiary)
+        }
+    }
+
+    private var dateSection: some View {
+        Section {
+            Picker(selection: $dateRangeRaw) {
+                ForEach(WalletsListDateRange.allCases) { range in
+                    Text(range.label).tag(range.rawValue)
+                }
+            } label: {
+                Text("Date added").font(UniTypography.body).foregroundStyle(UniColors.Text.primary)
+            }
+            .listRowBackground(UniColors.Background.secondary)
+        } header: {
+            Text("Added").font(UniTypography.footnote).foregroundStyle(UniColors.Text.tertiary)
         }
     }
 
@@ -638,6 +1086,64 @@ struct WalletsListFilterSheet: View {
         .listRowBackground(UniColors.Background.secondary)
     }
 
+    private var networkReadout: String {
+        guard selectedNetworkCount > 0 else {
+            return String.apertureLocalized("All")
+        }
+        return String(
+            format: String.apertureLocalized("%lld of %lld"),
+            Int64(selectedNetworkCount),
+            Int64(availableNetworkCount)
+        )
+    }
+
+    private func filterLink(
+        systemImage: String,
+        title: LocalizedStringKey,
+        readout: String
+    ) -> some View {
+        HStack(spacing: UniSpacing.s) {
+            Image(systemName: systemImage)
+                .font(.system(size: 17, weight: .regular))
+                .foregroundStyle(UniColors.Icon.secondary)
+                .frame(width: 28, alignment: .center)
+                .accessibilityHidden(true)
+            Text(title)
+                .font(UniTypography.body)
+                .foregroundStyle(UniColors.Text.primary)
+            Spacer()
+            Text(verbatim: readout)
+                .font(UniTypography.subheadline)
+                .foregroundStyle(UniColors.Text.secondary)
+                .monospacedDigit()
+        }
+        .padding(.vertical, UniSpacing.xxs)
+    }
+
+    private func amountField(placeholder: LocalizedStringKey, text: Binding<String>) -> some View {
+        HStack(spacing: UniSpacing.s) {
+            Text(verbatim: currencyCode)
+                .font(UniTypography.subheadline)
+                .foregroundStyle(UniColors.Text.secondary)
+                .frame(minWidth: 40, alignment: .leading)
+                .monospacedDigit()
+            UniTextField(
+                placeholder: placeholder,
+                text: text,
+                fill: Color.clear,
+                verticalPadding: UniSpacing.xs,
+                keyboardType: .decimalPad
+            )
+        }
+        .padding(.vertical, UniSpacing.xxs)
+    }
+
+    private func migrateLegacyBackupFilter() {
+        guard legacyOnlyUnbackedUp else { return }
+        backupScopeRaw = WalletsListBackupScope.needsBackup.rawValue
+        legacyOnlyUnbackedUp = false
+    }
+
     private func resetAll() {
         sortKeyRaw = WalletsListSortKey.custom.rawValue
         sortAscending = true
@@ -645,6 +1151,135 @@ struct WalletsListFilterSheet: View {
         showImportedMnemonic = true
         showImportedKey = true
         showWatchOnly = true
-        onlyUnbackedUp = false
+        activeScopeRaw = WalletsListActiveScope.all.rawValue
+        visibilityScopeRaw = WalletsListVisibilityScope.all.rawValue
+        backupScopeRaw = WalletsListBackupScope.all.rawValue
+        legacyOnlyUnbackedUp = false
+        balanceScopeRaw = WalletsListBalanceScope.all.rawValue
+        minFiatRaw = ""
+        maxFiatRaw = ""
+        networkScopeRaw = WalletsListNetworkScope.all.rawValue
+        selectedNetworksJSON = WalletsListFilterSupport.defaultSelectedJSON
+        secretScopeRaw = WalletsListSecretScope.all.rawValue
+        onlyPassphrase = false
+        dateRangeRaw = WalletsListDateRange.all.rawValue
+    }
+}
+
+private struct WalletsListNetworkFilterView: View {
+    @Binding var selectedNetworksJSON: String
+    @State private var searchText: String = ""
+
+    private var selectedNetworks: Set<String> {
+        WalletsListFilterSupport.decode(selectedNetworksJSON)
+    }
+
+    private var chains: [SupportedChain] {
+        let sorted = SupportedChain.allCases.sorted {
+            $0.displayName.localizedStandardCompare($1.displayName) == .orderedAscending
+        }
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else { return sorted }
+        return sorted.filter {
+            $0.displayName.localizedStandardContains(query)
+                || $0.ticker.localizedStandardContains(query)
+        }
+    }
+
+    var body: some View {
+        List {
+            Section {
+                Button {
+                    selectedNetworksJSON = WalletsListFilterSupport.defaultSelectedJSON
+                } label: {
+                    HStack(spacing: UniSpacing.s) {
+                        Image(systemName: "circle.grid.2x2")
+                            .font(.system(size: 17, weight: .regular))
+                            .foregroundStyle(UniColors.Icon.secondary)
+                            .frame(width: 28, alignment: .center)
+                        Text("All networks")
+                            .font(UniTypography.body)
+                            .foregroundStyle(UniColors.Text.primary)
+                        Spacer()
+                        if selectedNetworks.isEmpty {
+                            Image(systemName: "checkmark")
+                                .font(.system(size: 15, weight: .semibold))
+                                .foregroundStyle(UniColors.Tint.accent)
+                        }
+                    }
+                    .padding(.vertical, UniSpacing.xxs)
+                }
+                .listRowBackground(UniColors.Background.secondary)
+            }
+
+            Section {
+                ForEach(chains, id: \.rawValue) { chain in
+                    networkRow(chain)
+                        .listRowBackground(UniColors.Background.secondary)
+                }
+            } header: {
+                Text("Networks")
+                    .font(UniTypography.footnote)
+                    .foregroundStyle(UniColors.Text.tertiary)
+            }
+        }
+        .listStyle(.insetGrouped)
+        .scrollContentBackground(.hidden)
+        .background(UniColors.Background.primary)
+        .navigationTitle(Text("Networks"))
+        .navigationBarTitleDisplayMode(.inline)
+        .searchable(text: $searchText, prompt: Text("Search networks"))
+    }
+
+    private func networkRow(_ chain: SupportedChain) -> some View {
+        Button {
+            toggle(chain)
+        } label: {
+            HStack(spacing: UniSpacing.s) {
+                if let asset = chain.logoAssetName {
+                    Image(asset)
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 28, height: 28)
+                        .clipShape(Circle())
+                } else {
+                    Image(systemName: "circle.dashed")
+                        .font(.system(size: 22, weight: .light))
+                        .foregroundStyle(UniColors.Icon.tertiary)
+                        .frame(width: 28, height: 28)
+                }
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(verbatim: chain.displayName)
+                        .font(UniTypography.body)
+                        .foregroundStyle(UniColors.Text.primary)
+                    Text(verbatim: chain.ticker)
+                        .font(UniTypography.caption1)
+                        .foregroundStyle(UniColors.Text.secondary)
+                }
+
+                Spacer()
+
+                if selectedNetworks.contains(chain.rawValue) {
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(UniColors.Tint.accent)
+                }
+            }
+            .padding(.vertical, UniSpacing.xxs)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(Text("\(chain.displayName) network"))
+    }
+
+    private func toggle(_ chain: SupportedChain) {
+        var set = selectedNetworks
+        if set.contains(chain.rawValue) {
+            set.remove(chain.rawValue)
+        } else {
+            set.insert(chain.rawValue)
+        }
+        selectedNetworksJSON = WalletsListFilterSupport.encode(set)
     }
 }

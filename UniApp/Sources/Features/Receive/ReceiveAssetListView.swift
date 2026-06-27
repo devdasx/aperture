@@ -19,12 +19,24 @@ struct ReceiveAssetListView: View {
     private var customTokenRecords: [CustomTokenRecord]
     @Query private var assetRecords: [AssetRecord]
 
-    @State private var sortedNatives: [SupportedChain] = []
-    @State private var sortedTokens: [ReceiveAsset] = []
     @State private var searchText: String = ""
 
-    private var rowsKey: String {
-        "\(availableChains.map(\.rawValue).joined(separator: ","))|\(customTokenRecords.count)|\(assetRecords.count)|\(holdings.fingerprint)"
+    private var sortedNatives: [SupportedChain] {
+        AssetPickerSort.natives(availableChains, holdings: holdings)
+    }
+
+    private var sortedTokens: [ReceiveAsset] {
+        let tokens = ReceiveAsset.tokens(
+            availableChains: Set(availableChains),
+            customTokens: customTokenRecords.map { CustomTokenSnapshot(from: $0) },
+            catalogAssets: catalogAssets
+        )
+        return AssetPickerSort.tokens(tokens, holdings: holdings)
+    }
+
+    private var catalogAssets: [CatalogAsset] {
+        let seededAssets = AssetCatalog.assets(from: assetRecords)
+        return seededAssets.isEmpty ? AssetCatalog.allAssets : seededAssets
     }
 
     var body: some View {
@@ -46,15 +58,6 @@ struct ReceiveAssetListView: View {
         .scrollContentBackground(.hidden)
         .background(UniColors.Background.primary)
         .searchable(text: $searchText, prompt: Text("Search"))
-        .task(id: rowsKey) {
-            let tokens = ReceiveAsset.tokens(
-                availableChains: Set(availableChains),
-                customTokens: customTokenRecords.map { CustomTokenSnapshot(from: $0) },
-                catalogAssets: AssetCatalog.assets(from: assetRecords)
-            )
-            sortedTokens = AssetPickerSort.tokens(tokens, holdings: holdings)
-            sortedNatives = AssetPickerSort.natives(availableChains, holdings: holdings)
-        }
     }
 
     // MARK: - Filtering

@@ -232,12 +232,15 @@ struct BalanceCardView: View {
                     .padding(.top, 24)
                     .padding(.bottom, 8)
 
-                switch resolvedState {
-                case .zero:
-                    zeroBody
-                case .hidden, .value:
-                    valueBody
+                Group {
+                    switch resolvedState {
+                    case .zero:
+                        zeroBody
+                    case .hidden, .value:
+                        valueBody
+                    }
                 }
+                .transition(.opacity.combined(with: .move(edge: .bottom)))
             }
             .padding(.horizontal, UniSpacing.l)
             .padding(.top, UniSpacing.l)
@@ -255,6 +258,8 @@ struct BalanceCardView: View {
         // inner specular edge + hairline still give the surface its depth.
         .accessibilityElement(children: .combine)
         .accessibilityLabel(accessibilityLabel)
+        .animation(reduceMotion ? nil : .smooth(duration: 0.32), value: resolvedState)
+        .animation(reduceMotion ? nil : .smooth(duration: 0.32), value: totalFiat)
         .task(id: rebuildKey) { await rebuild() }
     }
 
@@ -371,13 +376,7 @@ struct BalanceCardView: View {
 
     @ViewBuilder
     private var valueBody: some View {
-        balanceNumber
-            // Tapping the balance toggles hide/show — same as the eye
-            // button (2026-06-19 user direction): tap once to hide, tap
-            // the masked figure again to reveal.
-            .contentShape(Rectangle())
-            .onTapGesture { toggleHidden() }
-            .accessibilityAddTraits(.isButton)
+        tappableBalanceNumber
             .padding(.bottom, 14)
 
         // Hidden on a fresh / $0 wallet → show ONLY the masked figure + the
@@ -387,8 +386,6 @@ struct BalanceCardView: View {
         if !isHidden || totalFiat > 0 {
             changeRow
 
-            // Full-bleed chart — negative inset cancels the card's 24pt
-            // horizontal pad so the curve bleeds to the card edges.
             BalanceAreaChart(
                 values: chartValues,
                 xFractions: chartXFractions,
@@ -409,8 +406,8 @@ struct BalanceCardView: View {
                     UniHapticEngine.shared.play(.contextualImpact(.whisper))
                 }
             )
+            .frame(maxWidth: .infinity, alignment: .center)
             .frame(height: 120)
-            .padding(.horizontal, -UniSpacing.l)
             .padding(.top, 14)
             .allowsHitTesting(resolvedState == .value) // hidden chart isn't scrubbable
             .accessibilityHidden(true)
@@ -445,8 +442,21 @@ struct BalanceCardView: View {
 
     // MARK: - Balance number (3 runs)
 
+    private var tappableBalanceNumber: some View {
+        balanceNumber
+            // Tapping the balance toggles hide/show — same as the eye
+            // button. This is deliberately shared by the value, hidden, and
+            // zero states so a fresh wallet's "0.000" behaves exactly like a
+            // funded wallet's balance.
+            .contentShape(Rectangle())
+            .onTapGesture { toggleHidden() }
+            .accessibilityAddTraits(.isButton)
+            .accessibilityLabel(Text(isHidden ? "Show balance" : "Hide balance"))
+    }
+
     private var balanceNumber: some View {
         let parts = WalletFormatting.fiatParts(totalFiat, currencyCode: currencyCode)
+        let animatedFiat = NSDecimalNumber(decimal: scrubModel.fiat ?? totalFiat).doubleValue
         // Currency-code run (muted), shown only when it leads (en).
         let currencyRun = Text(verbatim: parts.currency + (parts.currency.isEmpty ? "" : " "))
             .font(UniTypography.BalanceCard.currency)
@@ -471,7 +481,8 @@ struct BalanceCardView: View {
         .tracking(-1.3) // ≈ −0.03em at 44pt
         .contentTransition(reduceMotion ? .identity : .numericText())
         .environment(\.layoutDirection, .leftToRight) // numbers always LTR (Rule #11)
-        .animation(reduceMotion ? nil : .snappy(duration: 0.22), value: scrubModel.fiat)
+        .animation(reduceMotion ? nil : .smooth(duration: 0.28), value: animatedFiat)
+        .animation(reduceMotion ? nil : .smooth(duration: 0.24), value: isHidden)
     }
 
     /// The integer (primary) + decimals (fainter), with the currency code
@@ -632,12 +643,7 @@ struct BalanceCardView: View {
     @ViewBuilder
     private var zeroBody: some View {
         // Balance reads 0.00 (no chart, no selector — handoff §Zero).
-        let parts = WalletFormatting.fiatParts(0, currencyCode: currencyCode)
-        composedBalance(parts)
-            .lineLimit(1)
-            .minimumScaleFactor(0.5)
-            .tracking(-1.3)
-            .environment(\.layoutDirection, .leftToRight)
+        tappableBalanceNumber
 
         Text("Add crypto to get started — receive or transfer it from another wallet.")
             .font(UniTypography.BalanceCard.zeroPrompt)
@@ -664,7 +670,7 @@ struct BalanceCardView: View {
     }
 
     private func toggleHidden() {
-        withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.18)) {
+        withAnimation(reduceMotion ? nil : .smooth(duration: 0.28)) {
             isHidden.toggle()
         }
         UniHapticEngine.shared.play(.toggle) // `toggle` on value change

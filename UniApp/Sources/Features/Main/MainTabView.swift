@@ -3,18 +3,14 @@ import SwiftData
 import UIKit
 import TipKit
 
-/// The post-onboarding shell for Aperture. Hosts the top-level tabs the user
-/// navigates between — **Wallet**, **Browser**, and the **Actions** trigger —
-/// via the native iOS 26 `TabView` + `Tab(...)` API. **Settings is no longer a
-/// tab (2026-06-23):** it moved to the wallet-home toolbar's trailing gear and
-/// is presented full screen (the historical "why a TabView, not a sheet" note
-/// below predates that reversal).
+/// The post-onboarding shell for Aperture. Hosts the top-level surfaces the
+/// user navigates between — Wallet, Activity, Markets, and Settings — via the native
+/// iOS 26 `TabView` + `Tab(...)` API.
 ///
 /// **Design intent (one sentence, Rule #2 §D.1):** give the user one
 /// always-visible, thumb-reachable map of where they are in Aperture
-/// — so the wallet, the dApp browser, and the settings live
-/// at the same depth and feel like faces of the same calm
-/// surface, never one buried inside another.
+/// — so the wallet and the settings live at the same depth and feel
+/// like faces of the same calm surface, never one buried inside another.
 ///
 /// **2026-06-09 — Wallet tab is the active wallet's identity.** The
 /// Wallet `Tab`'s `label:` closure renders the active wallet's
@@ -62,8 +58,8 @@ import TipKit
 /// §B.1) is delivered by the system when feature code uses the native
 /// `TabView { Tab { … } label: { … } }` shape with no manual chrome.
 ///
-/// **Selection persistence (`@AppStorage("selectedTab")`).** A user
-/// who leaves the app on the Browser tab returns to the Browser tab.
+/// **Selection persistence (`@AppStorage("selectedTab")`).** The
+/// selected tab is persisted across launches.
 ///
 /// **RTL (Rule #11).** Native TabView automatically mirrors tab
 /// order under RTL — Settings becomes the leading tab in Arabic /
@@ -107,16 +103,11 @@ struct MainTabView: View {
     /// per-surface refresh logic.
     @Query(sort: \WalletRecord.sortOrder) private var allWallets: [WalletRecord]
 
-    /// **iPad / Mac adaptation (2026-06-16).** `.tabViewStyle(.sidebarAdaptable)`
-    /// makes the SAME four `Tab(...)` render as the Liquid Glass bottom
-    /// tab bar at COMPACT width (iPhone, iPad portrait, narrow Mac
-    /// window) and lift into a native Liquid Glass sidebar at REGULAR
-    /// width (iPad landscape, wide Mac window). The compact path is
-    /// byte-for-byte the shipping iPhone experience. At regular width
-    /// the UITabBar the long-press installer reaches through does not
-    /// exist, so we read the size class to (a) skip mounting the
-    /// installer there and (b) expose the native SwiftUI wallet-switch
-    /// `Menu` on the wallet pill instead (see `WalletHomeView`).
+    /// iPad adaptation: compact width uses the shipping iPhone
+    /// `TabView`; regular width uses one root `NavigationSplitView`
+    /// with the sidebar pinned open. The split view owns the sidebar
+    /// so the detail column is resized across Wallet, Activity,
+    /// Markets, and Settings instead of overlaying sidebar chrome.
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     /// Long-press on the Wallet tab now surfaces a NATIVE
@@ -140,24 +131,9 @@ struct MainTabView: View {
     private var selectedTab: Binding<MainTab> {
         Binding(
             get: {
-                // `.settings` / `.actions` (and any legacy value) are not real tabs anymore
-                // (2026-06-23). Any such persisted/transient value resolves to
-                // the Wallet tab so the TabView never lands on a missing tab.
-                let resolved = MainTab(rawValue: selectedTabRaw) ?? .wallet
-                return (resolved == .wallet || resolved == .browser) ? resolved : .wallet
+                MainTab(rawValue: selectedTabRaw) ?? .wallet
             },
             set: { newValue in
-                // The Actions item is NOT a destination — tapping it opens the
-                // Send/Receive/Connect/Templates sheet on the wallet home
-                // and leaves the selection where it was (switching to Wallet so
-                // the home is mounted to present the sheet).
-                if newValue == .actions {
-                    selectedTabRaw = MainTab.wallet.rawValue
-                    DispatchQueue.main.async {
-                        WalletShellSignal.shared.requestActions()
-                    }
-                    return
-                }
                 // Re-tapping the already-selected Wallet tab pops its nav
                 // stack back to the home root — the standard iOS tab gesture,
                 // which `TabView` does NOT perform automatically for a
@@ -188,7 +164,97 @@ struct MainTabView: View {
         return allWallets.first
     }
 
+    private var currentTab: MainTab {
+        MainTab(rawValue: selectedTabRaw) ?? .wallet
+    }
+
+    private var sidebarSelection: Binding<MainTab?> {
+        Binding(
+            get: { currentTab },
+            set: { newValue in
+                guard let newValue else { return }
+                selectedTab.wrappedValue = newValue
+            }
+        )
+    }
+
     var body: some View {
+        shellBody
+            // Fire a selection haptic on tab change. Per Rule #10 §A,
+            // tab selection IS the canonical `.selection` haptic.
+            .uniHaptic(.selection, trigger: selectedTabRaw)
+            // Wallet icon picker — surfaced by the "Customise icon" item
+            // in the long-press context menu. Reuses
+            // `WalletIconPickerSheet`, the same primitive presented from
+            // the wallet-home toolbar pill's existing entry point.
+            .sheet(isPresented: $isShowingPicker) {
+                if let active = activeWallet {
+                    WalletIconPickerSheet(walletId: active.id)
+                        .uniAppEnvironment()
+                        .uniSheetDetents([.large])
+                        .presentationDragIndicator(.visible)
+                        .presentationBackground(UniColors.Background.primary)
+                }
+            }
+            // Wallet settings — surfaced by the "Wallet settings" item in
+            // the long-press context menu. Presents the active wallet's
+            // detail screen (the same `WalletDetailView` Settings →
+            // Wallets pushes) wrapped in its own NavigationStack per
+            // Rule #15. Its sub-links use closure-form NavigationLink,
+            // so the standalone stack needs no destination registrations.
+            .sheet(isPresented: $isShowingWalletSettings) {
+                if let active = activeWallet {
+                    NavigationStack {
+                        WalletDetailView(walletId: active.id)
+                    }
+                    .uniAppEnvironment()
+                    .uniSheetDetents([.large])
+                    .presentationDragIndicator(.visible)
+                    .presentationBackground(UniColors.Background.primary)
+                }
+            }
+            .fullScreenCover(isPresented: $isShowingCreate, onDismiss: {
+                createPath = NavigationPath()
+            }) {
+                RecoveryPhraseFlow(
+                    navigationPath: $createPath,
+                    onDismiss: { isShowingCreate = false },
+                    onUserSkippedBackup: {},
+                    onUserCompletedBackup: {}
+                )
+                .uniAppEnvironment()
+                .presentationBackground(UniColors.Background.primary)
+            }
+            // Import flow — surfaced directly from the long-press
+            // context menu's "Import existing wallet" item. The prior
+            // implementation only switched to the Settings tab and
+            // forced the user to navigate through Settings → Wallets to
+            // find the entry point; the fullScreenCover takes them
+            // straight there.
+            .fullScreenCover(isPresented: $isShowingImport, onDismiss: {
+                importPath = NavigationPath()
+            }) {
+                ImportWalletFlow(
+                    navigationPath: $importPath,
+                    onDismiss: { isShowingImport = false },
+                    onCompleted: { _ in isShowingImport = false }
+                )
+                .uniAppEnvironment()
+                .presentationBackground(UniColors.Background.primary)
+            }
+    }
+
+    @ViewBuilder
+    private var shellBody: some View {
+        if horizontalSizeClass == .regular {
+            iPadSplitBody
+        } else {
+            compactTabBody
+        }
+    }
+
+    @ViewBuilder
+    private var compactTabBody: some View {
         TabView(selection: selectedTab) {
             // MARK: - Wallet (native icon — 2026-06-23)
             //
@@ -210,107 +276,68 @@ struct MainTabView: View {
                     }
             }
 
-            // MARK: - Browser (normal tab, native bottom search — 2026-06-23)
-            //
-            // A normal tab with the `safari` glyph (user direction). On iOS 26
-            // `BrowserHomeView`'s `.searchable` docks the domain search field at
-            // the BOTTOM, above the tab bar, with the tab bar staying — the
-            // native behavior the user asked for. NOT a `.search`-role tab, so
-            // the bar shows the safari icon (not a magnifier) and the tabs stay
-            // put instead of morphing away.
-            Tab("Browser", systemImage: "safari", value: MainTab.browser) {
+            Tab("Activity", systemImage: "clock.arrow.circlepath", value: MainTab.activity) {
                 NavigationStack {
-                    BrowserHomeView()
+                    WalletActivityView()
+                        .navigationDestination(for: WalletHomeDestination.self) { destination in
+                            walletDestination(destination)
+                        }
                 }
             }
 
-            // MARK: - Actions (sheet trigger, not a destination — 2026-06-23)
-            //
-            // Tapping this opens the Send / Receive / Connect / Templates
-            // sheet on the wallet home. The selection binding intercepts
-            // `.actions` (it never becomes the active tab), switches to Wallet,
-            // and asks `WalletHomeView` to present the sheet — so the content
-            // here is never shown.
-            Tab("Actions", systemImage: "arrow.left.arrow.right", value: MainTab.actions) {
-                Color.clear
+            Tab("Markets", systemImage: "chart.line.uptrend.xyaxis", value: MainTab.markets) {
+                NavigationStack {
+                    MarketsView()
+                }
             }
 
-            // 2026-06-23 — Settings is no longer a tab. Per user direction
-            // it moved to the wallet-home toolbar (the gear on the app bar's
-            // trailing side), presented as a sheet from `WalletHomeView`.
-            // The bottom bar is now tabs: Wallet · Browser · Actions.
-        }
-        // **Sidebar-adaptable (2026-06-16).** One native modifier turns
-        // the four `Tab(...)` into a size-class-adaptive shell: the
-        // EXACT Liquid Glass bottom tab bar at compact width (iPhone,
-        // iPad portrait, narrow Mac), the EXACT same four tabs lifted
-        // into a native Liquid Glass sidebar at regular width (iPad
-        // landscape, wide Mac) — each tab's existing NavigationStack
-        // becoming the detail pane. No NavigationSplitView rebuild; the
-        // system owns the morph. A no-op on compact-only iPhones.
-        .tabViewStyle(.sidebarAdaptable)
-        // Fire a selection haptic on tab change. Per Rule #10 §A,
-        // tab selection IS the canonical `.selection` haptic.
-        .uniHaptic(.selection, trigger: selectedTabRaw)
-        // Wallet icon picker — surfaced by the "Customise icon" item
-        // in the long-press context menu. Reuses
-        // `WalletIconPickerSheet`, the same primitive presented from
-        // the wallet-home toolbar pill's existing entry point.
-        .sheet(isPresented: $isShowingPicker) {
-            if let active = activeWallet {
-                WalletIconPickerSheet(walletId: active.id)
-                    .uniAppEnvironment()
-                    .uniSheetDetents([.large])
-                    .presentationDragIndicator(.visible)
-                    .presentationBackground(UniColors.Background.primary)
+            Tab("Settings", systemImage: "gearshape", value: MainTab.settings) {
+                SettingsView()
             }
         }
-        // Wallet settings — surfaced by the "Wallet settings" item in
-        // the long-press context menu. Presents the active wallet's
-        // detail screen (the same `WalletDetailView` Settings →
-        // Wallets pushes) wrapped in its own NavigationStack per
-        // Rule #15. Its sub-links use closure-form NavigationLink,
-        // so the standalone stack needs no destination registrations.
-        .sheet(isPresented: $isShowingWalletSettings) {
-            if let active = activeWallet {
-                NavigationStack {
-                    WalletDetailView(walletId: active.id)
+    }
+
+    @ViewBuilder
+    private var iPadSplitBody: some View {
+        NavigationSplitView(columnVisibility: .constant(.all)) {
+            List(selection: sidebarSelection) {
+                ForEach(MainTab.allCases, id: \.self) { tab in
+                    MainSidebarRow(tab: tab)
+                        .tag(tab)
                 }
-                .uniAppEnvironment()
-                .uniSheetDetents([.large])
-                .presentationDragIndicator(.visible)
-                .presentationBackground(UniColors.Background.primary)
+            }
+            .listStyle(.sidebar)
+            .scrollContentBackground(.hidden)
+            .navigationTitle(Text("Aperture"))
+            .navigationSplitViewColumnWidth(min: 260, ideal: 300, max: 340)
+        } detail: {
+            selectedTabContent
+        }
+        .navigationSplitViewStyle(.balanced)
+        .toolbar(removing: .sidebarToggle)
+    }
+
+    private var selectedTabContent: some View {
+        Group {
+            switch currentTab {
+            case .wallet:
+                WalletHomeView()
+            case .activity:
+                NavigationStack {
+                    WalletActivityView()
+                        .navigationDestination(for: WalletHomeDestination.self) { destination in
+                            walletDestination(destination)
+                        }
+                }
+            case .markets:
+                NavigationStack {
+                    MarketsView()
+                }
+            case .settings:
+                SettingsView(allowsSplitLayout: false)
             }
         }
-        .fullScreenCover(isPresented: $isShowingCreate, onDismiss: {
-            createPath = NavigationPath()
-        }) {
-            RecoveryPhraseFlow(
-                navigationPath: $createPath,
-                onDismiss: { isShowingCreate = false },
-                onUserSkippedBackup: {},
-                onUserCompletedBackup: {}
-            )
-            .uniAppEnvironment()
-            .presentationBackground(UniColors.Background.primary)
-        }
-        // Import flow — surfaced directly from the long-press
-        // context menu's "Import existing wallet" item. The prior
-        // implementation only switched to the Settings tab and
-        // forced the user to navigate through Settings → Wallets to
-        // find the entry point; the fullScreenCover takes them
-        // straight there.
-        .fullScreenCover(isPresented: $isShowingImport, onDismiss: {
-            importPath = NavigationPath()
-        }) {
-            ImportWalletFlow(
-                navigationPath: $importPath,
-                onDismiss: { isShowingImport = false },
-                onCompleted: { _ in isShowingImport = false }
-            )
-            .uniAppEnvironment()
-            .presentationBackground(UniColors.Background.primary)
-        }
+        .toolbar(removing: .sidebarToggle)
     }
 
     // MARK: - Wallet tab label (avatar only — no "Wallet" text)
@@ -320,7 +347,7 @@ struct MainTabView: View {
     // that ships WITHOUT visible text — the per-wallet avatar IS
     // the identity, and adding "Wallet" underneath would compete
     // with the wallet name shown in the toolbar pill above. The
-    // other tabs (Browser, Settings) keep their
+    // other tabs keep their
     // `Label(_:systemImage:)` text by design — they are generic
     // sections, not personalized identities.
     //
@@ -507,6 +534,23 @@ struct MainTabView: View {
         let image = renderer.uiImage ?? UIImage()
         return image.withRenderingMode(.alwaysOriginal)
     }
+
+    @ViewBuilder
+    private func walletDestination(_ destination: WalletHomeDestination) -> some View {
+        switch destination {
+        case .transaction(let id):                  TransactionDetailView(transactionId: id)
+        case .allSupported:                         AllSupportedAssetsView()
+        case .assetDetail(let identity):            AssetDetailView(identity: identity)
+        case .assetNetworkDetail(let identity, let chainRaw):
+            if let chain = SupportedChain(rawValue: chainRaw) {
+                AssetNetworkDetailView(identity: identity, chain: chain)
+            } else {
+                AssetDetailView(identity: identity)
+            }
+        case .assetActivity(let identity):          AssetActivityView(identity: identity)
+        case .allActivity:                          WalletActivityView()
+        }
+    }
 }
 
 // MARK: - MainTab
@@ -517,18 +561,14 @@ struct MainTabView: View {
 /// forever — renaming a tab in the future never changes the
 /// persistence key.
 ///
-/// Order in the enum mirrors visual order in the tab bar (Wallet,
-/// Browser, Settings). RTL layout flips visual order
-/// automatically via SwiftUI — the enum declaration order does
-/// not change.
+/// Order in the enum mirrors visual order in the tab bar. RTL layout
+/// flips visual order automatically via SwiftUI — the enum declaration
+/// order does not change.
 enum MainTab: String, Hashable, CaseIterable {
     case wallet
-    case browser
+    case activity
+    case markets
     case settings
-    /// Not a destination — the bar item that opens the Actions sheet
-    /// (2026-06-23). The selection binding intercepts it and never lands on
-    /// it; `WalletHomeView` presents the sheet in reaction.
-    case actions
 
     /// The `@AppStorage` / `UserDefaults` key the selected tab persists
     /// under. Single source of truth shared by `MainTabView`,
@@ -536,4 +576,53 @@ enum MainTab: String, Hashable, CaseIterable {
     /// `ScreenRestoration.resolveOnLaunch()` (which resets the value to
     /// `.wallet` when the user has been away ≥ 2 minutes).
     static let storageKey = "selectedTab"
+
+    var title: LocalizedStringKey {
+        switch self {
+        case .wallet:   return "Wallet"
+        case .activity: return "Activity"
+        case .markets:  return "Markets"
+        case .settings: return "Settings"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .wallet:   return "wallet.pass.fill"
+        case .activity: return "clock.arrow.circlepath"
+        case .markets:  return "chart.line.uptrend.xyaxis"
+        case .settings: return "gearshape"
+        }
+    }
+
+    var tint: Color {
+        switch self {
+        case .wallet:   return .blue
+        case .activity: return .orange
+        case .markets:  return .green
+        case .settings: return .gray
+        }
+    }
+}
+
+private struct MainSidebarRow: View {
+    let tab: MainTab
+
+    var body: some View {
+        Label {
+            Text(tab.title)
+        } icon: {
+            RoundedRectangle(cornerRadius: 7, style: .continuous)
+                .fill(tab.tint)
+                .frame(width: 29, height: 29)
+                .overlay {
+                    Image(systemName: tab.systemImage)
+                        .font(.system(size: 15, weight: .semibold))
+                        .symbolRenderingMode(.monochrome)
+                        .foregroundStyle(.white)
+                        .minimumScaleFactor(0.72)
+                        .padding(4)
+                }
+        }
+    }
 }

@@ -3,7 +3,7 @@ import SwiftUI
 /// Beat 6 — Receive on every chain.
 ///
 /// Apple's `arrow.down.to.line` SF Symbol paired with a real USDC mark from
-/// `Assets.xcassets/Crypto/`. The arrow is the verb (incoming), the coin
+/// `Assets.xcassets/Tokens/`. The arrow is the verb (incoming), the coin
 /// anchors the metaphor in a real chain. Both visuals are authored — the
 /// arrow by Apple, the USDC mark by Trust Wallet (MIT).
 ///
@@ -23,7 +23,7 @@ struct ReceiveIllustration: View {
                 .foregroundStyle(UniColors.Brand.mark)
                 .symbolEffect(.bounce, options: .nonRepeating, value: isActive)
 
-            Image("usdc")
+            Image("coin_usdc")
                 .resizable()
                 .scaledToFit()
                 .frame(width: 40, height: 40)

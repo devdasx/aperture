@@ -50,42 +50,9 @@ struct ReviewTokenRow: View {
 
     @ViewBuilder
     private var symbolBubble: some View {
-        // Load the token's real brand mark from trustwallet/assets —
-        // M-001's authoritative source. Fall back to a monogram
-        // bubble while loading and on miss (some tokens aren't in
-        // Trust Wallet's repo yet). Both states keep the same 24pt
-        // circular footprint so the row never jumps.
-        if let url = TrustWalletAssetURL.tokenLogoURL(chain: token.chain, contract: token.contract) {
-            AsyncImage(url: url) { phase in
-                switch phase {
-                case .success(let image):
-                    image
-                        .resizable()
-                        .frame(width: 24, height: 24)
-                        .clipShape(Circle())
-                case .failure, .empty:
-                    monogramFallback
-                @unknown default:
-                    monogramFallback
-                }
-            }
+        CoinMark(chain: token.chain, tokenSymbol: token.symbol, contract: token.contract)
+            .frame(width: 24, height: 24)
             .accessibilityHidden(true)
-        } else {
-            monogramFallback
-        }
-    }
-
-    @ViewBuilder
-    private var monogramFallback: some View {
-        ZStack {
-            Circle()
-                .fill(UniColors.Fill.secondary)
-                .frame(width: 24, height: 24)
-            Text(verbatim: String(token.symbol.prefix(2)))
-                .font(UniTypography.caption2.weight(.semibold))
-                .foregroundStyle(UniColors.Text.secondary)
-        }
-        .accessibilityHidden(true)
     }
 
     @ViewBuilder

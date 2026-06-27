@@ -15,9 +15,9 @@ import SwiftUI
 /// for "many connected networks" at any size — restraint over abundance
 /// (Rule #2 §A.6).
 ///
-/// The Trust Wallet PNGs remain in `Assets.xcassets/Crypto/` for the
-/// upcoming wallet/portfolio view that lists per-chain balances; this
-/// illustration no longer references them.
+/// Token and network PNGs live in `Assets.xcassets/Tokens/` and
+/// `Assets.xcassets/Networks/`; this illustration no longer references
+/// them.
 ///
 /// One native `.symbolEffect(.bounce)` when this beat becomes active —
 /// matching every other SF-Symbol slide (vault, faceID, …).

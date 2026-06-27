@@ -35,12 +35,10 @@ import SwiftData
 /// **Rule #4.** Every color through `UniColors`. Every metric
 /// through `UniSpacing` / `UniRadius` / `UniTypography`.
 ///
-/// **Rule #7.** Coin marks come from bundled `Crypto/<ticker>`
-/// assets (Trust Wallet provenance, already recorded in
-/// `Assets.xcassets/README.md`). Token marks resolve through the
-/// shared `CoinMark` view — bundled stablecoins (USDC, USDT) render
-/// real; everything else falls back to an honest 3-letter initials
-/// chip on `Material.card`. Never a fabricated brand mark.
+/// **Rule #7.** Coin, token, and network marks resolve through the
+/// shared Stabro-style `CoinMark` view — local `token_*`, `coin_*`,
+/// and `network_*` assets first, then a cached Trust Wallet URL, then
+/// an honest initials chip. Never a fabricated brand mark.
 struct AllSupportedAssetsView: View {
     @Query(sort: \WalletRecord.sortOrder) private var allWallets: [WalletRecord]
     @AppStorage("activeWalletId") private var activeWalletIdRaw: String = ""

@@ -16,10 +16,11 @@ struct ResetApertureSection: View {
                 ResetFlowGate.shared.isPresenting = true
             } label: {
                 HStack(spacing: UniSpacing.s) {
-                    Image(systemName: "trash.fill")
-                        .font(.system(size: 17, weight: .regular))
-                        .foregroundStyle(UniColors.Status.errorForeground)
-                        .frame(width: 28)
+                    SettingsIconTile(
+                        systemImage: "trash.fill",
+                        tint: .red,
+                        compactTint: UniColors.Status.errorForeground
+                    )
                     Text("Reset Aperture")
                         .font(UniTypography.body)
                         .foregroundStyle(UniColors.Status.errorForeground)

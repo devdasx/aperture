@@ -133,8 +133,7 @@ struct EVMChainAdapter: Sendable {
     }
 
     /// Trust Wallet's `trustwallet/assets` repository directory name
-    /// for a given chain. Mirrors `CoinMarkCache.trustWalletChainSlug`
-    /// so the same mapping is used for both icons and metadata.
+    /// for a given chain. Used for metadata fallback discovery only.
     private static func trustWalletChainSlug(for chain: SupportedChain) -> String? {
         switch chain {
         case .ethereum:   return "ethereum"

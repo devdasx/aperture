@@ -1,6 +1,6 @@
 import Foundation
 
-/// Runtime access to the API keys Aperture needs (1rpc, Infura). The real
+/// Runtime access to the API keys Aperture needs (1rpc, Infura, Etherscan). The real
 /// values live in `Secrets.xcconfig`
 /// (gitignored, local only); `project.yml` injects them into the app's
 /// `Info.plist` via `$(KEY)` substituted at build time, and this enum reads
@@ -42,6 +42,23 @@ enum Secrets {
     /// `true` when the Infura key is configured, so the registry adds the
     /// keyed Infura endpoint as the EVM primary.
     static var hasInfuraKey: Bool { !infuraAPIKey.isEmpty }
+
+    /// Etherscan API V2 — optional multi-chain account-history provider.
+    /// Used only for EVM transaction history when configured; public
+    /// no-key explorers remain the default fallback path.
+    static let etherscanAPIKey: String = value("ETHERSCAN_API_KEY")
+
+    /// `true` when the Etherscan V2 key is configured.
+    static var hasEtherscanKey: Bool { !etherscanAPIKey.isEmpty }
+
+    /// TRONSCAN Pro API — optional richer TRON account/token provider.
+    /// When set, TRON balance refresh reads TRONSCAN's token rows first
+    /// (including `tokenPriceInTrx`) and falls back to TronGrid/PublicNode
+    /// when the key is absent or the API rejects the request.
+    static let tronScanAPIKey: String = value("TRONSCAN_API_KEY")
+
+    /// `true` when the TRONSCAN Pro API key is configured.
+    static var hasTronScanAPIKey: Bool { !tronScanAPIKey.isEmpty }
 
     // Alchemy keys were removed (2026-06-21): EVM data fetching is disabled and
     // `AlchemyConnector` / `AlchemyService` were deleted, so the key is dead.

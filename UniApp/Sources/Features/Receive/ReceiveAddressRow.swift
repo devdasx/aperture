@@ -122,7 +122,7 @@ struct ReceiveAddressRow: View {
         // every app the user pastes into afterwards. The expiration
         // keeps the copy useful for the immediate share and gone
         // after that.
-        UIPasteboard.general.setItems(
+        SafePasteboard.setItems(
             [[UTType.plainText.identifier: address]],
             options: [.expirationDate: Date().addingTimeInterval(120)]
         )

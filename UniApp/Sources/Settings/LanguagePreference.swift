@@ -37,6 +37,13 @@ enum LanguagePreference {
     /// Sentinel for the picker meaning "follow iOS".
     static let systemCode = "system"
 
+    /// Languages that should be easy to reach on every device. The picker
+    /// prepends the device-region / iOS-preferred language ahead of this list
+    /// and removes duplicates from the full list below.
+    static let mostUsedCodes: [String] = [
+        "en", "ar", "zh-Hans", "es", "hi", "fr", "pt-BR", "de", "ru", "ja"
+    ]
+
     /// All 50 target languages plus English source. The picker prepends the
     /// "System" sentinel itself at render time. Order: English source first
     /// (the source-of-truth language for the catalog), then alphabetized by
@@ -119,6 +126,24 @@ enum LanguagePreference {
         all.first { $0.code == code }
     }
 
+    /// Best-effort language for the device's selected region. This reads
+    /// `Locale.current.region` only; it never asks for location permission.
+    static func regionalLanguageCode() -> String? {
+        guard let region = Locale.current.region?.identifier else { return nil }
+        return regionLanguageCodes[region.uppercased()]
+    }
+
+    /// Best supported language from the iOS preferred language list. This is
+    /// the user's system language, not the app's selected override.
+    static func preferredSystemLanguageCode() -> String? {
+        for identifier in Locale.preferredLanguages + [Locale.current.identifier] {
+            if let supported = supportedLanguageCode(forLocaleIdentifier: identifier) {
+                return supported
+            }
+        }
+        return nil
+    }
+
     /// Resolve a stored preference to a SwiftUI `LayoutDirection` for the
     /// app root. RTL languages (`ar`, `fa`, `ur`, `he`) return `.rightToLeft`;
     /// everything else returns `.leftToRight`. For `systemCode`, defers to
@@ -135,4 +160,46 @@ enum LanguagePreference {
             ? .rightToLeft
             : .leftToRight
     }
+
+    private static func supportedLanguageCode(forLocaleIdentifier identifier: String) -> String? {
+        let normalized = identifier.replacingOccurrences(of: "_", with: "-")
+        if language(for: normalized) != nil { return normalized }
+
+        let lower = normalized.lowercased()
+        if lower.hasPrefix("zh-hant")
+            || lower.contains("-hant")
+            || lower.hasPrefix("zh-tw")
+            || lower.hasPrefix("zh-hk")
+            || lower.hasPrefix("zh-mo") {
+            return "zh-Hant"
+        }
+        if lower.hasPrefix("zh") {
+            return "zh-Hans"
+        }
+        if lower.hasPrefix("pt-br") {
+            return "pt-BR"
+        }
+
+        guard let base = lower.split(separator: "-").first.map(String.init) else {
+            return nil
+        }
+        return language(for: base) == nil ? nil : base
+    }
+
+    private static let regionLanguageCodes: [String: String] = [
+        "AE": "ar", "AR": "es", "AT": "de", "AU": "en", "BD": "bn",
+        "BE": "nl", "BG": "bg", "BR": "pt-BR", "CA": "en", "CH": "de",
+        "CL": "es", "CN": "zh-Hans", "CO": "es", "CZ": "cs", "DE": "de",
+        "DK": "da", "DZ": "ar", "EG": "ar", "ES": "es", "FI": "fi",
+        "FR": "fr", "GB": "en", "GR": "el", "HK": "zh-Hant", "HR": "hr",
+        "HU": "hu", "ID": "id", "IE": "en", "IL": "he", "IN": "hi",
+        "IQ": "ar", "IR": "fa", "IS": "is", "IT": "it", "JO": "ar",
+        "JP": "ja", "KE": "sw", "KR": "ko", "KW": "ar", "LB": "ar",
+        "LK": "ta", "LT": "lt", "LV": "lv", "MA": "ar", "MX": "es",
+        "MY": "ms", "NL": "nl", "NO": "nb", "NZ": "en", "PH": "fil",
+        "PK": "ur", "PL": "pl", "PT": "pt-BR", "RO": "ro", "RS": "sr",
+        "RU": "ru", "SA": "ar", "SE": "sv", "SG": "en", "SI": "sl",
+        "SK": "sk", "TH": "th", "TR": "tr", "TW": "zh-Hant", "UA": "uk",
+        "US": "en", "VN": "vi", "ZA": "af"
+    ]
 }

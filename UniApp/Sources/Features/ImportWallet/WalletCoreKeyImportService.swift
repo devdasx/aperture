@@ -368,6 +368,86 @@ struct WalletCoreKeyImportService: KeyImportService {
     }
 }
 
+struct MnemonicExtendedPublicKeys: Equatable, Sendable {
+    let bitcoin: ChainExtendedPublicKey
+    let ethereum: ChainExtendedPublicKey
+}
+
+struct ChainExtendedPublicKey: Equatable, Sendable {
+    let chain: SupportedChain
+    let derivationPath: String
+    let xpub: String
+}
+
+enum MnemonicExtendedPublicKeyDerivationError: Error, Hashable, Sendable {
+    case invalidMnemonic
+    case derivationFailed(SupportedChain)
+}
+
+enum MnemonicExtendedPublicKeyDeriver {
+    /// Derives account-level BIP-44 extended public keys from one BIP-39
+    /// mnemonic. Ethereum does not have a chain-specific xpub prefix; this is
+    /// the standard BIP-32 xpub for account `m/44'/60'/0'`.
+    static func derive(
+        fromMnemonic phrase: String,
+        passphrase: String = ""
+    ) throws -> MnemonicExtendedPublicKeys {
+        try derive(
+            mnemonic: phrase.split(whereSeparator: \.isWhitespace).map(String.init),
+            passphrase: passphrase
+        )
+    }
+
+    static func derive(
+        mnemonic words: [String],
+        passphrase: String = ""
+    ) throws -> MnemonicExtendedPublicKeys {
+        let phrase = words
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+            .joined(separator: " ")
+        guard let wallet = HDWallet(mnemonic: phrase, passphrase: passphrase) else {
+            throw MnemonicExtendedPublicKeyDerivationError.invalidMnemonic
+        }
+
+        return MnemonicExtendedPublicKeys(
+            bitcoin: try accountXPub(
+                wallet: wallet,
+                chain: .bitcoin,
+                coin: .bitcoin,
+                path: "m/44'/0'/0'"
+            ),
+            ethereum: try accountXPub(
+                wallet: wallet,
+                chain: .ethereum,
+                coin: .ethereum,
+                path: "m/44'/60'/0'"
+            )
+        )
+    }
+
+    private static func accountXPub(
+        wallet: HDWallet,
+        chain: SupportedChain,
+        coin: CoinType,
+        path: String
+    ) throws -> ChainExtendedPublicKey {
+        let xpub = wallet.getExtendedPublicKey(
+            purpose: .bip44,
+            coin: coin,
+            version: .xpub
+        )
+        guard !xpub.isEmpty else {
+            throw MnemonicExtendedPublicKeyDerivationError.derivationFailed(chain)
+        }
+        return ChainExtendedPublicKey(
+            chain: chain,
+            derivationPath: path,
+            xpub: xpub
+        )
+    }
+}
+
 // MARK: - Hex decoding helper (file-private)
 
 private extension Data {

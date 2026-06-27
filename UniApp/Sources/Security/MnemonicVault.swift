@@ -2,13 +2,14 @@ import Foundation
 import Security
 import CryptoKit
 import OSLog
+import SwiftData
 
 /// Keychain-backed encrypted storage for the **user-readable secret**
 /// behind each wallet — the BIP-39 mnemonic for created / phrase-import
 /// wallets, the original private-key string (hex or WIF) for key-import
 /// wallets. Mirrors `SeedVault`'s shape (AES-GCM 256-bit cipher,
 /// per-wallet symmetric key stored as a separate Keychain item, ACL
-/// `kSecAttrAccessibleWhenPasscodeSetThisDeviceOnly`).
+/// `kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly`).
 ///
 /// **Why this exists.** Seed/key derivation is one-way: the 64-byte
 /// `SeedVault` slot cannot be reversed to the original mnemonic or the
@@ -180,9 +181,24 @@ enum MnemonicVault {
         account: String
     ) throws(VaultError) -> String? {
         guard let keyData = try readItem(service: keyService, account: account) else {
+            recordSecretEvent(
+                .debug,
+                message: "Wallet secret key item missing",
+                cipherService: cipherService,
+                keyService: keyService,
+                account: account
+            )
             return nil
         }
         guard let cipherData = try readItem(service: cipherService, account: account) else {
+            recordSecretEvent(
+                .debug,
+                message: "Wallet secret cipher item missing",
+                cipherService: cipherService,
+                keyService: keyService,
+                account: account,
+                metadata: ["keyBytes": "\(keyData.count)"]
+            )
             return nil
         }
         let key = SymmetricKey(data: keyData)
@@ -191,16 +207,67 @@ enum MnemonicVault {
             sealed = try AES.GCM.SealedBox(combined: cipherData)
         } catch {
             log.error("AES-GCM box decode failed: \(String(describing: error), privacy: .public)")
+            recordSecretEvent(
+                .error,
+                message: "Wallet secret sealed-box decode failed",
+                cipherService: cipherService,
+                keyService: keyService,
+                account: account,
+                metadata: [
+                    "keyBytes": "\(keyData.count)",
+                    "cipherBytes": "\(cipherData.count)",
+                    "error": String(describing: error)
+                ]
+            )
             throw .decryptionFailed
         }
         do {
             let plaintext = try AES.GCM.open(sealed, using: key)
             guard let secret = String(data: plaintext, encoding: .utf8) else {
+                recordSecretEvent(
+                    .error,
+                    message: "Wallet secret UTF-8 decode failed",
+                    cipherService: cipherService,
+                    keyService: keyService,
+                    account: account,
+                    metadata: [
+                        "keyBytes": "\(keyData.count)",
+                        "cipherBytes": "\(cipherData.count)",
+                        "plainBytes": "\(plaintext.count)"
+                    ]
+                )
                 throw VaultError.decryptionFailed
             }
+            recordSecretEvent(
+                .debug,
+                message: "Wallet secret opened",
+                cipherService: cipherService,
+                keyService: keyService,
+                account: account,
+                metadata: [
+                    "keyBytes": "\(keyData.count)",
+                    "cipherBytes": "\(cipherData.count)"
+                ]
+            )
             return secret
         } catch {
             log.error("AES-GCM open failed: \(String(describing: error), privacy: .public)")
+            let errorText = String(describing: error)
+            let reason = errorText.contains("authenticationFailure")
+                ? "authenticationFailure"
+                : errorText
+            recordSecretEvent(
+                .error,
+                message: "Wallet secret open failed: \(reason)",
+                cipherService: cipherService,
+                keyService: keyService,
+                account: account,
+                metadata: [
+                    "keyBytes": "\(keyData.count)",
+                    "cipherBytes": "\(cipherData.count)",
+                    "error": errorText
+                ]
+            )
             throw .decryptionFailed
         }
     }
@@ -214,12 +281,23 @@ enum MnemonicVault {
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
             kSecAttrAccount as String: account,
-            kSecAttrAccessible as String: kSecAttrAccessibleWhenPasscodeSetThisDeviceOnly,
+            kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly,
             kSecValueData as String: data
         ]
         let status = SecItemAdd(query as CFDictionary, nil)
         guard status == errSecSuccess else {
             log.error("Keychain write failed status=\(status) service=\(service, privacy: .public)")
+            DiagnosticsLogStore.shared.record(
+                .error,
+                category: "wallet-secret",
+                message: "Wallet secret Keychain write failed",
+                metadata: [
+                    "service": service,
+                    "account": account,
+                    "status": "\(status)",
+                    "bytes": "\(data.count)"
+                ]
+            )
             throw .keychainWriteFailed(status)
         }
     }
@@ -239,6 +317,16 @@ enum MnemonicVault {
         case errSecItemNotFound: return nil
         default:
             log.error("Keychain read failed status=\(status) service=\(service, privacy: .public)")
+            DiagnosticsLogStore.shared.record(
+                .error,
+                category: "wallet-secret",
+                message: "Wallet secret Keychain read failed",
+                metadata: [
+                    "service": service,
+                    "account": account,
+                    "status": "\(status)"
+                ]
+            )
             throw .keychainReadFailed(status)
         }
     }
@@ -254,7 +342,286 @@ enum MnemonicVault {
         case errSecSuccess, errSecItemNotFound: return
         default:
             log.error("Keychain delete failed status=\(status) service=\(service, privacy: .public)")
+            DiagnosticsLogStore.shared.record(
+                .error,
+                category: "wallet-secret",
+                message: "Wallet secret Keychain delete failed",
+                metadata: [
+                    "service": service,
+                    "account": account,
+                    "status": "\(status)"
+                ]
+            )
             throw .keychainDeleteFailed(status)
         }
+    }
+
+    private static func recordSecretEvent(
+        _ level: DiagnosticsLogLevel,
+        message: String,
+        cipherService: String,
+        keyService: String,
+        account: String,
+        metadata: [String: String] = [:]
+    ) {
+        var metadata = metadata
+        metadata["account"] = account
+        metadata["kind"] = secretKind(cipherService: cipherService)
+        metadata["cipherService"] = cipherService
+        metadata["keyService"] = keyService
+        DiagnosticsLogStore.shared.record(
+            level,
+            category: "wallet-secret",
+            message: message,
+            metadata: metadata
+        )
+    }
+
+    private static func secretKind(cipherService: String) -> String {
+        switch cipherService {
+        case Self.cipherService:
+            return "mnemonic"
+        case Self.privateKeyCipherService:
+            return "privateKey"
+        default:
+            return "unknown"
+        }
+    }
+}
+
+// MARK: - SwiftData-backed encrypted wallet secrets
+
+/// Device-local encryption for `WalletSecretRecord` rows.
+///
+/// The master key is an app-owned random 256-bit key stored in Keychain with
+/// `AfterFirstUnlockThisDeviceOnly`. It is not derived from the app passcode
+/// or Face ID, so turning those app locks off cannot make manual backup
+/// unable to read a phrase. The SwiftData row stores only AES-GCM ciphertext.
+enum WalletSecretCrypto {
+    private static let masterKeyService = "com.thuglife.aperture.wallet-secret.master-key"
+    private static let masterKeyAccount = "v1"
+    private static let log = Logger(subsystem: "com.thuglife.aperture", category: "wallet-secret-crypto")
+
+    enum CryptoError: Error, Sendable, Equatable {
+        case randomFailed(OSStatus)
+        case keychainWriteFailed(OSStatus)
+        case keychainReadFailed(OSStatus)
+        case invalidMasterKey
+        case sealFailed
+        case openFailed
+    }
+
+    static func seal(_ plaintext: Data, associatedData: Data) throws(CryptoError) -> Data {
+        let key = try masterKey()
+        do {
+            let box = try AES.GCM.seal(plaintext, using: key, authenticating: associatedData)
+            guard let combined = box.combined else { throw CryptoError.sealFailed }
+            return combined
+        } catch let error as CryptoError {
+            throw error
+        } catch {
+            log.error("Wallet secret seal failed: \(String(describing: error), privacy: .public)")
+            throw .sealFailed
+        }
+    }
+
+    static func open(_ ciphertext: Data, associatedData: Data) throws(CryptoError) -> Data {
+        let key = try masterKey()
+        do {
+            let box = try AES.GCM.SealedBox(combined: ciphertext)
+            return try AES.GCM.open(box, using: key, authenticating: associatedData)
+        } catch {
+            log.error("Wallet secret open failed: \(String(describing: error), privacy: .public)")
+            throw .openFailed
+        }
+    }
+
+    static func clearMasterKey() {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: masterKeyService,
+            kSecAttrAccount as String: masterKeyAccount
+        ]
+        _ = SecItemDelete(query as CFDictionary)
+    }
+
+    private static func masterKey() throws(CryptoError) -> SymmetricKey {
+        if let existing = try readMasterKeyData() {
+            guard existing.count == 32 else { throw .invalidMasterKey }
+            return SymmetricKey(data: existing)
+        }
+        let keyData = try randomBytes(count: 32)
+        try writeMasterKeyData(keyData)
+        return SymmetricKey(data: keyData)
+    }
+
+    private static func randomBytes(count: Int) throws(CryptoError) -> Data {
+        var data = Data(count: count)
+        let status = data.withUnsafeMutableBytes { rawBuffer -> OSStatus in
+            guard let baseAddress = rawBuffer.baseAddress else { return errSecAllocate }
+            return SecRandomCopyBytes(kSecRandomDefault, count, baseAddress)
+        }
+        guard status == errSecSuccess else { throw .randomFailed(status) }
+        return data
+    }
+
+    private static func readMasterKeyData() throws(CryptoError) -> Data? {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: masterKeyService,
+            kSecAttrAccount as String: masterKeyAccount,
+            kSecReturnData as String: true,
+            kSecMatchLimit as String: kSecMatchLimitOne
+        ]
+        var result: AnyObject?
+        let status = SecItemCopyMatching(query as CFDictionary, &result)
+        switch status {
+        case errSecSuccess:
+            return result as? Data
+        case errSecItemNotFound:
+            return nil
+        default:
+            throw .keychainReadFailed(status)
+        }
+    }
+
+    private static func writeMasterKeyData(_ data: Data) throws(CryptoError) {
+        clearMasterKey()
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: masterKeyService,
+            kSecAttrAccount as String: masterKeyAccount,
+            kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly,
+            kSecValueData as String: data
+        ]
+        let status = SecItemAdd(query as CFDictionary, nil)
+        guard status == errSecSuccess else { throw .keychainWriteFailed(status) }
+    }
+}
+
+enum WalletSecretPersistence {
+    enum StoreError: Error, Sendable, Equatable {
+        case encodingFailed
+        case decodingFailed
+    }
+
+    static func upsertMnemonic(
+        _ words: [String],
+        for walletId: UUID,
+        in context: ModelContext
+    ) throws {
+        let canonical = words.map { $0.lowercased() }.joined(separator: " ")
+        try upsertSecret(canonical, kind: .mnemonic, walletId: walletId, in: context)
+    }
+
+    static func upsertPrivateKey(
+        _ keyString: String,
+        for walletId: UUID,
+        in context: ModelContext
+    ) throws {
+        let trimmed = keyString.trimmingCharacters(in: .whitespacesAndNewlines)
+        try upsertSecret(trimmed, kind: .privateKey, walletId: walletId, in: context)
+    }
+
+    static func loadMnemonic(for walletId: UUID, in context: ModelContext) throws -> [String]? {
+        guard let secret = try loadSecret(kind: .mnemonic, walletId: walletId, in: context) else {
+            return nil
+        }
+        let words = secret.split(separator: " ").map(String.init)
+        return words.isEmpty ? nil : words
+    }
+
+    static func loadPrivateKey(for walletId: UUID, in context: ModelContext) throws -> String? {
+        try loadSecret(kind: .privateKey, walletId: walletId, in: context)
+    }
+
+    static func hasSecret(kind: WalletSecretKind, for walletId: UUID, in context: ModelContext) -> Bool {
+        (try? existingRecord(kind: kind, walletId: walletId, in: context)) != nil
+    }
+
+    static func deleteSecret(kind: WalletSecretKind, for walletId: UUID, in context: ModelContext) throws {
+        if let record = try existingRecord(kind: kind, walletId: walletId, in: context) {
+            context.delete(record)
+        }
+    }
+
+    static func deleteAll(for walletId: UUID, in context: ModelContext) throws {
+        for kind in WalletSecretKind.allCases {
+            try deleteSecret(kind: kind, for: walletId, in: context)
+        }
+    }
+
+    private static func upsertSecret(
+        _ secret: String,
+        kind: WalletSecretKind,
+        walletId: UUID,
+        in context: ModelContext
+    ) throws {
+        guard let plaintext = secret.data(using: .utf8) else { throw StoreError.encodingFailed }
+        let storageKey = WalletSecretRecord.storageKey(walletId: walletId, kind: kind)
+        let associatedData = Data(storageKey.utf8)
+        let ciphertext = try WalletSecretCrypto.seal(plaintext, associatedData: associatedData)
+        if let existing = try existingRecord(kind: kind, walletId: walletId, in: context) {
+            existing.cipherData = ciphertext
+            existing.updatedAt = Date()
+        } else {
+            context.insert(WalletSecretRecord(walletId: walletId, kind: kind, cipherData: ciphertext))
+        }
+    }
+
+    private static func loadSecret(
+        kind: WalletSecretKind,
+        walletId: UUID,
+        in context: ModelContext
+    ) throws -> String? {
+        guard let record = try existingRecord(kind: kind, walletId: walletId, in: context) else {
+            return nil
+        }
+        let associatedData = Data(record.key.utf8)
+        let plaintext = try WalletSecretCrypto.open(record.cipherData, associatedData: associatedData)
+        guard let secret = String(data: plaintext, encoding: .utf8) else {
+            throw StoreError.decodingFailed
+        }
+        return secret
+    }
+
+    private static func existingRecord(
+        kind: WalletSecretKind,
+        walletId: UUID,
+        in context: ModelContext
+    ) throws -> WalletSecretRecord? {
+        let storageKey = WalletSecretRecord.storageKey(walletId: walletId, kind: kind)
+        var descriptor = FetchDescriptor<WalletSecretRecord>(
+            predicate: #Predicate { $0.key == storageKey }
+        )
+        descriptor.fetchLimit = 1
+        return try context.fetch(descriptor).first
+    }
+}
+
+@ModelActor
+actor WalletSecretRepository {
+    func loadMnemonic(for walletId: UUID) throws -> [String]? {
+        if let words = try WalletSecretPersistence.loadMnemonic(for: walletId, in: modelContext) {
+            return words
+        }
+        return try MnemonicVault.loadMnemonic(for: walletId)
+    }
+
+    func loadPrivateKey(for walletId: UUID) throws -> String? {
+        if let key = try WalletSecretPersistence.loadPrivateKey(for: walletId, in: modelContext) {
+            return key
+        }
+        return try MnemonicVault.loadPrivateKey(for: walletId)
+    }
+
+    func hasMnemonic(for walletId: UUID) -> Bool {
+        WalletSecretPersistence.hasSecret(kind: .mnemonic, for: walletId, in: modelContext)
+            || MnemonicVault.hasMnemonic(for: walletId)
+    }
+
+    func hasPrivateKey(for walletId: UUID) -> Bool {
+        WalletSecretPersistence.hasSecret(kind: .privateKey, for: walletId, in: modelContext)
+            || MnemonicVault.hasPrivateKey(for: walletId)
     }
 }

@@ -203,12 +203,10 @@ enum WalletManifestStore {
         do {
             let existingCount = try context.fetchCount(FetchDescriptor<WalletRecord>())
             guard existingCount == 0 else {
-                log.debug("Restore skipped: SwiftData already has \(existingCount) wallets")
                 return 0
             }
             let entries = load()
             guard !entries.isEmpty else {
-                log.debug("Restore skipped: manifest is empty (fresh install)")
                 return 0
             }
 
