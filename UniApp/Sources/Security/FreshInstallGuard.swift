@@ -67,10 +67,7 @@ enum FreshInstallGuard {
     ///    — every service literal in the codebase must appear here.
     ///    As of 2026-06-13 the only files touching Keychain are
     ///    `SeedVault`, `MnemonicVault`, `WalletManifestStore`,
-    ///    `PinCodeStorage`, and this guard. (The Reown/WalletConnect
-    ///    SDK is not yet configured — `WalletConnectClient` is a
-    ///    stub; when it goes live its Keychain service(s) must be
-    ///    added here.)
+    ///    `PinCodeStorage`, and this guard.
     private static let knownServices: [String] = [
         "com.thuglife.aperture.seed.cipher",       // SeedVault.cipherService — encrypted BIP-39 seeds
         "com.thuglife.aperture.seed.key",          // SeedVault.keyService — AES-GCM keys
@@ -78,6 +75,7 @@ enum FreshInstallGuard {
         "com.thuglife.aperture.mnemonic.key",      // MnemonicVault.keyService — AES-GCM keys
         "com.thuglife.aperture.privatekey.cipher", // MnemonicVault.privateKeyCipherService — encrypted imported key strings
         "com.thuglife.aperture.privatekey.key",    // MnemonicVault.privateKeyKeyService — AES-GCM keys (imported keys)
+        "com.thuglife.aperture.wallet-secret.master-key", // WalletSecretCrypto — AES-GCM master key for SwiftData secret rows
         "com.thuglife.aperture.wallet-manifest",   // WalletManifestStore.service — wallet list metadata
         "com.thuglife.aperture.pin",               // PinCodeStorage.service — PBKDF2 hash + salt + failure record
         "com.thuglife.aperture.pin.smoketest",     // PinCodeStorage.smokeCheckService — DEBUG smoke check

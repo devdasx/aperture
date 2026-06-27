@@ -106,7 +106,6 @@ final class AutoLockController {
             // so elapsed time is measured from the real background entry.
             if backgroundedAt == nil {
                 backgroundedAt = Date()
-                log.debug("Scene backgrounded at \(Date(), privacy: .public)")
             }
         case .inactive:
             // Deliberately a no-op for the lock (see the type doc):

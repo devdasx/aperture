@@ -22,6 +22,8 @@ struct WalletDetailView: View {
     let walletId: UUID
 
     @Query private var matches: [WalletRecord]
+    @Query private var mnemonicSecretRows: [WalletSecretRecord]
+    @Query private var privateKeySecretRows: [WalletSecretRecord]
     // `activeWalletId` is no longer read or written here — the repository's
     // `deleteWalletAndActivateNext` owns the post-delete pointer move
     // (2026-06-13). The old `@AppStorage("activeWalletId")` clobber is gone
@@ -44,14 +46,25 @@ struct WalletDetailView: View {
     @State private var isShowingIconPicker: Bool = false
 
     // MARK: - Backup status section (2026-06-20)
-    /// Presents the full backup flow (iCloud / manual chooser) once the
-    /// phrase has been decrypted behind the auth gate.
-    @State private var isShowingWalletBackup: Bool = false
-    @State private var backupWords: [String] = []
+    /// Presents the full backup flow once the phrase has been decrypted
+    /// behind the auth gate. The selected row's method travels in the same
+    /// payload as the words, so the cover can never see a stale nil method
+    /// and fall back to the chooser on first presentation.
+    @State private var walletBackupPresentation: WalletBackupPresentation?
+    @State private var pendingBackupMethod: WalletBackupMethod?
     /// Live iCloud-backup status for this wallet, resolved from CloudKit.
     @State private var iCloudStatus: BackupRowStatus = .checking
 
     enum BackupRowStatus: Equatable { case checking, done, notDone, unavailable }
+
+    private struct WalletBackupPresentation: Identifiable {
+        let id = UUID()
+        let walletId: UUID
+        let walletName: String
+        let words: [String]
+        let avatar: WalletAvatarSpec?
+        let startingMethod: WalletBackupMethod
+    }
 
     // MARK: - Sensitive-reveal auth gate (2026-06-19)
     //
@@ -77,9 +90,23 @@ struct WalletDetailView: View {
         _matches = Query(
             filter: #Predicate<WalletRecord> { $0.id == walletId }
         )
+        let mnemonicKey = WalletSecretRecord.storageKey(walletId: walletId, kind: .mnemonic)
+        let privateKey = WalletSecretRecord.storageKey(walletId: walletId, kind: .privateKey)
+        _mnemonicSecretRows = Query(
+            filter: #Predicate<WalletSecretRecord> { $0.key == mnemonicKey }
+        )
+        _privateKeySecretRows = Query(
+            filter: #Predicate<WalletSecretRecord> { $0.key == privateKey }
+        )
     }
 
     private var wallet: WalletRecord? { matches.first }
+    private var hasStoredMnemonic: Bool {
+        !mnemonicSecretRows.isEmpty || MnemonicVault.hasMnemonic(for: walletId)
+    }
+    private var hasStoredPrivateKey: Bool {
+        !privateKeySecretRows.isEmpty || MnemonicVault.hasPrivateKey(for: walletId)
+    }
 
     var body: some View {
         Group {
@@ -232,7 +259,7 @@ struct WalletDetailView: View {
                         icon: "icloud",
                         title: "iCloud backup",
                         status: iCloudStatus,
-                        onTap: { startWalletBackup() }
+                        onTap: { startWalletBackup(.iCloud) }
                     )
                     backupStatusRow(
                         icon: "square.and.pencil",
@@ -243,7 +270,7 @@ struct WalletDetailView: View {
                         // iCloud-only backup, 2026-06-20). nil (migrated rows)
                         // reads as not-yet-manually-backed-up.
                         status: (wallet.manualBackupCompleted ?? false) ? .done : .notDone,
-                        onTap: { startWalletBackup() }
+                        onTap: { startWalletBackup(.manual) }
                     )
                 } header: {
                     Text("Backup").font(UniTypography.footnote).foregroundStyle(UniColors.Text.tertiary)
@@ -366,17 +393,19 @@ struct WalletDetailView: View {
             .uniAppEnvironment()
             .presentationBackground(UniColors.Background.primary)
         }
-        .fullScreenCover(isPresented: $isShowingWalletBackup) {
-            // The full backup chooser (iCloud / manual), against the phrase
-            // decrypted behind the auth gate. On close, re-check iCloud status.
+        .fullScreenCover(item: $walletBackupPresentation) { presentation in
+            // The full backup flow, against the phrase decrypted behind the
+            // auth gate. The row already chose the starting method, so the
+            // redundant chooser is skipped here.
             WalletBackupFlow(
-                walletId: wallet.id,
-                walletName: wallet.name,
-                words: backupWords,
-                avatar: wallet.avatarSpec, // carry the user's chosen disc into the backup
+                walletId: presentation.walletId,
+                walletName: presentation.walletName,
+                words: presentation.words,
+                avatar: presentation.avatar, // carry the user's chosen disc into the backup
+                startingMethod: presentation.startingMethod,
                 onClose: {
-                    isShowingWalletBackup = false
-                    backupWords = []
+                    walletBackupPresentation = nil
+                    pendingBackupMethod = nil
                     Task { await refreshICloudBackupStatus() }
                 }
             )
@@ -385,7 +414,7 @@ struct WalletDetailView: View {
         }
         .sheet(isPresented: $isShowingBackupFlow) {
             // The `BackupExistingWalletFlow` reads the stored mnemonic
-            // via `MnemonicVault.loadMnemonic`, presents the canonical
+            // via `WalletSecretRepository.loadMnemonic`, presents the canonical
             // `BackupVerifyView` against it, and on success calls
             // `WalletRepository.markBackupComplete(id:)`. That flip
             // propagates through `@Query` reactivity to this view; the
@@ -418,7 +447,8 @@ struct WalletDetailView: View {
                         }
                     },
                     onCancel: { isShowingPasscodeGate = false },
-                    allowsBiometrics: true
+                    allowsBiometrics: true,
+                    showsNavigationControls: false
                 )
                 .toolbar {
                     ToolbarItem(placement: .topBarLeading) {
@@ -520,7 +550,7 @@ struct WalletDetailView: View {
     // `backupStatusRow` removed 2026-06-07. Its meaning is now carried
     // by `BackupStateCard` at the top of the screen.
     private func viewPhraseRow(_ wallet: WalletRecord) -> some View {
-        let hasMnemonic = MnemonicVault.hasMnemonic(for: wallet.id)
+        let hasMnemonic = hasStoredMnemonic
         return Button {
             guard hasMnemonic else { return }
             requestReveal(.phrase)
@@ -553,7 +583,7 @@ struct WalletDetailView: View {
     /// `MnemonicVault` (always, since the always-store policy — only
     /// key wallets imported before it lack the entry).
     private func viewKeyRow(_ wallet: WalletRecord) -> some View {
-        let hasKey = MnemonicVault.hasPrivateKey(for: wallet.id)
+        let hasKey = hasStoredPrivateKey
         return Button {
             guard hasKey else { return }
             requestReveal(.key)
@@ -586,8 +616,7 @@ struct WalletDetailView: View {
     /// wasn't kept shows it disabled, with the footer naming why. Same
     /// biometric gate as the phrase / single-key reveals.
     private func viewChainKeysRow(_ wallet: WalletRecord) -> some View {
-        let hasSecret = MnemonicVault.hasMnemonic(for: wallet.id)
-            || MnemonicVault.hasPrivateKey(for: wallet.id)
+        let hasSecret = hasStoredMnemonic || hasStoredPrivateKey
         return Button {
             guard hasSecret else { return }
             requestReveal(.chainKeys)
@@ -682,8 +711,8 @@ struct WalletDetailView: View {
     private func secretFooter(_ wallet: WalletRecord) -> LocalizedStringKey {
         switch wallet.kind {
         case .created, .importedMnemonic:
-            if MnemonicVault.hasMnemonic(for: wallet.id) {
-                return "Your recovery phrase is stored encrypted on this iPhone (AES-GCM 256-bit, Keychain). Tap “View recovery phrase” anytime — the phrase never leaves this device."
+            if hasStoredMnemonic {
+                return "Your recovery phrase is stored encrypted in the local database on this iPhone (AES-GCM 256-bit). Tap “View recovery phrase” anytime — the phrase never leaves this device."
             }
             if wallet.kind == .importedMnemonic {
                 // Migration gap: phrase-import wallets persisted before
@@ -693,8 +722,8 @@ struct WalletDetailView: View {
             }
             return "Aperture no longer has your phrase. You're the only copy — write it down and keep it safe."
         case .importedKey:
-            if MnemonicVault.hasPrivateKey(for: wallet.id) {
-                return "Your private key is stored encrypted on this iPhone (AES-GCM 256-bit, Keychain). Tap “View private key” anytime — the key never leaves this device."
+            if hasStoredPrivateKey {
+                return "Your private key is stored encrypted in the local database on this iPhone (AES-GCM 256-bit). Tap “View private key” anytime — the key never leaves this device."
             }
             return "Your key wasn't kept when this wallet was imported. You still have it — to store it on this iPhone too, delete this wallet and import the key again."
         case .watchOnly:
@@ -757,9 +786,9 @@ struct WalletDetailView: View {
     private func walletHasStoredSecret(_ wallet: WalletRecord) -> Bool {
         switch wallet.kind {
         case .importedKey:
-            return MnemonicVault.hasPrivateKey(for: wallet.id)
+            return hasStoredPrivateKey
         case .created, .importedMnemonic:
-            return MnemonicVault.hasMnemonic(for: wallet.id)
+            return hasStoredMnemonic
         case .watchOnly:
             return false
         }
@@ -861,23 +890,35 @@ struct WalletDetailView: View {
             .foregroundStyle(UniColors.Icon.tertiary)
     }
 
-    /// Auth-gate → decrypt → present the backup flow (iCloud / manual chooser).
-    private func startWalletBackup() {
+    /// Auth-gate → decrypt → present the selected backup path. The row already
+    /// names the method, so do not show the method chooser again.
+    private func startWalletBackup(_ method: WalletBackupMethod) {
+        pendingBackupMethod = method
         requestReveal(.backup)
     }
 
     @MainActor
     private func loadWordsAndPresentBackup() async {
-        let id = walletId
-        let loaded = try? await Task.detached(priority: .userInitiated) {
-            try MnemonicVault.loadMnemonic(for: id)
-        }.value
-        guard let words = loaded, !words.isEmpty else {
-            errorAlertMessage = String.apertureLocalized("Couldn't read this wallet's phrase to back it up. Try restarting Aperture.")
+        guard let method = pendingBackupMethod, let wallet else {
+            pendingBackupMethod = nil
             return
         }
-        backupWords = words
-        isShowingWalletBackup = true
+        let id = walletId
+        let container = modelContext.container
+        let loaded = try? await WalletSecretRepository(modelContainer: container)
+            .loadMnemonic(for: id)
+        guard let words = loaded, !words.isEmpty else {
+            pendingBackupMethod = nil
+            errorAlertMessage = String.apertureLocalized("This wallet's saved recovery phrase is not available on this iPhone. Re-import the phrase to restore local backup access.")
+            return
+        }
+        walletBackupPresentation = WalletBackupPresentation(
+            walletId: wallet.id,
+            walletName: wallet.name,
+            words: words,
+            avatar: wallet.avatarSpec,
+            startingMethod: method
+        )
     }
 
     /// Resolve this wallet's iCloud-backup status from CloudKit.

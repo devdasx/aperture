@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 /// Settings screen — the root of the Settings tab in `MainTabView`
 /// (2026-06-09). Was a `.sheet(...)` presented from the wallet-home
@@ -33,43 +34,42 @@ enum SettingsDestination: Hashable, Codable {
     case walletDetail(UUID)
     case security
     case autoLock
-    case privacy
-    case connectionApprovals
     case hideSmallBalances
 
     case language
     case appearance
     case currency
     case preferences
+    case diagnostics
     case help
     case about
 
     /// Whether this destination may be auto-restored on a cold launch.
-    /// The Security screen is auth-gated (PIN / Face ID) — restoring
+    /// The Security screen is auth-gated (passcode-only) — restoring
     /// straight back into it would re-show the screen the user
     /// authenticated for minutes ago without a fresh challenge, which is
     /// exactly the bypass the user reported (2026-06-17). So `.security`
     /// (and anything pushed beneath it, e.g. `.autoLock`) is excluded:
     /// the user lands on the Settings root and re-enters Security with a
-    /// fresh PIN / Face ID prompt. Mirrors
+    /// fresh passcode prompt. Mirrors
     /// `WalletHomeDestination.isColdLaunchRestorable`.
     var isColdLaunchRestorable: Bool {
         switch self {
         case .security:
             return false
-        case .wallets, .walletDetail, .autoLock, .privacy,
-             .connectionApprovals, .hideSmallBalances,
-             .language, .appearance, .currency, .preferences, .help, .about:
+        case .wallets, .walletDetail, .autoLock, .hideSmallBalances,
+             .language, .appearance, .currency, .preferences, .diagnostics,
+             .help, .about:
             return true
         }
     }
 }
 
 struct SettingsView: View {
-    /// 2026-06-23 — Settings is no longer a tab; it's presented full screen
-    /// from the wallet-home toolbar's gear, so it gets the unified close
-    /// button again (a full screen cover has no swipe-to-dismiss).
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    private let showsCloseButton: Bool
+    private let allowsSplitLayout: Bool
 
     /// Settings is a top-level tab root (`MainTabView` — 2026-06-09)
     /// so its `NavigationStack` path is owned internally. The
@@ -94,8 +94,14 @@ struct SettingsView: View {
     // inspect it and refuse to re-open the auth-gated Security screen on
     // a cold launch — same pattern as `WalletHomeDestination`.
     @State private var navigationPath: [SettingsDestination]
+    @State private var splitSelection: SettingsDestination?
+    @State private var splitDetailPath: [SettingsDestination]
 
-    init() {
+    init(showsCloseButton: Bool = false, allowsSplitLayout: Bool = true) {
+        self.showsCloseButton = showsCloseButton
+        self.allowsSplitLayout = allowsSplitLayout
+        let restoredStack = ScreenRestoration.restoredSettingsStack()
+        let splitState = Self.splitState(from: restoredStack)
         // `@State` reads its initial value only when the view's
         // identity is fresh (cold launch, tab-shell rebuild, root
         // direction flip) — exactly the moments restoration should
@@ -103,7 +109,9 @@ struct SettingsView: View {
         // is a no-op against existing state, and the decode cost is a
         // few enum cases of JSON. `restoredSettingsStack()` truncates at
         // the first non-restorable destination (e.g. `.security`).
-        _navigationPath = State(initialValue: ScreenRestoration.restoredSettingsStack())
+        _navigationPath = State(initialValue: restoredStack)
+        _splitSelection = State(initialValue: splitState.selection)
+        _splitDetailPath = State(initialValue: splitState.detailPath)
     }
 
     @AppStorage("themePreference") private var themeRaw: String = ThemePreference.defaultRaw
@@ -145,171 +153,37 @@ struct SettingsView: View {
     }
 
     var body: some View {
+        if usesSplitLayout {
+            splitBody
+        } else {
+            compactBody
+        }
+    }
+
+    private var usesSplitLayout: Bool {
+        allowsSplitLayout && !showsCloseButton && horizontalSizeClass == .regular
+    }
+
+    @ViewBuilder
+    private var compactBody: some View {
         NavigationStack(path: $navigationPath) {
-            List {
-                // Section 1 — Wallets (multi-wallet management)
-                Section {
-                    NavigationLink(value: SettingsDestination.wallets) {
-                        SettingsRow(
-                            systemImage: "creditcard.and.123",
-                            title: "Wallets",
-                            trailing: nil
-                        )
-                    }
-                    .listRowBackground(UniColors.Background.secondary)
-                }
-
-                // Section 2 — Security
-                Section {
-                    NavigationLink(value: SettingsDestination.security) {
-                        SettingsRow(
-                            systemImage: "lock.shield",
-                            title: "Security",
-                            trailing: nil
-                        )
-                    }
-                    .listRowBackground(UniColors.Background.secondary)
-                }
-
-                // Section 3 — Preferences (existing + new hide toggles)
-                Section {
-                    NavigationLink(value: SettingsDestination.language) {
-                        SettingsRow(
-                            systemImage: "globe",
-                            title: "Language",
-                            trailing: languageRowTrailing
-                        )
-                    }
-                    .listRowBackground(UniColors.Background.secondary)
-
-                    NavigationLink(value: SettingsDestination.appearance) {
-                        SettingsRow(
-                            systemImage: "circle.lefthalf.filled",
-                            title: "Appearance",
-                            trailing: theme.label
-                        )
-                    }
-                    .listRowBackground(UniColors.Background.secondary)
-
-                    NavigationLink(value: SettingsDestination.currency) {
-                        SettingsRow(
-                            systemImage: "dollarsign.circle",
-                            title: "Currency",
-                            trailing: currencyRowTrailing
-                        )
-                    }
-                    .listRowBackground(UniColors.Background.secondary)
-
-                    // 2026-06-09 — Haptic, Privacy mask, Hide balance
-                    // toggles + Hide small balances picker moved into
-                    // a dedicated `PreferencesView` sub-screen per
-                    // user direction. The main Settings list keeps
-                    // Language / Appearance / Currency (display +
-                    // region settings) inline; the rest live one
-                    // tap away.
-                    NavigationLink(value: SettingsDestination.preferences) {
-                        SettingsRow(
-                            systemImage: "slider.horizontal.3",
-                            title: "Preferences",
-                            trailing: nil
-                        )
-                    }
-                    .listRowBackground(UniColors.Background.secondary)
-                }
-
-                // Section 4 — Privacy
-                Section {
-                    NavigationLink(value: SettingsDestination.privacy) {
-                        SettingsRow(
-                            systemImage: "hand.raised",
-                            title: "Privacy",
-                            trailing: nil
-                        )
-                    }
-                    .listRowBackground(UniColors.Background.secondary)
-                }
-
-                // Section 4b — Connected dApps (manage browser + WalletConnect
-                // connections). On-chain token approvals were removed with EVM
-                // data fetching (2026-06-21).
-                Section {
-                    NavigationLink(value: SettingsDestination.connectionApprovals) {
-                        SettingsRow(
-                            systemImage: "app.connected.to.app.below.fill",
-                            title: "Connected dApps",
-                            trailing: nil
-                        )
-                    }
-                    .listRowBackground(UniColors.Background.secondary)
-                }
-
-                // Section 5 — Help & About
-                Section {
-                    NavigationLink(value: SettingsDestination.help) {
-                        SettingsRow(
-                            systemImage: "questionmark.circle",
-                            title: "Help & Support",
-                            trailing: nil
-                        )
-                    }
-                    .listRowBackground(UniColors.Background.secondary)
-
-                    NavigationLink(value: SettingsDestination.about) {
-                        SettingsRow(
-                            systemImage: "info.circle",
-                            title: "About",
-                            trailing: LocalizedStringKey(AboutInfo.versionString)
-                        )
-                    }
-                    .listRowBackground(UniColors.Background.secondary)
-                }
-
-                // Section 6 — Reset Aperture (terminal nuclear hatch). Moved
-                // here from the removed Advanced screen (2026-06-19).
-                ResetApertureSection()
-            }
-            .listStyle(.insetGrouped)
-            .scrollContentBackground(.hidden)
-            .background(UniColors.Background.primary)
-            .navigationTitle(Text("Settings"))
-            .navigationBarTitleDisplayMode(.large)
-            // 2026-06-23 — presented full screen from the wallet-home toolbar
-            // gear (no longer a tab). Closes via Aperture's unified close
-            // button: a bare leading `xmark` glyph (no glass pill — see
-            // MISTAKES.md M-002), the same control the create / import covers
-            // use.
+            compactSettingsRootList
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button {
-                        dismiss()
-                    } label: {
-                        Image(systemName: "xmark")
-                            .font(.system(size: 17, weight: .semibold))
+                if showsCloseButton {
+                    ToolbarItem(placement: .topBarLeading) {
+                        Button {
+                            dismiss()
+                        } label: {
+                            Image(systemName: "xmark")
+                                .font(.system(size: 17, weight: .semibold))
+                        }
+                        .accessibilityLabel(Text("Close"))
                     }
-                    .accessibilityLabel(Text("Close"))
                 }
             }
             .navigationDestination(for: SettingsDestination.self) { destination in
-                switch destination {
-                case .wallets:                   WalletsListView()
-                case .walletDetail(let id):      WalletDetailView(walletId: id)
-                case .security:                  SecuritySettingsView()
-                case .autoLock:                  AutoLockPickerView()
-                case .privacy:                   PrivacySettingsView()
-                case .connectionApprovals:       ConnectionApprovalsView()
-                case .hideSmallBalances:         HideSmallBalancesPicker()
-                case .language:                  LanguagePickerView()
-                case .appearance:                AppearancePickerView()
-                case .currency:                  CurrencyPickerView()
-                case .preferences:               PreferencesView()
-                case .help:                      HelpAndSupportView()
-                case .about:                     AboutView()
-                }
+                settingsDestination(destination)
             }
-            // Close button restored (2026-06-23): Settings is presented full
-            // screen from the wallet-home toolbar gear, so it has a parent
-            // presentation to dismiss back to (see the `.toolbar` above).
-            // The deep-link stamp is still consumed on appear.
             .onAppear { consumeDeepLink() }
             .onChange(of: settingsDeepLink) { _, _ in consumeDeepLink() }
             // Last-screen restoration mirror (2026-06-13). Every push
@@ -319,6 +193,188 @@ struct SettingsView: View {
             .onChange(of: navigationPath) { _, newPath in
                 ScreenRestoration.saveSettingsStack(newPath)
             }
+        }
+    }
+
+    @ViewBuilder
+    private var splitBody: some View {
+        NavigationSplitView {
+            splitSettingsRootList
+                .navigationSplitViewColumnWidth(min: 300, ideal: 340, max: 380)
+        } detail: {
+            NavigationStack(path: $splitDetailPath) {
+                if let splitSelection {
+                    settingsDestination(splitSelection)
+                        .navigationDestination(for: SettingsDestination.self) { destination in
+                            settingsDestination(destination)
+                        }
+                } else {
+                    SettingsSplitPlaceholderView()
+                }
+            }
+        }
+        .navigationSplitViewStyle(.balanced)
+        .onAppear {
+            if splitSelection == nil {
+                splitSelection = Self.defaultSplitSelection
+            }
+            consumeDeepLink()
+        }
+        .onChange(of: settingsDeepLink) { _, _ in consumeDeepLink() }
+        .onChange(of: splitSelection) { _, _ in
+            splitDetailPath.removeAll()
+            saveSplitStack()
+        }
+        .onChange(of: splitDetailPath) { _, _ in saveSplitStack() }
+    }
+
+    @ViewBuilder
+    private var compactSettingsRootList: some View {
+        List {
+            settingsRootSections
+        }
+        .settingsRootListChrome()
+    }
+
+    @ViewBuilder
+    private var splitSettingsRootList: some View {
+        List(selection: $splitSelection) {
+            settingsRootSections
+        }
+        .settingsRootListChrome()
+    }
+
+    @ViewBuilder
+    private var settingsRootSections: some View {
+            // Section 1 — Wallets (multi-wallet management)
+            Section {
+                NavigationLink(value: SettingsDestination.wallets) {
+                    SettingsRow(
+                        systemImage: "creditcard.and.123",
+                        title: "Wallets",
+                        trailing: nil,
+                        iconTint: .blue
+                    )
+                }
+                .listRowBackground(UniColors.Background.secondary)
+            }
+
+            // Section 2 — Security
+            Section {
+                NavigationLink(value: SettingsDestination.security) {
+                    SettingsRow(
+                        systemImage: "lock.shield",
+                        title: "Security",
+                        trailing: nil,
+                        iconTint: .green
+                    )
+                }
+                .listRowBackground(UniColors.Background.secondary)
+            }
+
+            // Section 3 — Preferences (existing + new hide toggles)
+            Section {
+                NavigationLink(value: SettingsDestination.language) {
+                    SettingsRow(
+                        systemImage: "globe",
+                        title: "Language",
+                        trailing: languageRowTrailing,
+                        iconTint: .indigo
+                    )
+                }
+                .listRowBackground(UniColors.Background.secondary)
+
+                NavigationLink(value: SettingsDestination.appearance) {
+                    SettingsRow(
+                        systemImage: "circle.lefthalf.filled",
+                        title: "Appearance",
+                        trailing: theme.label,
+                        iconTint: .gray
+                    )
+                }
+                .listRowBackground(UniColors.Background.secondary)
+
+                NavigationLink(value: SettingsDestination.currency) {
+                    SettingsRow(
+                        systemImage: "dollarsign.circle",
+                        title: "Currency",
+                        trailing: currencyRowTrailing,
+                        iconTint: .green
+                    )
+                }
+                .listRowBackground(UniColors.Background.secondary)
+
+                // 2026-06-09 — Haptic, Privacy mask, Hide balance
+                // toggles + Hide small balances picker moved into
+                // a dedicated `PreferencesView` sub-screen per
+                // user direction. The main Settings list keeps
+                // Language / Appearance / Currency (display +
+                // region settings) inline; the rest live one
+                // tap away.
+                NavigationLink(value: SettingsDestination.preferences) {
+                    SettingsRow(
+                        systemImage: "slider.horizontal.3",
+                        title: "Preferences",
+                        trailing: nil,
+                        iconTint: .orange
+                    )
+                }
+                .listRowBackground(UniColors.Background.secondary)
+            }
+
+            // Section 4 — Help & About
+            Section {
+                NavigationLink(value: SettingsDestination.help) {
+                    SettingsRow(
+                        systemImage: "questionmark.circle",
+                        title: "Help & Support",
+                        trailing: nil,
+                        iconTint: .blue
+                    )
+                }
+                .listRowBackground(UniColors.Background.secondary)
+
+                NavigationLink(value: SettingsDestination.about) {
+                    SettingsRow(
+                        systemImage: "info.circle",
+                        title: "About",
+                        trailing: LocalizedStringKey(AboutInfo.versionString),
+                        iconTint: .gray
+                    )
+                }
+                .listRowBackground(UniColors.Background.secondary)
+
+                NavigationLink(value: SettingsDestination.diagnostics) {
+                    SettingsRow(
+                        systemImage: "doc.text.magnifyingglass",
+                        title: "Diagnostics Logs",
+                        trailing: nil,
+                        iconTint: .purple
+                    )
+                }
+                .listRowBackground(UniColors.Background.secondary)
+            }
+
+            // Section 6 — Reset Aperture (terminal nuclear hatch). Moved
+            // here from the removed Advanced screen (2026-06-19).
+            ResetApertureSection()
+    }
+
+    @ViewBuilder
+    private func settingsDestination(_ destination: SettingsDestination) -> some View {
+        switch destination {
+        case .wallets:                   WalletsListView()
+        case .walletDetail(let id):      WalletDetailView(walletId: id)
+        case .security:                  SecuritySettingsView()
+        case .autoLock:                  AutoLockPickerView()
+        case .hideSmallBalances:         HideSmallBalancesPicker()
+        case .language:                  LanguagePickerView()
+        case .appearance:                AppearancePickerView()
+        case .currency:                  CurrencyPickerView()
+        case .preferences:               PreferencesView()
+        case .diagnostics:               DiagnosticsLogView()
+        case .help:                      HelpAndSupportView()
+        case .about:                     AboutView()
         }
     }
 
@@ -336,14 +392,115 @@ struct SettingsView: View {
         settingsDeepLink = ""
         switch token {
         case "wallets":
-            navigationPath.append(SettingsDestination.wallets)
+            if usesSplitLayout {
+                splitSelection = .wallets
+                splitDetailPath.removeAll()
+                saveSplitStack()
+            } else {
+                navigationPath.append(SettingsDestination.wallets)
+            }
         default:
             break
+        }
+    }
+
+    private func saveSplitStack() {
+        guard usesSplitLayout, let splitSelection else { return }
+        ScreenRestoration.saveSettingsStack([splitSelection] + splitDetailPath)
+    }
+
+    private static let defaultSplitSelection: SettingsDestination = .wallets
+
+    private static func splitState(from stack: [SettingsDestination]) -> (selection: SettingsDestination, detailPath: [SettingsDestination]) {
+        guard let first = stack.first else {
+            return (defaultSplitSelection, [])
+        }
+        if isSplitRoot(first) {
+            return (first, Array(stack.dropFirst()))
+        }
+        switch first {
+        case .walletDetail:
+            return (.wallets, stack)
+        case .autoLock:
+            return (.security, stack)
+        case .hideSmallBalances:
+            return (.preferences, stack)
+        case .wallets, .security, .language, .appearance, .currency,
+             .preferences, .diagnostics, .help, .about:
+            return (first, Array(stack.dropFirst()))
+        }
+    }
+
+    private static func isSplitRoot(_ destination: SettingsDestination) -> Bool {
+        switch destination {
+        case .wallets, .security, .language, .appearance, .currency,
+             .preferences, .diagnostics, .help, .about:
+            return true
+        case .walletDetail, .autoLock, .hideSmallBalances:
+            return false
         }
     }
 }
 
 // MARK: - Row primitive
+
+private extension View {
+    func settingsRootListChrome() -> some View {
+        self
+            .listStyle(.insetGrouped)
+            .scrollContentBackground(.hidden)
+            .background(UniColors.Background.primary)
+            .navigationTitle(Text("Settings"))
+            .navigationBarTitleDisplayMode(.large)
+    }
+}
+
+private struct SettingsSplitPlaceholderView: View {
+    var body: some View {
+        ContentUnavailableView {
+            Label("Settings", systemImage: "gearshape")
+        } description: {
+            Text("Choose a section from the sidebar.")
+        }
+        .background(UniColors.Background.primary)
+    }
+}
+
+struct SettingsIconTile: View {
+    let systemImage: String
+    let tint: Color
+    var compactTint: Color = UniColors.Icon.secondary
+
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+
+    private var usesIPadTile: Bool {
+        UIDevice.current.userInterfaceIdiom == .pad && horizontalSizeClass == .regular
+    }
+
+    var body: some View {
+        Group {
+            if usesIPadTile {
+                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                    .fill(tint)
+                    .frame(width: 29, height: 29)
+                    .overlay {
+                        Image(systemName: systemImage)
+                            .font(.system(size: 15, weight: .semibold))
+                            .symbolRenderingMode(.monochrome)
+                            .foregroundStyle(.white)
+                            .minimumScaleFactor(0.72)
+                            .padding(4)
+                    }
+            } else {
+                Image(systemName: systemImage)
+                    .font(.system(size: 18, weight: .regular))
+                    .foregroundStyle(compactTint)
+                    .frame(width: 28, alignment: .center)
+            }
+        }
+        .accessibilityHidden(true)
+    }
+}
 
 private struct SettingsRow: View {
     let systemImage: String
@@ -352,13 +509,11 @@ private struct SettingsRow: View {
     /// status (Help & Support, future external-link rows) — the row
     /// collapses without the right-side `Text`.
     let trailing: LocalizedStringKey?
+    var iconTint: Color = .gray
 
     var body: some View {
         HStack(spacing: UniSpacing.s) {
-            Image(systemName: systemImage)
-                .font(.system(size: 18, weight: .regular))
-                .foregroundStyle(UniColors.Icon.secondary)
-                .frame(width: 28, alignment: .center)
+            SettingsIconTile(systemImage: systemImage, tint: iconTint)
                 .accessibilityHidden(true)
 
             Text(title)
@@ -495,10 +650,7 @@ struct PreferencesView: View {
             Section {
                 UniToggle(isOn: $txAmountsInLocalCurrency) {
                     HStack(spacing: UniSpacing.s) {
-                        Image(systemName: "coloncurrencysign.circle")
-                            .font(.system(size: 18, weight: .regular))
-                            .foregroundStyle(UniColors.Icon.secondary)
-                            .frame(width: 28, alignment: .center)
+                        SettingsIconTile(systemImage: "coloncurrencysign.circle", tint: .green)
                             .accessibilityHidden(true)
                         Text("Amounts in local currency")
                             .font(UniTypography.body)
@@ -533,10 +685,7 @@ private struct HapticToggleRow: View {
     var body: some View {
         UniToggle(isOn: $isOn) {
             HStack(spacing: UniSpacing.s) {
-                Image(systemName: "hand.tap")
-                    .font(.system(size: 18, weight: .regular))
-                    .foregroundStyle(UniColors.Icon.secondary)
-                    .frame(width: 28, alignment: .center)
+                SettingsIconTile(systemImage: "hand.tap", tint: .orange)
                     .accessibilityHidden(true)
 
                 Text("Haptic feedback")
@@ -558,10 +707,7 @@ private struct HideBalanceToggleRow: View {
     var body: some View {
         UniToggle(isOn: $isOn) {
             HStack(spacing: UniSpacing.s) {
-                Image(systemName: "eye.slash")
-                    .font(.system(size: 18, weight: .regular))
-                    .foregroundStyle(UniColors.Icon.secondary)
-                    .frame(width: 28, alignment: .center)
+                SettingsIconTile(systemImage: "eye.slash", tint: .indigo)
                     .accessibilityHidden(true)
                 Text("Hide balance on home")
                     .font(UniTypography.body)

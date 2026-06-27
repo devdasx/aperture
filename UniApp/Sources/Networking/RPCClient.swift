@@ -102,6 +102,88 @@ actor RPCClient {
         endpoint.url.host ?? endpoint.id
     }
 
+    private func rpcAttemptStarted(
+        kind: String,
+        chain: SupportedChain,
+        endpoint: RPCEndpoint,
+        operation: String
+    ) -> Date {
+        let start = Date()
+        DiagnosticsLogStore.shared.record(
+            .debug,
+            category: "rpc",
+            message: "\(kind) started",
+            metadata: rpcMetadata(
+                chain: chain,
+                endpoint: endpoint,
+                operation: operation
+            )
+        )
+        return start
+    }
+
+    private func rpcAttemptFinished(
+        level: DiagnosticsLogLevel,
+        kind: String,
+        outcome: String,
+        chain: SupportedChain,
+        endpoint: RPCEndpoint,
+        operation: String,
+        start: Date,
+        error: (any Error)? = nil
+    ) {
+        var metadata = rpcMetadata(
+            chain: chain,
+            endpoint: endpoint,
+            operation: operation
+        )
+        metadata["outcome"] = outcome
+        metadata["elapsedMs"] = DiagnosticsLogStore.elapsedMilliseconds(since: start)
+        if let error {
+            metadata["error"] = String(describing: error)
+        }
+        DiagnosticsLogStore.shared.record(
+            level,
+            category: "rpc",
+            message: "\(kind) \(outcome)",
+            metadata: metadata
+        )
+    }
+
+    private func rpcAttemptSkipped(
+        kind: String,
+        chain: SupportedChain,
+        endpoint: RPCEndpoint,
+        operation: String,
+        reason: String
+    ) {
+        var metadata = rpcMetadata(
+            chain: chain,
+            endpoint: endpoint,
+            operation: operation
+        )
+        metadata["reason"] = reason
+        DiagnosticsLogStore.shared.record(
+            .warning,
+            category: "rpc",
+            message: "\(kind) skipped",
+            metadata: metadata
+        )
+    }
+
+    private func rpcMetadata(
+        chain: SupportedChain,
+        endpoint: RPCEndpoint,
+        operation: String
+    ) -> [String: String] {
+        [
+            "chain": String(describing: chain),
+            "endpoint": endpoint.id,
+            "host": endpoint.url.host ?? "",
+            "operation": operation
+        ]
+    }
+
     /// Run one `URLSession` request **inside the `ConcurrencyGate`** —
     /// the single in-flight chokepoint every dispatch path funnels
     /// through (2026-06-16). Acquires a global + per-host slot before
@@ -303,7 +385,22 @@ actor RPCClient {
 
         var lastError: RPCError = .allEndpointsFailed(chain)
         for endpoint in endpoints where endpoint.kind == .jsonRPC {
-            if isOpen(for: endpoint.id) { continue }
+            if isOpen(for: endpoint.id) {
+                rpcAttemptSkipped(
+                    kind: "JSON-RPC named params",
+                    chain: chain,
+                    endpoint: endpoint,
+                    operation: method,
+                    reason: "circuitOpen"
+                )
+                continue
+            }
+            let rpcStart = rpcAttemptStarted(
+                kind: "JSON-RPC named params",
+                chain: chain,
+                endpoint: endpoint,
+                operation: method
+            )
             do {
                 try await rateLimiter.acquire(for: endpoint)
                 let result = try await dispatchJSONNamedParams(
@@ -313,8 +410,27 @@ actor RPCClient {
                     validatesIDEcho: validatesIDEcho
                 )
                 recordSuccess(for: endpoint.id)
+                rpcAttemptFinished(
+                    level: .info,
+                    kind: "JSON-RPC named params",
+                    outcome: "succeeded",
+                    chain: chain,
+                    endpoint: endpoint,
+                    operation: method,
+                    start: rpcStart
+                )
                 return result
             } catch {
+                rpcAttemptFinished(
+                    level: .warning,
+                    kind: "JSON-RPC named params",
+                    outcome: "failed",
+                    chain: chain,
+                    endpoint: endpoint,
+                    operation: method,
+                    start: rpcStart,
+                    error: error
+                )
                 // Typed throws — everything in this block throws
                 // `RPCError`, so one catch covers it (a generic
                 // fallback clause would be dead code).
@@ -465,8 +581,21 @@ actor RPCClient {
         for endpoint in endpoints where endpoint.kind == .jsonRPC {
             if isOpen(for: endpoint.id) {
                 log.debug("Circuit open for \(endpoint.id, privacy: .public), skipping")
+                rpcAttemptSkipped(
+                    kind: "JSON-RPC",
+                    chain: chain,
+                    endpoint: endpoint,
+                    operation: method,
+                    reason: "circuitOpen"
+                )
                 continue
             }
+            let rpcStart = rpcAttemptStarted(
+                kind: "JSON-RPC",
+                chain: chain,
+                endpoint: endpoint,
+                operation: method
+            )
             do {
                 try await rateLimiter.acquire(for: endpoint)
                 let result = try await dispatchJSON(
@@ -476,8 +605,27 @@ actor RPCClient {
                     validatesIDEcho: validatesIDEcho
                 )
                 recordSuccess(for: endpoint.id)
+                rpcAttemptFinished(
+                    level: .info,
+                    kind: "JSON-RPC",
+                    outcome: "succeeded",
+                    chain: chain,
+                    endpoint: endpoint,
+                    operation: method,
+                    start: rpcStart
+                )
                 return result
             } catch {
+                rpcAttemptFinished(
+                    level: .warning,
+                    kind: "JSON-RPC",
+                    outcome: "failed",
+                    chain: chain,
+                    endpoint: endpoint,
+                    operation: method,
+                    start: rpcStart,
+                    error: error
+                )
                 // Typed throws — everything in this block throws
                 // `RPCError`, so one catch covers it.
                 //
@@ -538,7 +686,22 @@ actor RPCClient {
 
         var lastError: RPCError = .allEndpointsFailed(chain)
         for endpoint in endpoints where endpoint.kind == .rest {
-            if isOpen(for: endpoint.id) { continue }
+            if isOpen(for: endpoint.id) {
+                rpcAttemptSkipped(
+                    kind: "REST POST",
+                    chain: chain,
+                    endpoint: endpoint,
+                    operation: path,
+                    reason: "circuitOpen"
+                )
+                continue
+            }
+            let rpcStart = rpcAttemptStarted(
+                kind: "REST POST",
+                chain: chain,
+                endpoint: endpoint,
+                operation: path
+            )
             do {
                 try await rateLimiter.acquire(for: endpoint)
                 let data = try await dispatchRESTPost(
@@ -547,8 +710,27 @@ actor RPCClient {
                     body: body
                 )
                 recordSuccess(for: endpoint.id)
+                rpcAttemptFinished(
+                    level: .info,
+                    kind: "REST POST",
+                    outcome: "succeeded",
+                    chain: chain,
+                    endpoint: endpoint,
+                    operation: path,
+                    start: rpcStart
+                )
                 return data
             } catch {
+                rpcAttemptFinished(
+                    level: .warning,
+                    kind: "REST POST",
+                    outcome: "failed",
+                    chain: chain,
+                    endpoint: endpoint,
+                    operation: path,
+                    start: rpcStart,
+                    error: error
+                )
                 // Typed throws — everything in this block throws
                 // `RPCError`, so one catch covers it (a generic
                 // fallback clause would be dead code). Cancellation
@@ -589,6 +771,7 @@ actor RPCClient {
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue("Aperture/1.0", forHTTPHeaderField: "User-Agent")
         request.httpBody = bodyData
 
         let responseData: Data
@@ -657,7 +840,22 @@ actor RPCClient {
 
         var lastError: RPCError = .allEndpointsFailed(chain)
         for endpoint in endpoints where endpoint.kind == .rest {
-            if isOpen(for: endpoint.id) { continue }
+            if isOpen(for: endpoint.id) {
+                rpcAttemptSkipped(
+                    kind: "REST POST raw",
+                    chain: chain,
+                    endpoint: endpoint,
+                    operation: path,
+                    reason: "circuitOpen"
+                )
+                continue
+            }
+            let rpcStart = rpcAttemptStarted(
+                kind: "REST POST raw",
+                chain: chain,
+                endpoint: endpoint,
+                operation: path
+            )
             do {
                 try await rateLimiter.acquire(for: endpoint)
                 let data = try await dispatchRESTPostRaw(
@@ -667,8 +865,27 @@ actor RPCClient {
                     contentType: contentType
                 )
                 recordSuccess(for: endpoint.id)
+                rpcAttemptFinished(
+                    level: .info,
+                    kind: "REST POST raw",
+                    outcome: "succeeded",
+                    chain: chain,
+                    endpoint: endpoint,
+                    operation: path,
+                    start: rpcStart
+                )
                 return data
             } catch {
+                rpcAttemptFinished(
+                    level: .warning,
+                    kind: "REST POST raw",
+                    outcome: "failed",
+                    chain: chain,
+                    endpoint: endpoint,
+                    operation: path,
+                    start: rpcStart,
+                    error: error
+                )
                 if case .cancelled = error { throw error }
                 if case .rateLimited = error {
                     lastError = error
@@ -755,7 +972,22 @@ actor RPCClient {
 
         var lastError: RPCError = .allEndpointsFailed(chain)
         for endpoint in endpoints where endpoint.kind == .rest {
-            if isOpen(for: endpoint.id) { continue }
+            if isOpen(for: endpoint.id) {
+                rpcAttemptSkipped(
+                    kind: "REST POST data",
+                    chain: chain,
+                    endpoint: endpoint,
+                    operation: path,
+                    reason: "circuitOpen"
+                )
+                continue
+            }
+            let rpcStart = rpcAttemptStarted(
+                kind: "REST POST data",
+                chain: chain,
+                endpoint: endpoint,
+                operation: path
+            )
             do {
                 try await rateLimiter.acquire(for: endpoint)
                 let data = try await dispatchRESTPostData(
@@ -765,8 +997,27 @@ actor RPCClient {
                     contentType: contentType
                 )
                 recordSuccess(for: endpoint.id)
+                rpcAttemptFinished(
+                    level: .info,
+                    kind: "REST POST data",
+                    outcome: "succeeded",
+                    chain: chain,
+                    endpoint: endpoint,
+                    operation: path,
+                    start: rpcStart
+                )
                 return data
             } catch {
+                rpcAttemptFinished(
+                    level: .warning,
+                    kind: "REST POST data",
+                    outcome: "failed",
+                    chain: chain,
+                    endpoint: endpoint,
+                    operation: path,
+                    start: rpcStart,
+                    error: error
+                )
                 if case .cancelled = error { throw error }
                 if case .rateLimited = error {
                     lastError = error
@@ -840,7 +1091,22 @@ actor RPCClient {
 
         var lastError: RPCError = .allEndpointsFailed(chain)
         for endpoint in endpoints where endpoint.kind == .rest {
-            if isOpen(for: endpoint.id) { continue }
+            if isOpen(for: endpoint.id) {
+                rpcAttemptSkipped(
+                    kind: "REST GET",
+                    chain: chain,
+                    endpoint: endpoint,
+                    operation: path,
+                    reason: "circuitOpen"
+                )
+                continue
+            }
+            let rpcStart = rpcAttemptStarted(
+                kind: "REST GET",
+                chain: chain,
+                endpoint: endpoint,
+                operation: path
+            )
             do {
                 try await rateLimiter.acquire(for: endpoint)
                 let data = try await dispatchREST(
@@ -849,8 +1115,27 @@ actor RPCClient {
                     query: query
                 )
                 recordSuccess(for: endpoint.id)
+                rpcAttemptFinished(
+                    level: .info,
+                    kind: "REST GET",
+                    outcome: "succeeded",
+                    chain: chain,
+                    endpoint: endpoint,
+                    operation: path,
+                    start: rpcStart
+                )
                 return data
             } catch {
+                rpcAttemptFinished(
+                    level: .warning,
+                    kind: "REST GET",
+                    outcome: "failed",
+                    chain: chain,
+                    endpoint: endpoint,
+                    operation: path,
+                    start: rpcStart,
+                    error: error
+                )
                 // Typed throws — everything in this block throws
                 // `RPCError`, so one catch covers it (a generic
                 // fallback clause would be dead code). Cancellation
@@ -1089,6 +1374,7 @@ actor RPCClient {
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
         request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue("Aperture/1.0", forHTTPHeaderField: "User-Agent")
 
         let responseData: Data
         let response: URLResponse

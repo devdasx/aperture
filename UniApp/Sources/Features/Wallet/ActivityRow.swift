@@ -9,9 +9,9 @@ import UIKit
 /// real token mark.
 ///
 /// **Visual register (Rule #2 + Rule #7):**
-/// - Leading is a **44-pt token mark** (the bundled `Crypto/<ticker>`
-///   asset — `Crypto/eth`, `Crypto/btc`, `Crypto/usdc`, …) — the
-///   asset itself is the identity. Bumped from 36→44pt on 2026-06-08
+/// - Leading is a **44-pt token mark** resolved through the shared
+///   Stabro-style `CoinMark` path — the asset itself is the identity.
+///   Bumped from 36→44pt on 2026-06-08
 ///   per user direction, matching the parallel bump on `AssetRow`
 ///   so Holdings and Activity rows read as one family. A small
 ///   **18-pt status badge** overlays the bottom-trailing corner
@@ -142,7 +142,7 @@ struct ActivityRow: View {
 
     private func copyToPasteboard(_ value: String) {
 #if canImport(UIKit)
-        UIPasteboard.general.string = value
+        SafePasteboard.setString(value)
 #endif
         UniHapticEngine.shared.play(.success)
     }

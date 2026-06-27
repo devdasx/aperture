@@ -1128,7 +1128,7 @@ struct TransactionDetailView: View {
     // MARK: - Copy
 
     private func copy(_ value: String, name: String) {
-        UIPasteboard.general.setItems(
+        SafePasteboard.setItems(
             [[UTType.plainText.identifier: value]],
             options: [.expirationDate: Date().addingTimeInterval(120)]
         )

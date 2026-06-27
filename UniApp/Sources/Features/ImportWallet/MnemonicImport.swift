@@ -12,8 +12,8 @@ import SwiftUI
 ///   caret and the gray unique-prefix **ghost** completion.
 /// - **Tap any committed chip** to remove it and drop the cursor on that slot to
 ///   re-enter it (then the cursor returns to the end).
-/// - A scrolled **Paste / Upload-file** action row sits under the field. Upload
-///   reads a text file and extracts a 12/15/18/21/24-word BIP-39 phrase.
+/// - Paste / Scan live as icon-only utility buttons inside the field's
+///   bottom-right corner.
 /// - **Length auto-detected** (12/15/18/21/24) + checksum-validated; nothing to
 ///   pick. The app-bar **⋯** opens the optional passphrase sheet.
 /// - Custom **white** BIP-39 suggestion buttons float above the keyboard (not a
@@ -137,7 +137,6 @@ struct MnemonicEntryView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
                 phraseField
-                actionRow
                 if lengthValid, allReal {
                     validationLine.padding(.horizontal, 24)
                 }
@@ -190,7 +189,7 @@ struct MnemonicEntryView: View {
             }
         }
         .uniHaptic(.success, trigger: canContinue)
-        .sheet(isPresented: $isShowingScanner) {
+        .fullScreenCover(isPresented: $isShowingScanner) {
             UniQRScannerSheet(
                 title: "Scan recovery phrase",
                 prompt: "Point your camera at a recovery-phrase QR code.",
@@ -231,10 +230,15 @@ struct MnemonicEntryView: View {
         }
     }
 
-    // MARK: Bottom bar (Continue + floating suggestions)
+    // MARK: Bottom bar (floating suggestions + Continue)
 
     private var bottomBar: some View {
         VStack(spacing: 10) {
+            // Custom white suggestion pills — float above the keyboard, NOT a
+            // keyboard accessory; the row itself has no background.
+            if focused, !draft.isEmpty, !suggestions.isEmpty {
+                suggestionRow
+            }
             GlassEffectContainer(spacing: UniSpacing.s) {
                 UniButton(title: "Continue", variant: .primary, isEnabled: canContinue) {
                     if isLeakedPhrase {
@@ -244,11 +248,6 @@ struct MnemonicEntryView: View {
                     }
                 }
             }
-            // Custom white suggestion pills — float above the keyboard, NOT a
-            // keyboard accessory; the row itself has no background.
-            if focused, !draft.isEmpty, !suggestions.isEmpty {
-                suggestionRow
-            }
         }
         .padding(.horizontal, 24)
         .padding(.bottom, UniSpacing.l)
@@ -257,29 +256,36 @@ struct MnemonicEntryView: View {
     // MARK: Phrase field (chip flow)
 
     private var phraseField: some View {
-        Group {
-            if chips.isEmpty {
-                Text("Tap to type or paste your recovery phrase…")
-                    .font(.system(size: 15, weight: .regular))
-                    .foregroundStyle(UniColors.SeedGrid.faint)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            } else {
-                FlowLayout(spacing: 9, lineSpacing: 9) {
-                    ForEach(chips) { chip in
-                        chipView(chip)
-                            .transition(
-                                reduceMotion
-                                    ? .opacity
-                                    : .scale(scale: 0.9).combined(with: .opacity)
-                            )
+        ZStack(alignment: .bottomTrailing) {
+            Group {
+                if chips.isEmpty {
+                    Text("Tap to type or paste your recovery phrase…")
+                        .font(.system(size: 15, weight: .regular))
+                        .foregroundStyle(UniColors.SeedGrid.faint)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                } else {
+                    FlowLayout(spacing: 9, lineSpacing: 9) {
+                        ForEach(chips) { chip in
+                            chipView(chip)
+                                .transition(
+                                    reduceMotion
+                                        ? .opacity
+                                        : .scale(scale: 0.9).combined(with: .opacity)
+                                )
+                        }
                     }
+                    .frame(maxWidth: .infinity, alignment: .topLeading)
                 }
-                .frame(maxWidth: .infinity, alignment: .topLeading)
             }
+            .padding(.top, 15)
+            .padding(.horizontal, 24)
+            .padding(.bottom, 58)
+            .frame(maxWidth: .infinity, minHeight: 158, alignment: .topLeading)
+
+            phraseUtilityButtons
+                .padding(.trailing, 18)
+                .padding(.bottom, 14)
         }
-        .padding(.vertical, 15)
-        .padding(.horizontal, 24)
-        .frame(maxWidth: .infinity, minHeight: 158, alignment: .topLeading)
         .background(UniColors.Background.secondary)
         .contentShape(Rectangle())
         .onTapGesture { focused = true }
@@ -334,41 +340,42 @@ struct MnemonicEntryView: View {
         }
     }
 
-    // MARK: Action row (Paste / Upload file)
+    // MARK: Field utility buttons
 
-    private var actionRow: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            GlassEffectContainer(spacing: 10) {
-                HStack(spacing: 10) {
-                    glassActionChip("Paste", systemImage: "doc.on.clipboard") {
-                        pasteFromClipboard()
-                    }
-                    glassActionChip("Scan", systemImage: "qrcode.viewfinder") {
-                        UniHapticEngine.shared.play(.selection)
-                        isShowingScanner = true
-                    }
-                }
+    private var phraseUtilityButtons: some View {
+        HStack(spacing: 10) {
+            phraseUtilityButton(
+                systemImage: "doc.on.clipboard",
+                accessibilityLabel: "Paste recovery phrase"
+            ) {
+                pasteFromClipboard()
             }
-            .padding(.horizontal, 24)
+            phraseUtilityButton(
+                systemImage: "qrcode.viewfinder",
+                accessibilityLabel: "Scan recovery phrase"
+            ) {
+                UniHapticEngine.shared.play(.selection)
+                isShowingScanner = true
+            }
         }
     }
 
-    /// Liquid-glass action chip (Paste / Scan).
-    private func glassActionChip(
-        _ title: LocalizedStringKey,
+    /// Icon-only utility button that lives inside the phrase field.
+    private func phraseUtilityButton(
         systemImage: String,
+        accessibilityLabel: LocalizedStringKey,
         action: @escaping () -> Void
     ) -> some View {
         Button(action: action) {
-            HStack(spacing: 7) {
-                Image(systemName: systemImage)
-                    .font(.system(size: 14, weight: .semibold))
-                Text(title)
-                    .font(.system(size: 14, weight: .semibold))
-            }
-            .foregroundStyle(UniColors.Text.primary)
+            Image(systemName: systemImage)
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundStyle(UniColors.Icon.secondary)
+                .frame(width: 38, height: 38)
+                .background(UniColors.SeedGrid.hairline.opacity(0.7), in: Circle())
+                .contentShape(Circle())
         }
-        .buttonStyle(.glass)
+        .buttonStyle(.plain)
+        .accessibilityLabel(Text(accessibilityLabel))
     }
 
     // MARK: Validation line
@@ -534,7 +541,7 @@ struct MnemonicEntryView: View {
 
     private func pasteFromClipboard() {
         UniHapticEngine.shared.play(.selection)
-        guard let clipboard = UIPasteboard.general.string, !clipboard.isEmpty else { return }
+        guard let clipboard = SafePasteboard.string, !clipboard.isEmpty else { return }
         fillFromText(clipboard)
     }
 

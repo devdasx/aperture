@@ -15,9 +15,8 @@ import SwiftData
 ///
 /// **Read consistency.** `fetchAll(chain:)` and `fetchByContract(...)`
 /// take a snapshot at call time — repeat callers of `fetchAll` after
-/// an `add` see the new row. Per-chain scanner loops in
-/// `RealRPCBalanceScanner` instantiate the repository per scan, so
-/// the most recent additions are visible to the next refresh.
+/// an `add` see the new row. Callers get plain-value snapshots so they
+/// can safely cross actor boundaries without holding SwiftData models.
 @ModelActor
 actor CustomTokenRepository {
 
@@ -35,7 +34,6 @@ actor CustomTokenRepository {
         symbol: String,
         name: String,
         decimals: Int,
-        iconURL: String? = nil,
         metadataFromChain: Bool = true
     ) throws {
         if try fetchRecord(chain: chain, contract: contract) != nil {
@@ -48,7 +46,7 @@ actor CustomTokenRepository {
             symbol: symbol,
             name: name,
             decimals: decimals,
-            iconURL: iconURL,
+            iconURL: nil,
             addedAt: Date(),
             metadataFromChain: metadataFromChain
         )
@@ -75,8 +73,7 @@ actor CustomTokenRepository {
     ///
     /// Returns a snapshot of plain-value `CustomTokenSnapshot`
     /// structs (Sendable) so callers across actor boundaries don't
-    /// hold `@Model` references. The scanner loop in
-    /// `RealRPCBalanceScanner` consumes the snapshot form.
+    /// hold `@Model` references.
     func fetchAll(chain: SupportedChain? = nil) throws -> [CustomTokenSnapshot] {
         let descriptor = FetchDescriptor<CustomTokenRecord>(
             sortBy: [SortDescriptor(\.symbol, order: .forward)]
@@ -152,7 +149,6 @@ struct CustomTokenSnapshot: Sendable, Hashable, Identifiable {
     let symbol: String
     let name: String
     let decimals: Int
-    let iconURL: String?
     let addedAt: Date
     let metadataFromChain: Bool
 
@@ -163,7 +159,6 @@ struct CustomTokenSnapshot: Sendable, Hashable, Identifiable {
         self.symbol = record.symbol
         self.name = record.name
         self.decimals = record.decimals
-        self.iconURL = record.iconURL
         self.addedAt = record.addedAt
         self.metadataFromChain = record.metadataFromChain
     }

@@ -236,8 +236,7 @@ private struct CustomTokenRow: View {
             CoinMark(
                 chain: token.chain,
                 tokenSymbol: token.symbol,
-                contract: token.contract,
-                customIconURL: token.iconURL
+                contract: token.contract
             )
             .frame(width: 36, height: 36)
             .accessibilityHidden(true)

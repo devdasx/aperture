@@ -80,6 +80,22 @@ enum ChainKeyVault {
         }
     }
 
+    /// Reset / fresh-install cleanup. Deletes the app-wide master key used
+    /// to open `ChainStateRecord.encryptedPrivateKey` blobs. Idempotent: a
+    /// missing key is already the desired state.
+    static func clear() {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: keyService,
+            kSecAttrAccount as String: keyAccount
+        ]
+        let status = SecItemDelete(query as CFDictionary)
+        guard status == errSecSuccess || status == errSecItemNotFound else {
+            log.error("Keychain delete failed status=\(status)")
+            return
+        }
+    }
+
     // MARK: - Master key (get-or-create)
 
     /// Fetch the master symmetric key from the Keychain, creating it on

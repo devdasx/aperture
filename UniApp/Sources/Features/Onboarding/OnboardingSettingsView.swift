@@ -3,8 +3,7 @@ import SwiftUI
 /// Pre-wallet Settings sheet — the slim Settings surface presented from
 /// the onboarding gear icon. Carries ONLY the rows that make sense
 /// before the user has created or imported a wallet: language,
-/// appearance, currency, haptic feedback, help & support, about,
-/// acknowledgments.
+/// appearance, haptic feedback, help & support, and about.
 ///
 /// **Why a separate view (and not a flag on `SettingsView`).** Per
 /// Rule #2 §A.2 ("simplicity through reduction"), feature flags on a
@@ -15,9 +14,9 @@ import SwiftUI
 /// honestly: this is the *pre-wallet* Settings.
 ///
 /// **Pushed picker destinations are reused** — `LanguagePickerView`,
-/// `AppearancePickerView`, `CurrencyPickerView`, `HelpAndSupportView`,
-/// `AcknowledgmentsView` are the same screens the full `SettingsView`
-/// uses. Their behavior is identical; only the parent list differs.
+/// `AppearancePickerView`, and `HelpAndSupportView` are the same
+/// screens the full `SettingsView` uses. Their behavior is identical;
+/// only the parent list differs.
 struct OnboardingSettingsView: View {
     @Environment(\.dismiss) private var dismiss
 
@@ -29,7 +28,6 @@ struct OnboardingSettingsView: View {
     @AppStorage("themePreference") private var themeRaw: String = ThemePreference.defaultRaw
     @AppStorage("languagePreference") private var languageCode: String = LanguagePreference.systemCode
     @AppStorage(HapticPreference.storageKey) private var hapticEnabled: Bool = HapticPreference.defaultValue
-    @AppStorage(CurrencyPreference.storageKey) private var currencyCode: String = CurrencyPreference.defaultCode
 
     @State private var isShowingTerms: Bool = false
     @State private var isShowingPrivacyPolicy: Bool = false
@@ -46,20 +44,11 @@ struct OnboardingSettingsView: View {
         return LocalizedStringKey(native)
     }
 
-    private var currencyRowTrailing: LocalizedStringKey {
-        let currency = CurrencyPreference.currency(for: currencyCode)
-            ?? CurrencyPreference.all[0]
-        return LocalizedStringKey("\(currency.symbol) · \(currency.code)")
-    }
-
     var body: some View {
         NavigationStack(path: $navigationPath) {
             List {
                 // Preferences — what the user can set up before
-                // creating a wallet. Currency is included because
-                // pre-selecting it now means the future wallet-home
-                // hero balance renders correctly the moment a wallet
-                // is created — no scramble back to Settings later.
+                // creating a wallet.
                 Section {
                     NavigationLink(value: OnboardingSettingsDestination.language) {
                         OnboardingSettingsRow(
@@ -75,15 +64,6 @@ struct OnboardingSettingsView: View {
                             systemImage: "circle.lefthalf.filled",
                             title: "Appearance",
                             trailing: theme.label
-                        )
-                    }
-                    .listRowBackground(UniColors.Background.secondary)
-
-                    NavigationLink(value: OnboardingSettingsDestination.currency) {
-                        OnboardingSettingsRow(
-                            systemImage: "dollarsign.circle",
-                            title: "Currency",
-                            trailing: currencyRowTrailing
                         )
                     }
                     .listRowBackground(UniColors.Background.secondary)
@@ -114,15 +94,6 @@ struct OnboardingSettingsView: View {
                         )
                     }
                     .listRowBackground(UniColors.Background.secondary)
-
-                    NavigationLink(value: OnboardingSettingsDestination.acknowledgments) {
-                        OnboardingSettingsRow(
-                            systemImage: "text.book.closed",
-                            title: "Acknowledgments",
-                            trailing: nil
-                        )
-                    }
-                    .listRowBackground(UniColors.Background.secondary)
                 }
             }
             .listStyle(.insetGrouped)
@@ -134,13 +105,11 @@ struct OnboardingSettingsView: View {
                 switch destination {
                 case .language:        LanguagePickerView()
                 case .appearance:      AppearancePickerView()
-                case .currency:        CurrencyPickerView()
                 case .help:            HelpAndSupportView()
                 case .about:           OnboardingAboutView(
                                           onTapTerms: { isShowingTerms = true },
                                           onTapPrivacy: { isShowingPrivacyPolicy = true }
                                        )
-                case .acknowledgments: AcknowledgmentsView()
                 }
             }
             .toolbar {
@@ -177,10 +146,8 @@ struct OnboardingSettingsView: View {
 enum OnboardingSettingsDestination: Hashable, Codable {
     case language
     case appearance
-    case currency
     case help
     case about
-    case acknowledgments
 }
 
 // MARK: - Row primitive
@@ -246,9 +213,7 @@ private struct OnboardingHapticToggleRow: View {
 
 /// Slimmer About page than the wallet-home Settings → About row.
 /// Carries Version + Prices + Terms + Privacy + the "Made with Liquid
-/// Glass" footer. No "Made by" / contributor list / etc. — the
-/// Acknowledgments page is the canonical attribution surface and
-/// links to it from the root.
+/// Glass" footer.
 private struct OnboardingAboutView: View {
     let onTapTerms: () -> Void
     let onTapPrivacy: () -> Void
@@ -321,5 +286,69 @@ private struct OnboardingAboutView: View {
         .listStyle(.insetGrouped)
         .navigationTitle(Text("About"))
         .navigationBarTitleDisplayMode(.large)
+    }
+}
+
+// MARK: - Terms / Privacy sheets
+
+private struct TermsPlaceholderSheet: View {
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        UniSheet(title: "Terms of Service") {
+            VStack(alignment: .leading, spacing: UniSpacing.m) {
+                Image(systemName: "doc.text")
+                    .font(.system(size: 44, weight: .light))
+                    .symbolRenderingMode(.hierarchical)
+                    .foregroundStyle(UniColors.Icon.secondary)
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .accessibilityHidden(true)
+
+                UniBody(
+                    text: "The Terms of Service haven't been written yet. Aperture is open source — the only thing governing your use of the app today is the MIT license in the repository.",
+                    color: UniColors.Text.secondary
+                )
+                .fixedSize(horizontal: false, vertical: true)
+
+                UniBody(
+                    text: "When written, the Terms will state plainly: Aperture provides software, not custody. You are responsible for your keys.",
+                    color: UniColors.Text.secondary
+                )
+                .fixedSize(horizontal: false, vertical: true)
+            }
+        } actions: {
+            UniButton(title: "Got it", variant: .primary) { dismiss() }
+        }
+    }
+}
+
+private struct PrivacyPolicyPlaceholderSheet: View {
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        UniSheet(title: "Privacy Policy") {
+            VStack(alignment: .leading, spacing: UniSpacing.m) {
+                Image(systemName: "hand.raised.fill")
+                    .font(.system(size: 44, weight: .light))
+                    .symbolRenderingMode(.hierarchical)
+                    .foregroundStyle(UniColors.Icon.secondary)
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .accessibilityHidden(true)
+
+                UniBody(
+                    text: "Aperture collects no account, email, analytics, telemetry, or app-side logs of your wallet activity.",
+                    color: UniColors.Text.secondary
+                )
+                .fixedSize(horizontal: false, vertical: true)
+
+                UniBody(
+                    text: "Network traffic goes only to public chain, market, and FX providers for the features you use. Those providers may log requests on their side; Aperture itself records nothing.",
+                    color: UniColors.Text.secondary
+                )
+                .fixedSize(horizontal: false, vertical: true)
+            }
+        } actions: {
+            UniButton(title: "Got it", variant: .primary) { dismiss() }
+        }
     }
 }

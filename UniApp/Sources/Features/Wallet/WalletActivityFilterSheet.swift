@@ -44,6 +44,10 @@ struct WalletActivityFilterSheet: View {
     private var directionRaw: String = WalletActivityFilterPreferences.defaultDirection.rawValue
     @AppStorage(WalletActivityFilterPreferences.statusKey)
     private var statusRaw: String = WalletActivityFilterPreferences.defaultStatus.rawValue
+    @AppStorage(WalletActivityFilterPreferences.kindKey)
+    private var kindRaw: String = WalletActivityFilterPreferences.defaultKind.rawValue
+    @AppStorage(WalletActivityFilterPreferences.assetClassKey)
+    private var assetClassRaw: String = WalletActivityFilterPreferences.defaultAssetClass.rawValue
     @AppStorage(WalletActivityFilterPreferences.timeRangeKey)
     private var timeRangeRaw: String = WalletActivityFilterPreferences.defaultTimeRange.rawValue
     @AppStorage(WalletActivityFilterPreferences.customStartKey)
@@ -231,6 +235,22 @@ struct WalletActivityFilterSheet: View {
             .listRowBackground(UniColors.Background.secondary)
 
             VStack(alignment: .leading, spacing: UniSpacing.xs) {
+                Text("Kind")
+                    .font(UniTypography.subheadline)
+                    .foregroundStyle(UniColors.Text.secondary)
+                Picker("Kind", selection: kindBinding) {
+                    ForEach(WalletActivityFilterPreferences.TxKind.allCases) { kind in
+                        Text(kind.label).tag(kind)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+            }
+            .padding(.vertical, UniSpacing.xxs)
+            .uniHaptic(.selection, trigger: kindRaw)
+            .listRowBackground(UniColors.Background.secondary)
+
+            VStack(alignment: .leading, spacing: UniSpacing.xs) {
                 Text("Status")
                     .font(UniTypography.subheadline)
                     .foregroundStyle(UniColors.Text.secondary)
@@ -275,7 +295,7 @@ struct WalletActivityFilterSheet: View {
                 DatePicker(
                     selection: customStartBinding,
                     in: ...customEndBinding.wrappedValue,
-                    displayedComponents: .date
+                    displayedComponents: [.date, .hourAndMinute]
                 ) {
                     Text("From")
                         .font(UniTypography.body)
@@ -287,7 +307,7 @@ struct WalletActivityFilterSheet: View {
                 DatePicker(
                     selection: customEndBinding,
                     in: customStartBinding.wrappedValue...,
-                    displayedComponents: .date
+                    displayedComponents: [.date, .hourAndMinute]
                 ) {
                     Text("To")
                         .font(UniTypography.body)
@@ -306,6 +326,22 @@ struct WalletActivityFilterSheet: View {
     @ViewBuilder
     private var showSection: some View {
         Section {
+            VStack(alignment: .leading, spacing: UniSpacing.xs) {
+                Text("Asset type")
+                    .font(UniTypography.subheadline)
+                    .foregroundStyle(UniColors.Text.secondary)
+                Picker("Asset type", selection: assetClassBinding) {
+                    ForEach(WalletActivityFilterPreferences.AssetClass.allCases) { assetClass in
+                        Text(assetClass.label).tag(assetClass)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+            }
+            .padding(.vertical, UniSpacing.xxs)
+            .uniHaptic(.selection, trigger: assetClassRaw)
+            .listRowBackground(UniColors.Background.secondary)
+
             NavigationLink(value: WalletActivityFilterDestination.networks) {
                 multiSelectLink(
                     systemImage: "globe",
@@ -430,16 +466,8 @@ struct WalletActivityFilterSheet: View {
         let now = Date()
         let calendar = Calendar.current
         let start = calendar.date(byAdding: .day, value: -30, to: now) ?? now
-        customStart = calendar.startOfDay(for: start).timeIntervalSince1970
-        customEnd = endOfDay(for: now).timeIntervalSince1970
-    }
-
-    /// 23:59:59 of `date`'s day — used so the end bound is inclusive of
-    /// the whole selected day.
-    private func endOfDay(for date: Date) -> Date {
-        let calendar = Calendar.current
-        let startNextDay = calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: date)) ?? date
-        return startNextDay.addingTimeInterval(-1)
+        customStart = start.timeIntervalSince1970
+        customEnd = now.timeIntervalSince1970
     }
 
     // MARK: - Bindings
@@ -474,6 +502,26 @@ struct WalletActivityFilterSheet: View {
         )
     }
 
+    private var kindBinding: Binding<WalletActivityFilterPreferences.TxKind> {
+        Binding(
+            get: {
+                WalletActivityFilterPreferences.TxKind(rawValue: kindRaw)
+                    ?? WalletActivityFilterPreferences.defaultKind
+            },
+            set: { kindRaw = $0.rawValue }
+        )
+    }
+
+    private var assetClassBinding: Binding<WalletActivityFilterPreferences.AssetClass> {
+        Binding(
+            get: {
+                WalletActivityFilterPreferences.AssetClass(rawValue: assetClassRaw)
+                    ?? WalletActivityFilterPreferences.defaultAssetClass
+            },
+            set: { assetClassRaw = $0.rawValue }
+        )
+    }
+
     private var timeRangeBinding: Binding<WalletActivityFilterPreferences.TimeRange> {
         Binding(
             get: {
@@ -484,8 +532,8 @@ struct WalletActivityFilterSheet: View {
         )
     }
 
-    /// Custom-start picker bound to the stored epoch. Normalizes to the
-    /// START of the selected day so `apply`'s `>= start` is correct.
+    /// Custom-start picker bound to the stored epoch. Keeps the selected
+    /// date + time exact so Activity and PDF exports share the same window.
     private var customStartBinding: Binding<Date> {
         Binding(
             get: {
@@ -493,12 +541,15 @@ struct WalletActivityFilterSheet: View {
                     ? Date(timeIntervalSince1970: customStart)
                     : Calendar.current.date(byAdding: .day, value: -30, to: Date()) ?? Date()
             },
-            set: { customStart = Calendar.current.startOfDay(for: $0).timeIntervalSince1970 }
+            set: {
+                let end = customEndBinding.wrappedValue
+                customStart = min($0, end).timeIntervalSince1970
+            }
         )
     }
 
-    /// Custom-end picker bound to the stored epoch. Normalizes to the
-    /// END of the selected day so the bound is inclusive of that day.
+    /// Custom-end picker bound to the stored epoch. Keeps the selected
+    /// date + time exact so Activity and PDF exports share the same window.
     private var customEndBinding: Binding<Date> {
         Binding(
             get: {
@@ -506,7 +557,10 @@ struct WalletActivityFilterSheet: View {
                     ? Date(timeIntervalSince1970: customEnd)
                     : Date()
             },
-            set: { customEnd = endOfDay(for: $0).timeIntervalSince1970 }
+            set: {
+                let start = customStartBinding.wrappedValue
+                customEnd = max($0, start).timeIntervalSince1970
+            }
         )
     }
 }

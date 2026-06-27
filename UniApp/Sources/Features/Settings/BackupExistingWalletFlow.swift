@@ -4,7 +4,7 @@ import SwiftUI
 ///
 /// Presented as a `.large` sheet from `WalletDetailView` when the user
 /// taps "Back up now" on the backup-state card. Loads the stored
-/// mnemonic from `MnemonicVault.loadMnemonic(for:)`, then routes the
+/// mnemonic from `WalletSecretRepository.loadMnemonic(for:)`, then routes the
 /// user through the same `BackupVerifyView` challenge surface the
 /// create-wallet flow uses — so the gesture of proving you saved the
 /// phrase reads identically across both contexts (a wallet you just
@@ -118,10 +118,9 @@ struct BackupExistingWalletFlow: View {
 
     // MARK: - States while the mnemonic is resolved
 
-    /// Brief progress surface while `MnemonicVault.loadMnemonic`
-    /// returns. The load is synchronous (Keychain read + AES-GCM
-    /// decrypt) but we still show a calm spinner so the screen never
-    /// appears to be empty at first paint.
+    /// Brief progress surface while `WalletSecretRepository.loadMnemonic`
+    /// returns. The load can cross SwiftData + Keychain-backed migration
+    /// paths, so we show a calm spinner while it resolves.
     private var loadingView: some View {
         UniLoadingState(caption: "Preparing your phrase…")
     }
@@ -162,12 +161,9 @@ struct BackupExistingWalletFlow: View {
         guard state == nil, loadError == nil else { return }
         let id = walletId
         do {
-            // Off-main Keychain decrypt (Rule #28) so presenting the
-            // backup flow never blocks the UI; state is built back on the
-            // main actor after the await.
-            let words = try await Task.detached(priority: .userInitiated) {
-                try MnemonicVault.loadMnemonic(for: id)
-            }.value
+            let container = modelContext.container
+            let words = try await WalletSecretRepository(modelContainer: container)
+                .loadMnemonic(for: id)
             guard let words, !words.isEmpty else {
                 loadError = "There's no encrypted phrase stored for this wallet. If you saved it elsewhere, you're already its only copy."
                 return

@@ -51,6 +51,10 @@ struct UniEmptyState: View {
         /// where the wallet itself is the subject (holdings, activity,
         /// recovery, security).
         case iris
+        /// Full app-logo disc from `Brand/LogoCircle.imageset`. Use when
+        /// the empty surface is a top-level app destination and should
+        /// carry Aperture's installed-app identity, not just the iris glyph.
+        case logoCircle
         /// SF Symbol for neutral domain surfaces (no contacts, no
         /// search results). Apple-designed; bare glyph, no `.circle`
         /// suffix (M-003).
@@ -149,6 +153,13 @@ struct UniEmptyState: View {
             ApertureIrisView()
                 .frame(width: 72, height: 72)
                 .opacity(currentWatermarkOpacity)
+        case .logoCircle:
+            Image("LogoCircle")
+                .resizable()
+                .scaledToFit()
+                .frame(width: 72, height: 72)
+                .opacity(max(0.16, currentWatermarkOpacity * 2.2))
+                .shadow(color: Color.black.opacity(0.08), radius: 16, x: 0, y: 10)
         case .icon(let systemName):
             // Bare SF Symbol — same scale and breath as the iris so
             // the two empty-state kinds read as siblings.

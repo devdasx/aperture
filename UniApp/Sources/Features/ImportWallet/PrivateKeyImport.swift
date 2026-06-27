@@ -76,14 +76,14 @@ struct PrivateKeyEntryView: View {
             }
             ToolbarItem(placement: .topBarTrailing) {
                 Button("Paste") {
-                    if let clipboard = UIPasteboard.general.string {
+                    if let clipboard = SafePasteboard.string {
                         let trimmed = clipboard.trimmingCharacters(in: .whitespacesAndNewlines)
                         guard !trimmed.isEmpty else { return }
                         state.privateKeyRaw = trimmed
                         // Clear properly — `items = []` removes the
                         // entry; assigning `""` would leave an empty
                         // string item behind.
-                        UIPasteboard.general.items = []
+                        SafePasteboard.clear()
                     }
                 }
                     .tint(UniColors.Button.text)

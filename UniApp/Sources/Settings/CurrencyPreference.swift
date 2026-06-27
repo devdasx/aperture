@@ -208,4 +208,81 @@ enum CurrencyPreference {
     static func currency(for code: String) -> SupportedCurrency? {
         all.first { $0.code == code }
     }
+
+    /// Currencies that should be easy to reach on every device. The picker
+    /// prepends the device-region currency ahead of this list, so a user
+    /// whose region is Jordan still sees JOD first even after selecting USD.
+    static let mostUsedCodes: [String] = [
+        "USD", "EUR", "GBP", "JPY", "CNY", "INR", "AED", "SAR"
+    ]
+
+    /// Best-effort country/region flag for a currency row. This never asks
+    /// for location permission; it is just a display mapping from ISO-4217
+    /// currency code to an ISO-3166 region code.
+    static func flag(for code: String) -> String? {
+        guard let regionCode = regionCode(forCurrencyCode: code) else { return nil }
+        return flagEmoji(forRegionCode: regionCode)
+    }
+
+    static func regionName(for code: String, locale: Locale) -> String? {
+        guard let regionCode = regionCode(forCurrencyCode: code) else { return nil }
+        return locale.localizedString(forRegionCode: regionCode)
+    }
+
+    /// Representative region for each supported currency. Multi-country
+    /// currencies use the most recognizable region for display only.
+    static func regionCode(forCurrencyCode code: String) -> String? {
+        currencyRegionCodes[code.uppercased()]
+    }
+
+    static func flagEmoji(forRegionCode regionCode: String) -> String? {
+        let upper = regionCode.uppercased()
+        guard upper.count == 2 else { return nil }
+        let regionalIndicatorBase: UInt32 = 127397
+        var scalars: [UnicodeScalar] = []
+        for scalar in upper.unicodeScalars {
+            guard scalar.value >= 65, scalar.value <= 90,
+                  let flagScalar = UnicodeScalar(regionalIndicatorBase + scalar.value)
+            else { return nil }
+            scalars.append(flagScalar)
+        }
+        return String(String.UnicodeScalarView(scalars))
+    }
+
+    private static let currencyRegionCodes: [String: String] = [
+        "AED": "AE", "AFN": "AF", "ALL": "AL", "AMD": "AM",
+        "ANG": "CW", "AOA": "AO", "ARS": "AR", "AUD": "AU",
+        "AWG": "AW", "AZN": "AZ", "BAM": "BA", "BBD": "BB",
+        "BDT": "BD", "BGN": "BG", "BHD": "BH", "BIF": "BI",
+        "BMD": "BM", "BND": "BN", "BOB": "BO", "BRL": "BR",
+        "BSD": "BS", "BTN": "BT", "BWP": "BW", "BYN": "BY",
+        "BZD": "BZ", "CAD": "CA", "CDF": "CD", "CHF": "CH",
+        "CLP": "CL", "CNY": "CN", "COP": "CO", "CRC": "CR",
+        "CVE": "CV", "CZK": "CZ", "DJF": "DJ", "DKK": "DK",
+        "DOP": "DO", "DZD": "DZ", "EGP": "EG", "ETB": "ET",
+        "EUR": "EU", "FJD": "FJ", "GBP": "GB", "GEL": "GE",
+        "GHS": "GH", "GMD": "GM", "GNF": "GN", "GTQ": "GT",
+        "GYD": "GY", "HKD": "HK", "HNL": "HN", "HUF": "HU",
+        "IDR": "ID", "ILS": "IL", "INR": "IN", "IQD": "IQ",
+        "ISK": "IS", "JMD": "JM", "JOD": "JO", "JPY": "JP",
+        "KES": "KE", "KGS": "KG", "KHR": "KH", "KMF": "KM",
+        "KRW": "KR", "KWD": "KW", "KYD": "KY", "KZT": "KZ",
+        "LAK": "LA", "LBP": "LB", "LKR": "LK", "LRD": "LR",
+        "LSL": "LS", "MAD": "MA", "MDL": "MD", "MGA": "MG",
+        "MKD": "MK", "MMK": "MM", "MNT": "MN", "MOP": "MO",
+        "MUR": "MU", "MVR": "MV", "MWK": "MW", "MXN": "MX",
+        "MYR": "MY", "MZN": "MZ", "NAD": "NA", "NGN": "NG",
+        "NIO": "NI", "NOK": "NO", "NPR": "NP", "NZD": "NZ",
+        "OMR": "OM", "PAB": "PA", "PEN": "PE", "PGK": "PG",
+        "PHP": "PH", "PKR": "PK", "PLN": "PL", "PYG": "PY",
+        "QAR": "QA", "RON": "RO", "RSD": "RS", "RUB": "RU",
+        "RWF": "RW", "SAR": "SA", "SBD": "SB", "SCR": "SC",
+        "SEK": "SE", "SGD": "SG", "SRD": "SR", "SZL": "SZ",
+        "THB": "TH", "TJS": "TJ", "TND": "TN", "TOP": "TO",
+        "TRY": "TR", "TTD": "TT", "TWD": "TW", "TZS": "TZ",
+        "UAH": "UA", "UGX": "UG", "USD": "US", "UYU": "UY",
+        "UZS": "UZ", "VES": "VE", "VND": "VN", "VUV": "VU",
+        "WST": "WS", "XAF": "CM", "XCD": "AG", "XOF": "SN",
+        "XPF": "PF", "YER": "YE", "ZAR": "ZA", "ZMW": "ZM"
+    ]
 }

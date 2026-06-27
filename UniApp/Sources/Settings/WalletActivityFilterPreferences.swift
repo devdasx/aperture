@@ -40,6 +40,10 @@ enum WalletActivityFilterPreferences {
     static let directionKey = "walletActivityDirection"
     /// `String` raw of `TxStatus`.
     static let statusKey = "walletActivityStatus"
+    /// `String` raw of `TxKind`.
+    static let kindKey = "walletActivityKind"
+    /// `String` raw of `AssetClass`.
+    static let assetClassKey = "walletActivityAssetClass"
     /// JSON-encoded `[String]` of `SupportedChain.rawValue`. Empty = "all".
     static let selectedNetworksKey = "walletActivitySelectedNetworks"
     /// JSON-encoded `[String]` of UPPERCASED token symbols. Empty = "all".
@@ -64,6 +68,8 @@ enum WalletActivityFilterPreferences {
     static let defaultSortKey: SortKey = .newest
     static let defaultDirection: TxDirection = .all
     static let defaultStatus: TxStatus = .all
+    static let defaultKind: TxKind = .all
+    static let defaultAssetClass: AssetClass = .all
     static let defaultSelectedJSON: String = "[]"
     static let defaultTimeRange: TimeRange = .all
     static let defaultCustomDate: Double = 0
@@ -102,6 +108,7 @@ enum WalletActivityFilterPreferences {
         case all
         case incoming
         case outgoing
+        case `internal`
         var id: String { rawValue }
 
         var label: LocalizedStringKey {
@@ -109,6 +116,7 @@ enum WalletActivityFilterPreferences {
             case .all:      return "All"
             case .incoming: return "Received"
             case .outgoing: return "Sent"
+            case .internal: return "Internal"
             }
         }
     }
@@ -128,6 +136,42 @@ enum WalletActivityFilterPreferences {
             case .confirmed: return "Confirmed"
             case .pending:   return "Pending"
             case .failed:    return "Failed"
+            }
+        }
+    }
+
+    /// Transaction-kind filter. This is the taxonomy axis (`transfer`,
+    /// `selfTransfer`, `bridge`) rather than value direction.
+    enum TxKind: String, CaseIterable, Hashable, Identifiable, Sendable {
+        case all
+        case transfer
+        case selfTransfer
+        case bridge
+        var id: String { rawValue }
+
+        var label: LocalizedStringKey {
+            switch self {
+            case .all:          return "All"
+            case .transfer:     return "Transfers"
+            case .selfTransfer: return "Self"
+            case .bridge:       return "Bridge"
+            }
+        }
+    }
+
+    /// Asset class filter. Native coin rows have `tokenContract == nil`;
+    /// token rows carry a contract, mint, issuer, or denom.
+    enum AssetClass: String, CaseIterable, Hashable, Identifiable, Sendable {
+        case all
+        case coins
+        case tokens
+        var id: String { rawValue }
+
+        var label: LocalizedStringKey {
+            switch self {
+            case .all:    return "All"
+            case .coins:  return "Coins"
+            case .tokens: return "Tokens"
             }
         }
     }
@@ -199,6 +243,8 @@ enum WalletActivityFilterPreferences {
         sortKeyRaw: String,
         directionRaw: String,
         statusRaw: String,
+        kindRaw: String,
+        assetClassRaw: String,
         selectedNetworksJSON: String,
         selectedSymbolsJSON: String,
         timeRangeRaw: String,
@@ -207,6 +253,8 @@ enum WalletActivityFilterPreferences {
     ) -> Bool {
         directionRaw != defaultDirection.rawValue
             || statusRaw != defaultStatus.rawValue
+            || kindRaw != defaultKind.rawValue
+            || assetClassRaw != defaultAssetClass.rawValue
             || !decode(selectedNetworksJSON).isEmpty
             || !decode(selectedSymbolsJSON).isEmpty
             || timeRangeRaw != defaultTimeRange.rawValue
@@ -226,6 +274,8 @@ enum WalletActivityFilterPreferences {
         defaults.set(defaultSortKey.rawValue, forKey: sortKeyKey)
         defaults.set(defaultDirection.rawValue, forKey: directionKey)
         defaults.set(defaultStatus.rawValue, forKey: statusKey)
+        defaults.set(defaultKind.rawValue, forKey: kindKey)
+        defaults.set(defaultAssetClass.rawValue, forKey: assetClassKey)
         defaults.set(defaultSelectedJSON, forKey: selectedNetworksKey)
         defaults.set(defaultSelectedJSON, forKey: selectedSymbolsKey)
         defaults.set(defaultTimeRange.rawValue, forKey: timeRangeKey)
@@ -245,6 +295,8 @@ struct WalletActivityFilterInputs: Sendable {
     let sortKey: WalletActivityFilterPreferences.SortKey
     let direction: WalletActivityFilterPreferences.TxDirection
     let status: WalletActivityFilterPreferences.TxStatus
+    let kind: WalletActivityFilterPreferences.TxKind
+    let assetClass: WalletActivityFilterPreferences.AssetClass
     let selectedNetworks: Set<String>
     /// Uppercased token symbols. Empty = "all".
     let selectedSymbols: Set<String>

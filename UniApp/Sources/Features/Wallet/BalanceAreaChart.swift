@@ -1,55 +1,13 @@
+import Charts
 import SwiftUI
 
-/// The flagship balance-card area chart, transcribed from the design
-/// handoff (`design_handoff_balance_card 2/README.md` §Chart spec and
-/// the inline `chart()` JS in `Aperture Balance Card.html`).
+/// Native Swift Charts area chart shared by the balance card and balance-history
+/// detail surfaces. It owns the data projection and scrub cursor, while the
+/// caller owns the responsive frame, so the chart can center and expand naturally
+/// on iPhone and iPad without negative insets or hand-positioned paths.
 ///
-/// **Design intent (Rule #2 §D.1):** draw the *shape* of the user's
-/// balance through time as one calm, flowing, semantically-colored curve
-/// — green when the range gained, red when it lost, a dead-straight
-/// neutral line when it didn't move — so the user reads "what happened to
-/// my money" in a glance and can pull a live readout under their finger.
-///
-/// **Faithful to the handoff, line for line.**
-/// - **Smoothing:** Catmull-Rom → cubic Bézier through every point
-///   (`(p[i+1]−p[i−1])/6` tangents), the exact algorithm the reference
-///   `chart()` emits. Passes through every data vertex (no transaction
-///   smoothed away — Rule #2 §A.7 honesty).
-/// - **Stroke:** `2.6` non-scaling width, round caps + joins.
-/// - **Area fill:** a vertical gradient in the stroke hue, top opacity
-///   `0.20` (gain) / `0.18` (loss) / `0.06` (flat), fading to `0` at the
-///   baseline.
-/// - **End-point marker:** a solid `4.5`pt dot + a `9`pt halo at `18%`
-///   opacity, both in the stroke color.
-/// - **Dark-mode glow:** a gaussian-blur merge (σ≈3) under the stroke —
-///   ON for gain/loss in dark, OFF for flat and OFF in light (handoff:
-///   "Dark chart has the glow; light chart does not"). Expressed with the
-///   native `.blur(radius:)` + composite, which is the SwiftUI form of
-///   the SVG `feGaussianBlur` merge (NOT a Rule #3 glass substitute — this
-///   is a data-viz glow on a `Shape`, the §C structural carve-out).
-/// - **Flat state:** a perfectly straight horizontal line centered in the
-///   chart area — no waves, no glow — per the handoff (`FLAT` series at a
-///   constant mid value).
-/// - **Full-bleed:** the chart bleeds to the card's edges (the card pads
-///   it with negative insets); height ≈ 120pt.
-///
-/// **Color (Rule #4):** every stroke / fill / cursor color resolves
-/// through `UniColors.BalanceCard.*(sign, scheme)`. The chart reads the
-/// app's `\.colorScheme` so the card adapts (dark chart in dark mode,
-/// light chart in light) exactly like the handoff's two-column reference.
-///
-/// **Scrub (handoff §Interactions):** dragging publishes the touched
-/// point's index through `onScrub` (the card maps it to the value the
-/// hero renders with the native `.contentTransition(.numericText())`).
-/// A vertical hairline + a dot at the touch point track the finger, both
-/// in the chart color. The number snaps **per data point** (not per
-/// pixel), matching the Stocks/Wallet feel; a `tap` haptic fires as the
-/// hairline crosses each point, `impactLight` on scrub-begin (fired by
-/// the card via the `onScrubBegin` callback).
-///
-/// **Time always flows left → right** — the canvas and any cursor pin
-/// `\.layoutDirection` to `.leftToRight` (Rule #11 §C: time order is data,
-/// not language; the chrome around the chart still flips for RTL locales).
+/// Time always flows left to right because the x-axis represents historical data,
+/// not interface direction; surrounding chrome can still mirror for RTL locales.
 struct BalanceAreaChart: View {
     /// One value per sample, oldest → newest (the caller sorts).
     let values: [Double]
@@ -73,95 +31,161 @@ struct BalanceAreaChart: View {
     /// this view, never the card (the 2026-06-13 long-scrub-freeze fix).
     @State private var scrubIndex: Int?
 
-    /// Canvas y-padding band (10% top + bottom) so the curve breathes.
+    /// Y-axis padding band (10% top + bottom) so the curve breathes.
     private let padding: CGFloat = 0.1
 
     var body: some View {
-        GeometryReader { geo in
-            let size = geo.size
-            let stroke = UniColors.BalanceCard.chartStroke(sign, colorScheme)
-            let glow = UniColors.BalanceCard.chartGlow(sign, colorScheme)
-            ZStack {
-                // The static curve — invariant during a scrub. Extracted
-                // to an `Equatable` subview + `.drawingGroup()` so a drag
-                // tick (which moves only the cursor) never recomputes the
-                // two O(N) Bézier paths or re-rasterizes them, and so
-                // list scrolling composites a flat texture rather than
-                // re-stroking up to ~2,000 points per frame.
-                BalanceAreaCurve(
-                    values: values,
-                    xFractions: xFractions,
-                    minValue: minValue,
-                    maxValue: maxValue,
-                    sign: sign,
-                    scheme: colorScheme,
-                    padding: padding
+        Chart {
+            ForEach(chartSamples, id: \.index) { sample in
+                AreaMark(
+                    x: .value("Time", sample.x),
+                    yStart: .value("Baseline", yDomain.lowerBound),
+                    yEnd: .value("Balance", sample.y)
                 )
-                .equatable()
-                .drawingGroup()
+                .interpolationMethod(.monotone)
+                .foregroundStyle(
+                    .linearGradient(
+                        colors: [
+                            fillColor.opacity(UniColors.BalanceCard.chartFillTopOpacity(sign)),
+                            fillColor.opacity(0)
+                        ],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                )
 
-                // Scrub cursor — the only live-vector element per tick.
-                if let index = scrubIndex,
-                   values.count > 1,
-                   index >= 0,
-                   index < values.count {
-                    let pt = cursorPoint(index: index, in: size)
-                    Rectangle()
-                        .fill(stroke.opacity(0.5))
-                        .frame(width: 1.5)
-                        .position(x: pt.x, y: size.height / 2)
-                    Circle()
-                        .fill(stroke.opacity(0.18))
-                        .frame(width: 18, height: 18)
-                        .position(pt)
-                    Circle()
-                        .fill(stroke)
-                        .frame(width: 9, height: 9)
-                        .position(pt)
-                }
+                LineMark(
+                    x: .value("Time", sample.x),
+                    y: .value("Balance", sample.y)
+                )
+                .interpolationMethod(.monotone)
+                .lineStyle(StrokeStyle(lineWidth: 2.5, lineCap: .round, lineJoin: .round))
+                .foregroundStyle(strokeColor)
             }
-            // The dark-mode glow halo: a blurred copy of the stroke under
-            // the crisp one. SwiftUI form of the SVG feGaussianBlur merge.
-            .compositingGroup()
-            .shadow(
-                color: glow ? stroke.opacity(0.55) : Color.clear,
-                radius: glow ? 4 : 0
-            )
-            .contentShape(Rectangle())
-            .gesture(
-                DragGesture(minimumDistance: 0)
-                    .onChanged { value in
-                        if scrubIndex == nil { onScrubBegin() }
-                        let index = indexForX(value.location.x, in: size)
-                        guard index != scrubIndex else { return }
-                        scrubIndex = index
-                        onScrub(index)
-                        UniHapticEngine.shared.playScrubTick(intensity: hapticIntensity(at: index))
-                    }
-                    .onEnded { _ in
-                        scrubIndex = nil
-                        onScrub(nil)
-                        UniHapticEngine.shared.playScrubRelease()
-                    }
-            )
+
+            if let last = chartSamples.last {
+                PointMark(
+                    x: .value("Time", last.x),
+                    y: .value("Balance", last.y)
+                )
+                .symbolSize(64)
+                .foregroundStyle(strokeColor)
+            }
+
+            if let selected = selectedSample {
+                RuleMark(x: .value("Selected time", selected.x))
+                    .foregroundStyle(strokeColor.opacity(0.5))
+                    .lineStyle(StrokeStyle(lineWidth: 1.5))
+                PointMark(
+                    x: .value("Selected time", selected.x),
+                    y: .value("Selected balance", selected.y)
+                )
+                .symbolSize(72)
+                .foregroundStyle(strokeColor)
+            }
+        }
+        .chartXScale(domain: 0...1)
+        .chartYScale(domain: yDomain)
+        .chartXAxis(.hidden)
+        .chartYAxis(.hidden)
+        .chartLegend(.hidden)
+        .chartPlotStyle { plot in
+            plot
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+        .shadow(
+            color: UniColors.BalanceCard.chartGlow(sign, colorScheme) ? strokeColor.opacity(0.55) : Color.clear,
+            radius: UniColors.BalanceCard.chartGlow(sign, colorScheme) ? 4 : 0
+        )
+        .chartOverlay { _ in
+            GeometryReader { proxy in
+                Rectangle()
+                    .fill(.clear)
+                    .contentShape(Rectangle())
+                    .gesture(
+                        DragGesture(minimumDistance: 0)
+                            .onChanged { value in
+                                if scrubIndex == nil { onScrubBegin() }
+                                let index = indexForX(value.location.x, in: proxy.size)
+                                guard index != scrubIndex else { return }
+                                scrubIndex = index
+                                onScrub(index)
+                                UniHapticEngine.shared.playScrubTick(intensity: hapticIntensity(at: index))
+                            }
+                            .onEnded { _ in
+                                scrubIndex = nil
+                                onScrub(nil)
+                                UniHapticEngine.shared.playScrubRelease()
+                            }
+                    )
+            }
         }
         .environment(\.layoutDirection, .leftToRight)
     }
 
-    // MARK: - Cursor math (O(1) per tick)
-
-    private func cursorPoint(index: Int, in size: CGSize) -> CGPoint {
-        let count = values.count
-        let useTime = xFractions.count == count
-        let x: CGFloat = {
-            if useTime { return CGFloat(xFractions[index]) * size.width }
-            return count > 1 ? CGFloat(index) / CGFloat(count - 1) * size.width : 0
-        }()
-        let range = maxValue - minValue
-        let normalized = range > 0 ? (CGFloat(values[index] - minValue) / CGFloat(range)) : 0.5
-        let y = size.height - (normalized * size.height * (1 - 2 * padding) + size.height * padding)
-        return CGPoint(x: x, y: y)
+    private var strokeColor: Color {
+        UniColors.BalanceCard.chartStroke(sign, colorScheme)
     }
+
+    private var fillColor: Color {
+        UniColors.BalanceCard.chartFillHue(sign, colorScheme)
+    }
+
+    private var chartSamples: [(index: Int, x: Double, y: Double)] {
+        guard !values.isEmpty else {
+            return [
+                (0, 0, 0.5),
+                (1, 1, 0.5)
+            ]
+        }
+
+        if values.count == 1 {
+            let y = yValue(at: 0)
+            return [
+                (0, 0, y),
+                (1, 1, y)
+            ]
+        }
+
+        return values.indices.map { index in
+            (index, xValue(at: index), yValue(at: index))
+        }
+    }
+
+    private var selectedSample: (index: Int, x: Double, y: Double)? {
+        guard let scrubIndex,
+              scrubIndex >= 0,
+              scrubIndex < values.count else { return nil }
+        return (scrubIndex, xValue(at: scrubIndex), yValue(at: scrubIndex))
+    }
+
+    private var yDomain: ClosedRange<Double> {
+        guard !values.isEmpty else {
+            return 0...1
+        }
+        guard minValue.isFinite, maxValue.isFinite else {
+            return 0...1
+        }
+        if minValue == maxValue {
+            let valuePadding = max(abs(minValue) * 0.01, 1)
+            return (minValue - valuePadding)...(maxValue + valuePadding)
+        }
+        let domainPadding = (maxValue - minValue) * Double(padding) / max(1 - 2 * Double(padding), 0.01)
+        return (minValue - domainPadding)...(maxValue + domainPadding)
+    }
+
+    private func xValue(at index: Int) -> Double {
+        if xFractions.count == values.count {
+            return min(max(xFractions[index], 0), 1)
+        }
+        return values.count > 1 ? Double(index) / Double(values.count - 1) : 0
+    }
+
+    private func yValue(at index: Int) -> Double {
+        values[index]
+    }
+
+    // MARK: - Cursor math (O(1) per tick)
 
     private func indexForX(_ x: CGFloat, in size: CGSize) -> Int {
         guard values.count > 1 else { return 0 }
@@ -174,7 +198,10 @@ struct BalanceAreaChart: View {
             var bestDist = Double.greatestFiniteMagnitude
             for (i, f) in xFractions.enumerated() {
                 let d = abs(f - clamped)
-                if d < bestDist { bestDist = d; best = i }
+                if d < bestDist {
+                    bestDist = d
+                    best = i
+                }
             }
             return best
         }
@@ -192,139 +219,5 @@ struct BalanceAreaChart: View {
         let range = max(maxValue - minValue, 0.0001)
         let normalizedSlope = abs(curr - prev) / range
         return Float(min(0.8, 0.15 + normalizedSlope * 2.2))
-    }
-}
-
-// MARK: - BalanceAreaCurve (static, equatable)
-
-/// The invariant gradient-fill + Catmull-Rom stroke + end-point marker.
-/// Split out + `.equatable()` so a scrub tick skips its body, and so
-/// `.drawingGroup()` rasterizes it once (only re-rasterizing when the
-/// data actually changes). Conforms to the exact handoff geometry.
-private struct BalanceAreaCurve: View, Equatable {
-    let values: [Double]
-    /// Per-point horizontal position in `[0, 1]` from each sample's TIMESTAMP
-    /// (real-time x-axis). Empty / wrong-length falls back to index spacing.
-    let xFractions: [Double]
-    let minValue: Double
-    let maxValue: Double
-    let sign: UniColors.BalanceCard.Sign
-    let scheme: ColorScheme
-    let padding: CGFloat
-
-    nonisolated static func == (lhs: BalanceAreaCurve, rhs: BalanceAreaCurve) -> Bool {
-        lhs.minValue == rhs.minValue
-            && lhs.maxValue == rhs.maxValue
-            && lhs.sign == rhs.sign
-            && lhs.scheme == rhs.scheme
-            && lhs.values == rhs.values
-            && lhs.xFractions == rhs.xFractions
-    }
-
-    var body: some View {
-        GeometryReader { geo in
-            let size = geo.size
-            let canvasPoints = normalizedPoints(in: size)
-            let stroke = UniColors.BalanceCard.chartStroke(sign, scheme)
-            let fillHue = UniColors.BalanceCard.chartFillHue(sign, scheme)
-            let fillTop = UniColors.BalanceCard.chartFillTopOpacity(sign)
-            ZStack {
-                // Gradient area fill — curve closed at the baseline.
-                areaPath(points: canvasPoints, in: size)
-                    .fill(
-                        LinearGradient(
-                            colors: [fillHue.opacity(fillTop), fillHue.opacity(0)],
-                            startPoint: .top,
-                            endPoint: .bottom
-                        )
-                    )
-                // The stroke — bolder line (2026-06-19 user direction).
-                // Shared by the home card AND the asset-detail chart, so
-                // this thickens the curve everywhere a chart appears.
-                strokePath(points: canvasPoints)
-                    .stroke(
-                        stroke,
-                        style: StrokeStyle(lineWidth: 4.0, lineCap: .round, lineJoin: .round)
-                    )
-                // End-point marker — 4.5pt dot + 9pt halo @18%.
-                if let end = canvasPoints.last {
-                    Circle()
-                        .fill(stroke.opacity(0.18))
-                        .frame(width: 18, height: 18)
-                        .position(end)
-                    Circle()
-                        .fill(stroke)
-                        .frame(width: 9, height: 9)
-                        .position(end)
-                }
-            }
-        }
-    }
-
-    // MARK: - Path math
-
-    /// Project the series into canvas space with the 10% top/bottom band.
-    /// **Flat sign** ignores the (noisy) series and pins every point to
-    /// the vertical center — the handoff's "perfectly straight horizontal
-    /// line centered" flat state.
-    private func normalizedPoints(in size: CGSize) -> [CGPoint] {
-        guard values.count > 1 else {
-            // One value (or none) → a centered flat segment edge to edge.
-            return [
-                CGPoint(x: 0, y: size.height / 2),
-                CGPoint(x: size.width, y: size.height / 2)
-            ]
-        }
-        let useTime = xFractions.count == values.count
-        func xPosition(_ index: Int) -> CGFloat {
-            (useTime ? CGFloat(xFractions[index]) : CGFloat(index) / CGFloat(values.count - 1)) * size.width
-        }
-        if sign == .flat {
-            let y = size.height / 2
-            return values.indices.map { index in
-                CGPoint(x: xPosition(index), y: y)
-            }
-        }
-        let range = maxValue - minValue
-        return values.enumerated().map { index, value in
-            let x = xPosition(index)
-            let normalized = range > 0 ? (CGFloat(value - minValue) / CGFloat(range)) : 0.5
-            let y = size.height - (normalized * size.height * (1 - 2 * padding) + size.height * padding)
-            return CGPoint(x: x, y: y)
-        }
-    }
-
-    private func strokePath(points canvasPoints: [CGPoint]) -> Path {
-        Path { path in
-            guard let first = canvasPoints.first else { return }
-            path.move(to: first)
-            appendMonotoneCubic(to: &path, points: canvasPoints)
-        }
-    }
-
-    private func areaPath(points canvasPoints: [CGPoint], in size: CGSize) -> Path {
-        Path { path in
-            guard let first = canvasPoints.first, let last = canvasPoints.last else { return }
-            path.move(to: first)
-            appendMonotoneCubic(to: &path, points: canvasPoints)
-            path.addLine(to: CGPoint(x: last.x, y: size.height))
-            path.addLine(to: CGPoint(x: first.x, y: size.height))
-            path.closeSubpath()
-        }
-    }
-
-    /// **Monotone cubic rendering (2026-06-19).** Mode C samples a dense,
-    /// strictly-x-increasing grid (no zero-width step risers anymore), so a
-    /// smooth spline is now well-defined. We use a **Fritsch–Carlson monotone
-    /// cubic** (PCHIP): it's curvy AND mathematically cannot overshoot — it
-    /// never introduces a peak or dip absent from the data, so there are no
-    /// loops / V's (the uniform Catmull-Rom's failure). A transaction renders
-    /// as a smooth steep S-ramp into its new level instead of a hard corner.
-    /// On flat data (constant value) every tangent is 0 → a straight line, so
-    /// the `.flat` centered state stays a clean horizontal line.
-    private func appendMonotoneCubic(to path: inout Path, points canvasPoints: [CGPoint]) {
-        for segment in MonotoneCubic.bezierSegments(canvasPoints) {
-            path.addCurve(to: segment.to, control1: segment.c1, control2: segment.c2)
-        }
     }
 }

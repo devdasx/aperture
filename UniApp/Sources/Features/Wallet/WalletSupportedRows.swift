@@ -31,8 +31,7 @@ struct WalletTokenSupportedDisplayRow: Identifiable, Equatable {
     let name: String
     /// On-chain identifier (EVM contract / SPL mint / XRPL
     /// `currency.issuer` / TON master contract / etc.). Used by
-    /// `CoinMark` to resolve a Trust Wallet logo via
-    /// `CoinMarkCache.trustWalletURL(chain:contract:)`. Encoded as
+    /// `CoinMark` to resolve and cache a token logo. Encoded as
     /// `String` because the source format differs per chain.
     let contract: String
     let amount: Decimal
@@ -108,7 +107,7 @@ enum WalletSupportedRowBuilders {
 
     /// All Tokens rows — every entry across the curated registries
     /// (`EVMTokenRegistry`, `SolanaTokenRegistry`, `TronTokenRegistry`,
-    /// `NearTokenRegistry`, `AptosTokenRegistry`,
+    /// `NearTokenRegistry`, `AptosTokenRegistry`, `SuiTokenRegistry`,
     /// `PolkadotTokenRegistry`, `XRPLTokenRegistry`,
     /// `TonTokenRegistry`, `KavaTokenRegistry`). Each entry pairs
     /// with the active wallet's current balance (or zero placeholder).

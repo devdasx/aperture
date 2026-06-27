@@ -34,12 +34,23 @@ import SwiftData
 /// rebuilds.
 struct ReceiveView: View {
     @Query(sort: \WalletRecord.sortOrder) private var allWallets: [WalletRecord]
+    @Query(sort: [SortDescriptor(\CustomTokenRecord.symbol, order: .forward)])
+    private var customTokenRecords: [CustomTokenRecord]
+    @Query private var assetRecords: [AssetRecord]
     @AppStorage("activeWalletId") private var activeWalletIdRaw: String = ""
 
     /// The sheet's own NavigationPath. Lives on the sheet root so the
     /// sheet can rebuild via `.id(sheetDirectionKey)` without losing
     /// the user's position when the path is value-encoded.
     @Binding var navigationPath: NavigationPath
+
+    /// Asset seed handed in by a caller that already knows what the
+    /// user intends to receive. Native coins go straight to QR; tokens
+    /// with one network go straight to QR; multi-network tokens open
+    /// the native Receive network picker with the token already chosen.
+    var assetPrefill: AssetPrefill? = nil
+
+    @State private var didSeedAssetPrefill: Bool = false
 
     /// Whether the "Add custom token" sheet is presented. The Receive
     /// screen's toolbar opens this — the active wallet's currently
@@ -81,34 +92,10 @@ struct ReceiveView: View {
                 holdings: holdings,
                 currencyCode: currencyCode,
                 onSelectNative: { chain in
-                    guard let address = address(for: chain) else {
-                        missingAddressChain = chain
-                        isShowingMissingAddressAlert = true
-                        return
-                    }
-                    navigationPath.append(
-                        ReceiveDestination.qr(chain: chain, tokenSymbol: nil, address: address)
-                    )
+                    openNative(chain)
                 },
                 onSelectToken: { asset in
-                    // Single-network token → skip the picker, go straight to
-                    // the address + QR (2026-06-19 user direction; applies
-                    // to every coin/token, matching native coins which
-                    // already route direct). Multi-network tokens still
-                    // pick a network.
-                    if case let .token(symbol, _, chains) = asset,
-                       chains.count == 1, let chain = chains.first {
-                        guard let address = address(for: chain) else {
-                            missingAddressChain = chain
-                            isShowingMissingAddressAlert = true
-                            return
-                        }
-                        navigationPath.append(
-                            ReceiveDestination.qr(chain: chain, tokenSymbol: symbol, address: address)
-                        )
-                    } else {
-                        navigationPath.append(ReceiveDestination.networkPicker(asset))
-                    }
+                    openToken(asset)
                 }
             )
             .navigationTitle("Receive")
@@ -145,18 +132,11 @@ struct ReceiveView: View {
                         holdings: holdings,
                         currencyCode: currencyCode,
                         onSelectNetwork: { chain in
-                            guard let address = address(for: chain) else {
-                                missingAddressChain = chain
-                                isShowingMissingAddressAlert = true
-                                return
-                            }
                             let symbol: String? = {
                                 if case let .token(symbol, _, _) = asset { return symbol }
                                 return nil
                             }()
-                            navigationPath.append(
-                                ReceiveDestination.qr(chain: chain, tokenSymbol: symbol, address: address)
-                            )
+                            openNetwork(chain, tokenSymbol: symbol)
                         }
                     )
                 case let .qr(chain, tokenSymbol, address):
@@ -179,6 +159,9 @@ struct ReceiveView: View {
         }
         .task(id: holdingsKey) {
             holdings = AssetPickerHoldings(wallet: activeWallet)
+        }
+        .task(id: prefillSeedKey) {
+            seedAssetPrefillIfNeeded()
         }
         .alert(
             Text("No address for this network"),
@@ -208,6 +191,17 @@ struct ReceiveView: View {
     /// set changes (e.g. the active wallet was deleted mid-session).
     private var activeWalletHealKey: String {
         "\(activeWalletIdRaw)|\(allWallets.count)"
+    }
+
+    private var prefillSeedKey: String {
+        [
+            activeWalletIdRaw,
+            availableChains.map(\.rawValue).joined(separator: ","),
+            "\(assetRecords.count)",
+            "\(customTokenRecords.count)",
+            assetPrefill.map { "asset:\($0.symbol):\($0.nativeChain?.rawValue ?? "token")" } ?? "asset:nil",
+            "\(didSeedAssetPrefill)"
+        ].joined(separator: "|")
     }
 
     /// **Stale-id self-heal.** When the stored active-wallet id
@@ -245,6 +239,64 @@ struct ReceiveView: View {
         })?.address
     }
 
+    private func seedAssetPrefillIfNeeded() {
+        guard navigationPath.isEmpty,
+              !didSeedAssetPrefill,
+              let assetPrefill else { return }
+
+        if let chain = assetPrefill.nativeChain {
+            didSeedAssetPrefill = true
+            openNative(chain)
+            return
+        }
+
+        guard let token = matchingToken(for: assetPrefill) else { return }
+        didSeedAssetPrefill = true
+        openToken(token)
+    }
+
+    private func matchingToken(for prefill: AssetPrefill) -> ReceiveAsset? {
+        let symbol = prefill.symbol.uppercased()
+        return ReceiveAsset.tokens(
+            availableChains: Set(availableChains),
+            customTokens: customTokenRecords.map { CustomTokenSnapshot(from: $0) },
+            catalogAssets: catalogAssets
+        )
+        .first { asset in
+            guard case let .token(tokenSymbol, _, _) = asset else { return false }
+            return tokenSymbol.uppercased() == symbol
+        }
+    }
+
+    private var catalogAssets: [CatalogAsset] {
+        let seededAssets = AssetCatalog.assets(from: assetRecords)
+        return seededAssets.isEmpty ? AssetCatalog.allAssets : seededAssets
+    }
+
+    private func openNative(_ chain: SupportedChain) {
+        openNetwork(chain, tokenSymbol: nil)
+    }
+
+    private func openToken(_ asset: ReceiveAsset) {
+        guard case let .token(symbol, _, chains) = asset else { return }
+        if chains.count == 1, let chain = chains.first {
+            openNetwork(chain, tokenSymbol: symbol)
+        } else {
+            navigationPath.append(ReceiveDestination.networkPicker(asset))
+        }
+    }
+
+    private func openNetwork(_ chain: SupportedChain, tokenSymbol: String?) {
+        guard let address = address(for: chain) else {
+            missingAddressChain = chain
+            isShowingMissingAddressAlert = true
+            return
+        }
+        navigationPath.append(
+            ReceiveDestination.qr(chain: chain, tokenSymbol: tokenSymbol, address: address)
+        )
+    }
+
     /// First supported chain for the Add Custom Token sheet's
     /// initial selection. Picks the first EVM chain the user has an
     /// address on (Ethereum is most likely), else Solana, else
@@ -256,6 +308,18 @@ struct ReceiveView: View {
         }
         if availableChains.contains(.solana) { return .solana }
         return .ethereum
+    }
+
+    struct AssetPrefill: Equatable {
+        let symbol: String
+        let name: String
+        let nativeChain: SupportedChain?
+
+        init(symbol: String, name: String, nativeChain: SupportedChain? = nil) {
+            self.symbol = symbol.uppercased()
+            self.name = name
+            self.nativeChain = nativeChain
+        }
     }
 }
 

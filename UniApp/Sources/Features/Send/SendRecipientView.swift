@@ -420,7 +420,7 @@ struct SendRecipientView: View {
     }
 
     private func pasteFromClipboard() {
-        if let pasted = UIPasteboard.general.string {
+        if let pasted = SafePasteboard.string {
             handleIncoming(pasted)
         }
     }
