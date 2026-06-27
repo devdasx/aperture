@@ -181,9 +181,24 @@ enum MnemonicVault {
         account: String
     ) throws(VaultError) -> String? {
         guard let keyData = try readItem(service: keyService, account: account) else {
+            recordSecretEvent(
+                .debug,
+                message: "Wallet secret key item missing",
+                cipherService: cipherService,
+                keyService: keyService,
+                account: account
+            )
             return nil
         }
         guard let cipherData = try readItem(service: cipherService, account: account) else {
+            recordSecretEvent(
+                .debug,
+                message: "Wallet secret cipher item missing",
+                cipherService: cipherService,
+                keyService: keyService,
+                account: account,
+                metadata: ["keyBytes": "\(keyData.count)"]
+            )
             return nil
         }
         let key = SymmetricKey(data: keyData)
@@ -192,16 +207,67 @@ enum MnemonicVault {
             sealed = try AES.GCM.SealedBox(combined: cipherData)
         } catch {
             log.error("AES-GCM box decode failed: \(String(describing: error), privacy: .public)")
+            recordSecretEvent(
+                .error,
+                message: "Wallet secret sealed-box decode failed",
+                cipherService: cipherService,
+                keyService: keyService,
+                account: account,
+                metadata: [
+                    "keyBytes": "\(keyData.count)",
+                    "cipherBytes": "\(cipherData.count)",
+                    "error": String(describing: error)
+                ]
+            )
             throw .decryptionFailed
         }
         do {
             let plaintext = try AES.GCM.open(sealed, using: key)
             guard let secret = String(data: plaintext, encoding: .utf8) else {
+                recordSecretEvent(
+                    .error,
+                    message: "Wallet secret UTF-8 decode failed",
+                    cipherService: cipherService,
+                    keyService: keyService,
+                    account: account,
+                    metadata: [
+                        "keyBytes": "\(keyData.count)",
+                        "cipherBytes": "\(cipherData.count)",
+                        "plainBytes": "\(plaintext.count)"
+                    ]
+                )
                 throw VaultError.decryptionFailed
             }
+            recordSecretEvent(
+                .debug,
+                message: "Wallet secret opened",
+                cipherService: cipherService,
+                keyService: keyService,
+                account: account,
+                metadata: [
+                    "keyBytes": "\(keyData.count)",
+                    "cipherBytes": "\(cipherData.count)"
+                ]
+            )
             return secret
         } catch {
             log.error("AES-GCM open failed: \(String(describing: error), privacy: .public)")
+            let errorText = String(describing: error)
+            let reason = errorText.contains("authenticationFailure")
+                ? "authenticationFailure"
+                : errorText
+            recordSecretEvent(
+                .error,
+                message: "Wallet secret open failed: \(reason)",
+                cipherService: cipherService,
+                keyService: keyService,
+                account: account,
+                metadata: [
+                    "keyBytes": "\(keyData.count)",
+                    "cipherBytes": "\(cipherData.count)",
+                    "error": errorText
+                ]
+            )
             throw .decryptionFailed
         }
     }
@@ -221,6 +287,17 @@ enum MnemonicVault {
         let status = SecItemAdd(query as CFDictionary, nil)
         guard status == errSecSuccess else {
             log.error("Keychain write failed status=\(status) service=\(service, privacy: .public)")
+            DiagnosticsLogStore.shared.record(
+                .error,
+                category: "wallet-secret",
+                message: "Wallet secret Keychain write failed",
+                metadata: [
+                    "service": service,
+                    "account": account,
+                    "status": "\(status)",
+                    "bytes": "\(data.count)"
+                ]
+            )
             throw .keychainWriteFailed(status)
         }
     }
@@ -240,6 +317,16 @@ enum MnemonicVault {
         case errSecItemNotFound: return nil
         default:
             log.error("Keychain read failed status=\(status) service=\(service, privacy: .public)")
+            DiagnosticsLogStore.shared.record(
+                .error,
+                category: "wallet-secret",
+                message: "Wallet secret Keychain read failed",
+                metadata: [
+                    "service": service,
+                    "account": account,
+                    "status": "\(status)"
+                ]
+            )
             throw .keychainReadFailed(status)
         }
     }
@@ -255,7 +342,49 @@ enum MnemonicVault {
         case errSecSuccess, errSecItemNotFound: return
         default:
             log.error("Keychain delete failed status=\(status) service=\(service, privacy: .public)")
+            DiagnosticsLogStore.shared.record(
+                .error,
+                category: "wallet-secret",
+                message: "Wallet secret Keychain delete failed",
+                metadata: [
+                    "service": service,
+                    "account": account,
+                    "status": "\(status)"
+                ]
+            )
             throw .keychainDeleteFailed(status)
+        }
+    }
+
+    private static func recordSecretEvent(
+        _ level: DiagnosticsLogLevel,
+        message: String,
+        cipherService: String,
+        keyService: String,
+        account: String,
+        metadata: [String: String] = [:]
+    ) {
+        var metadata = metadata
+        metadata["account"] = account
+        metadata["kind"] = secretKind(cipherService: cipherService)
+        metadata["cipherService"] = cipherService
+        metadata["keyService"] = keyService
+        DiagnosticsLogStore.shared.record(
+            level,
+            category: "wallet-secret",
+            message: message,
+            metadata: metadata
+        )
+    }
+
+    private static func secretKind(cipherService: String) -> String {
+        switch cipherService {
+        case Self.cipherService:
+            return "mnemonic"
+        case Self.privateKeyCipherService:
+            return "privateKey"
+        default:
+            return "unknown"
         }
     }
 }

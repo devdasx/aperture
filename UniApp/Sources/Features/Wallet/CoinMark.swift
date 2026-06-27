@@ -1,218 +1,114 @@
 import SwiftUI
-import ImageIO
+import UIKit
 
-/// Resolves a `(chain, tokenSymbol, contract)` triple to a coin
-/// mark and renders it at the caller's frame.
+/// Stabro-style logo renderer for coins, tokens, and networks.
 ///
-/// **Trust Wallet ONLY (2026-06-15 user direction).**
-/// > *"we'll use only trust wallet icons, we'll never use any other
-/// > icons for coins & tokens."*
-/// Every coin and token mark resolves from Trust Wallet's production
-/// asset CDN (`assets-cdn.trustwallet.com`, built from the MIT
-/// `trustwallet/assets` repo — Rule #7 §B priority 1) via
-/// `CoinMarkCache.shared` — native coins from
-/// `…/blockchains/<slug>/info/logo.png`, tokens from
-/// `…/blockchains/<slug>/assets/<contract>/logo.png`. There is
-/// no bundled-asset path anymore (the old tiers 1+2 — `chain.logoAssetName`
-/// and the bundled USDC/USDT marks — were removed so the source is a
-/// single, consistent one). Marks are cached to disk on first download;
-/// every subsequent render reads from cache with no network call, so the
-/// network is hit at most ONCE per mark across the device's lifetime.
-///
-/// **Honest fallback.** When Trust Wallet hosts nothing for the
-/// triple (a contract-less long-tail token, or a chain/contract the
-/// repo doesn't carry), the view shows a neutral initials chip —
-/// Rule #2 §A.7 "don't lie about a missing asset." Never a different
-/// icon source.
-///
-/// **Layout.** Sizes itself to the caller's `.frame(...)`
-/// modifier. Internally circle-clipped so brand-rectangular
-/// assets render as disks alongside SF Symbols.
+/// Resolution order is intentionally simple and shared everywhere:
+/// local asset catalog name (`token_*`, `coin_*`, `network_*`) first,
+/// then one Trust Wallet CDN URL cached through `AssetLogoDiskCache`,
+/// then a neutral initials chip. No alternate-provider probing and no
+/// symbol-cross-chain fallback.
 struct CoinMark: View {
     let chain: SupportedChain
     let tokenSymbol: String
-    /// Optional contract address — when present, used to resolve
-    /// the Trust Wallet mark via `CoinMarkCache.trustWalletURL`.
-    /// Callers that know the contract (every `TokenSupportedRow` in
-    /// `AllSupportedAssetsView`, every `TokenHoldingRow`) pass it
-    /// through; callers that don't (most `ActivityRow` consumers,
-    /// where the tx record may not carry the contract) pass nil and
-    /// the view falls back to tier 4.
     var contract: String? = nil
 
-    /// Optional override URL for the token mark. Set when the row
-    /// is a **custom token** (`CustomTokenRecord.iconURL`) whose
-    /// add-time Trust Wallet probe found a real asset. When non-nil,
-    /// takes priority over the contract-derived Trust Wallet URL —
-    /// the custom-token row may have come from a chain Trust Wallet
-    /// doesn't host an asset for, in which case the URL string is
-    /// nil and the view falls back to the same network path as
-    /// registry tokens.
-    var customIconURL: String? = nil
+    @State private var cachedImage: UIImage?
+    @State private var loadFailed = false
 
-    // **2026-06-09 perf.** Store the pre-decoded `UIImage` instead
-    // of raw `Data`. `UIImage(data:)` is lazy — the actual pixel
-    // decode happens during render, on the main thread, during
-    // scroll. With ~400 token rows that can be 400 main-thread
-    // decodes per scroll session. Decoding off-main + caching the
-    // already-decoded UIImage gives `Image(uiImage:)` a free render.
-    @State private var prepared: PreparedMark?
-
-    var body: some View {
-        // A native coin's logo is BUNDLED in the asset catalog
-        // (`coin-<slug>`, fetched from Trust Wallet at build time) — render
-        // it instantly, with no network, no first-launch flash, and no risk
-        // of cache eviction blanking it (user direction 2026-06-17). Tokens
-        // (which are open-ended) keep the network + persistent-disk path.
-        if let bundled = bundledNativeAssetName {
-            Image(bundled)
-                .resizable()
-                // `.fill`, not `.fit` (2026-06-19, learned from the Stabro
-                // build) — Trust Wallet marks ship with transparent padding
-                // (e.g. the Base blue square sits small in its canvas).
-                // `.fit` left that padding so the mark floated tiny inside
-                // the circle; `.fill` scales it to cover, so the logo fills
-                // the disc exactly as Trust Wallet's app renders it. The
-                // `.clipShape(Circle())` crops the overflow.
-                .scaledToFill()
-                .clipShape(Circle())
-        } else {
-            networkMark
+    private var logoURL: URL? {
+        if let contract, !contract.isEmpty {
+            return AssetLogoSource.tokenLogoURL(chain: chain, contract: contract)
         }
+        if let stablecoinURL = AssetLogoSource.stablecoinLogoURL(symbol: tokenSymbol) {
+            return stablecoinURL
+        }
+        return AssetLogoSource.networkLogoURL(chain: chain)
     }
 
-    /// The network/cache-backed mark — Trust Wallet fetch, decoded off-main,
-    /// cached to durable disk, initials chip until it lands.
-    private var networkMark: some View {
-        // Resolve the Trust Wallet / custom URL ONCE per body pass —
-        // it doubles as the `.task(id:)` rebuild key AND the fetch
-        // target, so the derivation never runs twice for one render.
-        let url = resolvedURL
-        // Synchronous decoded-image cache hit → paint immediately with NO
-        // `.task`, no actor hop, no re-decode. `prepared` covers the in-flight
-        // first load on THIS instance; the shared cache covers every later
-        // render of the same mark this session (so scrolling re-uses pixels
-        // instead of re-rendering each time).
-        let preparedImage = prepared?.url == url ? prepared?.image : nil
-        let cached = url.flatMap { CoinMarkImageCache.shared.image(for: $0) }
-        return Group {
-            if let image = preparedImage ?? cached {
-                Image(uiImage: image)
+    var body: some View {
+        Group {
+            if let cachedImage {
+                Image(uiImage: cachedImage)
                     .resizable()
-                    // `.fill` so padded Trust Wallet marks cover the disc
-                    // (see the bundled-native branch above) — matches the
-                    // Trust Wallet app's rendering. Circle-clipped to crop.
                     .scaledToFill()
                     .clipShape(Circle())
             } else {
-                initialsChip
+                localFallback
             }
         }
-        .task(id: url) {
-            // Already decoded this session → nothing to do; the cache paints it.
-            if let url, let image = CoinMarkImageCache.shared.image(for: url) {
-                prepared = PreparedMark(url: url, image: image)
-                return
-            }
-            await loadFromCache(url: url)
+        .task(id: logoURL) {
+            guard !loadFailed else { return }
+            await loadImage()
         }
     }
 
-    /// Bundled native-coin asset name (`coin-<slug>`) when one exists in the
-    /// catalog for this chain's Trust Wallet slug; `nil` for tokens or any
-    /// chain whose logo wasn't bundled.
-    private var bundledNativeAssetName: String? {
-        guard isNativeCoin, let slug = CoinMarkCache.trustWalletChainSlug(for: chain) else { return nil }
-        let name = "coin-\(slug)"
-        return UIImage(named: name) != nil ? name : nil
+    @ViewBuilder
+    private var localFallback: some View {
+        if let assetName = localAssetName, UIImage(named: assetName) != nil {
+            Image(assetName)
+                .resizable()
+                .scaledToFill()
+                .clipShape(Circle())
+        } else {
+            initialsChip
+        }
     }
 
-    // MARK: - Trust Wallet mark URL
+    private var localAssetName: String? {
+        if isNativeCoin {
+            if let networkName = chain.logoAssetName, UIImage(named: networkName) != nil {
+                return networkName
+            }
+            return AssetLogoSource.nativeTokenAssetName(symbol: tokenSymbol)
+        }
+        if let stablecoin = AssetLogoSource.stablecoinAssetName(symbol: tokenSymbol) {
+            return stablecoin
+        }
+        return AssetLogoSource.nativeTokenAssetName(symbol: tokenSymbol)
+    }
 
-    /// Whether this triple is a native coin (its own ticker, no
-    /// contract) — resolved from Trust Wallet's `info/logo.png`.
     private var isNativeCoin: Bool {
         contract == nil && tokenSymbol.uppercased() == chain.ticker.uppercased()
     }
 
-    /// Resolved mark URL — computed once in `body` and reused as both
-    /// the `.task(id:)` rebuild key and the fetch target. Trust Wallet
-    /// only: `customIconURL` (custom-token rows, itself a Trust Wallet
-    /// probe result) → native `info/logo.png` → token
-    /// `assets/<contract>/logo.png`. A token with no contract has no
-    /// addressable Trust Wallet mark, so the view shows the initials
-    /// chip rather than mis-resolving to the chain's native logo.
-    private var resolvedURL: URL? {
-        if let custom = customIconURL, !custom.isEmpty {
-            return URL(string: custom)
+    private func loadImage() async {
+        guard let logoURL else {
+            await MainActor.run { loadFailed = true }
+            return
         }
-        if isNativeCoin {
-            return CoinMarkCache.trustWalletURL(chain: chain, contract: nil)
-        }
-        if let contract, !contract.isEmpty {
-            return CoinMarkCache.trustWalletURL(chain: chain, contract: contract)
-        }
-        return nil
-    }
-
-    /// Symbol-level canonical fallback mark (2026-06-17). Trust Wallet
-    /// hosts a logo for many fungible tokens only on their canonical
-    /// chain (almost always Ethereum) — e.g. FRAX, EURC, and FDUSD live
-    /// on BNB / Polygon / Avalanche / Solana in our registries, but the
-    /// `trustwallet/assets` repo only carries the Ethereum asset for
-    /// them. When the exact `(chain, contract)` mark 404s, the same
-    /// token's Ethereum logo is the honest brand mark to show — it IS
-    /// that token, just on another network. Native coins and custom-icon
-    /// rows (which already carry their own resolved URL) are exempt.
-    private var fallbackURL: URL? {
-        guard !isNativeCoin, (customIconURL ?? "").isEmpty else { return nil }
-        return CoinMarkCache.symbolFallbackURL(symbol: tokenSymbol, excluding: chain)
-    }
-
-    /// Two-stage load: the exact Trust Wallet mark first, then — only if
-    /// that's missing or undecodable — the symbol's canonical
-    /// (`fallbackURL`) mark. The fallback is computed lazily here, so the
-    /// ~99% of rows whose primary mark resolves never pay for it.
-    private func loadFromCache(url: URL?) async {
-        if let image = await preparedImage(for: url) {
-            if let url { CoinMarkImageCache.shared.store(image, for: url) }
+        if let image = AssetLogoDiskCache.shared.image(for: logoURL) {
             await MainActor.run {
-                if let url {
-                    self.prepared = PreparedMark(url: url, image: image)
-                }
+                cachedImage = image
+                loadFailed = false
             }
             return
         }
-        let fallback = fallbackURL
-        guard let fallback, fallback != url,
-              let image = await preparedImage(for: fallback) else { return }
-        // Cache under BOTH the fallback AND the primary url, so a later render
-        // keyed on the primary url still hits the synchronous cache.
-        CoinMarkImageCache.shared.store(image, for: fallback)
-        if let url { CoinMarkImageCache.shared.store(image, for: url) }
-        await MainActor.run {
-            self.prepared = PreparedMark(url: url ?? fallback, image: image)
+        do {
+            let (data, response) = try await URLSession.shared.data(from: logoURL)
+            guard let http = response as? HTTPURLResponse,
+                  (200..<300).contains(http.statusCode),
+                  let image = UIImage(data: data) else {
+                await MainActor.run { loadFailed = true }
+                return
+            }
+            AssetLogoDiskCache.shared.store(image, for: logoURL)
+            await MainActor.run {
+                cachedImage = image
+                loadFailed = false
+            }
+        } catch {
+            await MainActor.run { loadFailed = true }
         }
     }
 
-    /// Fetch + decode a single mark URL off-main, or `nil` when the URL
-    /// is absent, the download 404s, or the bytes don't decode. Delegates
-    /// to `CoinMarkImageCache.resolveImage(for:)` — the one shared
-    /// fetch→cache→persist→decode path used by coin/token marks.
-    private func preparedImage(for url: URL?) async -> UIImage? {
-        guard let url else { return nil }
-        return await CoinMarkImageCache.shared.resolveImage(for: url)
-    }
-
-    // MARK: - Tier 4: initials chip
-
     private var initialsChip: some View {
         Circle()
-            .fill(UniColors.Material.card)
+            .fill(AssetLogoSource.brandColor(symbol: tokenSymbol, chain: chain).opacity(0.14))
             .overlay {
                 Text(initials)
                     .font(.system(size: 12, weight: .semibold, design: .rounded))
-                    .foregroundStyle(UniColors.Text.primary)
+                    .foregroundStyle(AssetLogoSource.brandColor(symbol: tokenSymbol, chain: chain))
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
                     .padding(.horizontal, 2)
@@ -221,97 +117,210 @@ struct CoinMark: View {
 
     private var initials: String {
         let trimmed = tokenSymbol.trimmingCharacters(in: .whitespacesAndNewlines)
-        if trimmed.isEmpty { return "—" }
+        if trimmed.isEmpty { return "-" }
         return String(trimmed.prefix(3)).uppercased()
-    }
-
-    private struct PreparedMark {
-        let url: URL
-        let image: UIImage
     }
 }
 
-// MARK: - Decoded-image cache (native, session-wide)
+// MARK: - Stabro-style disk cache
 
-/// Process-wide cache of DECODED, display-ready coin marks keyed by source
-/// URL.
-///
-/// **Why (2026-06-18, user direction "cache icons once, no re-render each
-/// time").** The on-disk `CoinMarkCache` already persists the PNG *bytes*
-/// across launches (download-once). But SwiftUI re-creates each `CoinMark`'s
-/// `.task` on every lazy row reappearance, so scrolling a list re-ran the
-/// actor hop + image decode for marks it had already shown. This caches the
-/// DECODED `UIImage` (the expensive, display-ready bitmap) for the whole
-/// session: once a mark is decoded off-main, every later render — fast scroll
-/// included — reads it synchronously here and paints with zero per-row work.
-///
-/// `NSCache` is the native choice: thread-safe and memory-pressure-aware, so
-/// iOS evicts it automatically under pressure rather than risking a memory
-/// warning. `@unchecked Sendable` is sound — all access goes through
-/// `NSCache`, which is internally synchronized.
-final class CoinMarkImageCache: @unchecked Sendable {
-    static let shared = CoinMarkImageCache()
+final class AssetLogoDiskCache: @unchecked Sendable {
+    static let shared = AssetLogoDiskCache()
 
-    private let cache: NSCache<NSString, UIImage> = {
-        let cache = NSCache<NSString, UIImage>()
-        // Generous ceiling — a wallet with every supported token visible at
-        // once stays well under this; eviction is the system's job.
-        cache.countLimit = 500
-        return cache
-    }()
+    private let memoryCache = NSCache<NSString, UIImage>()
+    private let fileManager = FileManager.default
+    private let cacheDirectory: URL
 
-    private init() {}
+    private init() {
+        let caches = fileManager.urls(for: .cachesDirectory, in: .userDomainMask)[0]
+        cacheDirectory = caches.appendingPathComponent("TokenIcons", isDirectory: true)
+        try? fileManager.createDirectory(at: cacheDirectory, withIntermediateDirectories: true)
+        memoryCache.countLimit = 100
+    }
 
     func image(for url: URL) -> UIImage? {
-        cache.object(forKey: url.absoluteString as NSString)
+        let key = cacheKey(for: url)
+        if let cached = memoryCache.object(forKey: key as NSString) {
+            return cached
+        }
+        let filePath = cacheDirectory.appendingPathComponent(key)
+        guard let data = try? Data(contentsOf: filePath),
+              let image = UIImage(data: data) else {
+            return nil
+        }
+        memoryCache.setObject(image, forKey: key as NSString)
+        return image
     }
 
     func store(_ image: UIImage, for url: URL) {
-        cache.setObject(image, forKey: url.absoluteString as NSString)
+        let key = cacheKey(for: url)
+        memoryCache.setObject(image, forKey: key as NSString)
+        let filePath = cacheDirectory.appendingPathComponent(key)
+        Task.detached(priority: .utility) {
+            if let data = image.pngData() {
+                try? data.write(to: filePath, options: .atomic)
+            }
+        }
     }
 
-    /// Resolve a display-ready, decoded image for `url` using the ONE
-    /// fetch→cache→persist path coin/token marks use (2026-06-18, user
-    /// direction: "get the icons for tokens and coins in same way … cache
-    /// and persist them in same way").
-    ///
-    /// The path, in order:
-    ///   1. **This session's decoded cache** (synchronous, zero work) — a
-    ///      hit returns the ready bitmap with no actor hop and no re-decode,
-    ///      so scrolling re-uses pixels instead of re-rendering each row.
-    ///   2. **`CoinMarkCache` durable bytes** — memory → Application Support
-    ///      disk (never evicted) → network. Download-once: the network is
-    ///      hit at most ONCE per URL across the device's lifetime; misses
-    ///      are negative-cached so a list scroll doesn't re-fire a request
-    ///      per missing logo on every row reappearance.
-    ///   3. **Off-main decode** — `CGImageSource` validates the container is
-    ///      COMPLETE before `preparingForDisplay()` runs the decompressor,
-    ///      so truncated/corrupt bytes never hit ImageIO's "-17102" path and
-    ///      the decode never lands on the main thread during scroll.
-    ///
-    /// The decoded result is stored back into the session cache (step 1) so
-    /// later renders paint synchronously. Returns `nil` when the URL 404s or
-    /// serves undecodable bytes (caller shows its own fallback — initials
-    /// chip / letter chip); undecodable bytes are negative-cached upstream
-    /// via `markUndecodable` so they don't refetch-and-re-throw in a loop.
-    func resolveImage(for url: URL) async -> UIImage? {
-        if let cached = image(for: url) { return cached }
-        guard let data = await CoinMarkCache.shared.data(for: url) else { return nil }
-        let decoded: UIImage? = await Task.detached(priority: .userInitiated) {
-            guard let source = CGImageSourceCreateWithData(data as CFData, nil),
-                  CGImageSourceGetStatus(source) == .statusComplete,
-                  CGImageSourceGetCount(source) > 0,
-                  let cgImage = CGImageSourceCreateImageAtIndex(source, 0, nil) else {
-                return nil
-            }
-            let image = UIImage(cgImage: cgImage)
-            return image.preparingForDisplay() ?? image
-        }.value
-        guard let decoded else {
-            await CoinMarkCache.shared.markUndecodable(url: url)
-            return nil
+    private func cacheKey(for url: URL) -> String {
+        let hash = url.absoluteString.utf8.reduce(into: UInt64(5381)) { result, byte in
+            result = result &* 33 &+ UInt64(byte)
         }
-        store(decoded, for: url)
-        return decoded
+        return String(hash, radix: 36)
+    }
+}
+
+// MARK: - Source mapping
+
+enum AssetLogoSource {
+    private static let cdnBase = "https://assets-cdn.trustwallet.com/blockchains"
+
+    static func tokenLogoURL(chain: SupportedChain, contract: String) -> URL? {
+        guard let slug = trustWalletSlug(for: chain) else { return nil }
+        let normalized = chain.family == .evm
+            ? Keccak256.eip55Checksum(contract: contract)
+            : contract
+        return URL(string: "\(cdnBase)/\(slug)/assets/\(normalized)/logo.png")
+    }
+
+    static func networkLogoURL(chain: SupportedChain) -> URL? {
+        guard let slug = trustWalletSlug(for: chain) else { return nil }
+        return URL(string: "\(cdnBase)/\(slug)/info/logo.png")
+    }
+
+    static func stablecoinLogoURL(symbol: String) -> URL? {
+        switch symbol.uppercased() {
+        case "USDT": return URL(string: "\(cdnBase)/ethereum/assets/0xdAC17F958D2ee523a2206206994597C13D831ec7/logo.png")
+        case "USDC": return URL(string: "\(cdnBase)/ethereum/assets/0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48/logo.png")
+        case "USDS": return URL(string: "\(cdnBase)/ethereum/assets/0xdC035D45d973E3EC169d2276DDab16f1e407384F/logo.png")
+        case "DAI": return URL(string: "\(cdnBase)/ethereum/assets/0x6B175474E89094C44Da98b954EedeAC495271d0F/logo.png")
+        case "USDE": return URL(string: "\(cdnBase)/ethereum/assets/0x4c9EDD5852cd905f086C759E8383e09bff1E68B3/logo.png")
+        case "TUSD": return URL(string: "\(cdnBase)/ethereum/assets/0x0000000000085d4780B73119b644AE5ecd22b376/logo.png")
+        case "USDP": return URL(string: "\(cdnBase)/ethereum/assets/0x8E870D67F660D95d5be530380D0eC0bd388289E1/logo.png")
+        case "PYUSD": return URL(string: "\(cdnBase)/ethereum/assets/0x6c3ea9036406852006290770BEdFcAbA0e23A0e8/logo.png")
+        case "FDUSD": return URL(string: "\(cdnBase)/ethereum/assets/0xc5f0f7b66764F6ec8C8Dff7BA683102295E16409/logo.png")
+        case "USD1": return URL(string: "\(cdnBase)/ethereum/assets/0x73A15FeD60Bf67631dC6cd7Bc5B6e8da8190aCF5/logo.png")
+        case "USDD": return URL(string: "\(cdnBase)/tron/assets/TPYmHEhy5n8TCEfYGqW2rPxsghSfzghPDn/logo.png")
+        case "STETH": return URL(string: "\(cdnBase)/ethereum/assets/0xae7ab96520DE3A18E5e111B5EaAb095312D7fE84/logo.png")
+        case "WETH": return URL(string: "\(cdnBase)/ethereum/assets/0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2/logo.png")
+        case "WBTC": return URL(string: "\(cdnBase)/ethereum/assets/0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599/logo.png")
+        case "USDG": return URL(string: "\(cdnBase)/ethereum/assets/0xe343167631d89b6ffc58b88d6b7fb0228795491d/logo.png")
+        case "EURC": return URL(string: "\(cdnBase)/ethereum/assets/0x1aBaEA1f7C830bD89Acc67eC4af516284b1bC33c/logo.png")
+        case "FRAX": return URL(string: "\(cdnBase)/ethereum/assets/0x853d955aCEf822Db058eb8505911ED77F175b99e/logo.png")
+        case "GUSD": return URL(string: "\(cdnBase)/ethereum/assets/0x056Fd409E1d7A124BD7017459dFEa2F387b6d5Cd/logo.png")
+        case "AUSD": return URL(string: "\(cdnBase)/ethereum/assets/0x00000000eFE302BEAA2b3e6e1b18d08D69a9012a/logo.png")
+        case "USD0": return URL(string: "\(cdnBase)/ethereum/assets/0x73A15FeD60Bf67631dC6cd7Bc5B6e8da8190aCF5/logo.png")
+        case "USDF": return URL(string: "\(cdnBase)/ethereum/assets/0xFa2B947eEc368f42195f24F36d2aF29f7c24CeC2/logo.png")
+        case "USDAI": return URL(string: "\(cdnBase)/arbitrum/assets/0x0a1a1a107e45b7ced86833863f482bc5f4ed82ef/logo.png")
+        case "DUSD": return URL(string: "\(cdnBase)/smartchain/assets/0xaF44a1E76f56eE12ADBB7Ba8AcD3CBD474888122/logo.png")
+        case "LISUSD": return URL(string: "\(cdnBase)/smartchain/assets/0x0782b6d8c4551B9760e74c0545a9bCD90bdc41E5/logo.png")
+        case "RLUSD": return URL(string: "https://coin-images.coingecko.com/coins/images/39651/large/RLUSD_200x200_%281%29.png")
+        default: return nil
+        }
+    }
+
+    static func stablecoinAssetName(symbol: String) -> String? {
+        let key = symbol.lowercased()
+        let names = ["usdt", "usdc", "usds", "dai", "usde", "tusd", "usdp", "pyusd", "fdusd", "usd1", "usdd", "steth", "weth", "wbtc", "usdg", "eurc", "frax", "gusd", "ausd", "usd0", "usdf", "usdai", "dusd", "lisusd", "rlusd"]
+        return names.contains(key) ? "coin_\(key)" : nil
+    }
+
+    static func nativeTokenAssetName(symbol: String) -> String? {
+        switch symbol.uppercased() {
+        case "BTC": return "token_btc"
+        case "ETH": return "token_eth"
+        case "BNB": return "token_bnb"
+        case "SOL": return "token_sol"
+        case "TRX": return "token_trx"
+        case "APT": return "token_apt"
+        case "NEAR": return "token_near"
+        case "DOT": return "token_dot"
+        case "TON": return "token_ton"
+        case "POL": return "token_pol"
+        case "AVAX": return "token_avax"
+        case "CELO": return "token_celo"
+        case "KAVA": return "token_kava"
+        default: return nil
+        }
+    }
+
+    static func brandColor(symbol: String, chain: SupportedChain) -> Color {
+        let key = symbol.uppercased()
+        switch key {
+        case "BTC": return rgb(0xF7931A)
+        case "ETH", "WETH", "STETH": return rgb(0x627EEA)
+        case "BNB": return rgb(0xF3BA2F)
+        case "SOL": return rgb(0x9945FF)
+        case "TRX": return rgb(0xFF0013)
+        case "APT": return rgb(0x2DD8A3)
+        case "NEAR": return .black
+        case "DOT": return rgb(0xE6007A)
+        case "TON": return rgb(0x0098EA)
+        case "POL": return rgb(0x8247E5)
+        case "AVAX": return rgb(0xE84142)
+        case "CELO": return rgb(0x8CA100)
+        case "KAVA": return rgb(0xFF564F)
+        case "XRP", "XLM": return rgb(0x23292F)
+        case "DOGE": return rgb(0xC2A633)
+        case "LTC": return rgb(0x345D9D)
+        case "BCH": return rgb(0x8DC351)
+        case "SUI": return rgb(0x6FBCF0)
+        case "USDT": return rgb(0x26A17B)
+        case "USDC", "EURC": return rgb(0x2775CA)
+        case "DAI": return rgb(0xF5AC37)
+        default: return chainAccent(chain)
+        }
+    }
+
+    static func trustWalletSlug(for chain: SupportedChain) -> String? {
+        switch chain {
+        case .bitcoin: return "bitcoin"
+        case .bitcoinCash: return "bitcoincash"
+        case .litecoin: return "litecoin"
+        case .dogecoin: return "doge"
+        case .ethereum: return "ethereum"
+        case .arbitrum: return "arbitrum"
+        case .base: return "base"
+        case .optimism: return "optimism"
+        case .scroll: return "scroll"
+        case .zkSync: return "zksync"
+        case .polygon: return "polygon"
+        case .bnbChain: return "smartchain"
+        case .opBNB: return "opbnb"
+        case .avalanche: return "avalanchec"
+        case .celo: return "celo"
+        case .aptos: return "aptos"
+        case .near: return "near"
+        case .polkadot: return "polkadot"
+        case .ripple: return "ripple"
+        case .solana: return "solana"
+        case .stellar: return "stellar"
+        case .sui: return "sui"
+        case .ton: return "ton"
+        case .tron: return "tron"
+        }
+    }
+
+    private static func chainAccent(_ chain: SupportedChain) -> Color {
+        switch chain {
+        case .arbitrum: return rgb(0x2D374B)
+        case .base: return rgb(0x0052FF)
+        case .optimism: return rgb(0xFF0420)
+        case .scroll: return rgb(0xA87F4D)
+        case .zkSync: return rgb(0x7878FA)
+        case .opBNB: return rgb(0xF0B90B)
+        default: return UniColors.Text.secondary
+        }
+    }
+
+    private static func rgb(_ hex: UInt32) -> Color {
+        Color(
+            .sRGB,
+            red: Double((hex >> 16) & 0xFF) / 255.0,
+            green: Double((hex >> 8) & 0xFF) / 255.0,
+            blue: Double(hex & 0xFF) / 255.0,
+            opacity: 1
+        )
     }
 }

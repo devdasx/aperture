@@ -208,8 +208,7 @@ struct AddCustomTokenSheet: View {
                 CoinMark(
                     chain: selectedChain,
                     tokenSymbol: editedSymbol.isEmpty ? result.symbol : editedSymbol,
-                    contract: validatedContract,
-                    customIconURL: result.iconURL
+                    contract: validatedContract
                 )
                 .frame(width: 64, height: 64)
                 .accessibilityHidden(true)
@@ -382,14 +381,11 @@ struct AddCustomTokenSheet: View {
                 // were awaiting — a cancelled task must never write
                 // its stale result over the current phase.
                 guard !Task.isCancelled else { return }
-                let iconURL = await probeTrustWalletIcon(contract: contract)
-                guard !Task.isCancelled else { return }
                 await MainActor.run {
                     self.phase = .preview(PreviewResult(
                         name: meta.name,
                         symbol: meta.symbol,
                         decimals: meta.decimals,
-                        iconURL: iconURL,
                         metadataFromChain: true
                     ))
                 }
@@ -403,17 +399,14 @@ struct AddCustomTokenSheet: View {
             // Solana
             let adapter = SolanaChainAdapter(client: RPCClient.shared)
             do {
-                // Rule #28: the mint info, Metaplex metadata, and icon
-                // probe are independent — run them concurrently instead of
-                // one-after-another so the preview resolves ~3x faster. If
-                // `fetchMintInfo` throws, structured concurrency cancels
-                // the other two automatically.
+                // Rule #28: the mint info and Metaplex metadata are
+                // independent — run them concurrently instead of one after
+                // another so the preview resolves faster. If `fetchMintInfo`
+                // throws, structured concurrency cancels the metadata task.
                 async let mintInfoTask = adapter.fetchMintInfo(mint: contract)
                 async let metaplexTask = adapter.fetchMetaplexMetadata(mint: contract)
-                async let iconTask = probeTrustWalletIcon(contract: contract)
                 let mintInfo = try await mintInfoTask
                 let metaplex = await metaplexTask
-                let iconURL = await iconTask
                 guard !Task.isCancelled else { return }
                 let metadataFromChain = metaplex != nil
                 let name = metaplex?.name ?? ""
@@ -425,7 +418,6 @@ struct AddCustomTokenSheet: View {
                         name: name,
                         symbol: symbol,
                         decimals: mintInfo.decimals,
-                        iconURL: iconURL,
                         metadataFromChain: metadataFromChain
                     ))
                 }
@@ -435,29 +427,6 @@ struct AddCustomTokenSheet: View {
                     self.phase = .failed(.fetch(chain: selectedChain))
                 }
             }
-        }
-    }
-
-    /// HEAD-probe the Trust Wallet logo URL. Returns the URL string
-    /// if the asset exists, nil otherwise. The probe is best-effort
-    /// — a failure here is not a save blocker (the letter-glyph
-    /// fallback renders fine).
-    private func probeTrustWalletIcon(contract: String) async -> String? {
-        guard let url = CoinMarkCache.trustWalletURL(
-            chain: selectedChain,
-            contract: contract
-        ) else { return nil }
-        var request = URLRequest(url: url)
-        request.httpMethod = "HEAD"
-        request.timeoutInterval = 5
-        do {
-            let (_, response) = try await URLSession.shared.data(for: request)
-            if let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) {
-                return url.absoluteString
-            }
-            return nil
-        } catch {
-            return nil
         }
     }
 
@@ -472,7 +441,6 @@ struct AddCustomTokenSheet: View {
             : editedName.trimmingCharacters(in: .whitespaces)
         let chain = selectedChain
         let decimals = result.decimals
-        let iconURL = result.iconURL
         let metadataFromChain = result.metadataFromChain
 
         let onSavedClosure = self.onSaved
@@ -487,7 +455,6 @@ struct AddCustomTokenSheet: View {
                     symbol: symbol,
                     name: name,
                     decimals: decimals,
-                    iconURL: iconURL,
                     metadataFromChain: metadataFromChain
                 )
                 onSavedClosure()
@@ -522,7 +489,6 @@ extension AddCustomTokenSheet {
         let name: String
         let symbol: String
         let decimals: Int
-        let iconURL: String?
         let metadataFromChain: Bool
     }
 

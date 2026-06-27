@@ -25,7 +25,7 @@ import SwiftData
 ///   state machine) + the service-inventory pin below.
 /// - **UserDefaults** (`removePersistentDomain`) — wiping the real
 ///   standard domain mid-test-run would destroy the host's state.
-/// - **WKWebsiteDataStore / TipKit datastore / CoinMarkCache disk
+/// - **WKWebsiteDataStore / TipKit datastore / asset-logo disk
 ///   directory** — sandbox-global singletons; same reasoning.
 /// Those tiers are pinned here at the *inventory* level (the
 /// FreshInstallGuard service audit + the schema tripwire), and their
@@ -150,7 +150,6 @@ import SwiftData
                 ath: 1,
                 high24h: 1,
                 low24h: 1,
-                imageURLString: nil,
                 about: "Test market row",
                 sparkline: [MarketPoint(date: Date(), price: 1)],
                 source: "test",

@@ -21979,6 +21979,9 @@
         }
       }
     },
+    "%lld recent entries" : {
+
+    },
     "%lld rolls" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -146272,6 +146275,9 @@
         }
       }
     },
+    "Copy logs" : {
+
+    },
     "Copy phrase" : {
       "localizations" : {
         "af" : {
@@ -156461,6 +156467,7 @@
       }
     },
     "Couldn't read this wallet's phrase to back it up. Try restarting Aperture." : {
+      "extractionState" : "stale",
       "localizations" : {
         "af" : {
           "stringUnit" : {
@@ -176221,6 +176228,9 @@
           }
         }
       }
+    },
+    "Diagnostics Logs" : {
+
     },
     "Dice" : {
       "extractionState" : "manual",
@@ -209250,6 +209260,9 @@
 
     },
     "Export 1 transaction" : {
+
+    },
+    "Export logs" : {
 
     },
     "Export PDF" : {
@@ -295202,6 +295215,9 @@
         }
       }
     },
+    "No address available" : {
+
+    },
     "No address for this network" : {
       "localizations" : {
         "af" : {
@@ -301088,6 +301104,9 @@
         }
       }
     },
+    "No logs yet" : {
+
+    },
     "No market data yet" : {
 
     },
@@ -301706,6 +301725,9 @@
           }
         }
       }
+    },
+    "No networks available" : {
+
     },
     "No networks match the filter." : {
       "localizations" : {
@@ -328873,6 +328895,9 @@
           }
         }
       }
+    },
+    "Open the app, run a scan, or retry the failing flow." : {
+
     },
     "Opened in Aperture's in-app browser — your wallet stays disconnected." : {
       "extractionState" : "manual",
@@ -372486,6 +372511,9 @@
           }
         }
       }
+    },
+    "Refresh logs" : {
+
     },
     "Refreshing…" : {
       "extractionState" : "manual",
@@ -491070,6 +491098,22 @@
         }
       }
     },
+    "This wallet does not have a receive address for %@ on %@." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "This wallet does not have a receive address for %1$@ on %2$@."
+          }
+        }
+      }
+    },
+    "This wallet does not have a receive address for %@." : {
+
+    },
+    "This wallet does not have a send address for %@." : {
+
+    },
     "This wallet has a passphrase. Enter it to sign — it never leaves this iPhone, and Aperture can't recover it for you." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -492002,6 +492046,12 @@
           }
         }
       }
+    },
+    "This wallet has no %@ address yet, so there is nothing to receive to on this network. Aperture may still be deriving your accounts; try again in a moment." : {
+
+    },
+    "This wallet has no %@ address yet, so there is nothing to send from on this network. Aperture may still be deriving your accounts; try again in a moment." : {
+
     },
     "This wallet has no %@ address yet, so there's nothing to receive to on this network. Aperture may still be deriving your accounts — try again in a moment." : {
       "localizations" : {
@@ -496025,6 +496075,9 @@
           }
         }
       }
+    },
+    "This wallet's saved recovery phrase is not available on this iPhone. Re-import the phrase to restore local backup access." : {
+
     },
     "This wallet's secret isn't stored here. Unless you have it elsewhere, this can't be undone." : {
       "localizations" : {
@@ -514880,6 +514933,9 @@
           }
         }
       }
+    },
+    "Turning off the passcode removes the lock from this iPhone's copy of your wallets. Your wallet secrets stay encrypted locally — but anyone with this phone unlocked can open Aperture without proving they own it." : {
+
     },
     "Type" : {
       "extractionState" : "new",
@@ -577971,7 +578027,11 @@
         }
       }
     },
+    "Your private key is stored encrypted in the local database on this iPhone (AES-GCM 256-bit). Tap “View private key” anytime — the key never leaves this device." : {
+
+    },
     "Your private key is stored encrypted on this iPhone (AES-GCM 256-bit, Keychain). Tap “View private key” anytime — the key never leaves this device." : {
+      "extractionState" : "stale",
       "localizations" : {
         "af" : {
           "stringUnit" : {
@@ -580143,6 +580203,9 @@
         }
       }
     },
+    "Your recovery phrase is stored encrypted in the local database on this iPhone (AES-GCM 256-bit). Tap “View recovery phrase” anytime — the phrase never leaves this device." : {
+
+    },
     "Your recovery phrase is stored encrypted on this iPhone (AES-GCM 256-bit, Keychain). Tap \"View recovery phrase\" anytime — the phrase never leaves this device." : {
       "extractionState" : "manual",
       "localizations" : {
@@ -580449,6 +580512,7 @@
       }
     },
     "Your recovery phrase is stored encrypted on this iPhone (AES-GCM 256-bit, Keychain). Tap “View recovery phrase” anytime — the phrase never leaves this device." : {
+      "extractionState" : "stale",
       "localizations" : {
         "af" : {
           "stringUnit" : {

@@ -278,6 +278,16 @@ enum AssetDetailResolver {
             ))
         }
 
+        // Sui coins.
+        for entry in SuiTokenRegistry.tokens where entry.symbol.uppercased() == target {
+            rows.append(makeRow(
+                chain: .sui,
+                contract: entry.coinType,
+                balance: index.lookup(chain: .sui, contract: entry.coinType),
+                fallbackCurrencyCode: fallbackCurrencyCode
+            ))
+        }
+
         // Polkadot Asset Hub.
         for entry in PolkadotAssetRegistry.tokens where entry.symbol.uppercased() == target {
             let contract = String(entry.assetId)
@@ -522,6 +532,9 @@ enum AssetNameLookup {
             return entry.name
         }
         if let entry = AptosTokenRegistry.tokens.first(where: { $0.symbol.uppercased() == target }) {
+            return entry.name
+        }
+        if let entry = SuiTokenRegistry.tokens.first(where: { $0.symbol.uppercased() == target }) {
             return entry.name
         }
         if let entry = PolkadotAssetRegistry.tokens.first(where: { $0.symbol.uppercased() == target }) {

@@ -2470,15 +2470,24 @@ struct WalletHomeView: View {
     /// semantics. The refresh outcome (failed chains, if any) is
     /// published on `WalletRefreshState.shared`, which this view
     /// observes to render the honest network-error surfaces.
+    @MainActor
     private func runRefresh(userInitiated: Bool = false) async {
-        // Refresh removed with the data-fetching layer (2026-06-25): there are
-        // no balances / history to pull. The screen renders from stored data
-        // only; a user-initiated pull just settles with its haptic.
-        guard await resolveRefreshWalletId() != nil else { return }
+        guard let walletId = await resolveRefreshWalletId() else { return }
+        guard userInitiated || !isRefreshing else { return }
+        isRefreshing = true
+        defer { isRefreshing = false }
+
+        await WalletDataRefreshCoordinator.shared.refresh(
+            walletId: walletId,
+            currencyCode: currencyCode,
+            modelContainer: modelContext.container,
+            userInitiated: userInitiated
+        )
+
+        rebuildFilterInputs()
+        rebuildDisplayRows()
         if userInitiated {
-            await MainActor.run {
-                UniHapticEngine.shared.play(.signature(.irisSettle))
-            }
+            UniHapticEngine.shared.play(.signature(.irisSettle))
         }
     }
 

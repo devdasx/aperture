@@ -23,7 +23,6 @@ final class MarketAssetRecord {
     var ath: Double
     var high24h: Double
     var low24h: Double
-    var imageURLString: String?
     var about: String
     var sparklineJSON: String
     var source: String
@@ -44,7 +43,6 @@ final class MarketAssetRecord {
         self.ath = asset.ath
         self.high24h = asset.high24h
         self.low24h = asset.low24h
-        self.imageURLString = asset.imageURLString
         self.about = asset.about
         self.sparklineJSON = MarketPoint.codec.encode(asset.sparkline)
         self.source = asset.source
@@ -65,7 +63,6 @@ final class MarketAssetRecord {
         if asset.ath > 0 { ath = asset.ath }
         if asset.high24h > 0 { high24h = asset.high24h }
         if asset.low24h > 0 { low24h = asset.low24h }
-        imageURLString = asset.imageURLString
         if !asset.about.isEmpty {
             about = asset.about
         }
@@ -92,7 +89,6 @@ final class MarketAssetRecord {
             ath: ath,
             high24h: high24h,
             low24h: low24h,
-            imageURLString: imageURLString,
             about: about,
             sparkline: MarketPoint.codec.decode(sparklineJSON),
             source: source,
@@ -193,7 +189,6 @@ struct MarketAsset: Identifiable, Hashable, Sendable {
     let ath: Double
     let high24h: Double
     let low24h: Double
-    let imageURLString: String?
     let about: String
     let sparkline: [MarketPoint]
     let source: String
@@ -226,7 +221,6 @@ struct MarketAsset: Identifiable, Hashable, Sendable {
             ath: ath ?? self.ath,
             high24h: high24h ?? self.high24h,
             low24h: low24h ?? self.low24h,
-            imageURLString: imageURLString,
             about: about ?? self.about,
             sparkline: chart ?? sparkline,
             source: source,
@@ -406,17 +400,19 @@ final class MarketsViewModel: ObservableObject {
         try? context.save()
     }
 
-    func cachedChart(symbol: String, range: MarketChartRange, currencyCode: String, context: ModelContext) -> [MarketPoint] {
+    func cachedChart(symbol: String, range: MarketChartRange, currencyCode: String, context: ModelContext) -> MarketChartResponse? {
         let key = MarketChartCacheRecord.key(symbol: symbol, range: range, currencyCode: currencyCode)
         var descriptor = FetchDescriptor<MarketChartCacheRecord>(
             predicate: #Predicate { $0.cacheKey == key }
         )
         descriptor.fetchLimit = 1
-        guard let record = try? context.fetch(descriptor).first else { return [] }
-        return MarketPoint.codec.decode(record.samplesJSON)
+        guard let record = try? context.fetch(descriptor).first else { return nil }
+        let points = MarketPoint.codec.decode(record.samplesJSON)
+        guard !points.isEmpty else { return nil }
+        return MarketChartResponse(points: points, currencyCode: record.currencyCode, source: record.source)
     }
 
-    func refreshChart(symbol: String, range: MarketChartRange, currencyCode: String, context: ModelContext) async throws -> [MarketPoint] {
+    func refreshChart(symbol: String, range: MarketChartRange, currencyCode: String, context: ModelContext) async throws -> MarketChartResponse {
         let response = try await service.fetchChart(symbol: symbol, range: range, currencyCode: currencyCode)
         let key = MarketChartCacheRecord.key(symbol: symbol, range: range, currencyCode: response.currencyCode)
         var descriptor = FetchDescriptor<MarketChartCacheRecord>(
@@ -437,7 +433,7 @@ final class MarketsViewModel: ObservableObject {
             )
         }
         try? context.save()
-        return response.points
+        return response
     }
 
     func refreshDetail(for asset: MarketAsset, currencyCode: String, context: ModelContext) async -> MarketAsset {
@@ -603,7 +599,11 @@ struct MarketsView: View {
         .scrollContentBackground(.hidden)
         .background(UniColors.Background.primary)
         .navigationTitle("Markets")
-        .searchable(text: $searchText, prompt: "Search coins or tokens")
+        .searchable(
+            text: $searchText,
+            placement: .navigationBarDrawer(displayMode: .always),
+            prompt: "Search coins or tokens"
+        )
         .navigationDestination(for: MarketAsset.self) { asset in
             MarketDetailView(asset: asset, model: model)
         }
@@ -686,6 +686,7 @@ struct MarketDetailView: View {
     @State private var asset: MarketAsset
     @State private var range: MarketChartRange = .oneDay
     @State private var chart: [MarketPoint] = []
+    @State private var chartCurrencyCode: String
     @State private var scrubbedPoint: MarketPoint?
     @State private var isLoadingChart: Bool = false
     @State private var chartError: Bool = false
@@ -695,6 +696,22 @@ struct MarketDetailView: View {
     init(asset: MarketAsset, model: MarketsViewModel) {
         self.model = model
         _asset = State(initialValue: asset)
+        _chartCurrencyCode = State(initialValue: asset.currencyCode.uppercased())
+    }
+
+    private var displayCurrencyCode: String {
+        CurrencyPreference.currency(for: currencyCode)?.code ?? CurrencyPreference.defaultCode
+    }
+
+    private var chartPointsForDisplay: [MarketPoint] {
+        let normalizedDisplayCode = displayCurrencyCode.uppercased()
+        if !chart.isEmpty, chartCurrencyCode.uppercased() == normalizedDisplayCode {
+            return chart
+        }
+        if asset.currencyCode.uppercased() == normalizedDisplayCode {
+            return asset.sparkline
+        }
+        return []
     }
 
     private var displayedPrice: Double {
@@ -702,14 +719,14 @@ struct MarketDetailView: View {
     }
 
     private var displayedChangeAmount: Double {
-        guard let first = chart.first?.price, let point = scrubbedPoint else {
+        guard let first = chartPointsForDisplay.first?.price, let point = scrubbedPoint else {
             return asset.priceChange24hAmount
         }
         return point.price - first
     }
 
     private var displayedChangePercent: Double {
-        guard let first = chart.first?.price, let point = scrubbedPoint, first != 0 else {
+        guard let first = chartPointsForDisplay.first?.price, let point = scrubbedPoint, first != 0 else {
             return asset.priceChange24hPercent
         }
         return ((point.price - first) / first) * 100
@@ -747,7 +764,7 @@ struct MarketDetailView: View {
             detailFooter
         }
         .sheet(isPresented: $isShowingSend, onDismiss: { sendPath = NavigationPath() }) {
-            SendView(navigationPath: $sendPath, assetPrefill: sendPrefill)
+            SendNetworkFirstView(navigationPath: $sendPath, assetPrefill: sendPrefill)
                 .uniAppEnvironment()
                 .presentationBackground(UniColors.Background.primary)
         }
@@ -758,6 +775,15 @@ struct MarketDetailView: View {
         .task(id: range) {
             loadCachedChart()
             await refreshChart()
+        }
+        .onChange(of: currencyCode) { _, _ in
+            scrubbedPoint = nil
+            chart = []
+            chartCurrencyCode = displayCurrencyCode.uppercased()
+            Task {
+                loadCachedChart()
+                await refreshDetail()
+            }
         }
         .uniHaptic(.selection, trigger: range)
     }
@@ -779,7 +805,7 @@ struct MarketDetailView: View {
 
     private var priceBlock: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text(MarketFormatting.currency(displayedPrice, code: asset.currencyCode))
+            Text(MarketFormatting.currency(displayedPrice, code: displayCurrencyCode))
                 .font(.system(size: 38, weight: .bold, design: .rounded))
                 .monospacedDigit()
                 .contentTransition(.numericText(value: displayedPrice))
@@ -793,7 +819,7 @@ struct MarketDetailView: View {
                     .padding(.vertical, 6)
                     .background((displayedIsPositive ? UniColors.Text.success : UniColors.Text.error).opacity(0.12), in: Capsule())
 
-                Text("\(displayedIsPositive ? "+" : "")\(MarketFormatting.currency(displayedChangeAmount, code: asset.currencyCode)) today")
+                Text("\(displayedIsPositive ? "+" : "")\(MarketFormatting.currency(displayedChangeAmount, code: displayCurrencyCode)) today")
                     .font(.subheadline.weight(.medium))
                     .foregroundStyle(UniColors.Text.secondary)
             }
@@ -803,14 +829,14 @@ struct MarketDetailView: View {
 
     private var chartBlock: some View {
         VStack(alignment: .leading, spacing: 16) {
-            MarketAreaChart(points: chart.isEmpty ? asset.sparkline : chart, isPositive: displayedIsPositive, selectedPoint: $scrubbedPoint)
+            MarketAreaChart(points: chartPointsForDisplay, isPositive: displayedIsPositive, selectedPoint: $scrubbedPoint)
                 .frame(maxWidth: .infinity)
                 .aspectRatio(1.55, contentMode: .fit)
                 .frame(minHeight: 220, maxHeight: 320)
                 .overlay {
-                    if isLoadingChart && chart.isEmpty && asset.sparkline.isEmpty {
+                    if isLoadingChart && chartPointsForDisplay.isEmpty {
                         ProgressView()
-                    } else if chartError && chart.isEmpty && asset.sparkline.isEmpty {
+                    } else if chartError && chartPointsForDisplay.isEmpty {
                         ContentUnavailableView(
                             "Chart unavailable",
                             systemImage: "chart.xyaxis.line",
@@ -830,12 +856,12 @@ struct MarketDetailView: View {
 
     private var statsBlock: some View {
         LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
-            MarketStatTile(title: "Market cap", value: MarketFormatting.compactCurrency(asset.marketCap, code: asset.currencyCode))
-            MarketStatTile(title: "24h volume", value: MarketFormatting.compactCurrency(asset.volume24h, code: asset.currencyCode))
+            MarketStatTile(title: "Market cap", value: MarketFormatting.compactCurrency(asset.marketCap, code: displayCurrencyCode))
+            MarketStatTile(title: "24h volume", value: MarketFormatting.compactCurrency(asset.volume24h, code: displayCurrencyCode))
             MarketStatTile(title: "Circulating", value: MarketFormatting.compactNumber(asset.circulatingSupply, suffix: asset.symbol))
-            MarketStatTile(title: "ATH", value: MarketFormatting.currency(asset.ath, code: asset.currencyCode))
-            MarketStatTile(title: "24h high", value: MarketFormatting.currency(asset.high24h, code: asset.currencyCode))
-            MarketStatTile(title: "24h low", value: MarketFormatting.currency(asset.low24h, code: asset.currencyCode))
+            MarketStatTile(title: "ATH", value: MarketFormatting.currency(asset.ath, code: displayCurrencyCode))
+            MarketStatTile(title: "24h high", value: MarketFormatting.currency(asset.high24h, code: displayCurrencyCode))
+            MarketStatTile(title: "24h low", value: MarketFormatting.currency(asset.low24h, code: displayCurrencyCode))
         }
     }
 
@@ -868,14 +894,15 @@ struct MarketDetailView: View {
     }
 
     private func loadCachedChart() {
-        let cached = model.cachedChart(symbol: asset.symbol, range: range, currencyCode: currencyCode, context: modelContext)
-        if !cached.isEmpty {
-            chart = cached
+        guard let cached = model.cachedChart(symbol: asset.symbol, range: range, currencyCode: displayCurrencyCode, context: modelContext) else {
+            return
         }
+        chart = cached.points
+        chartCurrencyCode = cached.currencyCode.uppercased()
     }
 
     private func refreshDetail() async {
-        asset = await model.refreshDetail(for: asset, currencyCode: currencyCode, context: modelContext)
+        asset = await model.refreshDetail(for: asset, currencyCode: displayCurrencyCode, context: modelContext)
         await refreshChart()
     }
 
@@ -883,9 +910,10 @@ struct MarketDetailView: View {
         isLoadingChart = true
         chartError = false
         do {
-            let samples = try await model.refreshChart(symbol: asset.symbol, range: range, currencyCode: currencyCode, context: modelContext)
-            if !samples.isEmpty {
-                chart = samples
+            let response = try await model.refreshChart(symbol: asset.symbol, range: range, currencyCode: displayCurrencyCode, context: modelContext)
+            if !response.points.isEmpty {
+                chart = response.points
+                chartCurrencyCode = response.currencyCode.uppercased()
                 scrubbedPoint = nil
             }
         } catch {
@@ -975,6 +1003,8 @@ private struct MarketCoinIcon: View {
         Group {
             if let chain {
                 CoinMark(chain: chain, tokenSymbol: chain.ticker)
+            } else if MarketDescriptor.descriptor(for: symbol) != nil {
+                CoinMark(chain: .ethereum, tokenSymbol: symbol)
             } else {
                 Circle()
                     .fill(UniColors.Fill.secondary)
@@ -1021,7 +1051,7 @@ private struct MarketSparkline: View {
     }
 
     private var chartSamples: [MarketChartSample] {
-        MarketChartProjection.samples(from: points)
+        MarketChartProjection.samples(from: points, verticalPadding: 0.04, trimsOutliers: true)
     }
 }
 
@@ -1131,7 +1161,11 @@ private struct MarketChartSample: Identifiable {
 }
 
 private enum MarketChartProjection {
-    static func samples(from points: [MarketPoint]) -> [MarketChartSample] {
+    static func samples(
+        from points: [MarketPoint],
+        verticalPadding: Double = 0.1,
+        trimsOutliers: Bool = false
+    ) -> [MarketChartSample] {
         let clean = sanitized(points)
         guard !clean.isEmpty else { return [] }
 
@@ -1143,17 +1177,19 @@ private enum MarketChartProjection {
         }
 
         let prices = clean.map(\.price)
-        let minPrice = prices.min() ?? 0
-        let maxPrice = prices.max() ?? 0
-        let span = maxPrice - minPrice
+        let domain = priceDomain(for: prices, trimsOutliers: trimsOutliers)
+        let span = domain.upper - domain.lower
         let yValues: [Double]
-        if span <= max(abs(maxPrice) * 0.000_001, 0.000_001) {
+        if span <= max(abs(domain.upper) * 0.000_001, 0.000_001) {
             yValues = Array(repeating: 0.5, count: clean.count)
         } else {
+            let padding = min(max(verticalPadding, 0), 0.45)
+            let usableHeight = 1 - (padding * 2)
             yValues = prices.map { price in
                 // Keep a little air at the top and bottom so the native Chart
                 // never visually collapses into the card edges.
-                0.1 + ((price - minPrice) / span) * 0.8
+                let clamped = min(max(price, domain.lower), domain.upper)
+                return padding + ((clamped - domain.lower) / span) * usableHeight
             }
         }
 
@@ -1187,6 +1223,36 @@ private enum MarketChartProjection {
             }
         }
         return output
+    }
+
+    private static func priceDomain(for prices: [Double], trimsOutliers: Bool) -> (lower: Double, upper: Double) {
+        let minPrice = prices.min() ?? 0
+        let maxPrice = prices.max() ?? 0
+        guard trimsOutliers, prices.count >= 8 else {
+            return (minPrice, maxPrice)
+        }
+
+        let sorted = prices.sorted()
+        let lower = percentile(sorted, 0.08)
+        let upper = percentile(sorted, 0.92)
+        guard upper > lower else {
+            return (minPrice, maxPrice)
+        }
+        return (lower, upper)
+    }
+
+    private static func percentile(_ sorted: [Double], _ fraction: Double) -> Double {
+        guard let first = sorted.first else { return 0 }
+        guard sorted.count > 1 else { return first }
+
+        let clamped = min(max(fraction, 0), 1)
+        let position = clamped * Double(sorted.count - 1)
+        let lowerIndex = Int(floor(position))
+        let upperIndex = Int(ceil(position))
+        guard lowerIndex != upperIndex else { return sorted[lowerIndex] }
+
+        let weight = position - Double(lowerIndex)
+        return (sorted[lowerIndex] * (1 - weight)) + (sorted[upperIndex] * weight)
     }
 }
 
@@ -1397,7 +1463,6 @@ private actor MarketDataService {
                 ath: (row.ath ?? 0) * conversion.rate,
                 high24h: (row.high_24h ?? 0) * conversion.rate,
                 low24h: (row.low_24h ?? 0) * conversion.rate,
-                imageURLString: row.image,
                 about: descriptor.fallbackAbout,
                 sparkline: sparkline.map { MarketPoint(date: $0.date, price: $0.price * conversion.rate) },
                 source: "CoinGecko · \(conversion.source)",
@@ -1444,7 +1509,6 @@ private actor MarketDataService {
                 ath: 0,
                 high24h: 0,
                 low24h: 0,
-                imageURLString: nil,
                 about: descriptor.fallbackAbout,
                 sparkline: [],
                 source: "CoinMarketCap · \(conversion.source)",
@@ -1487,7 +1551,6 @@ private actor MarketDataService {
                     ath: 0,
                     high24h: (Double(row.highPrice) ?? 0) * conversion.rate,
                     low24h: (Double(row.lowPrice) ?? 0) * conversion.rate,
-                    imageURLString: nil,
                     about: descriptor.fallbackAbout,
                     sparkline: sparkline,
                     source: "Binance · \(conversion.source)",
@@ -1525,7 +1588,6 @@ private actor MarketDataService {
                         ath: 0,
                         high24h: (Double(stats.high) ?? 0) * conversion.rate,
                         low24h: (Double(stats.low) ?? 0) * conversion.rate,
-                        imageURLString: nil,
                         about: descriptor.fallbackAbout,
                         sparkline: sparkline,
                         source: "Coinbase · \(conversion.source)",
@@ -1766,7 +1828,6 @@ private struct CoingeckoMarket: Decodable {
     let id: String
     let symbol: String
     let name: String
-    let image: String?
     let current_price: Double?
     let market_cap: Double?
     let market_cap_rank: Int?

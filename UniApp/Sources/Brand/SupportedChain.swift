@@ -63,32 +63,12 @@ enum SupportedChain: String, CaseIterable, Hashable, Sendable, Codable {
         }
     }
 
-    /// Whether on-chain DATA fetching — native + token balances, transaction
-    /// history, and prices — is disabled for this chain. The address still
-    /// derives (Receive) and Send still works through its own RPC + signing
-    /// path; only the wallet-home balance / holdings / activity data is
-    /// suppressed. The whole fetching layer (connectors, scanners, price
-    /// services, refresh coordinator) was removed on 2026-06-25.
-    ///
-    /// **2026-06-25 — disabled for EVERY supported chain (user direction).** No
-    /// chain fetches balances / history / prices anymore. Listed granularly by
-    /// family below so a single line can be removed to re-enable one chain:
-    ///   - `.evm`      — Ethereum, Arbitrum, Base, Optimism, Scroll, zkSync,
-    ///                   Polygon, BNB, opBNB, Avalanche, Celo
-    ///   - `.bitcoin`  — BTC / BCH / LTC / DOGE
-    ///   - `.ed25519`  — Solana, Stellar, Sui
-    ///   - `.ripple`   — XRPL
-    ///   - `.aptos` · `.near` · `.polkadot` · `.ton` · `.tron`
+    /// Whether persisted local balance/history rows for this chain
+    /// should be hidden and purged. Balance/history fetching is now
+    /// disabled at the coordinator, but supported chains stay enabled
+    /// here so existing local rows can remain visible.
     var fetchingDisabled: Bool {
-        family == .evm
-            || family == .bitcoin
-            || family == .ed25519   // Solana · Stellar · Sui
-            || family == .ripple    // XRPL
-            || family == .aptos
-            || family == .near
-            || family == .polkadot
-            || family == .ton
-            || family == .tron
+        false
     }
 
     /// Whether the chain supports BIP-32 extended public keys
@@ -155,39 +135,32 @@ enum SupportedChain: String, CaseIterable, Hashable, Sendable, Codable {
         }
     }
 
-    /// Asset catalog name for the chain's logo. Routes through the
-    /// `Crypto/` namespace in `Assets.xcassets` (per M-001 — Trust
-    /// Wallet bundled assets). Returns `nil` if no logo is bundled;
-    /// the UI shows a placeholder in that case.
+    /// Asset catalog name for the chain's logo. Uses the same
+    /// `network_*` names as Stabro's asset catalog. Returns `nil` when
+    /// Stabro has no bundled network mark; `CoinMark` can still resolve
+    /// a remote Trust Wallet logo and cache it.
     var logoAssetName: String? {
-        // The `Crypto/` folder in Assets.xcassets has
-        // `provides-namespace: true`, so call-site `Image(name)`
-        // expects the namespace prefix.
         switch self {
-        case .bitcoin:      return "Crypto/btc"
-        case .bitcoinCash:  return "Crypto/bch"
-        case .litecoin:     return "Crypto/ltc"
-        case .dogecoin:     return "Crypto/doge"
-        case .ethereum:     return "Crypto/eth"
-        case .arbitrum:     return "Crypto/arbitrum"
-        case .base:         return "Crypto/base"
-        case .optimism:     return "Crypto/optimism"
-        case .scroll:       return "Crypto/scroll"
-        case .zkSync:       return "Crypto/zksync"
-        case .polygon:      return "Crypto/pol"
-        case .bnbChain:     return "Crypto/bnb"
-        case .opBNB:        return "Crypto/opbnb"
-        case .avalanche:    return "Crypto/avax"
-        case .celo:         return "Crypto/celo"
-        case .aptos:        return "Crypto/apt"
-        case .near:         return "Crypto/near"
-        case .polkadot:     return "Crypto/dot"
-        case .ripple:       return "Crypto/xrp"
-        case .solana:       return "Crypto/sol"
-        case .stellar:      return "Crypto/xlm"
-        case .sui:          return "Crypto/sui"
-        case .ton:          return "Crypto/ton"
-        case .tron:         return "Crypto/trx"
+        case .bitcoin, .bitcoinCash, .litecoin, .dogecoin,
+             .ripple, .stellar, .sui:
+            return nil
+        case .ethereum:     return "network_ethereum"
+        case .arbitrum:     return "network_arbitrum"
+        case .base:         return "network_base"
+        case .optimism:     return "network_optimism"
+        case .scroll:       return "network_scroll"
+        case .zkSync:       return "network_zkSync"
+        case .polygon:      return "network_polygon"
+        case .bnbChain:     return "network_bnbChain"
+        case .opBNB:        return "network_opBNB"
+        case .avalanche:    return "network_avalanche"
+        case .celo:         return "network_celo"
+        case .aptos:        return "network_aptos"
+        case .near:         return "network_near"
+        case .polkadot:     return "network_polkadot"
+        case .solana:       return "network_solana"
+        case .ton:          return "network_ton"
+        case .tron:         return "network_tron"
         }
     }
 }

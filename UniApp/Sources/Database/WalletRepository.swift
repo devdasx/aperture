@@ -13,6 +13,12 @@ import SwiftData
 /// or from a future background-import path; both share this actor.
 @ModelActor
 actor WalletRepository {
+    struct AddressSnapshot: Sendable {
+        let id: UUID
+        let chain: SupportedChain
+        let address: String
+    }
+
     /// `true` when the backing container is the in-memory fallback
     /// (`ApertureDatabase.isInMemoryFallback`) rather than the durable
     /// on-disk store. Read from the container's own configuration so
@@ -51,6 +57,16 @@ actor WalletRepository {
     /// decision at app launch (informs onboarding routing — T-001).
     func walletCount() throws -> Int {
         try modelContext.fetchCount(FetchDescriptor<WalletRecord>())
+    }
+
+    func address(walletId: UUID, chain: SupportedChain) throws -> AddressSnapshot? {
+        var descriptor = FetchDescriptor<WalletRecord>(
+            predicate: #Predicate { $0.id == walletId }
+        )
+        descriptor.fetchLimit = 1
+        guard let wallet = try modelContext.fetch(descriptor).first else { return nil }
+        guard let address = wallet.addresses.first(where: { $0.chainRaw == chain.rawValue }) else { return nil }
+        return AddressSnapshot(id: address.id, chain: chain, address: address.address)
     }
 
     /// Next `sortOrder` value for a newly-inserted wallet. Lower values

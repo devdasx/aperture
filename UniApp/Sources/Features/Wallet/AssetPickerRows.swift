@@ -2,8 +2,8 @@ import SwiftUI
 
 /// Shared rows for the Receive & Send pickers, so both flows render
 /// identically (the user's "same as receive 100%"). All logos go through
-/// `CoinMark` (the cached, off-main-decoded mark view) so they download
-/// at most once per token, ever. Colors + type are `UniColors` /
+/// `CoinMark` (the Stabro-style mark view) so they prefer bundled
+/// assets, then one cached remote logo. Colors + type are `UniColors` /
 /// `UniTypography` only.
 
 // MARK: - Asset row (Step 1: native coins + tokens)
@@ -20,19 +20,12 @@ struct AssetPickerAssetRow: View {
     /// contract (nil for native coins → bundled chain mark).
     let logoChain: SupportedChain
     let logoContract: String?
-    /// Optional provider-supplied logo URL (Li.Fi `logoURI` / Jupiter
-    /// `icon`). Used for tokens NOT in Trust Wallet's repo (e.g. a token
-    /// found via the swap provider search), so they show a real mark
-    /// instead of falling back to the initials chip. `CoinMark` prefers
-    /// this when present; otherwise it resolves via Trust Wallet by
-    /// chain+contract.
-    var logoURL: String? = nil
     let totals: AssetPickerHoldings.Totals
     let currencyCode: String
 
     var body: some View {
         HStack(spacing: UniSpacing.s) {
-            CoinMark(chain: logoChain, tokenSymbol: ticker, contract: logoContract, customIconURL: logoURL)
+            CoinMark(chain: logoChain, tokenSymbol: ticker, contract: logoContract)
                 .frame(width: 36, height: 36)
             VStack(alignment: .leading, spacing: 2) {
                 Text(verbatim: fullName)

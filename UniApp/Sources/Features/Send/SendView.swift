@@ -355,7 +355,7 @@ enum SendDestination: Hashable, Codable {
 /// fiat values of the amount and the fee, then renders `SendReviewView`.
 /// Prices aren't carried on the draft (they're display-only), so they're
 /// resolved fresh here.
-private struct SendReviewLoader: View {
+struct SendReviewLoader: View {
     let draft: SendDraft
     /// The signing wallet's UUID — the executor needs it (the draft's
     /// `fromAddress` identifies the address, not the wallet). Resolved from

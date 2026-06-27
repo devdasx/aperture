@@ -47,6 +47,7 @@ final class ApertureDatabase {
     private let log = Logger(subsystem: "com.thuglife.aperture", category: "database")
 
     private init() {
+        let openStart = Date()
         // Single source of truth for persisted SwiftData models. Keeping a
         // second hand-written list here let the runtime container drift from
         // `ApertureSchemaV1.models` (notably ChainState/UTXO rows), which
@@ -54,6 +55,12 @@ final class ApertureDatabase {
         // the live app container did not actually know about.
         let schema = Schema(ApertureSchemaV1.models)
         let storeURL = Self.defaultStoreURL()
+        DiagnosticsLogStore.shared.record(
+            .info,
+            category: "database",
+            message: "SwiftData container open started",
+            metadata: ["store": storeURL.path]
+        )
         let onDiskConfig = ModelConfiguration(
             schema: schema,
             url: storeURL,
@@ -63,6 +70,12 @@ final class ApertureDatabase {
         do {
             self.container = try ModelContainer(for: schema, configurations: [onDiskConfig])
             self.isInMemoryFallback = false
+            DiagnosticsLogStore.shared.record(
+                .info,
+                category: "database",
+                message: "SwiftData on-disk container opened",
+                metadata: ["elapsedMs": DiagnosticsLogStore.elapsedMilliseconds(since: openStart)]
+            )
         } catch let error where Self.isMigrationIncompatibilityError(error) {
             // **2026-06-09 recovery path.** Migration failure (CoreData
             // error 134110, "missing attribute values on mandatory
@@ -84,10 +97,25 @@ final class ApertureDatabase {
             // class where the store is unreadable by this binary
             // forever and deletion is the correct recovery.
             log.error("SwiftData on-disk container failed with a migration-incompatibility error: \(String(describing: error), privacy: .public); recovering by resetting the store.")
+            DiagnosticsLogStore.shared.record(
+                .error,
+                category: "database",
+                message: "SwiftData migration-incompatible open failed",
+                metadata: [
+                    "elapsedMs": DiagnosticsLogStore.elapsedMilliseconds(since: openStart),
+                    "error": String(describing: error)
+                ]
+            )
             Self.resetStore(at: storeURL, log: log)
             do {
                 self.container = try ModelContainer(for: schema, configurations: [onDiskConfig])
                 self.isInMemoryFallback = false
+                DiagnosticsLogStore.shared.record(
+                    .info,
+                    category: "database",
+                    message: "SwiftData fresh on-disk container opened after reset",
+                    metadata: ["elapsedMs": DiagnosticsLogStore.elapsedMilliseconds(since: openStart)]
+                )
             } catch {
                 // Fresh on-disk ALSO failed — disk full, signed sandbox
                 // denial, or genuinely broken schema definition. Last
@@ -96,6 +124,15 @@ final class ApertureDatabase {
                 log.error("Fresh on-disk container failed: \(String(describing: error), privacy: .public); falling back to in-memory.")
                 self.container = Self.makeInMemoryFallbackContainer(schema: schema)
                 self.isInMemoryFallback = true
+                DiagnosticsLogStore.shared.record(
+                    .error,
+                    category: "database",
+                    message: "SwiftData fell back to in-memory after reset",
+                    metadata: [
+                        "elapsedMs": DiagnosticsLogStore.elapsedMilliseconds(since: openStart),
+                        "error": String(describing: error)
+                    ]
+                )
             }
         } catch {
             // Non-migration failure — file-protection before first
@@ -107,13 +144,37 @@ final class ApertureDatabase {
             // session and leave the on-disk file intact so the next
             // launch can open it normally.
             log.error("SwiftData on-disk container failed with a non-migration error: \(String(describing: error), privacy: .public); retrying once without resetting the store.")
+            DiagnosticsLogStore.shared.record(
+                .warning,
+                category: "database",
+                message: "SwiftData on-disk open failed; retrying without reset",
+                metadata: [
+                    "elapsedMs": DiagnosticsLogStore.elapsedMilliseconds(since: openStart),
+                    "error": String(describing: error)
+                ]
+            )
             do {
                 self.container = try ModelContainer(for: schema, configurations: [onDiskConfig])
                 self.isInMemoryFallback = false
+                DiagnosticsLogStore.shared.record(
+                    .info,
+                    category: "database",
+                    message: "SwiftData retry opened on-disk container",
+                    metadata: ["elapsedMs": DiagnosticsLogStore.elapsedMilliseconds(since: openStart)]
+                )
             } catch {
                 log.error("Retry failed: \(String(describing: error), privacy: .public); falling back to in-memory. The on-disk store is left intact for the next launch.")
                 self.container = Self.makeInMemoryFallbackContainer(schema: schema)
                 self.isInMemoryFallback = true
+                DiagnosticsLogStore.shared.record(
+                    .error,
+                    category: "database",
+                    message: "SwiftData fell back to in-memory without deleting store",
+                    metadata: [
+                        "elapsedMs": DiagnosticsLogStore.elapsedMilliseconds(since: openStart),
+                        "error": String(describing: error)
+                    ]
+                )
             }
         }
     }
@@ -212,6 +273,8 @@ final class ApertureDatabase {
     /// fetch), so they're deferred to a utility-priority task that runs
     /// after the first render instead of blocking it.
     func bootstrap() {
+        let bootstrapStart = Date()
+        DiagnosticsLogStore.shared.record(.info, category: "database", message: "Database bootstrap started")
         let context = ModelContext(container)
 
         // 2026-06-09 — RESTORE FROM KEYCHAIN MANIFEST after a
@@ -232,11 +295,22 @@ final class ApertureDatabase {
         if restored > 0 {
             log.info("Restored \(restored) wallets from Keychain manifest after reinstall.")
         }
+        DiagnosticsLogStore.shared.record(
+            .debug,
+            category: "database",
+            message: "Wallet manifest restore checked",
+            metadata: [
+                "restoredWallets": "\(restored)",
+                "elapsedMs": DiagnosticsLogStore.elapsedMilliseconds(since: bootstrapStart)
+            ]
+        )
 
         // Deferred writes — enqueued on the main actor at utility
         // priority, so they run after the synchronous launch path
         // (and the first frame's `@Query` snapshot) completes.
         Task(priority: .utility) {
+            let deferredStart = Date()
+            DiagnosticsLogStore.shared.record(.debug, category: "database", message: "Deferred database bootstrap started")
             self.bootstrapSingletonRows()
 
             // 2026-06-13 — seed the local-first asset universe
@@ -246,8 +320,15 @@ final class ApertureDatabase {
             // rows land, so the cold-launch asset list never blanks.
             do {
                 try AssetCatalogSeeder.seed(into: ModelContext(self.container))
+                DiagnosticsLogStore.shared.record(.debug, category: "database", message: "Asset catalog seed finished")
             } catch {
                 self.log.error("Asset-catalog seed failed: \(String(describing: error), privacy: .public)")
+                DiagnosticsLogStore.shared.record(
+                    .error,
+                    category: "database",
+                    message: "Asset catalog seed failed",
+                    metadata: ["error": String(describing: error)]
+                )
             }
 
             // 2026-06-18 — historical-price UTC day-key migration (Part 4.4).
@@ -266,8 +347,20 @@ final class ApertureDatabase {
                     try await HistoricalPriceRepository(modelContainer: self.container).clearAll()
                     UserDefaults.standard.set(currentHistoryVersion, forKey: historyVersionKey)
                     self.log.info("Historical-price cache wiped for UTC day-key migration (v\(currentHistoryVersion, privacy: .public)).")
+                    DiagnosticsLogStore.shared.record(
+                        .info,
+                        category: "database",
+                        message: "Historical-price cache wiped for migration",
+                        metadata: ["version": "\(currentHistoryVersion)"]
+                    )
                 } catch {
                     self.log.error("Historical-price UTC migration wipe failed: \(String(describing: error), privacy: .public)")
+                    DiagnosticsLogStore.shared.record(
+                        .error,
+                        category: "database",
+                        message: "Historical-price UTC migration wipe failed",
+                        metadata: ["error": String(describing: error)]
+                    )
                 }
             }
 
@@ -276,6 +369,7 @@ final class ApertureDatabase {
             // from @AppStorage and keeps it live-synced. Main-actor;
             // ApertureDatabase is @MainActor so this hops correctly.
             SettingsStore.shared.start(container: self.container)
+            DiagnosticsLogStore.shared.record(.debug, category: "database", message: "Settings store sync started")
 
             // 2026-06-09 — backfill avatar defaults onto rows that
             // pre-date the `iconSymbol` / `iconColorHex` schema
@@ -286,14 +380,34 @@ final class ApertureDatabase {
             let repo = WalletRepository(modelContainer: self.container)
             do {
                 try await repo.backfillAvatarDefaults()
+                DiagnosticsLogStore.shared.record(.debug, category: "database", message: "Wallet avatar backfill finished")
             } catch {
                 self.log.error("Avatar backfill failed: \(String(describing: error), privacy: .public)")
+                DiagnosticsLogStore.shared.record(
+                    .error,
+                    category: "database",
+                    message: "Wallet avatar backfill failed",
+                    metadata: ["error": String(describing: error)]
+                )
             }
             do {
                 try await repo.backfillWalletSecretsFromLegacyKeychain()
+                DiagnosticsLogStore.shared.record(.debug, category: "database", message: "Wallet secret backfill finished")
             } catch {
                 self.log.error("Wallet-secret backfill failed: \(String(describing: error), privacy: .public)")
+                DiagnosticsLogStore.shared.record(
+                    .error,
+                    category: "database",
+                    message: "Wallet secret backfill failed",
+                    metadata: ["error": String(describing: error)]
+                )
             }
+            DiagnosticsLogStore.shared.record(
+                .info,
+                category: "database",
+                message: "Deferred database bootstrap finished",
+                metadata: ["elapsedMs": DiagnosticsLogStore.elapsedMilliseconds(since: deferredStart)]
+            )
         }
     }
 
@@ -321,8 +435,15 @@ final class ApertureDatabase {
             }
 
             try touchLastOpened(context: context)
+            DiagnosticsLogStore.shared.record(.debug, category: "database", message: "Singleton rows bootstrapped")
         } catch {
             log.error("Bootstrap failed: \(String(describing: error), privacy: .public)")
+            DiagnosticsLogStore.shared.record(
+                .error,
+                category: "database",
+                message: "Singleton row bootstrap failed",
+                metadata: ["error": String(describing: error)]
+            )
         }
     }
 
@@ -359,8 +480,23 @@ final class ApertureDatabase {
                 do {
                     try fm.removeItem(at: url)
                     log.info("Removed corrupted store file: \(url.lastPathComponent, privacy: .public)")
+                    DiagnosticsLogStore.shared.record(
+                        .warning,
+                        category: "database",
+                        message: "Removed corrupted store sidecar",
+                        metadata: ["file": url.lastPathComponent]
+                    )
                 } catch {
                     log.error("Failed to remove store file \(url.lastPathComponent, privacy: .public): \(String(describing: error), privacy: .public)")
+                    DiagnosticsLogStore.shared.record(
+                        .error,
+                        category: "database",
+                        message: "Failed to remove store sidecar",
+                        metadata: [
+                            "file": url.lastPathComponent,
+                            "error": String(describing: error)
+                        ]
+                    )
                 }
             }
         }

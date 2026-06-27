@@ -20,8 +20,8 @@ struct CatalogAsset: Sendable, Hashable, Identifiable {
     let name: String
     /// On-chain identifier used for the held-balance lookup: EVM
     /// contract / SPL mint / TRC-20 contract / NEP-141 account / Aptos
-    /// metadata / Polkadot assetId (as string) / XRPL "currency.issuer"
-    /// / TON master contract / Cosmos denom.
+    /// metadata / Sui coin type / Polkadot assetId (as string) /
+    /// XRPL "currency.issuer" / TON master contract / Cosmos denom.
     let contract: String
     let decimals: Int
 }
@@ -54,7 +54,7 @@ enum AssetCatalog {
         return mapped.isEmpty ? allAssets : mapped
     }
 
-    /// Every supported token across all 9 registries, normalized. The
+    /// Every supported token across all registries, normalized. The
     /// `id` + `contract` schemes mirror exactly what
     /// `WalletSupportedRowBuilders.tokenRows` produced inline, so the
     /// rendered list is byte-for-byte the same whether sourced from here
@@ -99,6 +99,13 @@ enum AssetCatalog {
             rows.append(CatalogAsset(
                 id: "apt.\(entry.contract)", chain: .aptos, symbol: entry.symbol,
                 name: entry.name, contract: entry.contract, decimals: entry.decimals
+            ))
+        }
+        // Sui coins.
+        for entry in SuiTokenRegistry.tokens {
+            rows.append(CatalogAsset(
+                id: "sui.\(entry.coinType)", chain: .sui, symbol: entry.symbol,
+                name: entry.name, contract: entry.coinType, decimals: entry.decimals
             ))
         }
         // Polkadot Asset Hub.

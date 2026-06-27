@@ -28,6 +28,7 @@ struct OnboardingSlideView: View {
     /// starts; the logo itself stays present (it's the matched
     /// geometry destination) and does not fade.
     let phase: AppPhase
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     /// True for the welcome beat — the only slide carrying the
     /// open-source anchor today. Slide identity is matched by the
@@ -55,7 +56,7 @@ struct OnboardingSlideView: View {
             )
 
             VStack(spacing: UniSpacing.m) {
-                UniLargeTitle(text: slide.titleKey, alignment: .center)
+                title
                     .modifier(OnboardingStaggeredFadeIn(
                         visible: !isWelcomeSlide || contentVisible,
                         delay: isWelcomeSlide ? 0.10 : 0
@@ -88,6 +89,21 @@ struct OnboardingSlideView: View {
         .accessibilityElement(children: .contain)
     }
 
+    @ViewBuilder
+    private var title: some View {
+        if isWelcomeSlide && !dynamicTypeSize.isAccessibilitySize {
+            Text(slide.titleKey)
+                .font(UniTypography.largeTitle)
+                .foregroundStyle(UniColors.Text.primary)
+                .multilineTextAlignment(.center)
+                .lineLimit(1)
+                .minimumScaleFactor(0.72)
+                .allowsTightening(true)
+        } else {
+            UniLargeTitle(text: slide.titleKey, alignment: .center)
+        }
+    }
+
     // MARK: - Open-source badge
 
     /// Restrained tappable badge — small `lock.shield` glyph, the words
@@ -105,7 +121,9 @@ struct OnboardingSlideView: View {
                 Image(systemName: "chevron.right")
                     .font(.system(size: 11, weight: .semibold))
             }
-            .foregroundStyle(UniColors.Text.tertiary)
+            .foregroundStyle(UniColors.Text.secondary)
+            .frame(minHeight: 44)
+            .padding(.horizontal, UniSpacing.xs)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
