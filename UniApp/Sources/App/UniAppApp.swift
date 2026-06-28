@@ -145,6 +145,7 @@ struct UniAppApp: App {
                 .task {
                     let startupTaskStart = Date()
                     Self.diagnostic(.info, "Root startup task started")
+                    await TokenPricingEngine.shared.configure(container: ApertureDatabase.shared.container)
                     BiometricEnrollmentTracker.checkForDrift(
                         in: ApertureDatabase.shared.container
                     )

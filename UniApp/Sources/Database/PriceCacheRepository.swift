@@ -16,6 +16,8 @@ actor PriceCacheRepository {
     /// Upsert a price by `(symbol, fiat)`. Touches `fetchedAt` so the
     /// wallet screen can compute "1m ago" style ages.
     func upsert(symbol: String, fiat: String, price: Decimal, source: String) throws {
+        let symbol = symbol.uppercased()
+        let fiat = fiat.uppercased()
         let key = "\(symbol)-\(fiat)"
         var descriptor = FetchDescriptor<CachedPriceRecord>(
             predicate: #Predicate { $0.key == key }
@@ -49,6 +51,14 @@ actor PriceCacheRepository {
     /// fetch-then-update semantics as the single `upsert`, amortized
     /// across one actor hop.
     func upsertMany(_ entries: [(symbol: String, fiat: String, price: Decimal, source: String)]) throws {
+        let entries = entries.map {
+            (
+                symbol: $0.symbol.uppercased(),
+                fiat: $0.fiat.uppercased(),
+                price: $0.price,
+                source: $0.source
+            )
+        }
         guard !entries.isEmpty else { return }
         let keys = entries.map { "\($0.symbol)-\($0.fiat)" }
         var descriptor = FetchDescriptor<CachedPriceRecord>(
@@ -88,7 +98,7 @@ actor PriceCacheRepository {
     /// view-mount for the zero-latency fiat display, then fires a
     /// background refresh via `CoinbasePriceService`.
     func price(symbol: String, fiat: String) throws -> (price: Decimal, fetchedAt: Date)? {
-        let key = "\(symbol)-\(fiat)"
+        let key = "\(symbol.uppercased())-\(fiat.uppercased())"
         var descriptor = FetchDescriptor<CachedPriceRecord>(
             predicate: #Predicate { $0.key == key }
         )
@@ -111,7 +121,8 @@ actor PriceCacheRepository {
     /// Bulk read for the wallet screen's initial render. One database
     /// hit instead of N per-symbol fetches.
     func prices(symbols: [String], fiat: String) throws -> [String: (price: Decimal, fetchedAt: Date)] {
-        let keys = symbols.map { "\($0)-\(fiat)" }
+        let fiat = fiat.uppercased()
+        let keys = symbols.map { "\($0.uppercased())-\(fiat)" }
         var descriptor = FetchDescriptor<CachedPriceRecord>(
             predicate: #Predicate { keys.contains($0.key) }
         )
