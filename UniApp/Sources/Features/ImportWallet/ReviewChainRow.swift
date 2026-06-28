@@ -66,21 +66,10 @@ struct ReviewChainRow: View {
 
     @ViewBuilder
     private var chainLogo: some View {
-        if let assetName = chain.logoAssetName,
-           UIImage(named: assetName) != nil {
-            Image(assetName)
-                .resizable()
-                .frame(width: 28, height: 28)
-                .clipShape(Circle())
-                .opacity(isStubAddress ? 0.55 : 1)
-                .accessibilityHidden(true)
-        } else {
-            Image(systemName: "circle.dashed")
-                .font(.system(size: 22, weight: .regular))
-                .foregroundStyle(UniColors.Icon.tertiary)
-                .frame(width: 28, alignment: .center)
-                .accessibilityHidden(true)
-        }
+        CoinMark(chain: chain, tokenSymbol: chain.ticker)
+            .frame(width: 28, height: 28)
+            .opacity(isStubAddress ? 0.55 : 1)
+            .accessibilityHidden(true)
     }
 
     // MARK: - Trailing column (balance + used dot)

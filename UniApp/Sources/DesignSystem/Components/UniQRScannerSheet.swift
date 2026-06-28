@@ -314,16 +314,8 @@ struct UniQRScannerSheet: View {
     }
 
     private func chainIcon(_ chain: SupportedChain) -> some View {
-        Group {
-            if let asset = chain.logoAssetName {
-                Image(asset).resizable().scaledToFit()
-            } else {
-                Circle().fill(.white.opacity(0.12))
-                    .overlay(Text(verbatim: String(chain.displayName.prefix(1))).font(.system(size: 16, weight: .bold)).foregroundStyle(.white))
-            }
-        }
+        CoinMark(chain: chain, tokenSymbol: chain.ticker)
         .frame(width: 40, height: 40)
-        .clipShape(Circle())
     }
 
     private func pillButton(_ title: LocalizedStringKey, systemImage: String?, dark: Bool, tint: Color = .white, action: @escaping () -> Void) -> some View {
