@@ -84,14 +84,14 @@ struct UniEmptyState: View {
             // `UniCard`'s own background paints this; we just declare
             // the radius here for the lift and watermark to inherit.
             RoundedRectangle(cornerRadius: UniRadius.card, style: .continuous)
-                .fill(UniColors.Material.card)
+                .fill(UniColors.EmptyState.background)
 
             // Soft elliptical lift — re-uses the splash family so the
             // empty surface visually threads to the launch screen. The
             // gradient's center sits above the card center to mirror
             // the splash's "lift at 50% × 38%" geometry.
             EllipticalGradient(
-                colors: [UniColors.Splash.lift, UniColors.Splash.base],
+                colors: [UniColors.EmptyState.liftStart, UniColors.EmptyState.liftEnd],
                 center: UnitPoint(x: 0.5, y: 0.32),
                 startRadiusFraction: 0.0,
                 endRadiusFraction: 0.95
@@ -110,12 +110,12 @@ struct UniEmptyState: View {
                     UniBody(
                         text: title,
                         alignment: .center,
-                        color: UniColors.Text.secondary
+                        color: UniColors.EmptyState.title
                     )
                     UniFootnote(
                         text: detail,
                         alignment: .center,
-                        color: UniColors.Text.tertiary
+                        color: UniColors.EmptyState.detail
                     )
                 }
                 .padding(.horizontal, UniSpacing.l)
@@ -159,13 +159,13 @@ struct UniEmptyState: View {
                 .scaledToFit()
                 .frame(width: 72, height: 72)
                 .opacity(max(0.16, currentWatermarkOpacity * 2.2))
-                .shadow(color: Color.black.opacity(0.08), radius: 16, x: 0, y: 10)
+                .shadow(color: UniColors.EmptyState.logoShadow, radius: 16, x: 0, y: 10)
         case .icon(let systemName):
             // Bare SF Symbol — same scale and breath as the iris so
             // the two empty-state kinds read as siblings.
             Image(systemName: systemName)
                 .font(.system(size: 56, weight: .light))
-                .foregroundStyle(UniColors.Icon.tertiary)
+                .foregroundStyle(UniColors.EmptyState.icon)
                 .opacity(currentWatermarkOpacity * 3)
                 // Symbol-form scales opacity differently — symbols are
                 // smaller and already monochrome, so they read at a

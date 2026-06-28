@@ -191,7 +191,7 @@ struct WatchOnlyEntryView: View {
             Text("\(valid) valid · \(invalid) invalid")
                 .font(UniTypography.caption1)
         }
-        .foregroundStyle(invalid == 0 ? UniColors.Text.secondary : UniColors.Status.warningForeground)
+        .foregroundStyle(invalid == 0 ? UniColors.Text.secondary : UniColors.Feedback.Warning.foreground)
     }
 }
 
@@ -261,7 +261,7 @@ struct WatchOnlyReviewView: View {
         VStack(alignment: .leading, spacing: UniSpacing.m) {
             Image(systemName: "exclamationmark.triangle")
                 .font(.system(size: 32, weight: .regular))
-                .foregroundStyle(UniColors.Status.warningForeground)
+                .foregroundStyle(UniColors.Feedback.Warning.foreground)
             UniHeadline(text: "Nothing to watch yet", alignment: .leading)
                 .fixedSize(horizontal: false, vertical: true)
             UniBody(

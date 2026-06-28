@@ -132,7 +132,7 @@ struct HelpAndSupportView: View {
             .padding(.vertical, UniSpacing.xxs)
             .contentShape(Rectangle())
         }
-        .listRowBackground(UniColors.Background.secondary)
+        .listRowBackground(UniColors.List.rowBackground)
     }
 }
 

@@ -110,7 +110,7 @@ struct ICloudRestoreView: View {
                             backupRow(blob)
                         }
                         .buttonStyle(.plain)
-                        .listRowBackground(UniColors.Background.secondary)
+                        .listRowBackground(UniColors.List.rowBackground)
                     }
                 } header: {
                     Text("Choose a backup to restore. You'll need its password.")
@@ -266,7 +266,7 @@ struct ICloudRestoreView: View {
                     if passwordError {
                         Text("Incorrect password. Try again.")
                             .font(UniTypography.footnote)
-                            .foregroundStyle(UniColors.Status.errorForeground)
+                            .foregroundStyle(UniColors.Feedback.Error.foreground)
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
                 }

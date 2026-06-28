@@ -176,7 +176,7 @@ struct PrivateKeyEntryView: View {
         if let format = detectedFormat {
             let (text, color) = detectionMessage(format)
             HStack(spacing: UniSpacing.xs) {
-                Image(systemName: color == UniColors.Status.warningForeground ? "exclamationmark.triangle" : "checkmark")
+                Image(systemName: color == UniColors.Feedback.Warning.foreground ? "exclamationmark.triangle" : "checkmark")
                     .font(.system(size: 12, weight: .semibold))
                 Text(text)
                     .font(UniTypography.caption1)
@@ -199,9 +199,9 @@ struct PrivateKeyEntryView: View {
         case .cosmosHex, .ed25519Hex:
             return ("Hex-encoded private key.", UniColors.Text.secondary)
         case .extendedPublicKey:
-            return ("This is an extended public key. Use Watch-only instead.", UniColors.Status.warningForeground)
+            return ("This is an extended public key. Use Watch-only instead.", UniColors.Feedback.Warning.foreground)
         case .unknown:
-            return ("This doesn't parse as a \(chain.displayName) key. Check the format.", UniColors.Status.warningForeground)
+            return ("This doesn't parse as a \(chain.displayName) key. Check the format.", UniColors.Feedback.Warning.foreground)
         }
     }
 
@@ -295,7 +295,7 @@ struct PrivateKeyReviewView: View {
         VStack(alignment: .leading, spacing: UniSpacing.m) {
             Image(systemName: "exclamationmark.triangle")
                 .font(.system(size: 32, weight: .regular))
-                .foregroundStyle(UniColors.Status.warningForeground)
+                .foregroundStyle(UniColors.Feedback.Warning.foreground)
             UniHeadline(text: "Couldn't read this key", alignment: .leading)
                 .fixedSize(horizontal: false, vertical: true)
             UniBody(

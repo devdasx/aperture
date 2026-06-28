@@ -46,7 +46,7 @@ struct ReceiveNetworkPickerView: View {
                         )
                     }
                     .buttonStyle(.plain)
-                    .listRowBackground(UniColors.Background.secondary)
+                    .listRowBackground(UniColors.List.rowBackground)
                     .accessibilityLabel(Text(verbatim: chain.displayName))
                     .accessibilityHint(Text("Receive \(symbol) on this network"))
                 }

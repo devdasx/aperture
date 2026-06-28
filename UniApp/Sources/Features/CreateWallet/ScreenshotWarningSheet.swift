@@ -82,7 +82,7 @@ struct ScreenshotWarningSheet: View {
             Image(systemName: "exclamationmark.shield.fill")
                 .font(.system(size: 40, weight: .regular))
                 .symbolRenderingMode(.hierarchical)
-                .foregroundStyle(UniColors.Status.warningForeground)
+                .foregroundStyle(UniColors.Feedback.Warning.foreground)
                 .accessibilityHidden(true)
             Spacer()
         }

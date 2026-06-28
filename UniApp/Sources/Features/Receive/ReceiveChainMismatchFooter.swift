@@ -22,7 +22,7 @@ struct ReceiveChainMismatchFooter: View {
         HStack(alignment: .top, spacing: UniSpacing.s) {
             Image(systemName: "exclamationmark.shield")
                 .font(.system(size: 18, weight: .regular))
-                .foregroundStyle(UniColors.Status.warningForeground)
+                .foregroundStyle(UniColors.Feedback.Warning.foreground)
                 .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: UniSpacing.xs) {
@@ -49,11 +49,11 @@ struct ReceiveChainMismatchFooter: View {
         .padding(UniSpacing.m)
         .background(
             RoundedRectangle(cornerRadius: UniRadius.card, style: .continuous)
-                .fill(UniColors.Status.warningBackground)
+                .fill(UniColors.Feedback.Warning.background)
         )
         .overlay(
             RoundedRectangle(cornerRadius: UniRadius.card, style: .continuous)
-                .stroke(UniColors.Status.warningStroke, lineWidth: 0.5)
+                .stroke(UniColors.Feedback.Warning.stroke, lineWidth: 0.5)
         )
     }
 

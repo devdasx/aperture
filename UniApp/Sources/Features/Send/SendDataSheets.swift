@@ -161,11 +161,11 @@ struct SendDestinationTagSheet: View {
                     Label {
                         Text("That isn't a valid tag — use numbers only (0 to 4,294,967,295).")
                             .font(UniTypography.footnote)
-                            .foregroundStyle(UniColors.Status.errorForeground)
+                            .foregroundStyle(UniColors.Feedback.Error.foreground)
                     } icon: {
                         Image(systemName: "exclamationmark.circle.fill")
                             .font(.system(size: 13))
-                            .foregroundStyle(UniColors.Status.errorForeground)
+                            .foregroundStyle(UniColors.Feedback.Error.foreground)
                     }
                 }
                 Spacer(minLength: 0)
@@ -349,7 +349,7 @@ private struct ComposeExchangeNote: View {
         HStack(alignment: .top, spacing: UniSpacing.xs) {
             Image(systemName: "exclamationmark.triangle.fill")
                 .font(.system(size: 14))
-                .foregroundStyle(UniColors.Status.warningForeground)
+                .foregroundStyle(UniColors.Feedback.Warning.foreground)
             Text(text)
                 .font(UniTypography.footnote)
                 .foregroundStyle(UniColors.Text.secondary)
@@ -359,7 +359,7 @@ private struct ComposeExchangeNote: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
             RoundedRectangle(cornerRadius: UniRadius.row, style: .continuous)
-                .fill(UniColors.Status.warningBackground)
+                .fill(UniColors.Feedback.Warning.background)
         )
     }
 }
@@ -397,7 +397,7 @@ private func byteCounter(_ count: Int, max: Int, over: Bool) -> some View {
         Spacer()
         Text(verbatim: "\(count) / \(max) bytes")
             .font(UniTypography.caption1.monospacedDigit())
-            .foregroundStyle(over ? UniColors.Status.errorForeground : UniColors.Text.tertiary)
+            .foregroundStyle(over ? UniColors.Feedback.Error.foreground : UniColors.Text.tertiary)
             .environment(\.layoutDirection, .leftToRight)
     }
 }

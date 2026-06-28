@@ -591,7 +591,7 @@ struct MarketsView: View {
                             .tint(.yellow)
                         }
                     }
-                    .listRowBackground(UniColors.Background.secondary)
+                    .listRowBackground(UniColors.List.rowBackground)
                 }
             }
         }

@@ -227,7 +227,7 @@ struct SendAmountView: View {
         HStack(alignment: .top, spacing: UniSpacing.xs) {
             Image(systemName: "exclamationmark.triangle.fill")
                 .font(.system(size: 14))
-                .foregroundStyle(UniColors.Status.warningForeground)
+                .foregroundStyle(UniColors.Feedback.Warning.foreground)
             Text(verbatim: error.message)
                 .font(UniTypography.footnote)
                 .foregroundStyle(UniColors.Text.secondary)
@@ -237,7 +237,7 @@ struct SendAmountView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
             RoundedRectangle(cornerRadius: UniRadius.row, style: .continuous)
-                .fill(UniColors.Status.warningBackground)
+                .fill(UniColors.Feedback.Warning.background)
         )
     }
 

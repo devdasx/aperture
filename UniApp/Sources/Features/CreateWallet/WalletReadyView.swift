@@ -103,7 +103,7 @@ struct WalletReadyView: View {
             Image(systemName: "exclamationmark.triangle.fill")
                 .font(.system(size: 84, weight: .regular))
                 .symbolRenderingMode(.hierarchical)
-                .foregroundStyle(UniColors.Status.errorForeground)
+                .foregroundStyle(UniColors.Feedback.Error.foreground)
                 .accessibilityHidden(true)
             VStack(spacing: UniSpacing.s) {
                 UniLargeTitle(text: "Couldn't save your wallet.", alignment: .center)
@@ -121,7 +121,7 @@ struct WalletReadyView: View {
                 UniFootnote(
                     text: LocalizedStringKey(message),
                     alignment: .center,
-                    color: UniColors.Status.errorForeground
+                    color: UniColors.Feedback.Error.foreground
                 )
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.horizontal, UniSpacing.m)

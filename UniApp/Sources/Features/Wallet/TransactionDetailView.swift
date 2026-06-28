@@ -228,7 +228,7 @@ struct TransactionDetailView: View {
                         color: UniColors.Text.secondary
                     )
                 }
-                .listRowBackground(UniColors.Background.secondary)
+                .listRowBackground(UniColors.List.rowBackground)
             }
         }
     }
@@ -687,7 +687,7 @@ struct TransactionDetailView: View {
             }
             if let err = sol.errString {
                 divider
-                keyValueRow(label: "Error", value: err, valueColor: UniColors.Status.errorForeground)
+                keyValueRow(label: "Error", value: err, valueColor: UniColors.Feedback.Error.foreground)
             }
         }
 
@@ -793,7 +793,7 @@ struct TransactionDetailView: View {
                 content()
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .listRowBackground(UniColors.Background.secondary)
+            .listRowBackground(UniColors.List.rowBackground)
         } header: {
             HStack(alignment: .firstTextBaseline) {
                 Text(title)

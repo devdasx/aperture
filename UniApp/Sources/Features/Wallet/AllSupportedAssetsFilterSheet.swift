@@ -113,7 +113,7 @@ struct AllSupportedAssetsFilterSheet: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
             .padding(.vertical, UniSpacing.xxs)
-            .listRowBackground(UniColors.Background.secondary)
+            .listRowBackground(UniColors.List.rowBackground)
         }
     }
 
@@ -137,9 +137,9 @@ struct AllSupportedAssetsFilterSheet: View {
     private var viewSection: some View {
         Section {
             sortKeyPicker
-                .listRowBackground(UniColors.Background.secondary)
+                .listRowBackground(UniColors.List.rowBackground)
             assetTypePicker
-                .listRowBackground(UniColors.Background.secondary)
+                .listRowBackground(UniColors.List.rowBackground)
         } header: {
             Text("View")
         }
@@ -189,10 +189,10 @@ struct AllSupportedAssetsFilterSheet: View {
             NavigationLink(value: AllSupportedFilterDestination.networks) {
                 networksLink
             }
-            .listRowBackground(UniColors.Background.secondary)
+            .listRowBackground(UniColors.List.rowBackground)
 
             onlyWithBalanceToggle
-                .listRowBackground(UniColors.Background.secondary)
+                .listRowBackground(UniColors.List.rowBackground)
         } header: {
             Text("Show")
         } footer: {
@@ -248,7 +248,7 @@ struct AllSupportedAssetsFilterSheet: View {
                     .foregroundStyle(UniColors.Text.primary)
             }
         }
-        .tint(UniColors.Button.primaryTint)
+        .tint(UniColors.Button.Primary.tint)
         .padding(.vertical, UniSpacing.xxs)
         .uniHaptic(.selection, trigger: onlyWithBalance)
     }
@@ -330,13 +330,13 @@ private struct AllSupportedNetworksPicker: View {
                         }
                     }
                 }
-                .listRowBackground(UniColors.Background.secondary)
+                .listRowBackground(UniColors.List.rowBackground)
             }
 
             Section {
                 ForEach(SupportedChain.allCases, id: \.self) { chain in
                     networkRow(chain)
-                        .listRowBackground(UniColors.Background.secondary)
+                        .listRowBackground(UniColors.List.rowBackground)
                 }
             } header: {
                 Text("Networks")

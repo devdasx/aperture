@@ -37,7 +37,7 @@ struct AbandonWalletWarningSheet: View {
             Image(systemName: "xmark.octagon")
                 .font(.system(size: 48, weight: .regular))
                 .symbolRenderingMode(.hierarchical)
-                .foregroundStyle(UniColors.Status.warningForeground)
+                .foregroundStyle(UniColors.Feedback.Warning.foreground)
                 .accessibilityHidden(true)
             Spacer()
         }

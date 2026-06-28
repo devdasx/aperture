@@ -268,17 +268,17 @@ struct ResetApertureFlow: View {
         HStack(alignment: .top, spacing: 12) {
             Image(systemName: "exclamationmark.triangle")
                 .font(.system(size: 18, weight: .semibold))
-                .foregroundStyle(UniColors.Status.warningForeground)
+                .foregroundStyle(UniColors.Feedback.Warning.foreground)
                 .frame(width: 22, height: 22)
             Text("\(Text("No recovery phrase, no recovery.").bold()) Make sure every wallet you want to keep is backed up first.")
-                .foregroundColor(UniColors.Status.warningForeground)
+                .foregroundColor(UniColors.Feedback.Warning.foreground)
                 .font(.system(size: 13, weight: .medium))
                 .fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: 0)
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 15)
-        .background(UniColors.Status.warningBackground, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .background(UniColors.Feedback.Warning.background, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 
     // MARK: - 2b · Wallet picker (backup branch)
@@ -709,7 +709,7 @@ struct ResetApertureFlow: View {
         Section {
             ForEach(Self.visibleProcessStages, id: \.self) { stage in
                 processRow(stage, state: stepState(stage))
-                    .listRowBackground(UniColors.Background.secondary)
+                    .listRowBackground(UniColors.List.rowBackground)
             }
         }
     }

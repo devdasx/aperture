@@ -149,7 +149,7 @@ struct SendV2PrimaryButton: View {
                 Text(title)
                     .font(UniTypography.buttonLabel)
             }
-            .foregroundStyle(isEnabled ? UniColors.Send.onDarkGlass : UniColors.Button.disabledLabel)
+            .foregroundStyle(isEnabled ? UniColors.Send.onDarkGlass : UniColors.Button.Primary.disabledLabel)
             .frame(maxWidth: .infinity)
             .frame(height: 52)
             .background(
@@ -157,7 +157,7 @@ struct SendV2PrimaryButton: View {
                     .fill(
                         isEnabled
                             ? AnyShapeStyle(UniColors.Send.darkGlass)
-                            : AnyShapeStyle(UniColors.Button.disabledProminentFill)
+                            : AnyShapeStyle(UniColors.Button.Primary.disabledTint)
                     )
             )
             .contentShape(Capsule(style: .continuous))

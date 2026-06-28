@@ -252,7 +252,7 @@ private struct ImportMethodSelectionView: View {
                     info: .iCloud,
                     onPick: { onPick(.iCloudRestore) }
                 )
-                .listRowBackground(UniColors.Background.secondary)
+                .listRowBackground(UniColors.List.rowBackground)
 
                 methodRow(
                     systemImage: "text.book.closed",
@@ -260,7 +260,7 @@ private struct ImportMethodSelectionView: View {
                     info: .recoveryPhrase,
                     onPick: { onPick(.mnemonicEntry) }
                 )
-                .listRowBackground(UniColors.Background.secondary)
+                .listRowBackground(UniColors.List.rowBackground)
 
                 methodRow(
                     systemImage: "key.horizontal",
@@ -268,7 +268,7 @@ private struct ImportMethodSelectionView: View {
                     info: .privateKey,
                     onPick: { onPick(.keyChainPicker) }
                 )
-                .listRowBackground(UniColors.Background.secondary)
+                .listRowBackground(UniColors.List.rowBackground)
 
                 methodRow(
                     systemImage: "eye",
@@ -276,7 +276,7 @@ private struct ImportMethodSelectionView: View {
                     info: .watchOnly,
                     onPick: { onPick(.watchOnlyChainPicker) }
                 )
-                .listRowBackground(UniColors.Background.secondary)
+                .listRowBackground(UniColors.List.rowBackground)
             }
 
             Section {

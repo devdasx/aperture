@@ -57,7 +57,7 @@ struct OnboardingSettingsView: View {
                             trailing: languageRowTrailing
                         )
                     }
-                    .listRowBackground(UniColors.Background.secondary)
+                    .listRowBackground(UniColors.List.rowBackground)
 
                     NavigationLink(value: OnboardingSettingsDestination.appearance) {
                         OnboardingSettingsRow(
@@ -66,10 +66,10 @@ struct OnboardingSettingsView: View {
                             trailing: theme.label
                         )
                     }
-                    .listRowBackground(UniColors.Background.secondary)
+                    .listRowBackground(UniColors.List.rowBackground)
 
                     OnboardingHapticToggleRow(isOn: $hapticEnabled)
-                        .listRowBackground(UniColors.Background.secondary)
+                        .listRowBackground(UniColors.List.rowBackground)
                 }
 
                 // Help & About — external links and version surface
@@ -84,7 +84,7 @@ struct OnboardingSettingsView: View {
                             trailing: nil
                         )
                     }
-                    .listRowBackground(UniColors.Background.secondary)
+                    .listRowBackground(UniColors.List.rowBackground)
 
                     NavigationLink(value: OnboardingSettingsDestination.about) {
                         OnboardingSettingsRow(
@@ -93,7 +93,7 @@ struct OnboardingSettingsView: View {
                             trailing: LocalizedStringKey(AboutInfo.versionString)
                         )
                     }
-                    .listRowBackground(UniColors.Background.secondary)
+                    .listRowBackground(UniColors.List.rowBackground)
                 }
             }
             .listStyle(.insetGrouped)
@@ -203,7 +203,7 @@ private struct OnboardingHapticToggleRow: View {
                     .foregroundStyle(UniColors.Text.primary)
             }
         }
-        .tint(UniColors.Button.primaryTint)
+        .tint(UniColors.Button.Primary.tint)
         .padding(.vertical, UniSpacing.xxs)
         .uniHaptic(.selection, trigger: isOn)
     }

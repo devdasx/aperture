@@ -32,7 +32,7 @@ struct ChainPickerView: View {
                         chainRow(chain)
                     }
                     .buttonStyle(.plain)
-                    .listRowBackground(UniColors.Background.secondary)
+                    .listRowBackground(UniColors.List.rowBackground)
                 }
             }
         }

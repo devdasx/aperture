@@ -88,7 +88,7 @@ struct CurrencyPickerView: View {
             ) {
                 currencyCode = currency.code
             }
-            .listRowBackground(UniColors.Background.secondary)
+            .listRowBackground(UniColors.List.rowBackground)
         }
     }
 

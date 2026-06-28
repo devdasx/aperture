@@ -284,7 +284,7 @@ struct WalletsListView: View {
                         NavigationLink(value: SettingsDestination.walletDetail(wallet.id)) {
                             walletRow(wallet)
                         }
-                        .listRowBackground(UniColors.Background.secondary)
+                        .listRowBackground(UniColors.List.rowBackground)
                         // Leading full-swipe = the primary action: make this
                         // wallet active, or — if it's already active — back it
                         // up (2026-06-20 user direction).
@@ -298,7 +298,7 @@ struct WalletsListView: View {
                                 Button { makeActive(wallet) } label: {
                                     Label("Activate", systemImage: "checkmark.circle.fill")
                                 }
-                                .tint(UniColors.Status.successForeground)
+                                .tint(UniColors.Feedback.Success.foreground)
                             }
                         }
                         // Trailing = the rest: refresh, back up (when not the
@@ -334,7 +334,7 @@ struct WalletsListView: View {
                     entryRow(systemImage: "plus", title: "Create new wallet")
                 }
                 .buttonStyle(.plain)
-                .listRowBackground(UniColors.Background.secondary)
+                .listRowBackground(UniColors.List.rowBackground)
 
                 Button {
                     isShowingImport = true
@@ -342,7 +342,7 @@ struct WalletsListView: View {
                     entryRow(systemImage: "square.and.arrow.down", title: "Import existing wallet")
                 }
                 .buttonStyle(.plain)
-                .listRowBackground(UniColors.Background.secondary)
+                .listRowBackground(UniColors.List.rowBackground)
             }
         }
         .listStyle(.insetGrouped)
@@ -488,11 +488,11 @@ struct WalletsListView: View {
                     if wallet.id.uuidString == activeWalletIdRaw {
                         Text("Active")
                             .font(.system(size: 10, weight: .semibold))
-                            .foregroundStyle(UniColors.Status.successForeground)
+                            .foregroundStyle(UniColors.Feedback.Success.foreground)
                             .padding(.horizontal, UniSpacing.xs)
                             .padding(.vertical, 2)
                             .background(
-                                Capsule().fill(UniColors.Status.successBackground)
+                                Capsule().fill(UniColors.Feedback.Success.background)
                             )
                     }
                 }
@@ -509,7 +509,7 @@ struct WalletsListView: View {
                 if wallet.requiresBackup {
                     Text("Not backed up")
                         .font(UniTypography.caption1)
-                        .foregroundStyle(UniColors.Status.warningForeground)
+                        .foregroundStyle(UniColors.Feedback.Warning.foreground)
                 }
             }
 
@@ -926,14 +926,14 @@ struct WalletsListFilterSheet: View {
             } label: {
                 Text("Sort by").font(UniTypography.body).foregroundStyle(UniColors.Text.primary)
             }
-            .listRowBackground(UniColors.Background.secondary)
+            .listRowBackground(UniColors.List.rowBackground)
 
             Toggle(isOn: $sortAscending) {
                 Text("Ascending order").font(UniTypography.body).foregroundStyle(isCustomSort ? UniColors.Text.disabled : UniColors.Text.primary)
             }
-            .tint(UniColors.Button.primaryTint)
+            .tint(UniColors.Button.Primary.tint)
             .disabled(isCustomSort)
-            .listRowBackground(UniColors.Background.secondary)
+            .listRowBackground(UniColors.List.rowBackground)
         } header: {
             Text("Sort").font(UniTypography.footnote).foregroundStyle(UniColors.Text.tertiary)
         }
@@ -959,7 +959,7 @@ struct WalletsListFilterSheet: View {
             } label: {
                 Text("Active state").font(UniTypography.body).foregroundStyle(UniColors.Text.primary)
             }
-            .listRowBackground(UniColors.Background.secondary)
+            .listRowBackground(UniColors.List.rowBackground)
 
             Picker(selection: $visibilityScopeRaw) {
                 ForEach(WalletsListVisibilityScope.allCases) { scope in
@@ -968,7 +968,7 @@ struct WalletsListFilterSheet: View {
             } label: {
                 Text("Visibility").font(UniTypography.body).foregroundStyle(UniColors.Text.primary)
             }
-            .listRowBackground(UniColors.Background.secondary)
+            .listRowBackground(UniColors.List.rowBackground)
         } header: {
             Text("Status").font(UniTypography.footnote).foregroundStyle(UniColors.Text.tertiary)
         }
@@ -983,13 +983,13 @@ struct WalletsListFilterSheet: View {
             } label: {
                 Text("Balance").font(UniTypography.body).foregroundStyle(UniColors.Text.primary)
             }
-            .listRowBackground(UniColors.Background.secondary)
+            .listRowBackground(UniColors.List.rowBackground)
 
             amountField(placeholder: "Minimum", text: $minFiatRaw)
-                .listRowBackground(UniColors.Background.secondary)
+                .listRowBackground(UniColors.List.rowBackground)
 
             amountField(placeholder: "Maximum", text: $maxFiatRaw)
-                .listRowBackground(UniColors.Background.secondary)
+                .listRowBackground(UniColors.List.rowBackground)
         } header: {
             Text("Holdings").font(UniTypography.footnote).foregroundStyle(UniColors.Text.tertiary)
         } footer: {
@@ -1009,7 +1009,7 @@ struct WalletsListFilterSheet: View {
             } label: {
                 Text("Coverage").font(UniTypography.body).foregroundStyle(UniColors.Text.primary)
             }
-            .listRowBackground(UniColors.Background.secondary)
+            .listRowBackground(UniColors.List.rowBackground)
 
             NavigationLink {
                 WalletsListNetworkFilterView(selectedNetworksJSON: $selectedNetworksJSON)
@@ -1020,7 +1020,7 @@ struct WalletsListFilterSheet: View {
                     readout: networkReadout
                 )
             }
-            .listRowBackground(UniColors.Background.secondary)
+            .listRowBackground(UniColors.List.rowBackground)
         } header: {
             Text("Networks").font(UniTypography.footnote).foregroundStyle(UniColors.Text.tertiary)
         }
@@ -1036,7 +1036,7 @@ struct WalletsListFilterSheet: View {
                 Text("Backup").font(UniTypography.body).foregroundStyle(UniColors.Text.primary)
             }
             .onChange(of: backupScopeRaw) { _, _ in legacyOnlyUnbackedUp = false }
-            .listRowBackground(UniColors.Background.secondary)
+            .listRowBackground(UniColors.List.rowBackground)
 
             Picker(selection: $secretScopeRaw) {
                 ForEach(WalletsListSecretScope.allCases) { scope in
@@ -1045,13 +1045,13 @@ struct WalletsListFilterSheet: View {
             } label: {
                 Text("Signing key").font(UniTypography.body).foregroundStyle(UniColors.Text.primary)
             }
-            .listRowBackground(UniColors.Background.secondary)
+            .listRowBackground(UniColors.List.rowBackground)
 
             Toggle(isOn: $onlyPassphrase) {
                 Text("Only wallets with passphrase").font(UniTypography.body).foregroundStyle(UniColors.Text.primary)
             }
-            .tint(UniColors.Button.primaryTint)
-            .listRowBackground(UniColors.Background.secondary)
+            .tint(UniColors.Button.Primary.tint)
+            .listRowBackground(UniColors.List.rowBackground)
         } header: {
             Text("Security").font(UniTypography.footnote).foregroundStyle(UniColors.Text.tertiary)
         }
@@ -1066,7 +1066,7 @@ struct WalletsListFilterSheet: View {
             } label: {
                 Text("Date added").font(UniTypography.body).foregroundStyle(UniColors.Text.primary)
             }
-            .listRowBackground(UniColors.Background.secondary)
+            .listRowBackground(UniColors.List.rowBackground)
         } header: {
             Text("Added").font(UniTypography.footnote).foregroundStyle(UniColors.Text.tertiary)
         }
@@ -1079,7 +1079,7 @@ struct WalletsListFilterSheet: View {
             } label: {
                 Text("Reset filters").font(UniTypography.body)
             }
-            .listRowBackground(UniColors.Background.secondary)
+            .listRowBackground(UniColors.List.rowBackground)
         }
     }
 
@@ -1087,8 +1087,8 @@ struct WalletsListFilterSheet: View {
         Toggle(isOn: isOn) {
             Text(title).font(UniTypography.body).foregroundStyle(UniColors.Text.primary)
         }
-        .tint(UniColors.Button.primaryTint)
-        .listRowBackground(UniColors.Background.secondary)
+        .tint(UniColors.Button.Primary.tint)
+        .listRowBackground(UniColors.List.rowBackground)
     }
 
     private var networkReadout: String {
@@ -1214,13 +1214,13 @@ private struct WalletsListNetworkFilterView: View {
                     }
                     .padding(.vertical, UniSpacing.xxs)
                 }
-                .listRowBackground(UniColors.Background.secondary)
+                .listRowBackground(UniColors.List.rowBackground)
             }
 
             Section {
                 ForEach(chains, id: \.rawValue) { chain in
                     networkRow(chain)
-                        .listRowBackground(UniColors.Background.secondary)
+                        .listRowBackground(UniColors.List.rowBackground)
                 }
             } header: {
                 Text("Networks")

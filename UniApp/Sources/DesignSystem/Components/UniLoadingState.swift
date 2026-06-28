@@ -36,11 +36,11 @@ struct UniLoadingState: View {
         VStack(spacing: UniSpacing.m) {
             ProgressView()
                 .controlSize(.large)
-                .tint(UniColors.Icon.secondary)
+                .tint(UniColors.Loading.spinner)
             if let caption {
                 Text(caption)
                     .font(UniTypography.subheadline)
-                    .foregroundStyle(UniColors.Text.secondary)
+                    .foregroundStyle(UniColors.Loading.caption)
                     .multilineTextAlignment(.center)
                     .fixedSize(horizontal: false, vertical: true)
             }

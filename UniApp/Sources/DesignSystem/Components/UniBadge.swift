@@ -35,15 +35,15 @@ struct UniBadge: View {
     private var palette: (background: Color, foreground: Color, stroke: Color) {
         switch kind {
         case .success:
-            return (UniColors.Status.successBackground, UniColors.Status.successForeground, UniColors.Status.successStroke)
+            return (UniColors.Badge.Success.background, UniColors.Badge.Success.foreground, UniColors.Badge.Success.stroke)
         case .warning:
-            return (UniColors.Status.warningBackground, UniColors.Status.warningForeground, UniColors.Status.warningStroke)
+            return (UniColors.Badge.Warning.background, UniColors.Badge.Warning.foreground, UniColors.Badge.Warning.stroke)
         case .error:
-            return (UniColors.Status.errorBackground, UniColors.Status.errorForeground, UniColors.Status.errorStroke)
+            return (UniColors.Badge.Error.background, UniColors.Badge.Error.foreground, UniColors.Badge.Error.stroke)
         case .info:
-            return (UniColors.Status.infoBackground, UniColors.Status.infoForeground, UniColors.Status.infoStroke)
+            return (UniColors.Badge.Info.background, UniColors.Badge.Info.foreground, UniColors.Badge.Info.stroke)
         case .neutral:
-            return (UniColors.Status.neutralBackground, UniColors.Status.neutralForeground, UniColors.Status.neutralStroke)
+            return (UniColors.Badge.Neutral.background, UniColors.Badge.Neutral.foreground, UniColors.Badge.Neutral.stroke)
         }
     }
 }

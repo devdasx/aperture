@@ -121,7 +121,7 @@ struct ReviewChainRow: View {
 
     private var usedDot: some View {
         Circle()
-            .fill(UniColors.Status.successForeground)
+            .fill(UniColors.Feedback.Success.foreground)
             .frame(width: 6, height: 6)
             .accessibilityLabel(Text("Active address — has on-chain history"))
     }

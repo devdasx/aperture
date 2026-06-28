@@ -128,7 +128,7 @@ struct BackupVerifyView: View {
             if isError {
                 UniFootnote(
                     text: "Try again.",
-                    color: UniColors.Status.errorForeground
+                    color: UniColors.Feedback.Error.foreground
                 )
             }
         }
@@ -140,7 +140,7 @@ struct BackupVerifyView: View {
         .overlay(
             RoundedRectangle(cornerRadius: UniRadius.card, style: .continuous)
                 .stroke(
-                    isError ? UniColors.Status.errorStroke : Color.clear,
+                    isError ? UniColors.Feedback.Error.stroke : Color.clear,
                     lineWidth: isError ? 1.5 : 0
                 )
         )
@@ -177,7 +177,7 @@ struct BackupVerifyView: View {
             RoundedRectangle(cornerRadius: UniRadius.m, style: .continuous)
                 .fill(
                     isSelected
-                        ? UniColors.Button.primaryTint
+                        ? UniColors.Button.Primary.tint
                         : UniColors.Background.tertiary
                 )
         )

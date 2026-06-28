@@ -112,7 +112,7 @@ struct ReceiveQRDetailView: View {
             .contentShape(Capsule())
         }
         .buttonStyle(.glassProminent)
-        .tint(UniColors.Button.primaryTint)
+        .tint(UniColors.Button.Primary.tint)
         .accessibilityLabel(Text("Share address"))
     }
 

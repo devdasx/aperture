@@ -302,7 +302,7 @@ struct LeakedSeedWarningSheet: View {
             Image(systemName: "exclamationmark.triangle.fill")
                 .font(.system(size: 44, weight: .regular))
                 .symbolRenderingMode(.hierarchical)
-                .foregroundStyle(UniColors.Status.warningForeground)
+                .foregroundStyle(UniColors.Feedback.Warning.foreground)
                 .accessibilityHidden(true)
             Spacer()
         }

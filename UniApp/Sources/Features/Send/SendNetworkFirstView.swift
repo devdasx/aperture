@@ -155,7 +155,7 @@ struct SendNetworkFirstView: View {
                     )
                 }
                 .buttonStyle(.plain)
-                .listRowBackground(UniColors.Background.secondary)
+                .listRowBackground(UniColors.List.rowBackground)
                 .accessibilityLabel(Text(verbatim: chain.displayName))
                 .accessibilityHint(Text("Send \(assetPrefill.symbol) on this network"))
             }

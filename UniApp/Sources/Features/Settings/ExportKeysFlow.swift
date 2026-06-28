@@ -147,7 +147,7 @@ private struct RecoveryPhraseRevealScreen: View {
                     .padding(.top, UniSpacing.s)
 
                     if let loadError {
-                        UniBody(text: LocalizedStringKey(loadError), alignment: .center, color: UniColors.Status.errorForeground)
+                        UniBody(text: LocalizedStringKey(loadError), alignment: .center, color: UniColors.Feedback.Error.foreground)
                             .padding(.vertical, UniSpacing.xxl)
                     } else if words.isEmpty {
                         UniLoadingState(caption: "Preparing your phrase…")
@@ -409,7 +409,7 @@ private struct PickNetworkScreen: View {
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
-                    .listRowBackground(UniColors.Background.secondary)
+                    .listRowBackground(UniColors.List.rowBackground)
                 }
             } header: {
                 Text("Choose the network whose key you want to export.")
@@ -658,7 +658,7 @@ private struct ExportQRSheet<Center: View>: View {
                 if let saveResult {
                     Text(saveResult == .success ? "Saved to Photos." : "Couldn't save. Allow Photos access in Settings.")
                         .font(UniTypography.footnote)
-                        .foregroundStyle(saveResult == .success ? UniColors.Status.successForeground : UniColors.Status.errorForeground)
+                        .foregroundStyle(saveResult == .success ? UniColors.Feedback.Success.foreground : UniColors.Feedback.Error.foreground)
                 }
 
                 Spacer()
@@ -851,7 +851,7 @@ private struct ExportWarnScreen: View {
                     Image(systemName: "exclamationmark.triangle.fill")
                         .font(.system(size: 52, weight: .regular))
                         .symbolRenderingMode(.hierarchical)
-                        .foregroundStyle(UniColors.Status.errorForeground)
+                        .foregroundStyle(UniColors.Feedback.Error.foreground)
                         .padding(.top, UniSpacing.l)
                         .accessibilityHidden(true)
 

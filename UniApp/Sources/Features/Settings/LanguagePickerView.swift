@@ -103,7 +103,7 @@ struct LanguagePickerView: View {
         ) {
             languageCode = LanguagePreference.systemCode
         }
-        .listRowBackground(UniColors.Background.secondary)
+        .listRowBackground(UniColors.List.rowBackground)
     }
 
     @ViewBuilder
@@ -121,7 +121,7 @@ struct LanguagePickerView: View {
             ) {
                 languageCode = language.code
             }
-            .listRowBackground(UniColors.Background.secondary)
+            .listRowBackground(UniColors.List.rowBackground)
         }
     }
 

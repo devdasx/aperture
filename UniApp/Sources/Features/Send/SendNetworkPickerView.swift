@@ -46,7 +46,7 @@ struct SendNetworkPickerView: View {
                         )
                     }
                     .buttonStyle(.plain)
-                    .listRowBackground(UniColors.Background.secondary)
+                    .listRowBackground(UniColors.List.rowBackground)
                     .accessibilityLabel(Text(verbatim: chain.displayName))
                     .accessibilityHint(Text("Send \(symbol) on this network"))
                 }

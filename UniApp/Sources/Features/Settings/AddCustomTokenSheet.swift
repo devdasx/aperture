@@ -272,7 +272,7 @@ struct AddCustomTokenSheet: View {
             HStack(alignment: .top, spacing: UniSpacing.s) {
                 Image(systemName: "exclamationmark.triangle")
                     .font(.system(size: 22, weight: .regular))
-                    .foregroundStyle(UniColors.Status.warningForeground)
+                    .foregroundStyle(UniColors.Feedback.Warning.foreground)
                     .frame(width: 28)
                     .accessibilityHidden(true)
                 UniBody(text: reason.copy, color: UniColors.Text.secondary)

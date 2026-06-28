@@ -43,7 +43,7 @@ struct AppearancePickerView: View {
                     }
                     .buttonStyle(.plain)
                     .accessibilityAddTraits(current == option ? [.isSelected, .isButton] : .isButton)
-                    .listRowBackground(UniColors.Background.secondary)
+                    .listRowBackground(UniColors.List.rowBackground)
                 }
             }
         }

@@ -119,7 +119,7 @@ struct SendFeeSheet: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .listRowBackground(UniColors.Background.secondary)
+        .listRowBackground(UniColors.List.rowBackground)
     }
 
     private func singleFeeRow(_ choice: FeeChoice) -> some View {
@@ -133,7 +133,7 @@ struct SendFeeSheet: View {
             Spacer(minLength: UniSpacing.s)
             feeColumn(choice)
         }
-        .listRowBackground(UniColors.Background.secondary)
+        .listRowBackground(UniColors.List.rowBackground)
     }
 
     @ViewBuilder
@@ -178,7 +178,7 @@ struct SendFeeSheet: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .listRowBackground(UniColors.Background.secondary)
+            .listRowBackground(UniColors.List.rowBackground)
 
             customFields(quote)
         } header: {
@@ -235,7 +235,7 @@ struct SendFeeSheet: View {
                 .font(UniTypography.footnote)
                 .foregroundStyle(UniColors.Text.tertiary)
         }
-        .listRowBackground(UniColors.Background.secondary)
+        .listRowBackground(UniColors.List.rowBackground)
     }
 
     private var unavailable: some View {

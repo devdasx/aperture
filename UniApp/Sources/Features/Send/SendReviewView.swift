@@ -613,9 +613,9 @@ private struct SendSentView: View {
     }
 
     private var heroColor: Color {
-        if isFailed { return UniColors.Status.warningForeground }
+        if isFailed { return UniColors.Feedback.Warning.foreground }
         if isPending { return UniColors.Brand.mark }
-        return UniColors.Status.successForeground
+        return UniColors.Feedback.Success.foreground
     }
 
     private var heroTitle: LocalizedStringKey {
@@ -687,7 +687,7 @@ private struct SendSentView: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .foregroundStyle(didCopy ? UniColors.Status.successForeground : UniColors.Text.link)
+        .foregroundStyle(didCopy ? UniColors.Feedback.Success.foreground : UniColors.Text.link)
         .accessibilityLabel(Text("Copy transaction hash"))
     }
 
@@ -781,7 +781,7 @@ private struct SendFailedView: View {
             Image(systemName: isRefusal ? "lock.shield" : "exclamationmark.triangle")
                 .font(.system(size: 52, weight: .regular))
                 .symbolRenderingMode(.hierarchical)
-                .foregroundStyle(isRefusal ? UniColors.Brand.mark : UniColors.Status.errorForeground)
+                .foregroundStyle(isRefusal ? UniColors.Brand.mark : UniColors.Feedback.Error.foreground)
                 .accessibilityHidden(true)
             UniLargeTitle(text: failureTitle, alignment: .center)
         }
@@ -818,7 +818,7 @@ private struct SendFailedView: View {
                 } icon: {
                     Image(systemName: "checkmark.shield")
                         .font(.system(size: 14, weight: .regular))
-                        .foregroundStyle(UniColors.Status.successForeground)
+                        .foregroundStyle(UniColors.Feedback.Success.foreground)
                 }
                 .fixedSize(horizontal: false, vertical: true)
             }
@@ -827,11 +827,11 @@ private struct SendFailedView: View {
         .padding(UniSpacing.m)
         .background(
             RoundedRectangle(cornerRadius: UniRadius.card, style: .continuous)
-                .fill(nothingWasSent ? UniColors.Fill.quaternary : UniColors.Status.errorBackground)
+                .fill(nothingWasSent ? UniColors.Fill.quaternary : UniColors.Feedback.Error.background)
         )
         .overlay(
             RoundedRectangle(cornerRadius: UniRadius.card, style: .continuous)
-                .stroke(nothingWasSent ? Color.clear : UniColors.Status.errorStroke, lineWidth: 1)
+                .stroke(nothingWasSent ? Color.clear : UniColors.Feedback.Error.stroke, lineWidth: 1)
         )
     }
 

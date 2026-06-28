@@ -199,7 +199,7 @@ struct SecuritySettingsView: View {
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
-                    .listRowBackground(UniColors.Background.secondary)
+                    .listRowBackground(UniColors.List.rowBackground)
 
                     Button {
                         isShowingPinChange = true
@@ -214,7 +214,7 @@ struct SecuritySettingsView: View {
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
-                    .listRowBackground(UniColors.Background.secondary)
+                    .listRowBackground(UniColors.List.rowBackground)
                 } footer: {
                     Text("Turning off the passcode removes the lock from this iPhone's copy of your wallets. Your wallet secrets stay encrypted locally — but anyone with this phone unlocked can open Aperture without proving they own it.")
                         .font(UniTypography.footnote)
@@ -238,7 +238,7 @@ struct SecuritySettingsView: View {
                             iconTint: .purple
                         )
                     }
-                    .listRowBackground(UniColors.Background.secondary)
+                    .listRowBackground(UniColors.List.rowBackground)
                 } header: {
                     Text("Timing").font(UniTypography.footnote).foregroundStyle(UniColors.Text.tertiary)
                 }
@@ -321,7 +321,7 @@ struct SecuritySettingsView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .listRowBackground(UniColors.Background.secondary)
+        .listRowBackground(UniColors.List.rowBackground)
     }
 
     private var biometricRow: some View {
@@ -346,9 +346,9 @@ struct SecuritySettingsView: View {
                     .foregroundStyle(UniColors.Text.primary)
             }
         }
-        .tint(UniColors.Button.primaryTint)
+        .tint(UniColors.Button.Primary.tint)
         .padding(.vertical, UniSpacing.xxs)
-        .listRowBackground(UniColors.Background.secondary)
+        .listRowBackground(UniColors.List.rowBackground)
     }
 
     /// A per-action Face ID toggle. Disabled (greyed) until Face ID is on,
@@ -359,10 +359,10 @@ struct SecuritySettingsView: View {
                 .font(UniTypography.body)
                 .foregroundStyle(biometricEnabled ? UniColors.Text.primary : UniColors.Text.disabled)
         }
-        .tint(UniColors.Button.primaryTint)
+        .tint(UniColors.Button.Primary.tint)
         .disabled(!biometricEnabled)
         .padding(.vertical, UniSpacing.xxs)
-        .listRowBackground(UniColors.Background.secondary)
+        .listRowBackground(UniColors.List.rowBackground)
     }
 
     /// Footer under the Lock section. Names what the passcode does and, when
@@ -398,11 +398,11 @@ struct SecuritySettingsView: View {
             )) {
                 Text("Erase Data")
                     .font(UniTypography.body)
-                    .foregroundStyle(UniColors.Status.errorForeground)
+                    .foregroundStyle(UniColors.Feedback.Error.foreground)
             }
-            .tint(UniColors.Status.errorForeground)
+            .tint(UniColors.Feedback.Error.foreground)
             .padding(.vertical, UniSpacing.xxs)
-            .listRowBackground(UniColors.Background.secondary)
+            .listRowBackground(UniColors.List.rowBackground)
         } footer: {
             Text("Erase all wallets and data on this iPhone after 10 failed passcode attempts. A wallet you backed up can be restored from its recovery phrase — one you didn't is gone for good.")
                 .font(UniTypography.footnote)
@@ -494,7 +494,7 @@ struct AutoLockPickerView: View {
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
-                    .listRowBackground(UniColors.Background.secondary)
+                    .listRowBackground(UniColors.List.rowBackground)
                 }
             } footer: {
                 Text("Aperture locks when this much time has passed in the background. Re-opening requires PIN or Face ID.")
