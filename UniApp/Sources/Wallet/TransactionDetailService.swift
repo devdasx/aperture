@@ -31,7 +31,7 @@ import CryptoKit
 enum TransactionDetailService {
 
     private static let log = Logger(subsystem: "com.thuglife.aperture", category: "tx-detail")
-    private static var liveDetailFetchingEnabled: Bool { false }
+    private static var liveDetailFetchingEnabled: Bool { true }
 
     /// The ERC-20 `Transfer(address,address,uint256)` topic-0 — identical
     /// across every EVM chain.

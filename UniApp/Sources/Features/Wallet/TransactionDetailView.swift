@@ -15,10 +15,10 @@ import UniformTypeIdentifiers
 /// balance-changes/instructions/logs, or labeled rows for the 9 others).
 ///
 /// **Honesty (Rule #16 / #26).** Nothing is fabricated. While the fetch is
-/// in flight a calm "Loading details…" reads under the summary; if it
-/// returns `nil` an honest "Couldn't load the full details right now" line
-/// shows — but the summary and the explorer link survive either way, so the
-/// user can always verify the tx on-chain. Status colors are green/orange
+/// in flight the receipt rows show native redacted placeholders. If the
+/// detail fetch returns `nil`, the stored summary and explorer link survive
+/// without an error banner, so the user can always verify the tx on-chain.
+/// Status colors are green/orange
 /// only for real status; red is reserved for a genuinely failed tx, never
 /// decoration.
 ///
@@ -47,11 +47,6 @@ struct TransactionDetailView: View {
     /// `true` while the off-main fetch is in flight. Gates the inline
     /// loading line vs. the honest failure line.
     @State private var isLoading = false
-    /// Flipped `true` once a fetch has completed (success or failure), so
-    /// the failure line only appears after we've actually tried — never on
-    /// first frame before `.task` runs.
-    @State private var didAttempt = false
-
     /// Drives the shared inline "Copied" confirmation + success haptic.
     /// One timestamp for the whole screen — every copy affordance writes it.
     @State private var lastCopiedAt: Date?
@@ -119,7 +114,6 @@ struct TransactionDetailView: View {
     private func detailList(_ tx: TransactionRecord) -> some View {
         List {
             heroSection(tx)
-            failureSection
             commonSection(tx)
             payloadSections(tx)
         }
@@ -214,32 +208,6 @@ struct TransactionDetailView: View {
         case .failed:    UniBadge(text: "Failed", kind: .error)
         case nil:
             UniBadge(text: LocalizedStringKey(matches.first?.statusRaw ?? "Unknown"), kind: .neutral)
-        }
-    }
-
-    // MARK: - Stage 2 — honest failure line (list section)
-
-    /// The honest failure line — shown ONLY after a fetch has completed and
-    /// returned nothing (`didAttempt && detail == nil`). While the fetch is
-    /// in flight the inline `.redacted` skeletons carry the loading state, so
-    /// there is no separate "Loading details…" banner to compete with them.
-    /// The stored summary + explorer link always survive either way (Rule
-    /// #16).
-    @ViewBuilder
-    private var failureSection: some View {
-        if didAttempt, detail == nil {
-            Section {
-                HStack(alignment: .top, spacing: UniSpacing.s) {
-                    Image(systemName: "wifi.exclamationmark")
-                        .font(.system(size: 16, weight: .regular))
-                        .foregroundStyle(UniColors.Icon.tertiary)
-                    UniFootnote(
-                        text: "Couldn't load the full details right now. The summary above is from your device.",
-                        color: UniColors.Text.secondary
-                    )
-                }
-                .listRowBackground(UniColors.List.rowBackground)
-            }
         }
     }
 
@@ -1029,11 +997,9 @@ struct TransactionDetailView: View {
     private func loadDetail() async {
         guard let tx = matches.first, let chain = resolvedChain else {
             isLoading = false
-            didAttempt = true
             return
         }
         isLoading = true
-        didAttempt = false
 
         // Stable lookup keys — captured once so the poll loop doesn't reach
         // back into the live record across suspension points.
@@ -1052,11 +1018,14 @@ struct TransactionDetailView: View {
         guard !Task.isCancelled else { return }
         detail = fetched
         isLoading = false
-        didAttempt = true
+        if let fetched, fetched.status != .pending {
+            persistResolved(fetched)
+            return
+        }
 
         // Keep checking while the tx is still pending, so the badge flips to
         // Confirmed/Failed live (Rule #25) and the confirmation count ticks
-        // up — then persist the terminal status so the activity list agrees.
+        // up — then persist the terminal details so the activity list agrees.
         // Honest (Rule #16): a tx that never resolves within the window
         // simply stays "Pending"; nothing is fabricated.
         var attempt = 0
@@ -1077,7 +1046,7 @@ struct TransactionDetailView: View {
             fetched = refreshed
             detail = refreshed
             if refreshed.status != .pending {
-                persistStatus(refreshed.status)
+                persistResolved(refreshed)
                 return
             }
         }
@@ -1089,13 +1058,31 @@ struct TransactionDetailView: View {
         fetched?.status ?? TransactionStatus(rawValue: tx.statusRaw)
     }
 
-    /// Write a resolved (confirmed/failed) status back to the live record so
-    /// the activity list and future opens reflect it. Idempotent — a no-op
-    /// when the stored status already matches.
-    private func persistStatus(_ status: TransactionStatus) {
-        guard let tx = matches.first, tx.statusRaw != status.rawValue else { return }
-        tx.statusRaw = status.rawValue
-        try? modelContext.save()
+    /// Write resolved live fields back to the record so activity rows and
+    /// future opens reflect confirmation, block, and fee updates.
+    private func persistResolved(_ detail: TransactionDetail) {
+        guard let tx = matches.first else { return }
+        var changed = false
+
+        if tx.statusRaw != detail.status.rawValue {
+            tx.statusRaw = detail.status.rawValue
+            changed = true
+        }
+        if tx.blockNumber != detail.blockNumber {
+            tx.blockNumber = detail.blockNumber
+            changed = true
+        }
+        if let feeNative = detail.feeNative {
+            let feeRaw = feeNative.description
+            if tx.feeRaw != feeRaw {
+                tx.feeRaw = feeRaw
+                changed = true
+            }
+        }
+
+        if changed {
+            try? modelContext.save()
+        }
     }
 
     // MARK: - Fiat conversion (off-main, Rule #28; honest, Rule #16)
