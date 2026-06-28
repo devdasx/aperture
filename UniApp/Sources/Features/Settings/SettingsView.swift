@@ -630,7 +630,8 @@ struct PreferencesView: View {
     /// Show transaction-history amounts in the user's local currency
     /// (default) vs. the native coin amount. Read by `ActivityRow` across
     /// every activity surface (2026-06-18 user direction).
-    @AppStorage("txAmountsInLocalCurrency") private var txAmountsInLocalCurrency: Bool = true
+    @AppStorage(TransactionAmountDisplayPreference.storageKey)
+    private var txAmountsInLocalCurrency: Bool = TransactionAmountDisplayPreference.defaultValue
     // Privacy-mask / hide-balance-on-home / hide-small-balances rows were
     // removed from this screen per user direction (2026-06-18). The
     // underlying preferences still exist (the wallet-home reads its own
