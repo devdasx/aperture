@@ -110,7 +110,7 @@ struct WalletHomeMinValueView: View {
                         if matchesPreset(option) {
                             Image(systemName: "checkmark")
                                 .font(.system(size: 16, weight: .semibold))
-                                .foregroundStyle(UniColors.Button.primaryTint)
+                                .foregroundStyle(UniColors.Button.Primary.tint)
                                 .accessibilityHidden(true)
                         }
                     }
@@ -118,7 +118,7 @@ struct WalletHomeMinValueView: View {
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .listRowBackground(UniColors.Background.secondary)
+                .listRowBackground(UniColors.List.rowBackground)
             }
         } header: {
             Text("Threshold")
@@ -156,7 +156,7 @@ struct WalletHomeMinValueView: View {
                     .accessibilityLabel(Text("Custom minimum value"))
             }
             .padding(.vertical, UniSpacing.xxs)
-            .listRowBackground(UniColors.Background.secondary)
+            .listRowBackground(UniColors.List.rowBackground)
         } header: {
             Text("Custom")
         } footer: {

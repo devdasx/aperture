@@ -227,7 +227,7 @@ struct UniSheet<BodyContent: View, Actions: View>: View {
                 } label: {
                     Image(systemName: "chevron.backward")
                         .font(.system(size: 22, weight: .semibold))
-                        .foregroundStyle(UniColors.Text.primary)
+                        .foregroundStyle(UniColors.Sheet.backIcon)
                         .frame(width: 32, height: 32)
                         .contentShape(Rectangle())
                 }
@@ -240,7 +240,7 @@ struct UniSheet<BodyContent: View, Actions: View>: View {
                 // Token (not a fixed point size) so the title scales
                 // with Dynamic Type and bold-text accessibility.
                 .font(UniTypography.largeTitle)
-                .foregroundStyle(UniColors.Text.primary)
+                .foregroundStyle(UniColors.Sheet.title)
                 .multilineTextAlignment(.leading)
                 // Critical: lets the title wrap onto multiple lines
                 // in locales where the translation is longer than

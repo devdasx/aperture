@@ -11,7 +11,7 @@ import SwiftUI
 struct UniLargeTitle: View {
     let text: LocalizedStringKey
     var alignment: TextAlignment = .leading
-    var color: Color = UniColors.Text.primary
+    var color: Color = UniColors.Copy.largeTitle
 
     var body: some View {
         Text(text)
@@ -25,7 +25,7 @@ struct UniLargeTitle: View {
 struct UniTitle: View {
     let text: LocalizedStringKey
     var alignment: TextAlignment = .leading
-    var color: Color = UniColors.Text.primary
+    var color: Color = UniColors.Copy.title
 
     var body: some View {
         Text(text)
@@ -39,7 +39,7 @@ struct UniTitle: View {
 struct UniTitle2: View {
     let text: LocalizedStringKey
     var alignment: TextAlignment = .leading
-    var color: Color = UniColors.Text.primary
+    var color: Color = UniColors.Copy.title
 
     var body: some View {
         Text(text)
@@ -53,7 +53,7 @@ struct UniTitle2: View {
 struct UniHeadline: View {
     let text: LocalizedStringKey
     var alignment: TextAlignment = .leading
-    var color: Color = UniColors.Text.primary
+    var color: Color = UniColors.Copy.headline
 
     var body: some View {
         Text(text)
@@ -69,7 +69,7 @@ struct UniHeadline: View {
 struct UniSubtitle: View {
     let text: LocalizedStringKey
     var alignment: TextAlignment = .leading
-    var color: Color = UniColors.Text.secondary
+    var color: Color = UniColors.Copy.subtitle
 
     var body: some View {
         Text(text)
@@ -83,7 +83,7 @@ struct UniSubtitle: View {
 struct UniBody: View {
     let text: LocalizedStringKey
     var alignment: TextAlignment = .leading
-    var color: Color = UniColors.Text.primary
+    var color: Color = UniColors.Copy.body
     var emphasized: Bool = false
 
     var body: some View {
@@ -98,7 +98,7 @@ struct UniBody: View {
 struct UniCallout: View {
     let text: LocalizedStringKey
     var alignment: TextAlignment = .leading
-    var color: Color = UniColors.Text.secondary
+    var color: Color = UniColors.Copy.callout
 
     var body: some View {
         Text(text)
@@ -112,7 +112,7 @@ struct UniCallout: View {
 struct UniFootnote: View {
     let text: LocalizedStringKey
     var alignment: TextAlignment = .leading
-    var color: Color = UniColors.Text.tertiary
+    var color: Color = UniColors.Copy.footnote
 
     var body: some View {
         Text(text)
@@ -126,7 +126,7 @@ struct UniFootnote: View {
 struct UniCaption: View {
     let text: LocalizedStringKey
     var alignment: TextAlignment = .leading
-    var color: Color = UniColors.Text.tertiary
+    var color: Color = UniColors.Copy.caption
 
     var body: some View {
         Text(text)

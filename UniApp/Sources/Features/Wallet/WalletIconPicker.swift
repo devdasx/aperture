@@ -481,10 +481,10 @@ struct WalletIconPickerSheet: View {
         HStack(spacing: UniSpacing.xs) {
             Image(systemName: "exclamationmark.triangle.fill")
                 .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(UniColors.Status.warningForeground)
+                .foregroundStyle(UniColors.Feedback.Warning.foreground)
             Text(uploadErrorMessage(error))
                 .font(UniTypography.footnote)
-                .foregroundStyle(UniColors.Status.warningForeground)
+                .foregroundStyle(UniColors.Feedback.Warning.foreground)
                 .fixedSize(horizontal: false, vertical: true)
         }
     }

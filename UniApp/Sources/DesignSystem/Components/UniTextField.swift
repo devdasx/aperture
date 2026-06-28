@@ -98,7 +98,7 @@ enum TextDirection {
 /// API with one visual register, an optional eye-toggle for secure entry,
 /// and content-aware RTL/LTR direction resolution.
 ///
-/// **Design — visual register**: rounded `UniColors.Background.secondary`
+/// **Design — visual register**: rounded `UniColors.Input.background`
 /// fill (`UniRadius.m`), horizontal padding `UniSpacing.m`, vertical
 /// padding `UniSpacing.s`, `UniTypography.body`. Eye toggle (when
 /// `showsRevealToggle` is true) sits at the field's trailing edge —
@@ -138,14 +138,14 @@ struct UniTextField: View {
     /// radius; callers can soften it (e.g. the Send recipient field uses
     /// `UniRadius.xxxl`).
     var cornerRadius: CGFloat = UniRadius.m
-    /// The field's fill surface. Defaults to `UniColors.Background.secondary`
+    /// The field's fill surface. Defaults to `UniColors.Input.background`
     /// (the standard rounded-input look). Pass `Color.clear` when the field
     /// lives inside a container that already owns the surface — e.g. the
     /// Send recipient list's inset-grouped `UniCard`, where each field is a
     /// PLAIN row inside one connected container (no per-field pill). The
     /// fill is a `UniColors` role at the call site, never a literal except
     /// `Color.clear` (Rule #4 permits `.clear` everywhere). Token-typed.
-    var fill: Color = UniColors.Background.secondary
+    var fill: Color = UniColors.Input.background
     /// Vertical padding inside the field's fill. Defaults to `UniSpacing.s`
     /// (the standard input height). Callers can tighten it for a more
     /// compact field — the Send recipient field passes `UniSpacing.xs` so
@@ -209,6 +209,7 @@ struct UniTextField: View {
                 .keyboardType(keyboardType)
                 .textContentType(contentType)
                 .font(UniTypography.body)
+                .foregroundStyle(UniColors.Input.text)
                 .modifier(LineLimitModifier(limit: lineLimit, reservesSpace: reservesSpace))
                 .padding(.horizontal, UniSpacing.m)
                 .padding(.vertical, verticalPadding)
@@ -306,7 +307,7 @@ struct UniTextField: View {
         } label: {
             Image(systemName: isRevealed ? "eye.slash" : "eye")
                 .font(.system(size: 17, weight: .regular))
-                .foregroundStyle(UniColors.Icon.secondary)
+                .foregroundStyle(UniColors.Input.revealIcon)
                 .padding(.horizontal, UniSpacing.s)
                 .contentShape(Rectangle())
         }

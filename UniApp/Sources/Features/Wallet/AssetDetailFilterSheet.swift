@@ -146,7 +146,7 @@ struct AssetDetailFilterSheet: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
             .padding(.vertical, UniSpacing.xxs)
-            .listRowBackground(UniColors.Background.secondary)
+            .listRowBackground(UniColors.List.rowBackground)
         }
     }
 
@@ -170,11 +170,11 @@ struct AssetDetailFilterSheet: View {
     private var viewSection: some View {
         Section {
             sortKeyPicker
-                .listRowBackground(UniColors.Background.secondary)
+                .listRowBackground(UniColors.List.rowBackground)
             directionPicker
-                .listRowBackground(UniColors.Background.secondary)
+                .listRowBackground(UniColors.List.rowBackground)
             timeRangePicker
-                .listRowBackground(UniColors.Background.secondary)
+                .listRowBackground(UniColors.List.rowBackground)
         } header: {
             Text("View")
         }
@@ -242,10 +242,10 @@ struct AssetDetailFilterSheet: View {
             NavigationLink(value: AssetFilterDestination.networks) {
                 networksLink
             }
-            .listRowBackground(UniColors.Background.secondary)
+            .listRowBackground(UniColors.List.rowBackground)
 
             hideZeroNetworksToggle
-                .listRowBackground(UniColors.Background.secondary)
+                .listRowBackground(UniColors.List.rowBackground)
         } header: {
             Text("Show")
         } footer: {
@@ -301,7 +301,7 @@ struct AssetDetailFilterSheet: View {
                     .foregroundStyle(UniColors.Text.primary)
             }
         }
-        .tint(UniColors.Button.primaryTint)
+        .tint(UniColors.Button.Primary.tint)
         .padding(.vertical, UniSpacing.xxs)
         .uniHaptic(.selection, trigger: hideZeroNetworks)
     }
@@ -399,13 +399,13 @@ private struct AssetDetailNetworksPicker: View {
                         }
                     }
                 }
-                .listRowBackground(UniColors.Background.secondary)
+                .listRowBackground(UniColors.List.rowBackground)
             }
 
             Section {
                 ForEach(availableNetworks, id: \.id) { row in
                     networkRow(row)
-                        .listRowBackground(UniColors.Background.secondary)
+                        .listRowBackground(UniColors.List.rowBackground)
                 }
             } header: {
                 Text("Networks")

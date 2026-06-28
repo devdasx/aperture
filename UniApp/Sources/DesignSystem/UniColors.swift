@@ -11,6 +11,13 @@ import UIKit
 /// always reference a role from this file.
 enum UniColors {
 
+    // MARK: - Page
+
+    /// Top-level page/screen surfaces.
+    enum Page {
+        static let background = Color(uiColor: .systemGroupedBackground)
+    }
+
     // MARK: - Card
 
     /// Canonical non-glass card surfaces. Kept separate from button tint
@@ -21,6 +28,22 @@ enum UniColors {
         static let background = Color(uiColor: .secondarySystemGroupedBackground)
         /// Raised/nested card fill.
         static let elevated = Color(uiColor: .tertiarySystemGroupedBackground)
+        /// Divider or hairline on a card when it needs an explicit stroke.
+        static let stroke = Color(uiColor: .separator)
+        /// Muted content drawn inside a card.
+        static let secondaryText = Color(uiColor: .secondaryLabel)
+    }
+
+    // MARK: - List
+
+    /// Native grouped-list colors. List rows are intentionally their own
+    /// component namespace, even though their current fill matches `Card`.
+    enum List {
+        static let background = Page.background
+        static let rowBackground = Card.background
+        static let rowBackgroundElevated = Card.elevated
+        static let separator = Color(uiColor: .separator)
+        static let sectionHeader = Color(uiColor: .secondaryLabel)
     }
 
     // MARK: - Background
@@ -48,7 +71,7 @@ enum UniColors {
         /// black in dark). Use as the outermost `ZStack` / `List`
         /// `.background(…)` fill on every screen, sheet, and presentation
         /// surface root.
-        static let primary = Color(uiColor: .systemGroupedBackground)
+        static let primary = Page.background
         /// One step up from the page — the canonical "card / row" fill
         /// (white in light, `#1C1C1E` in dark). Use as the `listRowBackground`
         /// on grouped lists and as the fill on card / chip surfaces.
@@ -116,6 +139,41 @@ enum UniColors {
         static let warning = Color(uiColor: .systemOrange)
         static let error = Color(uiColor: .systemRed)
         static let info = Color(uiColor: .systemBlue)
+    }
+
+    // MARK: - Copy
+
+    /// Default colors for the reusable `UniText` components. These alias the
+    /// semantic text colors today, but the component layer is independent so
+    /// titles/body/captions can be retuned without changing raw text roles.
+    enum Copy {
+        static let largeTitle = Text.primary
+        static let title = Text.primary
+        static let headline = Text.primary
+        static let body = Text.primary
+        static let subtitle = Text.secondary
+        static let callout = Text.secondary
+        static let footnote = Text.tertiary
+        static let caption = Text.tertiary
+    }
+
+    // MARK: - Navigation
+
+    enum Navigation {
+        static let title = Text.primary
+        static let largeTitle = Text.primary
+        static let icon = Icon.primary
+        static let iconSecondary = Icon.secondary
+    }
+
+    // MARK: - Sheet
+
+    enum Sheet {
+        static let background = Page.background
+        static let title = Text.primary
+        static let body = Text.primary
+        static let subtitle = Text.secondary
+        static let backIcon = Icon.primary
     }
 
     // MARK: - Icon
@@ -191,6 +249,67 @@ enum UniColors {
     // MARK: - Button
 
     enum Button {
+        enum Primary {
+            static let label = Color.white
+            static let tint = Color(
+                uiColor: UIColor { traits in
+                    traits.userInterfaceStyle == .dark
+                        ? .tertiarySystemGroupedBackground
+                        : .label
+                }
+            )
+            static let disabledTint = Color(uiColor: .tertiarySystemFill)
+            static let disabledLabel = Color(uiColor: .tertiaryLabel)
+        }
+
+        enum Secondary {
+            static let label = Color(uiColor: .label)
+            static let tint = Primary.tint
+            static let disabledTint = Color(uiColor: .quaternarySystemFill)
+            static let disabledLabel = Color(uiColor: .tertiaryLabel)
+        }
+
+        enum Destructive {
+            static let label = Color.white
+            static let tint = Color(uiColor: .systemRed)
+            static let disabledTint = Primary.disabledTint
+            static let disabledLabel = Primary.disabledLabel
+        }
+
+        /// Inline primary text action, e.g. links and high-emphasis text
+        /// buttons.
+        enum TextAction {
+            static let foreground = Color(uiColor: .systemBlue)
+            static let disabled = Color(uiColor: .tertiaryLabel)
+        }
+
+        /// Inline secondary text action, e.g. quiet alternate text buttons.
+        enum SecondaryTextAction {
+            static let foreground = Color(uiColor: .secondaryLabel)
+            static let disabled = Color(uiColor: .tertiaryLabel)
+        }
+
+        enum ToolbarPill {
+            static let label = Secondary.label
+            static let tint = Secondary.tint
+            static let disabledTint = Secondary.disabledTint
+            static let disabledLabel = Secondary.disabledLabel
+        }
+
+        enum WalletPill {
+            static let label = Secondary.label
+            static let tint = Secondary.tint
+            static let disabledTint = Secondary.disabledTint
+            static let disabledLabel = Secondary.disabledLabel
+        }
+
+        enum ActionCircle {
+            static let label = Primary.label
+            static let tint = Primary.tint
+            static let disabledTint = Primary.disabledTint
+            static let disabledLabel = Primary.disabledLabel
+        }
+
         /// Primary CTA (`UniButton.primary` → `.glassProminent`).
         ///
         /// Button fill deliberately does NOT use `Color.accentColor`.
@@ -202,23 +321,17 @@ enum UniColors {
         /// surface in dark mode. The dark control surface is deliberately
         /// one step above `Card.background`, so buttons and cards never
         /// collapse into the same tone.
-        static let primaryLabel = Color.white
-        static let controlSurface = Color(
-            uiColor: UIColor { traits in
-                traits.userInterfaceStyle == .dark
-                    ? .tertiarySystemGroupedBackground
-                    : .label
-            }
-        )
-        static let primaryTint = Self.controlSurface
+        static let primaryLabel = Primary.label
+        static let controlSurface = Primary.tint
+        static let primaryTint = Primary.tint
 
         /// Secondary CTA (`UniButton.secondary` → `.glass`).
-        static let secondaryLabel = Color(uiColor: .label)
-        static let secondaryTint = Self.controlSurface
+        static let secondaryLabel = Secondary.label
+        static let secondaryTint = Secondary.tint
 
         /// Destructive CTA (delete, remove, sign-out).
-        static let destructiveLabel = Color.white
-        static let destructiveTint = Color(uiColor: .systemRed)
+        static let destructiveLabel = Destructive.label
+        static let destructiveTint = Destructive.tint
 
         /// **Text button (Apple register).** The single Apple-standard
         /// tappable-text color — iOS `systemBlue` (`#007AFF` light /
@@ -232,24 +345,111 @@ enum UniColors {
         /// (`.primary` / `.secondary` / `.destructive`) and system controls
         /// (Toggle, Picker) stay on the monochrome accent — ONLY plain text
         /// buttons go blue.
-        static let text = Color(uiColor: .systemBlue)
+        static let text = TextAction.foreground
+        static let secondaryText = SecondaryTextAction.foreground
 
         /// Tertiary / inline text button. Points at `Button.text` — the
         /// Apple-blue text-button color (2026-06-17).
-        static let tertiaryLabel = Self.text
+        static let tertiaryLabel = TextAction.foreground
 
         /// Disabled state (any variant).
-        static let disabledLabel = Color(uiColor: .tertiaryLabel)
+        static let disabledLabel = Primary.disabledLabel
         static let disabledTint = Color(uiColor: .quaternarySystemFill)
         /// Disabled fill for PROMINENT CTAs (`.primary` / `.destructive`
         /// / `.actionCircle` → `.glassProminent`). One step heavier than
         /// `disabledFill` so a disabled prominent button still reads as a
         /// solid (but inert) surface rather than a faint outline.
-        static let disabledProminentFill = Color(uiColor: .tertiarySystemFill)
+        static let disabledProminentFill = Primary.disabledTint
         /// Disabled fill for NEUTRAL / glass CTAs (`.secondary` /
         /// `.toolbarPill` / `.walletPill` → `.glass`). The lightest fill
         /// — the glass surface goes quiet when its action is unavailable.
-        static let disabledFill = Color(uiColor: .quaternarySystemFill)
+        static let disabledFill = Secondary.disabledTint
+    }
+
+    // MARK: - Input
+
+    enum Input {
+        static let background = Card.background
+        static let backgroundElevated = Card.elevated
+        static let text = Text.primary
+        static let placeholder = Text.placeholder
+        static let icon = Icon.secondary
+        static let revealIcon = Icon.secondary
+        static let border = Color.clear
+        static let focusedBorder = Color(uiColor: .separator)
+        static let disabledBackground = Color(uiColor: .quaternarySystemFill)
+        static let disabledText = Text.disabled
+    }
+
+    // MARK: - Toggle
+
+    enum Toggle {
+        static let tint = Tint.accent
+        static let label = Text.primary
+        static let secondaryLabel = Text.secondary
+    }
+
+    // MARK: - Feedback
+
+    /// Operation-result colors. Component-specific surfaces like `Badge`
+    /// should expose their own roles, but they can start from these common
+    /// feedback hues.
+    enum Feedback {
+        enum Success {
+            static let background = Color(uiColor: .systemGreen).opacity(0.15)
+            static let foreground = Color(uiColor: .systemGreen)
+            static let stroke = Color(uiColor: .systemGreen).opacity(0.30)
+        }
+        enum Warning {
+            static let background = Color(uiColor: .systemOrange).opacity(0.15)
+            static let foreground = Color(uiColor: .systemOrange)
+            static let stroke = Color(uiColor: .systemOrange).opacity(0.30)
+        }
+        enum Error {
+            static let background = Color(uiColor: .systemRed).opacity(0.15)
+            static let foreground = Color(uiColor: .systemRed)
+            static let stroke = Color(uiColor: .systemRed).opacity(0.30)
+        }
+        enum Info {
+            static let background = Color(uiColor: .systemBlue).opacity(0.15)
+            static let foreground = Color(uiColor: .systemBlue)
+            static let stroke = Color(uiColor: .systemBlue).opacity(0.30)
+        }
+        enum Neutral {
+            static let background = Color(uiColor: .systemGray5)
+            static let foreground = Color(uiColor: .label)
+            static let stroke = Color(uiColor: .separator)
+        }
+    }
+
+    // MARK: - Badge
+
+    enum Badge {
+        enum Success {
+            static let background = Feedback.Success.background
+            static let foreground = Feedback.Success.foreground
+            static let stroke = Feedback.Success.stroke
+        }
+        enum Warning {
+            static let background = Feedback.Warning.background
+            static let foreground = Feedback.Warning.foreground
+            static let stroke = Feedback.Warning.stroke
+        }
+        enum Error {
+            static let background = Feedback.Error.background
+            static let foreground = Feedback.Error.foreground
+            static let stroke = Feedback.Error.stroke
+        }
+        enum Info {
+            static let background = Feedback.Info.background
+            static let foreground = Feedback.Info.foreground
+            static let stroke = Feedback.Info.stroke
+        }
+        enum Neutral {
+            static let background = Feedback.Neutral.background
+            static let foreground = Feedback.Neutral.foreground
+            static let stroke = Feedback.Neutral.stroke
+        }
     }
 
     // MARK: - Status (success, warning, error, info, neutral)
@@ -257,29 +457,29 @@ enum UniColors {
     /// Use for badges, banners, and inline messages.
     enum Status {
         // Success
-        static let successBackground = Color(uiColor: .systemGreen).opacity(0.15)
-        static let successForeground = Color(uiColor: .systemGreen)
-        static let successStroke = Color(uiColor: .systemGreen).opacity(0.30)
+        static let successBackground = Feedback.Success.background
+        static let successForeground = Feedback.Success.foreground
+        static let successStroke = Feedback.Success.stroke
 
         // Warning
-        static let warningBackground = Color(uiColor: .systemOrange).opacity(0.15)
-        static let warningForeground = Color(uiColor: .systemOrange)
-        static let warningStroke = Color(uiColor: .systemOrange).opacity(0.30)
+        static let warningBackground = Feedback.Warning.background
+        static let warningForeground = Feedback.Warning.foreground
+        static let warningStroke = Feedback.Warning.stroke
 
         // Error
-        static let errorBackground = Color(uiColor: .systemRed).opacity(0.15)
-        static let errorForeground = Color(uiColor: .systemRed)
-        static let errorStroke = Color(uiColor: .systemRed).opacity(0.30)
+        static let errorBackground = Feedback.Error.background
+        static let errorForeground = Feedback.Error.foreground
+        static let errorStroke = Feedback.Error.stroke
 
         // Info
-        static let infoBackground = Color(uiColor: .systemBlue).opacity(0.15)
-        static let infoForeground = Color(uiColor: .systemBlue)
-        static let infoStroke = Color(uiColor: .systemBlue).opacity(0.30)
+        static let infoBackground = Feedback.Info.background
+        static let infoForeground = Feedback.Info.foreground
+        static let infoStroke = Feedback.Info.stroke
 
         // Neutral
-        static let neutralBackground = Color(uiColor: .systemGray5)
-        static let neutralForeground = Color(uiColor: .label)
-        static let neutralStroke = Color(uiColor: .separator)
+        static let neutralBackground = Feedback.Neutral.background
+        static let neutralForeground = Feedback.Neutral.foreground
+        static let neutralStroke = Feedback.Neutral.stroke
     }
 
     /// Import-success seal colours (design handoff). Two one-off brand
@@ -358,6 +558,34 @@ enum UniColors {
         static let elevated = Card.elevated
     }
 
+    // MARK: - FeatureRow
+
+    enum FeatureRow {
+        static let icon = Icon.primary
+        static let title = Text.primary
+        static let detail = Text.secondary
+    }
+
+    // MARK: - EmptyState
+
+    enum EmptyState {
+        static let background = Card.background
+        static let liftStart = Splash.lift
+        static let liftEnd = Splash.base
+        static let title = Text.secondary
+        static let detail = Text.tertiary
+        static let icon = Icon.tertiary
+        static let logoShadow = Color.black.opacity(0.08)
+    }
+
+    // MARK: - Loading
+
+    enum Loading {
+        static let spinner = Icon.secondary
+        static let caption = Text.secondary
+        static let background = Page.background
+    }
+
     // MARK: - Focus / Highlight (system selection)
 
     enum Focus {
@@ -419,7 +647,7 @@ enum UniColors {
     ///   `#0B0D11` light / **Cloud** `#F5F5F7` dark — identical to the
     ///   brand mark. Surfaced system-wide as `.accentColor`; consumed
     ///   by brand/system accent surfaces. Primary filled buttons use
-    ///   `UniColors.Button.primaryTint` instead so they remain legible
+    ///   `UniColors.Button.Primary.tint` instead so they remain legible
     ///   in dark mode.
     enum Brand {
         /// Fill color for the Aperture iris mark — graphite in light mode,

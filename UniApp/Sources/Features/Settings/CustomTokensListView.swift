@@ -163,7 +163,7 @@ struct CustomTokensListView: View {
                             balance: heldBalance(for: token),
                             currencyCode: currencyCode
                         )
-                            .listRowBackground(UniColors.Background.secondary)
+                            .listRowBackground(UniColors.List.rowBackground)
                             .swipeActions(edge: .trailing, allowsFullSwipe: true) {
                                 Button(role: .destructive) {
                                     delete(token)

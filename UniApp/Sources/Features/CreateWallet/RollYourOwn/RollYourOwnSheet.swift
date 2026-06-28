@@ -112,7 +112,7 @@ private struct RollYourOwnModeSelectionView: View {
                         trailing: countDescription(for: .dice)
                     )
                 }
-                .listRowBackground(UniColors.Background.secondary)
+                .listRowBackground(UniColors.List.rowBackground)
 
                 NavigationLink(value: RollYourOwnDestination.collecting(.coin)) {
                     RollYourOwnModeRow(
@@ -121,7 +121,7 @@ private struct RollYourOwnModeSelectionView: View {
                         trailing: countDescription(for: .coin)
                     )
                 }
-                .listRowBackground(UniColors.Background.secondary)
+                .listRowBackground(UniColors.List.rowBackground)
 
                 NavigationLink(value: RollYourOwnDestination.collecting(.numbers)) {
                     RollYourOwnModeRow(
@@ -130,7 +130,7 @@ private struct RollYourOwnModeSelectionView: View {
                         trailing: countDescription(for: .numbers)
                     )
                 }
-                .listRowBackground(UniColors.Background.secondary)
+                .listRowBackground(UniColors.List.rowBackground)
             }
 
             Section {
@@ -307,7 +307,7 @@ private struct RollYourOwnKeypadView: View {
                         .fill(UniColors.Background.secondary)
                         .frame(height: 6)
                     Capsule()
-                        .fill(isComplete ? UniColors.Status.successForeground : UniColors.Tint.accent)
+                        .fill(isComplete ? UniColors.Feedback.Success.foreground : UniColors.Tint.accent)
                         .frame(width: proxy.size.width * CGFloat(min(buffer.count, required)) / CGFloat(required), height: 6)
                         .animation(.easeInOut(duration: 0.2), value: buffer.count)
                 }

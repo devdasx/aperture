@@ -9,7 +9,7 @@ struct UniFeatureRow: View {
     let systemImage: String
     let title: LocalizedStringKey
     var detail: LocalizedStringKey? = nil
-    var tint: Color = UniColors.Icon.primary
+    var tint: Color = UniColors.FeatureRow.icon
 
     var body: some View {
         HStack(alignment: .top, spacing: UniSpacing.m) {

@@ -31,7 +31,7 @@ import SwiftUI
 struct UniCard<Content: View>: View {
     var padding: CGFloat = UniSpacing.m
     var cornerRadius: CGFloat = UniRadius.card
-    var fill: Color = UniColors.Material.card
+    var fill: Color = UniColors.Card.background
     var stroke: Color? = nil
     @ViewBuilder let content: () -> Content
 

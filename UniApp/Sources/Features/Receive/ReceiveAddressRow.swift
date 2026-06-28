@@ -43,7 +43,7 @@ struct ReceiveAddressRow: View {
             .padding(UniSpacing.m)
             .background(
                 RoundedRectangle(cornerRadius: UniRadius.card, style: .continuous)
-                    .fill(UniColors.Material.card)
+                    .fill(UniColors.Card.background)
             )
             .contentShape(Rectangle())
             .onTapGesture {
@@ -56,7 +56,7 @@ struct ReceiveAddressRow: View {
             if isShowingCopied {
                 UniFootnote(
                     text: "Copied",
-                    color: UniColors.Status.successForeground
+                    color: UniColors.Feedback.Success.foreground
                 )
                 .transition(.opacity)
             }

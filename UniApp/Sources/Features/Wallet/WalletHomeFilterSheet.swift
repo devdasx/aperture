@@ -196,7 +196,7 @@ struct WalletHomeFilterSheet: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
             .padding(.vertical, UniSpacing.xxs)
-            .listRowBackground(UniColors.Background.secondary)
+            .listRowBackground(UniColors.List.rowBackground)
         }
     }
 
@@ -209,15 +209,15 @@ struct WalletHomeFilterSheet: View {
     private var viewSection: some View {
         Section {
             stylePicker
-                .listRowBackground(UniColors.Background.secondary)
+                .listRowBackground(UniColors.List.rowBackground)
             assetTypePicker
-                .listRowBackground(UniColors.Background.secondary)
+                .listRowBackground(UniColors.List.rowBackground)
             sortKeyPicker
-                .listRowBackground(UniColors.Background.secondary)
+                .listRowBackground(UniColors.List.rowBackground)
             sortDirectionPicker
-                .listRowBackground(UniColors.Background.secondary)
+                .listRowBackground(UniColors.List.rowBackground)
             groupByPicker
-                .listRowBackground(UniColors.Background.secondary)
+                .listRowBackground(UniColors.List.rowBackground)
         } header: {
             Text("View")
         } footer: {
@@ -341,32 +341,32 @@ struct WalletHomeFilterSheet: View {
     private var showSection: some View {
         Section {
             onlyWithBalanceToggle
-                .listRowBackground(UniColors.Background.secondary)
+                .listRowBackground(UniColors.List.rowBackground)
 
             NavigationLink(value: FilterDestination.minValue) {
                 minValueLink
             }
-            .listRowBackground(UniColors.Background.secondary)
+            .listRowBackground(UniColors.List.rowBackground)
 
             NavigationLink(value: FilterDestination.networks) {
                 networksLink
             }
-            .listRowBackground(UniColors.Background.secondary)
+            .listRowBackground(UniColors.List.rowBackground)
 
             NavigationLink(value: FilterDestination.hiddenAssets) {
                 hiddenAssetsLink
             }
-            .listRowBackground(UniColors.Background.secondary)
+            .listRowBackground(UniColors.List.rowBackground)
 
             NavigationLink(value: FilterDestination.hiddenChains) {
                 hiddenChainsLink
             }
-            .listRowBackground(UniColors.Background.secondary)
+            .listRowBackground(UniColors.List.rowBackground)
 
             NavigationLink(value: FilterDestination.pinnedAssets) {
                 pinnedAssetsLink
             }
-            .listRowBackground(UniColors.Background.secondary)
+            .listRowBackground(UniColors.List.rowBackground)
         } header: {
             Text("Show")
         } footer: {
@@ -392,7 +392,7 @@ struct WalletHomeFilterSheet: View {
                     .foregroundStyle(UniColors.Text.primary)
             }
         }
-        .tint(UniColors.Button.primaryTint)
+        .tint(UniColors.Button.Primary.tint)
         .padding(.vertical, UniSpacing.xxs)
         .uniHaptic(.selection, trigger: onlyWithBalance)
     }

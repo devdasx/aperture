@@ -132,7 +132,7 @@ struct WalletHomeHiddenAssetsView: View {
                         subtitle: row.chain.ticker,
                         isHidden: bindingForCoinHidden(row)
                     )
-                    .listRowBackground(UniColors.Background.secondary)
+                    .listRowBackground(UniColors.List.rowBackground)
                     .swipeActions(edge: .leading, allowsFullSwipe: true) {
                         let pinned = isPinned(coin: row)
                         Button {
@@ -143,7 +143,7 @@ struct WalletHomeHiddenAssetsView: View {
                                 systemImage: pinned ? "pin.slash" : "pin"
                             )
                         }
-                        .tint(UniColors.Button.primaryTint)
+                        .tint(UniColors.Button.Primary.tint)
                     }
                 }
             } header: {
@@ -168,7 +168,7 @@ struct WalletHomeHiddenAssetsView: View {
                         subtitle: "\(row.symbol) · \(row.chain.displayName)",
                         isHidden: bindingForTokenHidden(row)
                     )
-                    .listRowBackground(UniColors.Background.secondary)
+                    .listRowBackground(UniColors.List.rowBackground)
                     .swipeActions(edge: .leading, allowsFullSwipe: true) {
                         let pinned = isPinned(token: row)
                         Button {
@@ -179,7 +179,7 @@ struct WalletHomeHiddenAssetsView: View {
                                 systemImage: pinned ? "pin.slash" : "pin"
                             )
                         }
-                        .tint(UniColors.Button.primaryTint)
+                        .tint(UniColors.Button.Primary.tint)
                     }
                 }
             } header: {
@@ -350,7 +350,7 @@ struct AssetVisibilityRow: View {
                 }
             }
         }
-        .tint(UniColors.Button.primaryTint)
+        .tint(UniColors.Button.Primary.tint)
         .padding(.vertical, UniSpacing.xxs)
     }
 }

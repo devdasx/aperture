@@ -421,7 +421,7 @@ struct MnemonicEntryView: View {
                 .foregroundStyle(isPrimary ? UniColors.Button.primaryLabel : UniColors.Text.primary)
                 .padding(.horizontal, 18)
                 .padding(.vertical, 11)
-                .background(isPrimary ? UniColors.Button.primaryTint : UniColors.Background.secondary, in: shape)
+                .background(isPrimary ? UniColors.Button.Primary.tint : UniColors.Background.secondary, in: shape)
                 .overlay {
                     if !isPrimary {
                         shape.strokeBorder(UniColors.SeedGrid.hairline, lineWidth: 1)

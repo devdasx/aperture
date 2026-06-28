@@ -170,7 +170,7 @@ struct WalletActivityFilterSheet: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
             .padding(.vertical, UniSpacing.xxs)
-            .listRowBackground(UniColors.Background.secondary)
+            .listRowBackground(UniColors.List.rowBackground)
         }
     }
 
@@ -207,7 +207,7 @@ struct WalletActivityFilterSheet: View {
             }
             .padding(.vertical, UniSpacing.xxs)
             .uniHaptic(.selection, trigger: sortKeyRaw)
-            .listRowBackground(UniColors.Background.secondary)
+            .listRowBackground(UniColors.List.rowBackground)
         } header: {
             Text("Sort")
         }
@@ -232,7 +232,7 @@ struct WalletActivityFilterSheet: View {
             }
             .padding(.vertical, UniSpacing.xxs)
             .uniHaptic(.selection, trigger: directionRaw)
-            .listRowBackground(UniColors.Background.secondary)
+            .listRowBackground(UniColors.List.rowBackground)
 
             VStack(alignment: .leading, spacing: UniSpacing.xs) {
                 Text("Kind")
@@ -248,7 +248,7 @@ struct WalletActivityFilterSheet: View {
             }
             .padding(.vertical, UniSpacing.xxs)
             .uniHaptic(.selection, trigger: kindRaw)
-            .listRowBackground(UniColors.Background.secondary)
+            .listRowBackground(UniColors.List.rowBackground)
 
             VStack(alignment: .leading, spacing: UniSpacing.xs) {
                 Text("Status")
@@ -264,7 +264,7 @@ struct WalletActivityFilterSheet: View {
             }
             .padding(.vertical, UniSpacing.xxs)
             .uniHaptic(.selection, trigger: statusRaw)
-            .listRowBackground(UniColors.Background.secondary)
+            .listRowBackground(UniColors.List.rowBackground)
         } header: {
             Text("Filter")
         }
@@ -289,7 +289,7 @@ struct WalletActivityFilterSheet: View {
             }
             .padding(.vertical, UniSpacing.xxs)
             .uniHaptic(.selection, trigger: timeRangeRaw)
-            .listRowBackground(UniColors.Background.secondary)
+            .listRowBackground(UniColors.List.rowBackground)
 
             if timeRangeBinding.wrappedValue == .custom {
                 DatePicker(
@@ -302,7 +302,7 @@ struct WalletActivityFilterSheet: View {
                         .foregroundStyle(UniColors.Text.primary)
                 }
                 .tint(UniColors.Tint.accent)
-                .listRowBackground(UniColors.Background.secondary)
+                .listRowBackground(UniColors.List.rowBackground)
 
                 DatePicker(
                     selection: customEndBinding,
@@ -314,7 +314,7 @@ struct WalletActivityFilterSheet: View {
                         .foregroundStyle(UniColors.Text.primary)
                 }
                 .tint(UniColors.Tint.accent)
-                .listRowBackground(UniColors.Background.secondary)
+                .listRowBackground(UniColors.List.rowBackground)
             }
         } header: {
             Text("When")
@@ -340,7 +340,7 @@ struct WalletActivityFilterSheet: View {
             }
             .padding(.vertical, UniSpacing.xxs)
             .uniHaptic(.selection, trigger: assetClassRaw)
-            .listRowBackground(UniColors.Background.secondary)
+            .listRowBackground(UniColors.List.rowBackground)
 
             NavigationLink(value: WalletActivityFilterDestination.networks) {
                 multiSelectLink(
@@ -349,7 +349,7 @@ struct WalletActivityFilterSheet: View {
                     readout: readout(selected: selectedNetworks.count, total: availableNetworks.count)
                 )
             }
-            .listRowBackground(UniColors.Background.secondary)
+            .listRowBackground(UniColors.List.rowBackground)
 
             NavigationLink(value: WalletActivityFilterDestination.assets) {
                 multiSelectLink(
@@ -358,7 +358,7 @@ struct WalletActivityFilterSheet: View {
                     readout: readout(selected: selectedSymbols.count, total: availableSymbols.count)
                 )
             }
-            .listRowBackground(UniColors.Background.secondary)
+            .listRowBackground(UniColors.List.rowBackground)
         } header: {
             Text("Show")
         }
@@ -405,9 +405,9 @@ struct WalletActivityFilterSheet: View {
     private var amountSection: some View {
         Section {
             amountField(placeholder: "Minimum", text: $minFiat)
-                .listRowBackground(UniColors.Background.secondary)
+                .listRowBackground(UniColors.List.rowBackground)
             amountField(placeholder: "Maximum", text: $maxFiat)
-                .listRowBackground(UniColors.Background.secondary)
+                .listRowBackground(UniColors.List.rowBackground)
         } header: {
             Text("Amount")
         } footer: {
@@ -600,13 +600,13 @@ private struct WalletActivityNetworksPicker: View {
                         }
                     }
                 }
-                .listRowBackground(UniColors.Background.secondary)
+                .listRowBackground(UniColors.List.rowBackground)
             }
 
             Section {
                 ForEach(availableNetworks, id: \.rawValue) { chain in
                     networkRow(chain)
-                        .listRowBackground(UniColors.Background.secondary)
+                        .listRowBackground(UniColors.List.rowBackground)
                 }
             } header: {
                 Text("Networks")
@@ -701,13 +701,13 @@ private struct WalletActivityAssetsPicker: View {
                         }
                     }
                 }
-                .listRowBackground(UniColors.Background.secondary)
+                .listRowBackground(UniColors.List.rowBackground)
             }
 
             Section {
                 ForEach(availableSymbols, id: \.self) { symbol in
                     symbolRow(symbol)
-                        .listRowBackground(UniColors.Background.secondary)
+                        .listRowBackground(UniColors.List.rowBackground)
                 }
             } header: {
                 Text("Assets")

@@ -115,7 +115,7 @@ struct ReceiveNetworkFirstView: View {
                     )
                 }
                 .buttonStyle(.plain)
-                .listRowBackground(UniColors.Background.secondary)
+                .listRowBackground(UniColors.List.rowBackground)
                 .accessibilityLabel(Text(verbatim: chain.displayName))
                 .accessibilityHint(Text("Receive \(assetPrefill.symbol) on this network"))
             }

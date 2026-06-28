@@ -97,7 +97,7 @@ struct SendAssetListView: View {
                     )
                 }
                 .buttonStyle(.plain)
-                .listRowBackground(UniColors.Background.secondary)
+                .listRowBackground(UniColors.List.rowBackground)
             }
         } header: {
             UniCaption(text: "Native assets", color: UniColors.Text.tertiary)
@@ -122,7 +122,7 @@ struct SendAssetListView: View {
                         )
                     }
                     .buttonStyle(.plain)
-                    .listRowBackground(UniColors.Background.secondary)
+                    .listRowBackground(UniColors.List.rowBackground)
                 }
             }
         } header: {

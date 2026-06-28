@@ -324,16 +324,16 @@ struct UniButton: View {
         switch variant {
         case .primary, .actionCircle:
             // `.glassProminent` accent fill → label opposes the fill.
-            return UniColors.Button.primaryLabel
+            return UniColors.Button.Primary.label
         case .destructive:
             // `.glassProminent` red fill → white label.
-            return UniColors.Button.destructiveLabel
+            return UniColors.Button.Destructive.label
         case .secondary, .toolbarPill, .walletPill:
             // `.glass` neutral fill → `.label`-tone label.
-            return UniColors.Button.secondaryLabel
+            return UniColors.Button.Secondary.label
         case .tertiary:
             // `.plain` inline link → accent.
-            return UniColors.Button.tertiaryLabel
+            return UniColors.Button.TextAction.foreground
         }
     }
 
@@ -439,29 +439,29 @@ struct UniButton: View {
         func body(content: Content) -> some View {
             switch variant {
             case .primary:
-                applyGlassProminent(content, activeTint: tintOverride ?? UniColors.Button.primaryTint)
+                applyGlassProminent(content, activeTint: tintOverride ?? UniColors.Button.Primary.tint)
             case .secondary:
-                applyGlass(content, activeTint: tintOverride ?? UniColors.Button.secondaryTint)
+                applyGlass(content, activeTint: tintOverride ?? UniColors.Button.Secondary.tint)
             case .destructive:
-                applyGlassProminent(content, activeTint: tintOverride ?? UniColors.Button.destructiveTint)
+                applyGlassProminent(content, activeTint: tintOverride ?? UniColors.Button.Destructive.tint)
             case .tertiary:
                 content
                     .buttonStyle(.plain)
-                    .foregroundStyle(isActive ? UniColors.Button.tertiaryLabel : UniColors.Button.disabledLabel)
+                    .foregroundStyle(isActive ? UniColors.Button.TextAction.foreground : UniColors.Button.TextAction.disabled)
             case .toolbarPill:
                 // `.controlSize(.large)` lifts the pill's capsule into the
                 // same vertical envelope as the toolbar's auto-glass icon
                 // backgrounds — the WWDC25 "Glassifying toolbars in
                 // SwiftUI" guidance.
-                applyGlass(content, activeTint: UniColors.Button.secondaryTint)
+                applyGlass(content, activeTint: UniColors.Button.ToolbarPill.tint)
                     .controlSize(.large)
             case .walletPill:
                 // Same glass envelope as `.toolbarPill` — the only
                 // difference is the leading avatar in the label.
-                applyGlass(content, activeTint: UniColors.Button.secondaryTint)
+                applyGlass(content, activeTint: UniColors.Button.WalletPill.tint)
                     .controlSize(.large)
             case .actionCircle:
-                applyGlassProminent(content, activeTint: UniColors.Button.primaryTint)
+                applyGlassProminent(content, activeTint: UniColors.Button.ActionCircle.tint)
             }
         }
 
@@ -476,8 +476,8 @@ struct UniButton: View {
             } else {
                 content
                     .buttonStyle(.glassProminent)
-                    .tint(UniColors.Button.disabledProminentFill)
-                    .foregroundStyle(UniColors.Button.disabledLabel)
+                    .tint(UniColors.Button.Primary.disabledTint)
+                    .foregroundStyle(UniColors.Button.Primary.disabledLabel)
             }
         }
 
@@ -492,8 +492,8 @@ struct UniButton: View {
             } else {
                 content
                     .buttonStyle(.glass)
-                    .tint(UniColors.Button.disabledFill)
-                    .foregroundStyle(UniColors.Button.disabledLabel)
+                    .tint(UniColors.Button.Secondary.disabledTint)
+                    .foregroundStyle(UniColors.Button.Secondary.disabledLabel)
             }
         }
     }

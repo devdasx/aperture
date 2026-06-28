@@ -57,7 +57,7 @@ struct SendAmountHero: View {
                         .font(.system(size: size, weight: .semibold, design: .rounded).monospacedDigit())
                         // Over-balance → red, so the user sees WHICH value is
                         // the problem (FIX 3), not just the banner below.
-                        .foregroundStyle(model.isOverBalance ? UniColors.Status.errorForeground : UniColors.Text.primary)
+                        .foregroundStyle(model.isOverBalance ? UniColors.Feedback.Error.foreground : UniColors.Text.primary)
                         .keyboardType(.decimalPad)
                         .multilineTextAlignment(.center)
                         .focused(amountFocused)
@@ -211,7 +211,7 @@ struct SendAmountHero: View {
             .contentShape(Capsule())
         }
         .buttonStyle(.glass)
-        .tint(isEnabled ? UniColors.Button.secondaryTint : UniColors.Button.disabledFill)
+        .tint(isEnabled ? UniColors.Button.Secondary.tint : UniColors.Button.Secondary.disabledTint)
         .disabled(!isEnabled)
     }
 
@@ -310,7 +310,7 @@ struct SendAmountMultiList: View {
             .contentShape(Capsule())
         }
         .buttonStyle(.glass)
-        .tint(UniColors.Button.secondaryTint)
+        .tint(UniColors.Button.Secondary.tint)
     }
 
     private var unitToggleLabel: LocalizedStringKey {
@@ -395,7 +395,7 @@ private struct SendAmountRow: View {
                 rowNote(reason, color: UniColors.Text.tertiary, icon: "nosign")
             } else if isOver {
                 rowNote(String(localized: "More than your remaining balance."),
-                        color: UniColors.Status.errorForeground,
+                        color: UniColors.Feedback.Error.foreground,
                         icon: "exclamationmark.triangle.fill")
             }
         }
@@ -475,7 +475,7 @@ private struct SendAmountRow: View {
     /// otherwise.
     private var amountColor: Color {
         if isBlocked { return UniColors.Text.disabled }
-        if isOver { return UniColors.Status.errorForeground }
+        if isOver { return UniColors.Feedback.Error.foreground }
         return UniColors.Text.primary
     }
 

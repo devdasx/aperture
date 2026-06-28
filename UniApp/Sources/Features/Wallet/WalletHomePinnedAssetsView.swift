@@ -98,7 +98,7 @@ struct WalletHomePinnedAssetsView: View {
                             subtitle: row.chain.ticker,
                             unpin: { unpin(coin: row) }
                         )
-                        .listRowBackground(UniColors.Background.secondary)
+                        .listRowBackground(UniColors.List.rowBackground)
                     }
                 } header: {
                     Text("Coins")
@@ -113,7 +113,7 @@ struct WalletHomePinnedAssetsView: View {
                             subtitle: "\(row.symbol) · \(row.chain.displayName)",
                             unpin: { unpin(token: row) }
                         )
-                        .listRowBackground(UniColors.Background.secondary)
+                        .listRowBackground(UniColors.List.rowBackground)
                     }
                 } header: {
                     Text("Tokens")

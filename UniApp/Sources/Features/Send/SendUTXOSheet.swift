@@ -72,7 +72,7 @@ struct SendUTXOSheet: View {
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
-                    .listRowBackground(UniColors.Background.secondary)
+                    .listRowBackground(UniColors.List.rowBackground)
                 } header: {
                     UniCaption(text: "Coin selection", color: UniColors.Text.tertiary)
                 }
@@ -88,7 +88,7 @@ struct SendUTXOSheet: View {
                         if !selectedIDs.isEmpty {
                             Text(verbatim: runningTotalText)
                                 .font(UniTypography.caption1.monospacedDigit())
-                                .foregroundStyle(coversTarget ? UniColors.Text.secondary : UniColors.Status.warningForeground)
+                                .foregroundStyle(coversTarget ? UniColors.Text.secondary : UniColors.Feedback.Warning.foreground)
                                 .environment(\.layoutDirection, .leftToRight)
                         }
                     }
@@ -122,7 +122,7 @@ struct SendUTXOSheet: View {
                     HStack(spacing: UniSpacing.xxs) {
                         Image(systemName: utxo.confirmed ? "checkmark.seal" : "clock")
                             .font(.system(size: 11))
-                            .foregroundStyle(utxo.confirmed ? UniColors.Status.successForeground : UniColors.Status.warningForeground)
+                            .foregroundStyle(utxo.confirmed ? UniColors.Feedback.Success.foreground : UniColors.Feedback.Warning.foreground)
                         Text(utxo.confirmed ? "Confirmed" : "Unconfirmed")
                             .font(UniTypography.caption2)
                             .foregroundStyle(UniColors.Text.tertiary)
@@ -137,7 +137,7 @@ struct SendUTXOSheet: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .listRowBackground(UniColors.Background.secondary)
+        .listRowBackground(UniColors.List.rowBackground)
     }
 
     private var empty: some View {

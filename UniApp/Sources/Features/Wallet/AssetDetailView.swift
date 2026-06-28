@@ -397,7 +397,7 @@ struct AssetDetailView: View {
             // Should never happen — every identity resolves to at
             // least one network row. Defensive fallback.
             Circle()
-                .fill(UniColors.Material.card)
+                .fill(UniColors.Card.background)
                 .overlay {
                     Text(verbatim: String(identity.symbol.prefix(3)))
                         .font(UniTypography.bodyEmphasized)

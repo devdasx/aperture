@@ -187,7 +187,7 @@ struct ActivityRow: View {
                 .fill(UniColors.Background.secondary)
                 .frame(width: 22, height: 22)
             Circle()
-                .fill(UniColors.Material.card)
+                .fill(UniColors.Card.background)
                 .frame(width: 18, height: 18)
             Image(systemName: badgeGlyph)
                 .font(.system(size: 11, weight: .bold))
@@ -210,11 +210,11 @@ struct ActivityRow: View {
 
     private var badgeForeground: Color {
         switch status {
-        case .pending: return UniColors.Status.warningForeground
-        case .failed:  return UniColors.Status.errorForeground
+        case .pending: return UniColors.Feedback.Warning.foreground
+        case .failed:  return UniColors.Feedback.Error.foreground
         case .confirmed:
             switch direction {
-            case .incoming: return UniColors.Status.successForeground
+            case .incoming: return UniColors.Feedback.Success.foreground
             case .outgoing: return UniColors.Text.primary
             case .internal: return UniColors.Text.secondary
             }
@@ -269,7 +269,7 @@ struct ActivityRow: View {
 
     private var amountColor: Color {
         switch (status, direction) {
-        case (.failed, _):   return UniColors.Status.errorForeground
+        case (.failed, _):   return UniColors.Feedback.Error.foreground
         case (_, .incoming): return UniColors.Crypto.up
         case (_, .outgoing): return UniColors.Text.primary
         case (_, .internal): return UniColors.Text.primary
@@ -289,8 +289,8 @@ struct ActivityRow: View {
 
     private var secondaryColor: Color {
         switch status {
-        case .pending:   return UniColors.Status.warningForeground
-        case .failed:    return UniColors.Status.errorForeground
+        case .pending:   return UniColors.Feedback.Warning.foreground
+        case .failed:    return UniColors.Feedback.Error.foreground
         case .confirmed: return UniColors.Text.tertiary
         }
     }

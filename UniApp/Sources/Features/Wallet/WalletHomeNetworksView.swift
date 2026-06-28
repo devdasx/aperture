@@ -74,7 +74,7 @@ struct WalletHomeNetworksView: View {
                         isSelected: isSelected(chain),
                         toggle: { toggle(chain) }
                     )
-                    .listRowBackground(UniColors.Background.secondary)
+                    .listRowBackground(UniColors.List.rowBackground)
                 }
             } footer: {
                 Text("Pick the networks to show in your wallet home. When none are picked, every network is visible.")
@@ -239,7 +239,7 @@ private struct NetworkRow: View {
                 Image(systemName: isSelected ? "checkmark" : "circle")
                     .font(.system(size: 16, weight: .regular))
                     .foregroundStyle(isSelected
-                        ? UniColors.Button.primaryTint
+                        ? UniColors.Button.Primary.tint
                         : UniColors.Icon.secondary)
                     .accessibilityHidden(true)
             }

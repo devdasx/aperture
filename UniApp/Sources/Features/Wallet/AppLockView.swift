@@ -165,7 +165,7 @@ private struct ForgotPinSheet: View {
         Image(systemName: "key.slash")
             .font(.system(size: 44, weight: .light))
             .symbolRenderingMode(.hierarchical)
-            .foregroundStyle(UniColors.Status.warningForeground)
+            .foregroundStyle(UniColors.Feedback.Warning.foreground)
             .frame(maxWidth: .infinity, alignment: .center)
             .padding(.bottom, UniSpacing.s)
             .accessibilityHidden(true)

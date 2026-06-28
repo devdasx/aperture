@@ -180,7 +180,7 @@ struct WalletDeleteSheet: View {
         Image(systemName: "trash.fill")
             .font(.system(size: 52, weight: .light))
             .symbolRenderingMode(.hierarchical)
-            .foregroundStyle(UniColors.Status.errorForeground)
+            .foregroundStyle(UniColors.Feedback.Error.foreground)
             .frame(maxWidth: .infinity, alignment: .center)
             .padding(.bottom, UniSpacing.xxs)
             .accessibilityHidden(true)
@@ -245,7 +245,7 @@ struct WalletDeleteSheet: View {
             } else {
                 UniBody(
                     text: "This wallet's recovery phrase isn't stored on this iPhone. Unless you have it written down elsewhere, removing it here is final — the funds in it can't be recovered.",
-                    color: UniColors.Status.errorForeground
+                    color: UniColors.Feedback.Error.foreground
                 )
             }
         case .importedKey:
@@ -257,7 +257,7 @@ struct WalletDeleteSheet: View {
             } else {
                 UniBody(
                     text: "This wallet's private key isn't stored on this iPhone. Unless you have it saved elsewhere, removing it here is final — the funds in it can't be recovered.",
-                    color: UniColors.Status.errorForeground
+                    color: UniColors.Feedback.Error.foreground
                 )
             }
         }

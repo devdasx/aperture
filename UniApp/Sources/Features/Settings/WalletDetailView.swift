@@ -479,7 +479,7 @@ struct WalletDetailView: View {
                     .foregroundStyle(UniColors.Tint.accent)
             }
         }
-        .listRowBackground(UniColors.Background.secondary)
+        .listRowBackground(UniColors.List.rowBackground)
     }
 
     private func kindRow(_ wallet: WalletRecord) -> some View {
@@ -489,7 +489,7 @@ struct WalletDetailView: View {
             Text(kindLabel(wallet.kind)).font(UniTypography.subheadline).foregroundStyle(UniColors.Text.secondary)
         }
         .padding(.vertical, UniSpacing.xxs)
-        .listRowBackground(UniColors.Background.secondary)
+        .listRowBackground(UniColors.List.rowBackground)
     }
 
     /// Customize row — the wallet's avatar on the leading edge,
@@ -513,7 +513,7 @@ struct WalletDetailView: View {
             .padding(.vertical, UniSpacing.xxs)
         }
         .buttonStyle(.plain)
-        .listRowBackground(UniColors.Background.secondary)
+        .listRowBackground(UniColors.List.rowBackground)
     }
 
     /// Custom Tokens row — pushes `CustomTokensListView`. Reactive to
@@ -538,7 +538,7 @@ struct WalletDetailView: View {
             }
             .padding(.vertical, UniSpacing.xxs)
         }
-        .listRowBackground(UniColors.Background.secondary)
+        .listRowBackground(UniColors.List.rowBackground)
     }
 
     // `backupStatusRow` removed 2026-06-07. Its meaning is now carried
@@ -568,7 +568,7 @@ struct WalletDetailView: View {
         }
         .buttonStyle(.plain)
         .disabled(!hasMnemonic)
-        .listRowBackground(UniColors.Background.secondary)
+        .listRowBackground(UniColors.List.rowBackground)
     }
 
     /// "View private key" — the imported-key counterpart of
@@ -601,7 +601,7 @@ struct WalletDetailView: View {
         }
         .buttonStyle(.plain)
         .disabled(!hasKey)
-        .listRowBackground(UniColors.Background.secondary)
+        .listRowBackground(UniColors.List.rowBackground)
     }
 
     /// "View private keys" — the per-chain export row. Enabled iff a usable
@@ -634,7 +634,7 @@ struct WalletDetailView: View {
         }
         .buttonStyle(.plain)
         .disabled(!hasSecret)
-        .listRowBackground(UniColors.Background.secondary)
+        .listRowBackground(UniColors.List.rowBackground)
     }
 
     /// The distinct chains this wallet holds, each paired with its address,
@@ -659,17 +659,17 @@ struct WalletDetailView: View {
             HStack(spacing: UniSpacing.s) {
                 Image(systemName: "trash")
                     .font(.system(size: 17, weight: .regular))
-                    .foregroundStyle(UniColors.Status.errorForeground)
+                    .foregroundStyle(UniColors.Feedback.Error.foreground)
                     .frame(width: 28)
                 Text("Delete wallet")
                     .font(UniTypography.body)
-                    .foregroundStyle(UniColors.Status.errorForeground)
+                    .foregroundStyle(UniColors.Feedback.Error.foreground)
                 Spacer()
             }
             .padding(.vertical, UniSpacing.xxs)
         }
         .buttonStyle(.plain)
-        .listRowBackground(UniColors.Background.secondary)
+        .listRowBackground(UniColors.List.rowBackground)
     }
 
     private var missing: some View {
@@ -848,10 +848,10 @@ struct WalletDetailView: View {
                     HStack(spacing: 4) {
                         Image(systemName: "checkmark.circle.fill")
                             .font(.system(size: 15))
-                            .foregroundStyle(UniColors.Status.successForeground)
+                            .foregroundStyle(UniColors.Feedback.Success.foreground)
                         Text("Backed up")
                             .font(UniTypography.subheadline)
-                            .foregroundStyle(UniColors.Status.successForeground)
+                            .foregroundStyle(UniColors.Feedback.Success.foreground)
                     }
                     chevron
                 case .notDone:
@@ -874,7 +874,7 @@ struct WalletDetailView: View {
         // permanently disabled, so a backed-up wallet can still be backed up
         // again (e.g. add the other method, or re-upload to iCloud).
         .disabled(status == .checking)
-        .listRowBackground(UniColors.Background.secondary)
+        .listRowBackground(UniColors.List.rowBackground)
     }
 
     /// Trailing disclosure chevron shared by the backup rows.

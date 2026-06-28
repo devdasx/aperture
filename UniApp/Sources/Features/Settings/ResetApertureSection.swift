@@ -19,21 +19,21 @@ struct ResetApertureSection: View {
                     SettingsIconTile(
                         systemImage: "trash.fill",
                         tint: .red,
-                        compactTint: UniColors.Status.errorForeground
+                        compactTint: UniColors.Feedback.Error.foreground
                     )
                     Text("Reset Aperture")
                         .font(UniTypography.body)
-                        .foregroundStyle(UniColors.Status.errorForeground)
+                        .foregroundStyle(UniColors.Feedback.Error.foreground)
                     Spacer()
                 }
                 .padding(.vertical, UniSpacing.xxs)
             }
             .buttonStyle(.plain)
-            .listRowBackground(UniColors.Background.secondary)
+            .listRowBackground(UniColors.List.rowBackground)
         } footer: {
             Text("Deletes every wallet, every encrypted seed, every cached balance, every preference. This cannot be undone — back up any recovery phrases first.")
                 .font(UniTypography.footnote)
-                .foregroundStyle(UniColors.Status.errorForeground)
+                .foregroundStyle(UniColors.Feedback.Error.foreground)
                 .fixedSize(horizontal: false, vertical: true)
         }
     }

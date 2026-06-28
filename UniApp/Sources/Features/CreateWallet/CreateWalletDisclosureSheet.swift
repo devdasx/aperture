@@ -165,7 +165,7 @@ private struct CreateWalletDisclosureContent: View {
                 .multilineTextAlignment(.leading)
                 .fixedSize(horizontal: false, vertical: true)
         }
-        .tint(UniColors.Button.primaryTint)
+        .tint(UniColors.Button.Primary.tint)
         .uniHaptic(.selection, trigger: didAcknowledge)
         .padding(.vertical, UniSpacing.xxs)
         .padding(.horizontal, UniSpacing.m)

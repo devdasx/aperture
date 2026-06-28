@@ -256,7 +256,7 @@ struct SettingsView: View {
                         iconTint: .blue
                     )
                 }
-                .listRowBackground(UniColors.Background.secondary)
+                .listRowBackground(UniColors.List.rowBackground)
             }
 
             // Section 2 — Security
@@ -269,7 +269,7 @@ struct SettingsView: View {
                         iconTint: .green
                     )
                 }
-                .listRowBackground(UniColors.Background.secondary)
+                .listRowBackground(UniColors.List.rowBackground)
             }
 
             // Section 3 — Preferences (existing + new hide toggles)
@@ -282,7 +282,7 @@ struct SettingsView: View {
                         iconTint: .indigo
                     )
                 }
-                .listRowBackground(UniColors.Background.secondary)
+                .listRowBackground(UniColors.List.rowBackground)
 
                 NavigationLink(value: SettingsDestination.appearance) {
                     SettingsRow(
@@ -292,7 +292,7 @@ struct SettingsView: View {
                         iconTint: .gray
                     )
                 }
-                .listRowBackground(UniColors.Background.secondary)
+                .listRowBackground(UniColors.List.rowBackground)
 
                 NavigationLink(value: SettingsDestination.currency) {
                     SettingsRow(
@@ -302,7 +302,7 @@ struct SettingsView: View {
                         iconTint: .green
                     )
                 }
-                .listRowBackground(UniColors.Background.secondary)
+                .listRowBackground(UniColors.List.rowBackground)
 
                 // 2026-06-09 — Haptic, Privacy mask, Hide balance
                 // toggles + Hide small balances picker moved into
@@ -319,7 +319,7 @@ struct SettingsView: View {
                         iconTint: .orange
                     )
                 }
-                .listRowBackground(UniColors.Background.secondary)
+                .listRowBackground(UniColors.List.rowBackground)
             }
 
             // Section 4 — Help & About
@@ -332,7 +332,7 @@ struct SettingsView: View {
                         iconTint: .blue
                     )
                 }
-                .listRowBackground(UniColors.Background.secondary)
+                .listRowBackground(UniColors.List.rowBackground)
 
                 NavigationLink(value: SettingsDestination.about) {
                     SettingsRow(
@@ -342,7 +342,7 @@ struct SettingsView: View {
                         iconTint: .gray
                     )
                 }
-                .listRowBackground(UniColors.Background.secondary)
+                .listRowBackground(UniColors.List.rowBackground)
 
                 NavigationLink(value: SettingsDestination.diagnostics) {
                     SettingsRow(
@@ -352,7 +352,7 @@ struct SettingsView: View {
                         iconTint: .purple
                     )
                 }
-                .listRowBackground(UniColors.Background.secondary)
+                .listRowBackground(UniColors.List.rowBackground)
             }
 
             // Section 6 — Reset Aperture (terminal nuclear hatch). Moved
@@ -641,7 +641,7 @@ struct PreferencesView: View {
         List {
             Section {
                 HapticToggleRow(isOn: $hapticEnabled)
-                    .listRowBackground(UniColors.Background.secondary)
+                    .listRowBackground(UniColors.List.rowBackground)
             }
 
             // Transaction-history amount display (2026-06-18). On (default)
@@ -657,9 +657,9 @@ struct PreferencesView: View {
                             .foregroundStyle(UniColors.Text.primary)
                     }
                 }
-                .tint(UniColors.Button.primaryTint)
+                .tint(UniColors.Button.Primary.tint)
                 .padding(.vertical, UniSpacing.xxs)
-                .listRowBackground(UniColors.Background.secondary)
+                .listRowBackground(UniColors.List.rowBackground)
             } header: {
                 Text("Transactions")
             } footer: {
@@ -693,7 +693,7 @@ private struct HapticToggleRow: View {
                     .foregroundStyle(UniColors.Text.primary)
             }
         }
-        .tint(UniColors.Button.primaryTint)
+        .tint(UniColors.Button.Primary.tint)
         .padding(.vertical, UniSpacing.xxs)
         // Haptic fires inside UniToggle (`.toggle` per handoff)
     }
@@ -714,7 +714,7 @@ private struct HideBalanceToggleRow: View {
                     .foregroundStyle(UniColors.Text.primary)
             }
         }
-        .tint(UniColors.Button.primaryTint)
+        .tint(UniColors.Button.Primary.tint)
         .padding(.vertical, UniSpacing.xxs)
         // Haptic fires inside UniToggle (`.toggle` per handoff)
     }
@@ -746,7 +746,7 @@ struct HideSmallBalancesPicker: View {
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
-                    .listRowBackground(UniColors.Background.secondary)
+                    .listRowBackground(UniColors.List.rowBackground)
                 }
             } footer: {
                 Text("Holdings worth less than this amount are hidden from the wallet screen. They're still in the local store — only the display is filtered.")

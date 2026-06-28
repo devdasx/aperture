@@ -21,7 +21,7 @@ struct BiometricReenrollmentBanner: View {
             Image(systemName: "faceid")
                 .font(.system(size: 22, weight: .regular))
                 .symbolRenderingMode(.hierarchical)
-                .foregroundStyle(UniColors.Status.infoForeground)
+                .foregroundStyle(UniColors.Feedback.Info.foreground)
                 .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: UniSpacing.xxs) {
@@ -44,11 +44,11 @@ struct BiometricReenrollmentBanner: View {
         .padding(UniSpacing.m)
         .background(
             RoundedRectangle(cornerRadius: UniRadius.card, style: .continuous)
-                .fill(UniColors.Status.infoBackground)
+                .fill(UniColors.Feedback.Info.background)
         )
         .overlay(
             RoundedRectangle(cornerRadius: UniRadius.card, style: .continuous)
-                .stroke(UniColors.Status.infoStroke, lineWidth: 1)
+                .stroke(UniColors.Feedback.Info.stroke, lineWidth: 1)
         )
         .contentShape(Rectangle())
         .onTapGesture { Task { await reenroll() } }

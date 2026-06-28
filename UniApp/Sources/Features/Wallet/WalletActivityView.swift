@@ -977,7 +977,7 @@ private struct ActivityPDFExportSheet: View {
                 }
             }
             .padding(.vertical, UniSpacing.xxs)
-            .listRowBackground(UniColors.Background.secondary)
+            .listRowBackground(UniColors.List.rowBackground)
         }
     }
 
@@ -993,7 +993,7 @@ private struct ActivityPDFExportSheet: View {
                     readout: currentViewReadout
                 )
             }
-            .listRowBackground(UniColors.Background.secondary)
+            .listRowBackground(UniColors.List.rowBackground)
 
             Button {
                 apply(Self.defaultInputs())
@@ -1004,7 +1004,7 @@ private struct ActivityPDFExportSheet: View {
                     readout: allActivityReadout
                 )
             }
-            .listRowBackground(UniColors.Background.secondary)
+            .listRowBackground(UniColors.List.rowBackground)
         } header: {
             Text("Scope")
         }
@@ -1071,7 +1071,7 @@ private struct ActivityPDFExportSheet: View {
                     readout: readout(selected: selectedNetworks.count, total: availableNetworks.count)
                 )
             }
-            .listRowBackground(UniColors.Background.secondary)
+            .listRowBackground(UniColors.List.rowBackground)
 
             NavigationLink(value: ActivityPDFExportDestination.assets) {
                 multiSelectLink(
@@ -1080,7 +1080,7 @@ private struct ActivityPDFExportSheet: View {
                     readout: readout(selected: selectedSymbols.count, total: availableSymbols.count)
                 )
             }
-            .listRowBackground(UniColors.Background.secondary)
+            .listRowBackground(UniColors.List.rowBackground)
         } header: {
             Text("Assets")
         }
@@ -1106,7 +1106,7 @@ private struct ActivityPDFExportSheet: View {
                         .foregroundStyle(UniColors.Text.primary)
                 }
                 .tint(UniColors.Tint.accent)
-                .listRowBackground(UniColors.Background.secondary)
+                .listRowBackground(UniColors.List.rowBackground)
 
                 DatePicker(
                     selection: customEndBinding,
@@ -1118,7 +1118,7 @@ private struct ActivityPDFExportSheet: View {
                         .foregroundStyle(UniColors.Text.primary)
                 }
                 .tint(UniColors.Tint.accent)
-                .listRowBackground(UniColors.Background.secondary)
+                .listRowBackground(UniColors.List.rowBackground)
             }
         } header: {
             Text("Date & Time")
@@ -1129,9 +1129,9 @@ private struct ActivityPDFExportSheet: View {
     private var amountSection: some View {
         Section {
             amountField(placeholder: "Minimum", text: $minFiat)
-                .listRowBackground(UniColors.Background.secondary)
+                .listRowBackground(UniColors.List.rowBackground)
             amountField(placeholder: "Maximum", text: $maxFiat)
-                .listRowBackground(UniColors.Background.secondary)
+                .listRowBackground(UniColors.List.rowBackground)
         } header: {
             Text("Amount")
         }
@@ -1146,7 +1146,7 @@ private struct ActivityPDFExportSheet: View {
                 fill: Color.clear,
                 verticalPadding: UniSpacing.xs
             )
-            .listRowBackground(UniColors.Background.secondary)
+            .listRowBackground(UniColors.List.rowBackground)
         } header: {
             Text("Search")
         }
@@ -1192,7 +1192,7 @@ private struct ActivityPDFExportSheet: View {
             .labelsHidden()
         }
         .padding(.vertical, UniSpacing.xxs)
-        .listRowBackground(UniColors.Background.secondary)
+        .listRowBackground(UniColors.List.rowBackground)
     }
 
     @ViewBuilder
@@ -1368,7 +1368,7 @@ private struct ActivityPDFExportNetworksPicker: View {
                         }
                     }
                 }
-                .listRowBackground(UniColors.Background.secondary)
+                .listRowBackground(UniColors.List.rowBackground)
             }
 
             Section {
@@ -1399,7 +1399,7 @@ private struct ActivityPDFExportNetworksPicker: View {
                         }
                         .padding(.vertical, UniSpacing.xxs)
                     }
-                    .listRowBackground(UniColors.Background.secondary)
+                    .listRowBackground(UniColors.List.rowBackground)
                 }
             } header: {
                 Text("Chains")
@@ -1441,7 +1441,7 @@ private struct ActivityPDFExportAssetsPicker: View {
                         }
                     }
                 }
-                .listRowBackground(UniColors.Background.secondary)
+                .listRowBackground(UniColors.List.rowBackground)
             }
 
             Section {
@@ -1461,7 +1461,7 @@ private struct ActivityPDFExportAssetsPicker: View {
                         }
                         .padding(.vertical, UniSpacing.xxs)
                     }
-                    .listRowBackground(UniColors.Background.secondary)
+                    .listRowBackground(UniColors.List.rowBackground)
                 }
             } header: {
                 Text("Coins & Tokens")

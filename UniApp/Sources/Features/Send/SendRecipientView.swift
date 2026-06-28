@@ -291,7 +291,7 @@ struct SendRecipientView: View {
         // glass tint quiets to `Button.disabledFill` and the label / icon
         // to the disabled tone, replacing the prior `.opacity(0.4)` magic
         // literal.
-        .tint(isEnabled ? UniColors.Button.secondaryTint : UniColors.Button.disabledFill)
+        .tint(isEnabled ? UniColors.Button.Secondary.tint : UniColors.Button.Secondary.disabledTint)
         .disabled(!isEnabled)
     }
 
@@ -537,7 +537,7 @@ private struct RecipientRow: View {
                     Button(action: onRemove) {
                         Image(systemName: "minus.circle.fill")
                             .font(.system(size: 22))
-                            .foregroundStyle(UniColors.Status.errorForeground)
+                            .foregroundStyle(UniColors.Feedback.Error.foreground)
                             .padding(.trailing, UniSpacing.m)
                             .padding(.top, UniSpacing.s)
                             .contentShape(Circle())
@@ -576,7 +576,7 @@ private struct RecipientRow: View {
                     HStack(spacing: UniSpacing.xxs) {
                         Image(systemName: "checkmark.seal.fill")
                             .font(.system(size: 13))
-                            .foregroundStyle(UniColors.Status.successForeground)
+                            .foregroundStyle(UniColors.Feedback.Success.foreground)
                         Text(verbatim: "\(name)  →  \(SendRecipientView.shorten(address))")
                             .font(UniTypography.footnote.monospaced())
                             .foregroundStyle(UniColors.Text.secondary)
@@ -605,11 +605,11 @@ private struct RecipientRow: View {
             Label {
                 Text("Couldn't find \(name). Check the spelling, or paste the address.")
                     .font(UniTypography.footnote)
-                    .foregroundStyle(UniColors.Status.warningForeground)
+                    .foregroundStyle(UniColors.Feedback.Warning.foreground)
             } icon: {
                 Image(systemName: "questionmark.circle.fill")
                     .font(.system(size: 13))
-                    .foregroundStyle(UniColors.Status.warningForeground)
+                    .foregroundStyle(UniColors.Feedback.Warning.foreground)
             }
             .transition(.opacity)
         case .invalid:
@@ -628,23 +628,23 @@ private struct RecipientRow: View {
             Label {
                 Text("That looks like a \(other.displayName) address — but you're sending on \(chain.displayName). Funds sent to the wrong network can't be recovered.")
                     .font(UniTypography.footnote)
-                    .foregroundStyle(UniColors.Status.errorForeground)
+                    .foregroundStyle(UniColors.Feedback.Error.foreground)
                     .fixedSize(horizontal: false, vertical: true)
             } icon: {
                 Image(systemName: "exclamationmark.octagon.fill")
                     .font(.system(size: 13))
-                    .foregroundStyle(UniColors.Status.errorForeground)
+                    .foregroundStyle(UniColors.Feedback.Error.foreground)
             }
             .transition(.opacity)
         } else {
             Label {
                 Text("That's not a valid \(chain.displayName) address.")
                     .font(UniTypography.footnote)
-                    .foregroundStyle(UniColors.Status.errorForeground)
+                    .foregroundStyle(UniColors.Feedback.Error.foreground)
             } icon: {
                 Image(systemName: "exclamationmark.circle.fill")
                     .font(.system(size: 13))
-                    .foregroundStyle(UniColors.Status.errorForeground)
+                    .foregroundStyle(UniColors.Feedback.Error.foreground)
             }
             .transition(.opacity)
         }
@@ -660,7 +660,7 @@ private struct RecipientRow: View {
             HStack(alignment: .top, spacing: UniSpacing.xs) {
                 Image(systemName: "exclamationmark.triangle.fill")
                     .font(.system(size: 13))
-                    .foregroundStyle(UniColors.Status.warningForeground)
+                    .foregroundStyle(UniColors.Feedback.Warning.foreground)
                 Text("First time sending here — double-check it. Transactions can't be reversed.")
                     .font(UniTypography.footnote)
                     .foregroundStyle(UniColors.Text.secondary)
@@ -670,7 +670,7 @@ private struct RecipientRow: View {
             HStack(spacing: UniSpacing.xs) {
                 Image(systemName: "checkmark.shield.fill")
                     .font(.system(size: 13))
-                    .foregroundStyle(UniColors.Status.successForeground)
+                    .foregroundStyle(UniColors.Feedback.Success.foreground)
                 Text(count == 1 ? "Sent here once before" : "Sent here \(count) times before")
                     .font(UniTypography.footnote)
                     .foregroundStyle(UniColors.Text.secondary)

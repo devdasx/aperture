@@ -295,7 +295,7 @@ struct ChooseMethodScreen: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .listRowBackground(UniColors.Background.secondary)
+        .listRowBackground(UniColors.List.rowBackground)
     }
 }
 
@@ -354,7 +354,7 @@ struct ICloudPasswordScreen: View {
                         if !confirm.isEmpty && !passwordsMatch {
                             Text("Passwords don't match.")
                                 .font(UniTypography.footnote)
-                                .foregroundStyle(UniColors.Status.errorForeground)
+                                .foregroundStyle(UniColors.Feedback.Error.foreground)
                                 .frame(maxWidth: .infinity, alignment: .leading)
                         }
                     }
@@ -368,7 +368,7 @@ struct ICloudPasswordScreen: View {
                     } icon: {
                         Image(systemName: "exclamationmark.triangle")
                             .font(.system(size: 13))
-                            .foregroundStyle(UniColors.Status.warningForeground)
+                            .foregroundStyle(UniColors.Feedback.Warning.foreground)
                     }
                 }
                 .padding(.horizontal, UniSpacing.l)
@@ -501,7 +501,7 @@ struct ManualSafetyScreen: View {
                             .foregroundStyle(UniColors.Text.primary)
                             .fixedSize(horizontal: false, vertical: true)
                     }
-                    .tint(UniColors.Button.primaryTint)
+                    .tint(UniColors.Button.Primary.tint)
                     .uniHaptic(.selection, trigger: didAcknowledge)
                     .padding(.horizontal, UniSpacing.m)
                 }
@@ -552,9 +552,9 @@ private struct StrengthMeter: View {
 
     private var tint: Color {
         switch strength.rating {
-        case .empty, .weak: return UniColors.Status.errorForeground
-        case .fair: return UniColors.Status.warningForeground
-        case .good, .strong: return UniColors.Status.successForeground
+        case .empty, .weak: return UniColors.Feedback.Error.foreground
+        case .fair: return UniColors.Feedback.Warning.foreground
+        case .good, .strong: return UniColors.Feedback.Success.foreground
         }
     }
 
@@ -618,7 +618,7 @@ struct ICloudProgressScreen: View {
                         VStack(spacing: UniSpacing.s) {
                             Text(verbatim: message)
                                 .font(UniTypography.body)
-                                .foregroundStyle(UniColors.Status.errorForeground)
+                                .foregroundStyle(UniColors.Feedback.Error.foreground)
                                 .multilineTextAlignment(.center)
                                 .fixedSize(horizontal: false, vertical: true)
                         }
@@ -758,7 +758,7 @@ private struct BackupRing: View {
                 // Solid green seal + white check (2026-06-20 user direction —
                 // a filled seal, not a thin ring), scaling in where the ring was.
                 Circle()
-                    .fill(UniColors.Status.successForeground)
+                    .fill(UniColors.Feedback.Success.foreground)
                     .overlay {
                         Image(systemName: "checkmark")
                             .font(.system(size: 52, weight: .bold))
@@ -796,7 +796,7 @@ private struct StepRow: View {
                     ProgressView().controlSize(.small)
                 case .done:
                     Image(systemName: "checkmark.circle.fill")
-                        .foregroundStyle(UniColors.Status.successForeground)
+                        .foregroundStyle(UniColors.Feedback.Success.foreground)
                 }
             }
             .font(.system(size: 18))
@@ -936,7 +936,7 @@ struct BackupConfirmedScreen: View {
             Spacer()
             VStack(spacing: UniSpacing.l) {
                 Circle()
-                    .fill(UniColors.Status.successForeground)
+                    .fill(UniColors.Feedback.Success.foreground)
                     .frame(width: 96, height: 96)
                     .overlay {
                         Image(systemName: "checkmark")

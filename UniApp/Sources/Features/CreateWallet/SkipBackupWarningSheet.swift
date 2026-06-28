@@ -42,7 +42,7 @@ struct SkipBackupWarningSheet: View {
             Image(systemName: "exclamationmark.shield.fill")
                 .font(.system(size: 48, weight: .regular))
                 .symbolRenderingMode(.hierarchical)
-                .foregroundStyle(UniColors.Status.warningForeground)
+                .foregroundStyle(UniColors.Feedback.Warning.foreground)
                 .accessibilityHidden(true)
             Spacer()
         }
@@ -117,7 +117,7 @@ struct SkipBackupWarningScreen: View {
             Image(systemName: "exclamationmark.shield.fill")
                 .font(.system(size: 64, weight: .regular))
                 .symbolRenderingMode(.hierarchical)
-                .foregroundStyle(UniColors.Status.warningForeground)
+                .foregroundStyle(UniColors.Feedback.Warning.foreground)
                 .accessibilityHidden(true)
             Spacer()
         }

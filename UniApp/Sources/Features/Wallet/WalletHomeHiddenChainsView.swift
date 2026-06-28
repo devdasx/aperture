@@ -64,7 +64,7 @@ struct WalletHomeHiddenChainsView: View {
                         subtitle: chain.ticker,
                         isHidden: bindingFor(chain)
                     )
-                    .listRowBackground(UniColors.Background.secondary)
+                    .listRowBackground(UniColors.List.rowBackground)
                 }
             } footer: {
                 Text("Hiding a chain hides every coin and token on it from the wallet home. The addresses stay in your wallet — only the display changes.")
