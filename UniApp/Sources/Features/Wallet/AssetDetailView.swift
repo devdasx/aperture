@@ -423,9 +423,18 @@ struct AssetDetailView: View {
     private func balanceHeroRow(_ derived: DerivedState) -> some View {
         VStack(alignment: .center, spacing: 6) {
             balanceLabel(derived)
-            nativeRollup(derived.resolution)
+            if let timestamp = scrubModel.timestamp {
+                scrubTimestampLabel(timestamp)
+            } else {
+                nativeRollup(derived.resolution)
+            }
         }
         .frame(maxWidth: .infinity)
+        .transaction { transaction in
+            if scrubModel.isActive {
+                transaction.disablesAnimations = true
+            }
+        }
     }
 
     @ViewBuilder
@@ -442,7 +451,7 @@ struct AssetDetailView: View {
             .foregroundStyle(UniColors.Text.primary)
             .lineLimit(1)
             .minimumScaleFactor(0.5)
-            .contentTransition(.numericText())
+            .contentTransition(scrubModel.isActive ? .identity : .numericText())
             .accessibilityLabel(
                 hideBalance
                     ? Text("Balance hidden")
@@ -460,6 +469,14 @@ struct AssetDetailView: View {
             .font(UniTypography.subheadline)
             .foregroundStyle(UniColors.Text.secondary)
             .monospacedDigit()
+    }
+
+    private func scrubTimestampLabel(_ date: Date) -> some View {
+        Text(verbatim: "\(date.formatted(date: .omitted, time: .shortened)) · \(date.formatted(date: .abbreviated, time: .omitted))")
+            .font(UniTypography.subheadline)
+            .foregroundStyle(UniColors.Text.secondary)
+            .monospacedDigit()
+            .environment(\.layoutDirection, .leftToRight)
     }
 
     // MARK: - Networks section

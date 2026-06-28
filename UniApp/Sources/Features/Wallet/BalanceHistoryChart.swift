@@ -24,6 +24,15 @@ final class ChartScrubModel {
     /// (the hero shows the point's value). `nil` on release → the row returns
     /// to the resting percent + amount.
     var timestamp: Date?
+
+    var isActive: Bool {
+        fiat != nil || timestamp != nil
+    }
+
+    func update(selection: BalanceChartScrubSelection?) {
+        fiat = selection?.fiatDecimal
+        timestamp = selection?.timestamp
+    }
 }
 
 /// Balance-over-time chart wrapper for the token detail screens — owns the
@@ -242,17 +251,12 @@ struct BalanceHistoryChart: View {
                 xFractions: xFractions,
                 minValue: chartPoints.isEmpty ? 0 : sparkMin,
                 maxValue: chartPoints.isEmpty ? 0 : sparkMax,
+                timestamps: points.map(\.timestamp),
                 sign: Self.chartSign(for: points),
-                onScrub: { index in
-                    // Map the scrubbed index → the touched point's fiat
-                    // and publish it to the hero via the @Observable model.
-                    let scrubbed: Decimal? = {
-                        guard let idx = index, idx >= 0, idx < points.count else { return nil }
-                        return points[idx].fiat
-                    }()
-                    withAnimation(.snappy(duration: 0.18)) {
-                        scrubModel?.fiat = scrubbed
-                    }
+                onScrub: { selection in
+                    // Publish the continuous scrub value to the hero without
+                    // animation, so the number tracks the finger exactly.
+                    scrubModel?.update(selection: selection)
                 }
             )
             .frame(maxWidth: .infinity, alignment: .center)

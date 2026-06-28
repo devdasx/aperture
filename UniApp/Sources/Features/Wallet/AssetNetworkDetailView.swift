@@ -223,13 +223,22 @@ struct AssetNetworkDetailView: View {
             // Row 2 — hero fiat (scrub-aware) + native rollup.
             VStack(spacing: 6) {
                 balanceHeroLabel
-                Text(rollupText)
-                    .font(UniTypography.subheadline)
-                    .foregroundStyle(UniColors.Text.secondary)
-                    .monospacedDigit()
-                    .environment(\.layoutDirection, .leftToRight)
+                if let timestamp = scrubModel.timestamp {
+                    scrubTimestampLabel(timestamp)
+                } else {
+                    Text(rollupText)
+                        .font(UniTypography.subheadline)
+                        .foregroundStyle(UniColors.Text.secondary)
+                        .monospacedDigit()
+                        .environment(\.layoutDirection, .leftToRight)
+                }
             }
             .frame(maxWidth: .infinity)
+            .transaction { transaction in
+                if scrubModel.isActive {
+                    transaction.disablesAnimations = true
+                }
+            }
             .listRowSeparator(.hidden)
             .listRowInsets(EdgeInsets(top: 12, leading: UniSpacing.m, bottom: 0, trailing: UniSpacing.m))
 
@@ -259,7 +268,7 @@ struct AssetNetworkDetailView: View {
                 .lineLimit(1)
                 .minimumScaleFactor(0.5)
                 .monospacedDigit()
-                .contentTransition(.numericText())
+                .contentTransition(.identity)
                 .environment(\.layoutDirection, .leftToRight)
         } else if let fiat = networkRow?.fiatValue, fiat > 0 {
             Text(WalletFormatting.fiat(fiat, currencyCode: networkRow?.fiatCurrencyCode ?? currencyCode))
@@ -284,6 +293,14 @@ struct AssetNetworkDetailView: View {
                 .font(UniTypography.title3)
                 .foregroundStyle(UniColors.Text.tertiary)
         }
+    }
+
+    private func scrubTimestampLabel(_ date: Date) -> some View {
+        Text(verbatim: "\(date.formatted(date: .omitted, time: .shortened)) · \(date.formatted(date: .abbreviated, time: .omitted))")
+            .font(UniTypography.subheadline)
+            .foregroundStyle(UniColors.Text.secondary)
+            .monospacedDigit()
+            .environment(\.layoutDirection, .leftToRight)
     }
 
     private var assetDisplayName: String {
