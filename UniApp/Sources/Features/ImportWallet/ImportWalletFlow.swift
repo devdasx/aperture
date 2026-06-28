@@ -7,7 +7,6 @@ import OSLog
 /// `NavigationPath` survives RTL flips (Rule #12 §G).
 enum ImportDestination: Hashable, Codable, Identifiable {
     case mnemonicEntry
-    case mnemonicReview
     case iCloudRestore
     case keyChainPicker
     case keyEntry(SupportedChain)
@@ -37,10 +36,10 @@ struct ImportWalletFlow: View {
     /// dismisses the cover. Carries a description of what was imported
     /// so the parent can show an appropriate confirmation later.
     ///
-    /// **Persistence happens before this fires.** Each method's review
-    /// step calls `state.persist(result:into:)` synchronously inside
-    /// the commit handler; the wallet is in SwiftData (and its seed,
-    /// if any, in Keychain) by the time the parent sees the
+    /// **Persistence happens before this fires.** The active commit
+    /// path calls `state.persist(result:into:)` inside the commit
+    /// handler; the wallet is in SwiftData (and its seed, if any, in
+    /// Keychain) by the time the parent sees the
     /// `onCompleted` callback.
     let onCompleted: (ImportResult) -> Void
 
@@ -52,11 +51,11 @@ struct ImportWalletFlow: View {
     @State private var isShowingPersistError = false
 
     /// True while `persistThen` is running (derive + write to SwiftData +
-    /// Keychain + fire first refresh). Passed down to whichever review
-    /// view is on screen so its commit `UniButton` shows the native
-    /// loading spinner while the wallet is being saved — the work takes a
-    /// real beat, and a silent button reads as a frozen app (Rule #28:
-    /// the work stays off-main; the view just reflects the state).
+    /// Keychain + fire first refresh). Passed down to the active commit
+    /// screen so its `UniButton` shows the native loading spinner while
+    /// the wallet is being saved — the work takes a real beat, and a
+    /// silent button reads as a frozen app (Rule #28: the work stays
+    /// off-main; the view just reflects the state).
     @State private var isCommitting = false
 
     @Environment(\.modelContext) private var modelContext
@@ -79,15 +78,8 @@ struct ImportWalletFlow: View {
                 case .mnemonicEntry:
                     MnemonicEntryView(
                         state: state,
-                        onContinue: {
-                            navigationPath.append(ImportDestination.mnemonicReview)
-                        }
-                    )
-                case .mnemonicReview:
-                    MnemonicReviewView(
-                        state: state,
                         isCommitting: isCommitting,
-                        onCommit: {
+                        onContinue: {
                             persistThen(.mnemonic)
                         }
                     )
@@ -172,7 +164,7 @@ struct ImportWalletFlow: View {
     /// hand the parent a zombie wallet with no key material in the
     /// Keychain. Instead the error is logged, an alert names the
     /// failure, and navigation stays in place so the user can retry
-    /// the commit from the same review screen.
+    /// the commit from the same screen.
     private func persistThen(_ result: ImportResult) {
         // Suppress a double-commit: the button is already showing its
         // loading spinner + disabled, but guard the async path too.
