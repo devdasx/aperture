@@ -316,7 +316,8 @@ actor TransactionRepository {
         )
         walletDescriptor.fetchLimit = 1
         guard let wallet = try modelContext.fetch(walletDescriptor).first else { return [] }
-        let addressIds = wallet.addresses.map { $0.id }
+        let directAddressRows = try addressRows(walletId: walletId)
+        let addressIds = (directAddressRows.isEmpty ? wallet.addresses : directAddressRows).map { $0.id }
 
         // Optional status/direction filters run IN MEMORY after the
         // indexed addressId fetch — `#Predicate` cannot compare the
@@ -377,6 +378,14 @@ actor TransactionRepository {
             snapshots.removeLast(snapshots.count - limit)
         }
         return snapshots
+    }
+
+    private func addressRows(walletId: UUID) throws -> [WalletAddressRecord] {
+        let ownerId = Optional(walletId)
+        let descriptor = FetchDescriptor<WalletAddressRecord>(
+            predicate: #Predicate { $0.walletId == ownerId }
+        )
+        return try modelContext.fetch(descriptor)
     }
 
     /// Convenience: one wallet's failed legs, newest first.

@@ -244,6 +244,7 @@ enum WalletManifestStore {
                 for addrEntry in entry.addresses {
                     let addr = WalletAddressRecord(
                         id: addrEntry.id,
+                        walletId: entry.id,
                         chainRaw: addrEntry.chainRaw,
                         address: addrEntry.address,
                         derivationPath: addrEntry.derivationPath,

@@ -11,7 +11,6 @@ import SwiftData
 /// list doesn't carry chrome it doesn't need.
 struct WalletsListView: View {
     @Query(sort: \WalletRecord.sortOrder) private var wallets: [WalletRecord]
-    @Query private var secretRows: [WalletSecretRecord]
     /// Live per-token balances — the SAME source the wallet-home hero uses for
     /// its `liveBalanceSum`, so this list shows the same number as the home
     /// (2026-06-20 fix). The previous `ChainStateRecord` aggregate could be
@@ -621,12 +620,18 @@ struct WalletsListView: View {
     }
 
     private func hasStoredSecret(kind: WalletSecretKind, for walletId: UUID) -> Bool {
-        let key = WalletSecretRecord.storageKey(walletId: walletId, kind: kind)
-        if secretRows.contains(where: { $0.key == key }) { return true }
         switch kind {
         case .mnemonic:
+            if let words = try? WalletSecretPersistence.loadMnemonic(for: walletId, in: modelContext),
+               !words.isEmpty {
+                return true
+            }
             return MnemonicVault.hasMnemonic(for: walletId)
         case .privateKey:
+            if let key = try? WalletSecretPersistence.loadPrivateKey(for: walletId, in: modelContext),
+               !key.isEmpty {
+                return true
+            }
             return MnemonicVault.hasPrivateKey(for: walletId)
         }
     }

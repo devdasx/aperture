@@ -123,11 +123,18 @@ actor WalletChartSnapshotRepository {
         walletDescriptor.fetchLimit = 1
         guard let wallet = try modelContext.fetch(walletDescriptor).first else { return false }
 
+        let directAddressRows = try addressRows(walletId: walletId)
+        let addressRows = directAddressRows.isEmpty ? wallet.addresses : directAddressRows
+
         var total = Decimal(0)
         var totalRows = 0
         var matchingRows = 0
-        for address in wallet.addresses {
-            for balance in address.balances {
+        for address in addressRows {
+            let addressId = Optional(address.id)
+            let balanceDescriptor = FetchDescriptor<TokenBalanceRecord>(
+                predicate: #Predicate { $0.addressId == addressId }
+            )
+            for balance in try modelContext.fetch(balanceDescriptor) {
                 totalRows += 1
                 guard balance.fiatCurrencyCode.uppercased() == code else { continue }
                 matchingRows += 1
@@ -138,6 +145,14 @@ actor WalletChartSnapshotRepository {
             return false
         }
         return try capture(walletId: walletId, currencyCode: code, fiatValue: total, now: now)
+    }
+
+    private func addressRows(walletId: UUID) throws -> [WalletAddressRecord] {
+        let ownerId = Optional(walletId)
+        let descriptor = FetchDescriptor<WalletAddressRecord>(
+            predicate: #Predicate { $0.walletId == ownerId }
+        )
+        return try modelContext.fetch(descriptor)
     }
 
     // MARK: - Series

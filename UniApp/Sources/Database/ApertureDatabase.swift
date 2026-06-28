@@ -391,6 +391,18 @@ final class ApertureDatabase {
                 )
             }
             do {
+                try await repo.backfillAddressWalletIds()
+                DiagnosticsLogStore.shared.record(.debug, category: "database", message: "Wallet address owner backfill finished")
+            } catch {
+                self.log.error("Wallet-address owner backfill failed: \(String(describing: error), privacy: .public)")
+                DiagnosticsLogStore.shared.record(
+                    .error,
+                    category: "database",
+                    message: "Wallet address owner backfill failed",
+                    metadata: ["error": String(describing: error)]
+                )
+            }
+            do {
                 try await repo.backfillWalletSecretsFromLegacyKeychain()
                 DiagnosticsLogStore.shared.record(.debug, category: "database", message: "Wallet secret backfill finished")
             } catch {
@@ -399,6 +411,18 @@ final class ApertureDatabase {
                     .error,
                     category: "database",
                     message: "Wallet secret backfill failed",
+                    metadata: ["error": String(describing: error)]
+                )
+            }
+            do {
+                try await repo.repairMnemonicAddressRowsFromStoredSecrets()
+                DiagnosticsLogStore.shared.record(.debug, category: "database", message: "Wallet address repair finished")
+            } catch {
+                self.log.error("Wallet-address repair failed: \(String(describing: error), privacy: .public)")
+                DiagnosticsLogStore.shared.record(
+                    .error,
+                    category: "database",
+                    message: "Wallet address repair failed",
                     metadata: ["error": String(describing: error)]
                 )
             }

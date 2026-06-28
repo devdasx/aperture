@@ -57,22 +57,15 @@ struct OnboardingView: View {
     /// exclusion structural — the type system cannot represent "both
     /// flows presented at once."
     enum WalletFlow: String, Identifiable {
+        case createDisclosure
         case createRecovery
         case importWallet
         var id: String { rawValue }
     }
 
-    /// Toggles the risk-disclosure sheet (`CreateWalletDisclosureSheet`).
-    @State private var isShowingCreateDisclosure: Bool = false
     /// The currently presented wallet flow, or `nil` when none is up.
     /// Drives the shared `.fullScreenCover(item:)`.
     @State private var activeFlow: WalletFlow?
-    /// Set when the user accepts the create-wallet disclosure; consumed
-    /// by `.onChange(of: isShowingCreateDisclosure)` once the sheet's
-    /// presented flag flips false, so the recovery cover is presented
-    /// only after the sheet has actually started dismissing — never
-    /// while the two presentation animations could fight on screen.
-    @State private var pendingFlowAfterDisclosure: WalletFlow?
     /// Hoisted navigation path for the recovery-phrase flow. Hoisted for
     /// the same reason as `settingsPath`: any `.id`-driven rebuild on the
     /// cover's content (LTR/RTL flip) must preserve the path so the user
@@ -88,16 +81,14 @@ struct OnboardingView: View {
     /// `false` for fresh installs.
     @AppStorage("hasUnbackedupWallet") private var hasUnbackedupWallet: Bool = false
 
-    // Rule #12 Part G: the sheet's content is `.id`-keyed to **only the
-    // layout direction**, not the full preferences. iOS locks the sheet
-    // `UIHostingController`'s `semanticContentAttribute` at presentation
-    // time, so a mid-flight `\.layoutDirection` flip (LTR ↔ RTL) needs a
-    // content rebuild to render correctly. Theme changes (light/dark) and
-    // same-direction language changes (en → es, ar → fa) do NOT need a
-    // rebuild — they propagate cleanly through `.uniAppEnvironment()` and
-    // preserve any pushed-picker navigation state. Using a full-preferences
-    // key here would otherwise pop the user out of every sub-picker on
-    // every preference change.
+    // Rule #12 Part G: presented/pushed flow content is `.id`-keyed to
+    // **only the layout direction**, not the full preferences. iOS locks
+    // presentation host direction at presentation time, and NavigationStack
+    // destinations can also need a clean rebuild on LTR ↔ RTL flips. Theme
+    // changes and same-direction language changes do NOT need a rebuild —
+    // they propagate cleanly through `.uniAppEnvironment()` and preserve any
+    // pushed-picker navigation state. Using a full-preferences key here would
+    // otherwise pop the user out of sub-pickers on every preference change.
     @AppStorage("languagePreference") private var languageCode: String = LanguagePreference.systemCode
 
     private var sheetDirectionKey: String {
@@ -205,32 +196,6 @@ struct OnboardingView: View {
                 .presentationDragIndicator(.visible)
                 .presentationBackground(UniColors.Background.primary)
         }
-        // Step 1 of the "Create new wallet" flow (T-002): risk disclosure
-        // sheet. Acceptance stashes the follow-on flow in
-        // `pendingFlowAfterDisclosure` and dismisses this sheet; the
-        // `.onChange` below presents the recovery cover once the
-        // presented flag has flipped false, so the two presentations
-        // don't fight on screen at once.
-        .sheet(isPresented: $isShowingCreateDisclosure) {
-            CreateWalletDisclosureSheet(
-                onAccept: handleDisclosureAccept,
-                onCancel: { isShowingCreateDisclosure = false }
-            )
-            .id(sheetDirectionKey)
-            .uniAppEnvironment()
-            .intrinsicHeightSheet()
-            .presentationBackground(UniColors.Background.primary)
-        }
-        // Dismiss-then-present handoff for the disclosure → recovery
-        // sequence. Fires only when the sheet's flag flips false AND a
-        // pending flow was stashed by `handleDisclosureAccept` — a
-        // cancel or swipe-dismiss leaves `pendingFlowAfterDisclosure`
-        // nil and presents nothing.
-        .onChange(of: isShowingCreateDisclosure) { _, isPresented in
-            guard !isPresented, let pending = pendingFlowAfterDisclosure else { return }
-            pendingFlowAfterDisclosure = nil
-            activeFlow = pending
-        }
         // The single full-screen cover hosting BOTH wallet entry flows
         // (create → recovery phrase, T-002; import, T-003). Driven by
         // the `activeFlow` enum so the flows are mutually exclusive by
@@ -243,6 +208,24 @@ struct OnboardingView: View {
         }) { flow in
             Group {
                 switch flow {
+                case .createDisclosure:
+                    NavigationStack {
+                        CreateWalletDisclosureScreen(
+                            onAccept: startCreateRecoveryFlow,
+                            onCancel: { activeFlow = nil }
+                        )
+                        .toolbar {
+                            ToolbarItem(placement: .topBarLeading) {
+                                Button {
+                                    activeFlow = nil
+                                } label: {
+                                    Image(systemName: "xmark")
+                                        .font(.system(size: 17, weight: .semibold))
+                                }
+                                .accessibilityLabel(Text("Cancel"))
+                            }
+                        }
+                    }
                 case .createRecovery:
                     // Step 3 of the "Create new wallet" flow (T-002):
                     // recovery-phrase display, with its own
@@ -313,18 +296,8 @@ struct OnboardingView: View {
 
     // MARK: - Create-wallet flow handlers
 
-    /// Disclosure → recovery phrase handoff. SwiftUI dislikes presenting a
-    /// `fullScreenCover` while a `.sheet` is still animating out — the two
-    /// presentation animations stack and the recovery flow can appear in
-    /// front of the sheet's residual chrome. So this only stashes the
-    /// follow-on flow and dismisses the sheet; the `.onChange(of:
-    /// isShowingCreateDisclosure)` in `body` presents the cover once the
-    /// flag flips false. State-driven, no wall-clock delay — the prior
-    /// 0.35s `asyncAfter` raced the dismiss animation and could leave the
-    /// flow stuck when the timing assumption didn't hold.
-    private func handleDisclosureAccept() {
-        pendingFlowAfterDisclosure = .createRecovery
-        isShowingCreateDisclosure = false
+    private func startCreateRecoveryFlow() {
+        activeFlow = .createRecovery
     }
 
     // MARK: - Slide pager (custom dots, native swipe)
@@ -399,7 +372,7 @@ struct OnboardingView: View {
                     // verify → wallet-ready placeholder) are wired here.
                     // Biometric setup (T-012), real wallet home (T-018),
                     // and passphrase persistence (T-019) still pending.
-                    isShowingCreateDisclosure = true
+                    activeFlow = .createDisclosure
                 }
                 .modifier(OnboardingStaggeredFadeIn(
                     visible: contentVisible,

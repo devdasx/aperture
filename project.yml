@@ -44,13 +44,11 @@ targets:
         product: WalletCore
       - package: WalletCore
         product: WalletCoreSwiftProtobuf
-    # API keys default to the committed, empty template so a fresh clone can
-    # generate/open/build immediately. Do not commit real key values; local
-    # builds can still provide keys through a private xcconfig if this wiring
-    # is overridden locally.
+    # API keys come from the local, gitignored Secrets.xcconfig. Keep
+    # Secrets.xcconfig.template committed as the value-free setup guide.
     configFiles:
-      Debug: Secrets.xcconfig.template
-      Release: Secrets.xcconfig.template
+      Debug: Secrets.xcconfig
+      Release: Secrets.xcconfig
     # Explicit Info.plist instead of GENERATE_INFOPLIST_FILE: Xcode only
     # injects a fixed allow-list of INFOPLIST_KEY_* settings, so arbitrary
     # custom keys (our API keys) need a real plist carrying `$(KEY)` tokens

@@ -35,24 +35,31 @@ import OSLog
 /// and `SettingsStore` recreate them from the surviving non-sensitive
 /// defaults on the next launch / next sync.
 ///
-/// **What this type does NOT cover** (owned by `resetAll()` directly):
-/// Keychain (`SeedVault` / `MnemonicVault` / `PinCodeStorage` /
-/// `WalletManifestStore` / `ChainKeyVault`), selected `UserDefaults`
-/// cleanup, and transient Foundation URL/cookie caches.
+/// **What the SwiftData helper does NOT cover.** `wipeResettableModels(in:)`
+/// is only the database tier. The full staged wipe below also clears Keychain
+/// (`SeedVault` / `MnemonicVault` / `PinCodeStorage` / `WalletManifestStore` /
+/// `ChainKeyVault`), selected `UserDefaults`, and transient Foundation
+/// URL/cookie caches.
 /// `ResetCompletenessTests` pins this type's contract.
 enum FactoryReset {
 
-    /// The three honest deletion stages the Reset-Aperture UI reports, in REAL
+    /// The honest deletion stages the Reset-Aperture executor performs, in real
     /// execution order. `.wallets` runs FIRST and is the ONLY one that throws
     /// (the SwiftData custody gate — if it fails, nothing has been destroyed).
-    /// The reset flow's progress ring fills one third per stage as each
-    /// genuinely completes (handoff rule #4 — honest progress, not a timer).
+    /// The reset flow reports user-facing stages only; network cache cleanup is
+    /// intentionally unreported background cleanup.
     enum Stage: CaseIterable, Sendable {
-        /// SwiftData wallets + wallet-scoped/private tables. The failable custody gate.
+        /// Wallet rows, cascaded wallet history, chart snapshots, and manifest.
         case wallets
-        /// Keychain seed / mnemonic / private-key material + the PIN records.
+        /// Remaining private SwiftData rows and wallet-scoped sync markers.
+        case privateData
+        /// Per-wallet Keychain seed / mnemonic / private-key material.
         case keys
-        /// URL/cookie caches and resettable UserDefaults.
+        /// PIN records and app-wide encryption master keys.
+        case security
+        /// Foundation-level network residue.
+        case networkCache
+        /// Resettable UserDefaults / @AppStorage values.
         case settings
     }
 
@@ -117,10 +124,11 @@ enum FactoryReset {
         try await performStagedWipe(modelContext: modelContext, onStageComplete: { _ in })
     }
 
-    /// The complete factory wipe, reporting each real deletion `Stage` as it
+    /// The complete factory wipe, reporting each visible deletion `Stage` as it
     /// finishes so the Reset-Aperture UI's progress ring reflects honest
-    /// progress. After it returns, all custody and wallet-linked state is
-    /// gone, while public market / price / asset cache data remains.
+    /// progress. Network cache cleanup still runs, but is not surfaced as a
+    /// user-facing row. After this returns, all custody and wallet-linked state
+    /// is gone, while public market / price / asset cache data remains.
     /// `RootGate` observes the wallet count flip to zero and routes back to
     /// onboarding.
     ///
@@ -128,12 +136,12 @@ enum FactoryReset {
     /// FIRST and is the ONLY step that throws — if it fails, NOTHING has been
     /// destroyed (the caller surfaces an error and the user keeps a working
     /// app). Every step after it is best-effort so a single failure never
-    /// strands a half-reset device. `onStageComplete` is called on the main
-    /// actor after each stage genuinely finishes.
+    /// strands a half-reset device. `onStageComplete` is awaited on the main
+    /// actor after each visible stage genuinely finishes.
     @MainActor
     static func performStagedWipe(
         modelContext: ModelContext,
-        onStageComplete: (Stage) -> Void
+        onStageComplete: (Stage) async -> Void
     ) async throws {
         let log = Logger(subsystem: "com.thuglife.aperture", category: "reset")
         let repo = WalletRepository(modelContainer: modelContext.container)
@@ -146,19 +154,27 @@ enum FactoryReset {
         // cascades) plus the primitive-keyed chart snapshots, and clears the
         // Keychain wallet manifest. Throws ⇒ nothing destroyed yet.
         try await repo.deleteAllWallets()
+        await onStageComplete(.wallets)
+
+        // STAGE 2 — remaining private SwiftData rows. Best-effort; this
+        // structurally catches singleton/security records and wallet-scoped
+        // sync markers that do not belong to a `WalletRecord` cascade.
         // Clear every remaining private / wallet-scoped SwiftData table, while
         // preserving public market and price caches.
         do { try wipeResettableModels(in: modelContext) }
         catch { log.error("Reset: resettable model wipe failed: \(String(describing: error), privacy: .public)") }
-        onStageComplete(.wallets)
+        await onStageComplete(.privateData)
 
-        // STAGE 2 — keys & phrases (Keychain). Best-effort; idempotent (a
+        // STAGE 3 — keys & phrases (Keychain). Best-effort; idempotent (a
         // missing item is success).
         for id in walletIds {
             try? SeedVault.deleteSeed(for: id)
             try? MnemonicVault.deleteMnemonic(for: id)
             try? MnemonicVault.deletePrivateKey(for: id)
         }
+        await onStageComplete(.keys)
+
+        // STAGE 4 — app security state and app-wide encryption keys.
         // Keychain — PIN hash + salt + both failure records.
         PinCodeStorage.clear()
         // Keychain — app-wide key that opens per-chain encrypted key blobs.
@@ -167,12 +183,15 @@ enum FactoryReset {
         // secret rows. The rows are wiped in stage 1; clearing the key keeps
         // reset's custody wipe complete even if a row deletion was retried.
         WalletSecretCrypto.clearMasterKey()
-        onStageComplete(.keys)
+        await onStageComplete(.security)
 
-        // STAGE 3 — settings & cache. Best-effort.
+        // STAGE 5 — network cache. Best-effort hidden cleanup; this is not
+        // reported to the visible reset process list.
         // Foundation-level network residue.
         URLCache.shared.removeAllCachedResponses()
         HTTPCookieStorage.shared.removeCookies(since: .distantPast)
+
+        // STAGE 6 — settings. Best-effort.
         // Wipe @AppStorage / UserDefaults except for non-sensitive display
         // preferences and cache-version keys. Active-wallet pointers, security
         // flags, restoration paths, wallet filters, and onboarding state must
@@ -182,7 +201,7 @@ enum FactoryReset {
             UserDefaults.standard.removePersistentDomain(forName: bundleId)
         }
         restorePreservedUserDefaults(preservedDefaults)
-        onStageComplete(.settings)
+        await onStageComplete(.settings)
         log.notice("Full wipe completed: \(walletIds.count, privacy: .public) wallets purged.")
     }
 
