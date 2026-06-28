@@ -1107,7 +1107,7 @@ private struct MarketAssetRow: View {
                 .frame(width: 42, height: 42)
 
             assetIdentity
-                .frame(minWidth: 68, idealWidth: 112, maxWidth: 150, alignment: .leading)
+                .frame(minWidth: 82, idealWidth: 136, maxWidth: 178, alignment: .leading)
                 .layoutPriority(2)
 
             MarketSparkline(points: asset.sparkline, isPositive: asset.isPositive)
@@ -1125,8 +1125,8 @@ private struct MarketAssetRow: View {
     private var assetIdentity: some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 5) {
-                Text(asset.symbol)
-                    .font(.system(size: 15.5, weight: .bold))
+                Text(asset.name)
+                    .font(.system(size: 15.5, weight: .semibold))
                     .lineLimit(1)
                     .minimumScaleFactor(0.82)
                     .allowsTightening(true)
@@ -1136,7 +1136,7 @@ private struct MarketAssetRow: View {
                         .foregroundStyle(.yellow)
                 }
             }
-            Text(asset.name)
+            Text("Market cap \(MarketFormatting.compactCurrency(asset.marketCap, code: asset.currencyCode))")
                 .font(.footnote)
                 .foregroundStyle(UniColors.Text.secondary)
                 .lineLimit(1)
@@ -1148,14 +1148,14 @@ private struct MarketAssetRow: View {
     private var priceStack: some View {
         VStack(alignment: .trailing, spacing: 5) {
             Text(MarketFormatting.currency(asset.price, code: asset.currencyCode))
-                .font(.system(size: 15, weight: .semibold, design: .rounded))
+                .font(.system(size: 15, weight: .semibold))
                 .monospacedDigit()
                 .lineLimit(1)
                 .minimumScaleFactor(0.74)
                 .allowsTightening(true)
                 .contentTransition(.numericText(value: asset.price))
             Text(MarketFormatting.percent(asset.priceChange24hPercent))
-                .font(.caption.weight(.bold))
+                .font(.caption)
                 .monospacedDigit()
                 .foregroundStyle(asset.isPositive ? UniColors.Text.success : UniColors.Text.error)
                 .lineLimit(1)
