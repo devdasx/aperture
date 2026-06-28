@@ -57,8 +57,7 @@ struct OnboardingView: View {
     /// exclusion structural — the type system cannot represent "both
     /// flows presented at once."
     enum WalletFlow: String, Identifiable {
-        case createDisclosure
-        case createRecovery
+        case createWallet
         case importWallet
         var id: String { rawValue }
     }
@@ -208,30 +207,13 @@ struct OnboardingView: View {
         }) { flow in
             Group {
                 switch flow {
-                case .createDisclosure:
-                    NavigationStack {
-                        CreateWalletDisclosureScreen(
-                            onAccept: startCreateRecoveryFlow,
-                            onCancel: { activeFlow = nil }
-                        )
-                        .toolbar {
-                            ToolbarItem(placement: .topBarLeading) {
-                                Button {
-                                    activeFlow = nil
-                                } label: {
-                                    Image(systemName: "xmark")
-                                        .font(.system(size: 17, weight: .semibold))
-                                }
-                                .accessibilityLabel(Text("Cancel"))
-                            }
-                        }
-                    }
-                case .createRecovery:
-                    // Step 3 of the "Create new wallet" flow (T-002):
-                    // recovery-phrase display, with its own
-                    // NavigationStack and an internal skip-warning sheet.
+                case .createWallet:
+                    // Create wallet enters with one slide-up cover, then
+                    // every main step after that is a native push inside this
+                    // flow's NavigationStack.
                     RecoveryPhraseFlow(
                         navigationPath: $recoveryPath,
+                        startsAtDisclosure: true,
                         onDismiss: { activeFlow = nil },
                         onUserSkippedBackup: { hasUnbackedupWallet = true },
                         onUserCompletedBackup: { hasUnbackedupWallet = false }
@@ -292,12 +274,6 @@ struct OnboardingView: View {
                 .intrinsicHeightSheet()
                 .presentationBackground(UniColors.Background.primary)
         }
-    }
-
-    // MARK: - Create-wallet flow handlers
-
-    private func startCreateRecoveryFlow() {
-        activeFlow = .createRecovery
     }
 
     // MARK: - Slide pager (custom dots, native swipe)
@@ -372,7 +348,7 @@ struct OnboardingView: View {
                     // verify → wallet-ready placeholder) are wired here.
                     // Biometric setup (T-012), real wallet home (T-018),
                     // and passphrase persistence (T-019) still pending.
-                    activeFlow = .createDisclosure
+                    activeFlow = .createWallet
                 }
                 .modifier(OnboardingStaggeredFadeIn(
                     visible: contentVisible,

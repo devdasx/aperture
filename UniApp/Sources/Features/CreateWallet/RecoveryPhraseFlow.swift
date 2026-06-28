@@ -5,6 +5,19 @@ import SwiftUI
 /// `NavigationPath` survives any content rebuild — same pattern
 /// `SettingsView` uses for picker destinations.
 enum RecoveryPhraseDestination: Hashable, Codable {
+    /// Step 2 — reveal the generated BIP-39 phrase after the disclosure.
+    case recoveryPhrase
+    /// Native backup chooser. From here, iCloud and manual backup each push
+    /// their own real screens on this same stack.
+    case backupMethod
+    case backupICloudPassword
+    case backupICloudProgress(password: String)
+    case backupManualSafety
+    case backupManualWriteDown
+    case backupManualVerify
+    case backupManualConfirmed
+    /// Native version of the old skip-warning sheet.
+    case skipBackupWarning
     /// Step 4 — re-enter the phrase via the multiple-choice verify view.
     case verify
     /// Step 5 — unified PIN + biometric setup (Rule #17). After
@@ -20,10 +33,10 @@ enum RecoveryPhraseDestination: Hashable, Codable {
     case walletReady
 }
 
-/// Root content view for the `fullScreenCover` presented after the user
-/// accepts the disclosure. Hosts the `NavigationStack` for the recovery
-/// flow and owns the skip-backup-warning sheet that overlays the
-/// recovery-phrase view.
+/// Root content view for create-wallet presentations. The presenter supplies
+/// the single slide-up cover; this view owns the `NavigationStack` after that.
+/// Onboarding starts at the disclosure screen, then pushes the recovery phrase
+/// and every main backup/PIN/ready screen natively.
 ///
 /// **State.** Owns a `CreateWalletState` for the duration of the cover —
 /// the same instance backs `RecoveryPhraseView` (mnemonic + word-count
@@ -40,9 +53,13 @@ struct RecoveryPhraseFlow: View {
     /// a binding. Survives `.id` rebuilds.
     @Binding var navigationPath: NavigationPath
 
-    /// Fires when the user dismisses the entire flow — close button on
-    /// `RecoveryPhraseView`, "Skip anyway" on the warning sheet, or
-    /// "Done" on `WalletReadyView`.
+    /// `true` when the flow is entered from onboarding's "Create new wallet"
+    /// button. The cover slides up once, then this stack pushes the
+    /// disclosure → recovery phrase → backup/PIN/ready screens natively.
+    var startsAtDisclosure: Bool = false
+
+    /// Fires when the user dismisses the entire flow — close button on the
+    /// root screen, or "Done" on `WalletReadyView`.
     let onDismiss: () -> Void
 
     /// Set to `true` after the user opts to skip the backup so the
@@ -58,14 +75,6 @@ struct RecoveryPhraseFlow: View {
     /// same generated phrase.
     @State private var state = CreateWalletState()
 
-    @State private var isShowingSkipWarning: Bool = false
-
-    /// Presents the unified backup chooser (iCloud / Manual) — the same
-    /// WalletBackupFlow used from Wallet Management (2026-06-20 user
-    /// direction). In creation it runs in `isNewWallet` mode (no
-    /// markBackupComplete; advances the flow on success).
-    @State private var isShowingBackupChooser: Bool = false
-
     /// Tracks whether the user reached PinSetup / WalletReady via the
     /// skip-backup branch or via the verify branch. Passed to
     /// `WalletReadyView` so the persisted `WalletRecord.requiresBackup`
@@ -80,28 +89,64 @@ struct RecoveryPhraseFlow: View {
 
     var body: some View {
         NavigationStack(path: $navigationPath) {
-            RecoveryPhraseView(
-                state: state,
-                onClose: onDismiss,
-                onBackUpNow: {
-                    // Open the unified iCloud / Manual chooser, same as Wallet
-                    // Management (2026-06-20). Manual routes through the same
-                    // BackupVerifyView the create flow always used; iCloud does
-                    // the encrypted CloudKit backup against this wallet's
-                    // pending id. Either way, on success the flow advances.
-                    isShowingBackupChooser = true
-                },
-                onSkipForNow: {
-                    isShowingSkipWarning = true
-                },
-                // While the full-screen backup chooser/flow covers this view,
-                // suppress its screenshot warning — that cover shows no phrase,
-                // and a `.fullScreenCover` doesn't fire the covered view's
-                // `.onDisappear` to clear `isVisible` (2026-06-20 user report).
-                coveredByChild: isShowingBackupChooser
-            )
+            rootContent
             .navigationDestination(for: RecoveryPhraseDestination.self) { destination in
                 switch destination {
+                case .recoveryPhrase:
+                    recoveryPhraseScreen(showsCloseButton: false)
+                case .backupMethod:
+                    ChooseMethodScreen(
+                        onICloud: { navigationPath.append(RecoveryPhraseDestination.backupICloudPassword) },
+                        onManual: { navigationPath.append(RecoveryPhraseDestination.backupManualSafety) },
+                        onClose: onDismiss,
+                        showsCloseButton: false
+                    )
+                case .backupICloudPassword:
+                    ICloudPasswordScreen { password in
+                        navigationPath.append(RecoveryPhraseDestination.backupICloudProgress(password: password))
+                    }
+                case .backupICloudProgress(let password):
+                    ICloudProgressScreen(
+                        walletId: state.pendingWalletId,
+                        walletName: String.apertureLocalized("Wallet"),
+                        words: state.words,
+                        avatar: nil,
+                        password: password,
+                        onDone: {
+                            didManualBackup = false
+                            navigationPath.append(nextStepAfterVerify())
+                        }
+                    )
+                case .backupManualSafety:
+                    ManualSafetyScreen(
+                        onContinue: { navigationPath.append(RecoveryPhraseDestination.backupManualWriteDown) },
+                        onClose: onDismiss,
+                        showsCloseButton: false
+                    )
+                case .backupManualWriteDown:
+                    ManualWriteDownScreen(words: state.words) {
+                        navigationPath.append(RecoveryPhraseDestination.backupManualVerify)
+                    }
+                case .backupManualVerify:
+                    BackupVerifyView(state: state) {
+                        didManualBackup = true
+                        navigationPath.append(RecoveryPhraseDestination.backupManualConfirmed)
+                    }
+                case .backupManualConfirmed:
+                    BackupConfirmedScreen {
+                        navigationPath.append(nextStepAfterVerify())
+                    }
+                case .skipBackupWarning:
+                    SkipBackupWarningScreen(
+                        onBackUpNow: {
+                            navigationPath.append(RecoveryPhraseDestination.backupMethod)
+                        },
+                        onSkipAnyway: {
+                            didSkipBackup = true
+                            onUserSkippedBackup()
+                            navigationPath.append(nextStepAfterVerify())
+                        }
+                    )
                 case .verify:
                     BackupVerifyView(state: state) {
                         // Rule #17 §E — after verify, route through the
@@ -167,59 +212,42 @@ struct RecoveryPhraseFlow: View {
         // `NavigationStack` itself prevents the bleed without touching
         // the inner view layouts.
         .background(UniColors.Background.primary.ignoresSafeArea())
-        .fullScreenCover(isPresented: $isShowingBackupChooser) {
-            WalletBackupFlow(
-                walletId: state.pendingWalletId,
-                walletName: String.apertureLocalized("Wallet"),
-                words: state.words,
-                onClose: { isShowingBackupChooser = false },
-                isNewWallet: true,
-                onBackedUp: { method in
-                    // Backed up — advance exactly as the old verify path did.
-                    // didSkipBackup stays false, so WalletReadyView persists
-                    // requiresBackup = false. Record WHICH method so the manual
-                    // row is accurate: manual verify → manualBackupCompleted
-                    // true; iCloud → false (its status is the live CloudKit
-                    // query, never the manual flag).
-                    isShowingBackupChooser = false
-                    didManualBackup = (method == .manual)
-                    navigationPath.append(nextStepAfterVerify())
-                }
+    }
+
+    @ViewBuilder
+    private var rootContent: some View {
+        if startsAtDisclosure {
+            CreateWalletDisclosureScreen(
+                onAccept: { navigationPath.append(RecoveryPhraseDestination.recoveryPhrase) },
+                onCancel: onDismiss
             )
-            .uniAppEnvironment()
-            .presentationBackground(UniColors.Background.primary)
-        }
-        .sheet(isPresented: $isShowingSkipWarning) {
-            SkipBackupWarningSheet(
-                onBackUpNow: {
-                    // User changed their mind — dismiss the warning and open
-                    // the same backup chooser as the primary CTA. Defer a
-                    // runloop so the sheet-dismiss doesn't race the cover.
-                    isShowingSkipWarning = false
-                    DispatchQueue.main.async { isShowingBackupChooser = true }
-                },
-                onSkipAnyway: {
-                    // Persist the unbacked-up flag (T-016), dismiss the
-                    // warning, and route through PinSetup — per the
-                    // user's 2026-06-04 direction, BOTH paths (backup
-                    // or skip-backup) must land in the PIN-setup step.
-                    // PIN protects the local wallet whether or not the
-                    // user has saved the recovery phrase; the two
-                    // protections are independent and both should be
-                    // offered. PinSetupFlow itself is optional via its
-                    // own skip — the user can still finish without a
-                    // PIN if they choose, but they always pass through
-                    // the offer.
-                    didSkipBackup = true
-                    onUserSkippedBackup()
-                    isShowingSkipWarning = false
-                    navigationPath.append(nextStepAfterVerify())
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button { onDismiss() } label: {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 17, weight: .semibold))
+                    }
+                    .accessibilityLabel(Text("Cancel"))
                 }
-            )
-            .uniAppEnvironment()
-            .intrinsicHeightSheet()
-            .presentationBackground(UniColors.Background.primary)
+            }
+        } else {
+            recoveryPhraseScreen(showsCloseButton: true)
         }
+    }
+
+    private func recoveryPhraseScreen(showsCloseButton: Bool) -> some View {
+        RecoveryPhraseView(
+            state: state,
+            onClose: onDismiss,
+            onBackUpNow: {
+                navigationPath.append(RecoveryPhraseDestination.backupMethod)
+            },
+            onSkipForNow: {
+                navigationPath.append(RecoveryPhraseDestination.skipBackupWarning)
+            },
+            coveredByChild: false,
+            showsCloseButton: showsCloseButton
+        )
     }
 
     /// Pick the next destination after the user finishes (or skips) the

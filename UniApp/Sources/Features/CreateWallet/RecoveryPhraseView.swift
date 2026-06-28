@@ -51,12 +51,11 @@ struct RecoveryPhraseView: View {
     /// Fires when the user taps the close (xmark) button. The caller
     /// dismisses the parent `fullScreenCover`.
     let onClose: () -> Void
-    /// Fires when the user taps "Back up now". Caller routes to the
-    /// backup flow (T-015 — currently a `RecoveryPhraseDestination.verify`
-    /// push).
+    /// Fires when the user taps "Back up now". Caller routes to the native
+    /// backup screens in the owning `NavigationStack`.
     let onBackUpNow: () -> Void
-    /// Fires when the user taps "Skip for now". The caller presents
-    /// `SkipBackupWarningSheet`.
+    /// Fires when the user taps "Skip for now". Caller routes to the native
+    /// skip-warning screen in the owning `NavigationStack`.
     let onSkipForNow: () -> Void
 
     /// `true` while a full-screen child (the iCloud/Manual backup flow) is
@@ -70,6 +69,11 @@ struct RecoveryPhraseView: View {
     /// `!isShowingBackup` guard the Export flow already uses for the same
     /// cover-over-phrase case.
     var coveredByChild: Bool = false
+
+    /// Root presentations show a close glyph so the user can dismiss the
+    /// slide-up flow. When this screen is pushed from the disclosure step,
+    /// the native back chevron is the correct control.
+    var showsCloseButton: Bool = true
 
     /// Toggle for the passphrase sheet. Local state — the sheet does not
     /// need to survive a `.id`-driven rebuild because it is incidental
@@ -128,8 +132,10 @@ struct RecoveryPhraseView: View {
         .navigationTitle(Text("Recovery Phrase"))
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            ToolbarItem(placement: .topBarLeading) {
-                closeButton
+            if showsCloseButton {
+                ToolbarItem(placement: .topBarLeading) {
+                    closeButton
+                }
             }
             ToolbarItem(placement: .topBarTrailing) {
                 optionsMenu
