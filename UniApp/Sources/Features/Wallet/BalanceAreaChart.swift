@@ -1,6 +1,208 @@
 import Charts
 import SwiftUI
 
+struct BalanceChartScrubSelection: Equatable, Sendable {
+    let xFraction: Double
+    let lowerIndex: Int
+    let upperIndex: Int
+    let progress: Double
+    let fiat: Double
+    let timestamp: Date?
+
+    var nearestIndex: Int {
+        progress < 0.5 ? lowerIndex : upperIndex
+    }
+
+    var fiatDecimal: Decimal {
+        Decimal(fiat)
+    }
+}
+
+struct BalanceChartSample: Hashable, Sendable {
+    let id: Int
+    let sourceIndex: Int?
+    let x: Double
+    let y: Double
+}
+
+enum BalanceChartScrubResolver {
+    private static let duplicateXEpsilon = 0.000_000_1
+
+    static func selection(
+        touchX: CGFloat,
+        plotArea: CGRect,
+        values: [Double],
+        xFractions: [Double] = [],
+        timestamps: [Date] = []
+    ) -> BalanceChartScrubSelection? {
+        guard !values.isEmpty, plotArea.width > 0 else { return nil }
+        let clamped = max(plotArea.minX, min(plotArea.maxX, touchX))
+        let xFraction = Double((clamped - plotArea.minX) / plotArea.width)
+        let samples = sourceSamples(values: values, xFractions: xFractions)
+        guard let first = samples.first else { return nil }
+        guard samples.count > 1 else {
+            return BalanceChartScrubSelection(
+                xFraction: xFraction,
+                lowerIndex: first.index,
+                upperIndex: first.index,
+                progress: 0,
+                fiat: first.value,
+                timestamp: timestamp(at: first.index, timestamps: timestamps)
+            )
+        }
+
+        if xFraction <= first.x {
+            return BalanceChartScrubSelection(
+                xFraction: xFraction,
+                lowerIndex: first.index,
+                upperIndex: first.index,
+                progress: 0,
+                fiat: first.value,
+                timestamp: timestamp(at: first.index, timestamps: timestamps)
+            )
+        }
+
+        guard let last = samples.last else { return nil }
+        if xFraction >= last.x {
+            return BalanceChartScrubSelection(
+                xFraction: xFraction,
+                lowerIndex: last.index,
+                upperIndex: last.index,
+                progress: 0,
+                fiat: last.value,
+                timestamp: timestamp(at: last.index, timestamps: timestamps)
+            )
+        }
+
+        for pair in samples.adjacentPairs() {
+            let lower = pair.0
+            let upper = pair.1
+            guard xFraction <= upper.x else { continue }
+            let span = upper.x - lower.x
+            let progress = span > duplicateXEpsilon ? (xFraction - lower.x) / span : 1
+            let fiat = lower.value + (upper.value - lower.value) * progress
+            return BalanceChartScrubSelection(
+                xFraction: xFraction,
+                lowerIndex: lower.index,
+                upperIndex: upper.index,
+                progress: max(0, min(1, progress)),
+                fiat: fiat,
+                timestamp: interpolatedTimestamp(
+                    lower: lower.index,
+                    upper: upper.index,
+                    progress: progress,
+                    timestamps: timestamps
+                )
+            )
+        }
+
+        return BalanceChartScrubSelection(
+            xFraction: xFraction,
+            lowerIndex: last.index,
+            upperIndex: last.index,
+            progress: 0,
+            fiat: last.value,
+            timestamp: timestamp(at: last.index, timestamps: timestamps)
+        )
+    }
+
+    static func chartSamples(values: [Double], xFractions: [Double] = []) -> [BalanceChartSample] {
+        guard !values.isEmpty else {
+            return [
+                BalanceChartSample(id: 0, sourceIndex: nil, x: 0, y: 0.5),
+                BalanceChartSample(id: 1, sourceIndex: nil, x: 1, y: 0.5)
+            ]
+        }
+
+        if values.count == 1 {
+            let value = values[0]
+            return [
+                BalanceChartSample(id: 0, sourceIndex: 0, x: 0, y: value),
+                BalanceChartSample(id: 1, sourceIndex: 0, x: 1, y: value)
+            ]
+        }
+
+        return sourceSamples(values: values, xFractions: xFractions).map {
+            BalanceChartSample(id: $0.index, sourceIndex: $0.index, x: $0.x, y: $0.value)
+        }
+    }
+
+    private struct SourceSample: Sendable {
+        let index: Int
+        let x: Double
+        let value: Double
+    }
+
+    private static func sourceSamples(values: [Double], xFractions: [Double]) -> [SourceSample] {
+        let fractions = resolvedFractions(count: values.count, xFractions: xFractions)
+        var samples: [SourceSample] = []
+        samples.reserveCapacity(values.count)
+        for index in values.indices {
+            let next = SourceSample(index: index, x: fractions[index], value: values[index])
+            if let last = samples.last, abs(last.x - next.x) <= duplicateXEpsilon {
+                samples[samples.count - 1] = next
+            } else {
+                samples.append(next)
+            }
+        }
+        return samples
+    }
+
+    private static func resolvedFractions(count: Int, xFractions: [Double]) -> [Double] {
+        guard count > 1 else { return Array(repeating: 0, count: count) }
+        guard xFractions.count == count else {
+            return equalFractions(count: count)
+        }
+        let clamped = xFractions.map { value in
+            guard value.isFinite else { return Double.nan }
+            return min(max(value, 0), 1)
+        }
+        guard clamped.allSatisfy(\.isFinite) else {
+            return equalFractions(count: count)
+        }
+        var hasForwardMovement = false
+        for index in 1..<clamped.count {
+            if clamped[index] < clamped[index - 1] {
+                return equalFractions(count: count)
+            }
+            if clamped[index] > clamped[index - 1] {
+                hasForwardMovement = true
+            }
+        }
+        return hasForwardMovement ? clamped : equalFractions(count: count)
+    }
+
+    private static func equalFractions(count: Int) -> [Double] {
+        guard count > 1 else { return Array(repeating: 0, count: count) }
+        return (0..<count).map { Double($0) / Double(count - 1) }
+    }
+
+    private static func timestamp(at index: Int, timestamps: [Date]) -> Date? {
+        guard index >= 0, index < timestamps.count else { return nil }
+        return timestamps[index]
+    }
+
+    private static func interpolatedTimestamp(
+        lower: Int,
+        upper: Int,
+        progress: Double,
+        timestamps: [Date]
+    ) -> Date? {
+        guard let lowerDate = timestamp(at: lower, timestamps: timestamps),
+              let upperDate = timestamp(at: upper, timestamps: timestamps) else {
+            return nil
+        }
+        let clampedProgress = max(0, min(1, progress))
+        return lowerDate.addingTimeInterval(upperDate.timeIntervalSince(lowerDate) * clampedProgress)
+    }
+}
+
+private extension Array {
+    func adjacentPairs() -> Zip2Sequence<Array<Element>, Array<Element>.SubSequence> {
+        zip(self, dropFirst())
+    }
+}
+
 /// Native Swift Charts area chart shared by the balance card and balance-history
 /// detail surfaces. It owns the data projection and scrub cursor, while the
 /// caller owns the responsive frame, so the chart can center and expand naturally
@@ -19,24 +221,28 @@ struct BalanceAreaChart: View {
     /// Precomputed min / max so the per-drag normalization never rescans.
     let minValue: Double
     let maxValue: Double
+    /// Per-point timestamps parallel to `values`; when supplied, scrub publishes
+    /// a continuous timestamp along with the touched fiat value.
+    var timestamps: [Date] = []
     /// The chart's sign — drives stroke / fill / glow color together.
     let sign: UniColors.BalanceCard.Sign
-    /// Published per scrub-index change (and `nil` on release).
-    var onScrub: (Int?) -> Void = { _ in }
+    /// Published while scrubbing (and `nil` on release).
+    var onScrub: (BalanceChartScrubSelection?) -> Void = { _ in }
     /// Fired once when a scrub drag begins (the card plays `impactLight`).
     var onScrubBegin: () -> Void = {}
 
     @Environment(\.colorScheme) private var colorScheme
-    /// The scrubbed index — LOCAL `@State` so a tick invalidates only
-    /// this view, never the card (the 2026-06-13 long-scrub-freeze fix).
-    @State private var scrubIndex: Int?
+    @State private var scrubSelection: BalanceChartScrubSelection?
+    @State private var isScrubbing = false
+    @State private var rejectedCurrentDrag = false
+    @State private var lastHapticIndex: Int?
 
     /// Y-axis padding band (10% top + bottom) so the curve breathes.
     private let padding: CGFloat = 0.1
 
     var body: some View {
         Chart {
-            ForEach(chartSamples, id: \.index) { sample in
+            ForEach(chartSamples, id: \.id) { sample in
                 AreaMark(
                     x: .value("Time", sample.x),
                     yStart: .value("Baseline", yDomain.lowerBound),
@@ -63,7 +269,7 @@ struct BalanceAreaChart: View {
                 .foregroundStyle(strokeColor)
             }
 
-            if let last = chartSamples.last {
+            if scrubSelection == nil, let last = chartSamples.last {
                 PointMark(
                     x: .value("Time", last.x),
                     y: .value("Balance", last.y)
@@ -97,25 +303,19 @@ struct BalanceAreaChart: View {
             color: UniColors.BalanceCard.chartGlow(sign, colorScheme) ? strokeColor.opacity(0.55) : Color.clear,
             radius: UniColors.BalanceCard.chartGlow(sign, colorScheme) ? 4 : 0
         )
-        .chartOverlay { _ in
+        .chartOverlay { chartProxy in
             GeometryReader { proxy in
+                let plotArea = chartProxy.plotFrame.map { proxy[$0] } ?? .zero
                 Rectangle()
                     .fill(.clear)
                     .contentShape(Rectangle())
-                    .gesture(
-                        DragGesture(minimumDistance: 0)
+                    .simultaneousGesture(
+                        DragGesture(minimumDistance: 8)
                             .onChanged { value in
-                                if scrubIndex == nil { onScrubBegin() }
-                                let index = indexForX(value.location.x, in: proxy.size)
-                                guard index != scrubIndex else { return }
-                                scrubIndex = index
-                                onScrub(index)
-                                UniHapticEngine.shared.playScrubTick(intensity: hapticIntensity(at: index))
+                                handleScrubChanged(value, plotArea: plotArea)
                             }
                             .onEnded { _ in
-                                scrubIndex = nil
-                                onScrub(nil)
-                                UniHapticEngine.shared.playScrubRelease()
+                                handleScrubEnded()
                             }
                     )
             }
@@ -131,32 +331,13 @@ struct BalanceAreaChart: View {
         UniColors.BalanceCard.chartFillHue(sign, colorScheme)
     }
 
-    private var chartSamples: [(index: Int, x: Double, y: Double)] {
-        guard !values.isEmpty else {
-            return [
-                (0, 0, 0.5),
-                (1, 1, 0.5)
-            ]
-        }
-
-        if values.count == 1 {
-            let y = yValue(at: 0)
-            return [
-                (0, 0, y),
-                (1, 1, y)
-            ]
-        }
-
-        return values.indices.map { index in
-            (index, xValue(at: index), yValue(at: index))
-        }
+    private var chartSamples: [BalanceChartSample] {
+        BalanceChartScrubResolver.chartSamples(values: values, xFractions: xFractions)
     }
 
-    private var selectedSample: (index: Int, x: Double, y: Double)? {
-        guard let scrubIndex,
-              scrubIndex >= 0,
-              scrubIndex < values.count else { return nil }
-        return (scrubIndex, xValue(at: scrubIndex), yValue(at: scrubIndex))
+    private var selectedSample: (x: Double, y: Double)? {
+        guard let scrubSelection else { return nil }
+        return (scrubSelection.xFraction, scrubSelection.fiat)
     }
 
     private var yDomain: ClosedRange<Double> {
@@ -174,38 +355,52 @@ struct BalanceAreaChart: View {
         return (minValue - domainPadding)...(maxValue + domainPadding)
     }
 
-    private func xValue(at index: Int) -> Double {
-        if xFractions.count == values.count {
-            return min(max(xFractions[index], 0), 1)
-        }
-        return values.count > 1 ? Double(index) / Double(values.count - 1) : 0
-    }
-
-    private func yValue(at index: Int) -> Double {
-        values[index]
-    }
-
     // MARK: - Cursor math (O(1) per tick)
 
-    private func indexForX(_ x: CGFloat, in size: CGSize) -> Int {
-        guard values.count > 1 else { return 0 }
-        let clamped = Double(max(0, min(1, x / max(size.width, 1))))
-        // Time-spaced hit-test: pick the sample whose TIME fraction is nearest
-        // the touch, so an unevenly-spaced curve maps the finger correctly.
-        // Falls back to index spacing when no fractions were supplied.
-        if xFractions.count == values.count {
-            var best = 0
-            var bestDist = Double.greatestFiniteMagnitude
-            for (i, f) in xFractions.enumerated() {
-                let d = abs(f - clamped)
-                if d < bestDist {
-                    bestDist = d
-                    best = i
-                }
+    private func handleScrubChanged(_ value: DragGesture.Value, plotArea: CGRect) {
+        if rejectedCurrentDrag { return }
+
+        if !isScrubbing {
+            let dx = abs(value.translation.width)
+            let dy = abs(value.translation.height)
+            if dy > dx {
+                rejectedCurrentDrag = true
+                return
             }
-            return best
+            isScrubbing = true
+            onScrubBegin()
         }
-        return Int(round(clamped * Double(values.count - 1)))
+
+        guard let selection = BalanceChartScrubResolver.selection(
+            touchX: value.location.x,
+            plotArea: plotArea,
+            values: values,
+            xFractions: xFractions,
+            timestamps: timestamps
+        ) else {
+            return
+        }
+
+        guard selection != scrubSelection else { return }
+        scrubSelection = selection
+        onScrub(selection)
+
+        let hapticIndex = selection.nearestIndex
+        if hapticIndex != lastHapticIndex {
+            lastHapticIndex = hapticIndex
+            UniHapticEngine.shared.playScrubTick(intensity: hapticIntensity(at: hapticIndex))
+        }
+    }
+
+    private func handleScrubEnded() {
+        if isScrubbing {
+            onScrub(nil)
+            UniHapticEngine.shared.playScrubRelease()
+        }
+        scrubSelection = nil
+        isScrubbing = false
+        rejectedCurrentDrag = false
+        lastHapticIndex = nil
     }
 
     /// Slope-driven scrub-tick intensity (steeper change → stronger

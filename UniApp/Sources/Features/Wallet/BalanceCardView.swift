@@ -394,16 +394,10 @@ struct BalanceCardView: View {
                 xFractions: chartXFractions,
                 minValue: chartMin,
                 maxValue: chartMax,
+                timestamps: isHidden ? [] : points.map(\.timestamp),
                 sign: chartSign,
-                onScrub: { index in
-                    let scrubbed: BalancePoint? = {
-                        guard let index, index >= 0, index < points.count else { return nil }
-                        return points[index]
-                    }()
-                    withAnimation(reduceMotion ? nil : .snappy(duration: 0.18)) {
-                        scrubModel.fiat = scrubbed?.fiat
-                        scrubModel.timestamp = scrubbed?.timestamp
-                    }
+                onScrub: { selection in
+                    scrubModel.update(selection: selection)
                 },
                 onScrubBegin: {
                     UniHapticEngine.shared.play(.contextualImpact(.whisper))
@@ -460,6 +454,7 @@ struct BalanceCardView: View {
     private var balanceNumber: some View {
         let parts = WalletFormatting.fiatParts(totalFiat, currencyCode: currencyCode)
         let animatedFiat = NSDecimalNumber(decimal: scrubModel.fiat ?? totalFiat).doubleValue
+        let scrubActive = scrubModel.isActive
         // Currency-code run (muted), shown only when it leads (en).
         let currencyRun = Text(verbatim: parts.currency + (parts.currency.isEmpty ? "" : " "))
             .font(UniTypography.BalanceCard.currency)
@@ -482,9 +477,9 @@ struct BalanceCardView: View {
         .lineLimit(1)
         .minimumScaleFactor(0.5)
         .tracking(-1.3) // ≈ −0.03em at 44pt
-        .contentTransition(reduceMotion ? .identity : .numericText())
+        .contentTransition(reduceMotion || scrubActive ? .identity : .numericText())
         .environment(\.layoutDirection, .leftToRight) // numbers always LTR (Rule #11)
-        .animation(reduceMotion ? nil : .smooth(duration: 0.28), value: animatedFiat)
+        .animation(reduceMotion || scrubActive ? nil : .smooth(duration: 0.28), value: animatedFiat)
         .animation(reduceMotion ? nil : .smooth(duration: 0.24), value: isHidden)
     }
 
@@ -536,9 +531,12 @@ struct BalanceCardView: View {
                 // chip) so the row height — and the card — stays identical to
                 // the resting [percent pill][amount] layout; no resize on drag.
                 changePill(text: scrubTimeText(scrubbedAt), systemImage: nil, sign: .flat)
+                    .frame(minWidth: 86, alignment: .center)
                 Text(verbatim: scrubDateText(scrubbedAt))
                     .font(UniTypography.BalanceCard.amount)
                     .foregroundStyle(UniColors.BalanceCard.textMuted(colorScheme, boostContrast: boostContrast))
+                    .monospacedDigit()
+                    .frame(minWidth: 104, alignment: .leading)
                     .environment(\.layoutDirection, .leftToRight) // date reads LTR with the time chip
             } else {
                 // The pill is ALWAYS present so the card never resizes when the
@@ -561,6 +559,11 @@ struct BalanceCardView: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        .transaction { transaction in
+            if scrubModel.isActive {
+                transaction.disablesAnimations = true
+            }
+        }
     }
 
     private func changePill(text: String, systemImage: String?, sign: UniColors.BalanceCard.Sign) -> some View {
@@ -571,6 +574,7 @@ struct BalanceCardView: View {
             }
             Text(verbatim: text)
                 .font(UniTypography.BalanceCard.pill)
+                .monospacedDigit()
                 .tracking(systemImage == nil && isHidden ? 2 : 0)
         }
         .foregroundStyle(UniColors.BalanceCard.accent(sign, colorScheme))

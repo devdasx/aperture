@@ -1,5 +1,6 @@
 import Testing
 import Foundation
+import CoreGraphics
 @testable import Aperture
 
 /// Tests for `BalanceHistoryReconstructor` — the **2026-06-19 Mode C
@@ -509,5 +510,118 @@ struct BalanceHistoryReconstructorTests {
         // 100 − 50 = 50; if the keys had split, the −50 would clamp a separate
         // bucket to 0 and the total would read 100.
         #expect(pts.last?.fiat == Decimal(50))
+    }
+}
+
+struct BalanceChartScrubResolverTests {
+    private func expectClose(_ actual: Double?, _ expected: Double) {
+        #expect(actual != nil)
+        guard let actual else { return }
+        #expect(abs(actual - expected) < 0.000_001)
+    }
+
+    @Test("Scrub resolver maps touches through the chart plot area, not the overlay")
+    func plotAreaOffset() {
+        let selection = BalanceChartScrubResolver.selection(
+            touchX: 140,
+            plotArea: CGRect(x: 40, y: 0, width: 200, height: 100),
+            values: [0, 100],
+            xFractions: [0, 1]
+        )
+
+        expectClose(selection?.xFraction, 0.5)
+        expectClose(selection?.fiat, 50)
+        #expect(selection?.lowerIndex == 0)
+        #expect(selection?.upperIndex == 1)
+    }
+
+    @Test("Scrub resolver clamps left and right edges")
+    func edgeClamping() {
+        let plot = CGRect(x: 50, y: 0, width: 100, height: 100)
+        let left = BalanceChartScrubResolver.selection(
+            touchX: 0,
+            plotArea: plot,
+            values: [10, 20],
+            xFractions: [0, 1]
+        )
+        let right = BalanceChartScrubResolver.selection(
+            touchX: 300,
+            plotArea: plot,
+            values: [10, 20],
+            xFractions: [0, 1]
+        )
+
+        expectClose(left?.xFraction, 0)
+        expectClose(left?.fiat, 10)
+        #expect(left?.lowerIndex == 0)
+        #expect(left?.upperIndex == 0)
+
+        expectClose(right?.xFraction, 1)
+        expectClose(right?.fiat, 20)
+        #expect(right?.lowerIndex == 1)
+        #expect(right?.upperIndex == 1)
+    }
+
+    @Test("Scrub resolver interpolates uneven time fractions")
+    func unevenFractions() {
+        let selection = BalanceChartScrubResolver.selection(
+            touchX: 75,
+            plotArea: CGRect(x: 0, y: 0, width: 200, height: 100),
+            values: [0, 100, 300],
+            xFractions: [0, 0.75, 1]
+        )
+
+        expectClose(selection?.xFraction, 0.375)
+        expectClose(selection?.progress, 0.5)
+        expectClose(selection?.fiat, 50)
+        #expect(selection?.lowerIndex == 0)
+        #expect(selection?.upperIndex == 1)
+    }
+
+    @Test("Scrub resolver handles one-point and empty data safely")
+    func onePointAndEmptyData() {
+        let plot = CGRect(x: 0, y: 0, width: 100, height: 100)
+        let one = BalanceChartScrubResolver.selection(
+            touchX: 80,
+            plotArea: plot,
+            values: [42],
+            xFractions: [0]
+        )
+        let empty = BalanceChartScrubResolver.selection(
+            touchX: 80,
+            plotArea: plot,
+            values: [],
+            xFractions: []
+        )
+
+        expectClose(one?.xFraction, 0.8)
+        expectClose(one?.fiat, 42)
+        #expect(one?.lowerIndex == 0)
+        #expect(one?.upperIndex == 0)
+        #expect(empty == nil)
+    }
+
+    @Test("Scrub resolver collapses duplicate x positions to the latest sample")
+    func duplicateFractionsCollapseToLatestSample() {
+        let left = BalanceChartScrubResolver.selection(
+            touchX: 0,
+            plotArea: CGRect(x: 0, y: 0, width: 100, height: 100),
+            values: [1, 10, 20],
+            xFractions: [0, 0, 1]
+        )
+        let middle = BalanceChartScrubResolver.selection(
+            touchX: 50,
+            plotArea: CGRect(x: 0, y: 0, width: 100, height: 100),
+            values: [1, 10, 20],
+            xFractions: [0, 0, 1]
+        )
+
+        expectClose(left?.fiat, 10)
+        #expect(left?.lowerIndex == 1)
+        #expect(left?.upperIndex == 1)
+
+        expectClose(middle?.fiat, 15)
+        #expect(middle?.lowerIndex == 1)
+        #expect(middle?.upperIndex == 2)
     }
 }
