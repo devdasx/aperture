@@ -23,6 +23,41 @@ actor TransactionRepository {
     /// wasted work on stores with no legacy rows.
     private var didBackfillLegacyAddressIds = false
 
+    private func balanceOnlyFiatFallback(
+        existing: TokenBalanceRecord,
+        newRawBalance: String,
+        newDecimals: Int
+    ) -> Decimal {
+        if isZeroRawBalance(newRawBalance) {
+            return 0
+        }
+        guard
+            existing.fiatValueCached > 0,
+            let previousAmount = decimalAmount(rawBalance: existing.rawBalance, decimals: existing.decimals),
+            let nextAmount = decimalAmount(rawBalance: newRawBalance, decimals: newDecimals),
+            previousAmount > 0,
+            nextAmount >= 0
+        else {
+            return existing.fiatValueCached
+        }
+        return existing.fiatValueCached * nextAmount / previousAmount
+    }
+
+    private func isZeroRawBalance(_ rawBalance: String) -> Bool {
+        guard let value = Decimal(string: rawBalance) else { return false }
+        return value == 0
+    }
+
+    private func decimalAmount(rawBalance: String, decimals: Int) -> Decimal? {
+        guard let integer = Decimal(string: rawBalance), decimals >= 0 else { return nil }
+        guard decimals > 0 else { return integer }
+        var scale: Decimal = 1
+        for _ in 0..<decimals {
+            scale *= 10
+        }
+        return integer / scale
+    }
+
     private func ensureLegacyAddressIdBackfill() throws {
         guard !didBackfillLegacyAddressIds else { return }
         didBackfillLegacyAddressIds = true
@@ -468,11 +503,16 @@ actor TransactionRepository {
         if let existing = try modelContext.fetch(balDescriptor).first {
             // Preserve the last-known price when the incoming fiat is
             // `nil` ("price unknown right now" — see the doc comment).
-            // Only a non-nil quote updates `fiatValueCached` /
-            // `fiatCurrencyCode`; a nil yield keeps whatever the row
-            // already holds, so a cancelled/partial price batch can
-            // never blank a good price to "Price unavailable".
-            let resolvedFiat = fiatValueCached ?? existing.fiatValueCached
+            // Only a non-nil quote updates `fiatCurrencyCode`; a nil yield
+            // reuses the persisted unit price by scaling the previous fiat
+            // total to the new raw amount. That keeps balance-only refreshes
+            // fast without freezing a stale fiat total when the coin amount
+            // changes, and a new zero raw balance immediately becomes 0 fiat.
+            let resolvedFiat = fiatValueCached ?? balanceOnlyFiatFallback(
+                existing: existing,
+                newRawBalance: rawBalance,
+                newDecimals: decimals
+            )
             let resolvedCurrency = fiatValueCached != nil ? fiatCurrencyCode : existing.fiatCurrencyCode
 
             // **2026-06-13 — skip no-op writes.** The app-level 10s

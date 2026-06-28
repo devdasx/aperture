@@ -2481,9 +2481,12 @@ struct WalletHomeView: View {
             walletId: walletId,
             currencyCode: currencyCode,
             modelContainer: modelContext.container,
-            userInitiated: userInitiated
+            userInitiated: userInitiated,
+            mode: userInitiated ? .balancesOnly : .full
         )
-        await repriceForCurrencyChange()
+        if !userInitiated {
+            await repriceForCurrencyChange()
+        }
 
         rebuildFilterInputs()
         rebuildDisplayRows()
