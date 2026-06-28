@@ -227,6 +227,43 @@ struct MarketAsset: Identifiable, Hashable, Sendable {
             lastUpdatedAt: lastUpdatedAt
         )
     }
+
+    func converted(to currencyCode: String, rate: Double, source: String) -> MarketAsset {
+        let normalizedCurrency = currencyCode.uppercased()
+        guard currencyCode.uppercased() != self.currencyCode.uppercased(),
+              rate.isFinite,
+              rate > 0 else {
+            return self
+        }
+
+        return MarketAsset(
+            symbol: symbol,
+            name: name,
+            providerId: providerId,
+            rank: rank,
+            price: price * rate,
+            currencyCode: normalizedCurrency,
+            priceChange24hPercent: priceChange24hPercent,
+            priceChange24hAmount: priceChange24hAmount * rate,
+            marketCap: marketCap * rate,
+            volume24h: volume24h * rate,
+            circulatingSupply: circulatingSupply,
+            ath: ath * rate,
+            high24h: high24h * rate,
+            low24h: low24h * rate,
+            about: about,
+            sparkline: sparkline.converted(rate: rate),
+            source: source,
+            lastUpdatedAt: lastUpdatedAt
+        )
+    }
+}
+
+private extension Array where Element == MarketPoint {
+    func converted(rate: Double) -> [MarketPoint] {
+        guard rate.isFinite, rate > 0 else { return self }
+        return map { MarketPoint(date: $0.date, price: $0.price * rate) }
+    }
 }
 
 struct MarketChartResponse: Sendable {
@@ -354,6 +391,7 @@ final class MarketsViewModel: ObservableObject {
     @Published var errorMessage: String?
 
     private let service = MarketDataService()
+    private var activeCurrencyCode = CurrencyPreference.defaultCode
 
     func loadCached(from context: ModelContext) {
         let descriptor = FetchDescriptor<MarketAssetRecord>(
@@ -365,23 +403,36 @@ final class MarketsViewModel: ObservableObject {
         watchlist = fetchWatchlist(from: context)
     }
 
+    func repriceCachedAssets(context: ModelContext, currencyCode: String) async {
+        let target = normalizedCurrencyCode(currencyCode)
+        activeCurrencyCode = target
+        await repriceCurrentAssets(to: target, context: context)
+    }
+
     func refresh(context: ModelContext, currencyCode: String) async {
+        let target = normalizedCurrencyCode(currencyCode)
+        activeCurrencyCode = target
         isLoading = assets.isEmpty
         do {
-            let fresh = try await service.fetchMarkets(currencyCode: currencyCode)
+            let fresh = try await service.fetchMarkets(currencyCode: target)
+            guard activeCurrencyCode == target else { return }
             try upsert(fresh, in: context)
             assets = fresh.sorted { lhs, rhs in lhs.rank < rhs.rank }
             watchlist = fetchWatchlist(from: context)
             errorMessage = nil
         } catch {
+            guard activeCurrencyCode == target else { return }
             loadCached(from: context)
+            await repriceCurrentAssets(to: target, context: context)
             if assets.isEmpty {
                 errorMessage = "Market data is unavailable. Pull to refresh when the network is back."
             } else {
                 errorMessage = "Using saved market data. Pull to refresh for live prices."
             }
         }
-        isLoading = false
+        if activeCurrencyCode == target {
+            isLoading = false
+        }
     }
 
     func isWatchlisted(_ symbol: String) -> Bool {
@@ -401,7 +452,7 @@ final class MarketsViewModel: ObservableObject {
     }
 
     func cachedChart(symbol: String, range: MarketChartRange, currencyCode: String, context: ModelContext) -> MarketChartResponse? {
-        let key = MarketChartCacheRecord.key(symbol: symbol, range: range, currencyCode: currencyCode)
+        let key = MarketChartCacheRecord.key(symbol: symbol, range: range, currencyCode: normalizedCurrencyCode(currencyCode))
         var descriptor = FetchDescriptor<MarketChartCacheRecord>(
             predicate: #Predicate { $0.cacheKey == key }
         )
@@ -412,35 +463,70 @@ final class MarketsViewModel: ObservableObject {
         return MarketChartResponse(points: points, currencyCode: record.currencyCode, source: record.source)
     }
 
-    func refreshChart(symbol: String, range: MarketChartRange, currencyCode: String, context: ModelContext) async throws -> MarketChartResponse {
-        let response = try await service.fetchChart(symbol: symbol, range: range, currencyCode: currencyCode)
-        let key = MarketChartCacheRecord.key(symbol: symbol, range: range, currencyCode: response.currencyCode)
+    func cachedOrConvertedChart(symbol: String, range: MarketChartRange, currencyCode: String, context: ModelContext) async -> MarketChartResponse? {
+        let target = normalizedCurrencyCode(currencyCode)
+        if let exact = cachedChart(symbol: symbol, range: range, currencyCode: target, context: context) {
+            return exact
+        }
+
+        let normalizedSymbol = symbol.uppercased()
+        let rangeRaw = range.rawValue
         var descriptor = FetchDescriptor<MarketChartCacheRecord>(
-            predicate: #Predicate { $0.cacheKey == key }
+            predicate: #Predicate { $0.symbol == normalizedSymbol && $0.rangeRaw == rangeRaw },
+            sortBy: [SortDescriptor(\.updatedAt, order: .reverse)]
         )
         descriptor.fetchLimit = 1
-        if let record = try? context.fetch(descriptor).first {
-            record.apply(samples: response.points, source: response.source)
-        } else {
-            context.insert(
-                MarketChartCacheRecord(
-                    symbol: symbol,
-                    range: range,
-                    currencyCode: response.currencyCode,
-                    samples: response.points,
-                    source: response.source
-                )
-            )
+
+        guard let record = try? context.fetch(descriptor).first else { return nil }
+        let points = MarketPoint.codec.decode(record.samplesJSON)
+        guard !points.isEmpty else { return nil }
+
+        let sourceCurrency = record.currencyCode.uppercased()
+        guard sourceCurrency != target else {
+            return MarketChartResponse(points: points, currencyCode: record.currencyCode, source: record.source)
         }
-        try? context.save()
+        guard let conversion = try? await service.crossRate(from: sourceCurrency, to: target) else {
+            return nil
+        }
+
+        let converted = points.converted(rate: conversion.rate)
+        let source = "Saved chart data · \(conversion.source)"
+        upsertChart(symbol: normalizedSymbol, range: range, currencyCode: target, samples: converted, source: source, context: context)
+        return MarketChartResponse(points: converted, currencyCode: target, source: source)
+    }
+
+    func refreshChart(symbol: String, range: MarketChartRange, currencyCode: String, context: ModelContext) async throws -> MarketChartResponse {
+        let response = try await service.fetchChart(symbol: symbol, range: range, currencyCode: normalizedCurrencyCode(currencyCode))
+        upsertChart(symbol: symbol, range: range, currencyCode: response.currencyCode, samples: response.points, source: response.source, context: context)
         return response
     }
 
-    func refreshDetail(for asset: MarketAsset, currencyCode: String, context: ModelContext) async -> MarketAsset {
-        guard let detail = try? await service.fetchDetail(symbol: asset.symbol, currencyCode: currencyCode) else {
+    func reprice(asset: MarketAsset, currencyCode: String, context: ModelContext) async -> MarketAsset {
+        let target = normalizedCurrencyCode(currencyCode)
+        guard asset.currencyCode.uppercased() != target else { return asset }
+        guard let conversion = try? await service.crossRate(from: asset.currencyCode, to: target) else {
             return asset
         }
-        let updated = asset.replacing(
+        let converted = asset.converted(
+            to: target,
+            rate: conversion.rate,
+            source: "Saved market data · \(conversion.source)"
+        )
+        try? upsert([converted], in: context)
+        if let index = assets.firstIndex(where: { $0.symbol == converted.symbol }) {
+            assets[index] = converted
+            assets.sort { lhs, rhs in lhs.rank < rhs.rank }
+        }
+        return converted
+    }
+
+    func refreshDetail(for asset: MarketAsset, currencyCode: String, context: ModelContext) async -> MarketAsset {
+        let target = normalizedCurrencyCode(currencyCode)
+        let repriced = await reprice(asset: asset, currencyCode: target, context: context)
+        guard let detail = try? await service.fetchDetail(symbol: repriced.symbol, currencyCode: target) else {
+            return repriced
+        }
+        let updated = repriced.replacing(
             about: detail.about.isEmpty ? nil : detail.about,
             marketCap: detail.marketCap > 0 ? detail.marketCap : nil,
             volume24h: detail.volume24h > 0 ? detail.volume24h : nil,
@@ -449,7 +535,7 @@ final class MarketsViewModel: ObservableObject {
             high24h: detail.high24h > 0 ? detail.high24h : nil,
             low24h: detail.low24h > 0 ? detail.low24h : nil
         )
-        let symbol = asset.symbol
+        let symbol = repriced.symbol
         var descriptor = FetchDescriptor<MarketAssetRecord>(
             predicate: #Predicate { $0.symbol == symbol }
         )
@@ -463,6 +549,35 @@ final class MarketsViewModel: ObservableObject {
             try? context.save()
         }
         return updated
+    }
+
+    private func upsertChart(
+        symbol: String,
+        range: MarketChartRange,
+        currencyCode: String,
+        samples: [MarketPoint],
+        source: String,
+        context: ModelContext
+    ) {
+        let key = MarketChartCacheRecord.key(symbol: symbol, range: range, currencyCode: currencyCode)
+        var descriptor = FetchDescriptor<MarketChartCacheRecord>(
+            predicate: #Predicate { $0.cacheKey == key }
+        )
+        descriptor.fetchLimit = 1
+        if let record = try? context.fetch(descriptor).first {
+            record.apply(samples: samples, source: source)
+        } else {
+            context.insert(
+                MarketChartCacheRecord(
+                    symbol: symbol,
+                    range: range,
+                    currencyCode: currencyCode,
+                    samples: samples,
+                    source: source
+                )
+            )
+        }
+        try? context.save()
     }
 
     private func upsert(_ assets: [MarketAsset], in context: ModelContext) throws {
@@ -480,6 +595,49 @@ final class MarketsViewModel: ObservableObject {
         if context.hasChanges {
             try context.save()
         }
+    }
+
+    private func repriceCurrentAssets(to target: String, context: ModelContext) async {
+        guard !assets.isEmpty else { return }
+
+        let sourceCurrencies = Set(assets.map { $0.currencyCode.uppercased() })
+            .filter { $0 != target }
+        guard !sourceCurrencies.isEmpty else {
+            watchlist = fetchWatchlist(from: context)
+            return
+        }
+
+        var conversions: [String: (rate: Double, source: String)] = [:]
+        for sourceCurrency in sourceCurrencies {
+            if let conversion = try? await service.crossRate(from: sourceCurrency, to: target) {
+                conversions[sourceCurrency] = conversion
+            }
+        }
+        guard !conversions.isEmpty, activeCurrencyCode == target else { return }
+
+        var didConvert = false
+        let converted = assets.map { asset in
+            let sourceCurrency = asset.currencyCode.uppercased()
+            guard let conversion = conversions[sourceCurrency] else {
+                return asset
+            }
+            didConvert = true
+            return asset.converted(
+                to: target,
+                rate: conversion.rate,
+                source: "Saved market data · \(conversion.source)"
+            )
+        }
+        guard didConvert else { return }
+
+        try? upsert(converted, in: context)
+        assets = converted.sorted { lhs, rhs in lhs.rank < rhs.rank }
+        watchlist = fetchWatchlist(from: context)
+    }
+
+    private func normalizedCurrencyCode(_ currencyCode: String) -> String {
+        let uppercased = currencyCode.uppercased()
+        return CurrencyPreference.currency(for: uppercased)?.code ?? CurrencyPreference.defaultCode
     }
 
     private func fetchWatchlist(from context: ModelContext) -> Set<String> {
@@ -612,12 +770,16 @@ struct MarketsView: View {
         }
         .task {
             model.loadCached(from: modelContext)
+            await model.repriceCachedAssets(context: modelContext, currencyCode: currencyCode)
             if model.assets.isEmpty {
                 await model.refresh(context: modelContext, currencyCode: currencyCode)
             }
         }
         .onChange(of: currencyCode) { _, newValue in
-            Task { await model.refresh(context: modelContext, currencyCode: newValue) }
+            Task {
+                await model.repriceCachedAssets(context: modelContext, currencyCode: newValue)
+                await model.refresh(context: modelContext, currencyCode: newValue)
+            }
         }
         .alert("Markets", isPresented: Binding(
             get: { model.errorMessage != nil },
@@ -769,11 +931,11 @@ struct MarketDetailView: View {
                 .presentationBackground(UniColors.Background.primary)
         }
         .task {
-            loadCachedChart()
+            await loadCachedOrConvertedChart()
             await refreshDetail()
         }
         .task(id: range) {
-            loadCachedChart()
+            await loadCachedOrConvertedChart()
             await refreshChart()
         }
         .onChange(of: currencyCode) { _, _ in
@@ -781,7 +943,8 @@ struct MarketDetailView: View {
             chart = []
             chartCurrencyCode = displayCurrencyCode.uppercased()
             Task {
-                loadCachedChart()
+                asset = await model.reprice(asset: asset, currencyCode: displayCurrencyCode, context: modelContext)
+                await loadCachedOrConvertedChart()
                 await refreshDetail()
             }
         }
@@ -899,6 +1062,15 @@ struct MarketDetailView: View {
         }
         chart = cached.points
         chartCurrencyCode = cached.currencyCode.uppercased()
+    }
+
+    private func loadCachedOrConvertedChart() async {
+        if let cached = await model.cachedOrConvertedChart(symbol: asset.symbol, range: range, currencyCode: displayCurrencyCode, context: modelContext) {
+            chart = cached.points
+            chartCurrencyCode = cached.currencyCode.uppercased()
+        } else {
+            loadCachedChart()
+        }
     }
 
     private func refreshDetail() async {
@@ -1424,6 +1596,27 @@ private actor MarketDataService {
             high24h: usd(row.market_data?.high_24h, rate: conversion.rate),
             low24h: usd(row.market_data?.low_24h, rate: conversion.rate)
         )
+    }
+
+    func crossRate(from sourceCode: String, to targetCode: String) async throws -> (rate: Double, source: String) {
+        let source = sourceCode.uppercased()
+        let target = targetCode.uppercased()
+        guard source != target else { return (1, "FX") }
+
+        if source == "USD" {
+            let targetRate = try await usdConversion(to: target)
+            return (targetRate.rate, targetRate.source)
+        }
+        if target == "USD" {
+            let sourceRate = try await usdConversion(to: source)
+            guard sourceRate.rate > 0 else { throw URLError(.cannotParseResponse) }
+            return (1 / sourceRate.rate, sourceRate.source)
+        }
+
+        let sourceRate = try await usdConversion(to: source)
+        let targetRate = try await usdConversion(to: target)
+        guard sourceRate.rate > 0 else { throw URLError(.cannotParseResponse) }
+        return (targetRate.rate / sourceRate.rate, "\(sourceRate.source) -> \(targetRate.source)")
     }
 
     private func fetchCoinGeckoMarkets(currencyCode: String) async throws -> [MarketAsset] {
