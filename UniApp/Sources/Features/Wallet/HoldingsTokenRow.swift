@@ -3,9 +3,7 @@ import SwiftUI
 /// Indented token sub-row in the wallet-home "Holdings" card. Sits
 /// directly under its parent chain's `AssetRow`; carries a leading
 /// treeline (a thin vertical rule) so the parent/child relationship
-/// reads at a glance — the same cue established in
-/// `ReviewTokenRow` on the Import → Review screen, propagated here
-/// so the user feels one app, not two.
+/// reads at a glance.
 ///
 /// **Visual register (Rule #2):**
 /// - Treeline width 2pt, `Fill.tertiary`, height 28pt so it visually

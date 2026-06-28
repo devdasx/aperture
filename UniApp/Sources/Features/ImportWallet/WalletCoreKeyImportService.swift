@@ -360,10 +360,9 @@ struct WalletCoreKeyImportService: KeyImportService {
 
     func deriveAddresses(fromSeed seed: Data) async throws -> [SupportedChain: String] {
         // Legacy seed-based API. WalletCore wants the mnemonic, not
-        // the seed, so this throws. The `MnemonicReviewView` now
-        // calls the mnemonic-based API directly; this method is kept
-        // only for source compatibility while the import flow
-        // transitions.
+        // the seed, so this throws. Mnemonic import now calls the
+        // mnemonic-based API directly during commit; this method is kept
+        // only for source compatibility.
         throw KeyImportError.unsupported
     }
 }

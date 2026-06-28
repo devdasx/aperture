@@ -26,6 +26,7 @@ import SwiftUI
 /// previous chip).
 struct MnemonicEntryView: View {
     @Bindable var state: ImportWalletState
+    var isCommitting: Bool = false
     let onContinue: () -> Void
 
     /// Committed words (no empties). The active slot's live text lives in
@@ -240,7 +241,12 @@ struct MnemonicEntryView: View {
                 suggestionRow
             }
             GlassEffectContainer(spacing: UniSpacing.s) {
-                UniButton(title: "Continue", variant: .primary, isEnabled: canContinue) {
+                UniButton(
+                    title: isCommitting ? "Importing…" : "Import wallet",
+                    variant: .primary,
+                    isLoading: isCommitting,
+                    isEnabled: canContinue && !isCommitting
+                ) {
                     if isLeakedPhrase {
                         isShowingLeakedWarning = true
                     } else {
@@ -671,151 +677,5 @@ private enum SortedBIP39Words {
             index += 1
         }
         return result
-    }
-}
-
-
-// MARK: - Mnemonic review step
-
-struct MnemonicReviewView: View {
-    @Bindable var state: ImportWalletState
-    /// True while the parent flow is persisting the wallet — drives the
-    /// Import CTA's native loading spinner (the commit derives + writes
-    /// to SwiftData + Keychain, a real beat).
-    var isCommitting: Bool = false
-    let onCommit: () -> Void
-
-    @AppStorage(CurrencyPreference.storageKey)
-    private var currencyCode: String = CurrencyPreference.defaultCode
-
-    @State private var derivedAddresses: [SupportedChain: String] = [:]
-    @State private var balances: [SupportedChain: ChainBalance] = [:]
-    @State private var isDeriving = true
-
-    private var sortedChains: [SupportedChain] {
-        derivedAddresses.keys.sorted { $0.displayName < $1.displayName }
-    }
-
-    var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: UniSpacing.l) {
-                UniHeadline(
-                    text: "Does this look like the wallet you expected?",
-                    alignment: .leading
-                )
-                .fixedSize(horizontal: false, vertical: true)
-                UniBody(
-                    text: "Aperture will derive accounts on every supported chain from this phrase. You can hide chains you don't use later.",
-                    color: UniColors.Text.secondary
-                )
-                .fixedSize(horizontal: false, vertical: true)
-
-                if isDeriving {
-                    ProgressView()
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, UniSpacing.l)
-                } else {
-                    addressList
-                }
-
-                reviewFooter
-            }
-            .padding(.horizontal, UniSpacing.l)
-            .padding(.top, UniSpacing.l)
-            .padding(.bottom, UniSpacing.xl)
-        }
-        .background(UniColors.Background.primary)
-        .navigationTitle("Review wallet")
-        .navigationBarTitleDisplayMode(.inline)
-        .safeAreaInset(edge: .bottom) {
-            // Nav-bar back chevron is the only "go back" affordance —
-            // every iOS user already knows it, so a duplicated
-            // "Back" button at the bottom is noise (Rule #2 §A.2 —
-            // remove the least-essential element).
-            GlassEffectContainer(spacing: UniSpacing.s) {
-                importCTA
-            }
-            .padding(.horizontal, UniSpacing.l)
-            .padding(.bottom, UniSpacing.l)
-        }
-        .task {
-            await deriveAddresses()
-        }
-    }
-
-    /// The commit CTA. Disabled until derivation has actually produced
-    /// addresses — committing with an empty map would persist a wallet
-    /// with no per-chain address rows.
-    private var importCTA: some View {
-        UniButton(
-            title: isCommitting ? "Importing…" : "Import wallet",
-            variant: .primary,
-            isLoading: isCommitting,
-            isEnabled: !derivedAddresses.isEmpty
-        ) {
-            onCommit()
-        }
-    }
-
-    private var addressList: some View {
-        VStack(spacing: 0) {
-            ForEach(sortedChains, id: \.self) { chain in
-                if let address = derivedAddresses[chain] {
-                    ReviewChainRow(
-                        chain: chain,
-                        address: address,
-                        balance: balances[chain]
-                    )
-                    if chain != sortedChains.last {
-                        UniDivider()
-                    }
-                }
-            }
-        }
-        .background(
-            RoundedRectangle(cornerRadius: UniRadius.card, style: .continuous)
-                .fill(UniColors.Background.secondary)
-        )
-    }
-
-    private var reviewFooter: some View {
-        VStack(alignment: .leading, spacing: UniSpacing.xs) {
-            UniFootnote(
-                text: "Addresses are derived locally on this iPhone using Trust Wallet Core — the same open-source cryptography Trust Wallet itself uses, so importing this phrase here produces the same addresses you would see there.",
-                alignment: .leading
-            )
-            .fixedSize(horizontal: false, vertical: true)
-        }
-    }
-
-    private func deriveAddresses() async {
-        let words = state.mnemonicWords.map { $0.lowercased() }
-        // WalletCore takes the mnemonic directly (it runs BIP-39 →
-        // BIP-32 → per-chain derivation inside its C++ pipeline).
-        // Resolves in a few milliseconds for all 24 chains.
-        let addresses = await state.service.deriveAddresses(
-            mnemonic: words,
-            passphrase: state.mnemonicPassphrase
-        )
-        await MainActor.run {
-            self.derivedAddresses = addresses
-            self.state.derivedAddressesFromMnemonic = addresses
-            // Balance fetching removed (2026-06-25): seed a zero balance per
-            // derived chain so each row shows a clean 0 (no fiat) instead of a
-            // forever-spinner. No network is touched — the value is honest 0.
-            let now = Date()
-            self.balances = addresses.reduce(into: [:]) { acc, pair in
-                acc[pair.key] = ChainBalance(
-                    chain: pair.key,
-                    address: pair.value,
-                    nativeBalance: 0,
-                    fiatBalance: nil,
-                    fiatCurrencyCode: currencyCode,
-                    isUsed: false,
-                    lastUpdated: now
-                )
-            }
-            self.isDeriving = false
-        }
     }
 }

@@ -50,7 +50,8 @@ final class ImportWalletState {
     let service: any KeyImportService = WalletCoreKeyImportService()
 
     /// Derived per-chain addresses after a successful mnemonic
-    /// derivation. Populated by the review step.
+    /// derivation. Populated during the direct mnemonic commit path, or
+    /// by restore flows that already have addresses.
     var derivedAddressesFromMnemonic: [SupportedChain: String] = [:]
 
     /// Derived address from a private-key entry. Populated by the
@@ -108,22 +109,29 @@ final class ImportWalletState {
         }
         switch result {
         case .mnemonic:
+            if derivedAddressesFromMnemonic.isEmpty {
+                let normalizedWords = mnemonicWords
+                    .map { $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
+                    .filter { !$0.isEmpty }
+                derivedAddressesFromMnemonic = await service.deriveAddresses(
+                    mnemonic: normalizedWords,
+                    passphrase: mnemonicPassphrase
+                )
+            }
             // Defensive: never persist a mnemonic wallet with zero derived
             // addresses. `service.deriveAddresses(mnemonic:)` returns `[:]`
             // (it does NOT throw) when WalletCore can't build an HDWallet —
             // e.g. an iCloud backup that decrypts to a non-BIP-39 word list.
-            // The typed-import review CTA is already disabled on an empty map,
-            // but ICloudRestoreView calls persist(.mnemonic) directly, so we
-            // guard here — before any seed derivation or Keychain write — so a
-            // zero-address "zombie" wallet can never land in the store via any
-            // path. Nothing has been written yet, so there's nothing to roll back.
+            // Guard before any seed derivation or Keychain write so a
+            // zero-address "zombie" wallet can never land in the store via
+            // any path. Nothing has been written yet, so there's nothing to
+            // roll back.
             guard !derivedAddressesFromMnemonic.isEmpty else {
                 throw KeyImportError.derivationFailed
             }
             // BIP-39 mnemonic import — derive the seed and store it
             // in Keychain, then persist the WalletRecord with one
-            // address per supported chain (already populated by the
-            // mnemonic-review step via `state.service`).
+            // address per supported chain.
             //
             // PBKDF2 (2048 × HMAC-SHA512) runs off the main actor so
             // the UI doesn't hitch during commit; the Keychain writes

@@ -1,8 +1,7 @@
 import SwiftUI
 import UIKit
 
-/// Single row in the three review screens (`MnemonicReviewView`,
-/// `PrivateKeyReviewView`, `WatchOnlyReviewView`). Renders the chain
+/// Single row in the private-key and watch-only review screens. Renders the chain
 /// logo (Trust Wallet bundled per M-001), the chain name + truncated
 /// address, and the per-chain balance result in the user's currency.
 ///

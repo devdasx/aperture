@@ -40,7 +40,7 @@ protocol KeyImportService: Sendable {
     func deriveAddresses(fromExtendedKey raw: String, on chain: SupportedChain) async throws -> [String]
 
     /// Derive the first address per supported chain from a BIP-39 seed
-    /// (32 or 64 bytes). Used by the mnemonic-import review step.
+    /// (32 or 64 bytes). Legacy API kept for older importer call sites.
     ///
     /// **Deprecated path.** The WalletCore-backed service (`WalletCoreKeyImportService`)
     /// can't use this — WalletCore takes the mnemonic words, not the
