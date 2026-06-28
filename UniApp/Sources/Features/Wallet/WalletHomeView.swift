@@ -2758,11 +2758,7 @@ private struct RecentActivityRows: View {
     @Query private var cachedPrices: [CachedPriceRecord]
 
     private var priceMap: [String: Decimal] {
-        var map: [String: Decimal] = [:]
-        for row in cachedPrices where row.fiat == currencyCode {
-            map[row.symbol.uppercased()] = row.price
-        }
-        return map
+        ActivityFiat.priceMap(cachedPrices, currency: currencyCode)
     }
 
     var body: some View {

@@ -72,7 +72,8 @@ struct ActivityRow: View {
     /// amount in the user's local currency. Off shows the native token
     /// amount. Read here so every activity surface honors the choice
     /// without threading it through each call site.
-    @AppStorage("txAmountsInLocalCurrency") private var showAmountsInFiat: Bool = true
+    @AppStorage(TransactionAmountDisplayPreference.storageKey)
+    private var showAmountsInFiat: Bool = TransactionAmountDisplayPreference.defaultValue
     @Environment(\.openURL) private var openURL
 
     var body: some View {
@@ -318,8 +319,9 @@ struct ActivityRow: View {
 enum ActivityFiat {
     /// symbol (uppercased) → unit price in `currency`, from the spot cache.
     static func priceMap(_ prices: [CachedPriceRecord], currency: String) -> [String: Decimal] {
+        let normalizedCurrency = currency.uppercased()
         var map: [String: Decimal] = [:]
-        for row in prices where row.fiat == currency {
+        for row in prices where row.fiat.uppercased() == normalizedCurrency {
             map[row.symbol.uppercased()] = row.price
         }
         return map

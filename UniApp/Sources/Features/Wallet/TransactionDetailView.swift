@@ -60,11 +60,16 @@ struct TransactionDetailView: View {
     @AppStorage(CurrencyPreference.storageKey)
     private var currencyCode: String = CurrencyPreference.defaultCode
 
+    /// Settings -> Preferences toggle. On: transaction heroes prefer local
+    /// currency with native amount underneath. Off: native amount only.
+    @AppStorage(TransactionAmountDisplayPreference.storageKey)
+    private var showAmountsInFiat: Bool = TransactionAmountDisplayPreference.defaultValue
+
     /// The fetched fiat value of this transaction's amount, resolved
     /// off-main (Rule #28) from the unit price × amount. `nil` until it
     /// lands — and stays `nil` honestly (Rule #16) when no price is
-    /// available, so the hero omits the "≈ <fiat>" line rather than
-    /// fabricating a value.
+    /// available, so the hero falls back to the native amount rather than
+    /// fabricating a local-currency value.
     @State private var fiatValue: Decimal?
 
     init(transactionId: UUID) {
@@ -152,9 +157,10 @@ struct TransactionDetailView: View {
 
     // MARK: - Stage 1 — centered status hero (instant first paint)
 
-    /// The centered hero: coin mark → signed amount (centered, large) →
-    /// status badge + direction eyebrow → the fiat equivalent. The fiat
-    /// line is omitted honestly when no price resolved (Rule #16).
+    /// The centered hero: coin mark → direction eyebrow → primary amount →
+    /// optional native subtitle → status badge. The primary amount follows
+    /// Settings -> Preferences -> Amounts in local currency; if fiat is
+    /// requested but unavailable, the native amount is shown honestly.
     private func hero(_ tx: TransactionRecord) -> some View {
         VStack(spacing: UniSpacing.xs) {
             // Show the coin mark only when the chain resolves — never a
@@ -175,7 +181,7 @@ struct TransactionDetailView: View {
                 .textCase(.uppercase)
                 .tracking(0.6)
 
-            Text(amountLine(tx))
+            Text(primaryAmountLine(tx))
                 .font(UniTypography.heroBalance)
                 .foregroundStyle(amountTint(tx))
                 .lineLimit(1)
@@ -183,8 +189,8 @@ struct TransactionDetailView: View {
                 .multilineTextAlignment(.center)
                 .environment(\.layoutDirection, .leftToRight)
 
-            if let fiatValue {
-                Text(verbatim: "≈ \(WalletFormatting.fiat(fiatValue, currencyCode: currencyCode))")
+            if let subtitle = amountSubtitleLine(tx) {
+                Text(verbatim: subtitle)
                     .font(UniTypography.callout.monospacedDigit())
                     .foregroundStyle(UniColors.Text.secondary)
                     .lineLimit(1)
@@ -1094,21 +1100,33 @@ struct TransactionDetailView: View {
 
     // MARK: - Fiat conversion (off-main, Rule #28; honest, Rule #16)
 
-    /// Re-fetch the fiat value when the tx OR the display currency changes
-    /// (Rule #25 — live re-denomination). Empty when there's no tx yet.
+    /// Re-fetch the fiat value when the tx, display currency, or amount
+    /// preference changes (Rule #25 — live re-denomination). Empty when
+    /// there's no tx yet.
     private var fiatKey: String {
         guard let tx = matches.first else { return "none" }
-        return "\(tx.tokenSymbol)|\(tx.amountRaw)|\(currencyCode)"
+        return "\(tx.tokenSymbol)|\(tx.amountRaw)|\(currencyCode)|\(showAmountsInFiat)"
     }
 
     /// Resolve the transaction amount's fiat value through the shared
-    /// pricing engine (unit price × amount), off the main thread. Leaves
-    /// `fiatValue` nil — and the hero's "≈ <fiat>" line omitted — when no
-    /// price resolves, never fabricating one (Rule #16).
+    /// pricing engine (unit price × amount), off the main thread. When the
+    /// user chooses native transaction amounts, clears `fiatValue` so no local
+    /// currency subtitle leaks through. When fiat display is enabled, leaves
+    /// `fiatValue` nil if no price resolves, never fabricating one (Rule #16).
     private func loadFiat() async {
-        guard let tx = matches.first else { return }
+        guard showAmountsInFiat else {
+            fiatValue = nil
+            return
+        }
+        guard let tx = matches.first else {
+            fiatValue = nil
+            return
+        }
         let amount = Decimal(string: tx.amountRaw) ?? .zero
-        guard amount > 0 else { return }
+        guard amount > 0 else {
+            fiatValue = nil
+            return
+        }
         let symbol = tx.tokenSymbol.uppercased()
         let prices = await TokenPricingEngine.shared.unitPrices(
             symbols: [symbol], currencyCode: currencyCode.uppercased()
@@ -1264,15 +1282,29 @@ struct TransactionDetailView: View {
         }
     }
 
-    private func amountLine(_ tx: TransactionRecord) -> String {
+    private func primaryAmountLine(_ tx: TransactionRecord) -> String {
+        if showAmountsInFiat, let fiatValue {
+            return "\(amountSign(tx))\(WalletFormatting.fiat(fiatValue, currencyCode: currencyCode))"
+        }
+        return nativeAmountLine(tx)
+    }
+
+    private func amountSubtitleLine(_ tx: TransactionRecord) -> String? {
+        guard showAmountsInFiat, fiatValue != nil else { return nil }
+        return nativeAmountLine(tx)
+    }
+
+    private func nativeAmountLine(_ tx: TransactionRecord) -> String {
         let amount = Decimal(string: tx.amountRaw) ?? .zero
         let formatted = WalletFormatting.native(amount, decimals: 8)
-        let sign: String
+        return "\(amountSign(tx))\(formatted) \(tx.tokenSymbol)"
+    }
+
+    private func amountSign(_ tx: TransactionRecord) -> String {
         switch TransactionDirection(rawValue: tx.directionRaw) {
-        case .incoming?: sign = "+"
-        case .outgoing?: sign = "−"
-        default:         sign = ""
+        case .incoming?: return "+"
+        case .outgoing?: return "−"
+        default:         return ""
         }
-        return "\(sign)\(formatted) \(tx.tokenSymbol)"
     }
 }
