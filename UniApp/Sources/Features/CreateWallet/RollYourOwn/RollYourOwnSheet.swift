@@ -577,7 +577,7 @@ private struct RollYourOwnPreviewView: View {
                 .padding(.vertical, UniSpacing.xs)
                 .background(
                     RoundedRectangle(cornerRadius: UniRadius.m, style: .continuous)
-                        .fill(UniColors.Background.secondary)
+                        .fill(UniColors.SeedGrid.surface)
                 )
             }
         }

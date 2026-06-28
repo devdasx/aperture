@@ -17,8 +17,8 @@ import UIKit
 /// - Top hero: a small `key.fill` mark in `UniColors.Brand.mark`, plus a
 ///   single line of honest framing copy.
 /// - A 2-column `LazyVGrid` of word cells (12 or 24 depending on user
-///   preference). Each cell is a flat `UniColors.Background.secondary`
-///   surface (`UniRadius.m`) with a 2-digit position badge in
+///   preference). The grouped phrase surface uses `UniColors.SeedGrid.surface`
+///   with a 2-digit position badge in
 ///   `UniColors.Text.tertiary` and the word in body-emphasized weight.
 ///   Non-interactive: no tap, no copy menu.
 /// - A subtle `Copy` button below the grid. Tap copies the phrase to

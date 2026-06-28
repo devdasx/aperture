@@ -11,6 +11,18 @@ import UIKit
 /// always reference a role from this file.
 enum UniColors {
 
+    // MARK: - Card
+
+    /// Canonical non-glass card surfaces. Kept separate from button tint
+    /// roles because content containers and interactive controls need
+    /// different contrast in dark mode.
+    enum Card {
+        /// Primary content-card/list-row fill.
+        static let background = Color(uiColor: .secondarySystemGroupedBackground)
+        /// Raised/nested card fill.
+        static let elevated = Color(uiColor: .tertiarySystemGroupedBackground)
+    }
+
     // MARK: - Background
 
     /// **iOS Settings register.** The whole app uses the iOS `…GroupedBackground`
@@ -40,10 +52,10 @@ enum UniColors {
         /// One step up from the page — the canonical "card / row" fill
         /// (white in light, `#1C1C1E` in dark). Use as the `listRowBackground`
         /// on grouped lists and as the fill on card / chip surfaces.
-        static let secondary = Color(uiColor: .secondarySystemGroupedBackground)
+        static let secondary = Card.background
         /// Two steps up — nested cards / chips inside a card. Use sparingly;
         /// most surfaces only need primary + secondary.
-        static let tertiary = Color(uiColor: .tertiarySystemGroupedBackground)
+        static let tertiary = Card.elevated
 
         /// Alias retained for source compatibility. Identical to `primary`
         /// after the 2026-06-07 iOS-Settings-register flip — they
@@ -186,26 +198,23 @@ enum UniColors {
         /// Cloud in dark mode. Cloud is perfect for marks, but terrible
         /// as a prominent button fill on a black screen because white
         /// glass + white glyphs disappear. Primary buttons are therefore
-        /// always dark filled controls: brand ink in light mode, the
-        /// raised grouped-card color in dark mode.
+        /// filled controls: brand ink in light mode, a raised control
+        /// surface in dark mode. The dark control surface is deliberately
+        /// one step above `Card.background`, so buttons and cards never
+        /// collapse into the same tone.
         static let primaryLabel = Color.white
-        static let primaryTint = Color(
+        static let controlSurface = Color(
             uiColor: UIColor { traits in
                 traits.userInterfaceStyle == .dark
-                    ? .secondarySystemGroupedBackground
+                    ? .tertiarySystemGroupedBackground
                     : .label
             }
         )
+        static let primaryTint = Self.controlSurface
 
         /// Secondary CTA (`UniButton.secondary` → `.glass`).
         static let secondaryLabel = Color(uiColor: .label)
-        static let secondaryTint = Color(
-            uiColor: UIColor { traits in
-                traits.userInterfaceStyle == .dark
-                    ? .secondarySystemGroupedBackground
-                    : .label
-            }
-        )
+        static let secondaryTint = Self.controlSurface
 
         /// Destructive CTA (delete, remove, sign-out).
         static let destructiveLabel = Color.white
@@ -344,9 +353,9 @@ enum UniColors {
         /// White in light, `#1C1C1E` in dark. Matches `Background.secondary`
         /// by design: a "card" is a card whether it's a `UniCard`'s
         /// `.fill(…)` or a `listRowBackground(…)`.
-        static let card = Color(uiColor: .secondarySystemGroupedBackground)
+        static let card = Card.background
         /// One step up — for cards inside cards (rare).
-        static let elevated = Color(uiColor: .tertiarySystemGroupedBackground)
+        static let elevated = Card.elevated
     }
 
     // MARK: - Focus / Highlight (system selection)
@@ -823,6 +832,14 @@ enum UniColors {
     /// BIP-39 word) and `Reset.danger` (red = not in the list); these two are
     /// the grid-specific greys (Rule #4 §B — hex / `UIColor` only here).
     enum SeedGrid {
+        /// Recovery-phrase display surface. It follows the normal card fill
+        /// in light mode and the elevated card fill in dark mode so secret
+        /// phrase cards keep clear separation from the page.
+        static let surface = Color(uiColor: UIColor { trait in
+            trait.userInterfaceStyle == .dark
+                ? UIColor(Card.elevated)
+                : UIColor(Card.background)
+        })
         /// Index numbers, the inline ghost completion, and the active (current)
         /// slot's border — `#BCBEC5` light / `#4A4C54` dark (the handoff's
         /// `--faint`).
