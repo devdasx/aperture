@@ -50,7 +50,7 @@ struct ChainPickerView: View {
             // brand assets when present, SF Symbol "circle.fill" as a
             // neutral placeholder when not).
             chainLogo(for: chain)
-                .frame(width: 32, alignment: .center)
+                .frame(width: 36, alignment: .center)
                 .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: UniSpacing.xxs) {
@@ -76,7 +76,7 @@ struct ChainPickerView: View {
     @ViewBuilder
     private func chainLogo(for chain: SupportedChain) -> some View {
         CoinMark(chain: chain, tokenSymbol: chain.ticker)
-            .frame(width: 24, height: 24)
+            .frame(width: 30, height: 30)
             .accessibilityHidden(true)
     }
 }
