@@ -102,6 +102,10 @@ struct TransactionDetailView: View {
         .task(id: fiatKey) {
             await loadFiat()
         }
+        .transaction { transaction in
+            transaction.animation = nil
+            transaction.disablesAnimations = true
+        }
     }
 
     /// The native grouped-list register — every detail section, scrolling
@@ -1018,16 +1022,12 @@ struct TransactionDetailView: View {
 
     private func loadDetail() async {
         guard let tx = matches.first, let chain = resolvedChain else {
-            withAnimation(.easeInOut(duration: 0.2)) {
-                isLoading = false
-                didAttempt = true
-            }
+            isLoading = false
+            didAttempt = true
             return
         }
-        withAnimation(.easeInOut(duration: 0.2)) {
-            isLoading = true
-            didAttempt = false
-        }
+        isLoading = true
+        didAttempt = false
 
         // Stable lookup keys — captured once so the poll loop doesn't reach
         // back into the live record across suspension points.
@@ -1044,11 +1044,9 @@ struct TransactionDetailView: View {
             counterparty: counterparty
         )
         guard !Task.isCancelled else { return }
-        withAnimation(.easeInOut(duration: 0.25)) {
-            detail = fetched
-            isLoading = false
-            didAttempt = true
-        }
+        detail = fetched
+        isLoading = false
+        didAttempt = true
 
         // Keep checking while the tx is still pending, so the badge flips to
         // Confirmed/Failed live (Rule #25) and the confirmation count ticks
@@ -1071,7 +1069,7 @@ struct TransactionDetailView: View {
             attempt += 1
             guard let refreshed else { continue }
             fetched = refreshed
-            withAnimation(.easeInOut(duration: 0.25)) { detail = refreshed }
+            detail = refreshed
             if refreshed.status != .pending {
                 persistStatus(refreshed.status)
                 return
@@ -1117,9 +1115,7 @@ struct TransactionDetailView: View {
         )
         guard !Task.isCancelled else { return }
         if let unit = prices[symbol]?.amount, unit > 0 {
-            withAnimation(.easeInOut(duration: 0.2)) {
-                fiatValue = amount * unit
-            }
+            fiatValue = amount * unit
         } else {
             fiatValue = nil
         }
