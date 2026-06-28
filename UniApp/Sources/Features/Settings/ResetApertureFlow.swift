@@ -84,8 +84,7 @@ struct ResetApertureFlow: View {
         .wallets,
         .privateData,
         .keys,
-        .security,
-        .settings
+        .security
     ]
     private static let minimumProcessStepDuration: Duration = .milliseconds(650)
 
