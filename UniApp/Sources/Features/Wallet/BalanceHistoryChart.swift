@@ -113,27 +113,18 @@ final class ChartScrubModel {
 /// register as the empty Holdings and empty Activity surfaces.
 struct BalanceHistoryChart: View {
     let transactions: [TransactionRecord]
-    let currentBalances: [TokenBalanceRecord]
     /// The wallet's own addresses (lowercased) so self-transfers (counterparty
     /// == one of these) are dropped from the reconstruction, same as the
     /// flagship balance card. Defaults to empty (no filtering) for callers
     /// that don't supply it.
     var ownAddresses: Set<String> = []
-    /// **2026-06-12 — per-symbol price fallback.** For tokens the
-    /// wallet held in the past but no longer holds, currentBalances
-    /// has zero rows for that token → fiatPerUnit map can't price
-    /// it. This dict (keyed by uppercased symbol) is the fallback
-    /// the reconstructor uses to value past holdings of fully
-    /// cashed-out tokens. Default empty so old call sites still
-    /// compile; new call sites read PriceCacheRepository.
+    /// Local spot-price fallback keyed by uppercased symbol. The chart uses
+    /// this only to convert a transaction's native amount into the user's
+    /// local currency when no historical close exists for that transaction day.
     let priceCache: [String: Decimal]
-    /// **2026-06-12 — per-day historical close prices.** Keyed by
-    /// uppercased symbol → `[yyyymmdd: close]`. The reconstructor
-    /// values each curve point at its day's close, so a token
-    /// whose price has fallen 99% since the user held it renders
-    /// past peaks at their honest then-value ($4000) rather than
-    /// today's collapsed valuation ($50). Populated by the chart's
-    /// `.task` from `HistoricalPriceRepository`.
+    /// Per-day historical local closes keyed by uppercased symbol →
+    /// `[yyyymmdd: close]`. The chart uses this only at transaction
+    /// timestamps, never to create market-only points between transactions.
     let priceHistory: [String: [Int: Decimal]]
     let currencyCode: String
     /// 2026-06-09 — published scrubbed fiat. When the user drags
@@ -283,40 +274,21 @@ struct BalanceHistoryChart: View {
     }
 
     /// Dependency key for the memoized reconstruction. Captures the
-    /// transaction set (count + newest timestamp), the current
-    /// balances' total cached fiat (a refresh can re-price rows
-    /// without changing counts), the selected range, and the display
-    /// currency. O(N) scalar scans per body pass — orders of
-    /// magnitude cheaper than the reconstruction they gate.
+    /// transaction set, selected range, display currency, and local price
+    /// inputs. O(N) scalar scans per body pass — orders of magnitude cheaper
+    /// than the reconstruction they gate.
     private var rebuildKey: Int {
-        // **2026-06-13 perf.** `rebuildKey` is read on every chart body
-        // pass (it gates the `.task(id:)` reconstruction). The previous
-        // version summed every `Decimal` in `priceCache` AND in the
-        // whole `priceHistory` nest (thousands of slow Decimal adds) and
-        // scanned every transaction — hundreds of ms per render once the
-        // wallet had deep history, which froze the screen on unlock /
-        // navigation. Now it sums ONLY the held balances' cached fiat
-        // (O(balances) — a handful of rows) plus COUNTS for the price
-        // dictionaries (O(symbols), no value summing). So a refresh that
-        // re-prices the held rows DOES re-trigger the reconstruction (the
-        // `fiatTotal` below changes) — the chart stays live — while an
-        // in-place edit to a `priceCache` / `priceHistory` VALUE at an
-        // unchanged dictionary count does NOT (counts only); that rare edge
-        // is closed by the next held-balance change. The expensive part the
-        // 2026-06-13 fix removed was summing the whole priceCache +
-        // priceHistory nest, not the tiny held-balance sum kept here.
-        // **Mode B (2026-06-19).** The curve depends ONLY on the
-        // transactions (shape) and BOTH the spot prices (tip scale) and the
-        // historical closes (Mode C — the whole curve's valuation). Key on the
-        // transaction set (count + newest timestamp), the spot prices (count +
-        // value sum), the historical series (symbol count + total day-key
-        // count, so a backfill re-triggers without summing thousands of
-        // Decimals), the range, and the currency. `currentBalances` no longer
-        // feeds the curve and is intentionally absent.
         var hasher = Hasher()
         hasher.combine(transactions.count)
-        if let newest = transactions.map(\.occurredAt).max() {
-            hasher.combine(newest)
+        for tx in transactions {
+            hasher.combine(tx.id)
+            hasher.combine(tx.occurredAt)
+            hasher.combine(tx.statusRaw)
+            hasher.combine(tx.directionRaw)
+            hasher.combine(tx.amountRaw)
+            hasher.combine(tx.tokenSymbol)
+            hasher.combine(tx.tokenContract)
+            hasher.combine(tx.counterparty)
         }
         hasher.combine(selectedRangeRaw)
         hasher.combine(currencyCode)
@@ -326,8 +298,13 @@ struct BalanceHistoryChart: View {
         hasher.combine(priceSum)
         hasher.combine(priceHistory.count)
         var histDayCount = 0
-        for series in priceHistory.values { histDayCount += series.count }
+        var histValueSum = Decimal.zero
+        for series in priceHistory.values {
+            histDayCount += series.count
+            for value in series.values { histValueSum += value }
+        }
         hasher.combine(histDayCount)
+        hasher.combine(histValueSum)
         return hasher.finalize()
     }
 
@@ -347,10 +324,9 @@ struct BalanceHistoryChart: View {
     /// freezes.
     private func rebuildPoints() async {
         // Snapshot on the main actor (these are main-context @Models), then
-        // run the Mode C reconstruction OFF the main actor. Mode C values the
-        // transaction-derived holdings at each instant's historical close
-        // (tip at spot) — so it needs the transactions, the spot prices, AND
-        // the historical-price series.
+        // run the transaction-only reconstruction OFF the main actor. Prices
+        // are used only to convert each transaction amount into local currency;
+        // they never create chart points.
         let txSnapshots = transactions.map {
             BalanceHistoryReconstructor.HistoryTx(
                 occurredAt: $0.occurredAt,
