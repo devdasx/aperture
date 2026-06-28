@@ -413,21 +413,21 @@ struct ResetApertureFlow: View {
                 title: "All wallets will be erased",
                 isOn: $ackWallets
             ) {
-                Text("\(Text("Every wallet profile").foregroundColor(UniColors.Text.primary).bold()) on this iPhone will be removed, including created, imported, and watch-only wallets.")
+                Text("\(Text("Every wallet profile").foregroundColor(UniColors.Text.primary).fontWeight(.semibold)) on this iPhone will be removed, including created, imported, and watch-only wallets.")
             }
             ackRow(
                 symbol: "key.slash",
                 title: "Keys cannot be recovered",
                 isOn: $ackIrreversible
             ) {
-                Text("Aperture keeps \(Text("no cloud backup").foregroundColor(UniColors.Text.primary).bold()). Deleted recovery phrases and private keys are gone for good.")
+                Text("Aperture keeps \(Text("no cloud backup").foregroundColor(UniColors.Text.primary).fontWeight(.semibold)). Deleted recovery phrases and private keys are gone for good.")
             }
             ackRow(
                 symbol: "checkmark.shield",
                 title: "My wallets are backed up",
                 isOn: $ackBackedUp
             ) {
-                Text("I have saved the \(Text("recovery phrase or private key").foregroundColor(UniColors.Text.primary).bold()) for every wallet I want to keep.")
+                Text("I have saved the \(Text("recovery phrase or private key").foregroundColor(UniColors.Text.primary).fontWeight(.semibold)) for every wallet I want to keep.")
             }
         }
     }
@@ -436,9 +436,9 @@ struct ResetApertureFlow: View {
         VStack(alignment: .leading, spacing: UniSpacing.m) {
             HStack(spacing: UniSpacing.xs) {
                 Image(systemName: "exclamationmark.triangle.fill")
-                    .font(.system(size: 12, weight: .bold))
+                    .font(.system(size: 12, weight: .semibold))
                 Text("Destructive reset")
-                    .font(.system(size: 12, weight: .bold))
+                    .font(.system(size: 12, weight: .semibold))
             }
             .foregroundStyle(danger)
             .padding(.horizontal, 11)
@@ -458,12 +458,11 @@ struct ResetApertureFlow: View {
 
                 VStack(alignment: .leading, spacing: UniSpacing.xs) {
                     Text("Review Before Reset")
-                        .font(.system(size: 30, weight: .bold))
-                        .tracking(-0.4)
+                        .font(.system(size: 30, weight: .semibold))
                         .foregroundStyle(UniColors.Text.primary)
                         .fixedSize(horizontal: false, vertical: true)
-                    Text("Resetting Aperture deletes \(Text("local wallet data, encrypted secrets, cached activity, and security state").foregroundColor(UniColors.Text.primary).bold()) from this device.")
-                        .font(.system(size: 15, weight: .medium))
+                    Text("Resetting Aperture deletes \(Text("local wallet data, encrypted secrets, cached activity, and security state").foregroundColor(UniColors.Text.primary).fontWeight(.semibold)) from this device.")
+                        .font(.system(size: 15, weight: .regular))
                         .foregroundColor(UniColors.Text.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -494,10 +493,10 @@ struct ResetApertureFlow: View {
 
                 VStack(alignment: .leading, spacing: 4) {
                     Text(title)
-                        .font(.system(size: 16.5, weight: .bold))
+                        .font(.system(size: 16.5, weight: .semibold))
                         .foregroundStyle(UniColors.Text.primary)
                     detail()
-                        .font(.system(size: 13.5, weight: .medium))
+                        .font(.system(size: 13.5, weight: .regular))
                         .foregroundColor(UniColors.Text.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                         .multilineTextAlignment(.leading)
