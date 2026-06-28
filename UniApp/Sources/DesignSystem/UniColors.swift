@@ -181,19 +181,31 @@ enum UniColors {
     enum Button {
         /// Primary CTA (`UniButton.primary` → `.glassProminent`).
         ///
-        /// Adapts against the **monochrome accent** (Ink `#0B0D11`
-        /// light / Cloud `#F5F5F7` dark — see the `Brand` doc below):
-        /// `systemBackground` resolves to white in light (on Ink) and
-        /// black in dark (on Cloud), so the label always opposes the
-        /// accent fill. Literal `Color.white` here was invisible in
-        /// dark mode (~1:1 contrast on Cloud) — e.g. the selected
-        /// word chips in `BackupVerifyView`.
-        static let primaryLabel = Color(uiColor: .systemBackground)
-        static let primaryTint = Color.accentColor
+        /// Button fill deliberately does NOT use `Color.accentColor`.
+        /// Aperture's accent is the brand mark color: Ink in light mode,
+        /// Cloud in dark mode. Cloud is perfect for marks, but terrible
+        /// as a prominent button fill on a black screen because white
+        /// glass + white glyphs disappear. Primary buttons are therefore
+        /// always dark filled controls: brand ink in light mode, the
+        /// raised grouped-card color in dark mode.
+        static let primaryLabel = Color.white
+        static let primaryTint = Color(
+            uiColor: UIColor { traits in
+                traits.userInterfaceStyle == .dark
+                    ? .secondarySystemGroupedBackground
+                    : .label
+            }
+        )
 
         /// Secondary CTA (`UniButton.secondary` → `.glass`).
         static let secondaryLabel = Color(uiColor: .label)
-        static let secondaryTint = Color(uiColor: .label)
+        static let secondaryTint = Color(
+            uiColor: UIColor { traits in
+                traits.userInterfaceStyle == .dark
+                    ? .secondarySystemGroupedBackground
+                    : .label
+            }
+        )
 
         /// Destructive CTA (delete, remove, sign-out).
         static let destructiveLabel = Color.white
@@ -397,8 +409,9 @@ enum UniColors {
     /// - **`UniColors.Tint.accent`** → `AccentColor.colorset` → **Ink**
     ///   `#0B0D11` light / **Cloud** `#F5F5F7` dark — identical to the
     ///   brand mark. Surfaced system-wide as `.accentColor`; consumed
-    ///   by every `.tint(...)`, every system control (Toggle, Picker,
-    ///   etc.), and every `UniButton(.primary)` background.
+    ///   by brand/system accent surfaces. Primary filled buttons use
+    ///   `UniColors.Button.primaryTint` instead so they remain legible
+    ///   in dark mode.
     enum Brand {
         /// Fill color for the Aperture iris mark — graphite in light mode,
         /// soft white in dark mode. Use for the splash iris and the
