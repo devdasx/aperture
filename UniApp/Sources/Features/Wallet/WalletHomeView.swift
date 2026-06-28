@@ -2331,7 +2331,7 @@ struct WalletHomeView: View {
     /// sum and hands it down as the fallback.
     private var liveBalanceSum: Decimal {
         balances.reduce(Decimal.zero) { running, entry in
-            entry.balance.fiatCurrencyCode == currencyCode
+            entry.balance.fiatCurrencyCode.caseInsensitiveCompare(currencyCode) == .orderedSame
                 ? running + entry.balance.fiatValueCached
                 : running
         }
@@ -2476,12 +2476,14 @@ struct WalletHomeView: View {
         isRefreshing = true
         defer { isRefreshing = false }
 
+        await TokenPricingEngine.shared.configure(container: modelContext.container)
         await WalletDataRefreshCoordinator.shared.refresh(
             walletId: walletId,
             currencyCode: currencyCode,
             modelContainer: modelContext.container,
             userInitiated: userInitiated
         )
+        await repriceForCurrencyChange()
 
         rebuildFilterInputs()
         rebuildDisplayRows()
@@ -2524,6 +2526,7 @@ struct WalletHomeView: View {
     private func repriceForCurrencyChange() async {
         let code = (CurrencyPreference.currency(for: currencyCode)?.code
             ?? CurrencyPreference.defaultCode).uppercased()
+        guard let walletId = activeWallet?.id else { return }
 
         // Snapshot the live balance objects + the symbols to price,
         // on the main actor (the view is `@MainActor`-isolated).
@@ -2532,6 +2535,7 @@ struct WalletHomeView: View {
         let symbols = Array(Set(rows.map { $0.tokenSymbol.uppercased() }))
 
         // Fetch unit prices in the new currency (off-main hop).
+        await TokenPricingEngine.shared.configure(container: modelContext.container)
         let prices = await TokenPricingEngine.shared.unitPrices(
             symbols: symbols,
             currencyCode: code
@@ -2572,6 +2576,8 @@ struct WalletHomeView: View {
         if changed > 0 {
             try? modelContext.save()
         }
+        _ = try? await ChainStateRepository(modelContainer: modelContext.container)
+            .rebuild(walletId: walletId, fiatCurrencyCode: code)
         // Value-only updates don't move the count proxies — rebuild the
         // memoized display projections explicitly.
         rebuildDisplayRows()
@@ -2661,7 +2667,7 @@ private struct BalanceCardLiveSection: View {
 
     private var priceCacheMap: [String: Decimal] {
         var map: [String: Decimal] = [:]
-        for row in cachedPrices where row.fiat == currencyCode {
+        for row in cachedPrices where row.fiat.caseInsensitiveCompare(currencyCode) == .orderedSame {
             map[row.symbol.uppercased()] = row.price
         }
         return map
@@ -2675,9 +2681,14 @@ private struct BalanceCardLiveSection: View {
     private var totalFiat: Decimal {
         if let walletId {
             let perChainSum = chainStateRecords
-                .filter { $0.walletId == walletId && $0.fiatCurrencyCode == currencyCode }
+                .filter {
+                    $0.walletId == walletId
+                    && $0.fiatCurrencyCode.caseInsensitiveCompare(currencyCode) == .orderedSame
+                }
                 .reduce(Decimal.zero) { $0 + $1.totalFiat }
-            if perChainSum > 0 { return perChainSum }
+            if perChainSum > 0 || liveBalanceSum > 0 {
+                return perChainSum >= liveBalanceSum ? perChainSum : liveBalanceSum
+            }
         }
         return liveBalanceSum
     }

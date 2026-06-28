@@ -36,6 +36,7 @@ actor TokenPricingEngine {
     }
 
     private let injectedContainer: ModelContainer?
+    private var configuredContainer: ModelContainer?
     private var priceMemory: [String: CachedPrice] = [:]
     private var fxMemory: [String: FXRate] = [:]
     private let priceTTL: TimeInterval = 60
@@ -46,6 +47,10 @@ actor TokenPricingEngine {
     }
 
     // MARK: - Public API
+
+    func configure(container: ModelContainer) {
+        configuredContainer = container
+    }
 
     func unitPrices(symbols: [String], currencyCode: String) async -> [String: ResolvedPrice] {
         let requested = Array(Set(symbols.map { $0.uppercased() }.filter { !$0.isEmpty })).sorted()
@@ -66,8 +71,14 @@ actor TokenPricingEngine {
         }
         guard !missing.isEmpty else { return resolved }
 
+        let diskFallbacks = await diskCachedPrices(symbols: missing, currency: currency)
+        let convertedFallbacks = await diskConvertedPrices(symbols: missing, currency: currency)
         let usdRate = await usdRate(to: currency) ?? (currency == "USD" ? FXRate(rate: 1, source: "USD", fetchedAt: now) : nil)
-        guard let usdRate else { return resolved }
+        guard let usdRate else {
+            resolved.merge(diskFallbacks) { current, _ in current }
+            resolved.merge(convertedFallbacks) { current, _ in current }
+            return resolved
+        }
 
         var underlyingByRequested: [String: String] = [:]
         for symbol in missing {
@@ -80,22 +91,17 @@ actor TokenPricingEngine {
         let underlyingSymbols = Array(Set(underlyingByRequested.values)).sorted()
         var usdPrices: [String: (price: Decimal, source: String)] = [:]
 
-        let coingecko = await fetchCoinGeckoUSDPrices(symbols: underlyingSymbols)
+        async let coingeckoTask = fetchCoinGeckoUSDPrices(symbols: underlyingSymbols)
+        async let binanceTask = fetchBinanceUSDPrices(symbols: underlyingSymbols)
+        async let coinbaseTask = fetchCoinbaseUSDPrices(symbols: underlyingSymbols)
+        let coingecko = await coingeckoTask
+        let binance = await binanceTask
+        let coinbase = await coinbaseTask
         usdPrices.merge(coingecko) { current, _ in current }
+        usdPrices.merge(binance) { current, _ in current }
+        usdPrices.merge(coinbase) { current, _ in current }
 
-        let binanceMissing = underlyingSymbols.filter { usdPrices[$0] == nil }
-        if !binanceMissing.isEmpty {
-            let binance = await fetchBinanceUSDPrices(symbols: binanceMissing)
-            usdPrices.merge(binance) { current, _ in current }
-        }
-
-        let coinbaseMissing = underlyingSymbols.filter { usdPrices[$0] == nil }
-        for symbol in coinbaseMissing {
-            if let price = await fetchCoinbaseUSDPrice(symbol: symbol) {
-                usdPrices[symbol] = price
-            }
-        }
-
+        var liveResolved: [String: ResolvedPrice] = [:]
         for symbol in missing {
             var price: ResolvedPrice?
 
@@ -117,12 +123,20 @@ actor TokenPricingEngine {
                 )
             }
 
+            if price == nil {
+                price = diskFallbacks[symbol] ?? convertedFallbacks[symbol]
+            }
+
             if let price {
                 resolved[symbol] = price
                 priceMemory[cacheKey(symbol: symbol, currency: currency)] = CachedPrice(price: price, fetchedAt: now)
+                if !price.isStale {
+                    liveResolved[symbol] = price
+                }
             }
         }
 
+        await persistLivePrices(liveResolved, currency: currency, now: now)
         return resolved
     }
 
@@ -228,6 +242,23 @@ actor TokenPricingEngine {
         }
     }
 
+    private func fetchCoinbaseUSDPrices(symbols: [String]) async -> [String: (price: Decimal, source: String)] {
+        var output: [String: (Decimal, String)] = [:]
+        await withTaskGroup(of: (String, (price: Decimal, source: String)?).self) { group in
+            for symbol in symbols {
+                group.addTask {
+                    (symbol, await self.fetchCoinbaseUSDPrice(symbol: symbol))
+                }
+            }
+            for await result in group {
+                if let price = result.1 {
+                    output[result.0] = price
+                }
+            }
+        }
+        return output
+    }
+
     // MARK: - FX
 
     private func usdRate(to currencyCode: String) async -> FXRate? {
@@ -240,13 +271,98 @@ actor TokenPricingEngine {
             return cached
         }
 
-        var rate = await fetchCoinbaseFX(to: code)
-        if rate == nil { rate = await fetchExchangeRateAPIFX(to: code) }
-        if rate == nil { rate = await fetchFrankfurterFX(to: code) }
+        async let coinbaseTask = fetchCoinbaseFX(to: code)
+        async let exchangeRateTask = fetchExchangeRateAPIFX(to: code)
+        async let frankfurterTask = fetchFrankfurterFX(to: code)
+        let coinbaseRate = await coinbaseTask
+        let exchangeRate = await exchangeRateTask
+        let frankfurterRate = await frankfurterTask
+        let rate = coinbaseRate ?? exchangeRate ?? frankfurterRate
         if let rate {
             fxMemory[code] = rate
         }
         return rate
+    }
+
+    // MARK: - Persistence
+
+    private var persistenceContainer: ModelContainer? {
+        injectedContainer ?? configuredContainer
+    }
+
+    private func diskCachedPrices(symbols: [String], currency: String) async -> [String: ResolvedPrice] {
+        guard let container = persistenceContainer else { return [:] }
+        let upperCurrency = currency.uppercased()
+        let upperSymbols = symbols.map { $0.uppercased() }
+        guard let rows = try? await PriceCacheRepository(modelContainer: container)
+            .prices(symbols: upperSymbols, fiat: upperCurrency) else { return [:] }
+        return rows.reduce(into: [:]) { output, entry in
+            output[entry.key.uppercased()] = ResolvedPrice(
+                amount: entry.value.price,
+                source: "Local price cache",
+                isStale: true
+            )
+        }
+    }
+
+    private func diskConvertedPrices(symbols: [String], currency: String) async -> [String: ResolvedPrice] {
+        guard let container = persistenceContainer else { return [:] }
+        let upperCurrency = currency.uppercased()
+        let upperSymbols = symbols.map { $0.uppercased() }
+        guard let rows = try? await PriceCacheRepository(modelContainer: container)
+            .latestPriceAnyCurrency(symbols: upperSymbols) else { return [:] }
+
+        var output: [String: ResolvedPrice] = [:]
+        for entry in rows {
+            let from = entry.value.fiat.uppercased()
+            if from == upperCurrency {
+                output[entry.key.uppercased()] = ResolvedPrice(
+                    amount: entry.value.price,
+                    source: "Local price cache",
+                    isStale: true
+                )
+            } else if let cross = await crossRate(from: from, to: upperCurrency) {
+                output[entry.key.uppercased()] = ResolvedPrice(
+                    amount: entry.value.price * cross,
+                    source: "Local price cache · FX",
+                    isStale: true
+                )
+            }
+        }
+        return output
+    }
+
+    private func persistLivePrices(
+        _ prices: [String: ResolvedPrice],
+        currency: String,
+        now: Date
+    ) async {
+        guard let container = persistenceContainer, !prices.isEmpty else { return }
+        let entries = prices
+            .filter { !$0.value.isStale && $0.value.amount > 0 }
+            .map {
+                (
+                    symbol: $0.key.uppercased(),
+                    fiat: currency.uppercased(),
+                    price: $0.value.amount,
+                    source: $0.value.source
+                )
+            }
+        guard !entries.isEmpty else { return }
+        try? await PriceCacheRepository(modelContainer: container).upsertMany(entries)
+        try? await PriceSnapshotRepository(modelContainer: container).record(
+            entries.map {
+                (
+                    symbol: $0.symbol,
+                    currencyCode: $0.fiat,
+                    price: $0.price,
+                    source: $0.source
+                )
+            },
+            at: now
+        )
+        try? await SyncStatusRepository(modelContainer: container)
+            .markSynced(domain: .prices, scopeId: SyncDomain.globalScope)
     }
 
     private func fetchCoinbaseFX(to currencyCode: String) async -> FXRate? {

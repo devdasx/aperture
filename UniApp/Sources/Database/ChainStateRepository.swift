@@ -175,7 +175,7 @@ actor ChainStateRepository {
             // `WalletHomeView.totalFiat`'s currency filter so the per-chain
             // aggregate and the hero agree exactly. Holdings COUNT regardless
             // of currency (a held token is held whatever its cached fiat).
-            let inCurrency = row.fiatCurrencyCode == fiatCurrencyCode
+            let inCurrency = row.fiatCurrencyCode.caseInsensitiveCompare(fiatCurrencyCode) == .orderedSame
             if inCurrency { totalFiat += row.fiatValueCached }
             if row.tokenContract == nil && row.tokenSymbol == nativeTicker {
                 nativeBalanceRaw = row.rawBalance

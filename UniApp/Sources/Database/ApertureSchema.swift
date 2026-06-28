@@ -773,9 +773,11 @@ final class CachedPriceRecord {
     var source: String
 
     init(symbol: String, fiat: String, price: Decimal, fetchedAt: Date = Date(), source: String) {
-        self.key = "\(symbol)-\(fiat)"
-        self.symbol = symbol
-        self.fiat = fiat
+        let normalizedSymbol = symbol.uppercased()
+        let normalizedFiat = fiat.uppercased()
+        self.key = "\(normalizedSymbol)-\(normalizedFiat)"
+        self.symbol = normalizedSymbol
+        self.fiat = normalizedFiat
         self.price = price
         self.fetchedAt = fetchedAt
         self.source = source
