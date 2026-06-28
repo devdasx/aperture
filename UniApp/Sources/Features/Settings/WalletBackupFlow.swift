@@ -190,10 +190,11 @@ struct WalletBackupFlow: View {
 
 // MARK: - 1 · Choose method
 
-private struct ChooseMethodScreen: View {
+struct ChooseMethodScreen: View {
     let onICloud: () -> Void
     let onManual: () -> Void
     let onClose: () -> Void
+    var showsCloseButton: Bool = true
 
     var body: some View {
         List {
@@ -251,11 +252,13 @@ private struct ChooseMethodScreen: View {
         .scrollContentBackground(.hidden)
         .background(UniColors.Background.primary)
         .toolbar {
-            ToolbarItem(placement: .topBarLeading) {
-                Button { onClose() } label: {
-                    Image(systemName: "xmark").font(.system(size: 17, weight: .semibold))
+            if showsCloseButton {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button { onClose() } label: {
+                        Image(systemName: "xmark").font(.system(size: 17, weight: .semibold))
+                    }
+                    .accessibilityLabel(Text("Close"))
                 }
-                .accessibilityLabel(Text("Close"))
             }
         }
     }
@@ -298,7 +301,7 @@ private struct ChooseMethodScreen: View {
 
 // MARK: - iCloud · 2 · Create a backup password
 
-private struct ICloudPasswordScreen: View {
+struct ICloudPasswordScreen: View {
     let onContinue: (String) -> Void
 
     @State private var password = ""
@@ -430,7 +433,7 @@ private struct ICloudPasswordScreen: View {
 
 // MARK: - Manual · 1 · Safety
 
-private struct ManualSafetyScreen: View {
+struct ManualSafetyScreen: View {
     let onContinue: () -> Void
     let onClose: () -> Void
     var showsCloseButton: Bool = true
@@ -575,7 +578,7 @@ private struct StrengthMeter: View {
 
 // MARK: - iCloud · 3 · Encrypt + upload + verify (one morphing screen)
 
-private struct ICloudProgressScreen: View {
+struct ICloudProgressScreen: View {
     let walletId: UUID
     let walletName: String
     let words: [String]
@@ -816,7 +819,7 @@ private struct StepRow: View {
 
 // MARK: - Manual · 2 · Write down phrase
 
-private struct ManualWriteDownScreen: View {
+struct ManualWriteDownScreen: View {
     let words: [String]
     let onWrittenDown: () -> Void
 
@@ -923,7 +926,7 @@ private struct ManualVerifyScreen: View {
 
 // MARK: - Manual · 4 · Confirmed
 
-private struct BackupConfirmedScreen: View {
+struct BackupConfirmedScreen: View {
     let onDone: () -> Void
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var appeared = false
