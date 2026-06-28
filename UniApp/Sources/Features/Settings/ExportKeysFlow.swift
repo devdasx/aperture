@@ -253,17 +253,17 @@ private struct RecoveryPhraseRevealScreen: View {
             ForEach(0..<rowsCount, id: \.self) { r in
                 HStack(spacing: 0) {
                     wordCell(index: r, in: 0)
-                    Rectangle().fill(UniColors.Separator.regular).frame(width: 1)
+                    Rectangle().fill(UniColors.SeedGrid.hairline).frame(width: 1)
                     wordCell(index: r + rowsCount, in: 1)
                 }
                 if r < rowsCount - 1 {
-                    Rectangle().fill(UniColors.Separator.regular).frame(height: 1)
+                    Rectangle().fill(UniColors.SeedGrid.hairline).frame(height: 1)
                 }
             }
         }
         .background(
             RoundedRectangle(cornerRadius: UniRadius.card, style: .continuous)
-                .fill(UniColors.Background.secondary)
+                .fill(UniColors.SeedGrid.surface)
         )
         // No border (2026-06-19 user direction) — the soft fill alone
         // defines the card.

@@ -15,17 +15,17 @@ struct PhraseGrid: View {
             ForEach(0..<rowsCount, id: \.self) { r in
                 HStack(spacing: 0) {
                     cell(index: r)
-                    Rectangle().fill(UniColors.Separator.regular).frame(width: 1)
+                    Rectangle().fill(UniColors.SeedGrid.hairline).frame(width: 1)
                     cell(index: r + rowsCount)
                 }
                 if r < rowsCount - 1 {
-                    Rectangle().fill(UniColors.Separator.regular).frame(height: 1)
+                    Rectangle().fill(UniColors.SeedGrid.hairline).frame(height: 1)
                 }
             }
         }
         .background(
             RoundedRectangle(cornerRadius: UniRadius.card, style: .continuous)
-                .fill(UniColors.Background.secondary)
+                .fill(UniColors.SeedGrid.surface)
         )
         .environment(\.layoutDirection, .leftToRight)
     }
