@@ -105,10 +105,6 @@ actor ChainStateRepository {
         var rebuilt = 0
         for address in addressRows {
             guard let chain = SupportedChain(rawValue: address.chainRaw) else { continue }
-            // Data is disabled for some chains (2026-06-21 — EVM + Bitcoin
-            // family + Tron) — never build a per-chain aggregate row for them,
-            // so they never appear in the balance card / holdings.
-            if chain.fetchingDisabled { continue }
             if let onlyChains, !onlyChains.contains(chain) { continue }
             let state: ChainSyncState = interim
                 ? .syncing
@@ -178,8 +174,12 @@ actor ChainStateRepository {
             let inCurrency = row.fiatCurrencyCode.caseInsensitiveCompare(fiatCurrencyCode) == .orderedSame
             if inCurrency { totalFiat += row.fiatValueCached }
             if row.tokenContract == nil && row.tokenSymbol == nativeTicker {
-                nativeBalanceRaw = row.rawBalance
-                nativeDecimals = row.decimals
+                let nativeAmount = Self.decimalAmount(
+                    rawBalance: row.rawBalance,
+                    decimals: row.decimals
+                ) ?? 0
+                nativeBalanceRaw = Self.decimalString(nativeAmount)
+                nativeDecimals = 0
                 nativeFiat = inCurrency ? row.fiatValueCached : 0
             } else {
                 let rawAmount = Decimal(string: row.rawBalance) ?? 0
@@ -288,6 +288,24 @@ actor ChainStateRepository {
         record.syncStateRaw = syncState.rawValue
 
         if save, modelContext.hasChanges { try modelContext.save() }
+    }
+
+    private static func decimalAmount(rawBalance: String, decimals: Int) -> Decimal? {
+        guard let raw = Decimal(string: rawBalance) else { return nil }
+        guard decimals > 0 else { return raw }
+        var divisor = Decimal(1)
+        var multiplier = Decimal(10)
+        var power = decimals
+        while power > 0 {
+            if power & 1 == 1 { divisor *= multiplier }
+            power >>= 1
+            if power > 0 { multiplier *= multiplier }
+        }
+        return raw / divisor
+    }
+
+    private static func decimalString(_ value: Decimal) -> String {
+        NSDecimalNumber(decimal: value).stringValue
     }
 
     // MARK: - UTXO persistence

@@ -126,9 +126,9 @@ struct WalletHomeView: View {
     // invalidates the owning view's body on ANY result change, read or not).
     // Moving the query into the small leaf that actually renders the total
     // localizes that 300ms invalidation to the card alone — the parent body
-    // no longer re-evaluates on balance commits. The parent passes the leaf
-    // the live balance-row sum (`liveBalanceSum`) as the pre-aggregate
-    // fallback so a fresh wallet is never blank.
+    // no longer re-evaluates on balance commits. A local reconciliation task
+    // rebuilds those rows from persisted TokenBalanceRecord rows, so the card
+    // stays database-backed without summing live rows in this parent.
     @AppStorage("activeWalletId") private var activeWalletIdRaw: String = ""
     @AppStorage(CurrencyPreference.storageKey) private var currencyCode: String = CurrencyPreference.defaultCode
     @AppStorage(HideBalancesPreference.hideBalanceOnHomeKey) private var hideBalanceOnHome: Bool = false
@@ -593,6 +593,15 @@ struct WalletHomeView: View {
                     // per render (2026-06-13 perf fix).
                     rebuildPriceMemos()
                 }
+                .task(id: chainStateReconcileKey) {
+                    // Database-only chain aggregate reconciliation. Scanners
+                    // persist every coin/token balance into TokenBalanceRecord;
+                    // the balance card reads ChainStateRecord only. This keeps
+                    // that per-chain read model current on app launch, wallet
+                    // switch, currency switch, and cross-context balance writes
+                    // without waiting for a network refresh.
+                    await reconcileChainStateFromPersistedBalances()
+                }
                 .task(id: dustPriceKey) {
                     // USD unit prices for the $0.01-USD dust gate on the
                     // Recent-activity preview. Off-body, engine-cached;
@@ -986,13 +995,12 @@ struct WalletHomeView: View {
             // leaf that OWNS the high-churn `chainStateRecords` @Query, so the
             // refresh coordinator's ~300ms aggregate commits re-render only
             // the card, never this whole body (Apple "extract subviews to
-            // localize invalidation"). The parent passes the live balance-row
-            // sum as the pre-aggregate fallback; the leaf computes the hero
-            // total from the per-chain aggregate rows internally.
+            // localize invalidation"). The leaf computes the hero total only
+            // from the persisted per-chain aggregate rows, which are rebuilt
+            // from TokenBalanceRecord whenever local balance rows change.
             BalanceCardLiveSection(
                 walletId: activeWallet?.id,
                 walletName: activeWallet?.name ?? String.apertureLocalized("Wallet"),
-                liveBalanceSum: liveBalanceSum,
                 currencyCode: currencyCode,
                 transactions: allTransactions,
                 // The wallet's own addresses (lowercased) so the chart can
@@ -1864,6 +1872,22 @@ struct WalletHomeView: View {
         "\(activeWalletIdRaw)|\(allTransactionRecords.count)"
     }
 
+    /// O(1) key for local chain-state reconciliation. The balance revision
+    /// includes raw amounts, fiat values, and fiat currencies, so scalar
+    /// balance updates rebuild the per-chain rows even when no new balance row
+    /// is inserted.
+    private var chainStateReconcileKey: String {
+        "\(activeWalletIdRaw)|\(currencyCode)|\(balanceRowsRevision)"
+    }
+
+    private func reconcileChainStateFromPersistedBalances() async {
+        guard let walletId = await resolveRefreshWalletId() else { return }
+        let code = (CurrencyPreference.currency(for: currencyCode)?.code
+            ?? CurrencyPreference.defaultCode).uppercased()
+        _ = try? await ChainStateRepository(modelContainer: modelContext.container)
+            .rebuild(walletId: walletId, fiatCurrencyCode: code)
+    }
+
     /// Resolve USD unit prices for the recent feed's distinct symbols so
     /// the $0.01-USD dust gate can run on the home preview. Cheap after
     /// the first call (engine-cached) and cancellation-safe — a wallet
@@ -2305,27 +2329,6 @@ struct WalletHomeView: View {
         return result.sorted { $0.1.fiatValueCached > $1.1.fiatValueCached }
     }
 
-    /// The live balance-row sum — the pre-aggregate fallback the hero shows
-    /// until the per-chain `ChainStateRecord` rows land. Sums ONLY rows whose
-    /// persisted fiat is denominated in the ACTIVE currency (the hero formats
-    /// with `currencyCode`, so a row still carrying the previous currency's
-    /// value would render 35 JOD as "$35" — the 2026-06-13 currency-change
-    /// bug). Rows in the old currency drop out until `repriceWallet`
-    /// re-denominates them.
-    ///
-    /// **The aggregate (preferred) total is computed inside
-    /// `BalanceCardLiveSection`** (2026-06-18), which owns the
-    /// `chainStateRecords` @Query, so the coordinator's 300ms commits don't
-    /// re-evaluate this whole body. This view only computes the cheap live
-    /// sum and hands it down as the fallback.
-    private var liveBalanceSum: Decimal {
-        balances.reduce(Decimal.zero) { running, entry in
-            entry.balance.fiatCurrencyCode.caseInsensitiveCompare(currencyCode) == .orderedSame
-                ? running + entry.balance.fiatValueCached
-                : running
-        }
-    }
-
     /// Distinct chains with at least one non-zero balance row. Used by
     /// the rollup line so "3 chains · 5 tokens" refers to what's *held*
     /// rather than what's *supported* (the latter falls back via
@@ -2619,15 +2622,11 @@ struct WalletHomeView: View {
 ///
 /// Moving the query into this small leaf (Apple's "extract subviews to localize
 /// invalidation zones" guidance) means a 300ms aggregate commit re-renders ONLY
-/// the card — the parent body stays put. Behavior is identical: the hero total
-/// still prefers the per-chain aggregate and falls back to the parent's live
-/// balance-row sum until the first rebuild lands.
+/// the card — the parent body stays put. The hero total is now database-only:
+/// it sums persisted per-chain aggregate rows for the active wallet/currency.
 private struct BalanceCardLiveSection: View {
     let walletId: UUID?
     let walletName: String
-    /// The parent's live balance-row sum (active currency) — the pre-aggregate
-    /// fallback shown until the per-chain `ChainStateRecord` rows land.
-    let liveBalanceSum: Decimal
     let currencyCode: String
     let transactions: [TransactionRecord]
     let ownAddresses: Set<String>
@@ -2728,24 +2727,18 @@ private struct BalanceCardLiveSection: View {
         }
     }
 
-    /// Hero total. Prefers the per-chain aggregate (active wallet + currency);
-    /// falls back to the parent's live balance-row sum so a transiently-zero
-    /// aggregate (mid-refresh / stale rebuild) never hides a real, already-
-    /// persisted balance — the two converge once the final rebuild runs. This
-    /// is the exact resolution the parent's old `totalFiat` performed.
+    /// Hero total. The balance card is backed by the database read model only:
+    /// scanners write `TokenBalanceRecord`, the local reconciliation task
+    /// rebuilds `ChainStateRecord`, and the card sums those persisted
+    /// per-chain rows for the active wallet/currency.
     private var totalFiat: Decimal {
-        if let walletId {
-            let perChainSum = chainStateRecords
-                .filter {
-                    $0.walletId == walletId
-                    && $0.fiatCurrencyCode.caseInsensitiveCompare(currencyCode) == .orderedSame
-                }
-                .reduce(Decimal.zero) { $0 + $1.totalFiat }
-            if perChainSum > 0 || liveBalanceSum > 0 {
-                return perChainSum >= liveBalanceSum ? perChainSum : liveBalanceSum
+        guard let walletId else { return 0 }
+        return chainStateRecords
+            .filter {
+                $0.walletId == walletId
+                && $0.fiatCurrencyCode.caseInsensitiveCompare(currencyCode) == .orderedSame
             }
-        }
-        return liveBalanceSum
+            .reduce(Decimal.zero) { $0 + $1.totalFiat }
     }
 
     /// When the active wallet's balances + history were last refreshed —

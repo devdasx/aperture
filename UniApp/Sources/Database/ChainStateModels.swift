@@ -57,9 +57,10 @@ final class ChainStateRecord {
     // MARK: Native balance
 
     /// Native-coin balance in canonical units (ETH/BTC/SOL — not
-    /// wei/sats/lamports), decimal-string for precision (same contract as
-    /// `TokenBalanceRecord.rawBalance` for natives: value is already
-    /// human-scaled, paired with `nativeDecimals == 0`).
+    /// wei/sats/lamports), decimal-string for precision. Scanners persist
+    /// raw base-unit values in `TokenBalanceRecord`; the chain-state rebuild
+    /// scales the native row into this human-readable aggregate and stores it
+    /// with `nativeDecimals == 0`.
     var nativeBalanceRaw: String
 
     /// Decimals the native amount is expressed under. `0` because
