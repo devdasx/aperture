@@ -10,19 +10,25 @@ actor SuiBalanceHistoryScanner {
         walletId: UUID,
         address: WalletRepository.AddressSnapshot,
         currencyCode: String,
-        modelContainer: ModelContainer
+        modelContainer: ModelContainer,
+        includePrices: Bool = true,
+        includeHistory: Bool = true
     ) async throws {
         guard address.chain == .sui else { return }
 
         let tokens = SuiTokenRegistry.tokens.sorted { $0.symbol < $1.symbol }
         let symbols = Array(Set(([SupportedChain.sui.ticker] + tokens.map(\.symbol)).map { $0.uppercased() })).sorted()
 
-        async let pricesTask = TokenPricingEngine.shared.unitPrices(
-            symbols: symbols,
-            currencyCode: currencyCode
-        )
+        async let pricesTask: [String: TokenPricingEngine.ResolvedPrice] = includePrices
+            ? TokenPricingEngine.shared.unitPrices(
+                symbols: symbols,
+                currencyCode: currencyCode
+            )
+            : [:]
         async let snapshotTask = client.accountSnapshot(address: address.address, supportedTokens: tokens)
-        async let historyTask = safeHistory(address: address.address, supportedTokens: tokens)
+        async let historyTask: [SuiHistoryEvent] = includeHistory
+            ? safeHistory(address: address.address, supportedTokens: tokens)
+            : []
 
         let snapshot = try await snapshotTask
         let priceMap = await pricesTask

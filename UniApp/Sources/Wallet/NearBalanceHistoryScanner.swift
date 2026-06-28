@@ -11,21 +11,29 @@ actor NearBalanceHistoryScanner {
         walletId: UUID,
         address: WalletRepository.AddressSnapshot,
         currencyCode: String,
-        modelContainer: ModelContainer
+        modelContainer: ModelContainer,
+        includePrices: Bool = true,
+        includeHistory: Bool = true
     ) async throws {
         guard address.chain == .near else { return }
 
         let tokens = NearTokenRegistry.tokens
         let symbols = Array(Set((["NEAR"] + tokens.map(\.symbol)).map { $0.uppercased() })).sorted()
 
-        async let priceTask = TokenPricingEngine.shared.unitPrices(
-            symbols: symbols,
-            currencyCode: currencyCode
-        )
+        async let priceTask: [String: TokenPricingEngine.ResolvedPrice] = includePrices
+            ? TokenPricingEngine.shared.unitPrices(
+                symbols: symbols,
+                currencyCode: currencyCode
+            )
+            : [:]
         async let accountTask = rpc.account(accountId: address.address)
         async let tokenBalancesTask = tokenBalances(accountId: address.address, tokens: tokens)
-        async let nativeHistoryTask = safeNativeHistory(accountId: address.address)
-        async let tokenHistoryTask = safeTokenHistory(accountId: address.address, tokens: tokens)
+        async let nativeHistoryTask: [NearHistoryEvent] = includeHistory
+            ? safeNativeHistory(accountId: address.address)
+            : []
+        async let tokenHistoryTask: [NearHistoryEvent] = includeHistory
+            ? safeTokenHistory(accountId: address.address, tokens: tokens)
+            : []
 
         let (priceMap, account, tokenBalances, nativeEvents, tokenEvents) = try await (
             priceTask,

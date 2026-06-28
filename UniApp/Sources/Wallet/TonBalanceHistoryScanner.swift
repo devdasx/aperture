@@ -10,19 +10,25 @@ actor TonBalanceHistoryScanner {
         walletId: UUID,
         address: WalletRepository.AddressSnapshot,
         currencyCode: String,
-        modelContainer: ModelContainer
+        modelContainer: ModelContainer,
+        includePrices: Bool = true,
+        includeHistory: Bool = true
     ) async throws {
         guard address.chain == .ton else { return }
 
         let tokens = TONJettonRegistry.tokens.sorted { $0.symbol < $1.symbol }
         let symbols = Array(Set(([SupportedChain.ton.ticker] + tokens.map(\.symbol)).map { $0.uppercased() })).sorted()
 
-        async let pricesTask = TokenPricingEngine.shared.unitPrices(
-            symbols: symbols,
-            currencyCode: currencyCode
-        )
+        async let pricesTask: [String: TokenPricingEngine.ResolvedPrice] = includePrices
+            ? TokenPricingEngine.shared.unitPrices(
+                symbols: symbols,
+                currencyCode: currencyCode
+            )
+            : [:]
         async let accountTask = client.accountSnapshot(address: address.address, supportedTokens: tokens)
-        async let historyTask = safeHistory(owner: address.address, tokens: tokens)
+        async let historyTask: [TonHistoryEvent] = includeHistory
+            ? safeHistory(owner: address.address, tokens: tokens)
+            : []
 
         let account = try await accountTask
         let priceMap = await pricesTask

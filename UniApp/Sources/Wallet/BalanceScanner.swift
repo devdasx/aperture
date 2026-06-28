@@ -26,6 +26,11 @@ struct ChainBalance: Hashable, Sendable {
 actor WalletDataRefreshCoordinator {
     static let shared = WalletDataRefreshCoordinator()
 
+    enum RefreshMode: String, Sendable {
+        case full
+        case balancesOnly
+    }
+
     private let enabledEVMChains: [SupportedChain] = [.ethereum, .arbitrum, .base, .optimism, .scroll, .zkSync, .polygon, .bnbChain, .avalanche, .celo, .opBNB]
     private let scanner = PublicNodeEVMBalanceScanner()
     private let bitcoinScanner = BitcoinElectrumBalanceScanner()
@@ -51,20 +56,39 @@ actor WalletDataRefreshCoordinator {
         walletId: UUID,
         currencyCode: String,
         modelContainer: ModelContainer,
-        userInitiated: Bool = false
+        userInitiated: Bool = false,
+        mode: RefreshMode = .full
     ) async {
+        if let existing = refreshSlots[walletId] {
+            if userInitiated {
+                existing.task.cancel()
+                await existing.task.value
+                if refreshSlots[walletId]?.token == existing.token {
+                    refreshSlots[walletId] = nil
+                }
+            } else {
+                await existing.task.value
+                return
+            }
+        }
+
+        if Task.isCancelled {
+            return
+        }
+
         if let existing = refreshSlots[walletId] {
             await existing.task.value
             return
         }
 
         let token = UUID()
-        let task = Task { [walletId, currencyCode, modelContainer, userInitiated] in
+        let task = Task { [walletId, currencyCode, modelContainer, userInitiated, mode] in
             await self.performRefresh(
                 walletId: walletId,
                 currencyCode: currencyCode,
                 modelContainer: modelContainer,
-                userInitiated: userInitiated
+                userInitiated: userInitiated,
+                mode: mode
             )
         }
         refreshSlots[walletId] = RefreshSlot(token: token, task: task)
@@ -78,10 +102,13 @@ actor WalletDataRefreshCoordinator {
         walletId: UUID,
         currencyCode: String,
         modelContainer: ModelContainer,
-        userInitiated: Bool = false
+        userInitiated: Bool = false,
+        mode: RefreshMode = .full
     ) async {
         let refreshStart = Date()
         let normalizedCurrency = currencyCode.uppercased()
+        let includePrices = mode == .full
+        let includeHistory = mode == .full
         var failedChains: Set<SupportedChain> = []
         var attemptedChains: Set<SupportedChain> = []
         var refreshedChains: Set<SupportedChain> = []
@@ -92,7 +119,8 @@ actor WalletDataRefreshCoordinator {
             metadata: [
                 "walletId": walletId.uuidString,
                 "currency": normalizedCurrency,
-                "userInitiated": "\(userInitiated)"
+                "userInitiated": "\(userInitiated)",
+                "mode": mode.rawValue
             ]
         )
 
@@ -112,7 +140,8 @@ actor WalletDataRefreshCoordinator {
                 try await bitcoinScanner.scanAndPersist(
                     walletId: walletId,
                     currencyCode: normalizedCurrency,
-                    modelContainer: modelContainer
+                    modelContainer: modelContainer,
+                    includePrices: includePrices
                 )
             }
             if !succeeded {
@@ -134,7 +163,8 @@ actor WalletDataRefreshCoordinator {
                 try await bitcoinCashScanner.scanAndPersist(
                     walletId: walletId,
                     currencyCode: normalizedCurrency,
-                    modelContainer: modelContainer
+                    modelContainer: modelContainer,
+                    includePrices: includePrices
                 )
             }
             if !succeeded {
@@ -158,7 +188,9 @@ actor WalletDataRefreshCoordinator {
                         walletId: walletId,
                         address: address,
                         currencyCode: normalizedCurrency,
-                        modelContainer: modelContainer
+                        modelContainer: modelContainer,
+                        includePrices: includePrices,
+                        includeHistory: includeHistory
                     )
                 }
                 if !succeeded {
@@ -182,7 +214,9 @@ actor WalletDataRefreshCoordinator {
                     walletId: walletId,
                     address: address,
                     currencyCode: normalizedCurrency,
-                    modelContainer: modelContainer
+                    modelContainer: modelContainer,
+                    includePrices: includePrices,
+                    includeHistory: includeHistory
                 )
             }
             if !succeeded {
@@ -205,7 +239,9 @@ actor WalletDataRefreshCoordinator {
                     walletId: walletId,
                     address: address,
                     currencyCode: normalizedCurrency,
-                    modelContainer: modelContainer
+                    modelContainer: modelContainer,
+                    includePrices: includePrices,
+                    includeHistory: includeHistory
                 )
             }
             if !succeeded {
@@ -228,7 +264,9 @@ actor WalletDataRefreshCoordinator {
                     walletId: walletId,
                     address: address,
                     currencyCode: normalizedCurrency,
-                    modelContainer: modelContainer
+                    modelContainer: modelContainer,
+                    includePrices: includePrices,
+                    includeHistory: includeHistory
                 )
             }
             if !succeeded {
@@ -251,7 +289,9 @@ actor WalletDataRefreshCoordinator {
                     walletId: walletId,
                     address: address,
                     currencyCode: normalizedCurrency,
-                    modelContainer: modelContainer
+                    modelContainer: modelContainer,
+                    includePrices: includePrices,
+                    includeHistory: includeHistory
                 )
             }
             if !succeeded {
@@ -274,7 +314,9 @@ actor WalletDataRefreshCoordinator {
                     walletId: walletId,
                     address: address,
                     currencyCode: normalizedCurrency,
-                    modelContainer: modelContainer
+                    modelContainer: modelContainer,
+                    includePrices: includePrices,
+                    includeHistory: includeHistory
                 )
             }
             if !succeeded {
@@ -297,7 +339,9 @@ actor WalletDataRefreshCoordinator {
                     walletId: walletId,
                     address: address,
                     currencyCode: normalizedCurrency,
-                    modelContainer: modelContainer
+                    modelContainer: modelContainer,
+                    includePrices: includePrices,
+                    includeHistory: includeHistory
                 )
             }
             if !succeeded {
@@ -320,7 +364,9 @@ actor WalletDataRefreshCoordinator {
                     walletId: walletId,
                     address: address,
                     currencyCode: normalizedCurrency,
-                    modelContainer: modelContainer
+                    modelContainer: modelContainer,
+                    includePrices: includePrices,
+                    includeHistory: includeHistory
                 )
             }
             if !succeeded {
@@ -343,7 +389,9 @@ actor WalletDataRefreshCoordinator {
                     walletId: walletId,
                     address: address,
                     currencyCode: normalizedCurrency,
-                    modelContainer: modelContainer
+                    modelContainer: modelContainer,
+                    includePrices: includePrices,
+                    includeHistory: includeHistory
                 )
             }
             if !succeeded {
@@ -366,7 +414,9 @@ actor WalletDataRefreshCoordinator {
                     walletId: walletId,
                     address: address,
                     currencyCode: normalizedCurrency,
-                    modelContainer: modelContainer
+                    modelContainer: modelContainer,
+                    includePrices: includePrices,
+                    includeHistory: includeHistory
                 )
             }
             if !succeeded {
@@ -390,7 +440,9 @@ actor WalletDataRefreshCoordinator {
                         walletId: walletId,
                         address: address,
                         currencyCode: normalizedCurrency,
-                        modelContainer: modelContainer
+                        modelContainer: modelContainer,
+                        includePrices: includePrices,
+                        includeHistory: includeHistory
                     )
                 }
                 if !succeeded {
@@ -399,6 +451,21 @@ actor WalletDataRefreshCoordinator {
                     refreshedChains.insert(chain)
                 }
             }
+        }
+
+        if Task.isCancelled {
+            DiagnosticsLogStore.shared.record(
+                .info,
+                category: "scanner",
+                message: "Wallet data refresh cancelled",
+                metadata: [
+                    "walletId": walletId.uuidString,
+                    "currency": normalizedCurrency,
+                    "mode": mode.rawValue,
+                    "elapsedMs": DiagnosticsLogStore.elapsedMilliseconds(since: refreshStart)
+                ]
+            )
+            return
         }
 
         if !attemptedChains.isEmpty {
@@ -426,6 +493,7 @@ actor WalletDataRefreshCoordinator {
                 "attemptedChains": "\(attemptedChains.count)",
                 "refreshedChains": "\(refreshedChains.count)",
                 "failedChains": failedChains.map { String(describing: $0) }.sorted().joined(separator: ","),
+                "mode": mode.rawValue,
                 "elapsedMs": DiagnosticsLogStore.elapsedMilliseconds(since: refreshStart)
             ]
         )
@@ -454,7 +522,9 @@ actor WalletDataRefreshCoordinator {
             ]
         )
         do {
+            try Task.checkCancellation()
             try await operation()
+            try Task.checkCancellation()
             DiagnosticsLogStore.shared.record(
                 .info,
                 category: "scanner",
@@ -468,6 +538,20 @@ actor WalletDataRefreshCoordinator {
                 ]
             )
             return true
+        } catch is CancellationError {
+            DiagnosticsLogStore.shared.record(
+                .info,
+                category: "scanner",
+                message: "Chain scan cancelled",
+                metadata: [
+                    "walletId": walletId.uuidString,
+                    "chain": chainName,
+                    "currency": currencyCode,
+                    "source": source,
+                    "elapsedMs": DiagnosticsLogStore.elapsedMilliseconds(since: start)
+                ]
+            )
+            return false
         } catch {
             DiagnosticsLogStore.shared.record(
                 .error,
@@ -495,17 +579,25 @@ private actor StellarBalanceHistoryScanner {
         walletId: UUID,
         address: WalletRepository.AddressSnapshot,
         currencyCode: String,
-        modelContainer: ModelContainer
+        modelContainer: ModelContainer,
+        includePrices: Bool = true,
+        includeHistory: Bool = true
     ) async throws {
         guard address.chain == .stellar else { return }
 
-        async let pricesTask = TokenPricingEngine.shared.unitPrices(
-            symbols: [SupportedChain.stellar.ticker],
-            currencyCode: currencyCode
-        )
+        async let pricesTask: [String: TokenPricingEngine.ResolvedPrice] = includePrices
+            ? TokenPricingEngine.shared.unitPrices(
+                symbols: [SupportedChain.stellar.ticker],
+                currencyCode: currencyCode
+            )
+            : [:]
         async let accountTask = account(address: address.address)
-        async let paymentsTask = safePayments(address: address.address)
-        async let transactionsTask = safeTransactions(address: address.address)
+        async let paymentsTask: [StellarPaymentRecord] = includeHistory
+            ? safePayments(address: address.address)
+            : []
+        async let transactionsTask: [StellarTransactionRecord] = includeHistory
+            ? safeTransactions(address: address.address)
+            : []
 
         let account = try await accountTask
         let priceMap = await pricesTask
@@ -902,20 +994,26 @@ private actor PolkadotBalanceHistoryScanner {
         walletId: UUID,
         address: WalletRepository.AddressSnapshot,
         currencyCode: String,
-        modelContainer: ModelContainer
+        modelContainer: ModelContainer,
+        includePrices: Bool = true,
+        includeHistory: Bool = true
     ) async throws {
         guard address.chain == .polkadot else { return }
 
         let assetTokens = PolkadotAssetRegistry.tokens.sorted { $0.symbol < $1.symbol }
         let symbols = Array(Set(([SupportedChain.polkadot.ticker] + assetTokens.map(\.symbol)).map { $0.uppercased() })).sorted()
 
-        async let pricesTask = TokenPricingEngine.shared.unitPrices(
-            symbols: symbols,
-            currencyCode: currencyCode
-        )
+        async let pricesTask: [String: TokenPricingEngine.ResolvedPrice] = includePrices
+            ? TokenPricingEngine.shared.unitPrices(
+                symbols: symbols,
+                currencyCode: currencyCode
+            )
+            : [:]
         async let accountTask = account(address: address.address)
         async let assetHubTask = safeAssetHubBalances(address: address.address, assets: assetTokens)
-        async let historyTask = safeHistory(address: address.address)
+        async let historyTask: [PolkadotHistoryEvent] = includeHistory
+            ? safeHistory(address: address.address)
+            : []
 
         let account = try await accountTask
         let assetHubBalances = await assetHubTask
@@ -1582,7 +1680,9 @@ private actor SolanaBalanceHistoryScanner {
         walletId: UUID,
         address: WalletRepository.AddressSnapshot,
         currencyCode: String,
-        modelContainer: ModelContainer
+        modelContainer: ModelContainer,
+        includePrices: Bool = true,
+        includeHistory: Bool = true
     ) async throws {
         guard address.chain == .solana else { return }
 
@@ -1591,19 +1691,23 @@ private actor SolanaBalanceHistoryScanner {
             .sorted { $0.entry.symbol < $1.entry.symbol }
         let symbols = Array(Set(([SupportedChain.solana.ticker] + tokens.map(\.entry.symbol)).map { $0.uppercased() })).sorted()
 
-        async let pricesTask = TokenPricingEngine.shared.unitPrices(
-            symbols: symbols,
-            currencyCode: currencyCode
-        )
+        async let pricesTask: [String: TokenPricingEngine.ResolvedPrice] = includePrices
+            ? TokenPricingEngine.shared.unitPrices(
+                symbols: symbols,
+                currencyCode: currencyCode
+            )
+            : [:]
         async let nativeTask = nativeBalance(address: address.address)
         async let tokenTask = tokenBalances(owner: address.address, tokens: tokens)
 
         let native = try await nativeTask
         let tokenBalances = await tokenTask
-        async let historyTask = safeHistory(
-            owner: address.address,
-            activeTokenAccounts: tokenBalances.flatMap(\.tokenAccounts)
-        )
+        async let historyTask: [SolanaHistoryEvent] = includeHistory
+            ? safeHistory(
+                owner: address.address,
+                activeTokenAccounts: tokenBalances.flatMap(\.tokenAccounts)
+            )
+            : []
 
         let priceMap = await pricesTask
         let events = await historyTask
@@ -2281,7 +2385,9 @@ private actor PublicNodeEVMBalanceScanner {
         walletId: UUID,
         address: WalletRepository.AddressSnapshot,
         currencyCode: String,
-        modelContainer: ModelContainer
+        modelContainer: ModelContainer,
+        includePrices: Bool = true,
+        includeHistory: Bool = true
     ) async throws {
         let chain = address.chain
         guard client.supports(chain: chain) else { return }
@@ -2289,14 +2395,20 @@ private actor PublicNodeEVMBalanceScanner {
         let tokens = EVMTokenRegistry.tokens(for: chain)
         let symbols = Array(Set(([chain.ticker] + tokens.map(\.symbol)).map { $0.uppercased() }))
 
-        async let prices = TokenPricingEngine.shared.unitPrices(
-            symbols: symbols,
-            currencyCode: currencyCode
-        )
+        async let prices: [String: TokenPricingEngine.ResolvedPrice] = includePrices
+            ? TokenPricingEngine.shared.unitPrices(
+                symbols: symbols,
+                currencyCode: currencyCode
+            )
+            : [:]
         async let nativeHex = client.nativeBalance(chain: chain, address: address.address)
         async let tokenReads = readTokenBalances(chain: chain, holder: address.address, tokens: tokens)
-        async let transactionCount = safeTransactionCount(chain: chain, address: address.address)
-        async let transactionHistory = safeTransactionHistory(chain: chain, holder: address.address, tokens: tokens)
+        async let transactionCount: Int64 = includeHistory
+            ? safeTransactionCount(chain: chain, address: address.address)
+            : 0
+        async let transactionHistory: [EVMHistoryEvent] = includeHistory
+            ? safeTransactionHistory(chain: chain, holder: address.address, tokens: tokens)
+            : []
 
         let nativeRaw = try EVMHexQuantity.decimalString(from: await nativeHex)
         let tokenBalances = await tokenReads

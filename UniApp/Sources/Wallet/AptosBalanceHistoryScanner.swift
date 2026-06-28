@@ -11,20 +11,26 @@ actor AptosBalanceHistoryScanner {
         walletId: UUID,
         address: WalletRepository.AddressSnapshot,
         currencyCode: String,
-        modelContainer: ModelContainer
+        modelContainer: ModelContainer,
+        includePrices: Bool = true,
+        includeHistory: Bool = true
     ) async throws {
         guard address.chain == .aptos else { return }
 
         let tokens = AptosTokenRegistry.tokens.sorted { $0.symbol < $1.symbol }
         let symbols = Array(Set(([SupportedChain.aptos.ticker] + tokens.map(\.symbol)).map { $0.uppercased() })).sorted()
 
-        async let pricesTask = TokenPricingEngine.shared.unitPrices(
-            symbols: symbols,
-            currencyCode: currencyCode
-        )
+        async let pricesTask: [String: TokenPricingEngine.ResolvedPrice] = includePrices
+            ? TokenPricingEngine.shared.unitPrices(
+                symbols: symbols,
+                currencyCode: currencyCode
+            )
+            : [:]
         async let nativeTask = fullnode.nativeBalance(address: address.address)
         async let tokenTask = tokenBalances(owner: address.address, tokens: tokens)
-        async let historyTask = safeHistory(owner: address.address)
+        async let historyTask: [AptosHistoryEvent] = includeHistory
+            ? safeHistory(owner: address.address)
+            : []
 
         let native = try await nativeTask
         let tokenBalances = await tokenTask

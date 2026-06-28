@@ -10,16 +10,19 @@ actor BitcoinCashElectrumBalanceScanner {
     func scanAndPersist(
         walletId: UUID,
         currencyCode: String,
-        modelContainer: ModelContainer
+        modelContainer: ModelContainer,
+        includePrices: Bool = true
     ) async throws {
         let targetRepository = BitcoinCashWalletScanTargetRepository(modelContainer: modelContainer)
         let plan = try await targetRepository.scanPlan(walletId: walletId)
         guard let plan, !plan.targets.isEmpty else { return }
 
-        async let prices = TokenPricingEngine.shared.unitPrices(
-            symbols: [SupportedChain.bitcoinCash.ticker],
-            currencyCode: currencyCode
-        )
+        async let prices: [String: TokenPricingEngine.ResolvedPrice] = includePrices
+            ? TokenPricingEngine.shared.unitPrices(
+                symbols: [SupportedChain.bitcoinCash.ticker],
+                currencyCode: currencyCode
+            )
+            : [:]
         async let liveScan = BitcoinCashElectrumClient.scanFirst(
             servers: BitcoinCashElectrumServer.defaults,
             targets: plan.targets

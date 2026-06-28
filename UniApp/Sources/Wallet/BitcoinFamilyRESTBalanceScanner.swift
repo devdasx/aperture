@@ -11,17 +11,23 @@ actor BitcoinFamilyRESTBalanceScanner {
         walletId: UUID,
         address: WalletRepository.AddressSnapshot,
         currencyCode: String,
-        modelContainer: ModelContainer
+        modelContainer: ModelContainer,
+        includePrices: Bool = true,
+        includeHistory: Bool = true
     ) async throws {
         guard address.chain == .litecoin || address.chain == .dogecoin else { return }
 
-        async let pricesTask = TokenPricingEngine.shared.unitPrices(
-            symbols: [address.chain.ticker],
-            currencyCode: currencyCode
-        )
+        async let pricesTask: [String: TokenPricingEngine.ResolvedPrice] = includePrices
+            ? TokenPricingEngine.shared.unitPrices(
+                symbols: [address.chain.ticker],
+                currencyCode: currencyCode
+            )
+            : [:]
         async let snapshotTask = accountSnapshot(address: address.address, chain: address.chain)
         async let utxosTask = safeUTXOs(address: address.address, chain: address.chain)
-        async let historyTask = safeHistory(address: address.address, chain: address.chain)
+        async let historyTask: [BitcoinFamilyRESTEvent] = includeHistory
+            ? safeHistory(address: address.address, chain: address.chain)
+            : []
 
         let snapshot = try await snapshotTask
         let prices = await pricesTask
