@@ -75,16 +75,8 @@ struct ChainPickerView: View {
 
     @ViewBuilder
     private func chainLogo(for chain: SupportedChain) -> some View {
-        if let assetName = chain.logoAssetName,
-           UIImage(named: assetName) != nil {
-            Image(assetName)
-                .resizable()
-                .frame(width: 24, height: 24)
-                .clipShape(Circle())
-        } else {
-            Image(systemName: "circle.fill")
-                .font(.system(size: 18, weight: .regular))
-                .foregroundStyle(UniColors.Icon.secondary)
-        }
+        CoinMark(chain: chain, tokenSymbol: chain.ticker)
+            .frame(width: 24, height: 24)
+            .accessibilityHidden(true)
     }
 }

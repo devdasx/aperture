@@ -63,20 +63,9 @@ struct AssetRow: View {
 
     @ViewBuilder
     private var logo: some View {
-        if let asset = chain.logoAssetName {
-            Image(asset)
-                .resizable()
-                .scaledToFit()
-                .frame(width: 44, height: 44)
-                .clipShape(Circle())
-                .accessibilityHidden(true)
-        } else {
-            Image(systemName: "circle.dashed")
-                .font(.system(size: 38, weight: .light))
-                .foregroundStyle(UniColors.Icon.tertiary)
-                .frame(width: 44, height: 44)
-                .accessibilityHidden(true)
-        }
+        CoinMark(chain: chain, tokenSymbol: tokenSymbol)
+            .frame(width: 44, height: 44)
+            .accessibilityHidden(true)
     }
 
     private var fiatLabel: some View {

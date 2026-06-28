@@ -912,20 +912,9 @@ private struct AssetNetworkRowView: View {
 
     @ViewBuilder
     private var networkMark: some View {
-        if let asset = row.chain.logoAssetName {
-            Image(asset)
-                .resizable()
-                .scaledToFit()
-                .frame(width: 44, height: 44)
-                .clipShape(Circle())
-                .accessibilityHidden(true)
-        } else {
-            Image(systemName: "circle.dashed")
-                .font(.system(size: 38, weight: .light))
-                .foregroundStyle(UniColors.Icon.tertiary)
-                .frame(width: 44, height: 44)
-                .accessibilityHidden(true)
-        }
+        CoinMark(chain: row.chain, tokenSymbol: row.chain.ticker)
+            .frame(width: 44, height: 44)
+            .accessibilityHidden(true)
     }
 
     /// "0.5 USDC" — the per-network balance. The chain's display

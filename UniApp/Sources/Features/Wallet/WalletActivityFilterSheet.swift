@@ -628,18 +628,9 @@ private struct WalletActivityNetworksPicker: View {
             toggle(chain)
         } label: {
             HStack(spacing: UniSpacing.s) {
-                if let asset = chain.logoAssetName {
-                    Image(asset)
-                        .resizable()
-                        .scaledToFit()
-                        .frame(width: 28, height: 28)
-                        .clipShape(Circle())
-                } else {
-                    Image(systemName: "circle.dashed")
-                        .font(.system(size: 22, weight: .light))
-                        .foregroundStyle(UniColors.Icon.tertiary)
-                        .frame(width: 28, height: 28)
-                }
+                CoinMark(chain: chain, tokenSymbol: chain.ticker)
+                    .frame(width: 28, height: 28)
+                    .accessibilityHidden(true)
                 Text(verbatim: chain.displayName)
                     .foregroundStyle(UniColors.Text.primary)
                 Spacer()
