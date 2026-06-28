@@ -7,23 +7,17 @@ import SwiftData
 ///
 /// **Secret-reveal honesty (Rule #16 + Rule #2 §A.7), per kind:**
 /// - Created / Imported (phrase): "View recovery phrase", enabled iff
-///   `MnemonicVault.hasMnemonic(for:)` — the vault stores the phrase
-///   at persist time for both kinds. Disabled only for wallets
-///   persisted before the always-store policy shipped, with a footer
-///   that names the truth for that kind (created → the user is the
-///   only copy; imported → the phrase wasn't kept at import time,
-///   re-import to store it).
-/// - Imported (key): "View private key", enabled iff
-///   `MnemonicVault.hasPrivateKey(for:)`, same biometric gate, opens
-///   `PrivateKeyRevealSheet`.
+///   the encrypted SwiftData secret can decrypt, or the legacy mnemonic
+///   vault still holds the phrase. Disabled only when neither usable copy
+///   exists.
+/// - Imported (key): "View private key", enabled iff the encrypted key
+///   can decrypt from either the SwiftData secret row or the legacy vault.
 /// - Watch-only: no reveal row — the Details footer states that no
 ///   secret exists on this device.
 struct WalletDetailView: View {
     let walletId: UUID
 
     @Query private var matches: [WalletRecord]
-    @Query private var mnemonicSecretRows: [WalletSecretRecord]
-    @Query private var privateKeySecretRows: [WalletSecretRecord]
     // `activeWalletId` is no longer read or written here — the repository's
     // `deleteWalletAndActivateNext` owns the post-delete pointer move
     // (2026-06-13). The old `@AppStorage("activeWalletId")` clobber is gone
@@ -90,22 +84,22 @@ struct WalletDetailView: View {
         _matches = Query(
             filter: #Predicate<WalletRecord> { $0.id == walletId }
         )
-        let mnemonicKey = WalletSecretRecord.storageKey(walletId: walletId, kind: .mnemonic)
-        let privateKey = WalletSecretRecord.storageKey(walletId: walletId, kind: .privateKey)
-        _mnemonicSecretRows = Query(
-            filter: #Predicate<WalletSecretRecord> { $0.key == mnemonicKey }
-        )
-        _privateKeySecretRows = Query(
-            filter: #Predicate<WalletSecretRecord> { $0.key == privateKey }
-        )
     }
 
     private var wallet: WalletRecord? { matches.first }
     private var hasStoredMnemonic: Bool {
-        !mnemonicSecretRows.isEmpty || MnemonicVault.hasMnemonic(for: walletId)
+        if let words = try? WalletSecretPersistence.loadMnemonic(for: walletId, in: modelContext),
+           !words.isEmpty {
+            return true
+        }
+        return MnemonicVault.hasMnemonic(for: walletId)
     }
     private var hasStoredPrivateKey: Bool {
-        !privateKeySecretRows.isEmpty || MnemonicVault.hasPrivateKey(for: walletId)
+        if let key = try? WalletSecretPersistence.loadPrivateKey(for: walletId, in: modelContext),
+           !key.isEmpty {
+            return true
+        }
+        return MnemonicVault.hasPrivateKey(for: walletId)
     }
 
     var body: some View {

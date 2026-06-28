@@ -541,9 +541,10 @@ struct WalletHomeView: View {
                 // gesture + release-haptic + cancellation. The
                 // 2026-06-09 Lottie indicator was reverted per
                 // user direction.
-                // User-initiated: a pull against a wedged in-flight
-                // pipeline CANCELS it and starts fresh instead of
-                // silently joining the stall (2026-06-12).
+                // User-initiated refresh joins the coordinator's in-flight
+                // wallet refresh instead of starting a second pipeline. That
+                // keeps native pull-to-refresh responsive without producing
+                // cancellation storms in the RPC layer.
                 .refreshable { await runRefresh(userInitiated: true) }
                 .task(id: activeWalletIdRaw) {
                     ensureActiveWalletSet()
@@ -2462,14 +2463,12 @@ struct WalletHomeView: View {
 
     // MARK: - Refresh
 
-    /// Run one wallet refresh. `userInitiated` distinguishes a
-    /// pull-to-refresh / Retry tap from the auto-refresh: a user
-    /// pull CANCELS any wedged in-flight pipeline and starts fresh
-    /// (the user asked for *now*, not for "whenever the stalled one
-    /// finishes"); the auto-refresh keeps the cheaper join
-    /// semantics. The refresh outcome (failed chains, if any) is
-    /// published on `WalletRefreshState.shared`, which this view
-    /// observes to render the honest network-error surfaces.
+    /// Run one wallet refresh. The coordinator serializes refresh work per
+    /// wallet, so user-initiated pulls and automatic refreshes share the same
+    /// in-flight pipeline instead of overlapping network calls. The refresh
+    /// outcome (failed chains, if any) is published on
+    /// `WalletRefreshState.shared`, which this view observes to render the
+    /// honest network-error surfaces.
     @MainActor
     private func runRefresh(userInitiated: Bool = false) async {
         guard let walletId = await resolveRefreshWalletId() else { return }

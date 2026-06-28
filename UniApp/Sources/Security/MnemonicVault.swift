@@ -616,12 +616,18 @@ actor WalletSecretRepository {
     }
 
     func hasMnemonic(for walletId: UUID) -> Bool {
-        WalletSecretPersistence.hasSecret(kind: .mnemonic, for: walletId, in: modelContext)
-            || MnemonicVault.hasMnemonic(for: walletId)
+        if let words = try? WalletSecretPersistence.loadMnemonic(for: walletId, in: modelContext),
+           !words.isEmpty {
+            return true
+        }
+        return MnemonicVault.hasMnemonic(for: walletId)
     }
 
     func hasPrivateKey(for walletId: UUID) -> Bool {
-        WalletSecretPersistence.hasSecret(kind: .privateKey, for: walletId, in: modelContext)
-            || MnemonicVault.hasPrivateKey(for: walletId)
+        if let key = try? WalletSecretPersistence.loadPrivateKey(for: walletId, in: modelContext),
+           !key.isEmpty {
+            return true
+        }
+        return MnemonicVault.hasPrivateKey(for: walletId)
     }
 }

@@ -28,10 +28,10 @@ final class ResetFlowGate {
 /// `FactoryReset.performStagedWipe`, reported stage-by-stage so the ring is
 /// honest; the iris seal appears only after the wipe truly completes.
 ///
-/// Visual contract (handoff): centered hero screens, a nav bar with a circular
-/// chip button + centered title, **leading glyphs** on the erase list,
-/// **text-only** action buttons, and the muted brick red `UniColors.Reset.danger`
-/// (`#E0483D` / `#FF5B51`) as the ONLY accent.
+/// Visual contract (handoff): centered hero screens, native NavigationStack
+/// pushes between gates, **leading glyphs** on reset lists, text-only action
+/// buttons, and the muted brick red `UniColors.Reset.danger` (`#E0483D` /
+/// `#FF5B51`) as the ONLY accent.
 struct ResetApertureFlow: View {
     let onClose: () -> Void
 
@@ -40,8 +40,14 @@ struct ResetApertureFlow: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Query(sort: \WalletRecord.sortOrder) private var wallets: [WalletRecord]
 
-    enum Step { case warning, backup, backupPicker, acknowledge, confirm, erasing }
-    @State private var step: Step = .warning
+    private enum Route: Hashable {
+        case backup
+        case backupPicker
+        case acknowledge
+        case confirm
+        case erasing
+    }
+    @State private var path: [Route] = []
 
     @State private var ackWallets = false
     @State private var ackIrreversible = false
@@ -74,21 +80,22 @@ struct ResetApertureFlow: View {
     private let hPad: CGFloat = 26
     private let cardRadius: CGFloat = 20
     private let danger = UniColors.Reset.danger
+    private static let visibleProcessStages: [FactoryReset.Stage] = [
+        .wallets,
+        .privateData,
+        .keys,
+        .security,
+        .settings
+    ]
+    private static let minimumProcessStepDuration: Duration = .milliseconds(650)
 
     var body: some View {
-        NavigationStack {
-        ZStack {
-            UniColors.Background.primary.ignoresSafeArea()
-            switch step {
-            case .warning:      warningScreen
-            case .backup:       backupScreen
-            case .backupPicker: walletPickerScreen
-            case .acknowledge:  acknowledgeScreen
-            case .confirm:      confirmScreen
-            case .erasing:      erasingScreen
-            }
+        NavigationStack(path: $path) {
+            routedScreen(warningScreen)
+                .navigationDestination(for: Route.self) { route in
+                    routedScreen(destination(for: route))
+                }
         }
-        .animation(.smooth(duration: 0.28), value: step)
         .fullScreenCover(item: $backupTarget) { target in
             WalletBackupFlow(
                 walletId: target.id, walletName: target.name, words: target.words,
@@ -115,7 +122,7 @@ struct ResetApertureFlow: View {
                     mode: .verify,
                     onComplete: { _ in
                         isShowingPinGate = false
-                        step = .erasing
+                        push(.erasing)
                     },
                     onCancel: { isShowingPinGate = false },
                     allowsBiometrics: true,
@@ -133,44 +140,84 @@ struct ResetApertureFlow: View {
             }
             .uniAppEnvironment()
         }
+    }
+
+    private func push(_ route: Route) {
+        guard path.last != route else { return }
+        path.append(route)
+    }
+
+    @ViewBuilder
+    private func routedScreen<V: View>(_ view: V) -> some View {
+        ZStack {
+            UniColors.Background.primary.ignoresSafeArea()
+            view
+        }
+    }
+
+    @ViewBuilder
+    private func destination(for route: Route) -> some View {
+        switch route {
+        case .backup:
+            backupScreen
+        case .backupPicker:
+            walletPickerScreen
+        case .acknowledge:
+            acknowledgeScreen
+        case .confirm:
+            confirmScreen
+        case .erasing:
+            erasingScreen
         }
     }
 
     // MARK: - 1 · Warning
 
     private var warningScreen: some View {
-        screenScaffold(
-            title: "Settings", leading: .close, onLeading: { close() },
-            footer: {
-                dangerButton("Continue") { step = .backup }
-                ghostButton("Cancel") { close() }
+        VStack(spacing: 0) {
+            List {
+                Section {
+                    VStack(spacing: UniSpacing.mPlus) {
+                        heroGlyph("trash", tint: danger)
+                        bigTitle("Reset Aperture", centered: true)
+                        subtitle("Resetting removes wallets, keys, balances, and private activity from this device.", centered: true)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
+                    .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: UniSpacing.s, trailing: 0))
+                }
+                resetImpactSection
             }
-        ) {
-            VStack(spacing: UniSpacing.mPlus) {
-                heroGlyph("trash", tint: danger)
-                bigTitle("Reset Aperture", centered: true)
-                subtitle("Resetting removes wallets, keys, passcode state, balances, and private activity from this device. Public market data and price caches stay available.", centered: true)
-                eraseList
+            .listStyle(.insetGrouped)
+            .scrollContentBackground(.hidden)
+            .background(UniColors.Background.primary)
+
+            GlassEffectContainer(spacing: 10) {
+                VStack(spacing: 10) {
+                    dangerButton("Continue") { push(.backup) }
+                    ghostButton("Cancel") { close() }
+                }
             }
-            .frame(maxWidth: .infinity)
+            .padding(.horizontal, hPad)
+            .padding(.bottom, UniSpacing.l)
+        }
+        .navigationTitle("Settings")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            resetLeading(.close) { close() }
         }
     }
 
-    private var eraseList: some View {
-        card {
-            eraseRow("creditcard", "Wallets", "Every wallet you’ve created, imported, or are watching.")
-            hair
-            eraseRow("key", "Keys & Recovery Phrases", "Permanently removed from this device’s Keychain.")
-            hair
-            eraseRow("clock.arrow.circlepath", "Transactions & Balances", "Your wallet history, contacts, cached balances, and portfolio snapshots.")
-            hair
-            eraseRow("gearshape", "Security & Wallet Settings", "Passcode, biometric state, active-wallet pointers, and wallet-specific filters.")
-            hair
-            keepRow("chart.line.uptrend.xyaxis", "Kept: Markets & Prices", "Public price caches, market charts, asset catalog data, and downloaded token marks.")
+    private var resetImpactSection: some View {
+        Section {
+            resetImpactRow("creditcard", "Wallets", "Every wallet you’ve created, imported, or are watching.")
+            resetImpactRow("key", "Keys & Recovery Phrases", "Permanently removed from this device’s Keychain.")
+            resetImpactRow("clock.arrow.circlepath", "Transactions & Balances", "Your wallet history, contacts, cached balances, and portfolio snapshots.")
         }
     }
 
-    private func eraseRow(_ symbol: String, _ title: LocalizedStringKey, _ subtitle: LocalizedStringKey) -> some View {
+    private func resetImpactRow(_ symbol: String, _ title: LocalizedStringKey, _ subtitle: LocalizedStringKey) -> some View {
         HStack(alignment: .top, spacing: 14) {
             Image(systemName: symbol)
                 .font(.system(size: 19, weight: .regular))
@@ -187,39 +234,18 @@ struct ResetApertureFlow: View {
             }
             Spacer(minLength: 0)
         }
-        .padding(.horizontal, 17)
-        .padding(.vertical, 15)
-    }
-
-    private func keepRow(_ symbol: String, _ title: LocalizedStringKey, _ subtitle: LocalizedStringKey) -> some View {
-        HStack(alignment: .top, spacing: 14) {
-            Image(systemName: symbol)
-                .font(.system(size: 19, weight: .regular))
-                .foregroundStyle(UniColors.Text.primary)
-                .frame(width: 24, height: 24)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title)
-                    .font(.system(size: 15.5, weight: .semibold))
-                    .foregroundStyle(UniColors.Text.primary)
-                Text(subtitle)
-                    .font(.system(size: 12.5))
-                    .foregroundStyle(UniColors.Text.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            Spacer(minLength: 0)
-        }
-        .padding(.horizontal, 17)
-        .padding(.vertical, 15)
+        .padding(.vertical, 6)
+        .accessibilityElement(children: .combine)
     }
 
     // MARK: - 2 · Backup checkpoint
 
     private var backupScreen: some View {
         screenScaffold(
-            title: "Reset Aperture", leading: .back, onLeading: { step = .warning },
+            title: "Reset Aperture", leading: .none,
             footer: {
-                primaryButton("My Wallets Are Backed Up") { step = .acknowledge }
-                ghostButton("Back Up First") { step = .backupPicker }
+                primaryButton("My Wallets Are Backed Up") { push(.acknowledge) }
+                ghostButton("Back Up First") { push(.backupPicker) }
             }
         ) {
             VStack(spacing: UniSpacing.mPlus) {
@@ -260,7 +286,7 @@ struct ResetApertureFlow: View {
 
     private var walletPickerScreen: some View {
         screenScaffold(
-            title: "Back Up", leading: .back, onLeading: { step = .backup },
+            title: "Back Up", leading: .none,
             centered: false,
             footer: { EmptyView() }
         ) {
@@ -348,38 +374,60 @@ struct ResetApertureFlow: View {
     // MARK: - 3 · Acknowledge
 
     private var acknowledgeScreen: some View {
-        screenScaffold(
-            title: "Reset Aperture", leading: .back, onLeading: { step = .backup },
-            centered: false,
-            footer: {
-                dangerButton("Continue", isEnabled: allAcknowledged) { step = .confirm }
+        VStack(spacing: 0) {
+            List {
+                acknowledgeIntroSection
+                acknowledgeChecklistSection
             }
-        ) {
-            VStack(alignment: .leading, spacing: UniSpacing.mPlus) {
-                acknowledgeIntro
-                VStack(spacing: UniSpacing.s) {
-                    ackRow(
-                        symbol: "wallet.pass",
-                        title: "All wallets will be erased",
-                        isOn: $ackWallets
-                    ) {
-                        Text("\(Text("Every wallet profile").foregroundColor(UniColors.Text.primary).bold()) on this iPhone will be removed, including created, imported, and watch-only wallets.")
-                    }
-                    ackRow(
-                        symbol: "key.slash",
-                        title: "Keys cannot be recovered",
-                        isOn: $ackIrreversible
-                    ) {
-                        Text("Aperture keeps \(Text("no cloud backup").foregroundColor(UniColors.Text.primary).bold()). Deleted recovery phrases and private keys are gone for good.")
-                    }
-                    ackRow(
-                        symbol: "checkmark.shield",
-                        title: "My wallets are backed up",
-                        isOn: $ackBackedUp
-                    ) {
-                        Text("I have saved the \(Text("recovery phrase or private key").foregroundColor(UniColors.Text.primary).bold()) for every wallet I want to keep.")
-                    }
+            .listStyle(.insetGrouped)
+            .scrollContentBackground(.hidden)
+            .background(UniColors.Background.primary)
+
+            GlassEffectContainer(spacing: 10) {
+                VStack(spacing: 10) {
+                    dangerButton("Continue", isEnabled: allAcknowledged) { push(.confirm) }
                 }
+            }
+            .padding(.horizontal, hPad)
+            .padding(.bottom, UniSpacing.l)
+        }
+        .navigationTitle("Reset Aperture")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+
+    @ViewBuilder
+    private var acknowledgeIntroSection: some View {
+        Section {
+            acknowledgeIntro
+                .listRowBackground(Color.clear)
+                .listRowSeparator(.hidden)
+                .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: UniSpacing.s, trailing: 0))
+        }
+    }
+
+    @ViewBuilder
+    private var acknowledgeChecklistSection: some View {
+        Section {
+            ackRow(
+                symbol: "wallet.pass",
+                title: "All wallets will be erased",
+                isOn: $ackWallets
+            ) {
+                Text("\(Text("Every wallet profile").foregroundColor(UniColors.Text.primary).bold()) on this iPhone will be removed, including created, imported, and watch-only wallets.")
+            }
+            ackRow(
+                symbol: "key.slash",
+                title: "Keys cannot be recovered",
+                isOn: $ackIrreversible
+            ) {
+                Text("Aperture keeps \(Text("no cloud backup").foregroundColor(UniColors.Text.primary).bold()). Deleted recovery phrases and private keys are gone for good.")
+            }
+            ackRow(
+                symbol: "checkmark.shield",
+                title: "My wallets are backed up",
+                isOn: $ackBackedUp
+            ) {
+                Text("I have saved the \(Text("recovery phrase or private key").foregroundColor(UniColors.Text.primary).bold()) for every wallet I want to keep.")
             }
         }
     }
@@ -409,7 +457,7 @@ struct ResetApertureFlow: View {
                 .accessibilityHidden(true)
 
                 VStack(alignment: .leading, spacing: UniSpacing.xs) {
-                    Text("Confirm you understand")
+                    Text("Review Before Reset")
                         .font(.system(size: 30, weight: .bold))
                         .tracking(-0.4)
                         .foregroundStyle(UniColors.Text.primary)
@@ -437,17 +485,14 @@ struct ResetApertureFlow: View {
             if !wasAll && allAcknowledged { UniHapticEngine.shared.play(.contextualImpact(.commit)) }
         } label: {
             HStack(alignment: .top, spacing: UniSpacing.s) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 15, style: .continuous)
-                        .fill(isOn.wrappedValue ? danger : UniColors.Fill.quaternary)
-                    Image(systemName: symbol)
-                        .font(.system(size: 20, weight: .semibold))
-                        .foregroundStyle(isOn.wrappedValue ? UniColors.Reset.onDanger : UniColors.Text.secondary)
-                }
-                .frame(width: 46, height: 46)
+                Image(systemName: symbol)
+                    .font(.system(size: 20, weight: .regular))
+                    .foregroundStyle(isOn.wrappedValue ? danger : UniColors.Text.primary)
+                    .frame(width: 28, height: 28)
+                    .padding(.top, 2)
                 .accessibilityHidden(true)
 
-                VStack(alignment: .leading, spacing: 3) {
+                VStack(alignment: .leading, spacing: 4) {
                     Text(title)
                         .font(.system(size: 16.5, weight: .bold))
                         .foregroundStyle(UniColors.Text.primary)
@@ -456,41 +501,18 @@ struct ResetApertureFlow: View {
                         .foregroundColor(UniColors.Text.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                         .multilineTextAlignment(.leading)
-                    HStack(spacing: 5) {
-                        Image(systemName: isOn.wrappedValue ? "checkmark.seal.fill" : "circle.dashed")
-                            .font(.system(size: 11.5, weight: .bold))
-                        Text(isOn.wrappedValue ? "Confirmed" : "Tap to confirm")
-                            .font(.system(size: 11.5, weight: .bold))
-                    }
-                    .foregroundStyle(isOn.wrappedValue ? danger : UniColors.Text.tertiary)
-                    .padding(.top, 5)
                 }
                 Spacer(minLength: 0)
-                ZStack {
-                    Circle()
-                        .strokeBorder(isOn.wrappedValue ? danger : UniColors.Fill.quaternary, lineWidth: 2)
-                        .background(Circle().fill(isOn.wrappedValue ? danger : .clear))
-                        .frame(width: 30, height: 30)
-                    if isOn.wrappedValue {
-                        Image(systemName: "checkmark")
-                            .font(.system(size: 13.5, weight: .bold))
-                            .foregroundStyle(UniColors.Reset.onDanger)
-                    }
-                }
-                .padding(.top, 8)
+                Image(systemName: isOn.wrappedValue ? "checkmark.circle.fill" : "circle")
+                    .font(.system(size: 24, weight: .semibold))
+                    .foregroundStyle(isOn.wrappedValue ? danger : UniColors.Text.tertiary)
+                    .padding(.top, 4)
             }
-            .padding(16)
-            .background(
-                isOn.wrappedValue ? UniColors.Reset.dangerWash : UniColors.Background.secondary,
-                in: RoundedRectangle(cornerRadius: 20, style: .continuous)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 20, style: .continuous)
-                    .strokeBorder(isOn.wrappedValue ? danger.opacity(0.45) : UniColors.Separator.regular, lineWidth: 1)
-            )
+            .padding(.vertical, 8)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .accessibilityElement(children: .combine)
         .animation(.smooth(duration: 0.22), value: isOn.wrappedValue)
     }
 
@@ -498,7 +520,7 @@ struct ResetApertureFlow: View {
 
     private var confirmScreen: some View {
         screenScaffold(
-            title: "Reset Aperture", leading: .back, onLeading: { step = .acknowledge },
+            title: "Reset Aperture", leading: .none,
             footer: {
                 dangerButton("Erase Aperture", isEnabled: typedMatches) {
                     confirmAndAuthenticate()
@@ -560,7 +582,7 @@ struct ResetApertureFlow: View {
             // No PIN to verify → the typed RESET + acknowledgements are the
             // gates. Drop the keyboard and go straight to the wipe.
             confirmFocused = false
-            step = .erasing
+            push(.erasing)
             return
         }
         // Dismiss the keyboard FIRST and let it fully retract before the PIN
@@ -584,27 +606,14 @@ struct ResetApertureFlow: View {
 
     private var erasingScreen: some View {
         VStack(spacing: 0) {
-            ScrollView {
-                VStack(spacing: UniSpacing.mPlus) {
-                    morphingEmblem
-                    bigTitle(isComplete ? "Reset complete" : (eraseError == nil ? "Erasing Aperture…" : "Couldn’t reset"), centered: true)
-                    if let eraseError {
-                        subtitleVerbatim(eraseError)
-                    } else {
-                        subtitle(isComplete
-                            ? "Aperture has been restored to its original state. Everything on this device has been erased."
-                            : "Securely erasing all wallets and data from this device.",
-                            centered: true)
-                    }
-                    if eraseError == nil, !isComplete { stepsBlock }
-                    if isComplete { feedbackCard }
-                }
-                .frame(maxWidth: .infinity)
-                .padding(.horizontal, hPad)
-                .padding(.top, UniSpacing.s)
-                .padding(.bottom, UniSpacing.xl)
+            List {
+                erasingHeaderSection
+                if eraseError == nil, !isComplete { processSection }
+                if isComplete { feedbackSection }
             }
-            .scrollIndicators(.hidden)
+            .listStyle(.insetGrouped)
+            .scrollContentBackground(.hidden)
+            .background(UniColors.Background.primary)
             GlassEffectContainer(spacing: 10) {
                 VStack(spacing: 10) {
                     if eraseError != nil {
@@ -620,11 +629,39 @@ struct ResetApertureFlow: View {
         }
         .navigationTitle("Reset Aperture")
         .navigationBarTitleDisplayMode(.inline)
+        .navigationBarBackButtonHidden(true)
         .task { await runWipe() }
     }
 
+    @ViewBuilder
+    private var erasingHeaderSection: some View {
+        Section {
+            VStack(spacing: UniSpacing.mPlus) {
+                morphingEmblem
+                bigTitle(isComplete ? "Reset complete" : (eraseError == nil ? "Erasing Aperture…" : "Couldn’t reset"), centered: true)
+                if let eraseError {
+                    subtitleVerbatim(eraseError)
+                } else {
+                    subtitle(isComplete
+                        ? "Aperture has been restored to its original state. Everything on this device has been erased."
+                        : "Securely erasing all wallets and data from this device.",
+                        centered: true)
+                }
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.horizontal, hPad)
+            .padding(.top, UniSpacing.s)
+            .padding(.bottom, UniSpacing.s)
+            .listRowBackground(Color.clear)
+            .listRowSeparator(.hidden)
+            .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
+        }
+    }
+
     private let emblem: CGFloat = 132
-    private var ringProgress: Double { Double(stagesDone.count) / Double(FactoryReset.Stage.allCases.count) }
+    private var ringProgress: Double {
+        Double(stagesDone.count) / Double(Self.visibleProcessStages.count)
+    }
 
     private var morphingEmblem: some View {
         ZStack {
@@ -669,44 +706,70 @@ struct ResetApertureFlow: View {
         .frame(width: size, height: size)
     }
 
-    private var stepsBlock: some View {
-        VStack(spacing: 10) {
-            stepRow("Erasing wallets & history", state: stepState(.wallets, index: 0))
-            stepRow("Wiping keys & recovery phrases", state: stepState(.keys, index: 1))
-            stepRow("Restoring default settings", state: stepState(.settings, index: 2))
+    @ViewBuilder
+    private var processSection: some View {
+        Section {
+            ForEach(Self.visibleProcessStages, id: \.self) { stage in
+                processRow(stage, state: stepState(stage))
+                    .listRowBackground(UniColors.Background.secondary)
+            }
         }
-        .padding(.top, 6)
     }
 
     private enum StepVisual { case done, active, idle }
-    private func stepState(_ stage: FactoryReset.Stage, index: Int) -> StepVisual {
+    private func stepState(_ stage: FactoryReset.Stage) -> StepVisual {
         if stagesDone.contains(stage) { return .done }
-        if stagesDone.count == index { return .active }
+        if Self.visibleProcessStages.first(where: { !stagesDone.contains($0) }) == stage { return .active }
         return .idle
     }
 
-    private func stepRow(_ label: LocalizedStringKey, state: StepVisual) -> some View {
-        HStack(spacing: 12) {
-            ZStack {
-                switch state {
-                case .done:
-                    Circle().fill(danger)
-                    Image(systemName: "checkmark").font(.system(size: 12, weight: .bold)).foregroundStyle(UniColors.Reset.onDanger)
-                case .active:
-                    Circle().strokeBorder(danger, lineWidth: 2.5)
-                case .idle:
-                    Circle().fill(UniColors.Fill.quaternary)
-                }
+    private func processRow(_ stage: FactoryReset.Stage, state: StepVisual) -> some View {
+        HStack(alignment: .center, spacing: 12) {
+            processStatusGlyph(state)
+                .frame(width: 24, height: 24)
+                .accessibilityHidden(true)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(stage.processTitle)
+                    .font(.system(size: 15.5, weight: .semibold))
+                    .foregroundStyle(state == .idle ? UniColors.Text.tertiary : UniColors.Text.primary)
+                Text(stage.processDetail)
+                    .font(UniTypography.footnote)
+                    .foregroundStyle(UniColors.Text.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
-            .frame(width: 22, height: 22)
-            Text(label)
-                .font(.system(size: 14.5, weight: .semibold))
-                .foregroundStyle(state == .idle ? UniColors.Text.tertiary : UniColors.Text.primary)
             Spacer(minLength: 0)
         }
-        .padding(.horizontal, 15)
-        .padding(.vertical, 13)
-        .background(UniColors.Background.secondary, in: RoundedRectangle(cornerRadius: 15, style: .continuous))
+        .padding(.vertical, 6)
+        .accessibilityElement(children: .combine)
+    }
+
+    @ViewBuilder
+    private func processStatusGlyph(_ state: StepVisual) -> some View {
+        switch state {
+        case .done:
+            Image(systemName: "checkmark.circle.fill")
+                .font(.system(size: 22, weight: .semibold))
+                .foregroundStyle(danger)
+        case .active:
+            ProgressView()
+                .controlSize(.small)
+                .tint(danger)
+        case .idle:
+            Image(systemName: "circle")
+                .font(.system(size: 22, weight: .regular))
+                .foregroundStyle(UniColors.Fill.quaternary)
+        }
+    }
+
+    @ViewBuilder
+    private var feedbackSection: some View {
+        Section {
+            feedbackCard
+                .listRowBackground(Color.clear)
+                .listRowSeparator(.hidden)
+                .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
+        }
     }
 
     private var feedbackCard: some View {
@@ -749,47 +812,34 @@ struct ResetApertureFlow: View {
         guard eraseError == nil, !isComplete else { return }
         let animate = !reduceMotion
 
-        // Run the REAL staged wipe in parallel with a minimum-duration paced
-        // animation. A real wipe is near-instant, which would flash the ring;
-        // pacing the visible steps over ~3s (the handoff's choreography) makes
-        // the reset read as a deliberate process. The success morph waits for
-        // the real wipe — we NEVER show "complete" before the data is gone.
-        let wipe = Task<Bool, Never> { @MainActor in
-            do {
-                try await FactoryReset.performStagedWipe(modelContext: modelContext) { _ in }
-                return true
-            } catch {
-                return false
+        do {
+            try await FactoryReset.performStagedWipe(modelContext: modelContext) { stage in
+                await completeVisibleProcessStage(stage, animate: animate)
             }
-        }
-
-        if animate {
-            // Reveal each step on a paced timeline (the ring fills as they land).
-            let timeline: [(FactoryReset.Stage, Duration)] = [
-                (.wallets, .milliseconds(850)),
-                (.keys, .milliseconds(900)),
-                (.settings, .milliseconds(800)),
-            ]
-            for (stage, dwell) in timeline {
-                try? await Task.sleep(for: dwell)
-                UniHapticEngine.shared.play(.contextualImpact(.whisper))
-                _ = withAnimation(.easeOut(duration: 0.3)) { stagesDone.insert(stage) }
-            }
-        }
-
-        // Resolve the real wipe (almost always already finished). Failure ⇒
-        // nothing was destroyed; show the error + reset the ring, never morph.
-        guard await wipe.value else {
+        } catch {
             UniHapticEngine.shared.play(.error)
             withAnimation { stagesDone = [] }
             eraseError = String.apertureLocalized("Couldn’t erase Aperture. Nothing was removed — your wallets, keys, and settings are untouched. Try again.")
             return
         }
 
-        if !animate { stagesDone = Set(FactoryReset.Stage.allCases) }
+        if stagesDone.count < Self.visibleProcessStages.count {
+            withAnimation(animate ? .easeOut(duration: 0.28) : nil) {
+                stagesDone = Set(Self.visibleProcessStages)
+            }
+        }
         if animate { try? await Task.sleep(for: .milliseconds(450)) }
         UniHapticEngine.shared.play(.success)
         withAnimation { isComplete = true }
+    }
+
+    private func completeVisibleProcessStage(_ stage: FactoryReset.Stage, animate: Bool) async {
+        guard Self.visibleProcessStages.contains(stage), !stagesDone.contains(stage) else { return }
+        try? await Task.sleep(for: Self.minimumProcessStepDuration)
+        UniHapticEngine.shared.play(.contextualImpact(.whisper))
+        withAnimation(animate ? .easeOut(duration: 0.28) : nil) {
+            _ = stagesDone.insert(stage)
+        }
     }
 
     private func close() {
@@ -798,23 +848,22 @@ struct ResetApertureFlow: View {
 
     // MARK: - Shared scaffold + components
 
-    private enum NavLeading { case close, back, none }
+    private enum NavLeading { case close, none }
 
-    /// Native nav-bar leading control for the reset flow. iOS 26 wraps the
-    /// toolbar button in its own circular liquid-glass chip automatically —
-    /// we just supply the glyph, no custom background.
+    /// Root close control. Pushed reset screens use the system NavigationStack
+    /// back button and edge-swipe gesture.
     @ToolbarContentBuilder
     private func resetLeading(_ leading: NavLeading, onTap: @escaping () -> Void) -> some ToolbarContent {
-        if leading != .none {
+        if leading == .close {
             ToolbarItem(placement: .topBarLeading) {
                 Button {
                     UniHapticEngine.shared.play(.contextualImpact(.whisper))
                     onTap()
                 } label: {
-                    Image(systemName: leading == .close ? "xmark" : "chevron.left")
+                    Image(systemName: "xmark")
                         .font(.system(size: 17, weight: .semibold))
                 }
-                .accessibilityLabel(Text(leading == .close ? "Close" : "Back"))
+                .accessibilityLabel(Text("Close"))
             }
         }
     }
@@ -923,6 +972,42 @@ struct ResetApertureFlow: View {
     /// Secondary CTA — the unified `.glass` button (no longer bare text).
     private func ghostButton(_ title: LocalizedStringKey, action: @escaping () -> Void) -> some View {
         UniButton(title: title, variant: .secondary, action: action)
+    }
+}
+
+private extension FactoryReset.Stage {
+    var processTitle: LocalizedStringKey {
+        switch self {
+        case .wallets:
+            return "Erasing wallets & history"
+        case .privateData:
+            return "Clearing private app records"
+        case .keys:
+            return "Wiping keys & recovery phrases"
+        case .security:
+            return "Clearing passcode & app keys"
+        case .networkCache:
+            return ""
+        case .settings:
+            return "Restoring default settings"
+        }
+    }
+
+    var processDetail: LocalizedStringKey {
+        switch self {
+        case .wallets:
+            return "Wallet records, balances, transactions, and manifests."
+        case .privateData:
+            return "Security records and wallet-specific sync data."
+        case .keys:
+            return "Seeds, mnemonics, and imported private keys."
+        case .security:
+            return "PIN records and app encryption keys."
+        case .networkCache:
+            return ""
+        case .settings:
+            return "Active wallet, screen restoration, and resettable preferences."
+        }
     }
 }
 

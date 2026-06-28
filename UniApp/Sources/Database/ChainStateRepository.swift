@@ -99,8 +99,11 @@ actor ChainStateRepository {
         // always see exactly what `txRepo` committed to the store.
         let readContext = ModelContext(modelContainer)
 
+        let directAddressRows = try addressRows(walletId: walletId)
+        let addressRows = directAddressRows.isEmpty ? wallet.addresses : directAddressRows
+
         var rebuilt = 0
-        for address in wallet.addresses {
+        for address in addressRows {
             guard let chain = SupportedChain(rawValue: address.chainRaw) else { continue }
             // Data is disabled for some chains (2026-06-21 — EVM + Bitcoin
             // family + Tron) — never build a per-chain aggregate row for them,
@@ -126,6 +129,14 @@ actor ChainStateRepository {
         }
         if modelContext.hasChanges { try modelContext.save() }
         return rebuilt
+    }
+
+    private func addressRows(walletId: UUID) throws -> [WalletAddressRecord] {
+        let ownerId = Optional(walletId)
+        let descriptor = FetchDescriptor<WalletAddressRecord>(
+            predicate: #Predicate { $0.walletId == ownerId }
+        )
+        return try modelContext.fetch(descriptor)
     }
 
     /// Recompute one chain's aggregate from its persisted rows and upsert

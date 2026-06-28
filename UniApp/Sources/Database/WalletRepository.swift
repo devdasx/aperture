@@ -19,6 +19,8 @@ actor WalletRepository {
         let address: String
     }
 
+    private var didBackfillAddressWalletIds = false
+
     /// `true` when the backing container is the in-memory fallback
     /// (`ApertureDatabase.isInMemoryFallback`) rather than the durable
     /// on-disk store. Read from the container's own configuration so
@@ -59,14 +61,70 @@ actor WalletRepository {
         try modelContext.fetchCount(FetchDescriptor<WalletRecord>())
     }
 
+    /// All address rows for a wallet, fetched through the primitive `walletId`
+    /// column rather than the `WalletRecord.addresses` relationship. This is the
+    /// scanner's stable read path across SwiftData actor contexts.
+    func addresses(walletId: UUID) throws -> [AddressSnapshot] {
+        try ensureAddressWalletIdBackfill()
+
+        let direct = try addressRows(walletId: walletId)
+        if !direct.isEmpty {
+            return direct.compactMap(Self.snapshot(from:))
+        }
+
+        // Last-ditch compatibility for a just-migrated row before the backfill
+        // can see its relationship. If this path repairs anything, save it so
+        // the next call uses the indexed primitive route.
+        var walletDescriptor = FetchDescriptor<WalletRecord>(
+            predicate: #Predicate { $0.id == walletId }
+        )
+        walletDescriptor.fetchLimit = 1
+        guard let wallet = try modelContext.fetch(walletDescriptor).first else { return [] }
+        var didChange = false
+        for address in wallet.addresses where address.walletId != walletId {
+            address.walletId = walletId
+            didChange = true
+        }
+        if didChange { try modelContext.save() }
+        return wallet.addresses.compactMap(Self.snapshot(from:))
+    }
+
     func address(walletId: UUID, chain: SupportedChain) throws -> AddressSnapshot? {
+        try ensureAddressWalletIdBackfill()
+        let ownerId = Optional(walletId)
+        let chainRaw = chain.rawValue
+        var addressDescriptor = FetchDescriptor<WalletAddressRecord>(
+            predicate: #Predicate { $0.walletId == ownerId && $0.chainRaw == chainRaw }
+        )
+        addressDescriptor.fetchLimit = 1
+        if let address = try modelContext.fetch(addressDescriptor).first {
+            return Self.snapshot(from: address)
+        }
+
         var descriptor = FetchDescriptor<WalletRecord>(
             predicate: #Predicate { $0.id == walletId }
         )
         descriptor.fetchLimit = 1
         guard let wallet = try modelContext.fetch(descriptor).first else { return nil }
         guard let address = wallet.addresses.first(where: { $0.chainRaw == chain.rawValue }) else { return nil }
+        if address.walletId != walletId {
+            address.walletId = walletId
+            try modelContext.save()
+        }
+        return Self.snapshot(from: address)
+    }
+
+    private static func snapshot(from address: WalletAddressRecord) -> AddressSnapshot? {
+        guard let chain = SupportedChain(rawValue: address.chainRaw) else { return nil }
         return AddressSnapshot(id: address.id, chain: chain, address: address.address)
+    }
+
+    private func addressRows(walletId: UUID) throws -> [WalletAddressRecord] {
+        let ownerId = Optional(walletId)
+        let descriptor = FetchDescriptor<WalletAddressRecord>(
+            predicate: #Predicate { $0.walletId == ownerId }
+        )
+        return try modelContext.fetch(descriptor)
     }
 
     /// Next `sortOrder` value for a newly-inserted wallet. Lower values
@@ -127,6 +185,7 @@ actor WalletRepository {
         // tests) still inserts cleanly; the loop is a no-op then.
         for entry in addresses {
             let addr = WalletAddressRecord(
+                walletId: id,
                 chainRaw: entry.chainRaw,
                 address: entry.address
             )
@@ -169,6 +228,7 @@ actor WalletRepository {
         modelContext.insert(record)
         for entry in addresses {
             let addr = WalletAddressRecord(
+                walletId: id,
                 chainRaw: entry.chainRaw,
                 address: entry.address
             )
@@ -212,7 +272,7 @@ actor WalletRepository {
         }
         modelContext.insert(record)
         for entry in addresses {
-            let addr = WalletAddressRecord(chainRaw: entry.chainRaw, address: entry.address)
+            let addr = WalletAddressRecord(walletId: id, chainRaw: entry.chainRaw, address: entry.address)
             addr.wallet = record
             modelContext.insert(addr)
         }
@@ -247,7 +307,7 @@ actor WalletRepository {
         )
         modelContext.insert(record)
         for entry in addresses {
-            let addr = WalletAddressRecord(chainRaw: entry.chainRaw, address: entry.address)
+            let addr = WalletAddressRecord(walletId: id, chainRaw: entry.chainRaw, address: entry.address)
             addr.wallet = record
             modelContext.insert(addr)
         }
@@ -418,13 +478,15 @@ actor WalletRepository {
         for wallet in rows {
             switch wallet.kind {
             case .created, .importedMnemonic:
-                guard !WalletSecretPersistence.hasSecret(kind: .mnemonic, for: wallet.id, in: modelContext),
+                let storedWords = (try? WalletSecretPersistence.loadMnemonic(for: wallet.id, in: modelContext)) ?? []
+                guard storedWords.isEmpty,
                       let words = try? MnemonicVault.loadMnemonic(for: wallet.id),
                       !words.isEmpty else { continue }
                 try WalletSecretPersistence.upsertMnemonic(words, for: wallet.id, in: modelContext)
                 didChange = true
             case .importedKey:
-                guard !WalletSecretPersistence.hasSecret(kind: .privateKey, for: wallet.id, in: modelContext),
+                let storedKey = (try? WalletSecretPersistence.loadPrivateKey(for: wallet.id, in: modelContext)) ?? ""
+                guard storedKey.isEmpty,
                       let key = try? MnemonicVault.loadPrivateKey(for: wallet.id),
                       !key.isEmpty else { continue }
                 try WalletSecretPersistence.upsertPrivateKey(key, for: wallet.id, in: modelContext)
@@ -436,6 +498,75 @@ actor WalletRepository {
         if didChange {
             try modelContext.save()
         }
+    }
+
+    /// Backfill `WalletAddressRecord.walletId`, the primitive owner key used by
+    /// refresh/scanner actors. Older stores only had the SwiftData relationship,
+    /// which is fine for UI reads but can be stale across actor contexts.
+    func backfillAddressWalletIds() throws {
+        try ensureAddressWalletIdBackfill(force: true)
+    }
+
+    /// Repair mnemonic wallets whose address rows are incomplete but whose
+    /// user-readable mnemonic is still available. This is deliberately additive:
+    /// existing address rows are preserved, and passphrase wallets are skipped
+    /// because Aperture does not store the passphrase needed to re-derive them.
+    func repairMnemonicAddressRowsFromStoredSecrets() async throws {
+        try ensureAddressWalletIdBackfill(force: true)
+
+        let service = WalletCoreKeyImportService()
+        let wallets = try modelContext.fetch(FetchDescriptor<WalletRecord>())
+        var didChange = false
+
+        for wallet in wallets {
+            guard (wallet.kind == .created || wallet.kind == .importedMnemonic),
+                  !wallet.hasPassphrase else { continue }
+            let words = ((try? WalletSecretPersistence.loadMnemonic(for: wallet.id, in: modelContext))
+                ?? (try? MnemonicVault.loadMnemonic(for: wallet.id))
+                ?? [])
+            guard !words.isEmpty else { continue }
+
+            let derived = await service.deriveAddresses(mnemonic: words, passphrase: "")
+            guard !derived.isEmpty else { continue }
+
+            let directRows = try addressRows(walletId: wallet.id)
+            let existingRows = directRows.isEmpty ? wallet.addresses : directRows
+            var existingChains = Set(existingRows.map(\.chainRaw))
+            for (chain, address) in derived where !existingChains.contains(chain.rawValue) {
+                let row = WalletAddressRecord(
+                    walletId: wallet.id,
+                    chainRaw: chain.rawValue,
+                    address: address
+                )
+                row.wallet = wallet
+                modelContext.insert(row)
+                existingChains.insert(chain.rawValue)
+                didChange = true
+            }
+        }
+
+        if didChange {
+            try modelContext.save()
+            syncManifestIfDurable()
+        }
+    }
+
+    private func ensureAddressWalletIdBackfill(force: Bool = false) throws {
+        guard force || !didBackfillAddressWalletIds else { return }
+
+        let rows = try modelContext.fetch(FetchDescriptor<WalletAddressRecord>())
+        var didChange = false
+        for row in rows {
+            guard let resolvedWalletId = row.wallet?.id else { continue }
+            if row.walletId != resolvedWalletId {
+                row.walletId = resolvedWalletId
+                didChange = true
+            }
+        }
+        if didChange {
+            try modelContext.save()
+        }
+        didBackfillAddressWalletIds = true
     }
 
     /// Rename a wallet. Returns `true` if the wallet was found and

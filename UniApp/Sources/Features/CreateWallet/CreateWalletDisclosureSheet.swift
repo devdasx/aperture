@@ -1,29 +1,16 @@
 import SwiftUI
 
-/// Risk disclosure presented as the first beat of the "Create new wallet"
-/// flow (`T-002`). Before the user sees a single word of their recovery
-/// phrase, we frame what they are about to take responsibility for.
+/// Risk disclosure used as the first beat of the "Create new wallet" flow
+/// (`T-002`). Before the user sees a single word of their recovery phrase, we
+/// frame what they are about to take responsibility for.
 ///
 /// **Intent (one sentence):** prepare the user for self-custody honestly,
 /// so the moment they see their words they understand the weight of the
 /// gesture.
 ///
-/// **Sheet shape (Rule #15).** A `NavigationStack` wraps the content;
-/// the title lives in `.navigationTitle("Your recovery phrase is the
-/// only way back.")` with `.navigationBarTitleDisplayMode(.large)` so
-/// the title compresses into the nav bar on scroll. The thesis IS the
-/// title — the framing "Before you continue" was removed 2026-06-04
-/// because it added a beat the user had to read before reaching the
-/// substance, and the substance is short enough to carry the screen
-/// itself. The body paragraph (kept) names the consequence honestly
-/// directly below the hero mark.
-///
-/// **Layout.** Large detent only — the four protection rules need vertical
-/// room; medium is too tight and would force scrolling, which dilutes the
-/// gravity of the message. A `lock.shield` hero in `UniColors.Brand.mark`
-/// sits above the headline (Ive restraint — a single quiet mark instead
-/// of a red alarm triangle, because the message is responsibility, not
-/// danger).
+/// `CreateWalletDisclosureScreen` is used from onboarding so tapping "Create
+/// new wallet" pushes a real screen. This sheet variant remains available for
+/// contexts that deliberately need sheet presentation.
 ///
 /// **The ack toggle.** Per `CLAUDE.md` Rule #2 §A.7, we respect the user's
 /// intelligence — we do not show an "Are you sure?" modal for reversible
@@ -44,10 +31,7 @@ struct CreateWalletDisclosureSheet: View {
 
     var body: some View {
         UniSheet(title: "Your recovery phrase") {
-            VStack(alignment: .leading, spacing: UniSpacing.l) {
-                protectionRules
-                acknowledgementRow
-            }
+            CreateWalletDisclosureContent(didAcknowledge: $didAcknowledge)
         } actions: {
             GlassEffectContainer(spacing: UniSpacing.s) {
                 VStack(spacing: UniSpacing.s) {
@@ -63,6 +47,57 @@ struct CreateWalletDisclosureSheet: View {
                     }
                 }
             }
+        }
+    }
+}
+
+struct CreateWalletDisclosureScreen: View {
+    let onAccept: () -> Void
+    let onCancel: () -> Void
+
+    @State private var didAcknowledge: Bool = false
+
+    var body: some View {
+        VStack(spacing: 0) {
+            ScrollView {
+                CreateWalletDisclosureContent(didAcknowledge: $didAcknowledge)
+                    .padding(.horizontal, UniSpacing.l)
+                    .padding(.top, UniSpacing.s)
+                    .padding(.bottom, UniSpacing.xl)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .scrollIndicators(.hidden)
+
+            GlassEffectContainer(spacing: UniSpacing.s) {
+                VStack(spacing: UniSpacing.s) {
+                    UniButton(
+                        title: "Show recovery phrase",
+                        variant: .primary,
+                        isEnabled: didAcknowledge
+                    ) {
+                        onAccept()
+                    }
+                    UniButton(title: "Cancel", variant: .secondary) {
+                        onCancel()
+                    }
+                }
+            }
+            .padding(.horizontal, UniSpacing.l)
+            .padding(.bottom, UniSpacing.l)
+        }
+        .background(UniColors.Background.primary.ignoresSafeArea())
+        .navigationTitle("Your recovery phrase")
+        .navigationBarTitleDisplayMode(.large)
+    }
+}
+
+private struct CreateWalletDisclosureContent: View {
+    @Binding var didAcknowledge: Bool
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: UniSpacing.l) {
+            protectionRules
+            acknowledgementRow
         }
     }
 
@@ -135,7 +170,6 @@ struct CreateWalletDisclosureSheet: View {
         .padding(.vertical, UniSpacing.xxs)
         .padding(.horizontal, UniSpacing.m)
     }
-
 }
 
 // MARK: - Previews

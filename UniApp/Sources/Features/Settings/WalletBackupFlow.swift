@@ -132,7 +132,8 @@ struct WalletBackupFlow: View {
         case .manual?:
             ManualSafetyScreen(
                 onContinue: { path.append(.manualWriteDown) },
-                onClose: onClose
+                onClose: onClose,
+                showsCloseButton: true
             )
         }
     }
@@ -156,7 +157,8 @@ struct WalletBackupFlow: View {
         case .manualSafety:
             ManualSafetyScreen(
                 onContinue: { path.append(.manualWriteDown) },
-                onClose: onClose
+                onClose: onClose,
+                showsCloseButton: false
             )
         case .manualWriteDown:
             ManualWriteDownScreen(words: words) {
@@ -431,6 +433,7 @@ private struct ICloudPasswordScreen: View {
 private struct ManualSafetyScreen: View {
     let onContinue: () -> Void
     let onClose: () -> Void
+    var showsCloseButton: Bool = true
 
     @State private var didAcknowledge = false
 
@@ -511,7 +514,11 @@ private struct ManualSafetyScreen: View {
             .padding(.bottom, UniSpacing.m)
         }
         .background(UniColors.Background.primary.ignoresSafeArea())
-        .toolbar { closeToolbar }
+        .toolbar {
+            if showsCloseButton {
+                closeToolbar
+            }
+        }
     }
 
     @ToolbarContentBuilder

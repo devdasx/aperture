@@ -476,7 +476,17 @@ enum WalletAvatarDefaults {
 /// row per address; a single-private-key wallet has one row.
 @Model
 final class WalletAddressRecord {
+    // Scanner/repository fast path. Kept as a primitive alongside the
+    // relationship so background actors can fetch addresses by stable wallet id
+    // without relying on a relationship snapshot from another context.
+    #Index<WalletAddressRecord>([\.walletId], [\.walletId, \.chainRaw])
+
     @Attribute(.unique) var id: UUID
+
+    /// Primitive owner id mirroring `wallet?.id`. Optional so existing stores
+    /// migrate lightly; `WalletRepository.backfillAddressWalletIds()` repairs
+    /// legacy rows on launch.
+    var walletId: UUID?
 
     /// `SupportedChain.rawValue` so the schema doesn't depend on the
     /// chain enum's case order (additive changes don't break decodes).
@@ -511,12 +521,14 @@ final class WalletAddressRecord {
 
     init(
         id: UUID = UUID(),
+        walletId: UUID? = nil,
         chainRaw: String,
         address: String,
         derivationPath: String = "",
         isUsed: Bool = false
     ) {
         self.id = id
+        self.walletId = walletId
         self.chainRaw = chainRaw
         self.address = address
         self.derivationPath = derivationPath

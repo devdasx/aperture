@@ -112,8 +112,15 @@ private actor BitcoinWalletScanTargetRepository {
         walletDescriptor.fetchLimit = 1
         guard let wallet = try modelContext.fetch(walletDescriptor).first else { return nil }
 
-        let bitcoinAddresses = wallet.addresses
-            .filter { $0.chainRaw == SupportedChain.bitcoin.rawValue }
+        let chainRaw = SupportedChain.bitcoin.rawValue
+        let ownerId = Optional(walletId)
+        let descriptor = FetchDescriptor<WalletAddressRecord>(
+            predicate: #Predicate { $0.walletId == ownerId && $0.chainRaw == chainRaw }
+        )
+        let directAddresses = try modelContext.fetch(descriptor)
+        let bitcoinAddresses = directAddresses.isEmpty
+            ? wallet.addresses.filter { $0.chainRaw == chainRaw }
+            : directAddresses
         guard let primary = bitcoinAddresses.first else { return nil }
 
         var targets: [BitcoinElectrumScanTarget] = []
