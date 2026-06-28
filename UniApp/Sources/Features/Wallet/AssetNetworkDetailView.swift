@@ -236,7 +236,6 @@ struct AssetNetworkDetailView: View {
             // Row 3 — the NETWORK-scoped balance history chart (+ period pills).
             BalanceHistoryChart(
                 transactions: assetScopedTransactions,
-                currentBalances: networkBalances,
                 ownAddresses: Set(walletAddress.map { [$0.address.lowercased()] } ?? []),
                 priceCache: priceCacheBySymbol(for: currencyCode),
                 priceHistory: priceHistoryBySymbol(for: currencyCode),
@@ -297,27 +296,8 @@ struct AssetNetworkDetailView: View {
         }
     }
 
-    // MARK: - Chart data (network-scoped)
-
-    /// The held balance row(s) for THIS token on THIS network — the chart's
-    /// `currentBalances`. Native coins match the chain's ticker with no
-    /// contract; tokens match the symbol with a non-nil contract.
-    private var networkBalances: [TokenBalanceRecord] {
-        guard let balances = walletAddress?.balances else { return [] }
-        if identity.isNativeCoin {
-            return balances.filter {
-                $0.tokenContract == nil
-                    && $0.tokenSymbol.caseInsensitiveCompare(identity.symbol) == .orderedSame
-            }
-        }
-        return balances.filter {
-            $0.tokenContract != nil
-                && $0.tokenSymbol.caseInsensitiveCompare(identity.symbol) == .orderedSame
-        }
-    }
-
-    /// `[symbol-uppercased: price]` for `fiat` — the chart's cashed-out
-    /// fallback. Same shape as the symbol-level screen.
+    /// `[symbol-uppercased: price]` for `fiat` — fallback conversion for
+    /// transaction amounts when no historical close exists for that day.
     private func priceCacheBySymbol(for fiat: String) -> [String: Decimal] {
         var out: [String: Decimal] = [:]
         for row in cachedPrices where row.fiat == fiat {
@@ -327,7 +307,7 @@ struct AssetNetworkDetailView: View {
     }
 
     /// `[symbol-uppercased: [yyyymmdd: close]]` for `fiat` — then-price
-    /// valuation for the chart.
+    /// conversion at transaction timestamps.
     private func priceHistoryBySymbol(for fiat: String) -> [String: [Int: Decimal]] {
         var out: [String: [Int: Decimal]] = [:]
         for row in historicalPrices where row.fiat == fiat {

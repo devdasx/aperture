@@ -22,8 +22,7 @@ import SwiftData
 ///    - 80pt CoinMark + asset name + ticker + "On N networks"
 ///    - hero fiat number (Σ across networks) + native rollup
 ///    - `BalanceHistoryChart` (asset-scoped — only this asset's
-///      transactions + only this asset's current balances feed the
-///      reconstructor)
+///      transactions feed the reconstructor's event timeline)
 ///
 /// 2. **Networks section** — one row per network the asset is on,
 ///    held first (fiat desc), then supported-but-not-held in
@@ -69,23 +68,15 @@ struct AssetDetailView: View {
     /// (2026-06-14 Rule #28 fix).
     @Query(sort: \TransactionRecord.occurredAt, order: .reverse)
     private var allTransactionRecords: [TransactionRecord]
-    /// On-disk price cache so `BalanceHistoryChart`'s reconstructor
-    /// can value past holdings of fully cashed-out tokens. Same
-    /// pattern as the wallet home (2026-06-12 — see
-    /// `WalletHomeView.priceCacheBySymbol`). Without this map the
-    /// USDT detail chart was flat-zero even when the user had
-    /// received 747 USDT then sent every unit, because USDT no
-    /// longer appeared in `currentBalances`.
+    /// On-disk price cache so `BalanceHistoryChart` can convert each
+    /// transaction amount into the active local currency.
     @Query private var cachedPrices: [CachedPriceRecord]
     /// User-added custom tokens — so a custom token's networks include
     /// every chain the user explicitly added it on (e.g. LINK on both
     /// Ethereum and Polygon), even ones with a 0 balance (2026-06-19).
     @Query private var customTokenRecords: [CustomTokenRecord]
-    /// On-disk historical-price cache — drives the
-    /// `BalanceHistoryChart`'s per-day pricing so the asset's chart
-    /// values past holdings at their then-price (e.g. an asset
-    /// that crashed 99% renders the historical peak at its real
-    /// then-value, not today's collapsed valuation).
+    /// On-disk historical-price cache — used only at transaction timestamps
+    /// so past transaction amounts convert at their then-local price.
     @Query private var historicalPrices: [HistoricalPriceRecord]
     /// Needed for the historical-price ensure-loop that constructs
     /// `HistoricalPriceRepository(modelContainer:)` to write fetched
@@ -331,7 +322,6 @@ struct AssetDetailView: View {
             // Row 3 — the asset-scoped balance history chart.
             BalanceHistoryChart(
                 transactions: derived.assetScopedTransactions,
-                currentBalances: derived.assetCurrentBalances,
                 ownAddresses: Set((activeWallet?.addresses ?? []).map { $0.address.lowercased() }),
                 priceCache: priceCacheBySymbol(for: derived.resolution.fiatCurrencyCode),
                 priceHistory: priceHistoryBySymbol(for: derived.resolution.fiatCurrencyCode),
@@ -629,10 +619,6 @@ struct AssetDetailView: View {
         /// Asset-scoped transactions AFTER the filter (direction,
         /// time range, networks, sort).
         let filteredTransactions: [TransactionRecord]
-        /// Asset-scoped current balances — fed to the
-        /// `BalanceHistoryReconstructor` so the chart's "current
-        /// total" anchor reflects the asset, not the wallet.
-        let assetCurrentBalances: [TokenBalanceRecord]
     }
 
     /// Cached derived snapshot. `nil` only before the first
@@ -703,8 +689,7 @@ struct AssetDetailView: View {
             displayName: assetDisplayName,
             filteredNetworks: AssetDetailFilterApply.apply(networks: resolution.networks, with: inputs),
             assetScopedTransactions: scoped,
-            filteredTransactions: AssetDetailFilterApply.apply(transactions: scoped, with: inputs),
-            assetCurrentBalances: currentBalances(from: heldRows)
+            filteredTransactions: AssetDetailFilterApply.apply(transactions: scoped, with: inputs)
         )
     }
 
@@ -737,12 +722,9 @@ struct AssetDetailView: View {
         )
     }
 
-    /// `[symbol-uppercased: price]` map filtered to `fiat`. Drives
-    /// the `BalanceHistoryChart`'s cashed-out fallback so a token
-    /// the wallet held in the past but no longer holds gets a
-    /// real spot price for the historical valuation. Reads the
-    /// `cachedPrices` `@Query` which observes the same rows
-    /// `CoinbasePriceService` writes through `PriceCacheRepository`.
+    /// `[symbol-uppercased: price]` map filtered to `fiat`. Used as the
+    /// fallback for converting transaction amounts when no historical close
+    /// exists for that transaction day.
     private func priceCacheBySymbol(for fiat: String) -> [String: Decimal] {
         var out: [String: Decimal] = [:]
         for row in cachedPrices where row.fiat == fiat {
@@ -752,8 +734,7 @@ struct AssetDetailView: View {
     }
 
     /// `[symbol-uppercased: [yyyymmdd: close]]` map filtered to
-    /// `fiat`. Drives the chart's **then-price valuation** — past
-    /// holdings of a token render at its day's spot, not today's.
+    /// `fiat`. Drives per-transaction then-price conversion.
     /// Same shape as `WalletHomeView.priceHistoryBySymbol`.
     private func priceHistoryBySymbol(for fiat: String) -> [String: [Int: Decimal]] {
         var out: [String: [Int: Decimal]] = [:]
@@ -761,30 +742,6 @@ struct AssetDetailView: View {
             out[row.symbol.uppercased(), default: [:]][row.dayKey] = row.price
         }
         return out
-    }
-
-    private func currentBalances(
-        from heldRows: [(chain: SupportedChain, balance: TokenBalanceRecord)]
-    ) -> [TokenBalanceRecord] {
-        switch identity.kind {
-        case .nativeCoin(let chain):
-            return heldRows
-                .filter { entry in
-                    entry.chain == chain
-                        && entry.balance.tokenContract == nil
-                        && entry.balance.tokenSymbol == chain.ticker
-                }
-                .map { $0.balance }
-        case .token:
-            let target = identity.symbol.uppercased()
-            return heldRows
-                .filter { entry in
-                    entry.balance.tokenSymbol.uppercased() == target
-                        && entry.balance.tokenContract != nil
-                        && !(entry.balance.tokenContract?.isEmpty ?? true)
-                }
-                .map { $0.balance }
-        }
     }
 
     // MARK: - Wallet plumbing (mirrors WalletHomeView)

@@ -55,10 +55,9 @@ struct BalanceCardView: View {
     /// "Updated …" caption under the wallet name is hidden then.
     let lastUpdated: Date?
 
-    /// The full transaction history + current balances + price ladders,
-    /// fed straight to `BalanceHistoryReconstructor` to build the curve.
+    /// The full transaction history + price ladders, fed straight to
+    /// `BalanceHistoryReconstructor` to build the curve.
     let transactions: [TransactionRecord]
-    let currentBalances: [TokenBalanceRecord]
     /// The active wallet's OWN addresses (lowercased). Transactions whose
     /// counterparty is in this set are self-transfers and are dropped from the
     /// chart reconstruction (they net to zero on the balance).
@@ -102,7 +101,7 @@ struct BalanceCardView: View {
     @State private var points: [BalancePoint] = []
     @State private var values: [Double] = []
     /// Per-point horizontal position in `[0, 1]` from each sample's
-    /// timestamp (Mode B real-time x-axis) — parallel to `values`.
+    /// transaction/range timestamp — parallel to `values`.
     @State private var xFractions: [Double] = []
     @State private var minValue: Double = 0
     @State private var maxValue: Double = 0
@@ -113,7 +112,6 @@ struct BalanceCardView: View {
         currencyCode: String,
         lastUpdated: Date?,
         transactions: [TransactionRecord],
-        currentBalances: [TokenBalanceRecord],
         ownAddresses: Set<String>,
         priceCache: [String: Decimal],
         priceHistory: [String: [Int: Decimal]],
@@ -127,7 +125,6 @@ struct BalanceCardView: View {
         self.currencyCode = currencyCode
         self.lastUpdated = lastUpdated
         self.transactions = transactions
-        self.currentBalances = currentBalances
         self.ownAddresses = ownAddresses
         self.priceCache = priceCache
         self.priceHistory = priceHistory
@@ -702,21 +699,21 @@ struct BalanceCardView: View {
 
     // MARK: - Reconstruction (off-main, per handoff range)
 
-    /// Cheap dependency key — counts only (no Decimal summing), so this is
-    /// O(symbols + balances) per body pass, gating the heavy reconstruction
-    /// behind a real change (the 2026-06-13 perf shape).
+    /// Cheap dependency key over the transaction ledger, selected range,
+    /// currency, and local price inputs. It gates the heavy reconstruction
+    /// behind real changes while keeping balance rows out of the chart path.
     private var rebuildKey: Int {
         var hasher = Hasher()
-        // **Mode C (2026-06-19).** The curve depends on the transactions
-        // (shape) and BOTH the spot prices (tip scale) and the historical
-        // closes (the whole curve's valuation). Key on the transaction set
-        // (count + newest timestamp), the spot prices (count + value sum), the
-        // historical series (symbol count + total day-key count — so a
-        // backfill that deepens coverage re-triggers, without summing thousands
-        // of Decimals), the range, and the currency.
         hasher.combine(transactions.count)
-        if let newest = transactions.map(\.occurredAt).max() {
-            hasher.combine(newest)
+        for tx in transactions {
+            hasher.combine(tx.id)
+            hasher.combine(tx.occurredAt)
+            hasher.combine(tx.statusRaw)
+            hasher.combine(tx.directionRaw)
+            hasher.combine(tx.amountRaw)
+            hasher.combine(tx.tokenSymbol)
+            hasher.combine(tx.tokenContract)
+            hasher.combine(tx.counterparty)
         }
         hasher.combine(selectedRangeRaw)
         hasher.combine(currencyCode)
@@ -726,16 +723,21 @@ struct BalanceCardView: View {
         hasher.combine(priceSum)
         hasher.combine(priceHistory.count)
         var histDayCount = 0
-        for series in priceHistory.values { histDayCount += series.count }
+        var histValueSum = Decimal.zero
+        for series in priceHistory.values {
+            histDayCount += series.count
+            for value in series.values { histValueSum += value }
+        }
         hasher.combine(histDayCount)
+        hasher.combine(histValueSum)
         return hasher.finalize()
     }
 
     private func rebuild() async {
         // Snapshot the few needed transaction fields on the main actor (these
-        // are main-context @Models), then run the Mode B reconstruction OFF
-        // the main actor. Mode B needs ONLY the transactions + the current
-        // spot prices — no balance snapshots, no historical-price series.
+        // are main-context @Models), then run the transaction-only
+        // reconstruction OFF the main actor. Prices only translate transaction
+        // amounts into the active local currency.
         let txSnapshots = transactions.map {
             BalanceHistoryReconstructor.HistoryTx(
                 occurredAt: $0.occurredAt,

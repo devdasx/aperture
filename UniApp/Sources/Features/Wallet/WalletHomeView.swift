@@ -995,7 +995,6 @@ struct WalletHomeView: View {
                 liveBalanceSum: liveBalanceSum,
                 currencyCode: currencyCode,
                 transactions: allTransactions,
-                currentBalances: balances.map { $0.balance },
                 // The wallet's own addresses (lowercased) so the chart can
                 // drop self-transfers (counterparty == one of these).
                 ownAddresses: Set((activeWallet?.addresses ?? []).map { $0.address.lowercased() }),
@@ -1683,23 +1682,13 @@ struct WalletHomeView: View {
         return map
     }
 
-    /// `[symbol-uppercased: price]` map filtered to the active fiat,
-    /// used by `BalanceHistoryChart` so the reconstructor can value
-    /// past holdings of fully cashed-out tokens (the 2026-06-12
-    /// USDT-flat-chart bug). Reads from the `cachedPrices` `@Query`
-    /// which observes `CachedPriceRecord` rows — the same rows
-    /// `CoinbasePriceService` writes through. The cache stays warm
-    /// across launches per `PriceCacheRepository`'s no-TTL policy.
-    /// **2026-06-13 perf — memoized price dictionaries.** These two
-    /// dicts feed `BalanceHistoryChart`. They were computed properties
-    /// rebuilt INSIDE `body` on every render — `priceHistoryBySymbol`
-    /// iterates the entire `historicalPrices` `@Query` (≈300 closes ×
-    /// every token × every currency). With deep history that's hundreds
-    /// of ms per render, and the unlock / navigation transition renders
-    /// several times in a row → the 2-second freeze the user reported.
-    /// Now they live in `@State`, rebuilt only when the underlying
-    /// price data actually changes (see `priceDataFingerprint` +
-    /// `rebuildPriceMemos()`), so `body` just reads the cached dicts.
+    /// Historical close map filtered to the active fiat, used by
+    /// `BalanceHistoryChart` to convert each transaction amount at its
+    /// transaction-day local price.
+    /// **2026-06-13 perf — memoized price dictionary.** This used to be
+    /// rebuilt inside `body`; iterating the entire `historicalPrices` query
+    /// during navigation caused visible stalls. It now lives in `@State`,
+    /// rebuilt only when the underlying price data changes.
     @State private var priceHistoryMemo: [String: [Int: Decimal]] = [:]
 
     /// Cheap (O(1)) fingerprint that flips whenever the price tables or
@@ -1711,9 +1700,9 @@ struct WalletHomeView: View {
         "\(historicalPrices.count)|\(currencyCode)"
     }
 
-    /// Rebuild the two memoized price dictionaries. The only place that
-    /// pays the O(N) iteration over the price `@Query` results — called
-    /// from `.task(id: priceDataFingerprint)`, not from `body`.
+    /// Rebuild the memoized history dictionary. The only place that pays
+    /// the O(N) iteration over the price `@Query` results — called from
+    /// `.task(id: priceDataFingerprint)`, not from `body`.
     private func rebuildPriceMemos() {
         var history: [String: [Int: Decimal]] = [:]
         for row in historicalPrices where row.fiat == currencyCode {
@@ -2641,7 +2630,6 @@ private struct BalanceCardLiveSection: View {
     let liveBalanceSum: Decimal
     let currencyCode: String
     let transactions: [TransactionRecord]
-    let currentBalances: [TokenBalanceRecord]
     let ownAddresses: Set<String>
     let priceHistory: [String: [Int: Decimal]]
     let scrubModel: ChartScrubModel
@@ -2722,7 +2710,6 @@ private struct BalanceCardLiveSection: View {
             currencyCode: currencyCode,
             lastUpdated: lastUpdated,
             transactions: transactions,
-            currentBalances: currentBalances,
             ownAddresses: ownAddresses,
             priceCache: priceCacheMap,
             priceHistory: priceHistory,

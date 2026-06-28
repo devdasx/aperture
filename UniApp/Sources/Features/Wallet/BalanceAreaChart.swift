@@ -11,10 +11,10 @@ import SwiftUI
 struct BalanceAreaChart: View {
     /// One value per sample, oldest → newest (the caller sorts).
     let values: [Double]
-    /// Per-point horizontal position in `[0, 1]` from each sample's
-    /// TIMESTAMP (Mode B real-time x-axis) — parallel to `values`. A one-hour
-    /// gap and a one-year gap occupy proportional width. Empty / wrong-length
-    /// falls back to equal-index spacing (a flat baseline looks the same).
+    /// Per-point horizontal position in `[0, 1]` from each sample's timestamp
+    /// — parallel to `values`. A one-hour gap and a one-year gap occupy
+    /// proportional width. Empty / wrong-length falls back to equal-index
+    /// spacing (a flat baseline looks the same).
     var xFractions: [Double] = []
     /// Precomputed min / max so the per-drag normalization never rescans.
     let minValue: Double

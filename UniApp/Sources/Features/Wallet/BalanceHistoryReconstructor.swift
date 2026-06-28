@@ -2,10 +2,9 @@ import Foundation
 
 // MARK: - BalancePoint
 
-/// One sample on the reconstructed balance curve. `timestamp` is the
-/// moment the wallet was in this state; `fiat` is its total value in the
-/// user's preferred currency — valued at the **historical** per-unit price
-/// for that instant (Mode C), with the trailing tip at the current spot.
+/// One sample on the reconstructed balance curve. `timestamp` is a real
+/// transaction/range boundary; `fiat` is the cumulative local-currency value
+/// produced by the transaction ledger up to that instant.
 struct BalancePoint: Hashable, Sendable {
     let timestamp: Date
     let fiat: Decimal
@@ -61,53 +60,24 @@ enum BalanceHistoryRange: String, CaseIterable, Hashable, Sendable {
 
 // MARK: - BalanceHistoryReconstructor
 
-/// Reconstructs a wallet's balance curve through time. **Holdings come
-/// only from transactions; valuation uses the DB's stored historical
-/// prices** (2026-06-19 Mode C — per user direction: make the chart move
-/// with the market across the full window, like Coinbase/Zerion).
+/// Reconstructs a wallet's chart from the transaction ledger only.
 ///
-/// **The principle.** Holdings at any instant `T` are a pure function of
-/// the transactions up to `T`. The *value* of those holdings is the
-/// market value at `T` — so the curve moves every day with the market even
-/// when no transaction happened, and a buy/sell shows as a step on top of
-/// the moving curve.
+/// **Source of truth.** Timestamps, event count, direction, and native
+/// amounts all come from `TransactionRecord` snapshots. Balance rows,
+/// snapshot rows, and market-history grids do not create chart points.
 ///
-/// **Step 1 — holdings ledger (100% from transactions, unchanged).**
-/// Forward walk oldest-first, `+in / −out / internal-no-op`, negatives
-/// clamp to zero, self-transfers net out (the `ownAddresses` filter),
-/// failed excluded / pending included, contract casing folded.
+/// **Local-currency valuation.** A transaction's native amount is converted
+/// to the user's currency using the historical close on the transaction's
+/// UTC day, falling back to the current cached local price when a close is
+/// not available. That price is used only to translate the transaction
+/// amount; it never creates extra market-movement samples between
+/// transactions.
 ///
-/// **Step 2 — valuation (Mode C: historical price per instant).** The
-/// window `[effectiveCutoff, now]` is sampled on a time grid (daily, capped
-/// for render perf; weekly for a multi-year `.all`). Each grid instant is
-/// valued `Σ quantity_token(asOf t) × historicalClose(token, UTCday(t))`,
-/// reading `HistoricalPriceRecord` closes keyed by the UTC day. A token
-/// with no close at `t` **carries the nearest prior close forward** (never
-/// zero); spot is the last-resort fallback. Holdings are sampled at one
-/// distinct timestamp per grid instant AND per in-window transaction (no
-/// zero-width step pair), so a trade shows as a smooth steep RAMP from the
-/// prior grid point into its new level — which the monotone-cubic renderer
-/// draws curvy and overshoot-free. The trailing **tip at `now` uses the
-/// current spot price** so the chart's end equals the live hero balance.
-///
-/// **Window — trim the empty lead.** `effectiveStart = max(range cutoff,
-/// first transaction)`. Where the wallet has a full range of history the
-/// ranges differ (1M = a month, 1Y = a year); where a range is longer than
-/// the wallet's history it trims to the available data and fills the width,
-/// so a very young wallet's 1M/1Y/All converge on the same filled, alive
-/// curve rather than showing an empty flat-zero lead.
-///
-/// **Edge cases.** No transactions → empty (the caller draws the zero
-/// baseline). A window with no in-window transactions but held holdings →
-/// a curve that still moves with the market (the Mode C point) rather than
-/// a flat line.
-///
-/// **Key normalization.** `TokenKey` folds symbols to uppercase and
-/// contracts to lowercase so a transaction (explorer-verbatim contract)
-/// and the price/registry reference land under one key.
-///
-/// **Pure function.** No SwiftUI dependency; the heavy work runs off-main
-/// via the snapshot overload.
+/// **Window.** Each output contains a range-start point, one point per real
+/// transaction timestamp in the window, and a trailing `now` point. If there
+/// are no transactions at all, the caller draws the zero baseline. If there
+/// are no in-window transactions, the result is a flat line based on the
+/// pre-window transaction ledger.
 enum BalanceHistoryReconstructor {
 
     /// `Sendable` snapshot of the transaction fields the reconstruction
@@ -158,10 +128,8 @@ enum BalanceHistoryReconstructor {
     }
 
     /// Core reconstruction over `Sendable` snapshots — `nonisolated` so it
-    /// can run on a detached background task. Mode C: holdings ledger from
-    /// transactions, valued at each instant's historical price (tip at
-    /// spot). Returns sample points oldest-to-newest, or `[]` when the
-    /// scope has no transactions.
+    /// can run on a detached background task. Returns sample points
+    /// oldest-to-newest, or `[]` when the scope has no transactions.
     nonisolated static func reconstruct(
         txSnapshots: [HistoryTx],
         priceCache: [String: Decimal] = [:],
@@ -204,148 +172,73 @@ enum BalanceHistoryReconstructor {
             return best >= 0 ? series[days[best]] : nil
         }
 
-        // Mode C valuation at an instant — holdings × that day's historical
-        // close (carry-forward), spot as the last-resort fallback.
-        func histValue(_ quantities: [TokenKey: Decimal], at date: Date) -> Decimal {
-            let dayKey = DayKey.from(date: date)
-            var sum = Decimal.zero
-            for (key, qty) in quantities where qty > 0 {
-                let price = historicalClose(key.symbol, dayKey) ?? priceCache[key.symbol]
-                if let price { sum += qty * price }
+        func localFiatAmount(_ tx: HistoryTx) -> Decimal? {
+            guard let amount = Decimal(string: tx.amountRaw) else { return nil }
+            let symbol = tx.tokenSymbol.uppercased()
+            let dayKey = DayKey.from(date: tx.occurredAt)
+            guard let price = historicalClose(symbol, dayKey) ?? priceCache[symbol],
+                  price > 0 else {
+                return nil
             }
-            return sum
+            return amount * price
         }
 
-        // Spot valuation for the `now` tip so the chart end == the hero.
-        func spotValue(_ quantities: [TokenKey: Decimal]) -> Decimal {
-            var sum = Decimal.zero
-            for (key, qty) in quantities where qty > 0 {
-                if let price = priceCache[key.symbol] { sum += qty * price }
+        func signedLocalFiatChange(_ tx: HistoryTx) -> Decimal? {
+            guard let fiat = localFiatAmount(tx) else { return nil }
+            switch TransactionDirection(rawValue: tx.directionRaw) ?? .outgoing {
+            case .incoming:
+                return fiat
+            case .outgoing:
+                return -fiat
+            case .internal:
+                return 0
             }
-            return sum
         }
 
-        // **Window — trim the empty lead (FIX 2).** `effectiveStart =
-        // max(range cutoff, first transaction)`. A range longer than the
-        // wallet's history trims to the available data and fills the width
-        // (a very young wallet's 1M/1Y/All converge on the same filled, alive
-        // curve) instead of pinning flat-zero at the bottom for most of the
-        // range. `.all`'s `.distantPast` cutoff collapses to the first
-        // transaction here too.
         let firstTxDate = sorted[0].occurredAt
         let effectiveStart = max(cutoff, firstTxDate)
 
-        // Pre-window holdings (every transaction strictly before the window).
-        var preWindow: [TokenKey: Decimal] = [:]
+        // Pre-window cumulative value (every transaction strictly before the
+        // visible window), computed only from transaction events.
+        var running = Decimal.zero
         var idx = 0
         while idx < sorted.count, sorted[idx].occurredAt < effectiveStart {
-            apply(sorted[idx], to: &preWindow)
+            if let change = signedLocalFiatChange(sorted[idx]) {
+                running += change
+                if running < 0 { running = 0 }
+            }
             idx += 1
         }
-        let inWindow = Array(sorted[idx...])
 
-        // **Distinct sample timestamps (FIX 1a — no zero-width step pair).** The
-        // market grid (which already includes `effectiveStart` and `now`) plus
-        // ONE timestamp per in-window transaction. Every x is distinct and well
-        // separated, so the monotone-cubic renderer is well-defined; a
-        // transaction shows as a smooth steep RAMP from the prior grid point
-        // into its new level, not a vertical riser.
-        var timeSet = Set(sampleGrid(from: effectiveStart, to: now, range: range))
-        for tx in inWindow where Decimal(string: tx.amountRaw) != nil {
-            if tx.occurredAt >= effectiveStart, tx.occurredAt <= now {
-                timeSet.insert(tx.occurredAt)
-            }
-        }
-        let times = timeSet.sorted()
+        var points: [BalancePoint] = [
+            BalancePoint(timestamp: effectiveStart, fiat: running)
+        ]
+        points.reserveCapacity(sorted.count - idx + 2)
 
-        // Forward sweep: at each instant the holdings are the pre-window state
-        // plus every in-window transaction at or before it (so a transaction's
-        // effect appears from its own timestamp onward). Value historically,
-        // except the `now` tip which uses current spot — so the chart's right
-        // edge equals the live hero balance.
-        var running = preWindow
-        var txIdx = 0
-        var points: [BalancePoint] = []
-        points.reserveCapacity(times.count)
-        for t in times {
-            while txIdx < inWindow.count, inWindow[txIdx].occurredAt <= t {
-                apply(inWindow[txIdx], to: &running)
+        // One chart event per real transaction timestamp. Transactions that
+        // share a timestamp are applied together so the x-axis stays stable.
+        var txIdx = idx
+        while txIdx < sorted.count, sorted[txIdx].occurredAt <= now {
+            let timestamp = sorted[txIdx].occurredAt
+            while txIdx < sorted.count, sorted[txIdx].occurredAt == timestamp {
+                if let change = signedLocalFiatChange(sorted[txIdx]) {
+                    running += change
+                    if running < 0 { running = 0 }
+                }
                 txIdx += 1
             }
-            let value = (t == now) ? spotValue(running) : histValue(running, at: t)
-            points.append(BalancePoint(timestamp: t, fiat: value))
+            points.append(BalancePoint(timestamp: timestamp, fiat: running))
+        }
+
+        if points.last?.timestamp != now {
+            points.append(BalancePoint(timestamp: now, fiat: running))
         }
         return points
     }
 
     // MARK: - Helpers
 
-    /// Evenly-spaced sample instants over `[start, end]` at a per-range
-    /// cadence, capped to ~`maxPoints` so a long span stays render-cheap.
-    /// Always includes `start` and `end`. Granularity is **daily** (the
-    /// finest the `HistoricalPriceRecord` close table supports); sub-day
-    /// ranges (1H/1D) therefore collapse to ~2 points at daily closes — we
-    /// do NOT fabricate intraday wiggle. `.all` over a multi-year span
-    /// steps weekly.
-    nonisolated static func sampleGrid(
-        from start: Date, to end: Date, range: BalanceHistoryRange
-    ) -> [Date] {
-        guard end > start else { return [end] }
-        let span = end.timeIntervalSince(start)
-        let day: TimeInterval = 86_400
-        let rawStep: TimeInterval
-        switch range {
-        case .hour, .day, .week, .month, .year:
-            rawStep = day
-        case .all:
-            rawStep = span > day * 400 ? day * 7 : day   // weekly once it's multi-year
-        }
-        let maxPoints = 420
-        let step = max(rawStep, span / Double(maxPoints))
-        var grid: [Date] = []
-        var instant = start
-        while instant < end {
-            grid.append(instant)
-            instant = instant.addingTimeInterval(step)
-        }
-        grid.append(end)
-        return grid
-    }
-
-    /// Apply one transaction's effect to the running per-token quantities,
-    /// forward in time: incoming adds, outgoing subtracts, internal is a
-    /// no-op. Negative residue clamps to zero.
-    private static func apply(
-        _ tx: HistoryTx,
-        to running: inout [TokenKey: Decimal]
-    ) {
-        guard let amount = Decimal(string: tx.amountRaw) else { return }
-        let key = TokenKey(symbol: tx.tokenSymbol, contract: tx.tokenContract)
-        switch TransactionDirection(rawValue: tx.directionRaw) ?? .outgoing {
-        case .incoming:
-            running[key, default: 0] += amount
-        case .outgoing:
-            running[key, default: 0] -= amount
-        case .internal:
-            break
-        }
-        if running[key, default: 0] < 0 { running[key] = 0 }
-    }
-
-    /// Normalized per-token identity. Symbols fold to uppercase; contracts
-    /// fold to lowercase; empty contracts collapse to `nil` (native coins).
-    /// Internal matching only — stored records keep their verbatim casing.
-    private struct TokenKey: Hashable {
-        let symbol: String
-        let contract: String?
-
-        init(symbol: String, contract: String?) {
-            self.symbol = symbol.uppercased()
-            if let contract, !contract.isEmpty {
-                self.contract = contract.lowercased()
-            } else {
-                self.contract = nil
-            }
-        }
-    }
+    // The chart no longer maintains a per-token holdings dictionary. Each
+    // point is the cumulative signed local-currency value of transaction
+    // events up to that timestamp.
 }
