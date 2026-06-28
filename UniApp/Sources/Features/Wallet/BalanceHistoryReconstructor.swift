@@ -10,6 +10,35 @@ struct BalancePoint: Hashable, Sendable {
     let fiat: Decimal
 }
 
+// MARK: - One-hour portfolio movement
+
+/// Current held amount for one priced symbol, flattened for the 1H
+/// portfolio-value curve. The amount is already human-scaled (ETH, not wei).
+struct BalanceHourlyHolding: Hashable, Sendable {
+    let symbol: String
+    let amount: Decimal
+    let currentPrice: Decimal?
+
+    init(symbol: String, amount: Decimal, currentPrice: Decimal? = nil) {
+        self.symbol = symbol.uppercased()
+        self.amount = amount
+        self.currentPrice = currentPrice
+    }
+}
+
+/// Locally persisted price observation for one held symbol.
+struct BalanceHourlyPriceSnapshot: Hashable, Sendable {
+    let symbol: String
+    let price: Decimal
+    let fetchedAt: Date
+
+    init(symbol: String, price: Decimal, fetchedAt: Date) {
+        self.symbol = symbol.uppercased()
+        self.price = price
+        self.fetchedAt = fetchedAt
+    }
+}
+
 // MARK: - BalanceHistoryRange
 
 /// Time windows the chart's segmented picker offers. `.all` walks the
@@ -241,4 +270,139 @@ enum BalanceHistoryReconstructor {
     // The chart no longer maintains a per-token holdings dictionary. Each
     // point is the cumulative signed local-currency value of transaction
     // events up to that timestamp.
+}
+
+// MARK: - BalanceHourPortfolioReconstructor
+
+/// Special 1H curve for the home card. Longer ranges stay transaction-led;
+/// the one-hour range needs to show short-term portfolio movement even when
+/// no transfer happened inside the last hour, so it values the currently held
+/// amounts against locally persisted price observations.
+enum BalanceHourPortfolioReconstructor {
+    nonisolated static func reconstruct(
+        holdings: [BalanceHourlyHolding],
+        priceSnapshots: [BalanceHourlyPriceSnapshot],
+        currentTotalFiat: Decimal,
+        now: Date = Date()
+    ) -> [BalancePoint] {
+        let start = BalanceHistoryRange.hour.cutoff(from: now)
+        guard currentTotalFiat > 0 else {
+            return flatBaseline(start: start, now: now, fiat: 0)
+        }
+
+        let positiveHoldings = holdings.filter { $0.amount > 0 }
+        guard !positiveHoldings.isEmpty else {
+            return flatBaseline(start: start, now: now, fiat: currentTotalFiat)
+        }
+
+        let heldSymbols = Set(positiveHoldings.map(\.symbol))
+        var snapshotsBySymbol: [String: [BalanceHourlyPriceSnapshot]] = [:]
+        for snapshot in priceSnapshots
+            where heldSymbols.contains(snapshot.symbol)
+                && snapshot.price > 0
+                && snapshot.fetchedAt <= now {
+            snapshotsBySymbol[snapshot.symbol, default: []].append(snapshot)
+        }
+        for holding in positiveHoldings {
+            if let currentPrice = holding.currentPrice, currentPrice > 0 {
+                snapshotsBySymbol[holding.symbol, default: []].append(
+                    BalanceHourlyPriceSnapshot(symbol: holding.symbol, price: currentPrice, fetchedAt: now)
+                )
+            }
+        }
+        for symbol in snapshotsBySymbol.keys {
+            snapshotsBySymbol[symbol]?.sort { $0.fetchedAt < $1.fetchedAt }
+        }
+
+        var timestamps = Set<Date>()
+        timestamps.insert(start)
+        timestamps.insert(now)
+        for series in snapshotsBySymbol.values {
+            for snapshot in series where snapshot.fetchedAt >= start && snapshot.fetchedAt <= now {
+                timestamps.insert(snapshot.fetchedAt)
+            }
+        }
+
+        let rawPoints = timestamps
+            .sorted()
+            .map { timestamp in
+                BalancePoint(
+                    timestamp: timestamp,
+                    fiat: portfolioValue(
+                        at: timestamp,
+                        holdings: positiveHoldings,
+                        snapshotsBySymbol: snapshotsBySymbol
+                    )
+                )
+            }
+
+        return reconcile(rawPoints, currentTotalFiat: currentTotalFiat, start: start, now: now)
+    }
+
+    private nonisolated static func portfolioValue(
+        at timestamp: Date,
+        holdings: [BalanceHourlyHolding],
+        snapshotsBySymbol: [String: [BalanceHourlyPriceSnapshot]]
+    ) -> Decimal {
+        var total = Decimal.zero
+        for holding in holdings {
+            guard let price = price(
+                for: holding,
+                at: timestamp,
+                snapshotsBySymbol: snapshotsBySymbol
+            ), price > 0 else {
+                continue
+            }
+            total += holding.amount * price
+        }
+        return max(total, 0)
+    }
+
+    private nonisolated static func price(
+        for holding: BalanceHourlyHolding,
+        at timestamp: Date,
+        snapshotsBySymbol: [String: [BalanceHourlyPriceSnapshot]]
+    ) -> Decimal? {
+        guard let series = snapshotsBySymbol[holding.symbol], !series.isEmpty else {
+            return holding.currentPrice
+        }
+
+        var latestAtOrBefore: Decimal?
+        for snapshot in series {
+            if snapshot.fetchedAt <= timestamp {
+                latestAtOrBefore = snapshot.price
+            } else {
+                break
+            }
+        }
+        if let latestAtOrBefore {
+            return latestAtOrBefore
+        }
+        return series.first?.price ?? holding.currentPrice
+    }
+
+    private nonisolated static func reconcile(
+        _ rawPoints: [BalancePoint],
+        currentTotalFiat: Decimal,
+        start: Date,
+        now: Date
+    ) -> [BalancePoint] {
+        guard rawPoints.count >= 2 else {
+            return flatBaseline(start: start, now: now, fiat: currentTotalFiat)
+        }
+        guard let last = rawPoints.last, last.fiat > 0 else {
+            return flatBaseline(start: start, now: now, fiat: currentTotalFiat)
+        }
+        let factor = currentTotalFiat / last.fiat
+        return rawPoints.map {
+            BalancePoint(timestamp: $0.timestamp, fiat: max(0, $0.fiat * factor))
+        }
+    }
+
+    private nonisolated static func flatBaseline(start: Date, now: Date, fiat: Decimal) -> [BalancePoint] {
+        [
+            BalancePoint(timestamp: start, fiat: max(0, fiat)),
+            BalancePoint(timestamp: now, fiat: max(0, fiat))
+        ]
+    }
 }

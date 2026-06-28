@@ -196,6 +196,28 @@ struct BalanceHistoryReconstructorTests {
         #expect(abs(hour.last!.timestamp.timeIntervalSince(now)) < 1)
     }
 
+    @Test("1H portfolio curve moves from local price observations when no transfer happened")
+    func oneHourPortfolioUsesLocalPrices() throws {
+        let now = Date(timeIntervalSinceReferenceDate: 800_000_000)
+        let start = now.addingTimeInterval(-3_600)
+        let points = BalanceHourPortfolioReconstructor.reconstruct(
+            holdings: [
+                BalanceHourlyHolding(symbol: "ETH", amount: 2, currentPrice: 1_100)
+            ],
+            priceSnapshots: [
+                BalanceHourlyPriceSnapshot(symbol: "ETH", price: 1_000, fetchedAt: start),
+                BalanceHourlyPriceSnapshot(symbol: "ETH", price: 1_050, fetchedAt: now.addingTimeInterval(-1_800)),
+            ],
+            currentTotalFiat: 2_200,
+            now: now
+        )
+
+        #expect(points.count == 3)
+        #expect(points.first?.fiat == Decimal(2_000))
+        #expect(points.last?.fiat == Decimal(2_200))
+        #expect(Self.valueProgression(points) == [2_000, 2_100, 2_200])
+    }
+
     @Test("Older wallet's 1W window leads with the genuine pre-window balance, then steps")
     @MainActor
     func windowLeadsWithPreWindowBalance() throws {
