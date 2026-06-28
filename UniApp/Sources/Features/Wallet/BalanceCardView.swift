@@ -64,6 +64,8 @@ struct BalanceCardView: View {
     let ownAddresses: Set<String>
     let priceCache: [String: Decimal]
     let priceHistory: [String: [Int: Decimal]]
+    let hourlyHoldings: [BalanceHourlyHolding]
+    let hourlyPriceSnapshots: [BalanceHourlyPriceSnapshot]
 
     /// Scrub channel — the hero (this card's balance label) renders the
     /// touched point's value while dragging; resets to `totalFiat` on
@@ -115,6 +117,8 @@ struct BalanceCardView: View {
         ownAddresses: Set<String>,
         priceCache: [String: Decimal],
         priceHistory: [String: [Int: Decimal]],
+        hourlyHoldings: [BalanceHourlyHolding],
+        hourlyPriceSnapshots: [BalanceHourlyPriceSnapshot],
         scrubModel: ChartScrubModel,
         onSwitchWallet: @escaping () -> Void,
         onAddFunds: @escaping () -> Void
@@ -128,6 +132,8 @@ struct BalanceCardView: View {
         self.ownAddresses = ownAddresses
         self.priceCache = priceCache
         self.priceHistory = priceHistory
+        self.hourlyHoldings = hourlyHoldings
+        self.hourlyPriceSnapshots = hourlyPriceSnapshots
         self.scrubModel = scrubModel
         self.onSwitchWallet = onSwitchWallet
         self.onAddFunds = onAddFunds
@@ -717,6 +723,7 @@ struct BalanceCardView: View {
         }
         hasher.combine(selectedRangeRaw)
         hasher.combine(currencyCode)
+        hasher.combine(totalFiat)
         hasher.combine(priceCache.count)
         var priceSum = Decimal.zero
         for price in priceCache.values { priceSum += price }
@@ -730,6 +737,20 @@ struct BalanceCardView: View {
         }
         hasher.combine(histDayCount)
         hasher.combine(histValueSum)
+        hasher.combine(hourlyHoldings.count)
+        for holding in hourlyHoldings {
+            hasher.combine(holding.symbol)
+            hasher.combine(holding.amount)
+            hasher.combine(holding.currentPrice)
+        }
+        hasher.combine(hourlyPriceSnapshots.count)
+        var hourlyPriceSum = Decimal.zero
+        for snapshot in hourlyPriceSnapshots {
+            hasher.combine(snapshot.symbol)
+            hasher.combine(snapshot.fetchedAt)
+            hourlyPriceSum += snapshot.price
+        }
+        hasher.combine(hourlyPriceSum)
         return hasher.finalize()
     }
 
@@ -753,14 +774,35 @@ struct BalanceCardView: View {
         let history = priceHistory
         let range = currentRange
         let own = ownAddresses
+        let currentTotal = totalFiat
+        let hourHoldingsSnapshot = hourlyHoldings
+        let hourPriceSnapshots = hourlyPriceSnapshots
+        let now = Date()
+        let hourCutoff = BalanceHistoryRange.hour.cutoff(from: now)
+        let hasInHourTransaction = txSnapshots.contains {
+            $0.statusRaw != TransactionStatus.failed.rawValue
+                && $0.occurredAt >= hourCutoff
+                && $0.occurredAt <= now
+                && ($0.counterparty.isEmpty || !own.contains($0.counterparty.lowercased()))
+        }
 
         let reconstructed = await Task.detached(priority: .userInitiated) {
-            BalanceHistoryReconstructor.reconstruct(
+            let transactionPoints = BalanceHistoryReconstructor.reconstruct(
                 txSnapshots: txSnapshots,
                 priceCache: cache,
                 priceHistory: history,
                 ownAddresses: own,
-                range: range
+                range: range,
+                now: now
+            )
+            guard range == .hour, !hasInHourTransaction else {
+                return transactionPoints
+            }
+            return BalanceHourPortfolioReconstructor.reconstruct(
+                holdings: hourHoldingsSnapshot,
+                priceSnapshots: hourPriceSnapshots,
+                currentTotalFiat: currentTotal,
+                now: now
             )
         }.value
 

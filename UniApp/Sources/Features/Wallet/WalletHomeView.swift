@@ -2656,12 +2656,76 @@ private struct BalanceCardLiveSection: View {
     /// parent's old `priceCacheMemo` produced).
     @Query private var cachedPrices: [CachedPriceRecord]
 
+    /// Inputs for the 1H portfolio curve. Longer ranges stay transaction-led,
+    /// but 1H needs local price observations so it can move red/green even
+    /// when no transfer happened during the last hour.
+    @Query private var walletAddresses: [WalletAddressRecord]
+    @Query private var tokenBalances: [TokenBalanceRecord]
+    @Query private var priceSnapshots: [PriceSnapshotRecord]
+
     private var priceCacheMap: [String: Decimal] {
         var map: [String: Decimal] = [:]
         for row in cachedPrices where row.fiat.caseInsensitiveCompare(currencyCode) == .orderedSame {
             map[row.symbol.uppercased()] = row.price
         }
         return map
+    }
+
+    private var activeAddressIds: Set<UUID> {
+        guard let walletId else { return [] }
+        return Set(walletAddresses.compactMap { address in
+            address.walletId == walletId ? address.id : nil
+        })
+    }
+
+    private var hourlyHoldings: [BalanceHourlyHolding] {
+        let addressIds = activeAddressIds
+        guard !addressIds.isEmpty else { return [] }
+
+        var amountsBySymbol: [String: Decimal] = [:]
+        for balance in tokenBalances {
+            let balanceAddressId = balance.addressId ?? balance.address?.id
+            guard let balanceAddressId, addressIds.contains(balanceAddressId) else { continue }
+            guard let amount = EVMHexQuantity.decimalAmount(
+                rawBalance: balance.rawBalance,
+                decimals: balance.decimals
+            ), amount > 0 else {
+                continue
+            }
+            let symbol = balance.tokenSymbol.uppercased()
+            amountsBySymbol[symbol, default: 0] += amount
+        }
+
+        let prices = priceCacheMap
+        return amountsBySymbol
+            .map { symbol, amount in
+                BalanceHourlyHolding(
+                    symbol: symbol,
+                    amount: amount,
+                    currentPrice: prices[symbol]
+                )
+            }
+            .sorted { $0.symbol < $1.symbol }
+    }
+
+    private var hourlyPriceSnapshots: [BalanceHourlyPriceSnapshot] {
+        let symbols = Set(hourlyHoldings.map(\.symbol))
+        guard !symbols.isEmpty else { return [] }
+        let code = currencyCode.uppercased()
+        let lowerBound = Date().addingTimeInterval(-7_200)
+        return priceSnapshots.compactMap { snapshot in
+            guard symbols.contains(snapshot.symbol.uppercased()),
+                  snapshot.currencyCode.caseInsensitiveCompare(code) == .orderedSame,
+                  snapshot.price > 0,
+                  snapshot.fetchedAt >= lowerBound else {
+                return nil
+            }
+            return BalanceHourlyPriceSnapshot(
+                symbol: snapshot.symbol,
+                price: snapshot.price,
+                fetchedAt: snapshot.fetchedAt
+            )
+        }
     }
 
     /// Hero total. Prefers the per-chain aggregate (active wallet + currency);
@@ -2713,6 +2777,8 @@ private struct BalanceCardLiveSection: View {
             ownAddresses: ownAddresses,
             priceCache: priceCacheMap,
             priceHistory: priceHistory,
+            hourlyHoldings: hourlyHoldings,
+            hourlyPriceSnapshots: hourlyPriceSnapshots,
             scrubModel: scrubModel,
             onSwitchWallet: onSwitchWallet,
             onAddFunds: onAddFunds
