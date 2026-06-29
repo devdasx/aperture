@@ -111,7 +111,15 @@ struct EVMChainAdapter: Sendable {
             var request = URLRequest(url: url)
             request.timeoutInterval = 8
             do {
-                let (data, response) = try await URLSession.shared.data(for: request)
+                let (data, response) = try await URLSession.shared.apertureData(
+                    for: request,
+                    family: "metadata",
+                    operation: "Trust Wallet token info",
+                    metadata: [
+                        "chain": chain.rawValue,
+                        "source": "EVMChainAdapter"
+                    ]
+                )
                 if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
                     continue
                 }

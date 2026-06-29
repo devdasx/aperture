@@ -1097,7 +1097,12 @@ enum TransactionDetailService {
         request.timeoutInterval = 10
         request.setValue("application/json", forHTTPHeaderField: "Accept")
 
-        guard let (data, response) = try? await URLSession.shared.data(for: request),
+        guard let (data, response) = try? await URLSession.shared.apertureData(
+            for: request,
+            family: "transaction-detail",
+            operation: "Statescan transaction detail",
+            metadata: ["chain": "polkadot", "source": "TransactionDetailService"]
+        ),
               let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode),
               let obj = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else {
             return nil

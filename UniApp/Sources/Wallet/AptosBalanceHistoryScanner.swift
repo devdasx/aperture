@@ -384,7 +384,12 @@ private actor AptosIndexerClient {
                 request.setValue("application/json", forHTTPHeaderField: "Accept")
                 request.httpBody = bodyData
 
-                let (data, response) = try await session.data(for: request)
+                let (data, response) = try await session.apertureData(
+                    for: request,
+                    family: "histories",
+                    operation: "Aptos indexer",
+                    metadata: ["chain": "aptos", "source": "AptosIndexerClient"]
+                )
                 guard let http = response as? HTTPURLResponse else {
                     throw AptosBalanceHistoryError.indexer("missing HTTP response")
                 }

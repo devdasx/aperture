@@ -424,11 +424,42 @@ actor TokenPricingEngine {
         var request = URLRequest(url: url)
         request.timeoutInterval = timeout
         request.setValue("application/json", forHTTPHeaderField: "Accept")
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await URLSession.shared.apertureData(
+            for: request,
+            family: apiFamily(for: url),
+            operation: apiOperation(for: url),
+            metadata: ["source": "TokenPricingEngine"]
+        )
         if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
             throw URLError(.badServerResponse)
         }
         return try JSONDecoder().decode(T.self, from: data)
+    }
+
+    private func apiFamily(for url: URL) -> String {
+        let path = url.path.lowercased()
+        if path.contains("exchange-rates") || path.contains("latest") {
+            return "fx"
+        }
+        return "prices"
+    }
+
+    private func apiOperation(for url: URL) -> String {
+        let host = url.host ?? "api"
+        switch host {
+        case _ where host.contains("coingecko"):
+            return "CoinGecko \(url.path)"
+        case _ where host.contains("binance"):
+            return "Binance \(url.path)"
+        case _ where host.contains("coinbase"):
+            return "Coinbase \(url.path)"
+        case _ where host.contains("er-api"):
+            return "ExchangeRate-API \(url.path)"
+        case _ where host.contains("frankfurter"):
+            return "Frankfurter \(url.path)"
+        default:
+            return "\(host) \(url.path)"
+        }
     }
 
     // MARK: - Descriptors

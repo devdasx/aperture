@@ -1960,7 +1960,12 @@ private actor MarketFXService {
         var request = URLRequest(url: url)
         request.timeoutInterval = 10
         request.setValue("application/json", forHTTPHeaderField: "Accept")
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await URLSession.shared.apertureData(
+            for: request,
+            family: "fx",
+            operation: "\(url.host ?? "api") \(url.path)",
+            metadata: ["source": "MarketFXService"]
+        )
         if let http = response as? HTTPURLResponse,
            !(200..<300).contains(http.statusCode) {
             throw URLError(.badServerResponse)
@@ -2006,7 +2011,12 @@ private extension MarketDataService {
             request.setValue(value, forHTTPHeaderField: key)
         }
         request.setValue("application/json", forHTTPHeaderField: "Accept")
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await URLSession.shared.apertureData(
+            for: request,
+            family: "markets",
+            operation: "\(url.host ?? "api") \(url.path)",
+            metadata: ["source": "MarketDataService"]
+        )
         if let http = response as? HTTPURLResponse,
            !(200..<300).contains(http.statusCode) {
             throw URLError(.badServerResponse)

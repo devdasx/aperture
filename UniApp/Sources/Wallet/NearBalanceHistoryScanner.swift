@@ -295,7 +295,16 @@ private actor NearRPCBalanceClient {
                 request.setValue("Aperture/1.0", forHTTPHeaderField: "User-Agent")
                 request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
-                let (data, response) = try await session.data(for: request)
+                let (data, response) = try await session.apertureData(
+                    for: request,
+                    family: "histories",
+                    operation: "NEAR RPC",
+                    metadata: [
+                        "chain": "near",
+                        "source": "NearRPCClient",
+                        "endpoint": endpoint.host ?? ""
+                    ]
+                )
                 if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
                     throw NearRPCError.http(http.statusCode)
                 }
@@ -437,7 +446,12 @@ private actor NearBlocksHistoryClient {
         var request = URLRequest(url: url)
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         request.setValue("Aperture/1.0", forHTTPHeaderField: "User-Agent")
-        let (data, response) = try await session.data(for: request)
+        let (data, response) = try await session.apertureData(
+            for: request,
+            family: "histories",
+            operation: "\(url.host ?? "api") \(url.path)",
+            metadata: ["chain": "near", "source": "NearBlocksHistoryClient"]
+        )
         if let http = response as? HTTPURLResponse, http.statusCode == 404 {
             return Data(#"{"activities":[],"txns":[]}"#.utf8)
         }

@@ -512,7 +512,12 @@ actor TonBalanceHistoryClient {
         request.httpMethod = "GET"
         request.setValue("application/json", forHTTPHeaderField: "Accept")
 
-        let (data, response) = try await session.data(for: request)
+        let (data, response) = try await session.apertureData(
+            for: request,
+            family: "histories",
+            operation: "TON \(path)",
+            metadata: ["chain": "ton", "source": "TonCenterClient"]
+        )
         guard let http = response as? HTTPURLResponse else {
             throw TonBalanceHistoryError.invalidResponse
         }
