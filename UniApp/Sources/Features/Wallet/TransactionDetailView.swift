@@ -8,11 +8,9 @@ import UniformTypeIdentifiers
 /// **Two-stage paint (Rule #25 / #28).** The stored `TransactionRecord`
 /// gives an instant first paint — the signed amount hero, direction, and
 /// status badge — exactly as the prior version did. On appear the screen
-/// asks `TransactionDetailService` for the rich, live detail off-main
-/// (`.task(id:)`), then enriches: a common receipt card every chain shares,
-/// plus a chain-specific section rendered by `switch detail.payload`
-/// (Bitcoin inputs/outputs/hex, EVM gas/transfers/input-data, Solana
-/// balance-changes/instructions/logs, or labeled rows for the 9 others).
+/// asks `TransactionDetailService` for the live receipt off-main
+/// (`.task(id:)`), then enriches the small set of user-facing rows every
+/// chain shares: status, time, network fee, hash, and explorer link.
 ///
 /// **Honesty (Rule #16 / #26).** Nothing is fabricated. While the fetch is
 /// in flight the receipt rows show native redacted placeholders. If the
@@ -27,12 +25,10 @@ import UniformTypeIdentifiers
 /// inset-grouped `List` of grouped sections (Rule #3 — system List is the
 /// on-system content pattern; content rows are opaque, B.3). Copy
 /// affordances mirror the receive-row pattern (inline "Copied" tick +
-/// `.uniHaptic(.success)`). Long blocks (hex / input data / logs /
-/// instructions) live behind native `DisclosureGroup`s so the screen stays
-/// calm by default. The fiat line under the amount is resolved off-main
-/// (Rule #28) and omitted honestly when no price is available (Rule #16).
-/// Hashes / addresses / hex are LTR-locked (Rule #11) and monospaced. SF
-/// Symbols + Trust Wallet coin marks; every color is a `UniColors` role.
+/// `.uniHaptic(.success)`). The fiat line under the amount is resolved
+/// off-main (Rule #28) and omitted honestly when no price is available
+/// (Rule #16). Hashes are LTR-locked (Rule #11) and monospaced. SF Symbols
+/// + Trust Wallet coin marks; every color is a `UniColors` role.
 struct TransactionDetailView: View {
     let transactionId: UUID
     @Query private var matches: [TransactionRecord]
@@ -108,14 +104,13 @@ struct TransactionDetailView: View {
         }
     }
 
-    /// The native grouped-list register — every detail section, scrolling
-    /// under the nav bar. Content cards are opaque (B.3); the List itself
-    /// owns the grouped background.
+    /// The native grouped-list register — hero plus the calm public receipt,
+    /// scrolling under the nav bar. Content cards are opaque (B.3); the List
+    /// itself owns the grouped background.
     private func detailList(_ tx: TransactionRecord) -> some View {
         List {
             heroSection(tx)
             commonSection(tx)
-            payloadSections(tx)
         }
         .listStyle(.insetGrouped)
         .scrollContentBackground(.hidden)
@@ -225,29 +220,6 @@ struct TransactionDetailView: View {
                     label: "When",
                     value: date.formatted(date: .abbreviated, time: .standard)
                 )
-            }
-
-            // Confirmations is a genuinely fetch-only row — there is no
-            // stored value. Show a redacted placeholder while the fetch is
-            // in flight so the row's slot is present from frame one and the
-            // real count just replaces the shimmer (no pop-in); drop it
-            // honestly if the fetch returns without one.
-            if let confirmations = detail?.confirmations {
-                divider
-                keyValueRow(label: "Confirmations", value: confirmations.formatted())
-            } else if isSkeleton {
-                divider
-                keyValueRow(label: "Confirmations", value: skeletonNumber)
-                    .redacted(reason: .placeholder)
-            }
-
-            if let block = detail?.blockNumber ?? tx.blockNumber {
-                divider
-                keyValueRow(label: blockLabel, value: block.formatted())
-            } else if isSkeleton {
-                divider
-                keyValueRow(label: blockLabel, value: skeletonNumber)
-                    .redacted(reason: .placeholder)
             }
 
             // Network fee: show the stored fee instantly when present;
