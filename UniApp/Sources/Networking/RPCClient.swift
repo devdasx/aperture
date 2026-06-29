@@ -211,13 +211,17 @@ actor RPCClient {
         operation: String,
         metadata: [String: String]
     ) async throws -> (Data, URLResponse) {
+        let gateStart = Date()
         let release = try await concurrencyGate.acquire(host: host)
         defer { release() }
+        var gatedMetadata = metadata
+        gatedMetadata["gateHost"] = host
+        gatedMetadata["gateWaitMs"] = DiagnosticsLogStore.elapsedMilliseconds(since: gateStart)
         return try await session.apertureData(
             for: request,
             family: family,
             operation: operation,
-            metadata: metadata
+            metadata: gatedMetadata
         )
     }
 
