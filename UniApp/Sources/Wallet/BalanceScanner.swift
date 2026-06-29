@@ -130,8 +130,22 @@ actor WalletDataRefreshCoordinator {
         )
 
         let walletRepository = WalletRepository(modelContainer: modelContainer)
+        let addressLoadStart = Date()
         let addressSnapshots = (try? await walletRepository.addresses(walletId: walletId)) ?? []
         let addressByChain = Dictionary(addressSnapshots.map { ($0.chain, $0) }, uniquingKeysWith: { first, _ in first })
+        DiagnosticsLogStore.shared.record(
+            .debug,
+            category: "scanner",
+            message: "Wallet refresh addresses loaded",
+            metadata: [
+                "walletId": walletId.uuidString,
+                "currency": normalizedCurrency,
+                "mode": mode.rawValue,
+                "addressRows": "\(addressSnapshots.count)",
+                "addressChains": "\(addressByChain.count)",
+                "elapsedMs": DiagnosticsLogStore.elapsedMilliseconds(since: addressLoadStart)
+            ]
+        )
 
         let bitcoinScanner = self.bitcoinScanner
         let bitcoinCashScanner = self.bitcoinCashScanner
@@ -375,6 +389,19 @@ actor WalletDataRefreshCoordinator {
             }
         }
 
+        let scanBatchStart = Date()
+        DiagnosticsLogStore.shared.record(
+            .debug,
+            category: "scanner",
+            message: "Wallet chain scan batch started",
+            metadata: [
+                "walletId": walletId.uuidString,
+                "currency": normalizedCurrency,
+                "mode": mode.rawValue,
+                "jobCount": "\(scanJobs.count)",
+                "chains": attemptedChains.map { String(describing: $0) }.sorted().joined(separator: ",")
+            ]
+        )
         await withTaskGroup(of: ChainScanResult.self) { group in
             for job in scanJobs {
                 group.addTask(operation: job)
@@ -387,6 +414,20 @@ actor WalletDataRefreshCoordinator {
                 }
             }
         }
+        DiagnosticsLogStore.shared.record(
+            .info,
+            category: "scanner",
+            message: "Wallet chain scan batch finished",
+            metadata: [
+                "walletId": walletId.uuidString,
+                "currency": normalizedCurrency,
+                "mode": mode.rawValue,
+                "jobCount": "\(scanJobs.count)",
+                "refreshedChains": "\(refreshedChains.count)",
+                "failedChains": failedChains.map { String(describing: $0) }.sorted().joined(separator: ","),
+                "elapsedMs": DiagnosticsLogStore.elapsedMilliseconds(since: scanBatchStart)
+            ]
+        )
 
         if Task.isCancelled {
             DiagnosticsLogStore.shared.record(
@@ -404,19 +445,47 @@ actor WalletDataRefreshCoordinator {
         }
 
         if !attemptedChains.isEmpty {
-            _ = try? await ChainStateRepository(modelContainer: modelContainer).rebuild(
+            let rebuildStart = Date()
+            let rebuilt = try? await ChainStateRepository(modelContainer: modelContainer).rebuild(
                 walletId: walletId,
                 fiatCurrencyCode: normalizedCurrency,
                 onlyChains: attemptedChains,
                 failedChains: failedChains,
                 interim: false
             )
+            DiagnosticsLogStore.shared.record(
+                rebuilt == nil ? .warning : .debug,
+                category: "scanner",
+                message: "Wallet chain state rebuild finished",
+                metadata: [
+                    "walletId": walletId.uuidString,
+                    "currency": normalizedCurrency,
+                    "mode": mode.rawValue,
+                    "chainCount": "\(attemptedChains.count)",
+                    "failedChains": failedChains.map { String(describing: $0) }.sorted().joined(separator: ","),
+                    "outcome": rebuilt == nil ? "failed" : "succeeded",
+                    "elapsedMs": DiagnosticsLogStore.elapsedMilliseconds(since: rebuildStart)
+                ]
+            )
         }
-        _ = try? await WalletChartSnapshotRepository(modelContainer: modelContainer)
+        let chartSnapshotStart = Date()
+        let chartSnapshot = try? await WalletChartSnapshotRepository(modelContainer: modelContainer)
             .captureFromPersistedBalances(
                 walletId: walletId,
                 currencyCode: normalizedCurrency
             )
+        DiagnosticsLogStore.shared.record(
+            chartSnapshot == nil ? .warning : .debug,
+            category: "scanner",
+            message: "Wallet chart snapshot capture finished",
+            metadata: [
+                "walletId": walletId.uuidString,
+                "currency": normalizedCurrency,
+                "mode": mode.rawValue,
+                "outcome": chartSnapshot == nil ? "failed" : "succeeded",
+                "elapsedMs": DiagnosticsLogStore.elapsedMilliseconds(since: chartSnapshotStart)
+            ]
+        )
         DiagnosticsLogStore.shared.record(
             .info,
             category: "scanner",
@@ -2560,13 +2629,24 @@ private actor PublicNodeEVMRPCClient {
             "params": params
         ])
 
-        let release = try await concurrencyGate.acquire(host: endpoint.host ?? endpoint.absoluteString)
+        let gateHost = endpoint.host ?? endpoint.absoluteString
+        let gateStart = Date()
+        let release = try await concurrencyGate.acquire(host: gateHost)
         defer { release() }
+        var latencyMetadata = [
+            "chain": chain.rawValue,
+            "source": "PublicNodeEVMRPCClient",
+            "gateHost": gateHost,
+            "gateWaitMs": DiagnosticsLogStore.elapsedMilliseconds(since: gateStart)
+        ]
+        if let host = endpoint.host {
+            latencyMetadata["host"] = host
+        }
         let (data, response) = try await session.apertureData(
             for: request,
             family: "balances",
             operation: method,
-            metadata: ["chain": chain.rawValue, "source": "PublicNodeEVMRPCClient"]
+            metadata: latencyMetadata
         )
         if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
             throw PublicNodeEVMRPCError.httpStatus(http.statusCode)
