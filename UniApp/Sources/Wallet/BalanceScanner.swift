@@ -50,6 +50,11 @@ actor WalletDataRefreshCoordinator {
         let token: UUID
         let task: Task<Void, Never>
     }
+    private struct ChainScanResult: Sendable {
+        let chain: SupportedChain
+        let succeeded: Bool
+    }
+
     private var refreshSlots: [UUID: RefreshSlot] = [:]
 
     func refresh(
@@ -128,13 +133,43 @@ actor WalletDataRefreshCoordinator {
         let addressSnapshots = (try? await walletRepository.addresses(walletId: walletId)) ?? []
         let addressByChain = Dictionary(addressSnapshots.map { ($0.chain, $0) }, uniquingKeysWith: { first, _ in first })
 
+        let bitcoinScanner = self.bitcoinScanner
+        let bitcoinCashScanner = self.bitcoinCashScanner
+        let bitcoinFamilyRESTScanner = self.bitcoinFamilyRESTScanner
+        let nearScanner = self.nearScanner
+        let stellarScanner = self.stellarScanner
+        let polkadotScanner = self.polkadotScanner
+        let solanaScanner = self.solanaScanner
+        let aptosScanner = self.aptosScanner
+        let tronScanner = self.tronScanner
+        let tonScanner = self.tonScanner
+        let rippleScanner = self.rippleScanner
+        let suiScanner = self.suiScanner
+        let scanner = self.scanner
+        var scanJobs: [@Sendable () async -> ChainScanResult] = []
+
+        func appendScan(
+            chain: SupportedChain,
+            source: String,
+            operation: @escaping @Sendable () async throws -> Void
+        ) {
+            attemptedChains.insert(chain)
+            scanJobs.append {
+                let succeeded = await Self.runScan(
+                    chain: chain,
+                    walletId: walletId,
+                    currencyCode: normalizedCurrency,
+                    userInitiated: userInitiated,
+                    source: source,
+                    operation: operation
+                )
+                return ChainScanResult(chain: chain, succeeded: succeeded)
+            }
+        }
+
         if addressByChain[.bitcoin] != nil {
-            attemptedChains.insert(.bitcoin)
-            let succeeded = await runScan(
+            appendScan(
                 chain: .bitcoin,
-                walletId: walletId,
-                currencyCode: normalizedCurrency,
-                userInitiated: userInitiated,
                 source: "BitcoinElectrumBalanceScanner"
             ) {
                 try await bitcoinScanner.scanAndPersist(
@@ -144,20 +179,11 @@ actor WalletDataRefreshCoordinator {
                     includePrices: includePrices
                 )
             }
-            if !succeeded {
-                failedChains.insert(.bitcoin)
-            } else {
-                refreshedChains.insert(.bitcoin)
-            }
         }
 
         if addressByChain[.bitcoinCash] != nil {
-            attemptedChains.insert(.bitcoinCash)
-            let succeeded = await runScan(
+            appendScan(
                 chain: .bitcoinCash,
-                walletId: walletId,
-                currencyCode: normalizedCurrency,
-                userInitiated: userInitiated,
                 source: "BitcoinCashElectrumBalanceScanner"
             ) {
                 try await bitcoinCashScanner.scanAndPersist(
@@ -167,21 +193,12 @@ actor WalletDataRefreshCoordinator {
                     includePrices: includePrices
                 )
             }
-            if !succeeded {
-                failedChains.insert(.bitcoinCash)
-            } else {
-                refreshedChains.insert(.bitcoinCash)
-            }
         }
 
         for chain in [SupportedChain.litecoin, .dogecoin] {
             if let address = addressByChain[chain] {
-                attemptedChains.insert(chain)
-                let succeeded = await runScan(
+                appendScan(
                     chain: chain,
-                    walletId: walletId,
-                    currencyCode: normalizedCurrency,
-                    userInitiated: userInitiated,
                     source: "BitcoinFamilyRESTBalanceScanner"
                 ) {
                     try await bitcoinFamilyRESTScanner.scanAndPersist(
@@ -193,21 +210,12 @@ actor WalletDataRefreshCoordinator {
                         includeHistory: includeHistory
                     )
                 }
-                if !succeeded {
-                    failedChains.insert(chain)
-                } else {
-                    refreshedChains.insert(chain)
-                }
             }
         }
 
         if let address = addressByChain[.near] {
-            attemptedChains.insert(.near)
-            let succeeded = await runScan(
+            appendScan(
                 chain: .near,
-                walletId: walletId,
-                currencyCode: normalizedCurrency,
-                userInitiated: userInitiated,
                 source: "NearBalanceHistoryScanner"
             ) {
                 try await nearScanner.scanAndPersist(
@@ -219,20 +227,11 @@ actor WalletDataRefreshCoordinator {
                     includeHistory: includeHistory
                 )
             }
-            if !succeeded {
-                failedChains.insert(.near)
-            } else {
-                refreshedChains.insert(.near)
-            }
         }
 
         if let address = addressByChain[.stellar] {
-            attemptedChains.insert(.stellar)
-            let succeeded = await runScan(
+            appendScan(
                 chain: .stellar,
-                walletId: walletId,
-                currencyCode: normalizedCurrency,
-                userInitiated: userInitiated,
                 source: "StellarBalanceHistoryScanner"
             ) {
                 try await stellarScanner.scanAndPersist(
@@ -244,20 +243,11 @@ actor WalletDataRefreshCoordinator {
                     includeHistory: includeHistory
                 )
             }
-            if !succeeded {
-                failedChains.insert(.stellar)
-            } else {
-                refreshedChains.insert(.stellar)
-            }
         }
 
         if let address = addressByChain[.polkadot] {
-            attemptedChains.insert(.polkadot)
-            let succeeded = await runScan(
+            appendScan(
                 chain: .polkadot,
-                walletId: walletId,
-                currencyCode: normalizedCurrency,
-                userInitiated: userInitiated,
                 source: "PolkadotBalanceHistoryScanner"
             ) {
                 try await polkadotScanner.scanAndPersist(
@@ -269,20 +259,11 @@ actor WalletDataRefreshCoordinator {
                     includeHistory: includeHistory
                 )
             }
-            if !succeeded {
-                failedChains.insert(.polkadot)
-            } else {
-                refreshedChains.insert(.polkadot)
-            }
         }
 
         if let address = addressByChain[.solana] {
-            attemptedChains.insert(.solana)
-            let succeeded = await runScan(
+            appendScan(
                 chain: .solana,
-                walletId: walletId,
-                currencyCode: normalizedCurrency,
-                userInitiated: userInitiated,
                 source: "SolanaBalanceHistoryScanner"
             ) {
                 try await solanaScanner.scanAndPersist(
@@ -294,20 +275,11 @@ actor WalletDataRefreshCoordinator {
                     includeHistory: includeHistory
                 )
             }
-            if !succeeded {
-                failedChains.insert(.solana)
-            } else {
-                refreshedChains.insert(.solana)
-            }
         }
 
         if let address = addressByChain[.aptos] {
-            attemptedChains.insert(.aptos)
-            let succeeded = await runScan(
+            appendScan(
                 chain: .aptos,
-                walletId: walletId,
-                currencyCode: normalizedCurrency,
-                userInitiated: userInitiated,
                 source: "AptosBalanceHistoryScanner"
             ) {
                 try await aptosScanner.scanAndPersist(
@@ -319,20 +291,11 @@ actor WalletDataRefreshCoordinator {
                     includeHistory: includeHistory
                 )
             }
-            if !succeeded {
-                failedChains.insert(.aptos)
-            } else {
-                refreshedChains.insert(.aptos)
-            }
         }
 
         if let address = addressByChain[.tron] {
-            attemptedChains.insert(.tron)
-            let succeeded = await runScan(
+            appendScan(
                 chain: .tron,
-                walletId: walletId,
-                currencyCode: normalizedCurrency,
-                userInitiated: userInitiated,
                 source: "TronBalanceHistoryScanner"
             ) {
                 try await tronScanner.scanAndPersist(
@@ -344,20 +307,11 @@ actor WalletDataRefreshCoordinator {
                     includeHistory: includeHistory
                 )
             }
-            if !succeeded {
-                failedChains.insert(.tron)
-            } else {
-                refreshedChains.insert(.tron)
-            }
         }
 
         if let address = addressByChain[.ton] {
-            attemptedChains.insert(.ton)
-            let succeeded = await runScan(
+            appendScan(
                 chain: .ton,
-                walletId: walletId,
-                currencyCode: normalizedCurrency,
-                userInitiated: userInitiated,
                 source: "TonBalanceHistoryScanner"
             ) {
                 try await tonScanner.scanAndPersist(
@@ -369,20 +323,11 @@ actor WalletDataRefreshCoordinator {
                     includeHistory: includeHistory
                 )
             }
-            if !succeeded {
-                failedChains.insert(.ton)
-            } else {
-                refreshedChains.insert(.ton)
-            }
         }
 
         if let address = addressByChain[.ripple] {
-            attemptedChains.insert(.ripple)
-            let succeeded = await runScan(
+            appendScan(
                 chain: .ripple,
-                walletId: walletId,
-                currencyCode: normalizedCurrency,
-                userInitiated: userInitiated,
                 source: "RippleBalanceHistoryScanner"
             ) {
                 try await rippleScanner.scanAndPersist(
@@ -394,20 +339,11 @@ actor WalletDataRefreshCoordinator {
                     includeHistory: includeHistory
                 )
             }
-            if !succeeded {
-                failedChains.insert(.ripple)
-            } else {
-                refreshedChains.insert(.ripple)
-            }
         }
 
         if let address = addressByChain[.sui] {
-            attemptedChains.insert(.sui)
-            let succeeded = await runScan(
+            appendScan(
                 chain: .sui,
-                walletId: walletId,
-                currencyCode: normalizedCurrency,
-                userInitiated: userInitiated,
                 source: "SuiBalanceHistoryScanner"
             ) {
                 try await suiScanner.scanAndPersist(
@@ -419,21 +355,12 @@ actor WalletDataRefreshCoordinator {
                     includeHistory: includeHistory
                 )
             }
-            if !succeeded {
-                failedChains.insert(.sui)
-            } else {
-                refreshedChains.insert(.sui)
-            }
         }
 
         for chain in enabledEVMChains {
             if let address = addressByChain[chain] {
-                attemptedChains.insert(chain)
-                let succeeded = await runScan(
+                appendScan(
                     chain: chain,
-                    walletId: walletId,
-                    currencyCode: normalizedCurrency,
-                    userInitiated: userInitiated,
                     source: "PublicNodeEVMBalanceScanner"
                 ) {
                     try await scanner.scanAndPersist(
@@ -445,10 +372,18 @@ actor WalletDataRefreshCoordinator {
                         includeHistory: includeHistory
                     )
                 }
-                if !succeeded {
-                    failedChains.insert(chain)
+            }
+        }
+
+        await withTaskGroup(of: ChainScanResult.self) { group in
+            for job in scanJobs {
+                group.addTask(operation: job)
+            }
+            for await result in group {
+                if result.succeeded {
+                    refreshedChains.insert(result.chain)
                 } else {
-                    refreshedChains.insert(chain)
+                    failedChains.insert(result.chain)
                 }
             }
         }
@@ -499,13 +434,13 @@ actor WalletDataRefreshCoordinator {
         )
     }
 
-    private func runScan(
+    private nonisolated static func runScan(
         chain: SupportedChain,
         walletId: UUID,
         currencyCode: String,
         userInitiated: Bool,
         source: String,
-        operation: () async throws -> Void
+        operation: @Sendable () async throws -> Void
     ) async -> Bool {
         let start = Date()
         let chainName = String(describing: chain)
@@ -2569,9 +2504,11 @@ private actor PublicNodeEVMRPCClient {
     static let shared = PublicNodeEVMRPCClient()
 
     private let session: URLSession
+    private let concurrencyGate: ConcurrencyGate
     private var requestID = 0
 
-    init(session: URLSession? = nil) {
+    init(session: URLSession? = nil, concurrencyGate: ConcurrencyGate = .shared) {
+        self.concurrencyGate = concurrencyGate
         if let session {
             self.session = session
         } else {
@@ -2623,6 +2560,8 @@ private actor PublicNodeEVMRPCClient {
             "params": params
         ])
 
+        let release = try await concurrencyGate.acquire(host: endpoint.host ?? endpoint.absoluteString)
+        defer { release() }
         let (data, response) = try await session.apertureData(
             for: request,
             family: "balances",
