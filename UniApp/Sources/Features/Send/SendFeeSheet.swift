@@ -224,13 +224,19 @@ struct SendFeeSheet: View {
                 .font(UniTypography.body)
                 .foregroundStyle(UniColors.Text.primary)
             Spacer(minLength: UniSpacing.s)
-            TextField("0", text: text)
-                .font(UniTypography.body.monospacedDigit())
-                .keyboardType(.decimalPad)
-                .multilineTextAlignment(.trailing)
-                .frame(maxWidth: 120)
-                .environment(\.layoutDirection, .leftToRight)
-                .onChange(of: text.wrappedValue) { _, _ in model.selectedTier = .custom }
+            UniTextField(
+                placeholder: "0",
+                text: text,
+                font: UniTypography.body.monospacedDigit(),
+                textAlignment: .trailing,
+                directionPolicy: .forceLTR,
+                fill: Color.clear,
+                verticalPadding: UniSpacing.xs,
+                showsChrome: false,
+                keyboardType: .decimalPad
+            )
+            .frame(maxWidth: 120)
+            .onChange(of: text.wrappedValue) { _, _ in model.selectedTier = .custom }
             Text(verbatim: suffix)
                 .font(UniTypography.footnote)
                 .foregroundStyle(UniColors.Text.tertiary)

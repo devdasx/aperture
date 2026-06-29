@@ -469,10 +469,16 @@ struct WalletDetailView: View {
 
     private func renameRow(_ wallet: WalletRecord) -> some View {
         HStack {
-            TextField(String.apertureLocalized("Wallet"), text: $editedName)
-                .font(UniTypography.body)
-                .submitLabel(.done)
-                .onSubmit { commitRename(wallet) }
+            UniTextField(
+                placeholder: LocalizedStringKey(String.apertureLocalized("Wallet")),
+                text: $editedName,
+                fill: Color.clear,
+                verticalPadding: UniSpacing.xs,
+                showsChrome: false,
+                autocapitalization: .words,
+                disablesAutocorrection: false,
+                onSubmitAction: { commitRename(wallet) }
+            )
             if editedName != wallet.name && !editedName.trimmingCharacters(in: .whitespaces).isEmpty {
                 Button("Save") { commitRename(wallet) }
                     .font(UniTypography.subheadlineEmphasized)

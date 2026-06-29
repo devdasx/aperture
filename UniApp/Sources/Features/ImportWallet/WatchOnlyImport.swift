@@ -7,7 +7,6 @@ struct WatchOnlyEntryView: View {
     let chain: SupportedChain
     let onContinue: () -> Void
 
-    @FocusState private var isFieldFocused: Bool
     @State private var isShowingGuide: Bool = false
 
     private var supportsExtendedKey: Bool { chain.supportsExtendedPublicKey }
@@ -127,12 +126,10 @@ struct WatchOnlyEntryView: View {
         .pickerStyle(.segmented)
     }
 
-    /// Watch-only input — `UniTextField` for the extended-key case,
-    /// `TextEditor` + the `TextDirection` helper for the multi-address
-    /// case. Both content shapes (xpub/ypub/zpub and on-chain addresses)
-    /// are always LTR regardless of the app's locale, so the field forces
-    /// LTR so an Arabic-locale user reads `xpub6Cq…` left-to-right with
-    /// the caret advancing rightward.
+    /// Watch-only input. Extended keys are newline-free, while pasted
+    /// address lists must preserve line separators, so the multi-address
+    /// case uses `UniTextArea`. Both content shapes are always LTR
+    /// regardless of the app's locale.
     @ViewBuilder
     private var inputField: some View {
         if supportsExtendedKey && state.watchOnlyExtendedKeyMode {
@@ -146,21 +143,12 @@ struct WatchOnlyEntryView: View {
                 contentType: .password
             )
         } else {
-            TextEditor(text: $state.watchOnlyRaw)
-                .focused($isFieldFocused)
-                .textInputAutocapitalization(.never)
-                .autocorrectionDisabled(true)
-                .font(UniTypography.body.monospaced())
-                .scrollContentBackground(.hidden)
-                .frame(minHeight: 120)
-                .padding(.horizontal, UniSpacing.s)
-                .padding(.vertical, UniSpacing.xs)
-                .background(
-                    RoundedRectangle(cornerRadius: UniRadius.m, style: .continuous)
-                        .fill(UniColors.Background.secondary)
-                )
-                .environment(\.layoutDirection, .leftToRight)
-                .multilineTextAlignment(.leading)
+            UniTextArea(
+                placeholder: "Addresses",
+                text: $state.watchOnlyRaw,
+                directionPolicy: .forceLTR,
+                font: UniTypography.body.monospaced(),
+                minHeight: 120,
                 // Enter = dismiss keyboard, never a typed line break. A
                 // keypress adds exactly ONE character — if that one added
                 // character is a newline (ANYWHERE in the buffer, not only
@@ -172,13 +160,8 @@ struct WatchOnlyEntryView: View {
                 // splits on them as line separators. Aligns with the
                 // `UniTextField` Enter-dismiss contract; see CLAUDE.md Rule
                 // #19 §D.
-                .onChange(of: state.watchOnlyRaw) { oldValue, newValue in
-                    if newValue.count == oldValue.count + 1,
-                       newValue.filter(\.isNewline).count == oldValue.filter(\.isNewline).count + 1 {
-                        state.watchOnlyRaw = oldValue
-                        isFieldFocused = false
-                    }
-                }
+                onReturnKey: { _ in }
+            )
         }
     }
 

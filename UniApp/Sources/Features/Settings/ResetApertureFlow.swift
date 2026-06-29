@@ -535,16 +535,16 @@ struct ResetApertureFlow: View {
                         .font(.system(size: 13, weight: .medium))
                         .foregroundStyle(UniColors.Text.secondary)
                     ZStack {
-                        RoundedRectangle(cornerRadius: 16, style: .continuous)
-                            .fill(UniColors.Background.secondary)
-                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        RoundedRectangle(cornerRadius: UniRadius.textField, style: .continuous)
+                            .fill(UniColors.Input.background)
+                        RoundedRectangle(cornerRadius: UniRadius.textField, style: .continuous)
                             .strokeBorder(danger, lineWidth: 2)
                         ResetConfirmationTextField(
                             text: $typed,
                             isFocused: $confirmFocused,
                             tint: danger
                         )
-                            .padding(.horizontal, 16)
+                            .padding(.horizontal, UniSpacing.mPlus)
                             .onChange(of: typed) { _, newValue in
                                 let normalized = Self.normalizedResetConfirmation(newValue)
                                 if normalized != newValue {
@@ -559,7 +559,7 @@ struct ResetApertureFlow: View {
                                 }
                             }
                     }
-                    .frame(height: 58)
+                    .frame(height: UniSpacing.xxxl)
                 }
                 .padding(.top, 8)
             }

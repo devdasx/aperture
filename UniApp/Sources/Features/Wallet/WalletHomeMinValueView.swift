@@ -145,15 +145,21 @@ struct WalletHomeMinValueView: View {
                     .font(UniTypography.body)
                     .foregroundStyle(UniColors.Text.primary)
                 Spacer(minLength: UniSpacing.s)
-                TextField("0", text: $customText)
-                    .keyboardType(.decimalPad)
-                    .multilineTextAlignment(.trailing)
-                    .font(UniTypography.monoBody)
-                    .foregroundStyle(UniColors.Text.primary)
-                    .frame(minWidth: 80)
-                    .focused($isCustomFieldFocused)
-                    .onSubmit { commitCustom() }
-                    .accessibilityLabel(Text("Custom minimum value"))
+                UniTextField(
+                    placeholder: "0",
+                    text: $customText,
+                    font: UniTypography.monoBody,
+                    textAlignment: .trailing,
+                    directionPolicy: .forceLTR,
+                    fill: Color.clear,
+                    verticalPadding: UniSpacing.xs,
+                    showsChrome: false,
+                    keyboardType: .decimalPad,
+                    onSubmitAction: { commitCustom() },
+                    boolFocusBinding: $isCustomFieldFocused
+                )
+                .frame(minWidth: 80)
+                .accessibilityLabel(Text("Custom minimum value"))
             }
             .padding(.vertical, UniSpacing.xxs)
             .listRowBackground(UniColors.List.rowBackground)

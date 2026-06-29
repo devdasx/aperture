@@ -99,8 +99,8 @@ enum TextDirection {
 /// and content-aware RTL/LTR direction resolution.
 ///
 /// **Design — visual register**: rounded `UniColors.Input.background`
-/// fill (`UniRadius.m`), horizontal padding `UniSpacing.m`, vertical
-/// padding `UniSpacing.s`, `UniTypography.body`. Eye toggle (when
+/// fill (`UniRadius.textField`), horizontal padding `UniSpacing.mPlus`,
+/// vertical padding `UniSpacing.m`, `UniTypography.body`. Eye toggle (when
 /// `showsRevealToggle` is true) sits at the field's trailing edge —
 /// trailing flips with the resolved layout direction so the eye always
 /// lands on the visual end of the field regardless of script.
@@ -129,6 +129,8 @@ struct UniTextField: View {
     let placeholder: LocalizedStringKey
     @Binding var text: String
 
+    var font: Font = UniTypography.body
+    var textAlignment: TextAlignment = .leading
     var directionPolicy: TextDirection.Policy = .automatic
     var isSecure: Bool = false
     var showsRevealToggle: Bool = false
@@ -137,7 +139,7 @@ struct UniTextField: View {
     /// Corner radius of the field's fill. Defaults to the standard input
     /// radius; callers can soften it (e.g. the Send recipient field uses
     /// `UniRadius.xxxl`).
-    var cornerRadius: CGFloat = UniRadius.m
+    var cornerRadius: CGFloat = UniRadius.textField
     /// The field's fill surface. Defaults to `UniColors.Input.background`
     /// (the standard rounded-input look). Pass `Color.clear` when the field
     /// lives inside a container that already owns the surface — e.g. the
@@ -146,19 +148,24 @@ struct UniTextField: View {
     /// fill is a `UniColors` role at the call site, never a literal except
     /// `Color.clear` (Rule #4 permits `.clear` everywhere). Token-typed.
     var fill: Color = UniColors.Input.background
-    /// Vertical padding inside the field's fill. Defaults to `UniSpacing.s`
+    /// Vertical padding inside the field's fill. Defaults to `UniSpacing.m`
     /// (the standard input height). Callers can tighten it for a more
     /// compact field — the Send recipient field passes `UniSpacing.xs` so
     /// its EMPTY single-line state reads compact, while still growing to
     /// show a full pasted address (the `axis: .vertical` growth is
     /// unaffected). Token-typed; never a raw literal (Rule #4).
-    var verticalPadding: CGFloat = UniSpacing.s
+    var verticalPadding: CGFloat = UniSpacing.m
+    /// Set false for fields that live inside a larger native row/card shell
+    /// and should inherit that parent surface instead of drawing their own
+    /// rounded filled text-box chrome.
+    var showsChrome: Bool = true
     var reservesSpace: Bool = false
     var contentType: UITextContentType? = nil
     var keyboardType: UIKeyboardType = .default
     var minHeight: CGFloat? = nil
     var autocapitalization: TextInputAutocapitalization = .never
     var disablesAutocorrection: Bool = true
+    var onSubmitAction: (() -> Void)? = nil
 
     /// Optional EXTERNAL focus passthrough so a parent can track which
     /// field (by identity) is currently focused — used by the Send
@@ -188,6 +195,7 @@ struct UniTextField: View {
     @State private var isRevealed: Bool = false
     @FocusState private var isFieldFocused: Bool
     @Environment(\.layoutDirection) private var ambientDirection
+    @Environment(\.isEnabled) private var isEnabled
 
     /// Memoized result of the `.automatic` policy's first-strong-
     /// character scan. Recomputed only when the text changes (and once
@@ -208,18 +216,16 @@ struct UniTextField: View {
                 .autocorrectionDisabled(disablesAutocorrection)
                 .keyboardType(keyboardType)
                 .textContentType(contentType)
-                .font(UniTypography.body)
-                .foregroundStyle(UniColors.Input.text)
+                .font(font)
+                .foregroundStyle(isEnabled ? UniColors.Input.text : UniColors.Input.disabledText)
                 .modifier(LineLimitModifier(limit: lineLimit, reservesSpace: reservesSpace))
-                .padding(.horizontal, UniSpacing.m)
+                .padding(.horizontal, UniSpacing.mPlus)
                 .padding(.vertical, verticalPadding)
                 .padding(.trailing, (showsRevealToggle && isSecure) ? 40 : 0)
-                .frame(minHeight: minHeight)
-                .background(
-                    RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                        .fill(fill)
-                )
-                .multilineTextAlignment(.leading)
+                .frame(minHeight: resolvedMinHeight)
+                .background(inputChrome)
+                .tint(UniColors.Tint.accent)
+                .multilineTextAlignment(textAlignment)
                 // Single-line: Return key reads as "Done" and fires
                 // `.onSubmit { ... }` natively. `.submitLabel(.done)` is
                 // applied unconditionally — on multi-line the modifier
@@ -227,6 +233,7 @@ struct UniTextField: View {
                 .submitLabel(.done)
                 .onSubmit {
                     isFieldFocused = false
+                    onSubmitAction?()
                 }
                 // Multi-line: iOS inserts a newline char on Enter and
                 // does NOT fire `.onSubmit`. The Return key (or a pasted
@@ -254,6 +261,7 @@ struct UniTextField: View {
                     if newValue.contains(where: \.isNewline) {
                         text = newValue.filter { !$0.isNewline }
                         isFieldFocused = false
+                        onSubmitAction?()
                         return
                     }
                     // Fix #8 memoization — re-run the direction scan
@@ -314,6 +322,22 @@ struct UniTextField: View {
         .buttonStyle(.plain)
     }
 
+    private var inputChrome: some View {
+        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+            .fill(showsChrome ? (isEnabled ? fill : UniColors.Input.disabledBackground) : fill)
+            .overlay {
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .stroke(
+                        showsChrome && isFieldFocused ? UniColors.Input.focusedBorder : UniColors.Input.border,
+                        lineWidth: showsChrome && isFieldFocused ? 1 : 0
+                    )
+            }
+    }
+
+    private var resolvedMinHeight: CGFloat? {
+        minHeight ?? (showsChrome ? UniSpacing.xxxl : nil)
+    }
+
     // MARK: - Direction resolution
 
     /// Resolves without scanning: `.ambient` and `.forceLTR` are
@@ -321,6 +345,100 @@ struct UniTextField: View {
     /// `detectedDirection` (updated in `.onChange(of: text)` /
     /// `.onAppear`) rather than re-walking the buffer's scalars on
     /// every body evaluation.
+    private var resolvedDirection: LayoutDirection? {
+        switch directionPolicy {
+        case .ambient:
+            return nil
+        case .forceLTR:
+            return .leftToRight
+        case .automatic:
+            return detectedDirection ?? ambientDirection
+        }
+    }
+}
+
+// MARK: - Unified text area
+
+/// Multiline companion to `UniTextField` for paste-heavy inputs that must
+/// preserve line breaks, such as watch-only address lists. It shares the
+/// same color, radius, padding, focus, and direction behavior as the
+/// single-line primitive, but keeps interior pasted newlines intact.
+struct UniTextArea: View {
+    let placeholder: LocalizedStringKey
+    @Binding var text: String
+
+    var directionPolicy: TextDirection.Policy = .automatic
+    var font: Font = UniTypography.body
+    var minHeight: CGFloat = 140
+    var cornerRadius: CGFloat = UniRadius.textField
+    var fill: Color = UniColors.Input.background
+    var verticalPadding: CGFloat = UniSpacing.m
+    var horizontalPadding: CGFloat = UniSpacing.mPlus
+    var autocapitalization: TextInputAutocapitalization = .never
+    var disablesAutocorrection: Bool = true
+    var onReturnKey: ((String) -> Void)? = nil
+
+    @FocusState private var isFieldFocused: Bool
+    @Environment(\.layoutDirection) private var ambientDirection
+    @Environment(\.isEnabled) private var isEnabled
+    @State private var detectedDirection: LayoutDirection?
+
+    var body: some View {
+        ZStack(alignment: .topLeading) {
+            if text.isEmpty {
+                Text(placeholder)
+                    .font(font)
+                    .foregroundStyle(UniColors.Input.placeholder)
+                    .padding(.horizontal, horizontalPadding + UniSpacing.xxs)
+                    .padding(.vertical, verticalPadding + UniSpacing.xs)
+                    .allowsHitTesting(false)
+            }
+
+            TextEditor(text: $text)
+                .focused($isFieldFocused)
+                .textInputAutocapitalization(autocapitalization)
+                .autocorrectionDisabled(disablesAutocorrection)
+                .font(font)
+                .foregroundStyle(isEnabled ? UniColors.Input.text : UniColors.Input.disabledText)
+                .scrollContentBackground(.hidden)
+                .padding(.horizontal, horizontalPadding - UniSpacing.xxs)
+                .padding(.vertical, verticalPadding)
+                .frame(minHeight: minHeight)
+                .background(inputChrome)
+                .tint(UniColors.Tint.accent)
+                .multilineTextAlignment(.leading)
+                .onChange(of: text) { oldValue, newValue in
+                    if let onReturnKey,
+                       newValue.count == oldValue.count + 1,
+                       newValue.filter(\.isNewline).count == oldValue.filter(\.isNewline).count + 1 {
+                        text = oldValue
+                        isFieldFocused = false
+                        onReturnKey(oldValue)
+                        return
+                    }
+                    if directionPolicy == .automatic {
+                        detectedDirection = TextDirection.detect(in: newValue)
+                    }
+                }
+                .onAppear {
+                    if directionPolicy == .automatic {
+                        detectedDirection = TextDirection.detect(in: text)
+                    }
+                }
+        }
+        .modifier(DirectionOverride(direction: resolvedDirection))
+    }
+
+    private var inputChrome: some View {
+        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+            .fill(isEnabled ? fill : UniColors.Input.disabledBackground)
+            .overlay {
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .stroke(isFieldFocused ? UniColors.Input.focusedBorder : UniColors.Input.border,
+                            lineWidth: isFieldFocused ? 1 : 0)
+            }
+    }
+
     private var resolvedDirection: LayoutDirection? {
         switch directionPolicy {
         case .ambient:
