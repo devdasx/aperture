@@ -627,9 +627,9 @@ enum AboutInfo {
 // — visually consistent with the rest of Settings.
 struct PreferencesView: View {
     @AppStorage(HapticPreference.storageKey) private var hapticEnabled: Bool = HapticPreference.defaultValue
-    /// Show transaction-history amounts in the user's local currency
-    /// (default) vs. the native coin amount. Read by `ActivityRow` across
-    /// every activity surface (2026-06-18 user direction).
+    /// Show transaction-detail headline amounts in the user's local currency
+    /// (default) vs. the native coin amount. Activity rows now show both
+    /// native and local values at once.
     @AppStorage(TransactionAmountDisplayPreference.storageKey)
     private var txAmountsInLocalCurrency: Bool = TransactionAmountDisplayPreference.defaultValue
     // Privacy-mask / hide-balance-on-home / hide-small-balances rows were
@@ -645,9 +645,9 @@ struct PreferencesView: View {
                     .listRowBackground(UniColors.List.rowBackground)
             }
 
-            // Transaction-history amount display (2026-06-18). On (default)
-            // shows the local-currency value; off shows the native coin
-            // amount. Read by `ActivityRow` everywhere it renders.
+            // Transaction-detail amount display. Activity lists always show
+            // native + local value together, so this toggle now controls the
+            // transaction receipt hero ordering only.
             Section {
                 UniToggle(isOn: $txAmountsInLocalCurrency) {
                     HStack(spacing: UniSpacing.s) {
@@ -664,7 +664,7 @@ struct PreferencesView: View {
             } header: {
                 Text("Transactions")
             } footer: {
-                Text("Show transaction-history amounts in your local currency. Turn off to show the native coin amount instead.")
+                Text("Use your local currency as the main amount in transaction details. Activity lists show both native and local amounts.")
                     .font(UniTypography.footnote)
                     .foregroundStyle(UniColors.Text.tertiary)
                     .fixedSize(horizontal: false, vertical: true)
