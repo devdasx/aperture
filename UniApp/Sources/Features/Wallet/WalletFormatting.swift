@@ -239,7 +239,12 @@ enum WalletFormatting {
                 ? String.apertureLocalized("In a moment")
                 : String.apertureLocalized("A moment ago")
         }
-        return activityRelativeFormatter.localizedString(for: date, relativeTo: reference)
+        return sentenceCased(activityRelativeFormatter.localizedString(for: date, relativeTo: reference))
+    }
+
+    private static func sentenceCased(_ text: String) -> String {
+        guard let first = text.first else { return text }
+        return first.uppercased() + text.dropFirst()
     }
 
     // MARK: - Address
