@@ -276,9 +276,8 @@ struct MainTabView: View {
                         }
                     }
             } label: {
-                Label("Wallet", systemImage: "wallet.bifold")
-                    .labelStyle(.iconOnly)
-                    .symbolVariant(.none)
+                OutlineTabIcon(kind: .wallet)
+                    .accessibilityLabel(Text("Wallet"))
             }
 
             Tab("Activity", systemImage: "clock.arrow.circlepath", value: MainTab.activity) {
@@ -299,9 +298,8 @@ struct MainTabView: View {
             Tab(value: MainTab.settings) {
                 SettingsView()
             } label: {
-                Label("Settings", systemImage: "gearshape")
-                    .labelStyle(.iconOnly)
-                    .symbolVariant(.none)
+                OutlineTabIcon(kind: .settings)
+                    .accessibilityLabel(Text("Settings"))
             }
         }
     }
@@ -633,5 +631,117 @@ private struct MainSidebarRow: View {
                         .padding(4)
                 }
         }
+    }
+}
+
+private struct OutlineTabIcon: View {
+    enum Kind: String {
+        case wallet
+        case settings
+    }
+
+    let kind: Kind
+
+    @Environment(\.displayScale) private var displayScale
+    @Environment(\.colorScheme) private var colorScheme
+
+    @MainActor
+    private static let renderCache: NSCache<NSString, UIImage> = {
+        let cache = NSCache<NSString, UIImage>()
+        cache.countLimit = 16
+        return cache
+    }()
+
+    var body: some View {
+        Image(uiImage: rendered())
+            .renderingMode(.original)
+            .imageScale(.large)
+            .accessibilityHidden(true)
+    }
+
+    @MainActor
+    private func rendered() -> UIImage {
+        let key = "\(kind.rawValue)|\(displayScale)|\(colorScheme == .dark ? "dark" : "light")" as NSString
+        if let hit = Self.renderCache.object(forKey: key) {
+            return hit
+        }
+
+        let size = CGSize(width: 30, height: 30)
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = displayScale
+        format.opaque = false
+        let image = UIGraphicsImageRenderer(size: size, format: format).image { _ in
+            let stroke = colorScheme == .dark
+                ? UIColor(white: 0.96, alpha: 1)
+                : UIColor(white: 0.04, alpha: 1)
+            stroke.setStroke()
+            switch kind {
+            case .wallet:
+                drawWalletIcon()
+            case .settings:
+                drawGearIcon()
+            }
+        }.withRenderingMode(.alwaysOriginal)
+        Self.renderCache.setObject(image, forKey: key)
+        return image
+    }
+
+    private func drawWalletIcon() {
+        let body = UIBezierPath(
+            roundedRect: CGRect(x: 4.2, y: 8.8, width: 21.6, height: 15.1),
+            cornerRadius: 4.3
+        )
+        body.lineWidth = 2.25
+        body.lineJoinStyle = .round
+        body.stroke()
+
+        let back = UIBezierPath()
+        back.lineWidth = 2.25
+        back.lineCapStyle = .round
+        back.lineJoinStyle = .round
+        back.move(to: CGPoint(x: 7.1, y: 8.6))
+        back.addLine(to: CGPoint(x: 16.6, y: 5.5))
+        back.addCurve(
+            to: CGPoint(x: 21.9, y: 8.8),
+            controlPoint1: CGPoint(x: 19.2, y: 4.8),
+            controlPoint2: CGPoint(x: 21.2, y: 5.9)
+        )
+        back.stroke()
+
+        let pocket = UIBezierPath(
+            roundedRect: CGRect(x: 16.3, y: 13.2, width: 7.2, height: 5.8),
+            cornerRadius: 2.9
+        )
+        pocket.lineWidth = 2.05
+        pocket.stroke()
+    }
+
+    private func drawGearIcon() {
+        let center = CGPoint(x: 15, y: 15)
+        let outerRadius: CGFloat = 11.6
+        let innerRadius: CGFloat = 9.2
+        let path = UIBezierPath()
+        for index in 0..<16 {
+            let angle = (-CGFloat.pi / 2) + CGFloat(index) * (.pi * 2 / 16)
+            let radius = index.isMultiple(of: 2) ? outerRadius : innerRadius
+            let point = CGPoint(
+                x: center.x + cos(angle) * radius,
+                y: center.y + sin(angle) * radius
+            )
+            if index == 0 {
+                path.move(to: point)
+            } else {
+                path.addLine(to: point)
+            }
+        }
+        path.close()
+        path.lineWidth = 2.15
+        path.lineCapStyle = .round
+        path.lineJoinStyle = .round
+        path.stroke()
+
+        let inner = UIBezierPath(ovalIn: CGRect(x: 11.1, y: 11.1, width: 7.8, height: 7.8))
+        inner.lineWidth = 2.15
+        inner.stroke()
     }
 }
