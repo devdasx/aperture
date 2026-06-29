@@ -359,18 +359,14 @@ struct WalletActivityView: View {
         .scrollContentBackground(.hidden)
     }
 
-    /// Dimmed "Preparing PDF…" overlay shown while the document renders.
+    /// Native progress overlay shown while the PDF document renders.
     private var pdfGeneratingOverlay: some View {
         ZStack {
             UniColors.Background.primary.opacity(0.6).ignoresSafeArea()
-            VStack(spacing: UniSpacing.s) {
-                ProgressView()
-                Text("Preparing PDF…")
-                    .font(UniTypography.subheadline)
-                    .foregroundStyle(UniColors.Text.secondary)
-            }
-            .padding(UniSpacing.l)
-            .background(UniColors.Background.secondary, in: RoundedRectangle(cornerRadius: UniRadius.l))
+            ProgressView()
+                .progressViewStyle(.circular)
+                .controlSize(.large)
+                .tint(UniColors.Tint.accent)
         }
         .transition(.opacity)
     }
@@ -938,7 +934,6 @@ private struct ActivityPDFExportSheet: View {
                 dateSection
                 amountSection
                 searchSection
-                exportSection
             }
             .listStyle(.insetGrouped)
             .scrollContentBackground(.hidden)
@@ -948,6 +943,15 @@ private struct ActivityPDFExportSheet: View {
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button("Cancel") { dismiss() }.tint(UniColors.Button.text)
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Export") {
+                        onExport(inputs)
+                        dismiss()
+                    }
+                    .fontWeight(.semibold)
+                    .tint(UniColors.Button.text)
+                    .disabled(visibleCount <= 0)
                 }
             }
             .navigationDestination(for: ActivityPDFExportDestination.self) { destination in
@@ -992,16 +996,6 @@ private struct ActivityPDFExportSheet: View {
 
     private var visibleCount: Int {
         visibleTransactions(inputs)
-    }
-
-    private var exportTitle: String {
-        if visibleCount == 1 {
-            return String(localized: "Export 1 transaction")
-        }
-        return String(
-            format: String(localized: "Export %lld transactions"),
-            Int64(visibleCount)
-        )
     }
 
     private var previewText: String {
@@ -1210,29 +1204,6 @@ private struct ActivityPDFExportSheet: View {
             .listRowBackground(UniColors.List.rowBackground)
         } header: {
             Text("Search")
-        }
-    }
-
-    @ViewBuilder
-    private var exportSection: some View {
-        Section {
-            UniButton(
-                verbatim: exportTitle,
-                variant: .primary,
-                systemImage: "doc.richtext",
-                isEnabled: visibleCount > 0
-            ) {
-                onExport(inputs)
-                dismiss()
-            }
-            .listRowBackground(Color.clear)
-            .listRowSeparator(.hidden)
-            .listRowInsets(EdgeInsets(
-                top: UniSpacing.s,
-                leading: UniSpacing.m,
-                bottom: UniSpacing.s,
-                trailing: UniSpacing.m
-            ))
         }
     }
 
