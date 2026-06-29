@@ -33,6 +33,16 @@ enum WalletFormatting {
         return formatter
     }()
 
+    /// Friendlier relative-date formatter for activity rows. The wallet
+    /// header uses compact time ("2m ago"), but activity subtitles need
+    /// spoken labels ("1 minute ago") so the row reads naturally.
+    nonisolated(unsafe) private static let activityRelativeFormatter: RelativeDateTimeFormatter = {
+        let formatter = RelativeDateTimeFormatter()
+        formatter.unitsStyle = .full
+        formatter.dateTimeStyle = .named
+        return formatter
+    }()
+
     /// Absolute fallback date style (>1 week ago). Value type, reused.
     private static let absoluteDateStyle = Date.FormatStyle.dateTime.month(.abbreviated).day()
 
@@ -216,6 +226,20 @@ enum WalletFormatting {
             return date.formatted(absoluteDateStyle)
         }
         return relativeFormatter.localizedString(for: date, relativeTo: reference)
+    }
+
+    /// "A moment ago" / "1 minute ago" / "2 weeks ago" for activity
+    /// subtitles. Unlike `relativeTime`, this never falls back to an
+    /// absolute date because the activity list now carries fiat value on
+    /// the trailing subtitle and uses this line as the time anchor.
+    static func activityRelativeTime(_ date: Date, reference: Date = Date()) -> String {
+        let elapsed = reference.timeIntervalSince(date)
+        if abs(elapsed) < 60 {
+            return elapsed < 0
+                ? String.apertureLocalized("In a moment")
+                : String.apertureLocalized("A moment ago")
+        }
+        return activityRelativeFormatter.localizedString(for: date, relativeTo: reference)
     }
 
     // MARK: - Address

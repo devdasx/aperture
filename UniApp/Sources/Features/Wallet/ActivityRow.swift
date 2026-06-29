@@ -20,10 +20,8 @@ import UIKit
 ///   `Background.secondary` halo so it reads as a cutout in the mark,
 ///   not a floating sticker — the same composition iOS Messages uses
 ///   for presence dots.
-/// - Token symbol + truncated counterparty in middle.
-/// - Signed amount + relative time on trailing edge.
-/// - Pending status surfaces "Pending" under the time;
-///   failed surfaces "Failed" in `Status.errorForeground`.
+/// - Transaction verb + human relative time in the middle.
+/// - Native signed amount + local-currency value on the trailing edge.
 ///
 /// **Color discipline (Rule #4):**
 /// - Incoming badge glyph: `Status.successForeground` (green).
@@ -68,12 +66,6 @@ struct ActivityRow: View {
     /// for a test-mode event with no real hash. (2026-06-20 user direction.)
     var txHash: String = ""
 
-    /// Settings → Preferences toggle (default on): show the activity
-    /// amount in the user's local currency. Off shows the native token
-    /// amount. Read here so every activity surface honors the choice
-    /// without threading it through each call site.
-    @AppStorage(TransactionAmountDisplayPreference.storageKey)
-    private var showAmountsInFiat: Bool = TransactionAmountDisplayPreference.defaultValue
     @Environment(\.openURL) private var openURL
 
     var body: some View {
@@ -84,9 +76,9 @@ struct ActivityRow: View {
                 Text(title)
                     .font(UniTypography.bodyEmphasized)
                     .foregroundStyle(UniColors.Text.primary)
-                Text(verbatim: subtitle)
+                Text(verbatim: timeLine)
                     .font(UniTypography.footnote)
-                    .foregroundStyle(UniColors.Text.secondary)
+                    .foregroundStyle(timeColor)
                     .lineLimit(1)
                     .truncationMode(.tail)
             }
@@ -97,9 +89,13 @@ struct ActivityRow: View {
                 Text(signedAmount)
                     .font(UniTypography.monoBody)
                     .foregroundStyle(amountColor)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.75)
                 Text(secondaryLine)
                     .font(UniTypography.footnote)
                     .foregroundStyle(secondaryColor)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.75)
             }
         }
         .padding(.vertical, UniSpacing.xs)
@@ -239,33 +235,34 @@ struct ActivityRow: View {
         }
     }
 
-    /// Subtitle — the token's full + short name ("Avalanche · AVAX",
-    /// "USD Coin · USDC"), replacing the counterparty address (2026-06-18
-    /// user direction; the full address stays one tap away in the tx
-    /// detail). Falls back to the bare symbol when no full name is known.
-    private var subtitle: String {
-        if let name = ActivityTokenName.fullName(chain: chain, symbol: tokenSymbol),
-           name.caseInsensitiveCompare(tokenSymbol) != .orderedSame {
-            return "\(name) · \(tokenSymbol)"
+    /// Left subtitle — time only. Token/network details stay available in
+    /// the transaction detail screen; this row keeps the scan path focused
+    /// on what happened, when, and how much.
+    private var timeLine: String {
+        let relative = WalletFormatting.activityRelativeTime(occurredAt)
+        switch status {
+        case .confirmed:
+            return relative
+        case .pending:
+            return "\(String.apertureLocalized("Pending")) · \(relative)"
+        case .failed:
+            return "\(String.apertureLocalized("Failed")) · \(relative)"
         }
-        return tokenSymbol
     }
 
-    /// Signed amount — the local-currency value by default (Preferences
-    /// toggle), falling back to the native token amount when fiat display
-    /// is off OR no price is known for the symbol (Rule #16 — never guess
-    /// a value, show the real on-chain amount instead).
+    /// Signed amount — always the native on-chain amount. The local-currency
+    /// estimate now lives on the trailing subtitle so activity rows show both
+    /// values at once.
     private var signedAmount: String {
-        let sign: String
+        "\(amountSign)\(WalletFormatting.native(amount, decimals: 6)) \(tokenSymbol)"
+    }
+
+    private var amountSign: String {
         switch direction {
-        case .incoming: sign = "+"
-        case .outgoing: sign = "−" // U+2212 minus sign (renders better than ASCII hyphen)
-        case .internal: sign = ""
+        case .incoming: return "+"
+        case .outgoing: return "−" // U+2212 minus sign (renders better than ASCII hyphen)
+        case .internal: return ""
         }
-        if showAmountsInFiat, let fiat = fiatValue {
-            return "\(sign)\(WalletFormatting.fiat(fiat, currencyCode: fiatCurrencyCode))"
-        }
-        return "\(sign)\(WalletFormatting.native(amount, decimals: 6)) \(tokenSymbol)"
     }
 
     private var amountColor: Color {
@@ -278,17 +275,17 @@ struct ActivityRow: View {
     }
 
     private var secondaryLine: String {
-        switch status {
-        case .pending:
-            return String.apertureLocalized("Pending")
-        case .failed:
-            return String.apertureLocalized("Failed")
-        case .confirmed:
-            return WalletFormatting.relativeTime(occurredAt)
+        guard let fiatValue else {
+            return String.apertureLocalized("Price unavailable")
         }
+        return "\(amountSign)\(WalletFormatting.fiat(fiatValue, currencyCode: fiatCurrencyCode))"
     }
 
     private var secondaryColor: Color {
+        UniColors.Text.tertiary
+    }
+
+    private var timeColor: Color {
         switch status {
         case .pending:   return UniColors.Feedback.Warning.foreground
         case .failed:    return UniColors.Feedback.Error.foreground
@@ -365,31 +362,5 @@ enum ActivityFiat {
         guard !unique.isEmpty else { return [:] }
         let resolved = await TokenPricingEngine.shared.unitPrices(symbols: unique, currencyCode: "USD")
         return resolved.mapValues { $0.amount }
-    }
-}
-
-// MARK: - ActivityTokenName
-
-/// Resolves a `(chain, symbol)` to the token's full display name for the
-/// activity-row subtitle (2026-06-18). Native coins use the chain's name
-/// ("Avalanche"); registry tokens use their curated `CatalogAsset.name`
-/// ("USD Coin"). The `(chainRaw|SYMBOL) → name` index is built once from
-/// the static `AssetCatalog` — pure data, no DB context — so per-row
-/// lookup is O(1). Returns nil when nothing is known, so the row falls
-/// back to the bare symbol (Rule #16 — never invent a name).
-enum ActivityTokenName {
-    private static let nameByChainSymbol: [String: String] = {
-        var map: [String: String] = [:]
-        for asset in AssetCatalog.allAssets {
-            map["\(asset.chain.rawValue)|\(asset.symbol.uppercased())"] = asset.name
-        }
-        return map
-    }()
-
-    static func fullName(chain: SupportedChain, symbol: String) -> String? {
-        if symbol.caseInsensitiveCompare(chain.ticker) == .orderedSame {
-            return chain.displayName
-        }
-        return nameByChainSymbol["\(chain.rawValue)|\(symbol.uppercased())"]
     }
 }
