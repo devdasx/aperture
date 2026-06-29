@@ -26,7 +26,6 @@ struct ICloudRestoreView: View {
     @State private var listState: ListState = .loading
     @State private var selected: WalletBackupBlob?
     @State private var password = ""
-    @State private var showPassword = false
     @State private var isWorking = false
     @State private var passwordError = false
 
@@ -230,38 +229,15 @@ struct ICloudRestoreView: View {
                             .fixedSize(horizontal: false, vertical: true)
                     }
 
-                    HStack(spacing: UniSpacing.s) {
-                        Group {
-                            if showPassword {
-                                TextField("Password", text: $password)
-                            } else {
-                                SecureField("Password", text: $password)
-                            }
-                        }
-                        .textContentType(.password)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled(true)
-                        .font(UniTypography.body)
-                        .foregroundStyle(UniColors.Text.primary)
-                        .onChange(of: password) { _, _ in passwordError = false }
-
-                        Button {
-                            UniHapticEngine.shared.play(.selection)
-                            showPassword.toggle()
-                        } label: {
-                            Image(systemName: showPassword ? "eye.slash" : "eye")
-                                .font(.system(size: 16))
-                                .foregroundStyle(UniColors.Icon.tertiary)
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel(Text(showPassword ? "Hide password" : "Show password"))
-                    }
-                    .padding(.horizontal, UniSpacing.m)
-                    .padding(.vertical, UniSpacing.s + 2)
-                    .background(
-                        RoundedRectangle(cornerRadius: UniRadius.card, style: .continuous)
-                            .fill(UniColors.Background.secondary)
+                    UniTextField(
+                        placeholder: "Password",
+                        text: $password,
+                        directionPolicy: .forceLTR,
+                        isSecure: true,
+                        showsRevealToggle: true,
+                        contentType: .password
                     )
+                    .onChange(of: password) { _, _ in passwordError = false }
 
                     if passwordError {
                         Text("Incorrect password. Try again.")

@@ -105,6 +105,10 @@ enum UniRadius {
     /// capsule shape and don't consume this. Resolves to `s` (10).
     static let control: CGFloat = s
 
+    /// Filled input fields. Resolves to `xxl` (28) so text inputs read like
+    /// modern rounded iOS account/password fields instead of cards.
+    static let textField: CGFloat = xxl
+
     /// Smallest pill / tag. Resolves to `xs` (6).
     static let chip: CGFloat = xs
 

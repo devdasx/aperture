@@ -306,8 +306,6 @@ struct ICloudPasswordScreen: View {
 
     @State private var password = ""
     @State private var confirm = ""
-    @State private var showPassword = false
-    @State private var showConfirm = false
     @State private var wasStrong = false
 
     private var strength: PasswordStrength { PasswordStrength.estimate(password) }
@@ -340,17 +338,9 @@ struct ICloudPasswordScreen: View {
                     }
 
                     VStack(spacing: UniSpacing.s) {
-                        passwordField(
-                            placeholder: "Password",
-                            text: $password,
-                            isRevealed: $showPassword
-                        )
+                        passwordField(placeholder: "Password", text: $password)
                         StrengthMeter(strength: strength)
-                        passwordField(
-                            placeholder: "Confirm password",
-                            text: $confirm,
-                            isRevealed: $showConfirm
-                        )
+                        passwordField(placeholder: "Confirm password", text: $confirm)
                         if !confirm.isEmpty && !passwordsMatch {
                             Text("Passwords don't match.")
                                 .font(UniTypography.footnote)
@@ -394,39 +384,15 @@ struct ICloudPasswordScreen: View {
     @ViewBuilder
     private func passwordField(
         placeholder: LocalizedStringKey,
-        text: Binding<String>,
-        isRevealed: Binding<Bool>
+        text: Binding<String>
     ) -> some View {
-        HStack(spacing: UniSpacing.s) {
-            Group {
-                if isRevealed.wrappedValue {
-                    TextField(placeholder, text: text)
-                } else {
-                    SecureField(placeholder, text: text)
-                }
-            }
-            .textContentType(.newPassword)
-            .textInputAutocapitalization(.never)
-            .autocorrectionDisabled(true)
-            .font(UniTypography.body)
-            .foregroundStyle(UniColors.Text.primary)
-
-            Button {
-                UniHapticEngine.shared.play(.selection)
-                isRevealed.wrappedValue.toggle()
-            } label: {
-                Image(systemName: isRevealed.wrappedValue ? "eye.slash" : "eye")
-                    .font(.system(size: 16))
-                    .foregroundStyle(UniColors.Icon.tertiary)
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel(Text(isRevealed.wrappedValue ? "Hide password" : "Show password"))
-        }
-        .padding(.horizontal, UniSpacing.m)
-        .padding(.vertical, UniSpacing.s + 2)
-        .background(
-            RoundedRectangle(cornerRadius: UniRadius.card, style: .continuous)
-                .fill(UniColors.Background.secondary)
+        UniTextField(
+            placeholder: placeholder,
+            text: text,
+            directionPolicy: .forceLTR,
+            isSecure: true,
+            showsRevealToggle: true,
+            contentType: .newPassword
         )
     }
 }

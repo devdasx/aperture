@@ -1199,7 +1199,8 @@ private struct ActivityPDFExportSheet: View {
                 placeholder: "Address, asset, or hash",
                 text: $searchText,
                 fill: Color.clear,
-                verticalPadding: UniSpacing.xs
+                verticalPadding: UniSpacing.xs,
+                showsChrome: false
             )
             .listRowBackground(UniColors.List.rowBackground)
         } header: {
@@ -1288,6 +1289,7 @@ private struct ActivityPDFExportSheet: View {
                 text: text,
                 fill: Color.clear,
                 verticalPadding: UniSpacing.xs,
+                showsChrome: false,
                 keyboardType: .decimalPad
             )
         }

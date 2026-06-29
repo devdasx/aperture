@@ -528,6 +528,7 @@ private struct RecipientRow: View {
                     // own padding sets the grouped-cell height; the field
                     // still grows vertically to show a full pasted address.
                     verticalPadding: UniSpacing.s,
+                    showsChrome: false,
                     autocapitalization: .never,
                     focusBinding: focusBinding,
                     focusValue: entry.id

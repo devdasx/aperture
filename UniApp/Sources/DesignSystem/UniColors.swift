@@ -369,8 +369,11 @@ enum UniColors {
     // MARK: - Input
 
     enum Input {
-        static let background = Card.background
-        static let backgroundElevated = Card.elevated
+        /// Filled input surface. Kept independent from `Card` so text
+        /// fields stay visibly editable on top of both light cards and
+        /// dark grouped pages.
+        static let background = Color(uiColor: .secondarySystemFill)
+        static let backgroundElevated = Color(uiColor: .tertiarySystemFill)
         static let text = Text.primary
         static let placeholder = Text.placeholder
         static let icon = Icon.secondary

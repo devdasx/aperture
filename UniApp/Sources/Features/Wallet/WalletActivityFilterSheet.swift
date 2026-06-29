@@ -431,6 +431,7 @@ struct WalletActivityFilterSheet: View {
                 text: text,
                 fill: Color.clear,
                 verticalPadding: UniSpacing.xs,
+                showsChrome: false,
                 keyboardType: .decimalPad
             )
         }
