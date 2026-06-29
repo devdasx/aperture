@@ -12,12 +12,10 @@ import TipKit
 /// — so the wallet and the settings live at the same depth and feel
 /// like faces of the same calm surface, never one buried inside another.
 ///
-/// **2026-06-09 — Wallet tab is the active wallet's identity.** The
-/// Wallet `Tab`'s `label:` closure renders the active wallet's
-/// `WalletAvatar` at `.tabIcon` size (28pt circular brand-color
-/// surface + centered SF Symbol in white) — replacing the prior
-/// `Label("Wallet", systemImage: "wallet.pass.fill")`. The wallet's
-/// identity reads in the tab bar.
+/// **2026-06-29 — icon-only native tabs.** The compact tab bar uses SF
+/// Symbols only — no custom-drawn icons, no filled wallet/settings icons,
+/// and no visible tab titles. The wallet identity + switcher live on the
+/// wallet-home toolbar pill instead of the tab bar.
 ///
 /// **2026-06-09 (correction) — long-press switcher moved to the
 /// wallet-home toolbar pill.** The first cut of this view attached
@@ -259,11 +257,10 @@ struct MainTabView: View {
             // MARK: - Wallet (icon-only native tab — 2026-06-29)
             //
             // The wallet avatar moved OFF the bar (user direction): the Wallet
-            // tab is an outline wallet icon only. The wallet identity +
+            // tab is an outline SF Symbol only. The wallet identity +
             // switcher live on the wallet-home pill. The long-press wallet
             // menu still installs onto the `UITabBar` at index 0
-            // (compact width only). `LabelStyle.iconOnly` removes visible
-            // tab text while preserving the accessibility label.
+            // (compact width only).
             Tab(value: MainTab.wallet) {
                 WalletHomeView()
                     .background(alignment: .bottom) {
@@ -276,30 +273,32 @@ struct MainTabView: View {
                         }
                     }
             } label: {
-                OutlineTabIcon(kind: .wallet)
-                    .accessibilityLabel(Text("Wallet"))
+                tabLabel(.wallet)
             }
 
-            Tab("Activity", systemImage: "clock.arrow.circlepath", value: MainTab.activity) {
+            Tab(value: MainTab.activity) {
                 NavigationStack {
                     WalletActivityView()
                         .navigationDestination(for: WalletHomeDestination.self) { destination in
                             walletDestination(destination)
                         }
                 }
+            } label: {
+                tabLabel(.activity)
             }
 
-            Tab("Markets", systemImage: "chart.line.uptrend.xyaxis", value: MainTab.markets) {
+            Tab(value: MainTab.markets) {
                 NavigationStack {
                     MarketsView()
                 }
+            } label: {
+                tabLabel(.markets)
             }
 
             Tab(value: MainTab.settings) {
                 SettingsView()
             } label: {
-                OutlineTabIcon(kind: .settings)
-                    .accessibilityLabel(Text("Settings"))
+                tabLabel(.settings)
             }
         }
     }
@@ -347,63 +346,19 @@ struct MainTabView: View {
         .toolbar(removing: .sidebarToggle)
     }
 
-    // MARK: - Wallet tab label (avatar only — no "Wallet" text)
-    //
-    // iOS 26's `Tab(value:content:label:)` initializer accepts an
-    // arbitrary `label:` closure. The Wallet tab is the only one
-    // that ships WITHOUT visible text — the per-wallet avatar IS
-    // the identity, and adding "Wallet" underneath would compete
-    // with the wallet name shown in the toolbar pill above. The
-    // other tabs keep their
-    // `Label(_:systemImage:)` text by design — they are generic
-    // sections, not personalized identities.
-    //
-    // `.accessibilityLabel("Wallet")` preserves VoiceOver — the
-    // screenreader announces "Wallet, Tab" even though the visible
-    // label is image-only.
-    /// Stable fallback spec for the no-wallet case (clean launch
-    /// before `ensureActiveWalletSet()` lands one). Hoisted to a
-    /// `static let` so every body pass hands `WalletAvatarTabImage`
-    /// the *same* `Hashable` value instead of constructing a fresh
-    /// `auto(name:)` spec inline — stable inputs let the tab image's
-    /// internal cache key actually hit.
-    private static let fallbackAvatarSpec = WalletAvatarSpec.auto(name: "Wallet")
+    // MARK: - Compact tab label
 
-    @ViewBuilder
-    private var walletTabLabel: some View {
-        // 2026-06-09 — gradient-disc avatar per the design handoff.
-        // `WalletRecord.avatarSpec` hydrates the persisted columns
-        // through `WalletAvatarSpec.hydrate(...)` with auto(name)
-        // fallback so the disc is never blank even pre-migration.
-        // When there's no wallet yet (clean launch before
-        // `ensureActiveWalletSet()` lands one), we render the
-        // hoisted `fallbackAvatarSpec` above.
-        //
-        // **2026-06-09 v2 (Thuglife `8588`) — `WalletAvatarTabImage`,
-        // not the raw `WalletAvatar`.** iOS UITabBar renders the icon
-        // slot's view as a template by default — alpha mask kept,
-        // colors replaced with the unselected-tab gray (or the
-        // selected-tab tint). The user observed this live: their
-        // green disc + W rendered correctly in the toolbar pill but
-        // appeared as a gray W in the bottom tab. The wrapper snapshots
-        // the SwiftUI avatar to a `UIImage` marked `.alwaysOriginal`,
-        // which opts the icon out of template rendering and preserves
-        // the gradient + sheen + edge + badge as drawn. See
-        // `WalletAvatarTabImage.swift` for the rationale.
-        let spec: WalletAvatarSpec = activeWallet?.avatarSpec
-            ?? Self.fallbackAvatarSpec
-        // 2026-06-09 v3 — bumped from 28pt → 36pt per user request.
-        // The disc carries the wallet's identity; at 28pt it read as
-        // a small dot next to the other tabs' SF Symbols. 36pt gives
-        // the gradient the room to do its job without breaking out
-        // of iOS's tab-icon envelope.
-        // Pass a source size larger than the system envelope so the
-        // wrapper's `ImageRenderer` produces a high-resolution bitmap
-        // even after iOS clamps it. `.imageScale(.large)` inside
-        // `WalletAvatarTabImage`'s body nudges the displayed envelope
-        // up by ~15% — the only public-API knob iOS 26 gives us.
-        WalletAvatarTabImage(spec: spec, size: 60, walletId: activeWallet?.id)
-            .accessibilityLabel(Text("Wallet"))
+    private func tabLabel(_ tab: MainTab) -> some View {
+        Label {
+            Text(tab.title)
+        } icon: {
+            Image(systemName: tab.systemImage)
+                .symbolVariant(.none)
+                .symbolRenderingMode(.monochrome)
+                .imageScale(.large)
+        }
+        .labelStyle(.iconOnly)
+        .accessibilityLabel(Text(tab.title))
     }
 
     // MARK: - Context menu builder
@@ -631,117 +586,5 @@ private struct MainSidebarRow: View {
                         .padding(4)
                 }
         }
-    }
-}
-
-private struct OutlineTabIcon: View {
-    enum Kind: String {
-        case wallet
-        case settings
-    }
-
-    let kind: Kind
-
-    @Environment(\.displayScale) private var displayScale
-    @Environment(\.colorScheme) private var colorScheme
-
-    @MainActor
-    private static let renderCache: NSCache<NSString, UIImage> = {
-        let cache = NSCache<NSString, UIImage>()
-        cache.countLimit = 16
-        return cache
-    }()
-
-    var body: some View {
-        Image(uiImage: rendered())
-            .renderingMode(.original)
-            .imageScale(.large)
-            .accessibilityHidden(true)
-    }
-
-    @MainActor
-    private func rendered() -> UIImage {
-        let key = "\(kind.rawValue)|\(displayScale)|\(colorScheme == .dark ? "dark" : "light")" as NSString
-        if let hit = Self.renderCache.object(forKey: key) {
-            return hit
-        }
-
-        let size = CGSize(width: 30, height: 30)
-        let format = UIGraphicsImageRendererFormat()
-        format.scale = displayScale
-        format.opaque = false
-        let image = UIGraphicsImageRenderer(size: size, format: format).image { _ in
-            let stroke = colorScheme == .dark
-                ? UIColor(white: 0.96, alpha: 1)
-                : UIColor(white: 0.04, alpha: 1)
-            stroke.setStroke()
-            switch kind {
-            case .wallet:
-                drawWalletIcon()
-            case .settings:
-                drawGearIcon()
-            }
-        }.withRenderingMode(.alwaysOriginal)
-        Self.renderCache.setObject(image, forKey: key)
-        return image
-    }
-
-    private func drawWalletIcon() {
-        let body = UIBezierPath(
-            roundedRect: CGRect(x: 4.2, y: 8.8, width: 21.6, height: 15.1),
-            cornerRadius: 4.3
-        )
-        body.lineWidth = 2.25
-        body.lineJoinStyle = .round
-        body.stroke()
-
-        let back = UIBezierPath()
-        back.lineWidth = 2.25
-        back.lineCapStyle = .round
-        back.lineJoinStyle = .round
-        back.move(to: CGPoint(x: 7.1, y: 8.6))
-        back.addLine(to: CGPoint(x: 16.6, y: 5.5))
-        back.addCurve(
-            to: CGPoint(x: 21.9, y: 8.8),
-            controlPoint1: CGPoint(x: 19.2, y: 4.8),
-            controlPoint2: CGPoint(x: 21.2, y: 5.9)
-        )
-        back.stroke()
-
-        let pocket = UIBezierPath(
-            roundedRect: CGRect(x: 16.3, y: 13.2, width: 7.2, height: 5.8),
-            cornerRadius: 2.9
-        )
-        pocket.lineWidth = 2.05
-        pocket.stroke()
-    }
-
-    private func drawGearIcon() {
-        let center = CGPoint(x: 15, y: 15)
-        let outerRadius: CGFloat = 11.6
-        let innerRadius: CGFloat = 9.2
-        let path = UIBezierPath()
-        for index in 0..<16 {
-            let angle = (-CGFloat.pi / 2) + CGFloat(index) * (.pi * 2 / 16)
-            let radius = index.isMultiple(of: 2) ? outerRadius : innerRadius
-            let point = CGPoint(
-                x: center.x + cos(angle) * radius,
-                y: center.y + sin(angle) * radius
-            )
-            if index == 0 {
-                path.move(to: point)
-            } else {
-                path.addLine(to: point)
-            }
-        }
-        path.close()
-        path.lineWidth = 2.15
-        path.lineCapStyle = .round
-        path.lineJoinStyle = .round
-        path.stroke()
-
-        let inner = UIBezierPath(ovalIn: CGRect(x: 11.1, y: 11.1, width: 7.8, height: 7.8))
-        inner.lineWidth = 2.15
-        inner.stroke()
     }
 }
