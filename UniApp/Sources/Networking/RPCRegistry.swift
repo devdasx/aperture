@@ -408,14 +408,16 @@ enum RPCRegistry {
         ]
     }
     private static func stellarEndpoints() -> [RPCEndpoint?] {
-        // **2026-06-27 — live-probe fix.** SDF Horizon stays primary.
-        // The old LOBSTR fallback timed out on DNS from this environment,
-        // while Ankr's Horizon proxy and Tatum's gateway both returned
-        // HTTP 200 for `/fee_stats` without an API key.
+        // **2026-06-29 — Horizon failover refresh.** Keep SDF Horizon as
+        // fallback, not primary. LOBSTR is a public Horizon provider, and
+        // Ankr's Horizon proxy live-probed fastest for `/fee_stats`; SDF
+        // remains the final canonical fallback before the scanner's direct
+        // last-resort Horizon call.
         [
-            rs("xlm-horizon", "https://horizon.stellar.org",                  .stellar, "stellar-foundation", .moderate20, 0),
-            rs("xlm-ankr",    "https://rpc.ankr.com/http/stellar_horizon",    .stellar, "ankr",               .moderate10, 1),
+            rs("xlm-ankr",    "https://rpc.ankr.com/http/stellar_horizon",    .stellar, "ankr",               .moderate10, 0),
+            rs("xlm-lobstr",  "https://horizon.stellar.lobstr.co",           .stellar, "lobstr",             .moderate10, 1),
             rs("xlm-tatum",   "https://stellar-mainnet.gateway.tatum.io",     .stellar, "tatum",              .moderate10, 2),
+            rs("xlm-horizon", "https://horizon.stellar.org",                  .stellar, "stellar-foundation", .moderate20, 3),
         ]
     }
     private static func nearEndpoints() -> [RPCEndpoint?] {
