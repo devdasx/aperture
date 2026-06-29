@@ -449,7 +449,7 @@ enum ActivityPDFRenderer {
                 in: CGRect(x: column.x, y: top, width: column.width, height: 13),
                 font: .systemFont(ofSize: 10, weight: .bold),
                 color: faint,
-                alignment: column.trailing ? .right : .left,
+                alignment: .center,
                 kern: 0.8
             )
         }
@@ -483,18 +483,30 @@ enum ActivityPDFRenderer {
     ) {
         drawText(
             row.dateText,
-            in: CGRect(x: columns[0].x, y: y + 9, width: columns[0].width - 8, height: 15),
+            in: CGRect(x: columns[0].x, y: y + 9, width: columns[0].width, height: 15),
             font: .monospacedDigitSystemFont(ofSize: 12.5, weight: .semibold),
-            color: ink
+            color: ink,
+            alignment: .center
         )
         drawText(
             row.timeText,
-            in: CGRect(x: columns[0].x, y: y + 25, width: columns[0].width - 8, height: 13),
+            in: CGRect(x: columns[0].x, y: y + 25, width: columns[0].width, height: 13),
             font: .monospacedDigitSystemFont(ofSize: 11, weight: .regular),
-            color: faint
+            color: faint,
+            alignment: .center
         )
 
-        let coinRect = CGRect(x: columns[1].x, y: y + 9, width: 30, height: 30)
+        let assetColumn = columns[1]
+        let assetTextWidth = min(
+            max(
+                textWidth(row.assetSymbol, font: .systemFont(ofSize: 12.5, weight: .semibold)),
+                textWidth(row.networkName, font: .systemFont(ofSize: 11, weight: .regular))
+            ),
+            assetColumn.width - 41
+        )
+        let assetGroupWidth = min(41 + assetTextWidth, assetColumn.width)
+        let assetX = centeredX(width: assetGroupWidth, in: assetColumn)
+        let coinRect = CGRect(x: assetX, y: y + 9, width: 30, height: 30)
         let key = ActivityPDFIconKey(chain: row.chain, symbol: row.assetSymbol, contract: row.tokenContract)
         if let image = assets.coinImages[key] {
             drawCircleImage(image, in: coinRect)
@@ -509,14 +521,14 @@ enum ActivityPDFRenderer {
 
         drawText(
             row.assetSymbol,
-            in: CGRect(x: columns[1].x + 41, y: y + 8, width: columns[1].width - 45, height: 16),
+            in: CGRect(x: assetX + 41, y: y + 8, width: assetGroupWidth - 41, height: 16),
             font: .systemFont(ofSize: 12.5, weight: .semibold),
             color: ink,
             kern: -0.125
         )
         drawText(
             row.networkName,
-            in: CGRect(x: columns[1].x + 41, y: y + 25, width: columns[1].width - 45, height: 13),
+            in: CGRect(x: assetX + 41, y: y + 25, width: assetGroupWidth - 41, height: 13),
             font: .systemFont(ofSize: 11, weight: .regular),
             color: sub
         )
@@ -528,7 +540,7 @@ enum ActivityPDFRenderer {
             in: CGRect(x: columns[4].x, y: y + 17, width: columns[4].width, height: 15),
             font: .monospacedDigitSystemFont(ofSize: 12.5, weight: .medium),
             color: inkSoft,
-            alignment: .right
+            alignment: .center
         )
         drawStatus(row, at: y, height: height)
     }
@@ -540,13 +552,18 @@ enum ActivityPDFRenderer {
         case .sent: color = ink
         case .internalTransfer: color = sub
         }
-        let iconRect = CGRect(x: columns[2].x, y: y + 16, width: 17, height: 17)
+        let column = columns[2]
+        let typeFont = UIFont.systemFont(ofSize: 12.5, weight: .medium)
+        let typeLabelWidth = min(textWidth(row.typeText, font: typeFont), column.width - 24)
+        let groupWidth = min(24 + typeLabelWidth, column.width)
+        let groupX = centeredX(width: groupWidth, in: column)
+        let iconRect = CGRect(x: groupX, y: y + 16, width: 17, height: 17)
         fillOval(iconRect, color: chip)
         drawTransferIcon(row.transferType, in: iconRect.insetBy(dx: 3, dy: 3), color: color)
         drawText(
             row.typeText,
-            in: CGRect(x: columns[2].x + 24, y: y + 17, width: columns[2].width - 26, height: 15),
-            font: .systemFont(ofSize: 12.5, weight: .medium),
+            in: CGRect(x: groupX + 24, y: y + 17, width: groupWidth - 24, height: 15),
+            font: typeFont,
             color: inkSoft
         )
     }
@@ -576,7 +593,7 @@ enum ActivityPDFRenderer {
             ], range: unitRange)
         }
         let paragraph = NSMutableParagraphStyle()
-        paragraph.alignment = .right
+        paragraph.alignment = .center
         paragraph.lineBreakMode = .byTruncatingMiddle
         attributed.addAttribute(.paragraphStyle, value: paragraph, range: NSRange(location: 0, length: attributed.length))
         attributed.draw(in: CGRect(x: column.x, y: y + 17, width: column.width, height: 15))
@@ -598,7 +615,7 @@ enum ActivityPDFRenderer {
         }
         let font = UIFont.systemFont(ofSize: 11, weight: .semibold)
         let width = min(max(textWidth(row.statusText, font: font) + 33, 70), columns[5].width)
-        let rect = CGRect(x: columns[5].x + columns[5].width - width, y: y + 13.5, width: width, height: 22)
+        let rect = CGRect(x: centeredX(width: width, in: columns[5]), y: y + 13.5, width: width, height: 22)
         fillRounded(rect, radius: 11, color: fillColor)
         fillOval(CGRect(x: rect.minX + 9, y: rect.midY - 2.5, width: 5, height: 5), color: color)
         drawText(
@@ -607,6 +624,10 @@ enum ActivityPDFRenderer {
             font: font,
             color: color
         )
+    }
+
+    private static func centeredX(width: CGFloat, in column: Column) -> CGFloat {
+        column.x + max(0, (column.width - width) / 2)
     }
 
     // MARK: - Legal / footer
