@@ -1,448 +1,782 @@
 import UIKit
 
-/// **Modern PDF export of the Activity list.** Renders the user's
-/// filtered transactions into a branded, multi-page A-list statement —
-/// app logo, name, an App Store download QR, the active filter summary,
-/// and a clean zebra-striped table. Every string is supplied by the
-/// caller already localized, so the document honors the user's language
-/// (RTL included via the per-row alignment the caller picks).
-///
-/// **Why a hand-rolled `UIGraphicsPDFRenderer` (not PDFKit authoring).**
-/// PDFKit reads/annotates existing PDFs; it doesn't lay out original
-/// content. The system path for *creating* a vector PDF from scratch is
-/// `UIGraphicsPDFRenderer.pdfData { ctx in ctx.beginPage(); … }`, drawing
-/// each page with Core Graphics + `NSAttributedString`. That is exactly
-/// what this type does — verified against Apple's UIGraphicsPDFRenderer
-/// reference (init(bounds:format:), pdfData(_:), beginPage(),
-/// `context.cgContext`).
-///
-/// **Pagination.** Page 1 carries the full header (logo + QR + meta +
-/// filter summary); continuation pages start straight into the table.
-/// Every page repeats the column header and a footer (page X of Y).
-/// `totalPages(for:)` precomputes Y so the footer is honest before the
-/// first page is drawn.
+// MARK: - Value model
 
-// MARK: - Value model (one snapshot row)
-
-/// One table row, fully pre-formatted by the caller (dates localized,
-/// amounts/fiat rendered, status mapped). The renderer draws strings —
-/// it does no formatting, pricing, or locale work itself.
 struct ActivityPDFRow {
+    let occurredAt: Date
     let dateText: String
+    let timeText: String
     let assetSymbol: String
     let networkName: String
+    let chain: SupportedChain
+    let tokenContract: String?
     let typeText: String
-    /// Drives the amount tint — incoming reads positive (green).
-    let isIncoming: Bool
+    let transferType: TransferType
     let amountText: String
+    let unitText: String
     let fiatText: String
+    let fiatValue: Decimal?
     let statusText: String
     let status: Status
 
-    enum Status { case confirmed, pending, failed }
+    enum TransferType {
+        case received
+        case sent
+        case internalTransfer
+    }
+
+    enum Status {
+        case confirmed
+        case pending
+        case failed
+    }
 }
 
-/// Everything the document needs besides the rows. Built (localized) by
-/// the view; the renderer never reaches for a bundle string itself.
+struct ActivityPDFChainSummary {
+    let chain: SupportedChain
+    let count: Int
+}
+
 struct ActivityPDFDocument {
     let appName: String
     let title: String
     let walletName: String
     let generatedText: String
-    let summaryText: String
-    /// Active-filter descriptions, one per line. Empty = no filter band.
-    let filterLines: [String]
+    let transactionCount: Int
+    let assetCount: Int
+    let confirmedCount: Int
+    let failedCount: Int
+    let internalCount: Int
+    let receivedFiatText: String
+    let sentFiatText: String
+    let netFiatText: String
+    let netIsPositive: Bool
+    let periodText: String
+    let chainSummaries: [ActivityPDFChainSummary]
     let downloadCaption: String
     let appStoreURLText: String
-    let footerText: String
-    /// `String(format:)` template for "Page %1$lld of %2$lld" (localized).
+    let footerSiteText: String
     let pageLabelFormat: String
     let emptyText: String
-
-    // Column headers (localized).
-    let colDate: String
-    let colAsset: String
-    let colType: String
-    let colAmount: String
-    let colValue: String
-    let colStatus: String
-
-    /// `true` when the document language is right-to-left, so the
-    /// renderer mirrors column alignment.
+    let legalTitle: String
+    let legalText: String
     let isRTL: Bool
+}
+
+struct ActivityPDFIconKey: Hashable {
+    let chain: SupportedChain
+    let symbol: String
+    let contract: String?
+
+    init(chain: SupportedChain, symbol: String, contract: String?) {
+        self.chain = chain
+        self.symbol = symbol.uppercased()
+        let trimmed = contract?.trimmingCharacters(in: .whitespacesAndNewlines)
+        self.contract = trimmed?.isEmpty == false ? trimmed?.lowercased() : nil
+    }
+}
+
+struct ActivityPDFRenderAssets {
+    let logo: UIImage?
+    let qr: UIImage?
+    let coinImages: [ActivityPDFIconKey: UIImage]
+    let networkImages: [SupportedChain: UIImage]
 }
 
 // MARK: - Renderer
 
 enum ActivityPDFRenderer {
+    private static let pageSize = CGSize(width: 794, height: 1123)
+    private static let topPadding: CGFloat = 60
+    private static let sidePadding: CGFloat = 58
+    private static let bottomPadding: CGFloat = 56
+    private static let firstPageRows = 9
+    private static let continuationRows = 16
 
-    // US Letter, portrait. The most universally printable page size.
-    private static let pageSize = CGSize(width: 612, height: 792)
-    private static let margin: CGFloat = 44
-    private static let rowHeight: CGFloat = 22
-    private static let footerHeight: CGFloat = 26
-    private static let columnHeaderHeight: CGFloat = 20
+    private static var contentWidth: CGFloat { pageSize.width - sidePadding * 2 }
+    private static var contentRight: CGFloat { pageSize.width - sidePadding }
+    private static var footerRuleY: CGFloat { pageSize.height - bottomPadding - 30 }
 
-    private static var contentWidth: CGFloat { pageSize.width - margin * 2 }
-    private static var pageBottom: CGFloat { pageSize.height - margin - footerHeight }
-
-    // Document palette — neutral ink on white (prints cleanly), with a
-    // single brand accent pulled from the asset catalog when available.
-    private static let ink = UIColor(white: 0.11, alpha: 1)
-    private static let secondary = UIColor(white: 0.40, alpha: 1)
-    private static let tertiary = UIColor(white: 0.56, alpha: 1)
-    private static let hairline = UIColor(white: 0.86, alpha: 1)
-    private static let zebra = UIColor(white: 0.968, alpha: 1)
-    private static let headerFill = UIColor(white: 0.945, alpha: 1)
-    private static let positive = UIColor(red: 0.13, green: 0.52, blue: 0.32, alpha: 1)
-    private static var accent: UIColor { UIColor(named: "BrandMark") ?? UIColor(red: 0.36, green: 0.34, blue: 0.86, alpha: 1) }
-    private static let pending = UIColor(red: 0.78, green: 0.55, blue: 0.0, alpha: 1)
-    private static let failed = UIColor(red: 0.78, green: 0.20, blue: 0.20, alpha: 1)
-
-    /// Column x-origins + widths, left to right (LTR). Sum == contentWidth.
-    private struct Columns {
-        static let date: CGFloat = 96
-        static let asset: CGFloat = 116
-        static let type: CGFloat = 64
-        static let amount: CGFloat = 104
-        static let value: CGFloat = 82
-        static let status: CGFloat = 62  // 96+116+64+104+82+62 = 524 = contentWidth
-    }
-
-    /// Render the full document to PDF `Data`.
-    ///
-    /// - Parameters:
-    ///   - rows: the filtered, sorted rows (already snapshotted).
-    ///   - document: localized labels + metadata.
-    ///   - logo: the app mark (LogoCircle); skipped if nil.
-    ///   - qr: the App Store download QR; skipped if nil.
-    static func render(
-        rows: [ActivityPDFRow],
-        document: ActivityPDFDocument,
-        logo: UIImage?,
-        qr: UIImage?
-    ) -> Data {
-        let format = UIGraphicsPDFRendererFormat()
-        format.documentInfo = [
-            kCGPDFContextTitle as String: "\(document.appName) — \(document.title)",
-            kCGPDFContextCreator as String: document.appName
-        ]
-        let bounds = CGRect(origin: .zero, size: pageSize)
-        let renderer = UIGraphicsPDFRenderer(bounds: bounds, format: format)
-
-        let pages = max(1, totalPages(for: rows.count, hasFilterLines: !document.filterLines.isEmpty))
-
-        return renderer.pdfData { ctx in
-            var pageIndex = 0
-            var rowCursor = 0
-
-            // Page 1 — full header.
-            pageIndex += 1
-            ctx.beginPage()
-            var y = drawHeader(document: document, logo: logo, qr: qr)
-            y = drawColumnHeader(document: document, at: y)
-            rowCursor = drawRows(rows, from: rowCursor, startY: y, document: document)
-            drawFooter(document: document, page: pageIndex, of: pages)
-
-            // Continuation pages — table only.
-            while rowCursor < rows.count {
-                pageIndex += 1
-                ctx.beginPage()
-                var cy = margin
-                cy = drawColumnHeader(document: document, at: cy)
-                rowCursor = drawRows(rows, from: rowCursor, startY: cy, document: document)
-                drawFooter(document: document, page: pageIndex, of: pages)
-            }
-
-            // Zero-row safety: a valid one-page document still says so.
-            if rows.isEmpty {
-                drawEmptyState(document: document, at: y)
-            }
-        }
-    }
-
-    // MARK: - Pagination math
-
-    /// Pages required for `rowCount`, given page 1 loses height to the
-    /// header (and optional filter band) while continuation pages don't.
-    static func totalPages(for rowCount: Int, hasFilterLines: Bool) -> Int {
-        guard rowCount > 0 else { return 1 }
-        let headerHeight = estimatedHeaderHeight(hasFilterLines: hasFilterLines)
-        let page1Top = margin + headerHeight + columnHeaderHeight
-        let contTop = margin + columnHeaderHeight
-        let rowsPage1 = max(1, Int((pageBottom - page1Top) / rowHeight))
-        let rowsCont = max(1, Int((pageBottom - contTop) / rowHeight))
-        if rowCount <= rowsPage1 { return 1 }
-        return 1 + Int(ceil(Double(rowCount - rowsPage1) / Double(rowsCont)))
-    }
-
-    private static func estimatedHeaderHeight(hasFilterLines: Bool) -> CGFloat {
-        // MUST equal exactly what `drawHeader` advances `y` by (its
-        // returned value minus `margin`), or the precomputed "of Y" page
-        // count drifts from the page breaks the draw loop actually takes.
-        // Breakdown, matching drawHeader step-for-step:
-        //   logo/QR row + gap ............ max(36,56) + 10 = 66
-        //   accent rule + gap ............ 10
-        //   wallet name line ............. 16
-        //   generated / summary line ..... 18
-        //   tail (filter band 30 + gap 8) = 38, else 4
-        var height: CGFloat = 66 + 10 + 16 + 18 // = 110
-        height += hasFilterLines ? 38 : 4
-        return height
-    }
-
-    // MARK: - Header
-
-    /// Draws the page-1 header and returns the y where the table can begin.
-    private static func drawHeader(
-        document: ActivityPDFDocument,
-        logo: UIImage?,
-        qr: UIImage?
-    ) -> CGFloat {
-        let left = margin
-        let right = pageSize.width - margin
-        var y = margin
-
-        // Logo (left).
-        let logoSize: CGFloat = 36
-        if let logo {
-            logo.draw(in: CGRect(x: left, y: y, width: logoSize, height: logoSize))
-        }
-
-        // App name + title (left, beside the logo).
-        let textX = logo == nil ? left : left + logoSize + 10
-        draw(document.appName, at: CGPoint(x: textX, y: y + 1),
-             font: .systemFont(ofSize: 16, weight: .semibold), color: ink)
-        draw(document.title, at: CGPoint(x: textX, y: y + 20),
-             font: .systemFont(ofSize: 11, weight: .regular), color: secondary)
-
-        // QR (right) + caption beneath.
-        let qrSize: CGFloat = 56
-        if let qr {
-            let qrX = right - qrSize
-            qr.draw(in: CGRect(x: qrX, y: y, width: qrSize, height: qrSize))
-            drawCentered(document.downloadCaption,
-                         in: CGRect(x: right - 130, y: y + qrSize + 2, width: 130, height: 12),
-                         font: .systemFont(ofSize: 7, weight: .medium), color: tertiary)
-            drawCentered(document.appStoreURLText,
-                         in: CGRect(x: right - 130, y: y + qrSize + 13, width: 130, height: 12),
-                         font: .systemFont(ofSize: 6.5, weight: .regular), color: tertiary)
-        }
-
-        y += max(logoSize, qrSize) + 10
-
-        // Accent rule under the header.
-        fill(CGRect(x: left, y: y, width: contentWidth, height: 1.5), color: accent)
-        y += 10
-
-        // Meta block — wallet, generated, summary.
-        draw(document.walletName, at: CGPoint(x: left, y: y),
-             font: .systemFont(ofSize: 12, weight: .semibold), color: ink)
-        y += 16
-        draw(document.generatedText, at: CGPoint(x: left, y: y),
-             font: .systemFont(ofSize: 9.5, weight: .regular), color: secondary)
-        draw(document.summaryText, at: CGPoint(x: left, y: y),
-             font: .systemFont(ofSize: 9.5, weight: .semibold), color: ink,
-             rightAlignedIn: CGRect(x: left, y: y, width: contentWidth, height: 12))
-        y += 18
-
-        // Filter summary band.
-        if !document.filterLines.isEmpty {
-            let bandText = document.filterLines.joined(separator: "   •   ")
-            let bandRect = CGRect(x: left, y: y, width: contentWidth, height: 30)
-            fillRounded(bandRect, radius: 6, color: headerFill)
-            draw(bandText,
-                 in: bandRect.insetBy(dx: 10, dy: 8),
-                 font: .systemFont(ofSize: 8.5, weight: .regular), color: secondary)
-            y += 30 + 8
-        } else {
-            y += 4
-        }
-
-        return y
-    }
-
-    // MARK: - Column header
-
-    private static func drawColumnHeader(document: ActivityPDFDocument, at top: CGFloat) -> CGFloat {
-        let rect = CGRect(x: margin, y: top, width: contentWidth, height: columnHeaderHeight)
-        fill(rect, color: headerFill)
-        let labels = orderedColumns(document)
-        let font = UIFont.systemFont(ofSize: 8, weight: .semibold)
-        for col in labels {
-            let cell = col.frame(top: top, height: columnHeaderHeight).insetBy(dx: 5, dy: 0)
-            drawVerticallyCentered(col.title.uppercased(), in: cell, font: font, color: tertiary,
-                                   alignment: col.alignment(isRTL: document.isRTL))
-        }
-        return top + columnHeaderHeight
-    }
-
-    // MARK: - Rows
-
-    /// Draws rows starting at `from`, stopping when the page is full.
-    /// Returns the next un-drawn row index.
-    private static func drawRows(
-        _ rows: [ActivityPDFRow],
-        from start: Int,
-        startY: CGFloat,
-        document: ActivityPDFDocument
-    ) -> Int {
-        var y = startY
-        var index = start
-        let cellFont = UIFont.systemFont(ofSize: 9.5, weight: .regular)
-        let amountFont = UIFont.monospacedDigitSystemFont(ofSize: 9.5, weight: .medium)
-        let subFont = UIFont.systemFont(ofSize: 7.5, weight: .regular)
-
-        while index < rows.count {
-            if y + rowHeight > pageBottom { break }
-            let row = rows[index]
-            let rowRect = CGRect(x: margin, y: y, width: contentWidth, height: rowHeight)
-            if index % 2 == 1 { fill(rowRect, color: zebra) }
-
-            let cols = orderedColumns(document)
-            // Date
-            drawVerticallyCentered(row.dateText, in: cols[0].frame(top: y, height: rowHeight).insetBy(dx: 5, dy: 0),
-                                   font: cellFont, color: ink, alignment: cols[0].alignment(isRTL: document.isRTL))
-            // Asset (symbol + network sub-line)
-            let assetRect = cols[1].frame(top: y, height: rowHeight).insetBy(dx: 5, dy: 0)
-            draw(row.assetSymbol, at: CGPoint(x: assetRect.minX, y: y + 4),
-                 font: .systemFont(ofSize: 9.5, weight: .semibold), color: ink)
-            draw(row.networkName, at: CGPoint(x: assetRect.minX, y: y + 13),
-                 font: subFont, color: tertiary)
-            // Type
-            drawVerticallyCentered(row.typeText, in: cols[2].frame(top: y, height: rowHeight).insetBy(dx: 5, dy: 0),
-                                   font: cellFont, color: secondary, alignment: cols[2].alignment(isRTL: document.isRTL))
-            // Amount (tinted by direction)
-            drawVerticallyCentered(row.amountText, in: cols[3].frame(top: y, height: rowHeight).insetBy(dx: 5, dy: 0),
-                                   font: amountFont, color: row.isIncoming ? positive : ink,
-                                   alignment: cols[3].alignmentTrailing(isRTL: document.isRTL))
-            // Value (fiat)
-            drawVerticallyCentered(row.fiatText, in: cols[4].frame(top: y, height: rowHeight).insetBy(dx: 5, dy: 0),
-                                   font: amountFont, color: secondary,
-                                   alignment: cols[4].alignmentTrailing(isRTL: document.isRTL))
-            // Status (dot + text)
-            drawStatus(row, in: cols[5].frame(top: y, height: rowHeight).insetBy(dx: 5, dy: 0), isRTL: document.isRTL)
-
-            // Row hairline.
-            fill(CGRect(x: margin, y: y + rowHeight - 0.5, width: contentWidth, height: 0.5), color: hairline)
-            y += rowHeight
-            index += 1
-        }
-        return index
-    }
-
-    private static func drawStatus(_ row: ActivityPDFRow, in rect: CGRect, isRTL: Bool) {
-        let color: UIColor
-        switch row.status {
-        case .confirmed: color = positive
-        case .pending:   color = pending
-        case .failed:    color = failed
-        }
-        let dot: CGFloat = 5
-        let dotY = rect.midY - dot / 2
-        let dotX = isRTL ? rect.maxX - dot : rect.minX
-        fillOval(CGRect(x: dotX, y: dotY, width: dot, height: dot), color: color)
-        let textRect = isRTL
-            ? CGRect(x: rect.minX, y: rect.minY, width: rect.width - dot - 4, height: rect.height)
-            : CGRect(x: rect.minX + dot + 4, y: rect.minY, width: rect.width - dot - 4, height: rect.height)
-        drawVerticallyCentered(row.statusText, in: textRect,
-                               font: .systemFont(ofSize: 8, weight: .regular), color: secondary,
-                               alignment: isRTL ? .right : .left)
-    }
-
-    // MARK: - Footer
-
-    private static func drawFooter(document: ActivityPDFDocument, page: Int, of total: Int) {
-        let y = pageSize.height - margin - footerHeight + 8
-        fill(CGRect(x: margin, y: y, width: contentWidth, height: 0.75), color: hairline)
-        let textY = y + 6
-        draw(document.footerText, at: CGPoint(x: margin, y: textY),
-             font: .systemFont(ofSize: 8, weight: .regular), color: tertiary)
-        let pageText = String(format: document.pageLabelFormat, page, total)
-        draw(pageText, at: CGPoint(x: margin, y: textY),
-             font: .systemFont(ofSize: 8, weight: .regular), color: tertiary,
-             rightAlignedIn: CGRect(x: margin, y: textY, width: contentWidth, height: 10))
-    }
-
-    private static func drawEmptyState(document: ActivityPDFDocument, at top: CGFloat) {
-        drawCentered(document.emptyText,
-                     in: CGRect(x: margin, y: top + 40, width: contentWidth, height: 20),
-                     font: .systemFont(ofSize: 11, weight: .regular), color: tertiary)
-    }
-
-    // MARK: - Column ordering / geometry
+    private static let ink = UIColor(hex: 0x0C0D11)
+    private static let inkSoft = UIColor(hex: 0x3A3D45)
+    private static let sub = UIColor(hex: 0x6A6E78)
+    private static let faint = UIColor(hex: 0x9A9EA8)
+    private static let hair = UIColor(hex: 0xE9EAEE)
+    private static let hair2 = UIColor(hex: 0xF1F2F4)
+    private static let bg = UIColor.white
+    private static let chip = UIColor(hex: 0xF4F5F7)
+    private static let pos = UIColor(hex: 0x178A52)
+    private static let fail = UIColor(hex: 0xC8472F)
+    private static let legalFill = UIColor(hex: 0xFCFCFD)
 
     private struct Column {
-        let title: String
         let x: CGFloat
         let width: CGFloat
         let trailing: Bool
-
-        func frame(top: CGFloat, height: CGFloat) -> CGRect {
-            CGRect(x: x, y: top, width: width, height: height)
-        }
-        func alignment(isRTL: Bool) -> NSTextAlignment { isRTL ? .right : .left }
-        func alignmentTrailing(isRTL: Bool) -> NSTextAlignment { isRTL ? .left : .right }
     }
 
-    /// The six columns with LTR x-origins. For RTL the same frames are
-    /// used but text alignment flips (mirroring whole-page geometry for a
-    /// table is overkill; flipped alignment reads correctly).
-    private static func orderedColumns(_ document: ActivityPDFDocument) -> [Column] {
-        var x = margin
-        func next(_ title: String, _ w: CGFloat, trailing: Bool = false) -> Column {
-            let c = Column(title: title, x: x, width: w, trailing: trailing)
-            x += w
-            return c
+    private static let columns: [Column] = {
+        var x = sidePadding
+        func next(_ width: CGFloat, trailing: Bool = false) -> Column {
+            let column = Column(x: x, width: width, trailing: trailing)
+            x += width
+            return column
         }
         return [
-            next(document.colDate, Columns.date),
-            next(document.colAsset, Columns.asset),
-            next(document.colType, Columns.type),
-            next(document.colAmount, Columns.amount, trailing: true),
-            next(document.colValue, Columns.value, trailing: true),
-            next(document.colStatus, Columns.status)
+            next(96),
+            next(182),
+            next(92),
+            next(128, trailing: true),
+            next(76, trailing: true),
+            next(104, trailing: true)
         ]
+    }()
+
+    static func render(
+        rows: [ActivityPDFRow],
+        document: ActivityPDFDocument,
+        assets: ActivityPDFRenderAssets
+    ) -> Data {
+        let format = UIGraphicsPDFRendererFormat()
+        format.documentInfo = [
+            kCGPDFContextTitle as String: "\(document.appName) - \(document.title)",
+            kCGPDFContextCreator as String: document.appName
+        ]
+
+        let renderer = UIGraphicsPDFRenderer(bounds: CGRect(origin: .zero, size: pageSize), format: format)
+        let chunks = pageChunks(rows)
+        let totalPages = max(1, chunks.count)
+
+        return renderer.pdfData { context in
+            for index in chunks.indices {
+                context.beginPage()
+                fill(CGRect(origin: .zero, size: pageSize), color: bg)
+                let pageNumber = index + 1
+                let top = index == 0
+                    ? drawFirstPageHeader(document: document, assets: assets)
+                    : drawRunningHeader(document: document, assets: assets)
+
+                drawTable(
+                    rows: chunks[index],
+                    at: top,
+                    document: document,
+                    assets: assets
+                )
+
+                if pageNumber == totalPages {
+                    drawLegal(document: document)
+                }
+                drawFooter(document: document, page: pageNumber, total: totalPages, logo: assets.logo)
+            }
+        }
     }
 
-    // MARK: - Low-level draw helpers
-
-    private static func draw(_ text: String, at point: CGPoint, font: UIFont, color: UIColor) {
-        (text as NSString).draw(at: point, withAttributes: [.font: font, .foregroundColor: color])
+    private static func pageChunks(_ rows: [ActivityPDFRow]) -> [[ActivityPDFRow]] {
+        guard !rows.isEmpty else { return [[]] }
+        var chunks: [[ActivityPDFRow]] = []
+        chunks.append(Array(rows.prefix(firstPageRows)))
+        var cursor = min(firstPageRows, rows.count)
+        while cursor < rows.count {
+            let end = min(cursor + continuationRows, rows.count)
+            chunks.append(Array(rows[cursor..<end]))
+            cursor = end
+        }
+        return chunks
     }
 
-    private static func draw(
-        _ text: String, at point: CGPoint, font: UIFont, color: UIColor,
-        rightAlignedIn rect: CGRect
+    // MARK: - Headers
+
+    private static func drawFirstPageHeader(
+        document: ActivityPDFDocument,
+        assets: ActivityPDFRenderAssets
+    ) -> CGFloat {
+        let mastTop = topPadding
+        let mastBottom = mastTop + 86
+
+        if let logo = assets.logo {
+            drawRoundedImage(logo, in: CGRect(x: sidePadding, y: mastTop, width: 42, height: 42), radius: 12)
+        } else {
+            drawLogoFallback(in: CGRect(x: sidePadding, y: mastTop, width: 42, height: 42), radius: 12)
+        }
+
+        drawText(
+            document.appName,
+            in: CGRect(x: sidePadding + 55, y: mastTop - 1, width: 250, height: 30),
+            font: .systemFont(ofSize: 24, weight: .semibold),
+            color: ink,
+            kern: -0.48
+        )
+        drawText(
+            document.title.uppercased(),
+            in: CGRect(x: sidePadding + 55, y: mastTop + 30, width: 260, height: 15),
+            font: .systemFont(ofSize: 11, weight: .semibold),
+            color: sub,
+            kern: 2.42
+        )
+
+        let qrGroupX = contentRight - 201
+        let qrBox = CGRect(x: qrGroupX, y: mastTop, width: 60, height: 60)
+        fillRounded(qrBox, radius: 10, color: .white)
+        strokeRounded(qrBox, radius: 10, color: hair, lineWidth: 1)
+        if let qr = assets.qr {
+            qr.draw(in: qrBox.insetBy(dx: 6, dy: 6))
+        }
+        let capX = qrBox.maxX + 13
+        drawText(
+            document.downloadCaption,
+            in: CGRect(x: capX, y: mastTop + 6, width: 128, height: 17),
+            font: .systemFont(ofSize: 12.5, weight: .semibold),
+            color: ink
+        )
+        drawText(
+            document.appStoreURLText,
+            in: CGRect(x: capX, y: mastTop + 26, width: 128, height: 34),
+            font: .systemFont(ofSize: 10, weight: .regular),
+            color: faint,
+            lineHeight: 14
+        )
+
+        fill(CGRect(x: sidePadding, y: mastBottom, width: contentWidth, height: 1.5), color: ink)
+
+        let summaryTop = mastBottom + 26
+        drawText(
+            document.walletName,
+            in: CGRect(x: sidePadding, y: summaryTop, width: 420, height: 32),
+            font: .systemFont(ofSize: 27, weight: .bold),
+            color: ink,
+            kern: -0.81
+        )
+        drawGeneratedLine(document: document, y: summaryTop + 39)
+
+        drawText(
+            "STATEMENT PERIOD",
+            in: CGRect(x: contentRight - 260, y: summaryTop + 5, width: 260, height: 14),
+            font: .systemFont(ofSize: 11, weight: .semibold),
+            color: faint,
+            alignment: .right,
+            kern: 1.1
+        )
+        drawText(
+            document.periodText,
+            in: CGRect(x: contentRight - 300, y: summaryTop + 25, width: 300, height: 18),
+            font: .systemFont(ofSize: 14, weight: .semibold),
+            color: ink,
+            alignment: .right,
+            kern: -0.14
+        )
+
+        let statsTop = summaryTop + 73
+        drawStats(document: document, at: statsTop)
+        let ribbonBottom = drawNetworkRibbon(document: document, assets: assets, at: statsTop + 103)
+        return ribbonBottom + 18
+    }
+
+    private static func drawRunningHeader(
+        document: ActivityPDFDocument,
+        assets: ActivityPDFRenderAssets
+    ) -> CGFloat {
+        let top = topPadding
+        if let logo = assets.logo {
+            drawRoundedImage(logo, in: CGRect(x: sidePadding, y: top, width: 26, height: 26), radius: 8)
+        } else {
+            drawLogoFallback(in: CGRect(x: sidePadding, y: top, width: 26, height: 26), radius: 8)
+        }
+        drawText(
+            document.appName,
+            in: CGRect(x: sidePadding + 36, y: top + 2, width: 86, height: 17),
+            font: .systemFont(ofSize: 14, weight: .semibold),
+            color: ink,
+            kern: -0.14
+        )
+        drawText(
+            document.walletName,
+            in: CGRect(x: sidePadding + 112, y: top + 4, width: 300, height: 15),
+            font: .systemFont(ofSize: 12, weight: .regular),
+            color: sub
+        )
+        drawText(
+            document.title.uppercased(),
+            in: CGRect(x: contentRight - 240, y: top + 6, width: 240, height: 14),
+            font: .systemFont(ofSize: 11, weight: .semibold),
+            color: faint,
+            alignment: .right,
+            kern: 0.88
+        )
+        let ruleY = top + 40
+        fill(CGRect(x: sidePadding, y: ruleY, width: contentWidth, height: 1.5), color: ink)
+        return ruleY + 24
+    }
+
+    private static func drawGeneratedLine(document: ActivityPDFDocument, y: CGFloat) {
+        let full = "Generated \(document.generatedText) · \(document.transactionCount) transactions · \(document.assetCount) assets"
+        let attributed = NSMutableAttributedString(
+            string: full,
+            attributes: [
+                .font: UIFont.systemFont(ofSize: 11.5, weight: .regular),
+                .foregroundColor: sub
+            ]
+        )
+        for boldPart in [
+            document.generatedText,
+            "\(document.transactionCount)",
+            "\(document.assetCount)"
+        ] {
+            let range = (full as NSString).range(of: boldPart)
+            if range.location != NSNotFound {
+                attributed.addAttributes([
+                    .font: UIFont.systemFont(ofSize: 11.5, weight: .semibold),
+                    .foregroundColor: inkSoft
+                ], range: range)
+            }
+        }
+        attributed.draw(in: CGRect(x: sidePadding, y: y, width: 430, height: 17))
+    }
+
+    // MARK: - Summary
+
+    private static func drawStats(document: ActivityPDFDocument, at y: CGFloat) {
+        let rect = CGRect(x: sidePadding, y: y, width: contentWidth, height: 88)
+        strokeRounded(rect, radius: 14, color: hair, lineWidth: 1)
+        let cellWidth = contentWidth / 4
+        for index in 1..<4 {
+            fill(CGRect(x: sidePadding + CGFloat(index) * cellWidth, y: y, width: 1, height: 88), color: hair)
+        }
+
+        let entries: [(String, String, UIColor, String)] = [
+            ("TRANSACTIONS", "\(document.transactionCount)", ink, "\(document.confirmedCount) confirmed · \(document.failedCount) failed"),
+            ("RECEIVED", document.receivedFiatText, pos, "Inflow across all chains"),
+            ("SENT", document.sentFiatText, ink, "Outflow across all chains"),
+            ("NET FLOW", document.netFiatText, document.netIsPositive ? pos : ink, "\(document.internalCount) internal transfers")
+        ]
+
+        for (index, entry) in entries.enumerated() {
+            let x = sidePadding + CGFloat(index) * cellWidth
+            drawText(
+                entry.0,
+                in: CGRect(x: x + 18, y: y + 16, width: cellWidth - 36, height: 13),
+                font: .systemFont(ofSize: 10.5, weight: .bold),
+                color: faint,
+                kern: 0.735
+            )
+            drawText(
+                entry.1,
+                in: CGRect(x: x + 18, y: y + 39, width: cellWidth - 22, height: 24),
+                font: .monospacedDigitSystemFont(ofSize: 20, weight: .bold),
+                color: entry.2,
+                kern: -0.4
+            )
+            drawText(
+                entry.3,
+                in: CGRect(x: x + 18, y: y + 69, width: cellWidth - 34, height: 15),
+                font: .systemFont(ofSize: 10.5, weight: .regular),
+                color: sub
+            )
+        }
+    }
+
+    private static func drawNetworkRibbon(
+        document: ActivityPDFDocument,
+        assets: ActivityPDFRenderAssets,
+        at y: CGFloat
+    ) -> CGFloat {
+        var cursorX = sidePadding
+        var cursorY = y
+        let lineHeight: CGFloat = 26
+        drawText(
+            "NETWORKS",
+            in: CGRect(x: cursorX, y: cursorY + 7, width: 70, height: 12),
+            font: .systemFont(ofSize: 10.5, weight: .bold),
+            color: faint,
+            kern: 0.735
+        )
+        cursorX += 77
+
+        for summary in document.chainSummaries {
+            let name = summary.chain.displayName
+            let chipText = "\(name) \(summary.count)"
+            let width = min(max(textWidth(chipText, font: .systemFont(ofSize: 11.5, weight: .semibold)) + 40, 64), contentWidth)
+            if cursorX + width > contentRight {
+                cursorX = sidePadding
+                cursorY += lineHeight + 6
+            }
+            let rect = CGRect(x: cursorX, y: cursorY, width: width, height: lineHeight)
+            fillRounded(rect, radius: lineHeight / 2, color: chip)
+            if let image = assets.networkImages[summary.chain] {
+                drawCircleImage(image, in: CGRect(x: rect.minX + 6, y: rect.minY + 5, width: 16, height: 16))
+            } else {
+                fillOval(CGRect(x: rect.minX + 11, y: rect.minY + 10, width: 6, height: 6), color: ink.withAlphaComponent(0.55))
+            }
+            drawNetworkChipText(name: name, count: summary.count, in: rect)
+            cursorX += width + 7
+        }
+        return cursorY + lineHeight
+    }
+
+    private static func drawNetworkChipText(name: String, count: Int, in rect: CGRect) {
+        let text = "\(name) \(count)"
+        let attributed = NSMutableAttributedString(
+            string: text,
+            attributes: [
+                .font: UIFont.systemFont(ofSize: 11.5, weight: .semibold),
+                .foregroundColor: inkSoft
+            ]
+        )
+        let countRange = (text as NSString).range(of: "\(count)", options: .backwards)
+        if countRange.location != NSNotFound {
+            attributed.addAttributes([
+                .foregroundColor: faint,
+                .font: UIFont.systemFont(ofSize: 11.5, weight: .semibold)
+            ], range: countRange)
+        }
+        attributed.draw(in: CGRect(x: rect.minX + 29, y: rect.minY + 6, width: rect.width - 36, height: 14))
+    }
+
+    // MARK: - Table
+
+    private static func drawTable(
+        rows: [ActivityPDFRow],
+        at top: CGFloat,
+        document: ActivityPDFDocument,
+        assets: ActivityPDFRenderAssets
     ) {
-        let para = NSMutableParagraphStyle(); para.alignment = .right
-        (text as NSString).draw(in: rect, withAttributes: [
-            .font: font, .foregroundColor: color, .paragraphStyle: para
-        ])
+        let headerHeight: CGFloat = 21
+        let rowHeight: CGFloat = 49
+        let labels = ["DATE", "ASSET", "TYPE", "AMOUNT", "VALUE", "STATUS"]
+
+        for (index, column) in columns.enumerated() {
+            let x = column.x + (index == 5 ? 26 : 0)
+            let width = column.width - (index == 5 ? 26 : 0)
+            drawText(
+                labels[index],
+                in: CGRect(x: x, y: top, width: width, height: 13),
+                font: .systemFont(ofSize: 10, weight: .bold),
+                color: faint,
+                alignment: column.trailing ? .right : .left,
+                kern: 0.8
+            )
+        }
+        fill(CGRect(x: sidePadding, y: top + headerHeight - 1, width: contentWidth, height: 1), color: ink)
+
+        if rows.isEmpty {
+            drawText(
+                document.emptyText,
+                in: CGRect(x: sidePadding, y: top + 54, width: contentWidth, height: 20),
+                font: .systemFont(ofSize: 12.5, weight: .regular),
+                color: faint,
+                alignment: .center
+            )
+            return
+        }
+
+        for (index, row) in rows.enumerated() {
+            let y = top + headerHeight + CGFloat(index) * rowHeight
+            drawRow(row, at: y, height: rowHeight, assets: assets)
+            if index < rows.count - 1 {
+                fill(CGRect(x: sidePadding, y: y + rowHeight - 1, width: contentWidth, height: 1), color: hair2)
+            }
+        }
     }
 
-    private static func draw(_ text: String, in rect: CGRect, font: UIFont, color: UIColor) {
-        let para = NSMutableParagraphStyle(); para.lineBreakMode = .byTruncatingTail
-        (text as NSString).draw(in: rect, withAttributes: [
-            .font: font, .foregroundColor: color, .paragraphStyle: para
-        ])
-    }
-
-    private static func drawCentered(_ text: String, in rect: CGRect, font: UIFont, color: UIColor) {
-        let para = NSMutableParagraphStyle(); para.alignment = .center; para.lineBreakMode = .byTruncatingTail
-        (text as NSString).draw(in: rect, withAttributes: [
-            .font: font, .foregroundColor: color, .paragraphStyle: para
-        ])
-    }
-
-    private static func drawVerticallyCentered(
-        _ text: String, in rect: CGRect, font: UIFont, color: UIColor, alignment: NSTextAlignment
+    private static func drawRow(
+        _ row: ActivityPDFRow,
+        at y: CGFloat,
+        height: CGFloat,
+        assets: ActivityPDFRenderAssets
     ) {
-        let para = NSMutableParagraphStyle(); para.alignment = alignment; para.lineBreakMode = .byTruncatingTail
-        let attrs: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: color, .paragraphStyle: para]
-        let textHeight = font.lineHeight
-        let centeredRect = CGRect(x: rect.minX, y: rect.midY - textHeight / 2, width: rect.width, height: textHeight)
-        (text as NSString).draw(in: centeredRect, withAttributes: attrs)
+        drawText(
+            row.dateText,
+            in: CGRect(x: columns[0].x, y: y + 9, width: columns[0].width - 8, height: 15),
+            font: .monospacedDigitSystemFont(ofSize: 12.5, weight: .semibold),
+            color: ink
+        )
+        drawText(
+            row.timeText,
+            in: CGRect(x: columns[0].x, y: y + 25, width: columns[0].width - 8, height: 13),
+            font: .monospacedDigitSystemFont(ofSize: 11, weight: .regular),
+            color: faint
+        )
+
+        let coinRect = CGRect(x: columns[1].x, y: y + 9, width: 30, height: 30)
+        let key = ActivityPDFIconKey(chain: row.chain, symbol: row.assetSymbol, contract: row.tokenContract)
+        if let image = assets.coinImages[key] {
+            drawCircleImage(image, in: coinRect)
+        } else {
+            drawMonogram(row.assetSymbol, in: coinRect)
+        }
+        if let badge = assets.networkImages[row.chain] {
+            let ringRect = CGRect(x: coinRect.maxX - 4, y: coinRect.maxY - 10, width: 17, height: 17)
+            fillOval(ringRect, color: .white)
+            drawCircleImage(badge, in: ringRect.insetBy(dx: 1.5, dy: 1.5))
+        }
+
+        drawText(
+            row.assetSymbol,
+            in: CGRect(x: columns[1].x + 41, y: y + 8, width: columns[1].width - 45, height: 16),
+            font: .systemFont(ofSize: 12.5, weight: .semibold),
+            color: ink,
+            kern: -0.125
+        )
+        drawText(
+            row.networkName,
+            in: CGRect(x: columns[1].x + 41, y: y + 25, width: columns[1].width - 45, height: 13),
+            font: .systemFont(ofSize: 11, weight: .regular),
+            color: sub
+        )
+
+        drawType(row, at: y, height: height)
+        drawAmount(row, at: y)
+        drawText(
+            row.fiatText,
+            in: CGRect(x: columns[4].x, y: y + 17, width: columns[4].width, height: 15),
+            font: .monospacedDigitSystemFont(ofSize: 12.5, weight: .medium),
+            color: inkSoft,
+            alignment: .right
+        )
+        drawStatus(row, at: y, height: height)
+    }
+
+    private static func drawType(_ row: ActivityPDFRow, at y: CGFloat, height: CGFloat) {
+        let color: UIColor
+        switch row.transferType {
+        case .received: color = pos
+        case .sent: color = ink
+        case .internalTransfer: color = sub
+        }
+        let iconRect = CGRect(x: columns[2].x, y: y + 16, width: 17, height: 17)
+        fillOval(iconRect, color: chip)
+        drawTransferIcon(row.transferType, in: iconRect.insetBy(dx: 3, dy: 3), color: color)
+        drawText(
+            row.typeText,
+            in: CGRect(x: columns[2].x + 24, y: y + 17, width: columns[2].width - 26, height: 15),
+            font: .systemFont(ofSize: 12.5, weight: .medium),
+            color: inkSoft
+        )
+    }
+
+    private static func drawAmount(_ row: ActivityPDFRow, at y: CGFloat) {
+        let column = columns[3]
+        let color: UIColor
+        switch row.transferType {
+        case .received: color = pos
+        case .sent: color = ink
+        case .internalTransfer: color = faint
+        }
+        let full = "\(row.amountText) \(row.unitText)"
+        let attributed = NSMutableAttributedString(
+            string: full,
+            attributes: [
+                .font: UIFont.monospacedDigitSystemFont(ofSize: 12.5, weight: .semibold),
+                .foregroundColor: color,
+                .kern: -0.125
+            ]
+        )
+        let unitRange = (full as NSString).range(of: row.unitText, options: .backwards)
+        if unitRange.location != NSNotFound {
+            attributed.addAttributes([
+                .font: UIFont.monospacedDigitSystemFont(ofSize: 11, weight: .semibold),
+                .foregroundColor: faint
+            ], range: unitRange)
+        }
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.alignment = .right
+        paragraph.lineBreakMode = .byTruncatingMiddle
+        attributed.addAttribute(.paragraphStyle, value: paragraph, range: NSRange(location: 0, length: attributed.length))
+        attributed.draw(in: CGRect(x: column.x, y: y + 17, width: column.width, height: 15))
+    }
+
+    private static func drawStatus(_ row: ActivityPDFRow, at y: CGFloat, height: CGFloat) {
+        let color: UIColor
+        let fillColor: UIColor
+        switch row.status {
+        case .confirmed:
+            color = sub
+            fillColor = chip
+        case .pending:
+            color = faint
+            fillColor = chip
+        case .failed:
+            color = fail
+            fillColor = fail.withAlphaComponent(0.10)
+        }
+        let font = UIFont.systemFont(ofSize: 11, weight: .semibold)
+        let width = min(max(textWidth(row.statusText, font: font) + 23, 64), columns[5].width - 26)
+        let rect = CGRect(x: columns[5].x + columns[5].width - width, y: y + 13.5, width: width, height: 22)
+        fillRounded(rect, radius: 11, color: fillColor)
+        fillOval(CGRect(x: rect.minX + 9, y: rect.midY - 2.5, width: 5, height: 5), color: color)
+        drawText(
+            row.statusText,
+            in: CGRect(x: rect.minX + 19, y: rect.minY + 4, width: rect.width - 25, height: 13),
+            font: font,
+            color: color
+        )
+    }
+
+    // MARK: - Legal / footer
+
+    private static func drawLegal(document: ActivityPDFDocument) {
+        let height: CGFloat = 78
+        let y = footerRuleY - 14 - height
+        let rect = CGRect(x: sidePadding, y: y, width: contentWidth, height: height)
+        fillRounded(rect, radius: 12, color: legalFill)
+        strokeRounded(rect, radius: 12, color: hair, lineWidth: 1)
+        drawText(
+            document.legalTitle.uppercased(),
+            in: CGRect(x: rect.minX + 18, y: rect.minY + 15, width: rect.width - 36, height: 13),
+            font: .systemFont(ofSize: 11, weight: .bold),
+            color: sub,
+            kern: 0.66
+        )
+        drawText(
+            document.legalText,
+            in: CGRect(x: rect.minX + 18, y: rect.minY + 34, width: rect.width - 36, height: 36),
+            font: .systemFont(ofSize: 10.8, weight: .regular),
+            color: sub,
+            lineHeight: 17
+        )
+    }
+
+    private static func drawFooter(document: ActivityPDFDocument, page: Int, total: Int, logo: UIImage?) {
+        fill(CGRect(x: sidePadding, y: footerRuleY, width: contentWidth, height: 1), color: hair)
+        let y = footerRuleY + 14
+        if let logo {
+            drawRoundedImage(logo, in: CGRect(x: sidePadding, y: y - 1, width: 14, height: 14), radius: 4)
+        } else {
+            drawLogoFallback(in: CGRect(x: sidePadding, y: y - 1, width: 14, height: 14), radius: 4)
+        }
+        drawText(
+            document.footerSiteText,
+            in: CGRect(x: sidePadding + 22, y: y, width: 150, height: 13),
+            font: .systemFont(ofSize: 10.5, weight: .semibold),
+            color: sub
+        )
+        drawText(
+            "\(document.walletName) · \(document.title)",
+            in: CGRect(x: sidePadding + 190, y: y, width: 298, height: 13),
+            font: .systemFont(ofSize: 10.5, weight: .semibold),
+            color: sub,
+            alignment: .center
+        )
+        let pageText = String(format: document.pageLabelFormat, Int64(page), Int64(total))
+        drawText(
+            pageText,
+            in: CGRect(x: contentRight - 150, y: y, width: 150, height: 13),
+            font: .monospacedDigitSystemFont(ofSize: 10.5, weight: .semibold),
+            color: faint,
+            alignment: .right
+        )
+    }
+
+    // MARK: - Drawing helpers
+
+    private static func drawTransferIcon(_ type: ActivityPDFRow.TransferType, in rect: CGRect, color: UIColor) {
+        color.setStroke()
+        let path = UIBezierPath()
+        path.lineWidth = 1.5
+        path.lineCapStyle = .round
+        path.lineJoinStyle = .round
+
+        switch type {
+        case .received:
+            path.move(to: CGPoint(x: rect.midX, y: rect.minY))
+            path.addLine(to: CGPoint(x: rect.midX, y: rect.maxY))
+            path.move(to: CGPoint(x: rect.minX + 1, y: rect.midY + 1))
+            path.addLine(to: CGPoint(x: rect.midX, y: rect.maxY))
+            path.addLine(to: CGPoint(x: rect.maxX - 1, y: rect.midY + 1))
+        case .sent:
+            path.move(to: CGPoint(x: rect.midX, y: rect.maxY))
+            path.addLine(to: CGPoint(x: rect.midX, y: rect.minY))
+            path.move(to: CGPoint(x: rect.minX + 1, y: rect.midY - 1))
+            path.addLine(to: CGPoint(x: rect.midX, y: rect.minY))
+            path.addLine(to: CGPoint(x: rect.maxX - 1, y: rect.midY - 1))
+        case .internalTransfer:
+            path.move(to: CGPoint(x: rect.minX, y: rect.minY + 3))
+            path.addLine(to: CGPoint(x: rect.maxX - 1, y: rect.minY + 3))
+            path.addLine(to: CGPoint(x: rect.maxX - 4, y: rect.minY))
+            path.move(to: CGPoint(x: rect.maxX, y: rect.maxY - 3))
+            path.addLine(to: CGPoint(x: rect.minX + 1, y: rect.maxY - 3))
+            path.addLine(to: CGPoint(x: rect.minX + 4, y: rect.maxY))
+        }
+        path.stroke()
+    }
+
+    private static func drawCircleImage(_ image: UIImage, in rect: CGRect) {
+        guard let context = UIGraphicsGetCurrentContext() else {
+            image.draw(in: rect)
+            return
+        }
+        context.saveGState()
+        UIBezierPath(ovalIn: rect).addClip()
+        image.draw(in: rect)
+        context.restoreGState()
+        strokeOval(rect, color: hair, lineWidth: 0.6)
+    }
+
+    private static func drawRoundedImage(_ image: UIImage, in rect: CGRect, radius: CGFloat) {
+        guard let context = UIGraphicsGetCurrentContext() else {
+            image.draw(in: rect)
+            return
+        }
+        context.saveGState()
+        UIBezierPath(roundedRect: rect, cornerRadius: radius).addClip()
+        image.draw(in: rect)
+        context.restoreGState()
+    }
+
+    private static func drawMonogram(_ symbol: String, in rect: CGRect) {
+        fillOval(rect, color: chip)
+        strokeOval(rect, color: hair, lineWidth: 0.8)
+        let text = String(symbol.prefix(3)).uppercased()
+        drawText(
+            text.isEmpty ? "-" : text,
+            in: rect.insetBy(dx: 3, dy: 9),
+            font: .systemFont(ofSize: 9.5, weight: .bold),
+            color: inkSoft,
+            alignment: .center,
+            kern: -0.19
+        )
+    }
+
+    private static func drawLogoFallback(in rect: CGRect, radius: CGFloat) {
+        fillRounded(rect, radius: radius, color: ink)
+        drawText(
+            "A",
+            in: rect.insetBy(dx: 0, dy: rect.height * 0.18),
+            font: .systemFont(ofSize: rect.height * 0.46, weight: .bold),
+            color: .white,
+            alignment: .center
+        )
+    }
+
+    private static func drawText(
+        _ text: String,
+        in rect: CGRect,
+        font: UIFont,
+        color: UIColor,
+        alignment: NSTextAlignment = .left,
+        kern: CGFloat = 0,
+        lineHeight: CGFloat? = nil
+    ) {
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.alignment = alignment
+        paragraph.lineBreakMode = lineHeight == nil ? .byTruncatingTail : .byWordWrapping
+        if let lineHeight {
+            paragraph.minimumLineHeight = lineHeight
+            paragraph.maximumLineHeight = lineHeight
+        }
+        let attributed = NSAttributedString(
+            string: text,
+            attributes: [
+                .font: font,
+                .foregroundColor: color,
+                .paragraphStyle: paragraph,
+                .kern: kern
+            ]
+        )
+        attributed.draw(in: rect)
+    }
+
+    private static func textWidth(_ text: String, font: UIFont) -> CGFloat {
+        (text as NSString).size(withAttributes: [.font: font]).width
     }
 
     private static func fill(_ rect: CGRect, color: UIColor) {
@@ -458,5 +792,30 @@ enum ActivityPDFRenderer {
     private static func fillOval(_ rect: CGRect, color: UIColor) {
         color.setFill()
         UIBezierPath(ovalIn: rect).fill()
+    }
+
+    private static func strokeRounded(_ rect: CGRect, radius: CGFloat, color: UIColor, lineWidth: CGFloat) {
+        color.setStroke()
+        let path = UIBezierPath(roundedRect: rect, cornerRadius: radius)
+        path.lineWidth = lineWidth
+        path.stroke()
+    }
+
+    private static func strokeOval(_ rect: CGRect, color: UIColor, lineWidth: CGFloat) {
+        color.setStroke()
+        let path = UIBezierPath(ovalIn: rect)
+        path.lineWidth = lineWidth
+        path.stroke()
+    }
+}
+
+private extension UIColor {
+    convenience init(hex: UInt32, alpha: CGFloat = 1) {
+        self.init(
+            red: CGFloat((hex >> 16) & 0xFF) / 255,
+            green: CGFloat((hex >> 8) & 0xFF) / 255,
+            blue: CGFloat(hex & 0xFF) / 255,
+            alpha: alpha
+        )
     }
 }
