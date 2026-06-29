@@ -28,16 +28,41 @@ struct UTXOService: Sendable {
     /// returns an empty set on error (the caller must distinguish
     /// "no UTXOs" from "couldn't reach the chain").
     func fetchUTXOs(address: String, chain: SupportedChain) async throws -> [SelectedUTXO] {
-        switch chain {
-        case .bitcoin, .litecoin:
-            return try await fetchEsplora(address: address, chain: chain)
-        case .bitcoinCash:
-            return try await fetchHaskoin(address: address)
-        case .dogecoin:
-            return try await fetchBlockCypher(address: address, chain: chain)
-        default:
-            throw RPCError.invalidResponse("UTXOService called for non-UTXO chain \(chain.rawValue)")
+        let trace = await DiagnosticsAPIMonitor.shared.begin(
+            family: "utxos",
+            operation: "Fetch UTXOs",
+            metadata: [
+                "chain": chain.rawValue,
+                "address": Self.abbreviated(address),
+                "source": "UTXOService"
+            ]
+        )
+        do {
+            let utxos: [SelectedUTXO]
+            switch chain {
+            case .bitcoin, .litecoin:
+                utxos = try await fetchEsplora(address: address, chain: chain)
+            case .bitcoinCash:
+                utxos = try await fetchHaskoin(address: address)
+            case .dogecoin:
+                utxos = try await fetchBlockCypher(address: address, chain: chain)
+            default:
+                throw RPCError.invalidResponse("UTXOService called for non-UTXO chain \(chain.rawValue)")
+            }
+            await DiagnosticsAPIMonitor.shared.finish(trace, outcome: "succeeded")
+            return utxos
+        } catch is CancellationError {
+            await DiagnosticsAPIMonitor.shared.finish(trace, outcome: "cancelled", error: CancellationError())
+            throw CancellationError()
+        } catch {
+            await DiagnosticsAPIMonitor.shared.finish(trace, outcome: "failed", error: error)
+            throw error
         }
+    }
+
+    private static func abbreviated(_ address: String) -> String {
+        guard address.count > 14 else { return address }
+        return "\(address.prefix(8))...\(address.suffix(6))"
     }
 
     /// Esplora `/address/{addr}/utxo` (BTC, LTC). Script not returned —

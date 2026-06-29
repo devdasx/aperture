@@ -354,31 +354,45 @@ private actor BitcoinCashElectrumClient {
     }
 
     func connect() async throws {
-        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-            let resumeBox = BitcoinCashElectrumContinuationBox()
-            connection.stateUpdateHandler = { [weak self] state in
-                switch state {
-                case .ready:
+        let trace = await DiagnosticsAPIMonitor.shared.begin(
+            family: "electrum",
+            operation: "connect",
+            metadata: electrumMetadata()
+        )
+        do {
+            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+                let resumeBox = BitcoinCashElectrumContinuationBox()
+                connection.stateUpdateHandler = { [weak self] state in
+                    switch state {
+                    case .ready:
+                        guard resumeBox.resumeOnce() else { return }
+                        continuation.resume()
+                        Task { await self?.receiveLoop() }
+                    case .failed(let error):
+                        guard resumeBox.resumeOnce() else { return }
+                        continuation.resume(throwing: error)
+                    case .cancelled:
+                        guard resumeBox.resumeOnce() else { return }
+                        continuation.resume(throwing: BitcoinCashElectrumError.connectionFailed)
+                    default:
+                        break
+                    }
+                }
+                connection.start(queue: queue)
+                Task {
+                    try? await Task.sleep(nanoseconds: 5_000_000_000)
                     guard resumeBox.resumeOnce() else { return }
-                    continuation.resume()
-                    Task { await self?.receiveLoop() }
-                case .failed(let error):
-                    guard resumeBox.resumeOnce() else { return }
-                    continuation.resume(throwing: error)
-                case .cancelled:
-                    guard resumeBox.resumeOnce() else { return }
-                    continuation.resume(throwing: BitcoinCashElectrumError.connectionFailed)
-                default:
-                    break
+                    connection.cancel()
+                    continuation.resume(throwing: BitcoinCashElectrumError.requestTimedOut("connect(\(server.host):\(server.port))"))
                 }
             }
-            connection.start(queue: queue)
-            Task {
-                try? await Task.sleep(nanoseconds: 5_000_000_000)
-                guard resumeBox.resumeOnce() else { return }
-                connection.cancel()
-                continuation.resume(throwing: BitcoinCashElectrumError.requestTimedOut("connect(\(server.host):\(server.port))"))
-            }
+            await DiagnosticsAPIMonitor.shared.finish(trace, outcome: "succeeded")
+        } catch is CancellationError {
+            await DiagnosticsAPIMonitor.shared.finish(trace, outcome: "cancelled", error: CancellationError())
+            throw CancellationError()
+        } catch {
+            await DiagnosticsAPIMonitor.shared.finish(trace, outcome: "failed", error: error)
+            throw error
         }
         _ = try await request(method: "server.version", params: [.string("ApertureBCH"), .string("1.4")])
     }
@@ -441,18 +455,35 @@ private actor BitcoinCashElectrumClient {
         var payload = try JSONEncoder().encode(request)
         payload.append(0x0A)
 
-        return try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<BitcoinCashJSONValue, Error>) in
-            pending[id] = { result in
-                continuation.resume(with: result)
+        var metadata = electrumMetadata()
+        metadata["requestId"] = "\(id)"
+        let trace = await DiagnosticsAPIMonitor.shared.begin(
+            family: "electrum",
+            operation: method,
+            metadata: metadata
+        )
+        do {
+            let value = try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<BitcoinCashJSONValue, Error>) in
+                pending[id] = { result in
+                    continuation.resume(with: result)
+                }
+                connection.send(content: payload, completion: .contentProcessed { [weak self] error in
+                    guard let error else { return }
+                    Task { await self?.resume(id: id, throwing: error) }
+                })
+                Task { [weak self] in
+                    try? await Task.sleep(nanoseconds: 12_000_000_000)
+                    await self?.resume(id: id, throwing: BitcoinCashElectrumError.requestTimedOut(method))
+                }
             }
-            connection.send(content: payload, completion: .contentProcessed { [weak self] error in
-                guard let error else { return }
-                Task { await self?.resume(id: id, throwing: error) }
-            })
-            Task { [weak self] in
-                try? await Task.sleep(nanoseconds: 12_000_000_000)
-                await self?.resume(id: id, throwing: BitcoinCashElectrumError.requestTimedOut(method))
-            }
+            await DiagnosticsAPIMonitor.shared.finish(trace, outcome: "succeeded")
+            return value
+        } catch is CancellationError {
+            await DiagnosticsAPIMonitor.shared.finish(trace, outcome: "cancelled", error: CancellationError())
+            throw CancellationError()
+        } catch {
+            await DiagnosticsAPIMonitor.shared.finish(trace, outcome: "failed", error: error)
+            throw error
         }
     }
 
@@ -480,24 +511,51 @@ private actor BitcoinCashElectrumClient {
             }
         }
 
-        connection.send(content: payload, completion: .contentProcessed { [weak self] error in
-            guard let error else { return }
-            Task { await self?.fail(ids: ids, error: error) }
-        })
-        Task { [weak self] in
-            try? await Task.sleep(nanoseconds: 15_000_000_000)
-            await self?.fail(ids: ids, error: BitcoinCashElectrumError.requestTimedOut("batch(\(specs.count))"))
-        }
-
-        let results = try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<[Int: BitcoinCashJSONValue], Error>) in
-            batchBox.wait(continuation)
-        }
-        return try requests.map { request in
-            guard let result = results[request.id] else {
-                throw BitcoinCashElectrumError.invalidResponse
+        var metadata = electrumMetadata()
+        metadata["requestCount"] = "\(specs.count)"
+        metadata["method"] = specs.first?.method ?? "batch"
+        let trace = await DiagnosticsAPIMonitor.shared.begin(
+            family: "electrum",
+            operation: specs.first?.method ?? "batch",
+            metadata: metadata
+        )
+        do {
+            connection.send(content: payload, completion: .contentProcessed { [weak self] error in
+                guard let error else { return }
+                Task { await self?.fail(ids: ids, error: error) }
+            })
+            Task { [weak self] in
+                try? await Task.sleep(nanoseconds: 15_000_000_000)
+                await self?.fail(ids: ids, error: BitcoinCashElectrumError.requestTimedOut("batch(\(specs.count))"))
             }
-            return BitcoinCashElectrumBatchResponse(id: request.id, result: result)
+
+            let results = try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<[Int: BitcoinCashJSONValue], Error>) in
+                batchBox.wait(continuation)
+            }
+            await DiagnosticsAPIMonitor.shared.finish(trace, outcome: "succeeded")
+            return try requests.map { request in
+                guard let result = results[request.id] else {
+                    throw BitcoinCashElectrumError.invalidResponse
+                }
+                return BitcoinCashElectrumBatchResponse(id: request.id, result: result)
+            }
+        } catch is CancellationError {
+            await DiagnosticsAPIMonitor.shared.finish(trace, outcome: "cancelled", error: CancellationError())
+            throw CancellationError()
+        } catch {
+            await DiagnosticsAPIMonitor.shared.finish(trace, outcome: "failed", error: error)
+            throw error
         }
+    }
+
+    private func electrumMetadata() -> [String: String] {
+        [
+            "chain": "bitcoinCash",
+            "host": server.host,
+            "port": "\(server.port)",
+            "tls": "\(server.tls)",
+            "source": "BitcoinCashElectrumClient"
+        ]
     }
 
     private func receiveLoop() {

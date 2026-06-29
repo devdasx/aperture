@@ -232,3 +232,153 @@ actor DiagnosticsLogStore {
         return formatter
     }()
 }
+
+struct DiagnosticsAPITrace: Sendable {
+    let id: UUID
+    let family: String
+    let operation: String
+    let startedAt: Date
+    let metadata: [String: String]
+}
+
+actor DiagnosticsAPIMonitor {
+    static let shared = DiagnosticsAPIMonitor()
+
+    private var totalActive = 0
+    private var activeByFamily: [String: Int] = [:]
+
+    func begin(
+        family: String,
+        operation: String,
+        metadata: [String: String] = [:]
+    ) -> DiagnosticsAPITrace {
+        let trace = DiagnosticsAPITrace(
+            id: UUID(),
+            family: family,
+            operation: operation,
+            startedAt: Date(),
+            metadata: DiagnosticsLogStore.sanitizedMetadata(metadata)
+        )
+
+        totalActive += 1
+        activeByFamily[family, default: 0] += 1
+
+        var logMetadata = trace.metadata
+        logMetadata["traceId"] = trace.id.uuidString
+        logMetadata["family"] = family
+        logMetadata["operation"] = operation
+        logMetadata["activeTotal"] = "\(totalActive)"
+        logMetadata["activeFamily"] = "\(activeByFamily[family, default: 0])"
+        DiagnosticsLogStore.shared.record(
+            .debug,
+            category: "api-latency",
+            message: "API request started",
+            metadata: logMetadata
+        )
+        return trace
+    }
+
+    func finish(
+        _ trace: DiagnosticsAPITrace,
+        outcome: String,
+        statusCode: Int? = nil,
+        responseBytes: Int? = nil,
+        error: (any Error)? = nil
+    ) {
+        totalActive = max(0, totalActive - 1)
+        let activeFamily = max(0, activeByFamily[trace.family, default: 0] - 1)
+        if activeFamily == 0 {
+            activeByFamily[trace.family] = nil
+        } else {
+            activeByFamily[trace.family] = activeFamily
+        }
+
+        var metadata = trace.metadata
+        metadata["traceId"] = trace.id.uuidString
+        metadata["family"] = trace.family
+        metadata["operation"] = trace.operation
+        metadata["outcome"] = outcome
+        metadata["elapsedMs"] = DiagnosticsLogStore.elapsedMilliseconds(since: trace.startedAt)
+        metadata["activeTotalRemaining"] = "\(totalActive)"
+        metadata["activeFamilyRemaining"] = "\(activeFamily)"
+        if let statusCode {
+            metadata["statusCode"] = "\(statusCode)"
+        }
+        if let responseBytes {
+            metadata["responseBytes"] = "\(responseBytes)"
+        }
+        if let error {
+            metadata["error"] = String(describing: error)
+        }
+
+        let level: DiagnosticsLogLevel
+        switch outcome {
+        case "succeeded":
+            level = .info
+        case "cancelled":
+            level = .debug
+        default:
+            level = .warning
+        }
+        DiagnosticsLogStore.shared.record(
+            level,
+            category: "api-latency",
+            message: "API request \(outcome)",
+            metadata: metadata
+        )
+    }
+}
+
+extension URLSession {
+    func apertureData(
+        for request: URLRequest,
+        family: String,
+        operation: String,
+        metadata: [String: String] = [:]
+    ) async throws -> (Data, URLResponse) {
+        var traceMetadata = metadata
+        if let url = request.url {
+            traceMetadata["host"] = traceMetadata["host"] ?? (url.host ?? "")
+            traceMetadata["path"] = traceMetadata["path"] ?? url.path
+            traceMetadata["scheme"] = traceMetadata["scheme"] ?? (url.scheme ?? "")
+        }
+        traceMetadata["httpMethod"] = traceMetadata["httpMethod"] ?? (request.httpMethod ?? "GET")
+
+        let trace = await DiagnosticsAPIMonitor.shared.begin(
+            family: family,
+            operation: operation,
+            metadata: traceMetadata
+        )
+        do {
+            let result = try await data(for: request)
+            let statusCode = (result.1 as? HTTPURLResponse)?.statusCode
+            await DiagnosticsAPIMonitor.shared.finish(
+                trace,
+                outcome: "succeeded",
+                statusCode: statusCode,
+                responseBytes: result.0.count
+            )
+            return result
+        } catch is CancellationError {
+            await DiagnosticsAPIMonitor.shared.finish(
+                trace,
+                outcome: "cancelled",
+                error: CancellationError()
+            )
+            throw CancellationError()
+        } catch {
+            let outcome: String
+            if let urlError = error as? URLError, urlError.code == .cancelled {
+                outcome = "cancelled"
+            } else {
+                outcome = "failed"
+            }
+            await DiagnosticsAPIMonitor.shared.finish(
+                trace,
+                outcome: outcome,
+                error: error
+            )
+            throw error
+        }
+    }
+}

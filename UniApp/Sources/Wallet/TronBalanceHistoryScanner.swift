@@ -524,7 +524,16 @@ actor TronBalanceHistoryClient {
             await Self.tronGridThrottle.wait()
         }
 
-        let (responseData, response) = try await session.data(for: request)
+        let (responseData, response) = try await session.apertureData(
+            for: request,
+            family: "histories",
+            operation: request.url?.path.isEmpty == false ? request.url?.path ?? "TRON request" : "TRON request",
+            metadata: [
+                "chain": "tron",
+                "source": "TronProviderClient",
+                "retryCount": "\(retryCount)"
+            ]
+        )
         guard let http = response as? HTTPURLResponse else { return responseData }
         if http.statusCode == 429, retryCount < 2 {
             try await Task.sleep(nanoseconds: 1_000_000_000)

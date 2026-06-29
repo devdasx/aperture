@@ -184,6 +184,18 @@ actor RPCClient {
         ]
     }
 
+    private func apiMetadata(
+        endpoint: RPCEndpoint,
+        kind: String
+    ) -> [String: String] {
+        [
+            "endpoint": endpoint.id,
+            "host": endpoint.url.host ?? "",
+            "kind": kind,
+            "providerKind": "\(endpoint.kind)"
+        ]
+    }
+
     /// Run one `URLSession` request **inside the `ConcurrencyGate`** —
     /// the single in-flight chokepoint every dispatch path funnels
     /// through (2026-06-16). Acquires a global + per-host slot before
@@ -194,11 +206,19 @@ actor RPCClient {
     /// network call is unchanged — this only bounds how many run at once.
     private func performGated(
         _ request: URLRequest,
-        host: String
+        host: String,
+        family: String,
+        operation: String,
+        metadata: [String: String]
     ) async throws -> (Data, URLResponse) {
         let release = try await concurrencyGate.acquire(host: host)
         defer { release() }
-        return try await session.data(for: request)
+        return try await session.apertureData(
+            for: request,
+            family: family,
+            operation: operation,
+            metadata: metadata
+        )
     }
 
     // MARK: - JSON-RPC
@@ -497,7 +517,13 @@ actor RPCClient {
         let responseData: Data
         let response: URLResponse
         do {
-            (responseData, response) = try await performGated(request, host: Self.gateHost(for: endpoint))
+            (responseData, response) = try await performGated(
+                request,
+                host: Self.gateHost(for: endpoint),
+                family: "rpc-json",
+                operation: method,
+                metadata: apiMetadata(endpoint: endpoint, kind: "JSON-RPC named params")
+            )
         } catch let urlError as URLError {
             if urlError.code == .cancelled { throw .cancelled }
             throw .network(urlError.localizedDescription)
@@ -777,7 +803,13 @@ actor RPCClient {
         let responseData: Data
         let response: URLResponse
         do {
-            (responseData, response) = try await performGated(request, host: Self.gateHost(for: endpoint))
+            (responseData, response) = try await performGated(
+                request,
+                host: Self.gateHost(for: endpoint),
+                family: "rpc-rest",
+                operation: path,
+                metadata: apiMetadata(endpoint: endpoint, kind: "REST POST")
+            )
         } catch let urlError as URLError {
             if urlError.code == .cancelled { throw .cancelled }
             throw .network(urlError.localizedDescription)
@@ -924,7 +956,13 @@ actor RPCClient {
         let responseData: Data
         let response: URLResponse
         do {
-            (responseData, response) = try await performGated(request, host: Self.gateHost(for: endpoint))
+            (responseData, response) = try await performGated(
+                request,
+                host: Self.gateHost(for: endpoint),
+                family: "rpc-rest",
+                operation: path,
+                metadata: apiMetadata(endpoint: endpoint, kind: "REST POST raw")
+            )
         } catch let urlError as URLError {
             if urlError.code == .cancelled { throw .cancelled }
             throw .network(urlError.localizedDescription)
@@ -1053,7 +1091,13 @@ actor RPCClient {
         let responseData: Data
         let response: URLResponse
         do {
-            (responseData, response) = try await performGated(request, host: Self.gateHost(for: endpoint))
+            (responseData, response) = try await performGated(
+                request,
+                host: Self.gateHost(for: endpoint),
+                family: "rpc-rest",
+                operation: path,
+                metadata: apiMetadata(endpoint: endpoint, kind: "REST POST data")
+            )
         } catch let urlError as URLError {
             if urlError.code == .cancelled { throw .cancelled }
             throw .network(urlError.localizedDescription)
@@ -1184,7 +1228,13 @@ actor RPCClient {
         let responseData: Data
         let response: URLResponse
         do {
-            (responseData, response) = try await performGated(request, host: Self.gateHost(for: endpoint))
+            (responseData, response) = try await performGated(
+                request,
+                host: Self.gateHost(for: endpoint),
+                family: "rpc-json",
+                operation: method,
+                metadata: apiMetadata(endpoint: endpoint, kind: "JSON-RPC")
+            )
         } catch let urlError as URLError {
             if urlError.code == .cancelled { throw .cancelled }
             throw .network(urlError.localizedDescription)
@@ -1379,7 +1429,13 @@ actor RPCClient {
         let responseData: Data
         let response: URLResponse
         do {
-            (responseData, response) = try await performGated(request, host: Self.gateHost(for: endpoint))
+            (responseData, response) = try await performGated(
+                request,
+                host: Self.gateHost(for: endpoint),
+                family: "rpc-rest",
+                operation: path,
+                metadata: apiMetadata(endpoint: endpoint, kind: "REST GET")
+            )
         } catch let urlError as URLError {
             if urlError.code == .cancelled { throw .cancelled }
             throw .network(urlError.localizedDescription)

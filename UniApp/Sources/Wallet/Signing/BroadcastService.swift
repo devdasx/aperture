@@ -205,7 +205,12 @@ struct BroadcastService: Sendable {
         let data: Data
         let response: URLResponse
         do {
-            (data, response) = try await URLSession.shared.data(for: request)
+            (data, response) = try await URLSession.shared.apertureData(
+                for: request,
+                family: "broadcast",
+                operation: "Solana sendTransaction",
+                metadata: ["chain": "solana", "source": "BroadcastService"]
+            )
         } catch {
             // Transport-level failure (the request left the device but no
             // definitive accept/reject came back) → outcome UNKNOWN, never

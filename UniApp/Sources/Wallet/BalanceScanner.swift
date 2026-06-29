@@ -731,7 +731,12 @@ private actor StellarBalanceHistoryScanner {
         request.httpMethod = "GET"
         request.setValue("application/json", forHTTPHeaderField: "Accept")
 
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await URLSession.shared.apertureData(
+            for: request,
+            family: "histories",
+            operation: "Stellar Horizon \(path)",
+            metadata: ["chain": "stellar", "source": "StellarBalanceHistoryScanner"]
+        )
         if let http = response as? HTTPURLResponse,
            !(200..<300).contains(http.statusCode) {
             if http.statusCode == 404 {
@@ -1238,7 +1243,12 @@ private actor PolkadotAssetHubBalanceClient {
         request.setValue("Aperture/1.0", forHTTPHeaderField: "User-Agent")
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
-        let (data, response) = try await session.data(for: request)
+        let (data, response) = try await session.apertureData(
+            for: request,
+            family: "balances",
+            operation: "Polkadot Asset Hub state_getStorage",
+            metadata: ["chain": "polkadot", "source": "PolkadotAssetHubBalanceClient"]
+        )
         if let http = response as? HTTPURLResponse,
            !(200..<300).contains(http.statusCode) {
             throw PolkadotBalanceHistoryError.http(http.statusCode)
@@ -1429,7 +1439,16 @@ private actor PolkadotStatescanClient {
                 request.setValue("application/json", forHTTPHeaderField: "Accept")
                 request.setValue("Aperture/1.0", forHTTPHeaderField: "User-Agent")
 
-                let (data, response) = try await session.data(for: request)
+                let (data, response) = try await session.apertureData(
+                    for: request,
+                    family: "histories",
+                    operation: "Statescan \(path)",
+                    metadata: [
+                        "chain": "polkadot",
+                        "source": "PolkadotStatescanClient",
+                        "attempt": "\(attempt + 1)"
+                    ]
+                )
                 if let http = response as? HTTPURLResponse,
                    !(200..<300).contains(http.statusCode) {
                     throw PolkadotBalanceHistoryError.http(http.statusCode)
@@ -2604,7 +2623,12 @@ private actor PublicNodeEVMRPCClient {
             "params": params
         ])
 
-        let (data, response) = try await session.data(for: request)
+        let (data, response) = try await session.apertureData(
+            for: request,
+            family: "balances",
+            operation: method,
+            metadata: ["chain": chain.rawValue, "source": "PublicNodeEVMRPCClient"]
+        )
         if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
             throw PublicNodeEVMRPCError.httpStatus(http.statusCode)
         }

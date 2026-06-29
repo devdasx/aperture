@@ -361,7 +361,16 @@ actor EVMTransactionHistoryClient {
                 request.setValue("Aperture/1.0", forHTTPHeaderField: "User-Agent")
                 request.httpBody = body
 
-                let (data, response) = try await session.data(for: request)
+                let (data, response) = try await session.apertureData(
+                    for: request,
+                    family: "histories",
+                    operation: method,
+                    metadata: [
+                        "chain": chain.rawValue,
+                        "endpoint": endpoint.id,
+                        "source": "EVMTransactionHistoryClient"
+                    ]
+                )
                 if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
                     throw EVMHistoryError.httpStatus(http.statusCode)
                 }
@@ -381,7 +390,12 @@ actor EVMTransactionHistoryClient {
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         request.setValue("Aperture/1.0", forHTTPHeaderField: "User-Agent")
 
-        let (data, response) = try await session.data(for: request)
+        let (data, response) = try await session.apertureData(
+            for: request,
+            family: "histories",
+            operation: "\(url.host ?? "api") \(url.path)",
+            metadata: ["source": "EVMTransactionHistoryClient"]
+        )
         if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
             throw EVMHistoryError.httpStatus(http.statusCode)
         }
