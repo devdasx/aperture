@@ -216,7 +216,7 @@ struct ReceiveView: View {
         let resolves = UUID(uuidString: activeWalletIdRaw)
             .map { id in allWallets.contains(where: { $0.id == id }) } ?? false
         if !resolves {
-            activeWalletIdRaw = first.id.uuidString
+            ActiveWalletPointer.set(first.id)
         }
     }
 

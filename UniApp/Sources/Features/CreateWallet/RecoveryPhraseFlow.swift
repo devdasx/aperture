@@ -266,7 +266,7 @@ struct RecoveryPhraseFlow: View {
     ///    place to change their mind later.
     private func nextStepAfterVerify() -> RecoveryPhraseDestination {
         if PinCodeStorage.hasPin { return .walletReady }
-        let activeWalletId = UserDefaults.standard.string(forKey: "activeWalletId") ?? ""
+        let activeWalletId = ActiveWalletPointer.rawValue
         if !activeWalletId.isEmpty { return .walletReady }
         return .pinSetup
     }

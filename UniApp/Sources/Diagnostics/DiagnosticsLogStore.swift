@@ -189,6 +189,11 @@ actor DiagnosticsLogStore {
         return String(format: "%.1f", milliseconds)
     }
 
+    static func elapsedMilliseconds(from start: Date, to end: Date) -> String {
+        let milliseconds = max(0, end.timeIntervalSince(start) * 1_000)
+        return String(format: "%.1f", milliseconds)
+    }
+
     private static func makeLogFileURL() -> URL {
         let fm = FileManager.default
         let base = (try? fm.url(

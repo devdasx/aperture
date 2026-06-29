@@ -368,6 +368,8 @@ final class ApertureDatabase {
             // (Rule #27 §D). Seeds the authoritative AppSettingsRecord
             // from @AppStorage and keeps it live-synced. Main-actor;
             // ApertureDatabase is @MainActor so this hops correctly.
+            SigningKeyProvider.configure(modelContainer: self.container)
+            ActiveWalletPointer.configure(modelContainer: self.container)
             SettingsStore.shared.start(container: self.container)
             DiagnosticsLogStore.shared.record(.debug, category: "database", message: "Settings store sync started")
 
@@ -423,6 +425,18 @@ final class ApertureDatabase {
                     .error,
                     category: "database",
                     message: "Wallet address repair failed",
+                    metadata: ["error": String(describing: error)]
+                )
+            }
+            do {
+                try await repo.backfillEncryptedChainKeysFromStoredSecrets()
+                DiagnosticsLogStore.shared.record(.debug, category: "database", message: "Wallet chain-key backfill finished")
+            } catch {
+                self.log.error("Wallet chain-key backfill failed: \(String(describing: error), privacy: .public)")
+                DiagnosticsLogStore.shared.record(
+                    .error,
+                    category: "database",
+                    message: "Wallet chain-key backfill failed",
                     metadata: ["error": String(describing: error)]
                 )
             }

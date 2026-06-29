@@ -192,6 +192,13 @@ actor WalletRepository {
             addr.wallet = record
             modelContext.insert(addr)
         }
+        try storeEncryptedKeyBlobs(
+            walletId: id,
+            descriptor: WalletDescriptor(record: record),
+            addresses: addresses,
+            mnemonicWords: mnemonicWords,
+            privateKey: nil
+        )
         try modelContext.save()
         syncManifestIfDurable()
         return record.persistentModelID
@@ -235,6 +242,13 @@ actor WalletRepository {
             addr.wallet = record
             modelContext.insert(addr)
         }
+        try storeEncryptedKeyBlobs(
+            walletId: id,
+            descriptor: WalletDescriptor(record: record),
+            addresses: addresses,
+            mnemonicWords: mnemonicWords,
+            privateKey: nil
+        )
         try modelContext.save()
         syncManifestIfDurable()
         return record.persistentModelID
@@ -276,6 +290,13 @@ actor WalletRepository {
             addr.wallet = record
             modelContext.insert(addr)
         }
+        try storeEncryptedKeyBlobs(
+            walletId: id,
+            descriptor: WalletDescriptor(record: record),
+            addresses: addresses,
+            mnemonicWords: nil,
+            privateKey: privateKey
+        )
         try modelContext.save()
         syncManifestIfDurable()
         return record.persistentModelID
@@ -549,6 +570,135 @@ actor WalletRepository {
             try modelContext.save()
             syncManifestIfDurable()
         }
+    }
+
+    /// Populate the per-chain encrypted private-key blobs for wallets that
+    /// pre-date the chain-key column or were imported while key population was
+    /// not wired. Best-effort: wallets without stored secrets, watch-only
+    /// wallets, and passphrase wallets without the passphrase are skipped.
+    func backfillEncryptedChainKeysFromStoredSecrets() throws {
+        try ensureAddressWalletIdBackfill(force: true)
+
+        let wallets = try modelContext.fetch(FetchDescriptor<WalletRecord>())
+        var didChange = false
+        for wallet in wallets where wallet.kind != .watchOnly {
+            let directRows = try addressRows(walletId: wallet.id)
+            let rows = directRows.isEmpty ? wallet.addresses : directRows
+            guard !rows.isEmpty else { continue }
+
+            let missing = try missingKeyChains(walletId: wallet.id, rows: rows)
+            guard !missing.isEmpty else { continue }
+
+            let addressEntries = rows.compactMap { row -> (chainRaw: String, address: String)? in
+                guard missing.contains(row.chainRaw) else { return nil }
+                return (chainRaw: row.chainRaw, address: row.address)
+            }
+            guard !addressEntries.isEmpty else { continue }
+
+            let words: [String]?
+            let privateKey: String?
+            switch wallet.kind {
+            case .created, .importedMnemonic:
+                words = (try? WalletSecretPersistence.loadMnemonic(for: wallet.id, in: modelContext))
+                    ?? (try? MnemonicVault.loadMnemonic(for: wallet.id))
+                privateKey = nil
+            case .importedKey:
+                words = nil
+                privateKey = (try? WalletSecretPersistence.loadPrivateKey(for: wallet.id, in: modelContext))
+                    ?? (try? MnemonicVault.loadPrivateKey(for: wallet.id))
+            case .watchOnly:
+                words = nil
+                privateKey = nil
+            }
+
+            let changed = try storeEncryptedKeyBlobs(
+                walletId: wallet.id,
+                descriptor: WalletDescriptor(record: wallet),
+                addresses: addressEntries,
+                mnemonicWords: words,
+                privateKey: privateKey
+            )
+            didChange = didChange || changed
+        }
+
+        if didChange {
+            try modelContext.save()
+            syncManifestIfDurable()
+        }
+    }
+
+    @discardableResult
+    private func storeEncryptedKeyBlobs(
+        walletId: UUID,
+        descriptor: WalletDescriptor,
+        addresses: [(chainRaw: String, address: String)],
+        mnemonicWords: [String]?,
+        privateKey: String?
+    ) throws -> Bool {
+        var addressByChain: [SupportedChain: String] = [:]
+        for entry in addresses {
+            guard let chain = SupportedChain(rawValue: entry.chainRaw),
+                  addressByChain[chain] == nil else { continue }
+            addressByChain[chain] = entry.address
+        }
+        guard !addressByChain.isEmpty else { return false }
+
+        let blobs = SigningKeyProvider.encryptedKeyBlobs(
+            wallet: descriptor,
+            chainAddresses: addressByChain,
+            passphrase: nil,
+            mnemonicWords: mnemonicWords,
+            privateKeyString: privateKey
+        )
+        guard !blobs.isEmpty else { return false }
+
+        var didChange = false
+        for (chain, blob) in blobs {
+            let record = try fetchOrCreateChainState(
+                walletId: walletId,
+                chain: chain,
+                address: addressByChain[chain] ?? ""
+            )
+            if record.encryptedPrivateKey != blob || record.keyEncryptionScheme != ChainKeyVault.scheme {
+                record.encryptedPrivateKey = blob
+                record.keyEncryptionScheme = ChainKeyVault.scheme
+                didChange = true
+            }
+        }
+        return didChange
+    }
+
+    private func missingKeyChains(walletId: UUID, rows: [WalletAddressRecord]) throws -> Set<String> {
+        let chainRows = try modelContext.fetch(
+            FetchDescriptor<ChainStateRecord>(
+                predicate: #Predicate { $0.walletId == walletId }
+            )
+        )
+        let keyedChains = Set(chainRows.compactMap { row in
+            row.encryptedPrivateKey == nil ? nil : row.chainRaw
+        })
+        return Set(rows.map(\.chainRaw)).subtracting(keyedChains)
+    }
+
+    private func fetchOrCreateChainState(
+        walletId: UUID,
+        chain: SupportedChain,
+        address: String
+    ) throws -> ChainStateRecord {
+        let chainRaw = chain.rawValue
+        var descriptor = FetchDescriptor<ChainStateRecord>(
+            predicate: #Predicate { $0.walletId == walletId && $0.chainRaw == chainRaw }
+        )
+        descriptor.fetchLimit = 1
+        if let existing = try modelContext.fetch(descriptor).first {
+            if existing.address.isEmpty, !address.isEmpty {
+                existing.address = address
+            }
+            return existing
+        }
+        let record = ChainStateRecord(walletId: walletId, chainRaw: chainRaw, address: address)
+        modelContext.insert(record)
+        return record
     }
 
     private func ensureAddressWalletIdBackfill(force: Bool = false) throws {
@@ -854,9 +1004,25 @@ actor WalletRepository {
 /// deterministic with respect to SwiftUI body evaluation.
 @MainActor
 enum ActiveWalletPointer {
+    private static var modelContainer: ModelContainer?
+
     /// The `@AppStorage` key. Views keep binding the literal; this
     /// constant is the imperative-path mirror.
     static let storageKey = "activeWalletId"
+
+    static func configure(modelContainer: ModelContainer) {
+        self.modelContainer = modelContainer
+        let context = ModelContext(modelContainer)
+        let settings = SettingsStore.fetchOrCreate(in: context)
+        let raw = rawValue
+        if raw.isEmpty, !settings.activeWalletId.isEmpty {
+            UserDefaults.standard.set(settings.activeWalletId, forKey: storageKey)
+        } else if settings.activeWalletId != raw {
+            settings.activeWalletId = raw
+            settings.updatedAt = Date()
+            try? context.save()
+        }
+    }
 
     /// Current pointer, parsed. `nil` when unset / empty / not a UUID.
     static var currentId: UUID? {
@@ -872,12 +1038,23 @@ enum ActiveWalletPointer {
     /// Point the selection at `id`, or clear it with `nil` (the
     /// "no wallets remain" state — `RootGate` routes to onboarding).
     static func set(_ id: UUID?) {
-        UserDefaults.standard.set(id?.uuidString ?? "", forKey: storageKey)
+        setRaw(id?.uuidString ?? "")
     }
 
     /// Restore a previously-snapshotted raw value (delete rollback).
     static func setRaw(_ raw: String) {
         UserDefaults.standard.set(raw, forKey: storageKey)
+        mirrorToDatabase(raw)
+    }
+
+    private static func mirrorToDatabase(_ raw: String) {
+        guard let modelContainer else { return }
+        let context = ModelContext(modelContainer)
+        let settings = SettingsStore.fetchOrCreate(in: context)
+        guard settings.activeWalletId != raw else { return }
+        settings.activeWalletId = raw
+        settings.updatedAt = Date()
+        try? context.save()
     }
 }
 

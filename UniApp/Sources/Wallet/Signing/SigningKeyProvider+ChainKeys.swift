@@ -26,16 +26,27 @@ extension SigningKeyProvider {
     static func encryptedKeyBlobs(
         wallet: WalletDescriptor,
         chainAddresses: [SupportedChain: String],
-        passphrase: String? = nil
+        passphrase: String? = nil,
+        mnemonicWords: [String]? = nil,
+        privateKeyString: String? = nil
     ) -> [SupportedChain: Data] {
         guard !chainAddresses.isEmpty else { return [:] }
         switch wallet.kind {
         case .watchOnly:
             return [:]
         case .importedKey:
-            return importedKeyBlobs(wallet: wallet, chainAddresses: chainAddresses)
+            return importedKeyBlobs(
+                wallet: wallet,
+                chainAddresses: chainAddresses,
+                privateKeyString: privateKeyString
+            )
         case .created, .importedMnemonic:
-            return mnemonicKeyBlobs(wallet: wallet, chainAddresses: chainAddresses, passphrase: passphrase)
+            return mnemonicKeyBlobs(
+                wallet: wallet,
+                chainAddresses: chainAddresses,
+                passphrase: passphrase,
+                mnemonicWords: mnemonicWords
+            )
         }
     }
 
@@ -44,7 +55,8 @@ extension SigningKeyProvider {
     private static func mnemonicKeyBlobs(
         wallet: WalletDescriptor,
         chainAddresses: [SupportedChain: String],
-        passphrase: String?
+        passphrase: String?,
+        mnemonicWords: [String]?
     ) -> [SupportedChain: Data] {
         // Passphrase wallets derived their addresses WITH the passphrase,
         // which is never persisted. Without it we'd derive wrong keys —
@@ -52,7 +64,7 @@ extension SigningKeyProvider {
         if wallet.hasPassphrase && passphrase == nil { return [:] }
         let resolvedPassphrase = passphrase ?? ""
 
-        guard let words = (try? MnemonicVault.loadMnemonic(for: wallet.id)) ?? nil,
+        guard let words = mnemonicWords ?? ((try? MnemonicVault.loadMnemonic(for: wallet.id)) ?? nil),
               !words.isEmpty,
               let hdWallet = HDWallet(mnemonic: words.joined(separator: " "), passphrase: resolvedPassphrase)
         else { return [:] }
@@ -72,9 +84,10 @@ extension SigningKeyProvider {
 
     private static func importedKeyBlobs(
         wallet: WalletDescriptor,
-        chainAddresses: [SupportedChain: String]
+        chainAddresses: [SupportedChain: String],
+        privateKeyString: String?
     ) -> [SupportedChain: Data] {
-        guard let keyString = (try? MnemonicVault.loadPrivateKey(for: wallet.id)) ?? nil,
+        guard let keyString = privateKeyString ?? ((try? MnemonicVault.loadPrivateKey(for: wallet.id)) ?? nil),
               !keyString.isEmpty
         else { return [:] }
 

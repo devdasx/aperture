@@ -2812,3 +2812,212 @@ enum EVMHexQuantity {
         NSDecimalNumber(decimal: value).stringValue
     }
 }
+
+/// Cancellable, wallet-scoped background work entrypoint for the wallet home.
+/// Views enqueue work here and render from the database; this actor owns
+/// cancellation, latency diagnostics, and stale-result protection.
+actor WalletBackgroundWorkCoordinator {
+    static let shared = WalletBackgroundWorkCoordinator()
+
+    enum JobType: String, Sendable {
+        case balances
+        case fullRefresh
+        case prices
+        case markets
+        case chartSnapshot
+        case chainKeys
+    }
+
+    private struct JobSlot {
+        let token: UUID
+        let task: Task<Void, Never>
+        let queuedAt: Date
+    }
+
+    private var jobs: [String: JobSlot] = [:]
+
+    func refreshBalances(
+        walletId: UUID,
+        currencyCode: String,
+        modelContainer: ModelContainer,
+        userInitiated: Bool
+    ) async {
+        await runReplacing(
+            type: .balances,
+            walletId: walletId,
+            waitsForCompletion: true
+        ) {
+            await TokenPricingEngine.shared.configure(container: modelContainer)
+            await WalletDataRefreshCoordinator.shared.refresh(
+                walletId: walletId,
+                currencyCode: currencyCode,
+                modelContainer: modelContainer,
+                userInitiated: userInitiated,
+                mode: .balancesOnly
+            )
+        }
+    }
+
+    func startFullRefresh(
+        walletId: UUID,
+        currencyCode: String,
+        modelContainer: ModelContainer
+    ) {
+        Task {
+            await runReplacing(
+                type: .fullRefresh,
+                walletId: walletId,
+                waitsForCompletion: false
+            ) {
+                await TokenPricingEngine.shared.configure(container: modelContainer)
+                await WalletDataRefreshCoordinator.shared.refresh(
+                    walletId: walletId,
+                    currencyCode: currencyCode,
+                    modelContainer: modelContainer,
+                    userInitiated: false,
+                    mode: .full
+                )
+            }
+        }
+    }
+
+    func startPriceRefresh(
+        walletId: UUID,
+        symbols: [String],
+        currencyCode: String,
+        modelContainer: ModelContainer
+    ) {
+        Task {
+            await runReplacing(
+                type: .prices,
+                walletId: walletId,
+                waitsForCompletion: false
+            ) {
+                await TokenPricingEngine.shared.configure(container: modelContainer)
+                _ = await TokenPricingEngine.shared.unitPrices(symbols: symbols, currencyCode: currencyCode)
+            }
+        }
+    }
+
+    func startChartSnapshot(
+        walletId: UUID,
+        currencyCode: String,
+        modelContainer: ModelContainer
+    ) {
+        Task {
+            await runReplacing(
+                type: .chartSnapshot,
+                walletId: walletId,
+                waitsForCompletion: false
+            ) {
+                _ = try? await WalletChartSnapshotRepository(modelContainer: modelContainer)
+                    .captureFromPersistedBalances(walletId: walletId, currencyCode: currencyCode)
+            }
+        }
+    }
+
+    func startChainKeyBackfill(walletId: UUID, modelContainer: ModelContainer) {
+        Task {
+            await runReplacing(
+                type: .chainKeys,
+                walletId: walletId,
+                waitsForCompletion: false
+            ) {
+                try? await WalletRepository(modelContainer: modelContainer)
+                    .backfillEncryptedChainKeysFromStoredSecrets()
+            }
+        }
+    }
+
+    private func runReplacing(
+        type: JobType,
+        walletId: UUID,
+        waitsForCompletion: Bool,
+        operation: @escaping @Sendable () async -> Void
+    ) async {
+        let key = jobKey(type: type, walletId: walletId)
+        if let existing = jobs[key] {
+            existing.task.cancel()
+            if waitsForCompletion {
+                await existing.task.value
+            }
+            jobs[key] = nil
+        }
+
+        let queuedAt = Date()
+        let token = UUID()
+        let task = Task {
+            let startedAt = Date()
+            await Self.record(
+                .info,
+                type: type,
+                walletId: walletId,
+                message: "Background job started",
+                queuedAt: queuedAt,
+                startedAt: startedAt
+            )
+            await operation()
+            let cancelled = Task.isCancelled
+            await Self.record(
+                .info,
+                type: type,
+                walletId: walletId,
+                message: cancelled ? "Background job cancelled" : "Background job finished",
+                queuedAt: queuedAt,
+                startedAt: startedAt,
+                finishedAt: Date(),
+                cancelled: cancelled
+            )
+        }
+        jobs[key] = JobSlot(token: token, task: task, queuedAt: queuedAt)
+        if waitsForCompletion {
+            await task.value
+            if jobs[key]?.token == token {
+                jobs[key] = nil
+            }
+        } else {
+            Task {
+                await task.value
+                await self.clearJob(key: key, token: token)
+            }
+        }
+    }
+
+    private func clearJob(key: String, token: UUID) {
+        if jobs[key]?.token == token {
+            jobs[key] = nil
+        }
+    }
+
+    private func jobKey(type: JobType, walletId: UUID) -> String {
+        "\(walletId.uuidString)|\(type.rawValue)"
+    }
+
+    private nonisolated static func record(
+        _ level: DiagnosticsLogLevel,
+        type: JobType,
+        walletId: UUID,
+        message: String,
+        queuedAt: Date,
+        startedAt: Date,
+        finishedAt: Date? = nil,
+        cancelled: Bool = false,
+        metadata: [String: String] = [:]
+    ) async {
+        var payload = metadata
+        payload["jobType"] = type.rawValue
+        payload["walletId"] = walletId.uuidString
+        payload["queuedMs"] = DiagnosticsLogStore.elapsedMilliseconds(from: queuedAt, to: startedAt)
+        payload["cancelled"] = "\(cancelled)"
+        if let finishedAt {
+            payload["totalElapsedMs"] = DiagnosticsLogStore.elapsedMilliseconds(from: queuedAt, to: finishedAt)
+            payload["operationMs"] = DiagnosticsLogStore.elapsedMilliseconds(from: startedAt, to: finishedAt)
+        }
+        DiagnosticsLogStore.shared.record(
+            level,
+            category: "background-job",
+            message: message,
+            metadata: payload
+        )
+    }
+}

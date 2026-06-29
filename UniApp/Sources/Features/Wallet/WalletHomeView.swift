@@ -623,6 +623,7 @@ struct WalletHomeView: View {
                     rebuildFilteredRows()
                 }
                 .onChange(of: activeWalletIdRaw) { _, _ in
+                    clearWalletScopedSnapshots()
                     rebuildDisplayRows()
                 }
                 // Last-screen restoration mirror (2026-06-13). Every
@@ -1866,6 +1867,19 @@ struct WalletHomeView: View {
         allTransactionsMemo = computeAllTransactions()
     }
 
+    private func clearWalletScopedSnapshots() {
+        balancesMemo = nil
+        allHeldRowsMemo = nil
+        allTransactionsMemo = nil
+        coinDisplayRows = []
+        tokenDisplayRows = []
+        filteredCoinRows = []
+        filteredTokenRows = []
+        combinedFilteredRows = []
+        usdActivityPrices = [:]
+        scrubModel.update(selection: nil)
+    }
+
     /// O(1) key for the dust-price load — re-fires on wallet switch or a
     /// tx count change, the only moments the feed's symbol set can grow.
     private var dustPriceKey: String {
@@ -2179,7 +2193,7 @@ struct WalletHomeView: View {
         // re-renders, every consumer updates simultaneously.
         ForEach(allWallets) { wallet in
             Button {
-                activeWalletIdRaw = wallet.id.uuidString
+                ActiveWalletPointer.set(wallet.id)
             } label: {
                 Label {
                     HStack {
@@ -2409,7 +2423,7 @@ struct WalletHomeView: View {
         )
         descriptor.fetchLimit = 1
         if let first = try? modelContext.fetch(descriptor).first {
-            activeWalletIdRaw = first.id.uuidString
+            ActiveWalletPointer.set(first.id)
         }
     }
 
@@ -2464,27 +2478,35 @@ struct WalletHomeView: View {
     @MainActor
     private func runRefresh(userInitiated: Bool = false) async {
         guard let walletId = await resolveRefreshWalletId() else { return }
-        guard userInitiated || !isRefreshing else { return }
+        let container = modelContext.container
+        if !userInitiated {
+            Task {
+                await WalletBackgroundWorkCoordinator.shared.startFullRefresh(
+                    walletId: walletId,
+                    currencyCode: currencyCode,
+                    modelContainer: container
+                )
+                await WalletBackgroundWorkCoordinator.shared.startChainKeyBackfill(
+                    walletId: walletId,
+                    modelContainer: container
+                )
+            }
+            return
+        }
+
         isRefreshing = true
         defer { isRefreshing = false }
 
-        await TokenPricingEngine.shared.configure(container: modelContext.container)
-        await WalletDataRefreshCoordinator.shared.refresh(
+        await WalletBackgroundWorkCoordinator.shared.refreshBalances(
             walletId: walletId,
             currencyCode: currencyCode,
-            modelContainer: modelContext.container,
-            userInitiated: userInitiated,
-            mode: userInitiated ? .balancesOnly : .full
+            modelContainer: container,
+            userInitiated: true
         )
-        if !userInitiated {
-            await repriceForCurrencyChange()
-        }
-
+        guard UUID(uuidString: activeWalletIdRaw) == walletId else { return }
         rebuildFilterInputs()
         rebuildDisplayRows()
-        if userInitiated {
-            UniHapticEngine.shared.play(.signature(.irisSettle))
-        }
+        UniHapticEngine.shared.play(.signature(.irisSettle))
     }
 
     /// Currency-change re-price (2026-06-13, **deep fix 2026-06-13b**).
@@ -2536,6 +2558,7 @@ struct WalletHomeView: View {
             currencyCode: code
         )
         guard !Task.isCancelled else { return }
+        guard activeWallet?.id == walletId else { return }
 
         // For any row the ladder couldn't price directly, fetch one FX
         // cross per old currency so its existing fiat can be
@@ -2547,6 +2570,7 @@ struct WalletHomeView: View {
             crosses[from] = await TokenPricingEngine.shared.crossRate(from: from, to: code)
         }
         guard !Task.isCancelled else { return }
+        guard activeWallet?.id == walletId else { return }
 
         // Apply on the MAIN context's own objects, then save once.
         var changed = 0

@@ -270,10 +270,7 @@ final class CreateWalletState {
         // `@AppStorage`. Writing here keeps the contract centralized:
         // anything that successfully runs `persist(...)` becomes
         // active, without each caller needing to remember.
-        UserDefaults.standard.set(
-            walletId.uuidString,
-            forKey: "activeWalletId"
-        )
+        ActiveWalletPointer.set(walletId)
         return walletId
     }
 }

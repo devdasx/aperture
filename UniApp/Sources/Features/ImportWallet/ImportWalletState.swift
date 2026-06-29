@@ -109,10 +109,8 @@ final class ImportWalletState {
         }
         switch result {
         case .mnemonic:
+            let normalizedWords = Self.normalizedMnemonicWords(mnemonicWords)
             if derivedAddressesFromMnemonic.isEmpty {
-                let normalizedWords = mnemonicWords
-                    .map { $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
-                    .filter { !$0.isEmpty }
                 derivedAddressesFromMnemonic = await service.deriveAddresses(
                     mnemonic: normalizedWords,
                     passphrase: mnemonicPassphrase
@@ -137,7 +135,7 @@ final class ImportWalletState {
             // the UI doesn't hitch during commit; the Keychain writes
             // below stay on `@MainActor`.
             let seed = await Self.deriveSeedOffMain(
-                words: mnemonicWords,
+                words: normalizedWords,
                 passphrase: mnemonicPassphrase
             )
             // Encrypt + Keychain-write the seed and legacy mnemonic copy OFF
@@ -147,7 +145,7 @@ final class ImportWalletState {
             // from the app passcode or Face ID.
             try await Self.storeMnemonicKeyMaterial(
                 seed: seed,
-                mnemonic: mnemonicWords,
+                mnemonic: normalizedWords,
                 walletId: walletId
             )
             do {
@@ -158,10 +156,10 @@ final class ImportWalletState {
                 try await repository.insertImportedMnemonicWallet(
                     id: walletId,
                     name: resolvedName,
-                    mnemonicWordCount: mnemonicWordCount.rawValue,
+                    mnemonicWordCount: normalizedWords.count,
                     hasPassphrase: !mnemonicPassphrase.isEmpty,
                     colorTag: "default",
-                    mnemonicWords: mnemonicWords,
+                    mnemonicWords: normalizedWords,
                     addresses: addressEntries
                 )
             } catch {
@@ -271,11 +269,14 @@ final class ImportWalletState {
         // success screen and the refresh coordinator starts pulling
         // its balances. Read by every screen via the
         // `"activeWalletId"` `@AppStorage` key.
-        UserDefaults.standard.set(
-            walletId.uuidString,
-            forKey: "activeWalletId"
-        )
+        ActiveWalletPointer.set(walletId)
         return walletId
+    }
+
+    nonisolated private static func normalizedMnemonicWords(_ words: [String]) -> [String] {
+        words
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
+            .filter { !$0.isEmpty }
     }
 
     /// Every supported EVM chain, in declaration order (ethereum first).
