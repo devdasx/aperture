@@ -92,12 +92,12 @@ enum ActivityPDFExporter {
     }
 
     private static func coinImage(chain: SupportedChain, symbol: String, contract: String?) async -> UIImage? {
-        if let localName = localCoinAssetName(chain: chain, symbol: symbol, contract: contract),
-           let image = UIImage(named: localName) {
-            return image
-        }
         if let url = coinLogoURL(chain: chain, symbol: symbol, contract: contract),
            let image = await image(from: url) {
+            return image
+        }
+        if let localName = localCoinAssetName(chain: chain, symbol: symbol, contract: contract),
+           let image = UIImage(named: localName) {
             return image
         }
         if let fallbackName = AssetLogoSource.nativeTokenAssetName(symbol: symbol),
@@ -108,15 +108,15 @@ enum ActivityPDFExporter {
     }
 
     private static func networkImage(for chain: SupportedChain) async -> UIImage? {
+        if let url = AssetLogoSource.networkLogoURL(chain: chain),
+           let image = await image(from: url) {
+            return image
+        }
         if let localName = chain.logoAssetName, let image = UIImage(named: localName) {
             return image
         }
         if let nativeName = AssetLogoSource.nativeTokenAssetName(symbol: chain.ticker),
            let image = UIImage(named: nativeName) {
-            return image
-        }
-        if let url = AssetLogoSource.networkLogoURL(chain: chain),
-           let image = await image(from: url) {
             return image
         }
         return nil
@@ -139,12 +139,20 @@ enum ActivityPDFExporter {
 
     private static func coinLogoURL(chain: SupportedChain, symbol: String, contract: String?) -> URL? {
         if let contract, !contract.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            return AssetLogoSource.tokenLogoURL(chain: chain, contract: contract)
+            return trustWalletURL(AssetLogoSource.tokenLogoURL(chain: chain, contract: contract))
         }
-        if let stablecoinURL = AssetLogoSource.stablecoinLogoURL(symbol: symbol) {
+        if let stablecoinURL = trustWalletURL(AssetLogoSource.stablecoinLogoURL(symbol: symbol)) {
             return stablecoinURL
         }
-        return AssetLogoSource.networkLogoURL(chain: chain)
+        return trustWalletURL(AssetLogoSource.networkLogoURL(chain: chain))
+    }
+
+    private static func trustWalletURL(_ url: URL?) -> URL? {
+        guard let url,
+              url.host?.localizedCaseInsensitiveContains("trustwallet.com") == true else {
+            return nil
+        }
+        return url
     }
 
     private static func image(from url: URL) async -> UIImage? {
