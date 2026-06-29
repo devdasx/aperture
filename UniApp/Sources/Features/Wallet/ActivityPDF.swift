@@ -444,11 +444,9 @@ enum ActivityPDFRenderer {
         let labels = ["DATE", "ASSET", "TYPE", "AMOUNT", "VALUE", "STATUS"]
 
         for (index, column) in columns.enumerated() {
-            let x = column.x + (index == 5 ? 26 : 0)
-            let width = column.width - (index == 5 ? 26 : 0)
             drawText(
                 labels[index],
-                in: CGRect(x: x, y: top, width: width, height: 13),
+                in: CGRect(x: column.x, y: top, width: column.width, height: 13),
                 font: .systemFont(ofSize: 10, weight: .bold),
                 color: faint,
                 alignment: column.trailing ? .right : .left,
@@ -599,7 +597,7 @@ enum ActivityPDFRenderer {
             fillColor = fail.withAlphaComponent(0.10)
         }
         let font = UIFont.systemFont(ofSize: 11, weight: .semibold)
-        let width = min(max(textWidth(row.statusText, font: font) + 23, 64), columns[5].width - 26)
+        let width = min(max(textWidth(row.statusText, font: font) + 33, 70), columns[5].width)
         let rect = CGRect(x: columns[5].x + columns[5].width - width, y: y + 13.5, width: width, height: 22)
         fillRounded(rect, radius: 11, color: fillColor)
         fillOval(CGRect(x: rect.minX + 9, y: rect.midY - 2.5, width: 5, height: 5), color: color)
