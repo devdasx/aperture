@@ -787,7 +787,7 @@ struct WalletActivityView: View {
         switch status {
         case .confirmed: return String(localized: "Confirmed")
         case .pending:   return String(localized: "Pending")
-        case .failed:    return String(localized: "Failed")
+        case .failed:    return String(localized: "Canceled")
         }
     }
 

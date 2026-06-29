@@ -38,6 +38,11 @@ struct ActivityPDFChainSummary {
 }
 
 struct ActivityPDFDocument {
+    enum Style {
+        case statement
+        case transactionReceipt
+    }
+
     let appName: String
     let title: String
     let walletName: String
@@ -61,6 +66,68 @@ struct ActivityPDFDocument {
     let legalTitle: String
     let legalText: String
     let isRTL: Bool
+    let style: Style
+    let receiptDetails: [ActivityPDFReceiptDetail]
+
+    init(
+        appName: String,
+        title: String,
+        walletName: String,
+        generatedText: String,
+        transactionCount: Int,
+        assetCount: Int,
+        confirmedCount: Int,
+        failedCount: Int,
+        internalCount: Int,
+        receivedFiatText: String,
+        sentFiatText: String,
+        netFiatText: String,
+        netIsPositive: Bool,
+        periodText: String,
+        chainSummaries: [ActivityPDFChainSummary],
+        downloadCaption: String,
+        appStoreURLText: String,
+        footerSiteText: String,
+        pageLabelFormat: String,
+        emptyText: String,
+        legalTitle: String,
+        legalText: String,
+        isRTL: Bool,
+        style: Style = .statement,
+        receiptDetails: [ActivityPDFReceiptDetail] = []
+    ) {
+        self.appName = appName
+        self.title = title
+        self.walletName = walletName
+        self.generatedText = generatedText
+        self.transactionCount = transactionCount
+        self.assetCount = assetCount
+        self.confirmedCount = confirmedCount
+        self.failedCount = failedCount
+        self.internalCount = internalCount
+        self.receivedFiatText = receivedFiatText
+        self.sentFiatText = sentFiatText
+        self.netFiatText = netFiatText
+        self.netIsPositive = netIsPositive
+        self.periodText = periodText
+        self.chainSummaries = chainSummaries
+        self.downloadCaption = downloadCaption
+        self.appStoreURLText = appStoreURLText
+        self.footerSiteText = footerSiteText
+        self.pageLabelFormat = pageLabelFormat
+        self.emptyText = emptyText
+        self.legalTitle = legalTitle
+        self.legalText = legalText
+        self.isRTL = isRTL
+        self.style = style
+        self.receiptDetails = receiptDetails
+    }
+}
+
+struct ActivityPDFReceiptDetail {
+    let label: String
+    let value: String
+    let monospaced: Bool
 }
 
 struct ActivityPDFIconKey: Hashable {
@@ -106,6 +173,7 @@ enum ActivityPDFRenderer {
     private static let bg = UIColor.white
     private static let chip = UIColor(hex: 0xF4F5F7)
     private static let pos = UIColor(hex: 0x178A52)
+    private static let warn = UIColor(hex: 0xD97706)
     private static let fail = UIColor(hex: 0xC8472F)
     private static let legalFill = UIColor(hex: 0xFCFCFD)
 
@@ -144,6 +212,14 @@ enum ActivityPDFRenderer {
         ]
 
         let renderer = UIGraphicsPDFRenderer(bounds: CGRect(origin: .zero, size: pageSize), format: format)
+        if document.style == .transactionReceipt, let row = rows.first {
+            return renderer.pdfData { context in
+                context.beginPage()
+                fill(CGRect(origin: .zero, size: pageSize), color: bg)
+                drawTransactionReceipt(row: row, document: document, assets: assets)
+            }
+        }
+
         let chunks = pageChunks(rows)
         let totalPages = max(1, chunks.count)
 
@@ -182,6 +258,176 @@ enum ActivityPDFRenderer {
             cursor = end
         }
         return chunks
+    }
+
+    // MARK: - Single transaction receipt
+
+    private static func drawTransactionReceipt(
+        row: ActivityPDFRow,
+        document: ActivityPDFDocument,
+        assets: ActivityPDFRenderAssets
+    ) {
+        drawReceiptHeader(document: document, logo: assets.logo)
+
+        let card = CGRect(x: sidePadding, y: 178, width: contentWidth, height: 308)
+        fillRounded(card, radius: 28, color: UIColor(hex: 0xFBFCFE))
+        strokeRounded(card, radius: 28, color: hair, lineWidth: 1)
+
+        let key = ActivityPDFIconKey(chain: row.chain, symbol: row.assetSymbol, contract: row.tokenContract)
+        let coinRect = CGRect(x: card.midX - 34, y: card.minY + 34, width: 68, height: 68)
+        if let image = assets.coinImages[key] {
+            drawCircleImage(image, in: coinRect)
+        } else {
+            drawMonogram(row.assetSymbol, in: coinRect)
+        }
+
+        drawText(
+            row.typeText.uppercased(),
+            in: CGRect(x: card.minX + 40, y: coinRect.maxY + 22, width: card.width - 80, height: 15),
+            font: .systemFont(ofSize: 11, weight: .semibold),
+            color: faint,
+            alignment: .center,
+            kern: 1.2
+        )
+        drawText(
+            "\(row.amountText) \(row.unitText)",
+            in: CGRect(x: card.minX + 38, y: coinRect.maxY + 45, width: card.width - 76, height: 50),
+            font: .monospacedDigitSystemFont(ofSize: 35, weight: .semibold),
+            color: amountColor(for: row),
+            alignment: .center,
+            kern: -0.7
+        )
+        drawText(
+            row.fiatText,
+            in: CGRect(x: card.minX + 38, y: coinRect.maxY + 96, width: card.width - 76, height: 24),
+            font: .monospacedDigitSystemFont(ofSize: 17, weight: .medium),
+            color: sub,
+            alignment: .center
+        )
+        drawReceiptStatus(row, centerX: card.midX, y: coinRect.maxY + 134)
+
+        let metaTop = card.maxY + 34
+        drawText(
+            "DETAILS",
+            in: CGRect(x: sidePadding, y: metaTop, width: contentWidth, height: 14),
+            font: .systemFont(ofSize: 11, weight: .bold),
+            color: faint,
+            kern: 1.5
+        )
+
+        let details = CGRect(x: sidePadding, y: metaTop + 30, width: contentWidth, height: 348)
+        fillRounded(details, radius: 22, color: UIColor(hex: 0xFBFCFE))
+        strokeRounded(details, radius: 22, color: hair, lineWidth: 1)
+
+        let rowHeight: CGFloat = 52
+        let detailRows = document.receiptDetails.prefix(6)
+        for (index, detail) in detailRows.enumerated() {
+            let y = details.minY + CGFloat(index) * rowHeight
+            if index > 0 {
+                fill(CGRect(x: details.minX + 20, y: y, width: details.width - 40, height: 1), color: hair2)
+            }
+            drawText(
+                detail.label,
+                in: CGRect(x: details.minX + 24, y: y + 18, width: 160, height: 18),
+                font: .systemFont(ofSize: 13, weight: .regular),
+                color: sub
+            )
+            drawText(
+                detail.value,
+                in: CGRect(x: details.minX + 194, y: y + 17, width: details.width - 218, height: 20),
+                font: detail.monospaced
+                    ? .monospacedDigitSystemFont(ofSize: 13.5, weight: .medium)
+                    : .systemFont(ofSize: 13.5, weight: .medium),
+                color: detail.label == "Status" ? statusColor(for: row.status) : inkSoft,
+                alignment: .right
+            )
+        }
+
+        drawReceiptFooter(document: document, logo: assets.logo)
+    }
+
+    private static func drawReceiptHeader(document: ActivityPDFDocument, logo: UIImage?) {
+        let logoRect = CGRect(x: sidePadding, y: topPadding, width: 42, height: 42)
+        if let logo {
+            drawRoundedImage(logo, in: logoRect, radius: 12)
+        } else {
+            drawLogoFallback(in: logoRect, radius: 12)
+        }
+        drawText(
+            document.appName,
+            in: CGRect(x: sidePadding + 55, y: topPadding - 1, width: 230, height: 28),
+            font: .systemFont(ofSize: 23, weight: .semibold),
+            color: ink,
+            kern: -0.46
+        )
+        drawText(
+            document.title.uppercased(),
+            in: CGRect(x: sidePadding + 55, y: topPadding + 29, width: 260, height: 15),
+            font: .systemFont(ofSize: 11, weight: .semibold),
+            color: sub,
+            kern: 2.2
+        )
+        drawText(
+            document.walletName,
+            in: CGRect(x: contentRight - 255, y: topPadding + 3, width: 255, height: 22),
+            font: .systemFont(ofSize: 15, weight: .semibold),
+            color: inkSoft,
+            alignment: .right,
+            kern: -0.2
+        )
+        drawText(
+            "Generated \(document.generatedText)",
+            in: CGRect(x: contentRight - 285, y: topPadding + 29, width: 285, height: 16),
+            font: .systemFont(ofSize: 10.5, weight: .medium),
+            color: faint,
+            alignment: .right
+        )
+        fill(CGRect(x: sidePadding, y: topPadding + 72, width: contentWidth, height: 1.5), color: ink)
+    }
+
+    private static func drawReceiptStatus(_ row: ActivityPDFRow, centerX: CGFloat, y: CGFloat) {
+        let color = statusColor(for: row.status)
+        let fillColor = color.withAlphaComponent(0.12)
+        let font = UIFont.systemFont(ofSize: 13, weight: .semibold)
+        let width = max(textWidth(row.statusText, font: font) + 42, 108)
+        let rect = CGRect(x: centerX - width / 2, y: y, width: width, height: 30)
+        fillRounded(rect, radius: 15, color: fillColor)
+        fillOval(CGRect(x: rect.minX + 13, y: rect.midY - 3, width: 6, height: 6), color: color)
+        drawText(
+            row.statusText,
+            in: CGRect(x: rect.minX + 27, y: rect.minY + 7, width: rect.width - 38, height: 16),
+            font: font,
+            color: color
+        )
+    }
+
+    private static func drawReceiptFooter(document: ActivityPDFDocument, logo: UIImage?) {
+        fill(CGRect(x: sidePadding, y: footerRuleY, width: contentWidth, height: 1), color: hair)
+        if let logo {
+            drawRoundedImage(logo, in: CGRect(x: sidePadding, y: footerRuleY + 17, width: 18, height: 18), radius: 5)
+        } else {
+            drawLogoFallback(in: CGRect(x: sidePadding, y: footerRuleY + 17, width: 18, height: 18), radius: 5)
+        }
+        drawText(
+            document.footerSiteText,
+            in: CGRect(x: sidePadding + 25, y: footerRuleY + 18, width: 160, height: 14),
+            font: .systemFont(ofSize: 10.5, weight: .semibold),
+            color: faint
+        )
+        drawText(
+            "\(document.walletName) · Transaction Receipt",
+            in: CGRect(x: sidePadding + 210, y: footerRuleY + 18, width: contentWidth - 420, height: 14),
+            font: .systemFont(ofSize: 10.5, weight: .semibold),
+            color: faint,
+            alignment: .center
+        )
+        drawText(
+            "Page 1 of 1",
+            in: CGRect(x: contentRight - 90, y: footerRuleY + 18, width: 90, height: 14),
+            font: .systemFont(ofSize: 10.5, weight: .semibold),
+            color: faint,
+            alignment: .right
+        )
     }
 
     // MARK: - Headers
@@ -600,19 +846,8 @@ enum ActivityPDFRenderer {
     }
 
     private static func drawStatus(_ row: ActivityPDFRow, at y: CGFloat, height: CGFloat) {
-        let color: UIColor
-        let fillColor: UIColor
-        switch row.status {
-        case .confirmed:
-            color = sub
-            fillColor = chip
-        case .pending:
-            color = faint
-            fillColor = chip
-        case .failed:
-            color = fail
-            fillColor = fail.withAlphaComponent(0.10)
-        }
+        let color = statusColor(for: row.status)
+        let fillColor = color.withAlphaComponent(0.12)
         let font = UIFont.systemFont(ofSize: 11, weight: .semibold)
         let width = min(max(textWidth(row.statusText, font: font) + 33, 70), columns[5].width)
         let rect = CGRect(x: centeredX(width: width, in: columns[5]), y: y + 13.5, width: width, height: 22)
@@ -628,6 +863,22 @@ enum ActivityPDFRenderer {
 
     private static func centeredX(width: CGFloat, in column: Column) -> CGFloat {
         column.x + max(0, (column.width - width) / 2)
+    }
+
+    private static func statusColor(for status: ActivityPDFRow.Status) -> UIColor {
+        switch status {
+        case .confirmed: return pos
+        case .pending: return warn
+        case .failed: return fail
+        }
+    }
+
+    private static func amountColor(for row: ActivityPDFRow) -> UIColor {
+        switch row.transferType {
+        case .received: return pos
+        case .sent: return ink
+        case .internalTransfer: return inkSoft
+        }
     }
 
     // MARK: - Legal / footer

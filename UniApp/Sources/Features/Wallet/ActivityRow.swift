@@ -246,7 +246,7 @@ struct ActivityRow: View {
         case .pending:
             return "\(String.apertureLocalized("Pending")) · \(relative)"
         case .failed:
-            return "\(String.apertureLocalized("Failed")) · \(relative)"
+            return "\(String.apertureLocalized("Canceled")) · \(relative)"
         }
     }
 
