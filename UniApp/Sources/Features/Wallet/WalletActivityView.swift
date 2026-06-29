@@ -544,7 +544,7 @@ struct WalletActivityView: View {
         let exportTransactions = transactions(for: inputs)
         guard !exportTransactions.isEmpty, !isGeneratingPDF else { return }
         let rows = pdfRows(for: exportTransactions)
-        let document = pdfDocument(rowCount: rows.count, inputs: inputs)
+        let document = pdfDocument(rows: rows, inputs: inputs)
         let fileName = pdfFileName()
         let scale = displayScale
         isGeneratingPDF = true
@@ -582,13 +582,19 @@ struct WalletActivityView: View {
             }
             let status = TransactionStatus(rawValue: tx.statusRaw) ?? .confirmed
             return ActivityPDFRow(
-                dateText: Self.rowDateFormatter.string(from: tx.occurredAt),
+                occurredAt: tx.occurredAt,
+                dateText: Self.statementDateFormatter.string(from: tx.occurredAt),
+                timeText: Self.statementTimeFormatter.string(from: tx.occurredAt),
                 assetSymbol: tx.tokenSymbol,
-                networkName: chainFor(tx)?.displayName ?? "—",
+                networkName: chainFor(tx)?.displayName ?? "-",
+                chain: chainFor(tx) ?? .ethereum,
+                tokenContract: tx.tokenContract,
                 typeText: pdfTypeLabel(direction),
-                isIncoming: direction == .incoming,
-                amountText: "\(sign)\(WalletFormatting.native(amount, decimals: 6)) \(tx.tokenSymbol)",
+                transferType: pdfTransferType(direction),
+                amountText: "\(sign)\(WalletFormatting.native(amount, decimals: 6))",
+                unitText: tx.tokenSymbol,
                 fiatText: fiat.map { WalletFormatting.fiat($0, currencyCode: currencyCode) } ?? "—",
+                fiatValue: fiat,
                 statusText: pdfStatusLabel(status),
                 status: pdfStatusKind(status)
             )
@@ -596,38 +602,57 @@ struct WalletActivityView: View {
     }
 
     /// The localized document metadata + column labels.
-    private func pdfDocument(rowCount: Int, inputs: WalletActivityFilterInputs) -> ActivityPDFDocument {
+    private func pdfDocument(rows: [ActivityPDFRow], inputs: WalletActivityFilterInputs) -> ActivityPDFDocument {
         let isRTL = LanguagePreference.layoutDirection(for: sheetLanguageCode) == .rightToLeft
-        let summary: String
-        if rowCount == dustFreeTransactions.count {
-            summary = String(format: String(localized: "All %lld transactions"), Int64(rowCount))
+        let rowCount = rows.count
+        let received = rows
+            .filter { $0.transferType == .received }
+            .reduce(Decimal.zero) { $0 + ($1.fiatValue ?? .zero) }
+        let sent = rows
+            .filter { $0.transferType == .sent }
+            .reduce(Decimal.zero) { $0 + ($1.fiatValue ?? .zero) }
+        let net = received - sent
+        let failedCount = rows.filter { $0.status == .failed }.count
+        let confirmedCount = rows.filter { $0.status == .confirmed }.count
+        let internalCount = rows.filter { $0.transferType == .internalTransfer }.count
+        let assets = Set(rows.map {
+            "\($0.chain.rawValue)|\($0.assetSymbol.uppercased())|\($0.tokenContract?.lowercased() ?? "")"
+        })
+        let chainCounts = Dictionary(grouping: rows, by: \.chain)
+            .map { ActivityPDFChainSummary(chain: $0.key, count: $0.value.count) }
+            .sorted {
+                if $0.count != $1.count { return $0.count > $1.count }
+                return $0.chain.displayName < $1.chain.displayName
+            }
+        let periodText: String
+        if let first = rows.map(\.occurredAt).min(), let last = rows.map(\.occurredAt).max() {
+            periodText = "\(Self.statementDateFormatter.string(from: first)) — \(Self.statementDateFormatter.string(from: last))"
         } else {
-            summary = String(
-                format: String(localized: "Showing %lld of %lld transactions"),
-                Int64(rowCount), Int64(dustFreeTransactions.count)
-            )
+            periodText = Self.statementDateFormatter.string(from: Date())
         }
         return ActivityPDFDocument(
             appName: "Aperture",
             title: String(localized: "Activity Statement"),
             walletName: activeWallet?.name ?? String(localized: "Wallet"),
-            generatedText: String(
-                format: String(localized: "Generated %@"),
-                Self.generatedDateFormatter.string(from: Date())
-            ),
-            summaryText: summary,
-            filterLines: pdfFilterLines(inputs),
-            downloadCaption: String(localized: "Scan to download Aperture"),
+            generatedText: Self.statementGeneratedFormatter.string(from: Date()),
+            transactionCount: rowCount,
+            assetCount: assets.count,
+            confirmedCount: confirmedCount,
+            failedCount: failedCount,
+            internalCount: internalCount,
+            receivedFiatText: WalletFormatting.fiat(received, currencyCode: currencyCode),
+            sentFiatText: WalletFormatting.fiat(sent, currencyCode: currencyCode),
+            netFiatText: "\(net >= .zero ? "+" : "−")\(WalletFormatting.fiat(Self.abs(net), currencyCode: currencyCode))",
+            netIsPositive: net >= .zero,
+            periodText: periodText,
+            chainSummaries: chainCounts,
+            downloadCaption: String(localized: "Get Aperture"),
             appStoreURLText: ApertureWeb.appStoreDisplay,
-            footerText: "aperturex.io",
+            footerSiteText: "aperturex.io",
             pageLabelFormat: String(localized: "Page %1$lld of %2$lld"),
             emptyText: String(localized: "No transactions to show."),
-            colDate: String(localized: "Date"),
-            colAsset: String(localized: "Asset"),
-            colType: String(localized: "Type"),
-            colAmount: String(localized: "Amount"),
-            colValue: String(localized: "Value"),
-            colStatus: String(localized: "Status"),
+            legalTitle: String(localized: "About this statement"),
+            legalText: String(localized: "This statement was generated by Aperture from on-chain data for the wallet shown above. Fiat values are estimates at the time of each transaction and are for reference only. Aperture is a self-custodial wallet — your keys never leave your device. This document is informational and is not tax or financial advice."),
             isRTL: isRTL
         )
     }
@@ -754,6 +779,14 @@ struct WalletActivityView: View {
         }
     }
 
+    private func pdfTransferType(_ direction: TransactionDirection) -> ActivityPDFRow.TransferType {
+        switch direction {
+        case .incoming: return .received
+        case .outgoing: return .sent
+        case .internal: return .internalTransfer
+        }
+    }
+
     private func pdfStatusLabel(_ status: TransactionStatus) -> String {
         switch status {
         case .confirmed: return String(localized: "Confirmed")
@@ -775,6 +808,34 @@ struct WalletActivityView: View {
         let wallet = activeWallet?.name ?? "Wallet"
         return "Aperture Activity - \(wallet) - \(date).pdf"
     }
+
+    private static func abs(_ value: Decimal) -> Decimal {
+        value < .zero ? -value : value
+    }
+
+    /// Pixel-match statement date: `13 Jun 2026`.
+    private static let statementDateFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.dateFormat = "d MMM yyyy"
+        return f
+    }()
+
+    /// Pixel-match statement time: `14:22`.
+    private static let statementTimeFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.dateFormat = "HH:mm"
+        return f
+    }()
+
+    /// Pixel-match generated timestamp: `29 June 2026 at 15:34`.
+    private static let statementGeneratedFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.dateFormat = "d MMMM yyyy 'at' HH:mm"
+        return f
+    }()
 
     /// Compact per-row date+time, in the user's locale.
     private static let rowDateFormatter: DateFormatter = {
