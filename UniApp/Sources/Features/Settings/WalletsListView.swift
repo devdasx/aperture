@@ -541,7 +541,7 @@ struct WalletsListView: View {
     /// Make this wallet the active one (the home reads `activeWalletId`).
     private func makeActive(_ wallet: WalletRecord) {
         guard wallet.id.uuidString != activeWalletIdRaw else { return }
-        activeWalletIdRaw = wallet.id.uuidString
+        ActiveWalletPointer.set(wallet.id)
         UniHapticEngine.shared.play(.success)
     }
 

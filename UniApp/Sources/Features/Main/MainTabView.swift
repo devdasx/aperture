@@ -433,7 +433,7 @@ struct MainTabView: View {
                     image: renderWalletAvatarMenuImage(for: wallet),
                     state: isActive ? .on : .off
                 ) { _ in
-                    activeWalletIdRaw = wallet.id.uuidString
+                    ActiveWalletPointer.set(wallet.id)
                 }
             }
             let switchMenu = UIMenu(

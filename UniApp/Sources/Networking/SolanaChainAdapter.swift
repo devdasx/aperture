@@ -222,7 +222,7 @@ struct SolanaChainAdapter: Sendable {
 /// (legacy `splToken` vs `splToken2022`). Required for Custom Tokens
 /// so the Add sheet can render the decimals honestly and the scanner
 /// can pick the right token program for balance reads.
-enum SolanaTokenStandard: Sendable, Equatable {
+enum SolanaTokenStandard: Sendable, Equatable, Hashable {
     case splToken
     case splToken2022
 }

@@ -1,4 +1,5 @@
 import Foundation
+import SwiftData
 import WalletCore
 
 /// Resolves the wallet-core `PrivateKey` for a `(wallet, chain)` pair —
@@ -34,6 +35,28 @@ import WalletCore
 ///
 /// `enum` with only static members — no instance state to leak.
 enum SigningKeyProvider {
+    private final class ContainerBox: @unchecked Sendable {
+        private let lock = NSLock()
+        private var container: ModelContainer?
+
+        func set(_ container: ModelContainer) {
+            lock.lock()
+            self.container = container
+            lock.unlock()
+        }
+
+        func get() -> ModelContainer? {
+            lock.lock()
+            defer { lock.unlock() }
+            return container
+        }
+    }
+
+    private static let containerBox = ContainerBox()
+
+    static func configure(modelContainer: ModelContainer) {
+        containerBox.set(modelContainer)
+    }
 
     /// Run `body` with the freshly-derived `PrivateKey` for
     /// `(wallet, chain)`. The key (and the `HDWallet`/mnemonic it came
@@ -95,6 +118,11 @@ enum SigningKeyProvider {
         expectedAddress: String?,
         _ body: (PrivateKey) throws -> R
     ) throws -> R {
+        if let privateKey = loadEncryptedChainKey(walletId: wallet.id, chain: chain, coin: coin) {
+            try assertParity(privateKey: privateKey, coin: coin, expected: expectedAddress, chain: chain)
+            return try body(privateKey)
+        }
+
         // A passphrase-protected wallet derived its addresses WITH the
         // passphrase, which we never persist. Signing with "" would use
         // the wrong key. Refuse unless the caller supplied it.
@@ -110,9 +138,7 @@ enum SigningKeyProvider {
             resolvedPassphrase = passphrase ?? ""
         }
 
-        // Load the mnemonic from the vault. A backed-up wallet keeps
-        // only the derived seed on device; the phrase is gone by design.
-        let words = try? MnemonicVault.loadMnemonic(for: wallet.id)
+        let words = loadStoredMnemonic(for: wallet.id)
         guard let words, !words.isEmpty else {
             throw SigningError.secretUnavailable
         }
@@ -145,10 +171,16 @@ enum SigningKeyProvider {
         expectedAddress: String?,
         _ body: (PrivateKey) throws -> R
     ) throws -> R {
+        if let privateKey = loadEncryptedChainKey(walletId: wallet.id, chain: chain, coin: coin) {
+            try assertParity(privateKey: privateKey, coin: coin, expected: expectedAddress, chain: chain)
+            return try body(privateKey)
+        }
+
         // The original imported key string (hex / WIF / base58) is
-        // preserved in the vault; decode it to raw bytes for THIS chain
-        // exactly the way the importer did (format- and chain-aware).
-        let keyString = (try? MnemonicVault.loadPrivateKey(for: wallet.id)) ?? nil
+        // preserved in encrypted SwiftData, with legacy Keychain as a
+        // migration fallback; decode it to raw bytes for THIS chain exactly
+        // the way the importer did (format- and chain-aware).
+        let keyString = loadStoredPrivateKey(for: wallet.id)
         guard let keyString, !keyString.isEmpty else {
             throw SigningError.secretUnavailable
         }
@@ -203,7 +235,7 @@ enum SigningKeyProvider {
             } else {
                 resolvedPassphrase = passphrase ?? ""
             }
-            let words = (try? MnemonicVault.loadMnemonic(for: wallet.id)) ?? nil
+            let words = loadStoredMnemonic(for: wallet.id)
             guard let words, !words.isEmpty else { throw SigningError.secretUnavailable }
             guard let hdWallet = HDWallet(
                 mnemonic: words.joined(separator: " "),
@@ -278,6 +310,53 @@ enum SigningKeyProvider {
         guard matches else {
             throw SigningError.keyAddressMismatch(expected: expected, derived: derived)
         }
+    }
+
+    // MARK: - DB-first local secret reads
+
+    private static func loadStoredMnemonic(for walletId: UUID) -> [String]? {
+        if let container = containerBox.get() {
+            let context = ModelContext(container)
+            if let words = try? WalletSecretPersistence.loadMnemonic(for: walletId, in: context),
+               !words.isEmpty {
+                return words
+            }
+        }
+        return (try? MnemonicVault.loadMnemonic(for: walletId)) ?? nil
+    }
+
+    private static func loadStoredPrivateKey(for walletId: UUID) -> String? {
+        if let container = containerBox.get() {
+            let context = ModelContext(container)
+            if let key = try? WalletSecretPersistence.loadPrivateKey(for: walletId, in: context),
+               !key.isEmpty {
+                return key
+            }
+        }
+        return (try? MnemonicVault.loadPrivateKey(for: walletId)) ?? nil
+    }
+
+    private static func loadEncryptedChainKey(
+        walletId: UUID,
+        chain: SupportedChain,
+        coin: CoinType
+    ) -> PrivateKey? {
+        guard let container = containerBox.get() else { return nil }
+        let context = ModelContext(container)
+        let chainRaw = chain.rawValue
+        var descriptor = FetchDescriptor<ChainStateRecord>(
+            predicate: #Predicate { $0.walletId == walletId && $0.chainRaw == chainRaw }
+        )
+        descriptor.fetchLimit = 1
+        guard let record = try? context.fetch(descriptor).first,
+              record.keyEncryptionScheme == ChainKeyVault.scheme,
+              let blob = record.encryptedPrivateKey,
+              let keyData = try? ChainKeyVault.open(blob),
+              PrivateKey.isValid(data: keyData, curve: coin.curve),
+              let privateKey = PrivateKey(data: keyData) else {
+            return nil
+        }
+        return privateKey
     }
 
     // MARK: - Bitcoin-family BIP purpose / SLIP-44

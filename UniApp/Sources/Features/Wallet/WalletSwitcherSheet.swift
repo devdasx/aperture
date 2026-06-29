@@ -99,7 +99,7 @@ struct WalletSwitcherSheet: View {
 
     private func walletRow(_ wallet: WalletRecord) -> some View {
         Button {
-            activeWalletIdRaw = wallet.id.uuidString
+            ActiveWalletPointer.set(wallet.id)
             onSelect()
             dismiss()
         } label: {

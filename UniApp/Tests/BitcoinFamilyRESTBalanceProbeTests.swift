@@ -73,15 +73,20 @@ struct BitcoinFamilyRESTBalanceProbeTests {
         try context.save()
 
         let scanner = BitcoinFamilyRESTBalanceScanner()
+        let walletId = wallet.id
+        let litecoinRowId = ltc.id
+        let dogecoinRowId = doge.id
+        let litecoinAddress = self.litecoinAddress
+        let dogecoinAddress = self.dogecoinAddress
         let start = ContinuousClock.now
         try await withThrowingTaskGroup(of: Void.self) { group in
             group.addTask {
                 try await scanner.scanAndPersist(
-                    walletId: wallet.id,
+                    walletId: walletId,
                     address: WalletRepository.AddressSnapshot(
-                        id: ltc.id,
+                        id: litecoinRowId,
                         chain: .litecoin,
-                        address: self.litecoinAddress
+                        address: litecoinAddress
                     ),
                     currencyCode: "USD",
                     modelContainer: container
@@ -89,11 +94,11 @@ struct BitcoinFamilyRESTBalanceProbeTests {
             }
             group.addTask {
                 try await scanner.scanAndPersist(
-                    walletId: wallet.id,
+                    walletId: walletId,
                     address: WalletRepository.AddressSnapshot(
-                        id: doge.id,
+                        id: dogecoinRowId,
                         chain: .dogecoin,
-                        address: self.dogecoinAddress
+                        address: dogecoinAddress
                     ),
                     currencyCode: "USD",
                     modelContainer: container

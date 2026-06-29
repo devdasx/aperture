@@ -181,15 +181,30 @@ enum BalanceHistoryReconstructor {
         // No transactions → empty (the caller renders the zero baseline).
         guard !sorted.isEmpty else { return [] }
 
+        var normalizedSpot: [String: Decimal] = [:]
+        for (symbol, price) in priceCache {
+            normalizedSpot[symbol.uppercased()] = price
+        }
+
+        var normalizedHistory: [String: [Int: Decimal]] = [:]
+        for (symbol, series) in priceHistory {
+            let key = symbol.uppercased()
+            for (day, close) in series {
+                normalizedHistory[key, default: [:]][day] = close
+            }
+        }
+
         // Sorted day-keys per symbol for carry-forward (last-known close).
         var sortedDays: [String: [Int]] = [:]
-        for (sym, series) in priceHistory { sortedDays[sym] = series.keys.sorted() }
+        for (symbol, series) in normalizedHistory {
+            sortedDays[symbol] = series.keys.sorted()
+        }
 
         // Historical close for a symbol on a UTC day, carrying the nearest
         // PRIOR close forward when the exact day is missing (never zero). An
         // instant before the series begins uses the earliest close.
         func historicalClose(_ symbol: String, _ dayKey: Int) -> Decimal? {
-            guard let series = priceHistory[symbol],
+            guard let series = normalizedHistory[symbol],
                   let days = sortedDays[symbol], let first = days.first else { return nil }
             if let exact = series[dayKey] { return exact }
             if dayKey < first { return series[first] }
@@ -201,67 +216,135 @@ enum BalanceHistoryReconstructor {
             return best >= 0 ? series[days[best]] : nil
         }
 
-        func localFiatAmount(_ tx: HistoryTx) -> Decimal? {
-            guard let amount = Decimal(string: tx.amountRaw) else { return nil }
-            let symbol = tx.tokenSymbol.uppercased()
-            let dayKey = DayKey.from(date: tx.occurredAt)
-            guard let price = historicalClose(symbol, dayKey) ?? priceCache[symbol],
-                  price > 0 else {
-                return nil
+        func price(for symbol: String, at timestamp: Date, isTip: Bool = false) -> Decimal? {
+            let dayKey = DayKey.from(date: timestamp)
+            if isTip, let spot = normalizedSpot[symbol], spot > 0 {
+                return spot
             }
-            return amount * price
+            return historicalClose(symbol, dayKey) ?? normalizedSpot[symbol]
         }
 
-        func signedLocalFiatChange(_ tx: HistoryTx) -> Decimal? {
-            guard let fiat = localFiatAmount(tx) else { return nil }
+        func dayStart(for key: Int) -> Date? {
+            let year = key / 10_000
+            let month = (key / 100) % 100
+            let day = key % 100
+            var components = DateComponents()
+            components.calendar = DayKey.utc
+            components.timeZone = DayKey.utc.timeZone
+            components.year = year
+            components.month = month
+            components.day = day
+            return DayKey.utc.date(from: components)
+        }
+
+        struct Holding: Sendable {
+            var symbol: String
+            var quantity: Decimal
+        }
+
+        func holdingKey(for tx: HistoryTx) -> String {
+            let symbol = tx.tokenSymbol.uppercased()
+            let contract = (tx.tokenContract ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            return contract.isEmpty ? "native:\(symbol)" : "token:\(contract)"
+        }
+
+        func signedQuantityChange(_ tx: HistoryTx) -> Decimal? {
+            guard let amount = Decimal(string: tx.amountRaw) else { return nil }
             switch TransactionDirection(rawValue: tx.directionRaw) ?? .outgoing {
             case .incoming:
-                return fiat
+                return amount
             case .outgoing:
-                return -fiat
+                return -amount
             case .internal:
                 return 0
             }
         }
 
+        var holdings: [String: Holding] = [:]
+
+        func apply(_ tx: HistoryTx) {
+            guard let change = signedQuantityChange(tx) else { return }
+            let key = holdingKey(for: tx)
+            let symbol = tx.tokenSymbol.uppercased()
+            var holding = holdings[key] ?? Holding(symbol: symbol, quantity: 0)
+            holding.symbol = symbol
+            holding.quantity += change
+            if holding.quantity <= 0 {
+                holdings.removeValue(forKey: key)
+            } else {
+                holdings[key] = holding
+            }
+        }
+
+        func fiatValue(at timestamp: Date) -> Decimal {
+            let isTip = abs(timestamp.timeIntervalSince(now)) < 0.001
+            var total = Decimal.zero
+            for holding in holdings.values where holding.quantity > 0 {
+                guard let price = price(for: holding.symbol, at: timestamp, isTip: isTip),
+                      price > 0 else {
+                    continue
+                }
+                total += holding.quantity * price
+            }
+            return max(total, 0)
+        }
+
         let firstTxDate = sorted[0].occurredAt
         let effectiveStart = max(cutoff, firstTxDate)
 
-        // Pre-window cumulative value (every transaction strictly before the
-        // visible window), computed only from transaction events.
-        var running = Decimal.zero
+        // Pre-window native holdings (every transaction strictly before the
+        // visible window), computed only from transaction events. Values are
+        // translated to fiat at each visible timestamp so historical price
+        // movement can move the curve even when no transfer happened.
         var idx = 0
         while idx < sorted.count, sorted[idx].occurredAt < effectiveStart {
-            if let change = signedLocalFiatChange(sorted[idx]) {
-                running += change
-                if running < 0 { running = 0 }
-            }
+            apply(sorted[idx])
             idx += 1
         }
 
-        var points: [BalancePoint] = [
-            BalancePoint(timestamp: effectiveStart, fiat: running)
-        ]
-        points.reserveCapacity(sorted.count - idx + 2)
-
-        // One chart event per real transaction timestamp. Transactions that
-        // share a timestamp are applied together so the x-axis stays stable.
-        var txIdx = idx
-        while txIdx < sorted.count, sorted[txIdx].occurredAt <= now {
-            let timestamp = sorted[txIdx].occurredAt
-            while txIdx < sorted.count, sorted[txIdx].occurredAt == timestamp {
-                if let change = signedLocalFiatChange(sorted[txIdx]) {
-                    running += change
-                    if running < 0 { running = 0 }
-                }
-                txIdx += 1
+        // If the range was trimmed to the wallet's first transaction, start
+        // at the first held balance instead of drawing a fake empty lead.
+        if cutoff <= firstTxDate, effectiveStart == firstTxDate {
+            while idx < sorted.count, sorted[idx].occurredAt == effectiveStart {
+                apply(sorted[idx])
+                idx += 1
             }
-            points.append(BalancePoint(timestamp: timestamp, fiat: running))
         }
 
-        if points.last?.timestamp != now {
-            points.append(BalancePoint(timestamp: now, fiat: running))
+        var sampleDates = Set<Date>()
+        sampleDates.insert(effectiveStart)
+        sampleDates.insert(now)
+
+        var scanIdx = idx
+        while scanIdx < sorted.count, sorted[scanIdx].occurredAt <= now {
+            sampleDates.insert(sorted[scanIdx].occurredAt)
+            scanIdx += 1
         }
+
+        if !normalizedHistory.isEmpty {
+            let startDay = DayKey.from(date: effectiveStart)
+            let endDay = DayKey.from(date: now)
+            for days in sortedDays.values {
+                for day in days where day >= startDay && day <= endDay {
+                    guard var sample = dayStart(for: day) else { continue }
+                    if sample < effectiveStart { sample = effectiveStart }
+                    if sample > now { sample = now }
+                    sampleDates.insert(sample)
+                }
+            }
+        }
+
+        var points: [BalancePoint] = []
+        points.reserveCapacity(sampleDates.count)
+
+        for timestamp in sampleDates.sorted() {
+            while idx < sorted.count, sorted[idx].occurredAt <= timestamp {
+                apply(sorted[idx])
+                idx += 1
+            }
+            points.append(BalancePoint(timestamp: timestamp, fiat: fiatValue(at: timestamp)))
+        }
+
         return points
     }
 
