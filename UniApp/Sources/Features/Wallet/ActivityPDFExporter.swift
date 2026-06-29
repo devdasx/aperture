@@ -45,6 +45,30 @@ enum ActivityPDFExporter {
         }
     }
 
+    /// Render one focused transaction receipt to a PDF temp file. This is
+    /// separate from the multi-row activity statement so exporting from a
+    /// transaction detail screen does not create a full statement wrapper.
+    static func makeTransactionReceiptFile(
+        row: ActivityPDFRow,
+        document: ActivityPDFDocument,
+        fileName: String,
+        displayScale: CGFloat
+    ) async -> URL? {
+        let logo = UIImage(named: "LogoCircle")
+        let assets = await renderAssets(rows: [row], document: document, logo: logo, qr: nil)
+        let data = ActivityPDFRenderer.render(rows: [row], document: document, assets: assets)
+
+        let safeName = sanitize(fileName)
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent(safeName)
+        do {
+            try? FileManager.default.removeItem(at: url)
+            try data.write(to: url, options: .atomic)
+            return url
+        } catch {
+            return nil
+        }
+    }
+
     /// Strip path-hostile characters so the chosen filename is a valid,
     /// single path component (it doubles as the shared document's name).
     private static func sanitize(_ name: String) -> String {

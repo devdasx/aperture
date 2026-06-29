@@ -36,6 +36,7 @@ struct TransactionDetailView: View {
     /// The live store — so a pending tx that confirms while this screen is
     /// open is written back (the activity list + future opens reflect it).
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.displayScale) private var displayScale
 
     /// The live, fetched detail. `nil` until the fetch lands (or if it
     /// fails — distinguished from "still loading" by `isLoading`).
@@ -62,6 +63,9 @@ struct TransactionDetailView: View {
     /// available, so the hero falls back to the native amount rather than
     /// fabricating a local-currency value.
     @State private var fiatValue: Decimal?
+    @State private var isGeneratingPDF = false
+    @State private var exportedPDF: ExportedActivityPDF?
+    @State private var exportFailed = false
 
     init(transactionId: UUID) {
         self.transactionId = transactionId
@@ -88,6 +92,33 @@ struct TransactionDetailView: View {
         .background(UniColors.Background.primary.ignoresSafeArea())
         .navigationTitle("Transaction")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            if matches.first != nil {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        exportTransactionPDF()
+                    } label: {
+                        Image(systemName: "square.and.arrow.up")
+                            .accessibilityLabel(Text("Export transaction PDF"))
+                    }
+                    .tint(UniColors.Icon.accent)
+                    .disabled(isGeneratingPDF)
+                }
+            }
+        }
+        .sheet(item: $exportedPDF) { pdf in
+            ActivityPDFShareSheet(url: pdf.url)
+        }
+        .overlay {
+            if isGeneratingPDF {
+                pdfGeneratingOverlay
+            }
+        }
+        .alert("Couldn't create the PDF.", isPresented: $exportFailed) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("Something went wrong preparing the export. Please try again.")
+        }
         // Off-main, re-runs if the id changes. Keyed on the stored tx's
         // hash + chain so a navigation reuse with a fresh id refetches.
         .task(id: transactionId) {
@@ -200,7 +231,7 @@ struct TransactionDetailView: View {
         switch status {
         case .pending:   UniBadge(text: "Pending", kind: .warning)
         case .confirmed: UniBadge(text: "Confirmed", kind: .success)
-        case .failed:    UniBadge(text: "Failed", kind: .error)
+        case .failed:    UniBadge(text: "Canceled", kind: .error)
         case nil:
             UniBadge(text: LocalizedStringKey(matches.first?.statusRaw ?? "Unknown"), kind: .neutral)
         }
@@ -211,7 +242,12 @@ struct TransactionDetailView: View {
     private func commonSection(_ tx: TransactionRecord) -> some View {
         sectionCard(title: "Details") {
             // Status — prefer the live, authoritative status when fetched.
-            keyValueRow(label: "Status", value: statusText(statusForDisplay(tx)))
+            let status = statusForDisplay(tx)
+            keyValueRow(
+                label: "Status",
+                value: statusText(status),
+                valueColor: statusValueColor(status)
+            )
 
             // When — live blockTime if present, else the stored occurredAt.
             if let date = detail?.blockTime ?? Optional(tx.occurredAt) {
@@ -265,6 +301,19 @@ struct TransactionDetailView: View {
             .contentShape(Rectangle())
         }
         .accessibilityLabel(Text("View on block explorer"))
+    }
+
+    /// Native progress overlay shown while the single-transaction receipt
+    /// renders.
+    private var pdfGeneratingOverlay: some View {
+        ZStack {
+            UniColors.Background.primary.opacity(0.6).ignoresSafeArea()
+            ProgressView()
+                .progressViewStyle(.circular)
+                .controlSize(.large)
+                .tint(UniColors.Tint.accent)
+        }
+        .transition(.opacity)
     }
 
     // MARK: - Stage 3 — chain-specific sections
@@ -1098,6 +1147,139 @@ struct TransactionDetailView: View {
         }
     }
 
+    // MARK: - Single transaction PDF export
+
+    private func exportTransactionPDF() {
+        guard let tx = matches.first, !isGeneratingPDF else { return }
+        let row = transactionPDFRow(tx)
+        let document = transactionPDFDocument(tx: tx, row: row)
+        let fileName = transactionPDFFileName(tx)
+        let scale = displayScale
+
+        isGeneratingPDF = true
+        Task {
+            let url = await ActivityPDFExporter.makeTransactionReceiptFile(
+                row: row,
+                document: document,
+                fileName: fileName,
+                displayScale: scale
+            )
+            isGeneratingPDF = false
+            if let url {
+                exportedPDF = ExportedActivityPDF(url: url)
+            } else {
+                exportFailed = true
+            }
+        }
+    }
+
+    private func transactionPDFRow(_ tx: TransactionRecord) -> ActivityPDFRow {
+        let direction = TransactionDirection(rawValue: tx.directionRaw) ?? .outgoing
+        let amount = Decimal(string: tx.amountRaw) ?? .zero
+        let sign = amountSign(tx)
+        let chain = resolvedChain ?? tx.address.flatMap { SupportedChain(rawValue: $0.chainRaw) } ?? .ethereum
+        let status = statusForDisplay(tx) ?? .pending
+        let fiatText: String
+        if let fiatValue {
+            fiatText = "\(sign)\(WalletFormatting.fiat(fiatValue, currencyCode: currencyCode))"
+        } else {
+            fiatText = "—"
+        }
+
+        return ActivityPDFRow(
+            occurredAt: detail?.blockTime ?? tx.occurredAt,
+            dateText: Self.receiptDateFormatter.string(from: detail?.blockTime ?? tx.occurredAt),
+            timeText: Self.receiptTimeFormatter.string(from: detail?.blockTime ?? tx.occurredAt),
+            assetSymbol: tx.tokenSymbol,
+            networkName: chain.displayName,
+            chain: chain,
+            tokenContract: tx.tokenContract,
+            typeText: pdfTypeLabel(direction),
+            transferType: pdfTransferType(direction),
+            amountText: "\(sign)\(WalletFormatting.native(amount, decimals: 6))",
+            unitText: tx.tokenSymbol,
+            fiatText: fiatText,
+            fiatValue: fiatValue,
+            statusText: statusText(status),
+            status: pdfStatusKind(status)
+        )
+    }
+
+    private func transactionPDFDocument(tx: TransactionRecord, row: ActivityPDFRow) -> ActivityPDFDocument {
+        let walletName = tx.address?.wallet?.name ?? String.apertureLocalized("Wallet")
+        let when = detail?.blockTime ?? tx.occurredAt
+        let details = [
+            ActivityPDFReceiptDetail(label: "Status", value: row.statusText, monospaced: false),
+            ActivityPDFReceiptDetail(label: "When", value: Self.receiptDateTimeFormatter.string(from: when), monospaced: false),
+            ActivityPDFReceiptDetail(label: "Network", value: row.networkName, monospaced: false),
+            ActivityPDFReceiptDetail(label: "Asset", value: row.assetSymbol, monospaced: false),
+            ActivityPDFReceiptDetail(label: "Network fee", value: feeDisplay(tx) ?? "—", monospaced: true),
+            ActivityPDFReceiptDetail(
+                label: "Hash",
+                value: WalletFormatting.shortAddress(hashForDisplay(tx), prefix: 12, suffix: 10),
+                monospaced: true
+            )
+        ]
+
+        return ActivityPDFDocument(
+            appName: "Aperture",
+            title: String(localized: "Transaction Receipt"),
+            walletName: walletName,
+            generatedText: Self.receiptDateTimeFormatter.string(from: Date()),
+            transactionCount: 1,
+            assetCount: 1,
+            confirmedCount: row.status == .confirmed ? 1 : 0,
+            failedCount: row.status == .failed ? 1 : 0,
+            internalCount: row.transferType == .internalTransfer ? 1 : 0,
+            receivedFiatText: row.transferType == .received ? row.fiatText : "—",
+            sentFiatText: row.transferType == .sent ? row.fiatText : "—",
+            netFiatText: row.fiatText,
+            netIsPositive: row.transferType != .sent,
+            periodText: Self.receiptDateFormatter.string(from: when),
+            chainSummaries: [ActivityPDFChainSummary(chain: row.chain, count: 1)],
+            downloadCaption: String(localized: "Get Aperture"),
+            appStoreURLText: ApertureWeb.appStoreDisplay,
+            footerSiteText: "aperturex.io",
+            pageLabelFormat: String(localized: "Page %1$lld of %2$lld"),
+            emptyText: String(localized: "No transaction to show."),
+            legalTitle: String(localized: "About this receipt"),
+            legalText: String(localized: "This receipt was generated by Aperture from local wallet data and live on-chain detail when available. Fiat values are estimates and are for reference only."),
+            isRTL: false,
+            style: .transactionReceipt,
+            receiptDetails: details
+        )
+    }
+
+    private func transactionPDFFileName(_ tx: TransactionRecord) -> String {
+        let date = Self.receiptFileDateFormatter.string(from: Date())
+        let hash = WalletFormatting.shortAddress(hashForDisplay(tx), prefix: 8, suffix: 6)
+        return "Aperture Transaction - \(tx.tokenSymbol) - \(hash) - \(date).pdf"
+    }
+
+    private func pdfTypeLabel(_ direction: TransactionDirection) -> String {
+        switch direction {
+        case .incoming: return String(localized: "Received")
+        case .outgoing: return String(localized: "Sent")
+        case .internal: return String(localized: "Internal")
+        }
+    }
+
+    private func pdfTransferType(_ direction: TransactionDirection) -> ActivityPDFRow.TransferType {
+        switch direction {
+        case .incoming: return .received
+        case .outgoing: return .sent
+        case .internal: return .internalTransfer
+        }
+    }
+
+    private func pdfStatusKind(_ status: TransactionStatus) -> ActivityPDFRow.Status {
+        switch status {
+        case .confirmed: return .confirmed
+        case .pending: return .pending
+        case .failed: return .failed
+        }
+    }
+
     // MARK: - Copy
 
     private func copy(_ value: String, name: String) {
@@ -1135,8 +1317,17 @@ struct TransactionDetailView: View {
         switch status {
         case .pending:   return String.apertureLocalized("Pending")
         case .confirmed: return String.apertureLocalized("Confirmed")
-        case .failed:    return String.apertureLocalized("Failed")
+        case .failed:    return String.apertureLocalized("Canceled")
         case nil:        return matches.first?.statusRaw ?? String.apertureLocalized("Unknown")
+        }
+    }
+
+    private func statusValueColor(_ status: TransactionStatus?) -> Color {
+        switch status {
+        case .confirmed: return UniColors.Feedback.Success.foreground
+        case .pending: return UniColors.Feedback.Warning.foreground
+        case .failed: return UniColors.Feedback.Error.foreground
+        case nil: return UniColors.Text.primary
         }
     }
 
@@ -1266,4 +1457,32 @@ struct TransactionDetailView: View {
         default:         return ""
         }
     }
+
+    private static let receiptDateFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.dateFormat = "d MMM yyyy"
+        return f
+    }()
+
+    private static let receiptTimeFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.dateFormat = "HH:mm"
+        return f
+    }()
+
+    private static let receiptDateTimeFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.dateFormat = "d MMM yyyy 'at' HH:mm:ss"
+        return f
+    }()
+
+    private static let receiptFileDateFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.dateFormat = "yyyy-MM-dd"
+        return f
+    }()
 }
