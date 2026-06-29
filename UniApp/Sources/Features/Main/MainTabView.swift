@@ -256,14 +256,15 @@ struct MainTabView: View {
     @ViewBuilder
     private var compactTabBody: some View {
         TabView(selection: selectedTab) {
-            // MARK: - Wallet (native icon — 2026-06-23)
+            // MARK: - Wallet (icon-only native tab — 2026-06-29)
             //
             // The wallet avatar moved OFF the bar (user direction): the Wallet
-            // tab is a plain native tab now (`wallet.pass.fill`). The wallet
-            // identity + switcher live on the wallet-home pill. The long-press
-            // wallet menu still installs onto the `UITabBar` at index 0
-            // (compact width only).
-            Tab("Wallet", systemImage: "wallet.pass.fill", value: MainTab.wallet) {
+            // tab is an outline wallet icon only. The wallet identity +
+            // switcher live on the wallet-home pill. The long-press wallet
+            // menu still installs onto the `UITabBar` at index 0
+            // (compact width only). `LabelStyle.iconOnly` removes visible
+            // tab text while preserving the accessibility label.
+            Tab(value: MainTab.wallet) {
                 WalletHomeView()
                     .background(alignment: .bottom) {
                         if horizontalSizeClass == .compact {
@@ -274,6 +275,10 @@ struct MainTabView: View {
                             .allowsHitTesting(false)
                         }
                     }
+            } label: {
+                Label("Wallet", systemImage: "wallet.bifold")
+                    .labelStyle(.iconOnly)
+                    .symbolVariant(.none)
             }
 
             Tab("Activity", systemImage: "clock.arrow.circlepath", value: MainTab.activity) {
@@ -291,8 +296,12 @@ struct MainTabView: View {
                 }
             }
 
-            Tab("Settings", systemImage: "gearshape", value: MainTab.settings) {
+            Tab(value: MainTab.settings) {
                 SettingsView()
+            } label: {
+                Label("Settings", systemImage: "gearshape")
+                    .labelStyle(.iconOnly)
+                    .symbolVariant(.none)
             }
         }
     }
@@ -588,7 +597,7 @@ enum MainTab: String, Hashable, CaseIterable {
 
     var systemImage: String {
         switch self {
-        case .wallet:   return "wallet.pass.fill"
+        case .wallet:   return "wallet.bifold"
         case .activity: return "clock.arrow.circlepath"
         case .markets:  return "chart.line.uptrend.xyaxis"
         case .settings: return "gearshape"
