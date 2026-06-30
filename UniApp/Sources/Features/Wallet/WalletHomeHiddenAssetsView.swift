@@ -94,8 +94,12 @@ struct WalletHomeHiddenAssetsView: View {
 
     var body: some View {
         List {
-            coinsSection
-            tokensSection
+            if filteredCoinRows.isEmpty && filteredTokenRows.isEmpty {
+                hiddenAssetsEmptySection
+            } else {
+                coinsSection
+                tokensSection
+            }
         }
         .listStyle(.insetGrouped)
         .scrollContentBackground(.hidden)
@@ -116,6 +120,31 @@ struct WalletHomeHiddenAssetsView: View {
     }
 
     // MARK: - Sections
+
+    @ViewBuilder
+    private var hiddenAssetsEmptySection: some View {
+        Section {
+            UniListEmptyState(
+                title: hiddenAssetsEmptyTitle,
+                detail: hiddenAssetsEmptyDetail,
+                mark: .icon(systemName: "magnifyingglass"),
+                minHeight: 360
+            )
+        }
+    }
+
+    private var hiddenAssetsEmptyTitle: LocalizedStringKey {
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        return query.isEmpty ? "No assets available." : "No assets match the search."
+    }
+
+    private var hiddenAssetsEmptyDetail: LocalizedStringKey {
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if query.isEmpty {
+            return "Supported coins and tokens appear here after the asset catalog loads."
+        }
+        return "Try another name, symbol, contract, or network."
+    }
 
     /// Coins section. One row per `SupportedChain`; the leading
     /// `CoinMark` renders the native logo and the trailing `Toggle`

@@ -131,14 +131,21 @@ struct ReceiveNetworkFirstView: View {
 
     private var emptySection: some View {
         Section {
-            ContentUnavailableView(
-                "No networks available",
-                systemImage: "network.slash",
-                description: Text("This wallet does not have a receive address for \(assetPrefill.symbol).")
+            UniListEmptyState(
+                title: "No networks available.",
+                detail: receiveNetworkEmptyDetail,
+                mark: .icon(systemName: "network.slash"),
+                minHeight: 300
             )
-            .listRowBackground(Color.clear)
-            .listRowSeparator(.hidden)
         }
+    }
+
+    private var receiveNetworkEmptyDetail: LocalizedStringKey {
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !query.isEmpty {
+            return "Try a different network name or ticker."
+        }
+        return "This wallet does not have a receive address for this asset yet."
     }
 
     // MARK: - Derived

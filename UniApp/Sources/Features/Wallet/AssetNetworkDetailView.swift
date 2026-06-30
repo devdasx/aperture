@@ -368,18 +368,16 @@ struct AssetNetworkDetailView: View {
         let rows = visibleRows
         Section {
             if rows.isEmpty {
-                UniEmptyState(
+                UniListEmptyState(
                     title: assetScopedTransactions.isEmpty
                         ? "No activity on \(chain.displayName)."
                         : "No activity matches the filter.",
                     detail: assetScopedTransactions.isEmpty
                         ? "Transactions involving \(identity.symbol) on \(chain.displayName) appear here as they confirm on-chain."
                         : "Adjust the filter sheet to see more.",
-                    mark: .icon(systemName: "list.bullet.rectangle.portrait")
+                    mark: .icon(systemName: "list.bullet.rectangle.portrait"),
+                    minHeight: 260
                 )
-                .listRowBackground(Color.clear)
-                .listRowSeparator(.hidden)
-                .listRowInsets(EdgeInsets())
             } else {
                 ForEach(rows, id: \.id) { tx in
                     NavigationLink(value: WalletHomeDestination.transaction(tx.id)) {

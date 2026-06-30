@@ -524,14 +524,12 @@ struct AssetDetailView: View {
         } else {
             // Filter hid every row. Honest empty state.
             Section {
-                UniEmptyState(
+                UniListEmptyState(
                     title: "No networks match the filter.",
                     detail: "Adjust the filter sheet to see this asset's networks.",
-                    mark: .icon(systemName: "globe")
+                    mark: .icon(systemName: "globe"),
+                    minHeight: 260
                 )
-                .listRowBackground(Color.clear)
-                .listRowSeparator(.hidden)
-                .listRowInsets(EdgeInsets())
             } header: {
                 Text("Networks")
             }
@@ -548,18 +546,16 @@ struct AssetDetailView: View {
 
         Section {
             if displayed.isEmpty {
-                UniEmptyState(
+                UniListEmptyState(
                     title: derived.assetScopedTransactions.isEmpty
                         ? "No activity yet."
                         : "No activity matches the filter.",
                     detail: derived.assetScopedTransactions.isEmpty
                         ? "Transactions involving this asset appear here as they confirm on-chain."
                         : "Adjust the filter sheet to see more activity.",
-                    mark: .icon(systemName: "list.bullet.rectangle.portrait")
+                    mark: .icon(systemName: "list.bullet.rectangle.portrait"),
+                    minHeight: 260
                 )
-                .listRowBackground(Color.clear)
-                .listRowSeparator(.hidden)
-                .listRowInsets(EdgeInsets())
             } else {
                 ForEach(displayed, id: \.id) { tx in
                     if let chain = chainFor(tx) {

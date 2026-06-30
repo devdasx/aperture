@@ -277,7 +277,25 @@ struct WalletsListView: View {
 
     var body: some View {
         List {
-            if !wallets.isEmpty {
+            if wallets.isEmpty {
+                Section {
+                    UniListEmptyState(
+                        title: "No wallets yet.",
+                        detail: "Create a new wallet or import an existing one to start using Aperture.",
+                        mark: .icon(systemName: "wallet.pass"),
+                        minHeight: 300
+                    )
+                }
+            } else if filteredWallets.isEmpty {
+                Section {
+                    UniListEmptyState(
+                        title: "No wallets match the filter.",
+                        detail: walletsEmptyDetail,
+                        mark: .icon(systemName: "line.3.horizontal.decrease"),
+                        minHeight: 300
+                    )
+                }
+            } else {
                 Section {
                     ForEach(filteredWallets) { wallet in
                         NavigationLink(value: SettingsDestination.walletDetail(wallet.id)) {
@@ -465,6 +483,14 @@ struct WalletsListView: View {
         } message: {
             Text(LocalizedStringKey(errorAlertMessage ?? ""))
         }
+    }
+
+    private var walletsEmptyDetail: LocalizedStringKey {
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !query.isEmpty {
+            return "Try a different wallet name, address, or network."
+        }
+        return "Adjust Filter & Sort to bring hidden wallets back into view."
     }
 
     // MARK: - Rows

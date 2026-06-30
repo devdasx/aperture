@@ -122,31 +122,32 @@ struct CustomTokensListView: View {
 
     @ViewBuilder
     private var emptyState: some View {
-        VStack(spacing: UniSpacing.l) {
-            Spacer()
-            VStack(spacing: UniSpacing.s) {
-                Image(systemName: "circle.dashed")
-                    .font(.system(size: 44, weight: .light))
-                    .foregroundStyle(UniColors.Icon.tertiary)
-                    .accessibilityHidden(true)
-                UniHeadline(text: "No custom tokens yet", alignment: .center)
-                UniBody(
-                    text: "Add a token by pasting its contract address. Aperture reads the rest from chain.",
-                    alignment: .center,
-                    color: UniColors.Text.secondary
+        List {
+            Section {
+                UniListEmptyState(
+                    title: "No custom tokens yet.",
+                    detail: "Add a token by pasting its contract address. Aperture reads the rest from chain.",
+                    mark: .icon(systemName: "tag"),
+                    minHeight: 320
                 )
-                .fixedSize(horizontal: false, vertical: true)
-                .padding(.horizontal, UniSpacing.l)
             }
 
-            UniButton(title: "Add a token", variant: .secondary) {
-                isShowingAddSheet = true
+            Section {
+                UniButton(title: "Add a token", variant: .secondary) {
+                    isShowingAddSheet = true
+                }
+                .listRowBackground(Color.clear)
+                .listRowSeparator(.hidden)
+                .listRowInsets(EdgeInsets(
+                    top: 0,
+                    leading: UniSpacing.m,
+                    bottom: 0,
+                    trailing: UniSpacing.m
+                ))
             }
-            .padding(.horizontal, UniSpacing.l)
-
-            Spacer()
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .listStyle(.insetGrouped)
+        .scrollContentBackground(.hidden)
         .background(UniColors.Background.primary)
     }
 

@@ -36,11 +36,18 @@ struct ReceiveSingleNetworkView: View {
     }
 
     private var unavailableView: some View {
-        ContentUnavailableView(
-            "No address available",
-            systemImage: "network.slash",
-            description: Text("This wallet does not have a receive address for \(assetPrefill.symbol) on \(chain.displayName).")
-        )
+        List {
+            Section {
+                UniListEmptyState(
+                    title: "No address available.",
+                    detail: "This wallet does not have a receive address for this asset on this network yet.",
+                    mark: .icon(systemName: "network.slash"),
+                    minHeight: 320
+                )
+            }
+        }
+        .listStyle(.insetGrouped)
+        .scrollContentBackground(.hidden)
         .background(UniColors.Background.primary)
         .navigationTitle(Text(assetPrefill.symbol))
         .navigationBarTitleDisplayMode(.inline)

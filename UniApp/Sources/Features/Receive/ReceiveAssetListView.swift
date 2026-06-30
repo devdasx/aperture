@@ -134,40 +134,24 @@ struct ReceiveAssetListView: View {
     @ViewBuilder
     private var noResultsSection: some View {
         Section {
-            UniBody(
-                text: "No assets match your search.",
-                alignment: .center,
-                color: UniColors.Text.secondary
+            UniListEmptyState(
+                title: "No assets match your search.",
+                detail: "Try a coin name, token name, or ticker.",
+                mark: .icon(systemName: "magnifyingglass"),
+                minHeight: 260
             )
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, UniSpacing.xl)
-            .listRowBackground(Color.clear)
         }
     }
 
     @ViewBuilder
     private var emptySection: some View {
         Section {
-            VStack(spacing: UniSpacing.s) {
-                Image(systemName: "circle.dashed")
-                    .font(.system(size: 36, weight: .light))
-                    .foregroundStyle(UniColors.Icon.tertiary)
-                UniBody(
-                    text: "No addresses available for this wallet yet.",
-                    alignment: .center,
-                    color: UniColors.Text.secondary
-                )
-                .fixedSize(horizontal: false, vertical: true)
-                UniFootnote(
-                    text: "Aperture is still deriving your accounts. Try again in a moment.",
-                    alignment: .center,
-                    color: UniColors.Text.tertiary
-                )
-                .fixedSize(horizontal: false, vertical: true)
-            }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, UniSpacing.xxl)
-            .listRowBackground(Color.clear)
+            UniListEmptyState(
+                title: "No receivable assets yet.",
+                detail: "Aperture is still deriving this wallet's accounts. Try again in a moment.",
+                mark: .icon(systemName: "wallet.pass"),
+                minHeight: 320
+            )
         }
     }
 }
