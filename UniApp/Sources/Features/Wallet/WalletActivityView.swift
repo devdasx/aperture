@@ -378,43 +378,25 @@ struct WalletActivityView: View {
     /// but the user's filter/search excludes all of it, say so and point
     /// them at the filter, mirroring `AssetActivityView`.
     private var emptyStateScreen: some View {
-        GeometryReader { proxy in
-            ScrollView {
+        List {
+            Section {
                 emptyState
-                    .frame(maxWidth: .infinity)
-                    .frame(minHeight: proxy.size.height, alignment: .center)
-                    .padding(.horizontal, UniSpacing.l)
             }
-            .scrollIndicators(.hidden)
         }
+        .listStyle(.insetGrouped)
+        .scrollContentBackground(.hidden)
     }
 
     private var emptyState: some View {
         let hasActivity = !dustFreeTransactions.isEmpty
-        return VStack(spacing: UniSpacing.m) {
-            Image("LogoCircle")
-                .resizable()
-                .scaledToFit()
-                .frame(width: 76, height: 76)
-                .opacity(0.24)
-                .accessibilityHidden(true)
-
-            VStack(spacing: UniSpacing.xs) {
-                UniBody(
-                    text: hasActivity ? "No activity matches the filter." : "No activity yet.",
-                    alignment: .center,
-                    color: UniColors.Text.secondary
-                )
-                UniFootnote(
-                    text: hasActivity
-                        ? "Adjust the filter or search to see more of your activity."
-                        : "Transactions appear here as they confirm on-chain.",
-                    alignment: .center,
-                    color: UniColors.Text.tertiary
-                )
-            }
-            .padding(.horizontal, UniSpacing.l)
-        }
+        return UniListEmptyState(
+            title: hasActivity ? "No activity matches the filter." : "No activity yet.",
+            detail: hasActivity
+                ? "Adjust the filter or search to see more of your activity."
+                : "Transactions appear here as they confirm on-chain.",
+            mark: hasActivity ? .icon(systemName: "line.3.horizontal.decrease") : .iris,
+            minHeight: 360
+        )
     }
 
     // MARK: - Header

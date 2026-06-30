@@ -74,14 +74,12 @@ struct AssetActivityView: View {
         List {
             if rows.isEmpty {
                 Section {
-                    UniEmptyState(
+                    UniListEmptyState(
                         title: "No activity matches the filter.",
                         detail: "Adjust the filter sheet to see more activity for this asset.",
-                        mark: .icon(systemName: "list.bullet.rectangle.portrait")
+                        mark: .icon(systemName: "list.bullet.rectangle.portrait"),
+                        minHeight: 320
                     )
-                    .listRowBackground(Color.clear)
-                    .listRowSeparator(.hidden)
-                    .listRowInsets(EdgeInsets())
                 }
             } else {
                 Section {

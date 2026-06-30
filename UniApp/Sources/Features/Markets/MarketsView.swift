@@ -711,9 +711,6 @@ struct MarketsView: View {
             } else if visibleAssets.isEmpty {
                 Section {
                     marketsEmptyState
-                        .frame(maxWidth: .infinity, minHeight: 360)
-                        .listRowBackground(Color.clear)
-                        .listRowSeparator(.hidden)
                 }
             } else {
                 Section {
@@ -794,22 +791,25 @@ struct MarketsView: View {
 
     private var marketsEmptyState: some View {
         if segment == .watchlist {
-            ContentUnavailableView(
-                "Your watchlist is empty",
-                systemImage: "star",
-                description: Text("Add assets from Markets to keep them here.")
+            UniListEmptyState(
+                title: "Your watchlist is empty.",
+                detail: "Swipe an asset in Markets to add it here.",
+                mark: .icon(systemName: "star"),
+                minHeight: 360
             )
         } else if model.errorMessage != nil {
-            ContentUnavailableView(
-                "Markets unavailable",
-                systemImage: "wifi.exclamationmark",
-                description: Text("Pull to refresh when a market data provider is reachable.")
+            UniListEmptyState(
+                title: "Markets unavailable.",
+                detail: "Pull to refresh when a market data provider is reachable.",
+                mark: .icon(systemName: "wifi.exclamationmark"),
+                minHeight: 360
             )
         } else {
-            ContentUnavailableView(
-                "No market data yet",
-                systemImage: "chart.line.uptrend.xyaxis",
-                description: Text("Pull to refresh live prices.")
+            UniListEmptyState(
+                title: "No market data yet.",
+                detail: "Pull to refresh live prices.",
+                mark: .icon(systemName: "chart.line.uptrend.xyaxis"),
+                minHeight: 360
             )
         }
     }

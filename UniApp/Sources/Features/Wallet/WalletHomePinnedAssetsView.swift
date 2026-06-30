@@ -70,13 +70,12 @@ struct WalletHomePinnedAssetsView: View {
     private var emptyState: some View {
         List {
             Section {
-                UniEmptyState(
+                UniListEmptyState(
                     title: "Nothing pinned yet.",
-                    detail: "Swipe a row in Hidden assets to pin it to the top of your wallet home."
+                    detail: "Swipe a row in Hidden assets to pin it to the top of your wallet home.",
+                    mark: .icon(systemName: "pin"),
+                    minHeight: 320
                 )
-                .listRowBackground(Color.clear)
-                .listRowSeparator(.hidden)
-                .listRowInsets(EdgeInsets())
             }
         }
         .listStyle(.insetGrouped)

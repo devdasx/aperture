@@ -1224,14 +1224,18 @@ struct WalletHomeView: View {
         // The offset shifts every time the array re-sorts, which
         // destroys + recreates every row and re-runs icon tasks.
         // Stable id = SwiftUI reuses the row + icon view.
-        ForEach(pinned, id: \.chain.rawValue) { row in
-            coinNavigationRow(row)
-        }
+        if pinned.isEmpty && nonPinned.isEmpty {
+            holdingsEmptyStateRow(kind: .coins)
+        } else {
+            ForEach(pinned, id: \.chain.rawValue) { row in
+                coinNavigationRow(row)
+            }
 
-        ForEach(nonPinnedDisplayed, id: \.chain.rawValue) { row in
-            coinNavigationRow(row)
+            ForEach(nonPinnedDisplayed, id: \.chain.rawValue) { row in
+                coinNavigationRow(row)
+            }
+            if hasMore { showAllRow }
         }
-        if hasMore { showAllRow }
         // No section header — the segmented picker in the holdings row is
         // the canonical "you're looking at Coins" affordance now
         // (2026-06-09). Stacking a "Coins" header on top of an
@@ -1253,14 +1257,18 @@ struct WalletHomeView: View {
         let nonPinnedDisplayed = Array(nonPinned.prefix(holdingsDisplayCap))
         let hasMore = nonPinned.count > holdingsDisplayCap
 
-        ForEach(pinned, id: \.id) { row in
-            tokenNavigationRow(row)
-        }
+        if pinned.isEmpty && nonPinned.isEmpty {
+            holdingsEmptyStateRow(kind: .tokens)
+        } else {
+            ForEach(pinned, id: \.id) { row in
+                tokenNavigationRow(row)
+            }
 
-        ForEach(nonPinnedDisplayed, id: \.id) { row in
-            tokenNavigationRow(row)
+            ForEach(nonPinnedDisplayed, id: \.id) { row in
+                tokenNavigationRow(row)
+            }
+            if hasMore { showAllRow }
         }
-        if hasMore { showAllRow }
         // Header omitted — see the coinRows note above.
     }
 
@@ -1410,10 +1418,14 @@ struct WalletHomeView: View {
                     holdingsControlsListRow
                 }
 
-                ForEach(displayed, id: \.id) { item in
-                    combinedRow(item)
+                if displayed.isEmpty {
+                    holdingsEmptyStateRow(kind: .combined)
+                } else {
+                    ForEach(displayed, id: \.id) { item in
+                        combinedRow(item)
+                    }
+                    if hasMore { showAllRow }
                 }
-                if hasMore { showAllRow }
             }
         case .chain:
             // Group nonPinned by chain. Sections rendered in
@@ -1424,6 +1436,7 @@ struct WalletHomeView: View {
             if groups.isEmpty && pinned.isEmpty {
                 Section {
                     holdingsControlsListRow
+                    holdingsEmptyStateRow(kind: .combined)
                 }
             }
             ForEach(groups, id: \.chain) { group in
@@ -1527,16 +1540,62 @@ struct WalletHomeView: View {
     @ViewBuilder
     private var emptyHoldingsSection: some View {
         Section {
-            UniEmptyState(
-                title: "Your holdings will appear here.",
-                detail: "Receive crypto to any of your addresses and it'll show up the moment it lands on-chain."
-            )
-            .listRowBackground(Color.clear)
-            .listRowSeparator(.hidden)
-            .listRowInsets(EdgeInsets())
+            holdingsEmptyStateRow(kind: .combined)
         } header: {
             Text("Holdings")
         }
+    }
+
+    private enum HoldingsEmptyKind: Equatable {
+        case coins
+        case tokens
+        case combined
+    }
+
+    @ViewBuilder
+    private func holdingsEmptyStateRow(kind: HoldingsEmptyKind) -> some View {
+        UniListEmptyState(
+            title: holdingsEmptyTitle(kind: kind),
+            detail: holdingsEmptyDetail(kind: kind),
+            mark: holdingsEmptyMark(kind: kind),
+            minHeight: 240
+        )
+    }
+
+    private func holdingsEmptyTitle(kind: HoldingsEmptyKind) -> LocalizedStringKey {
+        if !hasHeldBalance {
+            return "This wallet is empty."
+        }
+        switch kind {
+        case .coins:
+            return "No coins match the filter."
+        case .tokens:
+            return "No tokens match the filter."
+        case .combined:
+            return "No assets match the filter."
+        }
+    }
+
+    private func holdingsEmptyDetail(kind: HoldingsEmptyKind) -> LocalizedStringKey {
+        if !hasHeldBalance {
+            return "Receive crypto or turn off Only with balance to browse supported assets."
+        }
+        if kind == .coins && filterInputs.assetType == .tokens {
+            return "The Type filter is set to Tokens. Switch it to All or Coins to show native coins."
+        }
+        if kind == .tokens && filterInputs.assetType == .coins {
+            return "The Type filter is set to Coins. Switch it to All or Tokens to show tokens."
+        }
+        return "Adjust Filter & Sort to bring hidden assets back into view."
+    }
+
+    private func holdingsEmptyMark(kind: HoldingsEmptyKind) -> UniEmptyState.Mark {
+        hasHeldBalance ? .icon(systemName: "line.3.horizontal.decrease") : .iris
+    }
+
+    private var hasHeldBalance: Bool {
+        coinDisplayRows.contains { $0.isHeld }
+            || tokenDisplayRows.contains { $0.isHeld }
     }
 
     // MARK: - Network failure surfaces (2026-06-12)
@@ -2090,9 +2149,10 @@ struct WalletHomeView: View {
     /// pair (Holdings empty / Activity empty) confirms the wallet is
     /// alive and waiting rather than broken or stuck.
     private var emptyActivity: some View {
-        UniEmptyState(
+        UniListEmptyState(
             title: "No activity yet.",
-            detail: "Transactions appear here as they confirm on-chain."
+            detail: "Transactions appear here as they confirm on-chain.",
+            minHeight: 240
         )
     }
 

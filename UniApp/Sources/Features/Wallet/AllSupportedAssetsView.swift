@@ -91,21 +91,20 @@ struct AllSupportedAssetsView: View {
         let visibleCount = coinRows.count + tokenRows.count
 
         return List {
-            if assetType.showsCoins { coinsSection(coinRows) }
-            if assetType.showsTokens { tokensSection(tokenRows) }
+            if isEmpty {
+                Section {
+                    emptyAssetsState(
+                        hasSupportedAssets: totalCount > 0
+                    )
+                }
+            } else {
+                if assetType.showsCoins { coinsSection(coinRows) }
+                if assetType.showsTokens { tokensSection(tokenRows) }
+            }
         }
         .listStyle(.insetGrouped)
         .scrollContentBackground(.hidden)
         .background(UniColors.Background.primary.ignoresSafeArea())
-        .overlay {
-            if isEmpty {
-                ContentUnavailableView {
-                    Label("No assets", systemImage: "line.3.horizontal.decrease")
-                } description: {
-                    Text("No supported assets match your filter.")
-                }
-            }
-        }
         .navigationTitle("Coins & tokens")
         .navigationBarTitleDisplayMode(.inline)
         .searchable(text: $searchText, prompt: Text("Search"))
@@ -131,6 +130,37 @@ struct AllSupportedAssetsView: View {
             .presentationDragIndicator(.visible)
             .presentationBackground(UniColors.Background.primary)
         }
+    }
+
+    @ViewBuilder
+    private func emptyAssetsState(hasSupportedAssets: Bool) -> some View {
+        UniListEmptyState(
+            title: emptyAssetsTitle,
+            detail: emptyAssetsDetail(hasSupportedAssets: hasSupportedAssets),
+            mark: .icon(systemName: "line.3.horizontal.decrease"),
+            minHeight: 360
+        )
+    }
+
+    private var emptyAssetsTitle: LocalizedStringKey {
+        switch assetType {
+        case .coins:
+            return "No coins match the filter."
+        case .tokens:
+            return "No tokens match the filter."
+        case .all:
+            return "No assets match the filter."
+        }
+    }
+
+    private func emptyAssetsDetail(hasSupportedAssets: Bool) -> LocalizedStringKey {
+        if !hasSupportedAssets {
+            return "Supported assets will appear after the local catalog finishes loading."
+        }
+        if !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return "Try a different search or clear the filters."
+        }
+        return "Adjust Filter & Sort to show more supported assets."
     }
 
     // MARK: - Sections

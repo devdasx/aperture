@@ -67,20 +67,31 @@ struct WalletHomeNetworksView: View {
 
     var body: some View {
         List {
-            Section {
-                ForEach(filteredChains, id: \.self) { chain in
-                    NetworkRow(
-                        chain: chain,
-                        isSelected: isSelected(chain),
-                        toggle: { toggle(chain) }
+            if filteredChains.isEmpty {
+                Section {
+                    UniListEmptyState(
+                        title: "No networks match the search.",
+                        detail: "Try a network name, ticker, or chain id.",
+                        mark: .icon(systemName: "magnifyingglass"),
+                        minHeight: 320
                     )
-                    .listRowBackground(UniColors.List.rowBackground)
                 }
-            } footer: {
-                Text("Pick the networks to show in your wallet home. When none are picked, every network is visible.")
-                    .font(UniTypography.footnote)
-                    .foregroundStyle(UniColors.Text.tertiary)
-                    .fixedSize(horizontal: false, vertical: true)
+            } else {
+                Section {
+                    ForEach(filteredChains, id: \.self) { chain in
+                        NetworkRow(
+                            chain: chain,
+                            isSelected: isSelected(chain),
+                            toggle: { toggle(chain) }
+                        )
+                        .listRowBackground(UniColors.List.rowBackground)
+                    }
+                } footer: {
+                    Text("Pick the networks to show in your wallet home. When none are picked, every network is visible.")
+                        .font(UniTypography.footnote)
+                        .foregroundStyle(UniColors.Text.tertiary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
         }
         .listStyle(.insetGrouped)

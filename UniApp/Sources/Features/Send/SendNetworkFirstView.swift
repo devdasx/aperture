@@ -171,14 +171,21 @@ struct SendNetworkFirstView: View {
 
     private var emptySection: some View {
         Section {
-            ContentUnavailableView(
-                "No networks available",
-                systemImage: "network.slash",
-                description: Text("This wallet does not have a send address for \(assetPrefill.symbol).")
+            UniListEmptyState(
+                title: "No networks available.",
+                detail: sendNetworkEmptyDetail,
+                mark: .icon(systemName: "network.slash"),
+                minHeight: 300
             )
-            .listRowBackground(Color.clear)
-            .listRowSeparator(.hidden)
         }
+    }
+
+    private var sendNetworkEmptyDetail: LocalizedStringKey {
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !query.isEmpty {
+            return "Try a different network name or ticker."
+        }
+        return "This wallet does not have a send address for this asset yet."
     }
 
     private func recipientView(
