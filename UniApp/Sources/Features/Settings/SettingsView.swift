@@ -40,6 +40,7 @@ enum SettingsDestination: Hashable, Codable {
     case appearance
     case currency
     case preferences
+    case database
     case diagnostics
     case help
     case about
@@ -58,7 +59,7 @@ enum SettingsDestination: Hashable, Codable {
         case .security:
             return false
         case .wallets, .walletDetail, .autoLock, .hideSmallBalances,
-             .language, .appearance, .currency, .preferences, .diagnostics,
+             .language, .appearance, .currency, .preferences, .database, .diagnostics,
              .help, .about:
             return true
         }
@@ -353,6 +354,16 @@ struct SettingsView: View {
                     )
                 }
                 .listRowBackground(UniColors.List.rowBackground)
+
+                NavigationLink(value: SettingsDestination.database) {
+                    SettingsRow(
+                        systemImage: "cylinder.split.1x2",
+                        title: "Database",
+                        trailing: nil,
+                        iconTint: .indigo
+                    )
+                }
+                .listRowBackground(UniColors.List.rowBackground)
             }
 
             // Section 6 — Reset Aperture (terminal nuclear hatch). Moved
@@ -372,6 +383,7 @@ struct SettingsView: View {
         case .appearance:                AppearancePickerView()
         case .currency:                  CurrencyPickerView()
         case .preferences:               PreferencesView()
+        case .database:                  DatabaseExplorerView()
         case .diagnostics:               DiagnosticsLogView()
         case .help:                      HelpAndSupportView()
         case .about:                     AboutView()
@@ -426,7 +438,7 @@ struct SettingsView: View {
         case .hideSmallBalances:
             return (.preferences, stack)
         case .wallets, .security, .language, .appearance, .currency,
-             .preferences, .diagnostics, .help, .about:
+             .preferences, .database, .diagnostics, .help, .about:
             return (first, Array(stack.dropFirst()))
         }
     }
@@ -434,7 +446,7 @@ struct SettingsView: View {
     private static func isSplitRoot(_ destination: SettingsDestination) -> Bool {
         switch destination {
         case .wallets, .security, .language, .appearance, .currency,
-             .preferences, .diagnostics, .help, .about:
+             .preferences, .database, .diagnostics, .help, .about:
             return true
         case .walletDetail, .autoLock, .hideSmallBalances:
             return false
