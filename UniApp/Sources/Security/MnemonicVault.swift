@@ -505,6 +505,17 @@ enum WalletSecretPersistence {
         case decodingFailed
     }
 
+    enum Availability: Sendable, Equatable {
+        case available
+        case encryptedRecordUnavailable
+        case missing
+
+        var canReveal: Bool {
+            if case .available = self { return true }
+            return false
+        }
+    }
+
     static func upsertMnemonic(
         _ words: [String],
         for walletId: UUID,
@@ -537,6 +548,22 @@ enum WalletSecretPersistence {
 
     static func hasSecret(kind: WalletSecretKind, for walletId: UUID, in context: ModelContext) -> Bool {
         (try? existingRecord(kind: kind, walletId: walletId, in: context)) != nil
+    }
+
+    static func availability(kind: WalletSecretKind, for walletId: UUID, in context: ModelContext) -> Availability {
+        do {
+            guard try existingRecord(kind: kind, walletId: walletId, in: context) != nil else {
+                return .missing
+            }
+            switch kind {
+            case .mnemonic:
+                return ((try loadMnemonic(for: walletId, in: context)) ?? []).isEmpty ? .missing : .available
+            case .privateKey:
+                return ((try loadPrivateKey(for: walletId, in: context)) ?? "").isEmpty ? .missing : .available
+            }
+        } catch {
+            return .encryptedRecordUnavailable
+        }
     }
 
     static func deleteSecret(kind: WalletSecretKind, for walletId: UUID, in context: ModelContext) throws {
@@ -602,17 +629,49 @@ enum WalletSecretPersistence {
 @ModelActor
 actor WalletSecretRepository {
     func loadMnemonic(for walletId: UUID) throws -> [String]? {
-        if let words = try WalletSecretPersistence.loadMnemonic(for: walletId, in: modelContext) {
+        let dbError: Error?
+        do {
+            if let words = try WalletSecretPersistence.loadMnemonic(for: walletId, in: modelContext) {
+                return words
+            }
+            dbError = nil
+        } catch {
+            dbError = error
+        }
+
+        if let words = try MnemonicVault.loadMnemonic(for: walletId), !words.isEmpty {
+            try? WalletSecretPersistence.upsertMnemonic(words, for: walletId, in: modelContext)
+            try? modelContext.save()
             return words
         }
-        return try MnemonicVault.loadMnemonic(for: walletId)
+
+        if let dbError {
+            throw dbError
+        }
+        return nil
     }
 
     func loadPrivateKey(for walletId: UUID) throws -> String? {
-        if let key = try WalletSecretPersistence.loadPrivateKey(for: walletId, in: modelContext) {
+        let dbError: Error?
+        do {
+            if let key = try WalletSecretPersistence.loadPrivateKey(for: walletId, in: modelContext) {
+                return key
+            }
+            dbError = nil
+        } catch {
+            dbError = error
+        }
+
+        if let key = try MnemonicVault.loadPrivateKey(for: walletId), !key.isEmpty {
+            try? WalletSecretPersistence.upsertPrivateKey(key, for: walletId, in: modelContext)
+            try? modelContext.save()
             return key
         }
-        return try MnemonicVault.loadPrivateKey(for: walletId)
+
+        if let dbError {
+            throw dbError
+        }
+        return nil
     }
 
     func hasMnemonic(for walletId: UUID) -> Bool {
@@ -629,5 +688,27 @@ actor WalletSecretRepository {
             return true
         }
         return MnemonicVault.hasPrivateKey(for: walletId)
+    }
+
+    func mnemonicAvailability(for walletId: UUID) -> WalletSecretPersistence.Availability {
+        if hasMnemonic(for: walletId) {
+            return .available
+        }
+        let availability = WalletSecretPersistence.availability(kind: .mnemonic, for: walletId, in: modelContext)
+        if availability == .encryptedRecordUnavailable {
+            return .encryptedRecordUnavailable
+        }
+        return .missing
+    }
+
+    func privateKeyAvailability(for walletId: UUID) -> WalletSecretPersistence.Availability {
+        if hasPrivateKey(for: walletId) {
+            return .available
+        }
+        let availability = WalletSecretPersistence.availability(kind: .privateKey, for: walletId, in: modelContext)
+        if availability == .encryptedRecordUnavailable {
+            return .encryptedRecordUnavailable
+        }
+        return .missing
     }
 }

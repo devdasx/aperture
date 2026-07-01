@@ -47,6 +47,10 @@ enum FreshInstallGuard {
     /// — just a Bool that flips to `true` on first run.
     private static let installedMarkerKey = "aperture.freshInstall.completed"
 
+    #if DEBUG
+    nonisolated(unsafe) private static var ignoresExistingStoreForTesting = false
+    #endif
+
     /// Every Keychain `kSecAttrService` identifier Aperture writes
     /// under. Adding a new vault later requires adding its service
     /// string here so the fresh-install wipe covers it — a service
@@ -109,6 +113,21 @@ enum FreshInstallGuard {
             return false
         }
 
+        #if DEBUG
+        let shouldRespectExistingStore = !ignoresExistingStoreForTesting
+        #else
+        let shouldRespectExistingStore = true
+        #endif
+        if shouldRespectExistingStore, hasExistingLocalStore() {
+            // A missing marker with an existing SwiftData store is not a fresh
+            // install; it is an interrupted/debug reinstall or settings restore.
+            // Purging Keychain here would orphan encrypted WalletSecretRecord
+            // rows from the master key that opens them.
+            UserDefaults.standard.set(true, forKey: installedMarkerKey)
+            log.warning("Fresh-install marker missing but local SwiftData store exists — preserving Keychain and setting marker")
+            return false
+        }
+
         log.log("Fresh install detected — purging Keychain items for \(knownServices.count, privacy: .public) known services")
 
         var deletedCount = 0
@@ -140,8 +159,33 @@ enum FreshInstallGuard {
         // (extremely unlikely on a sync call from init), next launch
         // will re-wipe — which is idempotent on an empty Keychain.
         UserDefaults.standard.set(true, forKey: installedMarkerKey)
+        #if DEBUG
+        ignoresExistingStoreForTesting = false
+        #endif
         log.log("Fresh-install Keychain purge complete — \(deletedCount, privacy: .public) entries cleared, marker set")
         return true
+    }
+
+    private static func hasExistingLocalStore() -> Bool {
+        let fm = FileManager.default
+        let base: URL
+        if let appSupport = try? fm.url(
+            for: .applicationSupportDirectory,
+            in: .userDomainMask,
+            appropriateFor: nil,
+            create: false
+        ) {
+            base = appSupport
+        } else {
+            base = fm.urls(for: .documentDirectory, in: .userDomainMask).first
+                ?? URL(fileURLWithPath: NSTemporaryDirectory())
+        }
+        let store = base
+            .appendingPathComponent("Aperture", isDirectory: true)
+            .appendingPathComponent("aperture.sqlite", isDirectory: false)
+        return fm.fileExists(atPath: store.path)
+            || fm.fileExists(atPath: store.path + "-wal")
+            || fm.fileExists(atPath: store.path + "-shm")
     }
 
     /// Test-only. Resets the marker so a subsequent
@@ -150,6 +194,7 @@ enum FreshInstallGuard {
     #if DEBUG
     static func _resetMarkerForTesting() {
         UserDefaults.standard.removeObject(forKey: installedMarkerKey)
+        ignoresExistingStoreForTesting = true
     }
     #endif
 }
