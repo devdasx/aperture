@@ -144,11 +144,12 @@ enum StellarTransactionSigner {
         }
     }
 
-    /// Parse a `"CODE:ISSUER"` token contract string (the form the
-    /// compose layer stores for Stellar assets).
+    /// Parse a `"CODE:ISSUER"` or persisted `"CODE.ISSUER"` token contract
+    /// string.
     private static func parseAsset(_ contract: String?) -> (code: String, issuer: String)? {
         guard let contract else { return nil }
-        let parts = contract.split(separator: ":", maxSplits: 1).map(String.init)
+        let separator: Character = contract.contains(":") ? ":" : "."
+        let parts = contract.split(separator: separator, maxSplits: 1).map(String.init)
         guard parts.count == 2, !parts[0].isEmpty, !parts[1].isEmpty else { return nil }
         return (parts[0], parts[1])
     }

@@ -108,14 +108,14 @@ struct SendAssetListView: View {
     private func tokenSection(_ tokens: [SendAsset]) -> some View {
         Section {
             ForEach(tokens) { asset in
-                if case let .token(symbol, name, chains) = asset {
+                if case let .token(symbol, name, descriptors) = asset {
                     Button {
                         onSelectToken(asset)
                     } label: {
                         AssetPickerAssetRow(
                             fullName: name,
                             ticker: symbol,
-                            logoChain: asset.canonicalChainForLogo ?? chains.first ?? .ethereum,
+                            logoChain: asset.canonicalChainForLogo ?? descriptors.first?.chain ?? .ethereum,
                             logoContract: asset.canonicalContract,
                             totals: holdings.aggregate(symbol: symbol),
                             currencyCode: currencyCode

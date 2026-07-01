@@ -146,10 +146,36 @@ struct AssetNetworkDetailView: View {
         }
     }
 
-    /// Token symbol to carry into Send/Receive — `nil` for a native coin
-    /// (the chain IS the asset), the symbol for a token.
+    /// Token symbol to carry into Receive — `nil` for a native coin (the
+    /// chain IS the asset), the symbol for a token.
     private var sendTokenSymbol: String? {
         identity.isNativeCoin ? nil : identity.symbol
+    }
+
+    /// Exact token identity to carry into Send. The network-detail row has
+    /// already chosen one chain + contract, so Send can skip guessing and
+    /// build a draft with the real on-chain token metadata.
+    private var sendTokenDescriptor: SendTokenDescriptor? {
+        guard !identity.isNativeCoin, let contract = networkRow?.contract else {
+            return nil
+        }
+        let catalog = AssetCatalog.allAssets.first {
+            $0.chain == chain
+                && $0.symbol.uppercased() == identity.symbol.uppercased()
+                && tokenContractMatches($0.contract, contract, chain: chain)
+        }
+        let balance = walletAddress?.balances.first {
+            $0.tokenSymbol.uppercased() == identity.symbol.uppercased()
+                && tokenContractMatches($0.tokenContract, contract, chain: chain)
+        }
+        return SendTokenDescriptor(
+            symbol: identity.symbol,
+            name: catalog?.name ?? AssetNameLookup.name(forTokenSymbol: identity.symbol) ?? identity.symbol,
+            chain: chain,
+            contract: contract,
+            decimals: balance?.decimals ?? catalog?.decimals ?? chain.nativeDecimals,
+            source: .catalog
+        )
     }
 
     private func presentSend() {
@@ -157,7 +183,7 @@ struct AssetNetworkDetailView: View {
         var path = NavigationPath()
         path.append(SendDestination.recipient(
             chain: chain,
-            tokenSymbol: sendTokenSymbol,
+            token: sendTokenDescriptor,
             fromAddress: address,
             prefillRecipient: nil
         ))
@@ -515,5 +541,20 @@ struct AssetNetworkDetailView: View {
     private var allTransactions: [TransactionRecord] {
         guard let wallet = activeWallet else { return [] }
         return wallet.addresses.flatMap { $0.transactions }
+    }
+
+    private func tokenContractMatches(_ lhs: String?, _ rhs: String, chain: SupportedChain) -> Bool {
+        guard let lhs else { return false }
+        if chain.family == .evm {
+            return lhs.caseInsensitiveCompare(rhs) == .orderedSame
+        }
+        return lhs == rhs
+    }
+
+    private func tokenContractMatches(_ lhs: String, _ rhs: String, chain: SupportedChain) -> Bool {
+        if chain.family == .evm {
+            return lhs.caseInsensitiveCompare(rhs) == .orderedSame
+        }
+        return lhs == rhs
     }
 }

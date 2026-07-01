@@ -50,29 +50,25 @@ struct SendNetworkFirstView: View {
                 .navigationDestination(for: SendDestination.self) { destination in
                     switch destination {
                     case let .networkPicker(asset):
-                        SendNetworkPickerView(
-                            token: asset,
-                            holdings: holdings,
-                            currencyCode: currencyCode,
-                            onSelectNetwork: { chain in
-                                let symbol: String? = {
-                                    if case let .token(symbol, _, _) = asset { return symbol }
-                                    return nil
-                                }()
-                                openNetwork(chain, tokenSymbol: symbol)
-                            }
-                        )
-                    case let .recipient(chain, tokenSymbol, fromAddress, prefillRecipient):
+                    SendNetworkPickerView(
+                        token: asset,
+                        holdings: holdings,
+                        currencyCode: currencyCode,
+                        onSelectNetwork: { descriptor in
+                                openNetwork(descriptor.chain, token: descriptor)
+                        }
+                    )
+                    case let .recipient(chain, token, fromAddress, prefillRecipient):
                         recipientView(
                             chain: chain,
-                            tokenSymbol: tokenSymbol,
+                            token: token,
                             fromAddress: fromAddress,
                             prefillRecipient: prefillRecipient
                         )
-                    case let .amount(chain, tokenSymbol, fromAddress, recipients):
+                    case let .amount(chain, token, fromAddress, recipients):
                         SendAmountView(
                             chain: chain,
-                            tokenSymbol: tokenSymbol,
+                            token: token,
                             fromAddress: fromAddress,
                             recipients: recipients,
                             onReview: { draft in
@@ -115,7 +111,7 @@ struct SendNetworkFirstView: View {
         if let chain = singleChain, let fromAddress = address(for: chain) {
             recipientView(
                 chain: chain,
-                tokenSymbol: tokenSymbol,
+                token: singleToken,
                 fromAddress: fromAddress,
                 prefillRecipient: nil
             )
@@ -145,7 +141,7 @@ struct SendNetworkFirstView: View {
         Section {
             ForEach(filteredChains, id: \.self) { chain in
                 Button {
-                    openNetwork(chain, tokenSymbol: tokenSymbol)
+                    openNetwork(chain, token: token(for: chain))
                 } label: {
                     AssetPickerNetworkRow(
                         chain: chain,
@@ -190,13 +186,13 @@ struct SendNetworkFirstView: View {
 
     private func recipientView(
         chain: SupportedChain,
-        tokenSymbol: String?,
+        token: SendTokenDescriptor?,
         fromAddress: String,
         prefillRecipient: String?
     ) -> some View {
         SendRecipientView(
             chain: chain,
-            tokenSymbol: tokenSymbol,
+            tokenSymbol: token?.symbol,
             fromAddress: fromAddress,
             recents: recents,
             initialRecipient: prefillRecipient,
@@ -204,7 +200,7 @@ struct SendNetworkFirstView: View {
                 navigationPath.append(
                     SendDestination.amount(
                         chain: chain,
-                        tokenSymbol: tokenSymbol,
+                        token: token,
                         fromAddress: fromAddress,
                         recipients: recipients
                     )
@@ -255,8 +251,15 @@ struct SendNetworkFirstView: View {
         }
     }
 
-    private var tokenSymbol: String? {
-        assetPrefill.nativeChain == nil ? assetPrefill.symbol : nil
+    private var tokenDescriptors: [SendTokenDescriptor] {
+        guard assetPrefill.nativeChain == nil,
+              case let .token(_, _, tokens) = matchingToken else { return [] }
+        return tokens
+    }
+
+    private var singleToken: SendTokenDescriptor? {
+        guard assetPrefill.nativeChain == nil else { return nil }
+        return sortedChains.count == 1 ? token(for: sortedChains[0]) : nil
     }
 
     private var sortedChains: [SupportedChain] {
@@ -267,8 +270,8 @@ struct SendNetworkFirstView: View {
         let chains: [SupportedChain]
         if !preferredChains.isEmpty {
             chains = preferredChains
-        } else if case let .token(_, _, tokenChains) = matchingToken {
-            chains = tokenChains
+        } else if case let .token(_, _, tokens) = matchingToken {
+            chains = tokens.map(\.chain)
         } else {
             chains = []
         }
@@ -299,6 +302,11 @@ struct SendNetworkFirstView: View {
         return holdings.perNetwork(symbol: assetPrefill.symbol, chain: chain)
     }
 
+    private func token(for chain: SupportedChain) -> SendTokenDescriptor? {
+        guard assetPrefill.nativeChain == nil else { return nil }
+        return tokenDescriptors.first(where: { $0.chain == chain })
+    }
+
     // MARK: - Actions
 
     private func healActiveWalletIdIfNeeded() {
@@ -317,7 +325,7 @@ struct SendNetworkFirstView: View {
         })?.address
     }
 
-    private func openNetwork(_ chain: SupportedChain, tokenSymbol: String?) {
+    private func openNetwork(_ chain: SupportedChain, token: SendTokenDescriptor?) {
         guard let address = address(for: chain) else {
             missingAddressChain = chain
             isShowingMissingAddressAlert = true
@@ -326,7 +334,7 @@ struct SendNetworkFirstView: View {
         navigationPath.append(
             SendDestination.recipient(
                 chain: chain,
-                tokenSymbol: tokenSymbol,
+                token: token,
                 fromAddress: address,
                 prefillRecipient: nil
             )
