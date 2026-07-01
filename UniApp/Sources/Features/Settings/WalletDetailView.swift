@@ -958,7 +958,7 @@ struct WalletDetailView: View {
 /// against this specific wallet's stored mnemonic.
 ///
 /// **State B (`requiresBackup == false`).** Same card slot. The hero
-/// glyph swaps to `checkmark.shield.fill` and gains a one-beat bounce
+/// glyph changes to `checkmark.shield.fill` and gains a one-beat bounce
 /// (Reduce Motion → no bounce). Headline: "Backed up." Body names
 /// the post-backup co-existence ("You have the phrase. Aperture is
 /// one of two copies."). No CTA — the absence of work to do IS the

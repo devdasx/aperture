@@ -1900,7 +1900,7 @@ private actor MarketFXService {
             errors.append(error)
         }
         do {
-            let rate = try await fetchExchangeRateAPIRate(to: normalized)
+            let rate = try await fetchOpenERRate(to: normalized)
             memory[normalized] = rate
             return rate
         } catch {
@@ -1922,22 +1922,22 @@ private actor MarketFXService {
         components.host = "api.coinbase.com"
         components.path = "/v2/exchange-rates"
         components.queryItems = [URLQueryItem(name: "currency", value: "USD")]
-        let row = try await decode(CoinbaseExchangeRates.self, from: components.url!)
+        let row = try await decode(CoinbaseFiatRates.self, from: components.url!)
         guard let value = row.data.rates[currencyCode], let rate = Double(value), rate > 0 else {
             throw URLError(.cannotParseResponse)
         }
         return FXRate(rate: rate, currencyCode: currencyCode, source: "Coinbase FX", fetchedAt: Date())
     }
 
-    private func fetchExchangeRateAPIRate(to currencyCode: String) async throws -> FXRate {
+    private func fetchOpenERRate(to currencyCode: String) async throws -> FXRate {
         let url = URL(string: "https://open.er-api.com/v6/latest/USD")!
-        let row = try await decode(ExchangeRateAPIResponse.self, from: url)
+        let row = try await decode(OpenERAPIResponse.self, from: url)
         guard row.result == "success",
               let rate = row.rates[currencyCode],
               rate > 0 else {
             throw URLError(.cannotParseResponse)
         }
-        return FXRate(rate: rate, currencyCode: currencyCode, source: "ExchangeRate-API FX", fetchedAt: Date())
+        return FXRate(rate: rate, currencyCode: currencyCode, source: "OpenER FX", fetchedAt: Date())
     }
 
     private func fetchFrankfurterRate(to currencyCode: String) async throws -> FXRate {
@@ -2143,7 +2143,7 @@ private struct CoinbaseCandle: Decodable {
     }
 }
 
-private struct CoinbaseExchangeRates: Decodable {
+private struct CoinbaseFiatRates: Decodable {
     let data: Rates
 
     struct Rates: Decodable {
@@ -2151,7 +2151,7 @@ private struct CoinbaseExchangeRates: Decodable {
     }
 }
 
-private struct ExchangeRateAPIResponse: Decodable {
+private struct OpenERAPIResponse: Decodable {
     let result: String
     let rates: [String: Double]
 }

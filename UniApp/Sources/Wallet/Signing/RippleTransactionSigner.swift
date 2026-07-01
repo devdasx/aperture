@@ -20,7 +20,7 @@ import WalletCore
 /// the bid; clamp to ≥10 drops.
 ///
 /// **Destination tag (matrix §G8):** the single most important non-amount
-/// field — exchanges require it; carried in the draft's memo as
+/// field — some recipient services require it; carried in the draft's memo as
 /// `.destinationTag(uint32)`.
 ///
 /// Output: `output.encoded` is the signed binary tx; the broadcast wire

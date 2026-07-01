@@ -1285,7 +1285,7 @@ actor RPCClient {
             // throttle delivered as a JSON-RPC error envelope at HTTP 200
             // (the 1rpc `-32001` "usage limit" case) must rotate to a
             // healthy endpoint, never surface as a terminal method error
-            // on a swap broadcast. Convert it to `.rateLimited` so it
+            // during a transaction broadcast. Convert it to `.rateLimited` so it
             // takes the "alive but saturated — rotate, no breaker" path
             // and is never retained as the terminal `lastError`.
             if Self.rateLimit(forCode: code, message: message) {
@@ -1367,19 +1367,18 @@ actor RPCClient {
     /// envelope to `.rateLimited` instead of `.rpcError`, so it rotates to
     /// the next endpoint WITHOUT tripping the circuit breaker AND without
     /// the limit message being retained as the terminal `lastError` — the
-    /// real defect behind the failed swap.
+    /// real defect behind the failed transaction.
     ///
     /// **Why this is needed.** Some providers return their throttle as a
     /// JSON-RPC error envelope at **HTTP 200**, so the `429` branch in
     /// `dispatchJSON` never fires and the failure looks like a method
-    /// error. The canonical case (live-verified 2026-06-16; doc:
-    /// https://docs.1rpc.io/using-the-web3-api/errors): the unauthenticated
+    /// error. The canonical case (live-verified 2026-06-16): the unauthenticated
     /// 1rpc.io tier returns
     /// `{"error":{"code":-32001,"message":"You've reached the usage limit
     /// for your current plan…"}}` once its 200/day quota is spent. Without
     /// this classifier that surfaced verbatim as
     /// "The network rejected the transaction: You've reached the usage
-    /// limit…" on a swap broadcast, instead of rotating to a healthy
+    /// limit…" during a transaction broadcast, instead of rotating to a healthy
     /// endpoint.
     ///
     /// Matches by **code** (`-32001`/`-32005`/`-32029` — known

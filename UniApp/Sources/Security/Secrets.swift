@@ -62,5 +62,5 @@ enum Secrets {
 
     // Alchemy keys were removed (2026-06-21): EVM data fetching is disabled and
     // `AlchemyConnector` / `AlchemyService` were deleted, so the key is dead.
-    // Li.Fi / 0x / 1inch swap keys were removed (2026-06-23) with the swap feature.
+    // Legacy aggregator keys were removed on 2026-06-23 with the retired feature set.
 }

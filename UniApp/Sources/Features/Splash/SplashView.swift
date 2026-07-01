@@ -233,7 +233,7 @@ struct SplashView: View {
     /// `.logoOpacity`) applied at the call site in `body`. Because
     /// the bloom's final frame IS this still `Image`, the
     /// matchedGeometryEffect handoff to onboarding is a single
-    /// contiguous Image transition — no asset swap, no seam.
+    /// contiguous Image transition — no asset replacement, no seam.
     private var logo: some View {
         Image("LogoCircle")
             .resizable()

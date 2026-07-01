@@ -183,7 +183,7 @@ extension ChainComposeCapability {
 
         case .ton:
             // Comment ≈123 bytes fit the root cell (1023 bits − 32-bit
-            // opcode); snake encoding extends it, but exchange memos
+            // opcode); snake encoding extends it, but service memos
             // are short.
             return ChainComposeCapability(
                 feeModel: .tonFixed, supportsUTXO: false, opReturnMaxBytes: nil,

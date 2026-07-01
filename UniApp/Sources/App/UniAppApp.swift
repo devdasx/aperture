@@ -200,7 +200,7 @@ struct UniAppApp: App {
 /// `design_handoff_splash_to_onboarding/` spec.
 ///
 /// **Why this view exists.** The previous architecture had
-/// `UniAppApp` swap `SplashView` for `RootGate` via a `hasFinishedSplash`
+/// `UniAppApp` replace `SplashView` with `RootGate` via a `hasFinishedSplash`
 /// flag. That meant the two views never coexisted in one view
 /// hierarchy. SwiftUI's `matchedGeometryEffect` is the canonical
 /// shared-element animation primitive, but it requires both the
@@ -375,7 +375,7 @@ private struct AppRoot: View {
         // App-wide Reset Aperture (design_handoff_reset) — presented HERE, at
         // the app root above `RootGate`, NOT from the Settings tab. That's what
         // lets the erasing→factory-fresh morph survive the wipe: once the wipe
-        // empties the wallets, `RootGate` swaps `MainTabView` for onboarding
+        // empties the wallets, `RootGate` replaces `MainTabView` with onboarding
         // underneath, but this cover stays on top showing the morph until the
         // user taps "Get Started", which dismisses it onto the fresh onboarding.
         .fullScreenCover(isPresented: Binding(
@@ -415,7 +415,7 @@ private struct AppRoot: View {
                 // Direction-keyed identity (Rule #12 §G at the root —
                 // see `rootDirectionKey`'s doc). The key only changes
                 // on an LTR ↔ RTL flip, so the rebuild never fires for
-                // theme or same-direction language changes. The swap
+                // theme or same-direction language changes. The replacement
                 // is instant: the `.animation` above is keyed on
                 // `isShowingSplash`, which doesn't change here.
                 .id(rootDirectionKey)

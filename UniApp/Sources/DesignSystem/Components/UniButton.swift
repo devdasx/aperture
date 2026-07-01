@@ -421,7 +421,7 @@ struct UniButton: View {
     }
 
     /// Resolves the variant's glass tint + label tone. When the button is
-    /// inactive (disabled or loading) it swaps in the disabled ROLES
+    /// inactive (disabled or loading) it applies the disabled ROLES
     /// (Rule #4 — never a raw opacity literal): `disabledProminentFill`
     /// for `.glassProminent` variants, `disabledFill` for `.glass`
     /// variants, paired with the `disabledLabel` tone so the text / glyph

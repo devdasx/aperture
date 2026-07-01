@@ -145,7 +145,7 @@ enum BiometricEnrollmentTracker {
     /// iOS 18, but its replacement (`LADomainState`) isn't exposed on
     /// the SDK we currently compile against. The deprecation is a
     /// warning, not an error; we accept the warning until the new API
-    /// is available, at which point this is a one-line swap. A
+    /// is available, at which point this is a one-line replacement. A
     /// silencing pragma would hide breakage if the API is removed in
     /// a future SDK, so we keep the warning visible instead.
     private static func currentDomainState() -> Data? {

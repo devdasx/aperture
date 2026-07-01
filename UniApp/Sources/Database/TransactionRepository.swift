@@ -290,9 +290,8 @@ actor TransactionRepository {
     /// the direction-derived default (`.internal` → `.selfTransfer`, else
     /// `.transfer`).
     ///
-    /// 2026-06-23 — the counterparty-based swap/bridge router classifier was
-    /// removed with the swap feature, so a transfer is never relabelled to
-    /// `.swap` / `.bridge` anymore.
+    /// 2026-06-23 — the counterparty-based router classifier was removed, so a
+    /// transfer is never relabelled to a router-derived kind anymore.
     static func classifyKind(
         direction: TransactionDirection
     ) -> TransactionKind {

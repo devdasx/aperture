@@ -23,7 +23,7 @@ This comparison is for people who've outgrown those gaps and want a Rabby altern
 
 Rabby's standout feature is pre-transaction simulation. Before you sign anything, it shows you what the transaction will actually do — token approvals, balance changes, contract interactions. For DeFi users who've been burned by malicious approvals, that's genuinely useful.
 
-It also handles multi-chain EVM switching better than MetaMask's default experience, automatically detecting the right network for each dApp interaction.
+It also handles multi-chain EVM switching better than MetaMask's default experience, automatically detecting the right network for each transaction.
 
 For pure EVM use, these are real advantages.
 
@@ -124,8 +124,8 @@ Account creation is architecturally unnecessary. Your private keys are generated
 **What happens if I lose my iPhone?**
 Your seed phrase is the recovery mechanism. It's shown once during setup, client-side only, and never stored or transmitted by Aperture. Back it up securely and you can restore your wallet on a new device.
 
-**Does Aperture charge swap fees?**
-Aperture does not charge swap fees in its core product positioning. For comparison: MetaMask charges 0.875%, Trust Wallet charges 0.7%, and Exodus starts at approximately 0.5%.
+**Does Aperture charge transaction fees?**
+Aperture does not add its own fee on top of normal network costs. The only required fee is the blockchain fee paid to the network processing your transaction.
 
 **Is Aperture available on Android?**
 No. Aperture is iOS-only. The Secure Enclave architecture is specific to Apple hardware, and the product is built around that foundation.

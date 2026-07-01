@@ -6,7 +6,7 @@ import UIKit
 /// Drives the full-screen Reset Aperture flow, which is presented at the APP
 /// ROOT (above `RootGate`), NOT from the Settings tab. Presenting it at the
 /// root is what lets the erasing→factory-fresh morph survive the wipe: once the
-/// wipe empties the wallets, `RootGate` swaps `MainTabView` for onboarding
+/// wipe empties the wallets, `RootGate` replaces `MainTabView` with onboarding
 /// underneath, but this root-level cover stays on top showing the morph until
 /// the user taps "Get Started" — which dismisses it onto the fresh onboarding.
 @MainActor

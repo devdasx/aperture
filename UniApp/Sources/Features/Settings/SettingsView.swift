@@ -559,7 +559,7 @@ private struct AboutView: View {
             }
 
             // Legal + support — each opens the live page on aperturex.io
-            // in the system browser (trailing ↗ signals it leaves the app).
+            // outside the app (trailing ↗ signals it leaves the app).
             Section {
                 externalRow("Terms of Service", Web.terms)
                 externalRow("Privacy Policy", Web.privacy)
@@ -581,7 +581,7 @@ private struct AboutView: View {
         .navigationBarTitleDisplayMode(.large)
     }
 
-    /// A row that opens a web page in the system browser. The trailing
+    /// A row that opens a web page outside the app. The trailing
     /// `arrow.up.right` glyph signals the tap leaves the app (vs the
     /// `chevron.right` used for in-app push navigation).
     @ViewBuilder
@@ -601,7 +601,7 @@ private struct AboutView: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .accessibilityHint(Text("Opens in browser"))
+            .accessibilityHint(Text("Opens outside Aperture"))
         }
     }
 }

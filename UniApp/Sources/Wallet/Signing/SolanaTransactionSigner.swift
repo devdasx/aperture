@@ -157,7 +157,7 @@ enum SolanaTransactionSigner {
 
     // MARK: - Helpers
 
-    /// SPL memo string from the draft's typed memo (exchanges may require
+    /// SPL memo string from the draft's typed memo (some recipients may require
     /// it — matrix §G4 "destination-tag equivalent").
     private static func solanaMemo(from memo: SendMemoValue) -> String {
         switch memo {

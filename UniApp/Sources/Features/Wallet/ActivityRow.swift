@@ -15,7 +15,7 @@ import UIKit
 ///   per user direction, matching the parallel bump on `AssetRow`
 ///   so Holdings and Activity rows read as one family. A small
 ///   **18-pt status badge** overlays the bottom-trailing corner
-///   carrying the verb: down arrow incoming, up arrow outgoing, swap
+///   carrying the verb: down arrow incoming, up arrow outgoing, paired-arrow
 ///   glyph internal, clock pending, ✕ failed. The badge wears a
 ///   `Background.secondary` halo so it reads as a cutout in the mark,
 ///   not a floating sticker — the same composition iOS Messages uses
@@ -36,7 +36,7 @@ import UIKit
 /// **Layout (Rule #11):** semantic edges only. The badge follows the
 /// mark to the bottom-trailing in LTR and bottom-leading in RTL —
 /// the verb stays anchored to the token in either direction. SF
-/// Symbol arrows auto-mirror; the swap glyph reads correctly either
+/// Symbol arrows auto-mirror; the internal-transfer glyph reads correctly either
 /// way.
 struct ActivityRow: View {
     let chain: SupportedChain
@@ -200,7 +200,7 @@ struct ActivityRow: View {
             switch direction {
             case .incoming: return "arrow.down"
             case .outgoing: return "arrow.up"
-            case .internal: return "arrow.triangle.swap"
+            case .internal: return "arrow.left.arrow.right"
             }
         }
     }

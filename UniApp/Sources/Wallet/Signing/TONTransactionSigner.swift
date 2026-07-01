@@ -23,7 +23,7 @@ import WalletCore
 /// -errors) is the standard wallet transfer, mode 128 is send-all.
 ///
 /// **Comment/memo (matrix §G7):** TON's destination-tag equivalent —
-/// exchanges require it. wallet-core wraps the text as the
+/// some recipient services require it. wallet-core wraps the text as the
 /// 0x00000000-prefixed comment cell via `transfer.comment`.
 ///
 /// **Bounceable (matrix §G7):** default `false` for user-to-user sends so

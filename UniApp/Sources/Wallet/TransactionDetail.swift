@@ -221,8 +221,8 @@ struct ERC20Transfer: Sendable, Equatable, Identifiable {
     let to: String
     /// Raw token value in base units (full-precision `Decimal`).
     let valueRaw: Decimal
-    /// The log index within the tx (per-leg disambiguator, so a swap's two
-    /// transfer legs are distinguishable).
+    /// The log index within the tx (per-leg disambiguator, so multi-leg
+    /// token movements are distinguishable).
     let logIndex: Int64?
     /// The token's decimals, resolved from `EVMTokenRegistry` by
     /// `(chain, contract)` at fetch time. `nil` when the contract is not in

@@ -4,7 +4,7 @@ import SwiftUI
 
 /// Send · advanced — OP_RETURN data anchoring (Bitcoin family). A typed
 /// text payload, byte-counted against the chain's `opReturnMaxBytes`, with
-/// honest copy that this is optional and unrelated to exchange deposits.
+/// honest copy that this is optional and unrelated to normal sends.
 struct SendOpReturnSheet: View {
     @Bindable var model: SendComposeModel
     @Environment(\.dismiss) private var dismiss
@@ -24,7 +24,7 @@ struct SendOpReturnSheet: View {
         ) {
             VStack(alignment: .leading, spacing: UniSpacing.m) {
                 UniBody(
-                    text: "Attach a small data note to the transaction. This is optional and isn't needed to send — exchanges never require it.",
+                    text: "Attach a small data note to the transaction. This is optional and is not needed for normal sends.",
                     color: UniColors.Text.secondary
                 )
                 UniTextField(
@@ -50,8 +50,8 @@ struct SendOpReturnSheet: View {
 
 /// Send · advanced — a free-text memo for the chains whose protocol carries
 /// one (TRON, Cosmos, Solana SPL Memo, Stellar text memo, NEAR FT memo).
-/// Byte-counted against the chain's `memoMaxBytes`. Honest exchange note
-/// for the kinds CEXes commonly require.
+/// Byte-counted against the chain's `memoMaxBytes`. Honest service-note
+/// copy for recipients that require a memo.
 struct SendMemoSheet: View {
     @Bindable var model: SendComposeModel
     @Environment(\.dismiss) private var dismiss
@@ -71,9 +71,9 @@ struct SendMemoSheet: View {
         ) {
             VStack(alignment: .leading, spacing: UniSpacing.m) {
                 UniBody(text: memoBlurb, color: UniColors.Text.secondary)
-                if model.capability.memoKind.exchangeOftenRequires {
-                    ComposeExchangeNote(
-                        text: "Many exchanges require a memo. Sending without the one they gave you can lose the deposit."
+                if model.capability.memoKind.recipientServiceOftenRequires {
+                    ComposeRecipientServiceNote(
+                        text: "Some recipient services require a memo. Sending without the one they gave you can lose the deposit."
                     )
                 }
                 if model.chain == .tron {
@@ -129,7 +129,7 @@ struct SendMemoSheet: View {
 // MARK: - Destination tag (XRP)
 
 /// Send · advanced — XRP destination tag (uint32). Honest about being
-/// REQUIRED by most exchanges (Rule #16).
+/// required by many recipient services (Rule #16).
 struct SendDestinationTagSheet: View {
     @Bindable var model: SendComposeModel
     @Environment(\.dismiss) private var dismiss
@@ -147,8 +147,8 @@ struct SendDestinationTagSheet: View {
             onSave: { saveTag(); dismiss() }
         ) {
             VStack(alignment: .leading, spacing: UniSpacing.m) {
-                ComposeExchangeNote(
-                    text: "Most exchanges REQUIRE a destination tag for XRP deposits. A deposit sent without the right tag can be credited to the wrong account or lost."
+                ComposeRecipientServiceNote(
+                    text: "Some recipient services REQUIRE a destination tag for XRP deposits. A deposit sent without the right tag can be credited to the wrong account or lost."
                 )
                 UniBody(text: "Enter the numeric tag the recipient gave you.", color: UniColors.Text.secondary)
                 UniTextField(
@@ -187,8 +187,8 @@ struct SendDestinationTagSheet: View {
 
 // MARK: - Comment (TON)
 
-/// Send · advanced — TON text comment. Honest about being exchange-required
-/// (TON's destination-tag equivalent).
+/// Send · advanced — TON text comment. Honest about being required by some
+/// recipients (TON's destination-tag equivalent).
 struct SendCommentSheet: View {
     @Bindable var model: SendComposeModel
     @Environment(\.dismiss) private var dismiss
@@ -207,8 +207,8 @@ struct SendCommentSheet: View {
             onSave: { saveComment(); dismiss() }
         ) {
             VStack(alignment: .leading, spacing: UniSpacing.m) {
-                ComposeExchangeNote(
-                    text: "Exchanges require a comment for TON deposits. Send the exact comment they gave you, or the deposit can be lost."
+                ComposeRecipientServiceNote(
+                    text: "Some recipient services require a comment for TON deposits. Send the exact comment they gave you, or the deposit can be lost."
                 )
                 UniBody(text: "Enter the comment the recipient gave you.", color: UniColors.Text.secondary)
                 UniTextField(
@@ -340,9 +340,9 @@ private struct ComposeDataSheetShell<Content: View>: View {
     }
 }
 
-/// The honest "exchanges require this" warning note used by the tag /
+/// The honest "some recipients require this" warning note used by the tag /
 /// comment / required-memo sheets (Rule #16).
-private struct ComposeExchangeNote: View {
+private struct ComposeRecipientServiceNote: View {
     let text: LocalizedStringKey
 
     var body: some View {
