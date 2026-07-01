@@ -64,7 +64,7 @@ struct DatabaseExplorerView: View {
             }
 
             Section {
-                Text("Wallet-owned secrets, addresses, chain state, and UTXOs are grouped under each wallet. Plaintext secrets are shown only after passcode or Face ID verification.")
+                Text("Wallet-owned secrets, addresses, chain state, and UTXOs are grouped under each wallet. Plaintext secrets require passcode or Face ID when a local lock is enabled; otherwise they are shown with a safety warning.")
                     .font(UniTypography.footnote)
                     .foregroundStyle(UniColors.Text.tertiary)
                     .padding(.vertical, UniSpacing.xs)
@@ -526,6 +526,10 @@ private struct DatabaseWalletDetailView: View {
     @State private var revealError: String?
     @State private var loadError: String?
 
+    private var hasLocalSecretGate: Bool {
+        PinCodeStorage.hasPin || PinCodePreference.isBiometricEnabled()
+    }
+
     var body: some View {
         List {
             if let wallet {
@@ -631,20 +635,40 @@ private struct DatabaseWalletDetailView: View {
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, UniSpacing.xl)
             } else {
-                Button {
-                    beginSecretReveal()
-                } label: {
-                    HStack(spacing: UniSpacing.s) {
-                        Image(systemName: revealedSecrets.isEmpty ? "lock.open" : "lock")
-                            .font(.system(size: 18, weight: .semibold))
-                            .foregroundStyle(UniColors.Tint.indigo)
+                if hasLocalSecretGate {
+                    Button {
+                        beginSecretReveal()
+                    } label: {
+                        HStack(spacing: UniSpacing.s) {
+                            Image(systemName: revealedSecrets.isEmpty ? "lock.open" : "lock")
+                                .font(.system(size: 18, weight: .semibold))
+                                .foregroundStyle(UniColors.Tint.indigo)
+                                .frame(width: 30, height: 30)
+                                .background(UniColors.Tint.indigo.opacity(0.14), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+                            VStack(alignment: .leading, spacing: UniSpacing.xxs) {
+                                Text(revealedSecrets.isEmpty ? "Unlock wallet secrets" : "Lock wallet secrets")
+                                    .font(UniTypography.bodyEmphasized)
+                                    .foregroundStyle(UniColors.Text.primary)
+                                Text(revealedSecrets.isEmpty ? "Verify passcode or Face ID to reveal plaintext on this screen." : "Hide plaintext secret values again.")
+                                    .font(UniTypography.footnote)
+                                    .foregroundStyle(UniColors.Text.secondary)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                        }
+                        .padding(.vertical, UniSpacing.xxs)
+                    }
+                } else {
+                    HStack(alignment: .top, spacing: UniSpacing.s) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(UniColors.Tint.orange)
                             .frame(width: 30, height: 30)
-                            .background(UniColors.Tint.indigo.opacity(0.14), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+                            .background(UniColors.Tint.orange.opacity(0.13), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
                         VStack(alignment: .leading, spacing: UniSpacing.xxs) {
-                            Text(revealedSecrets.isEmpty ? "Unlock wallet secrets" : "Lock wallet secrets")
+                            Text("Secrets visible")
                                 .font(UniTypography.bodyEmphasized)
                                 .foregroundStyle(UniColors.Text.primary)
-                            Text(revealedSecrets.isEmpty ? "Verify passcode or Face ID to reveal plaintext on this screen." : "Hide plaintext secret values again.")
+                            Text("No Aperture passcode or Face ID is enabled. Turn one on to require authentication before showing wallet secrets.")
                                 .font(UniTypography.footnote)
                                 .foregroundStyle(UniColors.Text.secondary)
                                 .fixedSize(horizontal: false, vertical: true)
@@ -670,7 +694,7 @@ private struct DatabaseWalletDetailView: View {
         } header: {
             Text("Wallet Secrets")
         } footer: {
-            Text("Plaintext is never stored in the inspector. Unlocking decrypts the local encrypted SwiftData row for this session only.")
+            Text(hasLocalSecretGate ? "Plaintext is never stored in the inspector. Unlocking decrypts the local encrypted SwiftData row for this session only." : "Plaintext is never stored in the inspector. Because no local lock is enabled, this screen decrypts the local encrypted SwiftData row without an extra prompt.")
         }
         .listRowBackground(UniColors.List.rowBackground)
     }
@@ -739,6 +763,9 @@ private struct DatabaseWalletDetailView: View {
                     predicate: #Predicate { $0.walletId == ownerId }
                 )
             )
+            if !hasLocalSecretGate, !secrets.isEmpty {
+                revealWalletSecrets()
+            }
         } catch {
             loadError = error.localizedDescription
         }
@@ -752,8 +779,8 @@ private struct DatabaseWalletDetailView: View {
             revealedSecrets = [:]
             return
         }
-        guard PinCodeStorage.hasPin else {
-            revealError = "Turn on Aperture passcode before revealing plaintext secrets."
+        guard hasLocalSecretGate else {
+            revealWalletSecrets()
             return
         }
         isShowingPinGate = true
