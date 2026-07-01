@@ -2338,40 +2338,15 @@ struct WalletHomeView: View {
     ///    context hasn't merged yet (the 2026-06-12 pattern), and a
     ///    post-delete successor write that landed before this body
     ///    pass saw the updated query results.
-    /// 3. No / dangling stored id → the first query record that still
-    ///    exists in the store. Skipping store-deleted rows matters:
-    ///    during the post-delete merge window the `@Query` can still
-    ///    contain the deleted record, and the prior unconditional
-    ///    `allWallets.first` fallback let the pill and the memoized
-    ///    projections resolve DIFFERENT wallets at different instants
-    ///    — the "$50 wallet selected, $700 wallet's data" report.
+    /// 3. Missing / empty id → nil until `ensureActiveWalletSet()` writes
+    ///    the database-backed pointer. The render path never falls back to
+    ///    a different wallet.
     private var activeWallet: WalletRecord? {
-        if let uuid = UUID(uuidString: activeWalletIdRaw) {
-            if let match = allWallets.first(where: { $0.id == uuid }) {
-                return match
-            }
-            var descriptor = FetchDescriptor<WalletRecord>(
-                predicate: #Predicate { $0.id == uuid }
-            )
-            descriptor.fetchLimit = 1
-            if let stored = try? modelContext.fetch(descriptor).first {
-                return stored
-            }
-            // A deliberately-set, VALID active id that the main context
-            // can't see yet (cross-context merge lag right after a
-            // create / import — the new WalletRecord is saved in a
-            // background `@ModelActor` context and merges a beat later).
-            // Return nil → render the empty/loading state — NEVER fall
-            // back to a DIFFERENT wallet, which surfaced the previous
-            // wallet's balances under the new wallet's identity (the
-            // "new wallet briefly shows 0, then the old wallet's $250"
-            // bug). The id is trusted; the wallet appears the instant
-            // the merge lands.
-            return nil
-        }
-        // Only when NO valid active id is set (first launch / a cleared
-        // pointer) do we heal to the first wallet.
-        return allWallets.first(where: { walletExists(id: $0.id) })
+        ActiveWalletResolver.resolve(
+            rawID: activeWalletIdRaw,
+            wallets: allWallets,
+            modelContext: modelContext
+        )
     }
 
     /// All balances belonging to the active wallet, sorted by fiat

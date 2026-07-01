@@ -289,11 +289,7 @@ struct WalletHomeHiddenAssetsView: View {
     }
 
     private var activeWallet: WalletRecord? {
-        if let uuid = UUID(uuidString: activeWalletIdRaw),
-           let match = allWallets.first(where: { $0.id == uuid }) {
-            return match
-        }
-        return allWallets.first
+        ActiveWalletResolver.resolve(rawID: activeWalletIdRaw, wallets: allWallets)
     }
 
     // MARK: - Toggle bindings (hidden)

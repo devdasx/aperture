@@ -177,14 +177,7 @@ struct ReceiveView: View {
     // MARK: - Derived
 
     private var activeWallet: WalletRecord? {
-        if let uuid = UUID(uuidString: activeWalletIdRaw),
-           let match = allWallets.first(where: { $0.id == uuid }) {
-            return match
-        }
-        // Display fallback only — `healActiveWalletIdIfNeeded()`
-        // rewrites the stored id outside body evaluation, so this
-        // branch is transient: the stale-id state cannot persist.
-        return allWallets.first
+        ActiveWalletResolver.resolve(rawID: activeWalletIdRaw, wallets: allWallets)
     }
 
     /// Re-runs the self-heal whenever the stored id or the wallet
@@ -204,18 +197,14 @@ struct ReceiveView: View {
         ].joined(separator: "|")
     }
 
-    /// **Stale-id self-heal.** When the stored active-wallet id
-    /// doesn't resolve to any existing wallet (deleted wallet,
-    /// corrupted default, empty first-run value) and wallets exist,
-    /// write the first wallet's id back to the preference. The
-    /// `allWallets.first` display fallback then matches the stored
-    /// state by definition — a silent wrong-wallet display becomes
-    /// impossible. Runs from `.task(id:)`, never during body.
+    /// **Empty-id self-heal.** When the stored active-wallet id is
+    /// empty or malformed and wallets exist, write the first wallet's
+    /// id back to the preference. A valid UUID that has not merged into
+    /// this view yet is left untouched so another wallet's data is never
+    /// shown as a fallback. Runs from `.task(id:)`, never during body.
     private func healActiveWalletIdIfNeeded() {
         guard let first = allWallets.first else { return }
-        let resolves = UUID(uuidString: activeWalletIdRaw)
-            .map { id in allWallets.contains(where: { $0.id == id }) } ?? false
-        if !resolves {
+        if ActiveWalletResolver.shouldHeal(rawID: activeWalletIdRaw, wallets: allWallets) {
             ActiveWalletPointer.set(first.id)
         }
     }

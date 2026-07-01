@@ -760,11 +760,7 @@ struct AssetDetailView: View {
     // MARK: - Wallet plumbing (mirrors WalletHomeView)
 
     private var activeWallet: WalletRecord? {
-        if let uuid = UUID(uuidString: activeWalletIdRaw),
-           let match = allWallets.first(where: { $0.id == uuid }) {
-            return match
-        }
-        return allWallets.first
+        ActiveWalletResolver.resolve(rawID: activeWalletIdRaw, wallets: allWallets)
     }
 
     /// All non-zero balance rows on the active wallet. Same shape as

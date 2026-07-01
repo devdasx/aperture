@@ -86,6 +86,7 @@ final class SettingsStore {
 
         let context = ModelContext(container)
         let r = Self.fetchOrCreate(in: context)
+        let activeRecord = ActiveWalletStore.fetchOrCreate(in: context)
         let changed = r.themePreference != theme
             || r.languagePreference != lang
             || r.pinEnabled != pin
@@ -97,6 +98,7 @@ final class SettingsStore {
             || r.walletHomeBalanceHistoryRange != chartRange
             || r.selectedTab != tab
             || r.activeWalletId != activeWallet
+            || activeRecord.walletID != UUID(uuidString: activeWallet.trimmingCharacters(in: .whitespacesAndNewlines))
             || r.settingsDeepLink != deepLink
             || r.hasUnbackedupWallet != unbacked
             || r.hideImportKeyWarning != hideImport
@@ -113,6 +115,8 @@ final class SettingsStore {
         r.walletHomeBalanceHistoryRange = chartRange
         r.selectedTab = tab
         r.activeWalletId = activeWallet
+        activeRecord.walletID = UUID(uuidString: activeWallet.trimmingCharacters(in: .whitespacesAndNewlines))
+        activeRecord.updatedAt = Date()
         r.settingsDeepLink = deepLink
         r.hasUnbackedupWallet = unbacked
         r.hideImportKeyWarning = hideImport

@@ -183,6 +183,8 @@ import SwiftData
             ))
         } else if model == AppSettingsRecord.self {
             context.insert(AppSettingsRecord())
+        } else if model == ActiveWalletRecord.self {
+            context.insert(ActiveWalletRecord(walletID: UUID()))
         } else if model == ChainStateRecord.self {
             context.insert(ChainStateRecord(
                 walletId: UUID(),
@@ -332,6 +334,7 @@ import SwiftData
             "ChainRecord",
             "AssetRecord",
             "AppSettingsRecord",
+            "ActiveWalletRecord",
             "MarketAssetRecord",
             "MarketChartCacheRecord",
             "MarketWatchlistRecord",

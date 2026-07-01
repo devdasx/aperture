@@ -82,6 +82,7 @@ enum FactoryReset {
         CustomTokenRecord.self,
         WalletChartSnapshotRecord.self,
         AppSettingsRecord.self,
+        ActiveWalletRecord.self,
         ChainStateRecord.self,
         ChainUTXORecord.self
     ]
