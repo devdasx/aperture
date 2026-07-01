@@ -48,7 +48,9 @@ struct DatabaseExplorerView: View {
             ForEach(DatabaseCategory.allCases) { category in
                 Section(category.title) {
                     ForEach(DatabaseTable.allCases.filter { $0.category == category }) { table in
-                        NavigationLink(value: table) {
+                        NavigationLink {
+                            DatabaseTableView(table: table)
+                        } label: {
                             let overview = summary(for: table)
                             DatabaseTableRow(
                                 table: table,
@@ -74,9 +76,6 @@ struct DatabaseExplorerView: View {
         .background(UniColors.Background.primary)
         .navigationTitle(Text("Database"))
         .navigationBarTitleDisplayMode(.large)
-        .navigationDestination(for: DatabaseTable.self) { table in
-            DatabaseTableView(table: table)
-        }
         .task {
             reloadSummaries()
         }
@@ -304,7 +303,9 @@ private struct DatabaseTableView: View {
             } else {
                 Section {
                     ForEach(filteredRecords) { record in
-                        NavigationLink(value: record) {
+                        NavigationLink {
+                            DatabaseRecordDetailView(record: record)
+                        } label: {
                             DatabaseRecordRow(record: record)
                         }
                         .listRowBackground(UniColors.List.rowBackground)
@@ -318,9 +319,6 @@ private struct DatabaseTableView: View {
         .navigationTitle(Text(table.title))
         .navigationBarTitleDisplayMode(.large)
         .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .automatic), prompt: Text("Search rows"))
-        .navigationDestination(for: DatabaseRecordSnapshot.self) { record in
-            DatabaseRecordDetailView(record: record)
-        }
         .task(id: table) {
             loadRows()
         }
