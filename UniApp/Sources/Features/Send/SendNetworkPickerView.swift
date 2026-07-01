@@ -9,7 +9,7 @@ struct SendNetworkPickerView: View {
     let token: SendAsset
     let holdings: AssetPickerHoldings
     let currencyCode: String
-    let onSelectNetwork: (SupportedChain) -> Void
+    let onSelectNetwork: (SendTokenDescriptor) -> Void
 
     @State private var searchText: String = ""
 
@@ -18,36 +18,45 @@ struct SendNetworkPickerView: View {
         return ""
     }
 
-    private var sortedChains: [SupportedChain] {
-        guard case let .token(_, _, chains) = token else { return [] }
-        return AssetPickerSort.networks(chains, symbol: symbol, holdings: holdings)
+    private var sortedTokens: [SendTokenDescriptor] {
+        let descriptors = token.tokenDescriptors
+        let sortedChains = AssetPickerSort.networks(
+            descriptors.map(\.chain),
+            symbol: symbol,
+            holdings: holdings
+        )
+        return sortedChains.compactMap { chain in
+            descriptors.first(where: { $0.chain == chain })
+        }
     }
 
-    private var filteredChains: [SupportedChain] {
+    private var filteredTokens: [SendTokenDescriptor] {
         let q = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !q.isEmpty else { return sortedChains }
-        return sortedChains.filter {
-            $0.displayName.localizedStandardContains(q) || $0.ticker.localizedStandardContains(q)
+        guard !q.isEmpty else { return sortedTokens }
+        return sortedTokens.filter {
+            $0.chain.displayName.localizedStandardContains(q)
+                || $0.chain.ticker.localizedStandardContains(q)
+                || $0.name.localizedStandardContains(q)
         }
     }
 
     var body: some View {
         List {
             Section {
-                ForEach(filteredChains, id: \.self) { chain in
+                ForEach(filteredTokens) { descriptor in
                     Button {
-                        onSelectNetwork(chain)
+                        onSelectNetwork(descriptor)
                     } label: {
                         AssetPickerNetworkRow(
-                            chain: chain,
+                            chain: descriptor.chain,
                             subtitle: "Send on this network",
-                            totals: holdings.perNetwork(symbol: symbol, chain: chain),
+                            totals: holdings.perNetwork(symbol: symbol, chain: descriptor.chain),
                             currencyCode: currencyCode
                         )
                     }
                     .buttonStyle(.plain)
                     .listRowBackground(UniColors.List.rowBackground)
-                    .accessibilityLabel(Text(verbatim: chain.displayName))
+                    .accessibilityLabel(Text(verbatim: descriptor.chain.displayName))
                     .accessibilityHint(Text("Send \(symbol) on this network"))
                 }
             } footer: {

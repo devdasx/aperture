@@ -187,7 +187,7 @@ extension SendAsset: PickerAssetSortable {
         }
     }
     var sortChainCount: Int {
-        if case let .token(_, _, chains) = self { return chains.count }
+        if case let .token(_, _, tokens) = self { return tokens.count }
         return 1
     }
 }
@@ -204,4 +204,3 @@ extension ReceiveAsset: PickerAssetSortable {
         return 1
     }
 }
-

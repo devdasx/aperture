@@ -104,34 +104,30 @@ struct SendView: View {
                         token: asset,
                         holdings: holdings,
                         currencyCode: currencyCode,
-                        onSelectNetwork: { chain in
-                            let symbol: String? = {
-                                if case let .token(symbol, _, _) = asset { return symbol }
-                                return nil
-                            }()
-                            openNetwork(chain, tokenSymbol: symbol)
+                        onSelectNetwork: { descriptor in
+                            openNetwork(descriptor.chain, token: descriptor)
                         }
                     )
-                case let .recipient(chain, tokenSymbol, fromAddress, prefillRecipient):
+                case let .recipient(chain, token, fromAddress, prefillRecipient):
                     SendRecipientView(
                         chain: chain,
-                        tokenSymbol: tokenSymbol,
+                        tokenSymbol: token?.symbol,
                         fromAddress: fromAddress,
                         recents: recents,
                         initialRecipient: prefillRecipient,
                         onContinue: { recipients in
                             navigationPath.append(
                                 SendDestination.amount(
-                                    chain: chain, tokenSymbol: tokenSymbol, fromAddress: fromAddress,
+                                    chain: chain, token: token, fromAddress: fromAddress,
                                     recipients: recipients
                                 )
                             )
                         }
                     )
-                case let .amount(chain, tokenSymbol, fromAddress, recipients):
+                case let .amount(chain, token, fromAddress, recipients):
                     SendAmountView(
                         chain: chain,
-                        tokenSymbol: tokenSymbol,
+                        token: token,
                         fromAddress: fromAddress,
                         recipients: recipients,
                         onReview: { draft in
@@ -226,13 +222,13 @@ struct SendView: View {
     }
 
     private func openNative(_ chain: SupportedChain, prefillRecipient: String? = nil) {
-        openNetwork(chain, tokenSymbol: nil, prefillRecipient: prefillRecipient)
+        openNetwork(chain, token: nil, prefillRecipient: prefillRecipient)
     }
 
     private func openToken(_ asset: SendAsset) {
-        guard case let .token(symbol, _, chains) = asset else { return }
-        if chains.count == 1, let chain = chains.first {
-            openNetwork(chain, tokenSymbol: symbol)
+        let tokens = asset.tokenDescriptors
+        if tokens.count == 1, let descriptor = tokens.first {
+            openNetwork(descriptor.chain, token: descriptor)
         } else {
             navigationPath.append(SendDestination.networkPicker(asset))
         }
@@ -240,7 +236,7 @@ struct SendView: View {
 
     private func openNetwork(
         _ chain: SupportedChain,
-        tokenSymbol: String?,
+        token: SendTokenDescriptor?,
         prefillRecipient: String? = nil
     ) {
         guard let address = address(for: chain) else {
@@ -250,7 +246,7 @@ struct SendView: View {
         navigationPath.append(
             SendDestination.recipient(
                 chain: chain,
-                tokenSymbol: tokenSymbol,
+                token: token,
                 fromAddress: address,
                 prefillRecipient: prefillRecipient
             )
@@ -341,8 +337,8 @@ enum SendDestination: Hashable, Codable {
     case networkPicker(SendAsset)
     /// `prefillRecipient` seeds the recipient field when the step is entered from
     /// a scan (the app-bar Aperture Scanner). `nil` for the normal manual flow.
-    case recipient(chain: SupportedChain, tokenSymbol: String?, fromAddress: String, prefillRecipient: String?)
-    case amount(chain: SupportedChain, tokenSymbol: String?, fromAddress: String, recipients: [SendRecipientEntry])
+    case recipient(chain: SupportedChain, token: SendTokenDescriptor?, fromAddress: String, prefillRecipient: String?)
+    case amount(chain: SupportedChain, token: SendTokenDescriptor?, fromAddress: String, recipients: [SendRecipientEntry])
     /// Step 5 — review the assembled, validated draft (`SendDraft` is
     /// Codable + Hashable, so it rides the path across Rule #12 §G rebuilds).
     case review(SendDraft)

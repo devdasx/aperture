@@ -54,7 +54,8 @@ enum RippleTransactionSigner {
 
         if draft.isTokenSend {
             // Issued-currency (IOU) payment: {currency, value, issuer}.
-            // The token contract carries "CODE:ISSUER" (the compose form).
+            // The token contract can be the compose form "CODE:ISSUER"
+            // or the DB catalog form "CODE.ISSUER".
             guard let (currency, issuer) = parseAsset(draft.tokenContract) else {
                 throw SigningError.malformedDraft("XRP token send needs CODE:ISSUER")
             }
@@ -118,7 +119,8 @@ enum RippleTransactionSigner {
 
     private static func parseAsset(_ contract: String?) -> (currency: String, issuer: String)? {
         guard let contract else { return nil }
-        let parts = contract.split(separator: ":", maxSplits: 1).map(String.init)
+        let separator: Character = contract.contains(":") ? ":" : "."
+        let parts = contract.split(separator: separator, maxSplits: 1).map(String.init)
         guard parts.count == 2, !parts[0].isEmpty, !parts[1].isEmpty else { return nil }
         return (parts[0], parts[1])
     }

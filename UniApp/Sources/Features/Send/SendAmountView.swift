@@ -26,7 +26,7 @@ import SwiftData
 /// and any address are LTR-locked because they're transcribable artifacts.
 struct SendAmountView: View {
     let chain: SupportedChain
-    let tokenSymbol: String?
+    let token: SendTokenDescriptor?
     let fromAddress: String
     let recipients: [SendRecipientEntry]
     /// Proceed to Review with the assembled draft.
@@ -66,23 +66,21 @@ struct SendAmountView: View {
 
     init(
         chain: SupportedChain,
-        tokenSymbol: String?,
+        token: SendTokenDescriptor?,
         fromAddress: String,
         recipients: [SendRecipientEntry],
         onReview: @escaping (SendDraft) -> Void
     ) {
         self.chain = chain
-        self.tokenSymbol = tokenSymbol
+        self.token = token
         self.fromAddress = fromAddress
         self.recipients = recipients
         self.onReview = onReview
-        let catalog = AssetCatalog.allAssets.first { $0.symbol == tokenSymbol && $0.chain == chain }
-            ?? AssetCatalog.allAssets.first { $0.symbol == tokenSymbol }
         let code = UserDefaults.standard.string(forKey: CurrencyPreference.storageKey) ?? CurrencyPreference.defaultCode
         _model = State(initialValue: SendComposeModel(
-            chain: chain, tokenSymbol: tokenSymbol,
-            tokenContract: catalog?.contract,
-            tokenDecimals: catalog?.decimals,
+            chain: chain, tokenSymbol: token?.symbol,
+            tokenContract: token?.contract,
+            tokenDecimals: token?.decimals,
             fromAddress: fromAddress,
             recipients: recipients,
             currencyCode: code
@@ -132,7 +130,7 @@ struct SendAmountView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .principal) {
-                CoinTitleBar(chain: chain, tokenSymbol: tokenSymbol, verb: "Send")
+                CoinTitleBar(chain: chain, tokenSymbol: token?.symbol, verb: "Send")
             }
             ToolbarItem(placement: .topBarTrailing) { optionsMenu }
         }
@@ -380,9 +378,10 @@ struct SendAmountView: View {
     /// wallet's address rows, plus the reserve account state.
     private func resolveBalances() {
         guard let wallet = activeWallet else { return }
-        let symbolUpper = (tokenSymbol ?? chain.ticker).uppercased()
+        let selectedToken = token
+        let symbolUpper = (selectedToken?.symbol ?? chain.ticker).uppercased()
         var native: Decimal = 0
-        var token: Decimal?
+        var tokenBalance: Decimal?
         let state = SendAmountMath.AccountState()
         for address in wallet.addresses where address.chainRaw == chain.rawValue {
             for bal in address.balances {
@@ -390,18 +389,28 @@ struct SendAmountView: View {
                 if bal.tokenContract == nil && bal.tokenSymbol.uppercased() == chain.ticker.uppercased() {
                     native += amount
                 }
-                if tokenSymbol != nil, bal.tokenSymbol.uppercased() == symbolUpper, bal.tokenContract != nil {
-                    token = (token ?? 0) + amount
+                if let selectedToken,
+                   bal.tokenSymbol.uppercased() == symbolUpper,
+                   tokenContractMatches(bal.tokenContract, selectedToken.contract, chain: selectedToken.chain) {
+                    tokenBalance = (tokenBalance ?? 0) + amount
                 }
             }
         }
-        model.setBalances(native: native, token: token, state: state)
+        model.setBalances(native: native, token: tokenBalance, state: state)
+    }
+
+    private func tokenContractMatches(_ stored: String?, _ selected: String, chain: SupportedChain) -> Bool {
+        guard let stored else { return false }
+        if chain.family == .evm {
+            return stored.caseInsensitiveCompare(selected) == .orderedSame
+        }
+        return stored == selected
     }
 
     /// Resolve the asset + native unit prices through the shared pricing
     /// ladder (cache-first, off-main), then apply on the main actor.
     private func resolvePrices() async {
-        let assetSym = (tokenSymbol ?? chain.ticker).uppercased()
+        let assetSym = (token?.symbol ?? chain.ticker).uppercased()
         let nativeSym = chain.ticker.uppercased()
         let symbols = Array(Set([assetSym, nativeSym]))
         let prices = await TokenPricingEngine.shared.unitPrices(
