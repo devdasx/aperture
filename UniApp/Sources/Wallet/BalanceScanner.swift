@@ -190,7 +190,8 @@ actor WalletDataRefreshCoordinator {
                     walletId: walletId,
                     currencyCode: normalizedCurrency,
                     modelContainer: modelContainer,
-                    includePrices: includePrices
+                    includePrices: includePrices,
+                    includeHistory: includeHistory
                 )
             }
         }
