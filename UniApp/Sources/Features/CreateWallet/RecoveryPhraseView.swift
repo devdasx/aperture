@@ -54,8 +54,8 @@ struct RecoveryPhraseView: View {
     /// Fires when the user taps "Back up now". Caller routes to the native
     /// backup screens in the owning `NavigationStack`.
     let onBackUpNow: () -> Void
-    /// Fires when the user taps "Skip for now". Caller routes to the native
-    /// skip-warning screen in the owning `NavigationStack`.
+    /// Fires when the user taps "Skip for now". Caller presents the native
+    /// skip-backup alert and decides whether to continue.
     let onSkipForNow: () -> Void
 
     /// `true` while a full-screen child (the iCloud/Manual backup flow) is
