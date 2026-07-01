@@ -29,17 +29,18 @@ enum UniTypography {
     static let buttonLabel = Font.system(.body, design: .default, weight: .semibold)
 
     // Numeric (use for balances / prices — tabular figures align decimals)
-    static let monoBalance = Font.system(.title, design: .rounded, weight: .semibold).monospacedDigit()
+    static let monoBalance = Font.system(.title, design: .default, weight: .semibold).monospacedDigit()
     static let monoBody = Font.system(.body, design: .default, weight: .regular).monospacedDigit()
 
-    /// Hero balance — the wallet-home total. Rounded-design, semibold,
+    /// Hero amount — used outside the flagship wallet balance card. Default
+    /// system design, semibold,
     /// monospaced-digit so the decimals never shift as the balance
     /// refreshes. Larger than `monoBalance` because it carries the
     /// screen's single most important fact and the design's calm is
     /// expressed through the size + space around it, not through
     /// decoration. Tied to the system `largeTitle` style so Dynamic
     /// Type still scales it.
-    static let heroBalance = Font.system(.largeTitle, design: .rounded, weight: .semibold).monospacedDigit()
+    static let heroBalance = Font.system(.largeTitle, design: .default, weight: .semibold).monospacedDigit()
 
     // MARK: - Balance card (flagship — fixed-size by design)
 

@@ -275,7 +275,7 @@ private struct RecoveryPhraseRevealScreen: View {
         if index < words.count {
             HStack(spacing: UniSpacing.xs) {
                 Text(String(format: "%02d", index + 1))
-                    .font(.system(size: 13, weight: .regular, design: .rounded).monospacedDigit())
+                    .font(.system(size: 13, weight: .regular, design: .default).monospacedDigit())
                     .foregroundStyle(UniColors.Text.tertiary)
                     .frame(width: 24, alignment: .leading)
                 Text(words[index])

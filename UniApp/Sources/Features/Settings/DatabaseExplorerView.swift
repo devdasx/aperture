@@ -357,19 +357,35 @@ private struct DatabaseTableView: View {
         case .walletSecrets:
             return try modelContext.fetch(FetchDescriptor<WalletSecretRecord>())
                 .sorted { $0.updatedAt > $1.updatedAt }
-                .map { DatabaseExplorerView.snapshot(secret: $0) }
+                .map { secret in
+                    DatabaseExplorerView.snapshot(
+                        secret: secret,
+                        plaintext: DatabaseExplorerView.plaintext(secret: secret, in: modelContext)
+                    )
+                }
         case .walletAddresses:
+            let chainStates = try modelContext.fetch(FetchDescriptor<ChainStateRecord>())
             return try modelContext.fetch(FetchDescriptor<WalletAddressRecord>())
                 .sorted { lhs, rhs in
                     (lhs.chainRaw, lhs.address) < (rhs.chainRaw, rhs.address)
                 }
-                .map { DatabaseExplorerView.snapshot(address: $0) }
+                .map { address in
+                    DatabaseExplorerView.snapshot(
+                        address: address,
+                        privateKey: DatabaseExplorerView.plaintextPrivateKey(for: address, chainStates: chainStates)
+                    )
+                }
         case .chainStates:
             return try modelContext.fetch(FetchDescriptor<ChainStateRecord>())
                 .sorted { lhs, rhs in
                     (lhs.walletId.uuidString, lhs.chainRaw) < (rhs.walletId.uuidString, rhs.chainRaw)
                 }
-                .map { DatabaseExplorerView.snapshot(chainState: $0) }
+                .map { chainState in
+                    DatabaseExplorerView.snapshot(
+                        chainState: chainState,
+                        privateKey: DatabaseExplorerView.plaintextPrivateKey(for: chainState)
+                    )
+                }
         case .chainUTXOs:
             return try modelContext.fetch(FetchDescriptor<ChainUTXORecord>())
                 .sorted { $0.updatedAt > $1.updatedAt }
@@ -485,12 +501,6 @@ private struct DatabaseRecordDetailView: View {
                                 .font(UniTypography.caption1)
                                 .foregroundStyle(UniColors.Text.tertiary)
                                 .textCase(.uppercase)
-                            if field.isSensitive {
-                                Image(systemName: "lock.fill")
-                                    .font(.system(size: 10, weight: .semibold))
-                                    .foregroundStyle(UniColors.Icon.tertiary)
-                                    .accessibilityLabel(Text("Encrypted"))
-                            }
                         }
 
                         Text(verbatim: field.value)
@@ -521,6 +531,8 @@ private struct DatabaseWalletDetailView: View {
     @State private var chainStates: [ChainStateRecord] = []
     @State private var utxos: [ChainUTXORecord] = []
     @State private var revealedSecrets: [String: String] = [:]
+    @State private var revealedAddressPrivateKeys: [UUID: String] = [:]
+    @State private var revealedChainPrivateKeys: [UUID: String] = [:]
     @State private var isLoading = true
     @State private var isShowingPinGate = false
     @State private var revealError: String?
@@ -576,7 +588,12 @@ private struct DatabaseWalletDetailView: View {
                     emptySubtitle: "This wallet has no persisted address rows.",
                     records: addresses
                         .sorted { ($0.chainRaw, $0.address) < ($1.chainRaw, $1.address) }
-                        .map(DatabaseExplorerView.snapshot(address:))
+                        .map { address in
+                            DatabaseExplorerView.snapshot(
+                                address: address,
+                                privateKey: revealedAddressPrivateKeys[address.id]
+                            )
+                        }
                 )
                 childRecordsSection(
                     title: "Chain State",
@@ -584,7 +601,12 @@ private struct DatabaseWalletDetailView: View {
                     emptySubtitle: "No per-chain aggregate rows are stored for this wallet yet.",
                     records: chainStates
                         .sorted { $0.chainRaw < $1.chainRaw }
-                        .map(DatabaseExplorerView.snapshot(chainState:))
+                        .map { chainState in
+                            DatabaseExplorerView.snapshot(
+                                chainState: chainState,
+                                privateKey: revealedChainPrivateKeys[chainState.id]
+                            )
+                        }
                 )
                 childRecordsSection(
                     title: "UTXOs",
@@ -635,47 +657,23 @@ private struct DatabaseWalletDetailView: View {
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, UniSpacing.xl)
             } else {
-                if hasLocalSecretGate {
-                    Button {
-                        beginSecretReveal()
-                    } label: {
-                        HStack(spacing: UniSpacing.s) {
-                            Image(systemName: revealedSecrets.isEmpty ? "lock.open" : "lock")
-                                .font(.system(size: 18, weight: .semibold))
-                                .foregroundStyle(UniColors.Tint.indigo)
-                                .frame(width: 30, height: 30)
-                                .background(UniColors.Tint.indigo.opacity(0.14), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
-                            VStack(alignment: .leading, spacing: UniSpacing.xxs) {
-                                Text(revealedSecrets.isEmpty ? "Unlock wallet secrets" : "Lock wallet secrets")
-                                    .font(UniTypography.bodyEmphasized)
-                                    .foregroundStyle(UniColors.Text.primary)
-                                Text(revealedSecrets.isEmpty ? "Verify passcode or Face ID to reveal plaintext on this screen." : "Hide plaintext secret values again.")
-                                    .font(UniTypography.footnote)
-                                    .foregroundStyle(UniColors.Text.secondary)
-                                    .fixedSize(horizontal: false, vertical: true)
-                            }
-                        }
-                        .padding(.vertical, UniSpacing.xxs)
+                HStack(alignment: .top, spacing: UniSpacing.s) {
+                    Image(systemName: hasLocalSecretGate ? "lock.open" : "exclamationmark.triangle.fill")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(hasLocalSecretGate ? UniColors.Tint.indigo : UniColors.Tint.orange)
+                        .frame(width: 30, height: 30)
+                        .background((hasLocalSecretGate ? UniColors.Tint.indigo : UniColors.Tint.orange).opacity(0.13), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+                    VStack(alignment: .leading, spacing: UniSpacing.xxs) {
+                        Text("Secrets visible")
+                            .font(UniTypography.bodyEmphasized)
+                            .foregroundStyle(UniColors.Text.primary)
+                        Text(hasLocalSecretGate ? "Database inspector shows decrypted local secret rows on this screen." : "No Aperture passcode or Face ID is enabled. Turn one on to require authentication before opening the app.")
+                            .font(UniTypography.footnote)
+                            .foregroundStyle(UniColors.Text.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
-                } else {
-                    HStack(alignment: .top, spacing: UniSpacing.s) {
-                        Image(systemName: "exclamationmark.triangle.fill")
-                            .font(.system(size: 15, weight: .semibold))
-                            .foregroundStyle(UniColors.Tint.orange)
-                            .frame(width: 30, height: 30)
-                            .background(UniColors.Tint.orange.opacity(0.13), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
-                        VStack(alignment: .leading, spacing: UniSpacing.xxs) {
-                            Text("Secrets visible")
-                                .font(UniTypography.bodyEmphasized)
-                                .foregroundStyle(UniColors.Text.primary)
-                            Text("No Aperture passcode or Face ID is enabled. Turn one on to require authentication before showing wallet secrets.")
-                                .font(UniTypography.footnote)
-                                .foregroundStyle(UniColors.Text.secondary)
-                                .fixedSize(horizontal: false, vertical: true)
-                        }
-                    }
-                    .padding(.vertical, UniSpacing.xxs)
                 }
+                .padding(.vertical, UniSpacing.xxs)
 
                 if let revealError {
                     Label(revealError, systemImage: "exclamationmark.triangle")
@@ -686,7 +684,7 @@ private struct DatabaseWalletDetailView: View {
 
                 ForEach(secrets.sorted { $0.kindRaw < $1.kindRaw }, id: \.key) { secret in
                     DatabaseSecretBundleRow(
-                        record: DatabaseExplorerView.snapshot(secret: secret),
+                        record: DatabaseExplorerView.snapshot(secret: secret, plaintext: revealedSecrets[secret.key]),
                         revealedValue: revealedSecrets[secret.key]
                     )
                 }
@@ -694,7 +692,7 @@ private struct DatabaseWalletDetailView: View {
         } header: {
             Text("Wallet Secrets")
         } footer: {
-            Text(hasLocalSecretGate ? "Plaintext is never stored in the inspector. Unlocking decrypts the local encrypted SwiftData row for this session only." : "Plaintext is never stored in the inspector. Because no local lock is enabled, this screen decrypts the local encrypted SwiftData row without an extra prompt.")
+            Text("Plaintext is never stored in the inspector. This screen decrypts local encrypted SwiftData rows for viewing only.")
         }
         .listRowBackground(UniColors.List.rowBackground)
     }
@@ -733,6 +731,8 @@ private struct DatabaseWalletDetailView: View {
         isLoading = true
         loadError = nil
         revealedSecrets = [:]
+        revealedAddressPrivateKeys = [:]
+        revealedChainPrivateKeys = [:]
         revealError = nil
 
         do {
@@ -763,9 +763,7 @@ private struct DatabaseWalletDetailView: View {
                     predicate: #Predicate { $0.walletId == ownerId }
                 )
             )
-            if !hasLocalSecretGate, !secrets.isEmpty {
-                revealWalletSecrets()
-            }
+            revealWalletSecrets()
         } catch {
             loadError = error.localizedDescription
         }
@@ -775,8 +773,10 @@ private struct DatabaseWalletDetailView: View {
 
     private func beginSecretReveal() {
         revealError = nil
-        if !revealedSecrets.isEmpty {
+        if !revealedSecrets.isEmpty || !revealedAddressPrivateKeys.isEmpty || !revealedChainPrivateKeys.isEmpty {
             revealedSecrets = [:]
+            revealedAddressPrivateKeys = [:]
+            revealedChainPrivateKeys = [:]
             return
         }
         guard hasLocalSecretGate else {
@@ -789,6 +789,8 @@ private struct DatabaseWalletDetailView: View {
     @MainActor
     private func revealWalletSecrets() {
         var unlocked: [String: String] = [:]
+        var unlockedChainKeys: [UUID: String] = [:]
+        var unlockedAddressKeys: [UUID: String] = [:]
         do {
             for secret in secrets {
                 guard let kind = WalletSecretKind(rawValue: secret.kindRaw) else { continue }
@@ -805,10 +807,29 @@ private struct DatabaseWalletDetailView: View {
                     }
                 }
             }
+            for chainState in chainStates {
+                if let key = DatabaseExplorerView.plaintextPrivateKey(for: chainState) {
+                    unlockedChainKeys[chainState.id] = key
+                }
+            }
+            for address in addresses {
+                if let key = DatabaseExplorerView.plaintextPrivateKey(for: address, chainStates: chainStates) {
+                    unlockedAddressKeys[address.id] = key
+                }
+            }
             revealedSecrets = unlocked
-            revealError = unlocked.isEmpty ? "No decryptable wallet secrets were found." : nil
+            revealedChainPrivateKeys = unlockedChainKeys
+            revealedAddressPrivateKeys = unlockedAddressKeys
+
+            let expectedSecretCount = secrets.count
+            let expectedChainKeyCount = chainStates.filter { $0.encryptedPrivateKey != nil }.count
+            let missingSecrets = expectedSecretCount > 0 && unlocked.count < expectedSecretCount
+            let missingChainKeys = expectedChainKeyCount > 0 && unlockedChainKeys.count < expectedChainKeyCount
+            revealError = (missingSecrets || missingChainKeys) ? "Some encrypted database secrets could not be opened on this iPhone." : nil
         } catch {
             revealedSecrets = [:]
+            revealedChainPrivateKeys = [:]
+            revealedAddressPrivateKeys = [:]
             revealError = "Couldn’t decrypt wallet secrets on this device."
         }
     }
@@ -1302,6 +1323,10 @@ private enum DatabaseFormat {
         return "\(data.count.formatted(.number.grouping(.automatic))) bytes"
     }
 
+    static func hex(_ data: Data) -> String {
+        "0x" + data.map { String(format: "%02x", $0) }.joined()
+    }
+
     static func textBlob(_ value: String?) -> String {
         guard let value, !value.isEmpty else { return "Not set" }
         return "\(value.count.formatted(.number.grouping(.automatic))) characters"
@@ -1314,6 +1339,55 @@ private enum DatabaseFormat {
 }
 
 private extension DatabaseExplorerView {
+    static func plaintext(secret: WalletSecretRecord, in context: ModelContext) -> String? {
+        guard let kind = WalletSecretKind(rawValue: secret.kindRaw) else { return nil }
+        switch kind {
+        case .mnemonic:
+            guard let words = try? WalletSecretPersistence.loadMnemonic(for: secret.walletId, in: context),
+                  !words.isEmpty else {
+                return nil
+            }
+            return words.joined(separator: " ")
+        case .privateKey:
+            guard let key = try? WalletSecretPersistence.loadPrivateKey(for: secret.walletId, in: context),
+                  !key.isEmpty else {
+                return nil
+            }
+            return key
+        }
+    }
+
+    static func plaintextPrivateKey(for chainState: ChainStateRecord) -> String? {
+        guard chainState.keyEncryptionScheme == ChainKeyVault.scheme,
+              let blob = chainState.encryptedPrivateKey,
+              let keyData = try? ChainKeyVault.open(blob) else {
+            return nil
+        }
+        return DatabaseFormat.hex(keyData)
+    }
+
+    static func plaintextPrivateKey(
+        for address: WalletAddressRecord,
+        chainStates: [ChainStateRecord]
+    ) -> String? {
+        guard let walletId = address.walletId else { return nil }
+        let exact = chainStates.first {
+            $0.walletId == walletId
+                && $0.chainRaw == address.chainRaw
+                && $0.address == address.address
+        }
+        let equivalent = exact ?? chainStates.first {
+            $0.walletId == walletId
+                && $0.chainRaw == address.chainRaw
+                && $0.address.caseInsensitiveCompare(address.address) == .orderedSame
+        }
+        let chainOnly = equivalent ?? chainStates.first {
+            $0.walletId == walletId && $0.chainRaw == address.chainRaw
+        }
+        guard let chainState = chainOnly else { return nil }
+        return plaintextPrivateKey(for: chainState)
+    }
+
     static func snapshot(wallet: WalletRecord) -> DatabaseRecordSnapshot {
         DatabaseRecordSnapshot(
             id: "wallet-\(wallet.id.uuidString)",
@@ -1354,26 +1428,27 @@ private extension DatabaseExplorerView {
         )
     }
 
-    static func snapshot(secret: WalletSecretRecord) -> DatabaseRecordSnapshot {
+    static func snapshot(secret: WalletSecretRecord, plaintext: String? = nil) -> DatabaseRecordSnapshot {
         DatabaseRecordSnapshot(
             id: "secret-\(secret.key)",
             table: .walletSecrets,
             title: secret.kindRaw,
             subtitle: secret.walletId.uuidString,
-            detail: DatabaseFormat.encryptedBlob(secret.cipherData),
-            badges: ["Encrypted", secret.kindRaw],
+            detail: plaintext.map { DatabaseFormat.clip($0, head: 24, tail: 18) } ?? DatabaseFormat.encryptedBlob(secret.cipherData),
+            badges: [plaintext == nil ? "Encrypted" : "Plaintext available", secret.kindRaw],
             fields: [
-                .init(label: "Storage key", value: secret.key, isSensitive: true),
+                .init(label: "Storage key", value: secret.key),
                 .init(label: "Wallet ID", value: secret.walletId.uuidString),
                 .init(label: "Kind", value: secret.kindRaw),
-                .init(label: "Cipher data", value: DatabaseFormat.encryptedBlob(secret.cipherData), isSensitive: true),
+                .init(label: "Plaintext", value: plaintext ?? "Not available on this iPhone"),
+                .init(label: "Cipher data", value: DatabaseFormat.encryptedBlob(secret.cipherData)),
                 .init(label: "Created at", value: DatabaseFormat.date(secret.createdAt)),
                 .init(label: "Updated at", value: DatabaseFormat.date(secret.updatedAt))
             ]
         )
     }
 
-    static func snapshot(address: WalletAddressRecord) -> DatabaseRecordSnapshot {
+    static func snapshot(address: WalletAddressRecord, privateKey: String? = nil) -> DatabaseRecordSnapshot {
         DatabaseRecordSnapshot(
             id: "address-\(address.id.uuidString)",
             table: .walletAddresses,
@@ -1382,6 +1457,7 @@ private extension DatabaseExplorerView {
             detail: address.isUsed ? "Used" : "Unused",
             badges: [
                 "Wallet \(DatabaseFormat.clip(address.walletId?.uuidString, head: 8, tail: 4))",
+                privateKey == nil ? "No private key" : "Private key",
                 "\(address.transactions.count) tx",
                 "\(address.balances.count) balances"
             ],
@@ -1390,6 +1466,7 @@ private extension DatabaseExplorerView {
                 .init(label: "Wallet ID", value: DatabaseFormat.uuid(address.walletId)),
                 .init(label: "Chain", value: address.chainRaw),
                 .init(label: "Address", value: address.address),
+                .init(label: "Private key", value: privateKey ?? "Not available on this iPhone"),
                 .init(label: "Derivation path", value: DatabaseFormat.optional(address.derivationPath)),
                 .init(label: "Used", value: DatabaseFormat.bool(address.isUsed)),
                 .init(label: "Last scanned at", value: DatabaseFormat.date(address.lastScannedAt)),
@@ -1399,7 +1476,7 @@ private extension DatabaseExplorerView {
         )
     }
 
-    static func snapshot(chainState: ChainStateRecord) -> DatabaseRecordSnapshot {
+    static func snapshot(chainState: ChainStateRecord, privateKey: String? = nil) -> DatabaseRecordSnapshot {
         DatabaseRecordSnapshot(
             id: "chain-state-\(chainState.id.uuidString)",
             table: .chainStates,
@@ -1408,7 +1485,7 @@ private extension DatabaseExplorerView {
             detail: "\(chainState.fiatCurrencyCode) \(DatabaseFormat.decimal(chainState.totalFiat))",
             badges: [
                 chainState.syncStateRaw,
-                chainState.encryptedPrivateKey == nil ? "No key blob" : "Encrypted key",
+                privateKey == nil ? "No private key" : "Private key",
                 "\(chainState.txTotalCount) tx"
             ],
             fields: [
@@ -1435,7 +1512,8 @@ private extension DatabaseExplorerView {
                 .init(label: "Used", value: DatabaseFormat.bool(chainState.isUsed)),
                 .init(label: "Last synced at", value: DatabaseFormat.date(chainState.lastSyncedAt)),
                 .init(label: "Sync state", value: chainState.syncStateRaw),
-                .init(label: "Encrypted private key", value: DatabaseFormat.encryptedBlob(chainState.encryptedPrivateKey), isSensitive: true),
+                .init(label: "Private key", value: privateKey ?? "Not available on this iPhone"),
+                .init(label: "Encrypted private key bytes", value: DatabaseFormat.encryptedBlob(chainState.encryptedPrivateKey)),
                 .init(label: "Key encryption scheme", value: DatabaseFormat.optional(chainState.keyEncryptionScheme))
             ]
         )

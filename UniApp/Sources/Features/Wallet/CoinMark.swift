@@ -107,7 +107,7 @@ struct CoinMark: View {
             .fill(AssetLogoSource.brandColor(symbol: tokenSymbol, chain: chain).opacity(0.14))
             .overlay {
                 Text(initials)
-                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                    .font(.system(size: 12, weight: .semibold, design: .default))
                     .foregroundStyle(AssetLogoSource.brandColor(symbol: tokenSymbol, chain: chain))
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)

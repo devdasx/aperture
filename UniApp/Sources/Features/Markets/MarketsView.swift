@@ -969,7 +969,7 @@ struct MarketDetailView: View {
     private var priceBlock: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text(MarketFormatting.currency(displayedPrice, code: displayCurrencyCode))
-                .font(.system(size: 38, weight: .bold, design: .rounded))
+                .font(.system(size: 38, weight: .bold, design: .default))
                 .monospacedDigit()
                 .contentTransition(.numericText(value: displayedPrice))
                 .foregroundStyle(UniColors.Text.primary)
@@ -1182,7 +1182,7 @@ private struct MarketCoinIcon: View {
                     .fill(UniColors.Fill.secondary)
                     .overlay {
                         Text(String(symbol.prefix(3)).uppercased())
-                            .font(.system(size: max(11, size * 0.28), weight: .bold, design: .rounded))
+                            .font(.system(size: max(11, size * 0.28), weight: .bold, design: .default))
                             .foregroundStyle(UniColors.Text.secondary)
                             .minimumScaleFactor(0.7)
                             .padding(4)
@@ -1438,7 +1438,7 @@ private struct MarketStatTile: View {
                 .font(.footnote)
                 .foregroundStyle(UniColors.Text.secondary)
             Text(value)
-                .font(.system(size: 16, weight: .semibold, design: .rounded))
+                .font(.system(size: 16, weight: .semibold, design: .default))
                 .monospacedDigit()
                 .foregroundStyle(UniColors.Text.primary)
                 .lineLimit(1)
