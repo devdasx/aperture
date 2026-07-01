@@ -110,8 +110,8 @@ enum RPCRegistry {
     // `oneRPC(...)`. The public 1rpc tier caps at 200 requests/day
     // per IP and then returns JSON-RPC error `-32001` "You've reached
     // the usage limit for your current plan…" (HTTP 200, live-verified
-    // 2026-06-16; doc: https://docs.1rpc.io/using-the-web3-api/errors).
-    // That keyless quota is what rate-limited a swap broadcast and
+    // 2026-06-16).
+    // That keyless quota is what rate-limited a transaction broadcast and
     // surfaced as a terminal failure. The keyed path raises the limit
     // (live-verified: 30/30 keyed eth_blockNumber succeeded while the
     // same IP's public path returned -32001). Additional independent
@@ -321,7 +321,7 @@ enum RPCRegistry {
     }
     private static func bitcoinCashEndpoints() -> [RPCEndpoint?] {
         // 2026-06-06: both Esplora-style BCH endpoints (loping.net,
-        // imaginary.cash) started serving anti-bot HTML to non-browser
+        // imaginary.cash) started serving anti-bot HTML to plain HTTP
         // User-Agents — they don't return JSON anymore. Switched to
         // Haskoin which returns `{confirmed, unconfirmed, …}` for
         // `/bch/address/{addr}/balance` and is the canonical free
@@ -357,12 +357,12 @@ enum RPCRegistry {
     }
     private static func dogecoinEndpoints() -> [RPCEndpoint?] {
         // BlockCypher promoted to primary 2026-06-06 after
-        // dogechain.info started gating all non-browser requests
+        // dogechain.info started gating all plain HTTP requests
         // through Cloudflare (returns interstitial HTML instead of JSON).
         //
         // **2026-06-16 — live-probe cleanup (curl-verified).** REMOVED
         // `doge-dogechain` (dogechain.info): re-confirmed HTTP 403
-        // Cloudflare interstitial, never returns JSON to a non-browser UA —
+        // Cloudflare interstitial, never returns JSON to a plain HTTP UA —
         // it gave DOGE the *illusion* of a fallback while providing none.
         // No clean keyless DOGE replacement exists (blockchair = keyed,
         // sochain/dogeblocks = 502, bitaps has no DOGE, Trezor doge1 =

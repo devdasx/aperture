@@ -12,7 +12,7 @@ import Foundation
 /// `ScreenRestoration.restoredWalletHomeStack()` truncates at the first
 /// non-`isColdLaunchRestorable` destination. These tests lock that
 /// contract so the app can only ever resume onto a real "where I was
-/// reading" screen — never the Activity list, Send, or Swap.
+/// reading" screen — never the Activity list or Send.
 @Suite @MainActor struct ScreenRestorationTests {
 
     /// Matches `ScreenRestoration.Key.walletHomePath` (which is private).

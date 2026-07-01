@@ -506,7 +506,7 @@ final class ApertureDatabase {
     private static func resetStore(at storeURL: URL, log: Logger) {
         let fm = FileManager.default
         // SQLite names sidecars by appending "-wal" / "-shm" to the
-        // FULL store filename ("aperture.sqlite-wal"), not by swapping
+        // FULL store filename ("aperture.sqlite-wal"), not by replacing
         // the path extension — build them from the raw path string.
         let urls = [
             storeURL,

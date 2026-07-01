@@ -272,12 +272,12 @@ actor TokenPricingEngine {
         }
 
         async let coinbaseTask = fetchCoinbaseFX(to: code)
-        async let exchangeRateTask = fetchExchangeRateAPIFX(to: code)
+        async let openERTask = fetchOpenERFX(to: code)
         async let frankfurterTask = fetchFrankfurterFX(to: code)
         let coinbaseRate = await coinbaseTask
-        let exchangeRate = await exchangeRateTask
+        let openERRate = await openERTask
         let frankfurterRate = await frankfurterTask
-        let rate = coinbaseRate ?? exchangeRate ?? frankfurterRate
+        let rate = coinbaseRate ?? openERRate ?? frankfurterRate
         if let rate {
             fxMemory[code] = rate
         }
@@ -374,7 +374,7 @@ actor TokenPricingEngine {
         guard let url = components.url else { return nil }
 
         do {
-            let row = try await decode(CoinbaseExchangeRates.self, from: url, timeout: 10)
+            let row = try await decode(CoinbaseFiatRates.self, from: url, timeout: 10)
             guard let string = row.data.rates[currencyCode], let rate = Decimal(string: string), rate > 0 else { return nil }
             return FXRate(rate: rate, source: "Coinbase FX", fetchedAt: Date())
         } catch {
@@ -382,17 +382,17 @@ actor TokenPricingEngine {
         }
     }
 
-    private func fetchExchangeRateAPIFX(to currencyCode: String) async -> FXRate? {
+    private func fetchOpenERFX(to currencyCode: String) async -> FXRate? {
         guard let url = URL(string: "https://open.er-api.com/v6/latest/USD") else { return nil }
         do {
-            let row = try await decode(ExchangeRateAPIResponse.self, from: url, timeout: 10)
+            let row = try await decode(OpenERAPIResponse.self, from: url, timeout: 10)
             guard
                 row.result == "success",
                 let value = row.rates[currencyCode],
                 let rate = decimal(value),
                 rate > 0
             else { return nil }
-            return FXRate(rate: rate, source: "ExchangeRate-API FX", fetchedAt: Date())
+            return FXRate(rate: rate, source: "OpenER FX", fetchedAt: Date())
         } catch {
             return nil
         }
@@ -454,7 +454,7 @@ actor TokenPricingEngine {
         case _ where host.contains("coinbase"):
             return "Coinbase \(url.path)"
         case _ where host.contains("er-api"):
-            return "ExchangeRate-API \(url.path)"
+            return "OpenER \(url.path)"
         case _ where host.contains("frankfurter"):
             return "Frankfurter \(url.path)"
         default:
@@ -512,14 +512,14 @@ private struct CoinbaseTicker: Decodable {
     let price: String
 }
 
-private struct CoinbaseExchangeRates: Decodable {
+private struct CoinbaseFiatRates: Decodable {
     let data: Payload
     struct Payload: Decodable {
         let rates: [String: String]
     }
 }
 
-private struct ExchangeRateAPIResponse: Decodable {
+private struct OpenERAPIResponse: Decodable {
     let result: String?
     let rates: [String: Double]
 }

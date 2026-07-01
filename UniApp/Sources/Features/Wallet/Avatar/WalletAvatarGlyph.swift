@@ -29,7 +29,7 @@ import SwiftUI
 /// `Image` rasterizer adds indirection without a win — SwiftUI `Path`
 /// gives us crisp scaling at every avatar size (28 → 120), native
 /// `Color.white` strokes that respect Liquid Glass blending, and
-/// Color-mode swap in the picker grid (`GlyphCellRender` strokes the
+/// Color-mode variant in the picker grid (`GlyphCellRender` strokes the
 /// same paths in `UniColors.Text.primary` instead of white). One source
 /// of truth, two render targets.
 ///

@@ -36,7 +36,7 @@ import SwiftUI
 /// `resolvedState`. Zero hides the chart + selector and shows the
 /// "receive or transfer" prompt + an Add funds button (→ Receive; never
 /// buy — Rule #16 honesty). Hidden masks the figure to `••••••`, the pill
-/// to `••••`, flattens the chart to a muted line, and swaps the eye glyph
+/// to `••••`, flattens the chart to a muted line, and changes the eye glyph
 /// to the slashed eye-off icon; it persists per wallet.
 ///
 /// **RTL (Rule #11):** balance / percent / amount runs pin LTR; the

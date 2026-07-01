@@ -110,7 +110,7 @@ enum ComposeFeeModel: String, Codable, Hashable, Sendable, CaseIterable {
 
 /// The memo / destination-tag / comment kind a chain attaches to a send.
 /// Drives the recipient/compose UI's optional-data field and the
-/// exchange-required warning (Rule #2 honesty: only show a memo field
+/// recipient-service warning (Rule #2 honesty: only show a memo field
 /// where the protocol actually carries one).
 enum ComposeMemoKind: String, Codable, Hashable, Sendable {
     /// No protocol memo/tag/data field (EVM, Sui, Aptos, Polkadot
@@ -120,21 +120,20 @@ enum ComposeMemoKind: String, Codable, Hashable, Sendable {
     case textMemo
     /// Cosmos `TxBody.memo` (≤512 chars).
     case cosmosMemo
-    /// XRP `DestinationTag` (uint32) — most-required CEX field.
+    /// XRP `DestinationTag` (uint32) — commonly required by recipient services.
     case destinationTag
-    /// TON text comment (0x00000000-prefixed cell), CEX-required.
+    /// TON text comment (0x00000000-prefixed cell), service-required.
     case tonComment
-    /// Solana SPL Memo program instruction (≤566 bytes), CEX-required.
+    /// Solana SPL Memo program instruction (≤566 bytes), service-required.
     case splMemo
     /// Stellar transaction memo (text ≤28 bytes / id u64 / hash 32B),
-    /// CEX-required, SEP-29 gate.
+    /// service-required, SEP-29 gate.
     case stellarMemo
     /// NEAR NEP-141 FT `ft_transfer` memo (tokens only, optional).
     case nearFtMemo
 
-    /// Whether centralized exchanges commonly REQUIRE this field for
-    /// deposits — drives the "exchanges may require a memo" warning.
-    var exchangeOftenRequires: Bool {
+    /// Whether recipient services commonly REQUIRE this field for deposits.
+    var recipientServiceOftenRequires: Bool {
         switch self {
         case .destinationTag, .tonComment, .splMemo, .stellarMemo, .cosmosMemo, .textMemo:
             return true

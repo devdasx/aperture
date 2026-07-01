@@ -51,7 +51,7 @@ struct PinSetupFlow: View {
     // MARK: - State
 
     /// Linear step machine. No nested `NavigationStack` — the steps just
-    /// swap content via `withAnimation`.
+    /// replace content via `withAnimation`.
     enum Step: Hashable {
         case set
         case confirm
@@ -213,7 +213,7 @@ struct PinSetupFlow: View {
     /// outgoing to trailing — matches `NavigationStack.pop`. The
     /// direction is determined by `isReversing` at the moment SwiftUI
     /// evaluates the transition (i.e. inside the `withAnimation` block).
-    /// Both fade slightly through the move so the swap reads as a single
+    /// Both fade slightly through the move so the transition reads as a single
     /// motion.
     private var stepTransition: AnyTransition {
         if isReversing {

@@ -45,7 +45,7 @@ import SwiftUI
 /// stays viewable from Settings → Wallets → "View recovery phrase"
 /// for the wallet's lifetime; only wallet deletion / Reset Aperture
 /// removes it. Dismisses the sheet; SwiftData `@Query` reactivity on
-/// the parent `WalletDetailView` swaps the backup card from "Back up
+/// the parent `WalletDetailView` changes the backup card from "Back up
 /// this wallet" → "Backed up." in front of the user.
 ///
 /// **Honesty (Rule #16 §A.6).** The verification gesture is real:

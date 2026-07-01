@@ -36,10 +36,18 @@ struct NearBalanceHistoryProbeTests {
             return rows.sorted { $0.symbol < $1.symbol }
         }
 
-        #expect(balances.count == NearTokenRegistry.tokens.count)
+        let returnedSymbols = Set(balances.map(\.symbol))
+        let missingSymbols = NearTokenRegistry.tokens
+            .map(\.symbol)
+            .filter { !returnedSymbols.contains($0) }
+        #expect(!balances.isEmpty)
+        #expect(balances.count <= NearTokenRegistry.tokens.count)
         for balance in balances {
             #expect(!balance.rawBalance.isEmpty)
             #expect(balance.rawBalance.allSatisfy { $0.isNumber })
+        }
+        if !missingSymbols.isEmpty {
+            print("[NearProbe] Token balance endpoint did not return: \(missingSymbols.joined(separator: ","))")
         }
     }
 

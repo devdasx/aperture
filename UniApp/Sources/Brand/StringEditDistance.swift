@@ -43,7 +43,9 @@ extension String {
             // Early-exit: if every cell in this row already exceeds
             // the threshold, no completion can be within threshold.
             if rowMinimum > threshold { return Int.max }
-            swap(&previous, &current)
+            let finishedRow = previous
+            previous = current
+            current = finishedRow
         }
         return previous[m]
     }
@@ -51,7 +53,7 @@ extension String {
     /// Top-K closest BIP-39 wordlist matches for `self`, sorted by
     /// ascending edit distance. Filters out matches with edit distance
     /// greater than `maxDistance` (default 3 — covers single-letter
-    /// typos, transpositions, missing letters, and small swaps).
+    /// typos, transpositions, missing letters, and small ordering mistakes).
     ///
     /// Returns at most `topK` entries. May return fewer (or zero) if
     /// the wordlist has no candidates within `maxDistance`.

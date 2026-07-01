@@ -7,7 +7,7 @@ import Foundation
 /// Default is `USD`. The price service uses this when fetching from Coinbase.
 ///
 /// Coverage: every actively-traded national fiat currency Coinbase supports
-/// via `/v2/exchange-rates`. For the handful Coinbase does not return a rate
+/// via its public fiat-rate endpoint. For the handful Coinbase does not return a rate
 /// for, `CoinbasePriceService` returns `nil` and the UI renders
 /// "Price unavailable" gracefully — never a crash.
 struct SupportedCurrency: Identifiable, Hashable, Sendable {
@@ -59,7 +59,7 @@ enum CurrencyPreference {
         defaults.set(defaultForCurrentRegion(), forKey: storageKey)
     }
 
-    /// ISO-4217 fiats Coinbase exposes via `/v2/exchange-rates`. Order
+    /// ISO-4217 fiats Coinbase exposes via its public fiat-rate endpoint. Order
     /// chosen for picker UX: USD/EUR/GBP/JPY/CNY/INR first (most-used
     /// globally), then alphabetical by code. Symbols and names verified
     /// against ISO 4217 and Apple's `Locale.currencySymbol` references.

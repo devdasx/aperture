@@ -5,8 +5,8 @@ import Foundation
 /// Centralized so every surface that links out (the onboarding legal footer
 /// and Settings → About) opens the EXACT same live URL with no duplicated
 /// string literals to drift. The pages live on the site, not bundled, so they
-/// stay current without shipping an app update; each opens in the system
-/// browser via `@Environment(\.openURL)`.
+/// stay current without shipping an app update; each opens through
+/// `@Environment(\.openURL)`.
 enum ApertureWeb {
     static let terms = "https://aperturex.io/terms"
     static let privacy = "https://aperturex.io/privacy"

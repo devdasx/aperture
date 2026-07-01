@@ -17,7 +17,7 @@ enum BalanceFormatter {
 
     /// Fiat equivalent with the canonical `≈` approximation mark per
     /// Rule #16's honesty register — the conversion is an estimate
-    /// based on a public price feed, not a quoted exchange rate.
+    /// based on a public price feed, not a quoted conversion guarantee.
     static func fiat(_ amount: Decimal, currencyCode: String) -> String {
         let style = Decimal.FormatStyle.Currency(code: currencyCode)
             .precision(.fractionLength(2))

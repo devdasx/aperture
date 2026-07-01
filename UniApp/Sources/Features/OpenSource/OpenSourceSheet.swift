@@ -20,9 +20,9 @@ import SwiftUI
 /// the hero mark for vertical weight. A leading `lock.shield.fill`
 /// glyph in `UniColors.Brand.mark` sits above the headline; below it,
 /// a `UniCard` carries three plainly-named verification rows; at the
-/// bottom, a primary `UniButton` opens the repository in Safari via
-/// SwiftUI's native `openURL` environment action — no UIKit, no in-app
-/// browser. A trailing `Done` toolbar item dismisses the sheet.
+/// bottom, a primary `UniButton` opens the repository via SwiftUI's native
+/// `openURL` environment action — no UIKit shell. A trailing `Done` toolbar
+/// item dismisses the sheet.
 ///
 /// **Material.** Opaque white in light mode via
 /// `.presentationBackground(UniColors.Background.primary)` at the call

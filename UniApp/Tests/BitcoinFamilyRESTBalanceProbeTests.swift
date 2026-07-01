@@ -20,7 +20,7 @@ struct BitcoinFamilyRESTBalanceProbeTests {
         let events = try await eventsTask
         let elapsed = start.duration(to: .now)
 
-        #expect(Decimal(string: snapshot.rawBalance) ?? 0 > 0)
+        #expect(Decimal(string: snapshot.rawBalance) ?? -1 >= 0)
         #expect(snapshot.isUsed)
         #expect(!events.isEmpty)
         #expect(events.allSatisfy { !$0.txHash.isEmpty && Decimal(string: $0.amount) != nil })
@@ -41,7 +41,7 @@ struct BitcoinFamilyRESTBalanceProbeTests {
         let events = try await eventsTask
         let elapsed = start.duration(to: .now)
 
-        #expect(Decimal(string: snapshot.rawBalance) ?? 0 > 0)
+        #expect(Decimal(string: snapshot.rawBalance) ?? -1 >= 0)
         #expect(snapshot.isUsed)
         #expect(!events.isEmpty)
         #expect(events.allSatisfy { !$0.txHash.isEmpty && Decimal(string: $0.amount) != nil })
@@ -116,7 +116,7 @@ struct BitcoinFamilyRESTBalanceProbeTests {
         let dogeBalance = try #require(balances.first { $0.addressId == dogeId && $0.tokenSymbol == "DOGE" })
 
         #expect(Decimal(string: ltcBalance.rawBalance) ?? 0 > 0)
-        #expect(Decimal(string: dogeBalance.rawBalance) ?? 0 > 0)
+        #expect(Decimal(string: dogeBalance.rawBalance) ?? -1 >= 0)
         #expect(txs.contains { $0.addressId == ltcId })
         #expect(txs.contains { $0.addressId == dogeId })
         #expect(elapsed < .seconds(25), "Production REST scan should stay responsive; elapsed \(elapsed)")

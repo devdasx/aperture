@@ -71,10 +71,10 @@ import SwiftData
         )
     }
 
-    // MARK: - T-067 post-swap taxonomy
+    // MARK: - T-067 transaction taxonomy
 
     // Former bridge-router address. Counterparty allowlist classification was
-    // removed with the swap feature; kept here to prove it no longer relabels
+    // removed with the retired router classifier; kept here to prove it no longer relabels
     // unclassified scanner legs.
     private static let acrossBridge = "0x5c7bcd6e7de5423a257d81b442095a1a6ced35c5"
 

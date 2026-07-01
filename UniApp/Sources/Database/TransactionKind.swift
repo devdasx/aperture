@@ -16,10 +16,9 @@ import Foundation
 /// receiving = `direction == .incoming`, failed = `status == .failed`,
 /// self = `kind == .selfTransfer`.
 ///
-/// 2026-06-23 — the router-allowlist classifier (which upgraded transfers to
-/// `.swap` / `.bridge`) was removed with the swap feature, so no leg is
-/// produced with those kinds anymore. `.bridge` is kept only so stored rows
-/// written before the removal still decode.
+/// 2026-06-23 — the router-allowlist classifier was removed, so no new leg is
+/// produced with router-derived kinds anymore. `.bridge` is kept only so stored
+/// rows written before the removal still decode.
 enum TransactionKind: String, Codable, CaseIterable, Sendable {
     /// Plain value transfer (send / receive). The default for every
     /// non-`.internal` leg until an adapter classifies otherwise.

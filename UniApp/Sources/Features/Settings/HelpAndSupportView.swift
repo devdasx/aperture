@@ -13,8 +13,8 @@ import SwiftUI
 /// telemetry-opt-out (we never send telemetry).
 ///
 /// **External links.** Every row that leaves the app uses SwiftUI's
-/// native `Link(destination:)` which iOS routes to Safari (Rule #3 —
-/// no in-app browser). A trailing `arrow.up.right` glyph signals the
+/// native `Link(destination:)` which iOS routes externally (Rule #3).
+/// A trailing `arrow.up.right` glyph signals the
 /// external destination — the same convention iOS Settings uses for
 /// "leaves the app" rows.
 struct HelpAndSupportView: View {

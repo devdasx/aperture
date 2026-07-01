@@ -450,7 +450,7 @@ struct ManualSafetyScreen: View {
                             UniFeatureRow(
                                 systemImage: "person.2.slash",
                                 title: "Never share it.",
-                                detail: "Aperture, Apple, exchanges, and support teams never need these words."
+                                detail: "Aperture, Apple, and support teams never need these words."
                             )
                             UniDivider()
                             UniFeatureRow(

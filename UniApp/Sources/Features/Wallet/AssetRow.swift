@@ -18,7 +18,7 @@ import SwiftUI
 ///
 /// **Layout (Rule #11):** semantic edges only (`leading`/`trailing`).
 /// In RTL the chevron flips automatically; the logo+ticker block and
-/// the amount block swap positions.
+/// the amount block trade positions.
 struct AssetRow: View {
     let chain: SupportedChain
     let tokenSymbol: String

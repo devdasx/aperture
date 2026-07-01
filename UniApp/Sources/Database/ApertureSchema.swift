@@ -1001,7 +1001,7 @@ final class CustomTokenRecord {
 /// repository's range query is an integer comparison rather than a
 /// date-string parse.
 ///
-/// **Source.** Coinbase Exchange API `/products/{base}-{quote}/candles`
+/// **Source.** Coinbase market data API `/products/{base}-{quote}/candles`
 /// at daily granularity — `close` field. The same fallbacks the live
 /// pricing layer uses (WrappedAssetAliases → ETH, KnownStablecoins
 /// → USDT, EURPeggedStablecoins → EUR) apply at fetch time so

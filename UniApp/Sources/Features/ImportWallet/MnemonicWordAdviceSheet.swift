@@ -15,7 +15,7 @@ struct MnemonicWordAdviceSheet: View {
     /// The typed word that's not in the wordlist.
     let typedWord: String
 
-    /// Fires with a chosen replacement word. The caller swaps it into
+    /// Fires with a chosen replacement word. The caller inserts it into
     /// the editor at the original word's position.
     let onPickSuggestion: (String) -> Void
 

@@ -23,7 +23,7 @@ import WalletCore
 /// floor). `FeeChoice.cosmosGasLimit` + `.cosmosGasPrice` resolve these;
 /// the fee is ALWAYS paid in ukava even for a token send.
 ///
-/// **Memo (matrix §G12):** the Cosmos universal tag — exchanges require
+/// **Memo (matrix §G12):** the Cosmos universal tag — some recipients require
 /// it; ≤512 chars; carried in the draft's `.text` memo.
 ///
 /// **Token send:** a MsgSend with the token's denom (the draft's

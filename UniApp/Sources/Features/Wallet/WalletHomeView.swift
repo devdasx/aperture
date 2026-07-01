@@ -614,7 +614,7 @@ struct WalletHomeView: View {
                     // at then-prices instead of today's spot. Each
                     // unique symbol across (held balances + tx
                     // history) needs ~300 daily closes from Coinbase
-                    // Exchange. Only fetches symbols we don't
+                    // market endpoint. Only fetches symbols we don't
                     // already have history for — idempotent.
                     await ensureHistoricalPricesLoaded()
                 }
@@ -1174,7 +1174,7 @@ struct WalletHomeView: View {
     /// then animated cell teardown/re-insertion around the picker,
     /// which made the switch feel jumpy. Keeping one section identity
     /// lets the native segmented control animate its thumb while the
-    /// rows below swap without list-cell transition noise.
+    /// rows below change without list-cell transition noise.
     @ViewBuilder
     private var splitHoldingsSection: some View {
         Section {
