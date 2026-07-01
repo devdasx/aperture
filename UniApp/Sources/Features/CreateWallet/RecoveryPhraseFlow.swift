@@ -16,8 +16,6 @@ enum RecoveryPhraseDestination: Hashable, Codable {
     case backupManualWriteDown
     case backupManualVerify
     case backupManualConfirmed
-    /// Native version of the old skip-warning sheet.
-    case skipBackupWarning
     /// Step 4 — re-enter the phrase via the multiple-choice verify view.
     case verify
     /// Step 5 — unified PIN + biometric setup (Rule #17). After
@@ -86,6 +84,7 @@ struct RecoveryPhraseFlow: View {
     /// the persisted `WalletRecord.manualBackupCompleted` is accurate for
     /// create-flow manual backups, not just management ones (2026-06-20).
     @State private var didManualBackup: Bool = false
+    @State private var isShowingSkipBackupAlert: Bool = false
 
     var body: some View {
         NavigationStack(path: $navigationPath) {
@@ -136,17 +135,6 @@ struct RecoveryPhraseFlow: View {
                     BackupConfirmedScreen {
                         navigationPath.append(nextStepAfterVerify())
                     }
-                case .skipBackupWarning:
-                    SkipBackupWarningScreen(
-                        onBackUpNow: {
-                            navigationPath.append(RecoveryPhraseDestination.backupMethod)
-                        },
-                        onSkipAnyway: {
-                            didSkipBackup = true
-                            onUserSkippedBackup()
-                            navigationPath.append(nextStepAfterVerify())
-                        }
-                    )
                 case .verify:
                     BackupVerifyView(state: state) {
                         // Rule #17 §E — after verify, route through the
@@ -205,6 +193,17 @@ struct RecoveryPhraseFlow: View {
                 }
             }
         }
+        .alert(Text("Skip backup?"), isPresented: $isShowingSkipBackupAlert) {
+            Button("Back up now") {
+                navigationPath.append(RecoveryPhraseDestination.backupMethod)
+            }
+            Button("Skip anyway", role: .destructive) {
+                skipBackupAndContinue()
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("If this iPhone is lost, broken, or wiped before you save the recovery phrase, the wallet cannot be recovered. You can still back it up later in Settings.")
+        }
         // The `fullScreenCover` content otherwise has a transparent
         // background — the underlying `OnboardingView` (slide copy,
         // page-indicator dots, CTAs) would bleed through behind the
@@ -243,11 +242,17 @@ struct RecoveryPhraseFlow: View {
                 navigationPath.append(RecoveryPhraseDestination.backupMethod)
             },
             onSkipForNow: {
-                navigationPath.append(RecoveryPhraseDestination.skipBackupWarning)
+                isShowingSkipBackupAlert = true
             },
             coveredByChild: false,
             showsCloseButton: showsCloseButton
         )
+    }
+
+    private func skipBackupAndContinue() {
+        didSkipBackup = true
+        onUserSkippedBackup()
+        navigationPath.append(nextStepAfterVerify())
     }
 
     /// Pick the next destination after the user finishes (or skips) the
