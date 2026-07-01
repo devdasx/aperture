@@ -160,7 +160,7 @@ struct SendReviewView: View {
     private var amountHero: some View {
         VStack(spacing: UniSpacing.xs) {
             Text(verbatim: "\(WalletFormatting.native(draft.totalAmount, decimals: draft.effectiveDecimals)) \(assetSymbol)")
-                .font(.system(size: 40, weight: .semibold, design: .rounded).monospacedDigit())
+                .font(.system(size: 40, weight: .semibold, design: .default).monospacedDigit())
                 .foregroundStyle(UniColors.Text.primary)
                 .environment(\.layoutDirection, .leftToRight)
                 .lineLimit(1)

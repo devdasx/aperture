@@ -47,14 +47,14 @@ struct SendAmountHero: View {
                 HStack(alignment: .firstTextBaseline, spacing: UniSpacing.xs) {
                     if model.entryUnit == .fiat {
                         Text(verbatim: currencySymbol)
-                            .font(.system(size: flankSize(size), weight: .semibold, design: .rounded).monospacedDigit())
+                            .font(.system(size: flankSize(size), weight: .semibold, design: .default).monospacedDigit())
                             .foregroundStyle(UniColors.Text.secondary)
                             .lineLimit(1)
                             .minimumScaleFactor(0.4)
                             .contentTransition(.numericText())
                     }
                     TextField("0", text: $model.primaryAmountText)
-                        .font(.system(size: size, weight: .semibold, design: .rounded).monospacedDigit())
+                        .font(.system(size: size, weight: .semibold, design: .default).monospacedDigit())
                         // Over-balance → red, so the user sees WHICH value is
                         // the problem (FIX 3), not just the banner below.
                         .foregroundStyle(model.isOverBalance ? UniColors.Feedback.Error.foreground : UniColors.Text.primary)
@@ -71,7 +71,7 @@ struct SendAmountHero: View {
                         .environment(\.layoutDirection, .leftToRight)
                     if model.entryUnit == .crypto {
                         Text(verbatim: model.assetSymbol)
-                            .font(.system(size: flankSize(size), weight: .semibold, design: .rounded).monospacedDigit())
+                            .font(.system(size: flankSize(size), weight: .semibold, design: .default).monospacedDigit())
                             .foregroundStyle(UniColors.Text.secondary)
                             .lineLimit(1)
                             .minimumScaleFactor(0.4)
