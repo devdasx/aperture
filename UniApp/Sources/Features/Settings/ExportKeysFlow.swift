@@ -279,7 +279,7 @@ private struct RecoveryPhraseRevealScreen: View {
                     .foregroundStyle(UniColors.Text.tertiary)
                     .frame(width: 24, alignment: .leading)
                 Text(words[index])
-                    .font(.system(.body, design: .monospaced))
+                    .font(UniTypography.body)
                     .foregroundStyle(UniColors.Text.primary)
                 Spacer(minLength: 0)
             }

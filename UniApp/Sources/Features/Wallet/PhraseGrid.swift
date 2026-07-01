@@ -3,9 +3,9 @@ import SwiftUI
 /// The shared seed-phrase grid (2026-06-20 recovery-phrase handoff: "Build
 /// it as a shared component reused by Recovery Phrase, Export, and Manual
 /// Backup — not a per-screen copy"). One grouped rounded container, two
-/// columns, tabular zero-padded index numbers, hairline row/column
-/// dividers, monospaced words. Forced LTR so the 1→N reading order never
-/// flips in an RTL locale.
+/// columns, tabular zero-padded index numbers, and hairline row/column
+/// dividers. Words use the system font; the grid is forced LTR so the
+/// 1→N reading order never flips in an RTL locale.
 struct PhraseGrid: View {
     let words: [String]
 
@@ -39,7 +39,7 @@ struct PhraseGrid: View {
                     .foregroundStyle(UniColors.Text.tertiary)
                     .frame(width: 24, alignment: .leading)
                 Text(words[index])
-                    .font(.system(.body, design: .monospaced))
+                    .font(UniTypography.body)
                     .foregroundStyle(UniColors.Text.primary)
                 Spacer(minLength: 0)
             }

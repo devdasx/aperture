@@ -326,13 +326,18 @@ struct RecoveryPhraseView: View {
     /// Footer: [Copy | Back up now] on one row, Skip for now full-width below.
     private var actionRegion: some View {
         VStack(spacing: UniSpacing.s) {
-            HStack(spacing: UniSpacing.s) {
-                copyButton
-                UniButton(title: "Back up now", variant: .primary) {
-                    onBackUpNow()
+            GeometryReader { proxy in
+                let availableWidth = max(0, proxy.size.width - UniSpacing.s)
+                HStack(spacing: UniSpacing.s) {
+                    copyButton
+                        .frame(width: availableWidth * 0.3)
+                    UniButton(title: "Back up now", variant: .primary) {
+                        onBackUpNow()
+                    }
+                    .frame(width: availableWidth * 0.7)
                 }
-                .frame(maxWidth: .infinity)
             }
+            .frame(height: 47)
             UniButton(title: "Skip for now", variant: .secondary) {
                 onSkipForNow()
             }
@@ -350,12 +355,6 @@ struct RecoveryPhraseView: View {
         ) {
             copyPhrase()
         }
-        // Widen the capsule itself a little — the glass fills this frame, so a
-        // minWidth gives the label internal breathing room (+~4pt each side)
-        // for short labels while still growing for longer/translated ones
-        // (no truncation). fixedSize keeps it compact next to Back up now.
-        .frame(minWidth: 120)
-        .fixedSize(horizontal: true, vertical: false)
         .animation(.easeInOut(duration: 0.2), value: isShowingCopiedConfirmation)
         .accessibilityLabel(Text("Copy recovery phrase"))
     }
