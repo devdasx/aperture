@@ -148,18 +148,12 @@ struct MainTabView: View {
         )
     }
 
-    /// The active wallet's record — looked up by UUID against the
-    /// `@Query` result. Falls back to the first wallet if the
-    /// persisted id is missing (manual UserDefaults fiddling or a
-    /// wallet that was deleted from another device through future
-    /// CloudKit sync). When `allWallets` itself is empty, returns
-    /// `nil` and the tab icon falls back to the default avatar.
+    /// The active wallet's record — looked up by the persisted wallet ID.
+    /// An explicit stale ID returns nil instead of falling back to another
+    /// wallet, so the tab bar never shows the previous wallet's avatar while
+    /// a switch/create/import is settling.
     private var activeWallet: WalletRecord? {
-        if let uuid = UUID(uuidString: activeWalletIdRaw),
-           let match = allWallets.first(where: { $0.id == uuid }) {
-            return match
-        }
-        return allWallets.first
+        ActiveWalletResolver.resolve(rawID: activeWalletIdRaw, wallets: allWallets)
     }
 
     private var currentTab: MainTab {

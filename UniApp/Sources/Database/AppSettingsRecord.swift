@@ -86,3 +86,30 @@ final class AppSettingsRecord {
         self.updatedAt = updatedAt
     }
 }
+
+/// Dedicated active-wallet row. `AppSettingsRecord.activeWalletId` and
+/// `@AppStorage("activeWalletId")` remain synchronized mirrors for SwiftUI
+/// reactivity, but this row is the domain schema that names the selected
+/// wallet by its stable UUID.
+@Model
+final class ActiveWalletRecord {
+    /// Pins the singleton — always `ActiveWalletRecord.singletonId`.
+    @Attribute(.unique) var id: String
+
+    /// The currently active wallet. Nil only when no wallet exists yet.
+    var walletID: UUID?
+
+    var updatedAt: Date
+
+    static let singletonId = "active-wallet-singleton"
+
+    init(
+        id: String = ActiveWalletRecord.singletonId,
+        walletID: UUID? = nil,
+        updatedAt: Date = Date()
+    ) {
+        self.id = id
+        self.walletID = walletID
+        self.updatedAt = updatedAt
+    }
+}

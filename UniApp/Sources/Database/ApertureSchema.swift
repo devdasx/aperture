@@ -53,6 +53,7 @@ enum ApertureSchemaV1: VersionedSchema {
             // authoritative settings row, kept in sync with @AppStorage
             // by SettingsStore.
             AppSettingsRecord.self,
+            ActiveWalletRecord.self,
             // 2026-06-25 — local-first Markets cache. Live quotes and
             // charts are refreshed from public providers, then persisted
             // here so the Markets tab can fall back to the last known real

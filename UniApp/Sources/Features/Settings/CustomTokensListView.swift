@@ -34,11 +34,7 @@ struct CustomTokensListView: View {
 
     /// Active wallet — the source of the held balances shown per token.
     private var activeWallet: WalletRecord? {
-        if let uuid = UUID(uuidString: activeWalletIdRaw),
-           let match = allWallets.first(where: { $0.id == uuid }) {
-            return match
-        }
-        return allWallets.first
+        ActiveWalletResolver.resolve(rawID: activeWalletIdRaw, wallets: allWallets)
     }
 
     /// `(chainRaw)|(contract.lowercased())` → held token balance for the

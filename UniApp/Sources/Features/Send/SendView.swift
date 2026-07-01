@@ -268,11 +268,7 @@ struct SendView: View {
     // MARK: - Derived (mirrors ReceiveView)
 
     private var activeWallet: WalletRecord? {
-        if let uuid = UUID(uuidString: activeWalletIdRaw),
-           let match = allWallets.first(where: { $0.id == uuid }) {
-            return match
-        }
-        return allWallets.first
+        ActiveWalletResolver.resolve(rawID: activeWalletIdRaw, wallets: allWallets)
     }
 
     private var activeWalletHealKey: String {
@@ -281,9 +277,7 @@ struct SendView: View {
 
     private func healActiveWalletIdIfNeeded() {
         guard let first = allWallets.first else { return }
-        let resolves = UUID(uuidString: activeWalletIdRaw)
-            .map { id in allWallets.contains(where: { $0.id == id }) } ?? false
-        if !resolves {
+        if ActiveWalletResolver.shouldHeal(rawID: activeWalletIdRaw, wallets: allWallets) {
             ActiveWalletPointer.set(first.id)
         }
     }

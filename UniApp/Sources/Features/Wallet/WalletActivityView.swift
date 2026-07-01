@@ -456,21 +456,14 @@ struct WalletActivityView: View {
 
     /// Active wallet resolved with the same hardened precedence the
     /// wallet-home uses: stored id → `@Query` match → direct store
-    /// fetch (covers the `@Query` merge lag) → first existing wallet.
+    /// fetch (covers the `@Query` merge lag). An explicit missing id
+    /// returns nil instead of showing a different wallet's rows.
     private var activeWallet: WalletRecord? {
-        if let uuid = UUID(uuidString: activeWalletIdRaw) {
-            if let match = allWallets.first(where: { $0.id == uuid }) {
-                return match
-            }
-            var descriptor = FetchDescriptor<WalletRecord>(
-                predicate: #Predicate { $0.id == uuid }
-            )
-            descriptor.fetchLimit = 1
-            if let stored = try? modelContext.fetch(descriptor).first {
-                return stored
-            }
-        }
-        return allWallets.first(where: { walletExists(id: $0.id) })
+        ActiveWalletResolver.resolve(
+            rawID: activeWalletIdRaw,
+            wallets: allWallets,
+            modelContext: modelContext
+        )
     }
 
     private func walletExists(id: UUID) -> Bool {

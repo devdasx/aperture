@@ -990,9 +990,11 @@ actor WalletRepository {
 
 // MARK: - Active-wallet pointer
 
-/// The single `UserDefaults` pointer naming the active wallet — the
-/// same `"activeWalletId"` key every `@AppStorage("activeWalletId")`
-/// binding across the app observes. Centralised here so the delete
+/// The single active-wallet pointer naming the wallet every wallet-scoped
+/// surface must render. `ActiveWalletRecord.walletID` is the durable domain
+/// row; `AppSettingsRecord.activeWalletId` and the `"activeWalletId"`
+/// UserDefaults key are compatibility mirrors for deeply-woven SwiftUI
+/// bindings. Centralised here so the delete
 /// flow can move the pointer atomically-with the record delete
 /// (2026-06-13 post-delete switch fix): the successor id is written
 /// BEFORE the delete commits, so no observer ever resolves the
@@ -1014,19 +1016,22 @@ enum ActiveWalletPointer {
         self.modelContainer = modelContainer
         let context = ModelContext(modelContainer)
         let settings = SettingsStore.fetchOrCreate(in: context)
-        let raw = rawValue
-        if raw.isEmpty, !settings.activeWalletId.isEmpty {
-            UserDefaults.standard.set(settings.activeWalletId, forKey: storageKey)
-        } else if settings.activeWalletId != raw {
-            settings.activeWalletId = raw
-            settings.updatedAt = Date()
+        let active = ActiveWalletStore.fetchOrCreate(in: context)
+        let selectedID = preferredWalletID(
+            activeRecordID: active.walletID,
+            settingsRaw: settings.activeWalletId,
+            userDefaultsRaw: rawValue,
+            in: context
+        )
+        mirrorSelection(selectedID, active: active, settings: settings)
+        if context.hasChanges {
             try? context.save()
         }
     }
 
     /// Current pointer, parsed. `nil` when unset / empty / not a UUID.
     static var currentId: UUID? {
-        UUID(uuidString: rawValue)
+        UUID(uuidString: rawValue.trimmingCharacters(in: .whitespacesAndNewlines))
     }
 
     /// Current raw string — empty when unset, matching `@AppStorage`'s
@@ -1043,18 +1048,112 @@ enum ActiveWalletPointer {
 
     /// Restore a previously-snapshotted raw value (delete rollback).
     static func setRaw(_ raw: String) {
-        UserDefaults.standard.set(raw, forKey: storageKey)
-        mirrorToDatabase(raw)
+        let canonicalRaw = UUID(uuidString: raw.trimmingCharacters(in: .whitespacesAndNewlines))?.uuidString ?? ""
+        UserDefaults.standard.set(canonicalRaw, forKey: storageKey)
+        mirrorToDatabase(UUID(uuidString: canonicalRaw))
     }
 
-    private static func mirrorToDatabase(_ raw: String) {
+    private static func mirrorToDatabase(_ walletID: UUID?) {
         guard let modelContainer else { return }
         let context = ModelContext(modelContainer)
         let settings = SettingsStore.fetchOrCreate(in: context)
-        guard settings.activeWalletId != raw else { return }
-        settings.activeWalletId = raw
-        settings.updatedAt = Date()
+        let active = ActiveWalletStore.fetchOrCreate(in: context)
+        mirrorSelection(walletID, active: active, settings: settings)
+        guard context.hasChanges else { return }
         try? context.save()
+    }
+
+    private static func mirrorSelection(
+        _ walletID: UUID?,
+        active: ActiveWalletRecord,
+        settings: AppSettingsRecord
+    ) {
+        let raw = walletID?.uuidString ?? ""
+        if UserDefaults.standard.string(forKey: storageKey) != raw {
+            UserDefaults.standard.set(raw, forKey: storageKey)
+        }
+        let now = Date()
+        if active.walletID != walletID {
+            active.walletID = walletID
+            active.updatedAt = now
+        }
+        if settings.activeWalletId != raw {
+            settings.activeWalletId = raw
+            settings.updatedAt = now
+        }
+    }
+
+    private static func preferredWalletID(
+        activeRecordID: UUID?,
+        settingsRaw: String,
+        userDefaultsRaw: String,
+        in context: ModelContext
+    ) -> UUID? {
+        let candidates = [
+            activeRecordID,
+            UUID(uuidString: settingsRaw.trimmingCharacters(in: .whitespacesAndNewlines)),
+            UUID(uuidString: userDefaultsRaw.trimmingCharacters(in: .whitespacesAndNewlines))
+        ]
+        for candidate in candidates.compactMap({ $0 }) where walletExists(candidate, in: context) {
+            return candidate
+        }
+        var descriptor = FetchDescriptor<WalletRecord>(
+            sortBy: [SortDescriptor(\WalletRecord.sortOrder, order: .forward)]
+        )
+        descriptor.fetchLimit = 1
+        return (try? context.fetch(descriptor).first)?.id
+    }
+
+    private static func walletExists(_ walletID: UUID, in context: ModelContext) -> Bool {
+        var descriptor = FetchDescriptor<WalletRecord>(
+            predicate: #Predicate { $0.id == walletID }
+        )
+        descriptor.fetchLimit = 1
+        return ((try? context.fetch(descriptor).first) != nil)
+    }
+}
+
+enum ActiveWalletStore {
+    static func fetchOrCreate(in context: ModelContext) -> ActiveWalletRecord {
+        let singletonID = ActiveWalletRecord.singletonId
+        var descriptor = FetchDescriptor<ActiveWalletRecord>(
+            predicate: #Predicate { $0.id == singletonID }
+        )
+        descriptor.fetchLimit = 1
+        if let existing = try? context.fetch(descriptor).first {
+            return existing
+        }
+        let record = ActiveWalletRecord()
+        context.insert(record)
+        return record
+    }
+}
+
+enum ActiveWalletResolver {
+    static func resolve(
+        rawID: String,
+        wallets: [WalletRecord],
+        modelContext: ModelContext? = nil
+    ) -> WalletRecord? {
+        let trimmed = rawID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, let walletID = UUID(uuidString: trimmed) else {
+            return nil
+        }
+        if let match = wallets.first(where: { $0.id == walletID }) {
+            return match
+        }
+        guard let modelContext else { return nil }
+        var descriptor = FetchDescriptor<WalletRecord>(
+            predicate: #Predicate { $0.id == walletID }
+        )
+        descriptor.fetchLimit = 1
+        return try? modelContext.fetch(descriptor).first
+    }
+
+    static func shouldHeal(rawID: String, wallets: [WalletRecord]) -> Bool {
+        guard !wallets.isEmpty else { return false }
+        let trimmed = rawID.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty || UUID(uuidString: trimmed) == nil
     }
 }
 
