@@ -1,5 +1,7 @@
 import SwiftUI
 import SwiftData
+import UIKit
+import WalletCore
 
 /// Step 3 of the Receive sheet — the QR card + address + share +
 /// chain-mismatch warning, composed for one specific (chain, optional
@@ -24,8 +26,17 @@ struct ReceiveQRDetailView: View {
     let tokenSymbol: String?
     let address: String
 
+    @Environment(\.displayScale) private var displayScale
+    @Environment(\.modelContext) private var modelContext
+    @AppStorage("activeWalletId") private var activeWalletIdRaw: String = ""
+    @Query(sort: \WalletRecord.sortOrder) private var wallets: [WalletRecord]
+
     @State private var justCopiedAt: Date?
     @State private var isShowingGuide: Bool = false
+    @State private var isShowingShareOptions: Bool = false
+    @State private var sharePayload: ReceiveSharePayload?
+    @State private var bitcoinChoices: [BitcoinReceiveAddressChoice] = []
+    @State private var selectedBitcoinTypeRaw: String = ""
 
     /// What the user is receiving, in the toolbar title. Native →
     /// chain name; token → "USDC".
@@ -36,16 +47,47 @@ struct ReceiveQRDetailView: View {
         return chain.displayName
     }
 
+    private var activeWallet: WalletRecord? {
+        ActiveWalletResolver.resolve(
+            rawID: activeWalletIdRaw,
+            wallets: wallets,
+            modelContext: modelContext
+        )
+    }
+
+    private var displayedAddress: String {
+        guard chain == .bitcoin else { return address }
+        return selectedBitcoinChoice?.address ?? bitcoinChoices.first?.address ?? address
+    }
+
+    private var selectedBitcoinChoice: BitcoinReceiveAddressChoice? {
+        guard chain == .bitcoin else { return nil }
+        if let selected = bitcoinChoices.first(where: { $0.type.rawValue == selectedBitcoinTypeRaw }) {
+            return selected
+        }
+        return bitcoinChoices.first
+    }
+
+    private var showsBitcoinTypePicker: Bool {
+        chain == .bitcoin && bitcoinChoices.count > 1
+    }
+
+    private var bitcoinSelectionStorageKey: String? {
+        guard chain == .bitcoin, let walletID = activeWallet?.id.uuidString else { return nil }
+        return "receive.bitcoin.addressType.\(walletID)"
+    }
+
     var body: some View {
         ScrollView {
             VStack(spacing: UniSpacing.l) {
+                bitcoinAddressTypePicker
                 ReceiveQRCard(
                     chain: chain,
                     tokenSymbol: tokenSymbol,
-                    address: address
+                    address: displayedAddress
                 )
                 ReceiveAddressRow(
-                    address: address,
+                    address: displayedAddress,
                     justCopiedAt: $justCopiedAt
                 )
                 shareButton
@@ -78,29 +120,63 @@ struct ReceiveQRDetailView: View {
             .intrinsicHeightSheet()
             .presentationBackground(UniColors.Background.primary)
         }
+        .confirmationDialog(
+            "Share",
+            isPresented: $isShowingShareOptions,
+            titleVisibility: .visible
+        ) {
+            Button("Share QR code") {
+                shareQRCode()
+            }
+            Button("Share address") {
+                sharePayload = ReceiveSharePayload(items: [displayedAddress])
+            }
+            Button("Cancel", role: .cancel) {}
+        }
+        .sheet(item: $sharePayload) { payload in
+            ReceiveActivityShareSheet(items: payload.items)
+                .ignoresSafeArea()
+        }
+        .task(id: "\(activeWalletIdRaw)-\(chain.rawValue)-\(address)") {
+            loadBitcoinAddressChoices()
+        }
+        .onChange(of: selectedBitcoinTypeRaw) { _, newValue in
+            guard let key = bitcoinSelectionStorageKey,
+                  BitcoinReceiveAddressType(rawValue: newValue) != nil else { return }
+            UserDefaults.standard.set(newValue, forKey: key)
+        }
     }
 
     // MARK: - Subviews
 
     @ViewBuilder
+    private var bitcoinAddressTypePicker: some View {
+        if showsBitcoinTypePicker {
+            VStack(alignment: .leading, spacing: UniSpacing.xs) {
+                Text("Bitcoin address type")
+                    .font(UniTypography.caption1)
+                    .foregroundStyle(UniColors.Text.secondary)
+
+                Picker("Bitcoin address type", selection: $selectedBitcoinTypeRaw) {
+                    ForEach(bitcoinChoices) { choice in
+                        Text(choice.type.title).tag(choice.type.rawValue)
+                    }
+                }
+                .pickerStyle(.segmented)
+            }
+            .padding(UniSpacing.m)
+            .background(
+                RoundedRectangle(cornerRadius: UniRadius.card, style: .continuous)
+                    .fill(UniColors.Card.background)
+            )
+        }
+    }
+
+    @ViewBuilder
     private var shareButton: some View {
-        // System ShareLink — opens the OS share sheet with the address.
-        // No third-party share UI (Rule #3).
-        //
-        // **Not wrapped in `UniButton`** by design. Rule #19 reserves
-        // `UniButton` for generic action buttons; `ShareLink` is a
-        // system-blessed control that owns the share-sheet presentation
-        // contract and cannot be expressed as an `action: () -> Void`.
-        // To satisfy Rule #19's hit-test invariant, we apply the same
-        // `.contentShape(Capsule())` + 47pt frame + `.glassProminent`
-        // styling that `UniButton(.primary)` uses internally — so the
-        // visual identity AND the hit-test region match the canonical
-        // primary CTA exactly.
-        ShareLink(
-            item: address,
-            subject: Text(verbatim: shareSubject),
-            message: Text(verbatim: "")
-        ) {
+        Button {
+            isShowingShareOptions = true
+        } label: {
             HStack(spacing: UniSpacing.xs) {
                 Image(systemName: "square.and.arrow.up")
                     .font(.system(size: 17, weight: .semibold))
@@ -113,16 +189,47 @@ struct ReceiveQRDetailView: View {
         }
         .buttonStyle(.glassProminent)
         .tint(UniColors.Button.Primary.tint)
-        .accessibilityLabel(Text("Share address"))
+        .accessibilityLabel(Text("Share receive details"))
     }
 
-    /// Subject for the OS share sheet. Names the asset and the chain
-    /// so a paste into a message thread is self-describing.
-    private var shareSubject: String {
-        if let tokenSymbol {
-            return "\(tokenSymbol) on \(chain.displayName) — receive address"
+    private func shareQRCode() {
+        let payloadAddress = displayedAddress
+        let symbol = tokenSymbol ?? chain.ticker
+        Task {
+            let image = await QRCodeGenerator.shared.brandedImage(
+                for: payloadAddress,
+                chain: chain,
+                tokenSymbol: symbol,
+                displayScale: displayScale
+            )
+            if let image {
+                sharePayload = ReceiveSharePayload(items: [image])
+            } else {
+                sharePayload = ReceiveSharePayload(items: [payloadAddress])
+            }
         }
-        return "\(chain.displayName) — receive address"
+    }
+
+    private func loadBitcoinAddressChoices() {
+        guard chain == .bitcoin else {
+            bitcoinChoices = []
+            selectedBitcoinTypeRaw = ""
+            return
+        }
+
+        let resolution = BitcoinReceiveAddressResolver.resolve(
+            wallet: activeWallet,
+            fallbackAddress: address,
+            modelContext: modelContext
+        )
+        bitcoinChoices = resolution.choices
+
+        let savedRaw = bitcoinSelectionStorageKey.flatMap { UserDefaults.standard.string(forKey: $0) }
+        let savedType = savedRaw.flatMap(BitcoinReceiveAddressType.init(rawValue:))
+        let preferredType = savedType.flatMap { saved in
+            resolution.choices.contains(where: { $0.type == saved }) ? saved : nil
+        } ?? resolution.defaultType
+        selectedBitcoinTypeRaw = preferredType.rawValue
     }
 
     @ToolbarContentBuilder
@@ -138,5 +245,299 @@ struct ReceiveQRDetailView: View {
             }
             .accessibilityLabel(Text("What's a receive address?"))
         }
+    }
+}
+
+private struct ReceiveSharePayload: Identifiable {
+    let id = UUID()
+    let items: [Any]
+}
+
+private struct ReceiveActivityShareSheet: UIViewControllerRepresentable {
+    let items: [Any]
+
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        UIActivityViewController(activityItems: items, applicationActivities: nil)
+    }
+
+    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
+}
+
+private enum BitcoinReceiveAddressType: String, CaseIterable, Identifiable {
+    case bip86
+    case bip84
+    case bip49
+    case bip44
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .bip86: return "BIP86"
+        case .bip84: return "BIP84"
+        case .bip49: return "BIP49"
+        case .bip44: return "BIP44"
+        }
+    }
+}
+
+private struct BitcoinReceiveAddressChoice: Identifiable, Equatable {
+    let type: BitcoinReceiveAddressType
+    let address: String
+
+    var id: String { type.rawValue }
+}
+
+private struct BitcoinReceiveAddressResolution {
+    let choices: [BitcoinReceiveAddressChoice]
+    let defaultType: BitcoinReceiveAddressType
+}
+
+private enum BitcoinReceiveAddressResolver {
+    static func resolve(
+        wallet: WalletRecord?,
+        fallbackAddress: String,
+        modelContext: ModelContext
+    ) -> BitcoinReceiveAddressResolution {
+        if let wallet,
+           wallet.hasPassphrase == false,
+           let words = try? WalletSecretPersistence.loadMnemonic(for: wallet.id, in: modelContext),
+           !words.isEmpty,
+           let result = resolveMnemonic(words) {
+            return result
+        }
+
+        if let wallet,
+           let privateKey = try? WalletSecretPersistence.loadPrivateKey(for: wallet.id, in: modelContext),
+           let result = resolvePrivateKey(privateKey) {
+            return result
+        }
+
+        let inferred = inferType(address: fallbackAddress)
+        return BitcoinReceiveAddressResolution(
+            choices: [BitcoinReceiveAddressChoice(type: inferred, address: fallbackAddress)],
+            defaultType: inferred
+        )
+    }
+
+    private static func resolveMnemonic(_ words: [String]) -> BitcoinReceiveAddressResolution? {
+        let phrase = words
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
+            .filter { !$0.isEmpty }
+            .joined(separator: " ")
+        guard let wallet = HDWallet(mnemonic: phrase, passphrase: "") else { return nil }
+
+        var choices: [BitcoinReceiveAddressChoice] = []
+        if let address = wallet.getAddressDerivation(coin: .bitcoin, derivation: .bitcoinTaproot).nonEmpty {
+            choices.append(BitcoinReceiveAddressChoice(type: .bip86, address: address))
+        }
+        if let address = wallet.getAddressDerivation(coin: .bitcoin, derivation: .bitcoinSegwit).nonEmpty {
+            choices.append(BitcoinReceiveAddressChoice(type: .bip84, address: address))
+        }
+        if let address = mnemonicBIP49Address(wallet: wallet) {
+            choices.append(BitcoinReceiveAddressChoice(type: .bip49, address: address))
+        }
+        if let address = wallet.getAddressDerivation(coin: .bitcoin, derivation: .bitcoinLegacy).nonEmpty {
+            choices.append(BitcoinReceiveAddressChoice(type: .bip44, address: address))
+        }
+        guard !choices.isEmpty else { return nil }
+        return BitcoinReceiveAddressResolution(choices: choices, defaultType: .bip84)
+    }
+
+    private static func resolvePrivateKey(_ raw: String) -> BitcoinReceiveAddressResolution? {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let extended = extendedPrivateKeyAddress(trimmed) {
+            return extended
+        }
+        guard let decoded = decodeBitcoinPrivateKey(trimmed) else { return nil }
+        let keyData = decoded.keyData
+        guard let privateKey = PrivateKey(data: keyData) else { return nil }
+
+        if decoded.isUncompressedWIF {
+            guard let address = p2pkhAddress(privateKey: privateKey, compressed: false) else { return nil }
+            return BitcoinReceiveAddressResolution(
+                choices: [BitcoinReceiveAddressChoice(type: .bip44, address: address)],
+                defaultType: .bip44
+            )
+        }
+
+        var choices: [BitcoinReceiveAddressChoice] = []
+        if let address = bip84Address(privateKey: privateKey) {
+            choices.append(BitcoinReceiveAddressChoice(type: .bip84, address: address))
+        }
+        if let address = bip49Address(privateKey: privateKey) {
+            choices.append(BitcoinReceiveAddressChoice(type: .bip49, address: address))
+        }
+        if let address = p2pkhAddress(privateKey: privateKey, compressed: true) {
+            choices.append(BitcoinReceiveAddressChoice(type: .bip44, address: address))
+        }
+        guard !choices.isEmpty else { return nil }
+        return BitcoinReceiveAddressResolution(choices: choices, defaultType: .bip84)
+    }
+
+    private static func mnemonicBIP49Address(wallet: HDWallet) -> String? {
+        let privateKey = wallet.getKey(coin: .bitcoin, derivationPath: "m/49'/0'/0'/0/0")
+        let publicKey = privateKey.getPublicKeySecp256k1(compressed: true)
+        return BitcoinAddress.compatibleAddress(
+            publicKey: publicKey,
+            prefix: CoinType.bitcoin.p2shPrefix
+        ).description.nonEmpty
+    }
+
+    private static func extendedPrivateKeyAddress(_ raw: String) -> BitcoinReceiveAddressResolution? {
+        guard let payload = WalletCore.Base58.decode(string: raw),
+              payload.count == 78 else {
+            return nil
+        }
+        let version = payload.apertureReceiveBitcoinUInt32BE(at: 0)
+        let publicVersion: UInt32
+        let type: BitcoinReceiveAddressType
+        switch version {
+        case 0x0488_ADE4:
+            publicVersion = 0x0488_B21E
+            type = .bip44
+        case 0x049D_7878, 0x04B2_430C:
+            // User direction: yprv and zprv default to BIP49 on Receive.
+            publicVersion = 0x049D_7CB2
+            type = .bip49
+        default:
+            return nil
+        }
+
+        let privateKeyPayload = payload.subdata(in: 45..<78)
+        guard privateKeyPayload.count == 33,
+              privateKeyPayload.first == 0,
+              let privateKey = PrivateKey(data: Data(privateKeyPayload.dropFirst())) else {
+            return nil
+        }
+        let publicKey = privateKey.getPublicKeySecp256k1(compressed: true).data
+        guard publicKey.count == 33 else { return nil }
+
+        var publicPayload = Data()
+        publicPayload.append(publicVersion.apertureReceiveBitcoinBigEndianData)
+        publicPayload.append(payload.subdata(in: 4..<45))
+        publicPayload.append(publicKey)
+
+        let publicExtendedKey = WalletCore.Base58.encode(data: publicPayload)
+        let purpose: Purpose = type == .bip44 ? .bip44 : .bip49
+        let path = DerivationPath(
+            purpose: purpose,
+            coin: CoinType.bitcoin.slip44Id,
+            account: 0,
+            change: 0,
+            address: 0
+        ).description
+        guard let childPublicKey = HDWallet.getPublicKeyFromExtended(
+            extended: publicExtendedKey,
+            coin: .bitcoin,
+            derivationPath: path
+        ) else {
+            return nil
+        }
+
+        let address: String?
+        switch type {
+        case .bip44:
+            address = BitcoinAddress(
+                publicKey: childPublicKey,
+                prefix: CoinType.bitcoin.p2pkhPrefix
+            )?.description
+        case .bip49:
+            address = BitcoinAddress.compatibleAddress(
+                publicKey: childPublicKey,
+                prefix: CoinType.bitcoin.p2shPrefix
+            ).description
+        case .bip84, .bip86:
+            address = nil
+        }
+        guard let address = address?.nonEmpty else { return nil }
+        return BitcoinReceiveAddressResolution(
+            choices: [BitcoinReceiveAddressChoice(type: type, address: address)],
+            defaultType: type
+        )
+    }
+
+    private static func decodeBitcoinPrivateKey(_ raw: String) -> (keyData: Data, isUncompressedWIF: Bool)? {
+        let hex = raw.hasPrefix("0x") || raw.hasPrefix("0X") ? String(raw.dropFirst(2)) : raw
+        if hex.count == 64,
+           hex.allSatisfy(\.isHexDigit),
+           let data = Data(apertureReceiveBitcoinHex: hex),
+           PrivateKey.isValid(data: data, curve: CoinType.bitcoin.curve) {
+            return (data, false)
+        }
+
+        guard let payload = WalletCore.Base58.decode(string: raw) else { return nil }
+        let isUncompressed = payload.count == 33
+        let isCompressed = payload.count == 34 && payload.last == 0x01
+        guard payload.first == 0x80, isUncompressed || isCompressed else { return nil }
+        let keyData = Data(payload.dropFirst().prefix(32))
+        guard PrivateKey.isValid(data: keyData, curve: CoinType.bitcoin.curve) else { return nil }
+        return (keyData, isUncompressed)
+    }
+
+    private static func bip84Address(privateKey: PrivateKey) -> String? {
+        let publicKey = privateKey.getPublicKeySecp256k1(compressed: true)
+        return CoinType.bitcoin.deriveAddressFromPublicKey(publicKey: publicKey).nonEmpty
+    }
+
+    private static func bip49Address(privateKey: PrivateKey) -> String? {
+        let publicKey = privateKey.getPublicKeySecp256k1(compressed: true)
+        return BitcoinAddress.compatibleAddress(
+            publicKey: publicKey,
+            prefix: CoinType.bitcoin.p2shPrefix
+        ).description.nonEmpty
+    }
+
+    private static func p2pkhAddress(privateKey: PrivateKey, compressed: Bool) -> String? {
+        let publicKey = privateKey.getPublicKeySecp256k1(compressed: compressed)
+        return BitcoinAddress(publicKey: publicKey, prefix: CoinType.bitcoin.p2pkhPrefix)?.description.nonEmpty
+    }
+
+    private static func inferType(address: String) -> BitcoinReceiveAddressType {
+        let lower = address.lowercased()
+        if lower.hasPrefix("bc1p") { return .bip86 }
+        if lower.hasPrefix("bc1q") { return .bip84 }
+        if lower.hasPrefix("3") { return .bip49 }
+        return .bip44
+    }
+}
+
+private extension String {
+    var nonEmpty: String? {
+        isEmpty ? nil : self
+    }
+}
+
+private extension Data {
+    init?(apertureReceiveBitcoinHex hex: String) {
+        guard hex.count % 2 == 0 else { return nil }
+        var bytes = Data()
+        bytes.reserveCapacity(hex.count / 2)
+        var index = hex.startIndex
+        while index < hex.endIndex {
+            let next = hex.index(index, offsetBy: 2)
+            guard let byte = UInt8(hex[index..<next], radix: 16) else { return nil }
+            bytes.append(byte)
+            index = next
+        }
+        self = bytes
+    }
+
+    func apertureReceiveBitcoinUInt32BE(at offset: Int) -> UInt32 {
+        UInt32(self[offset]) << 24
+            | UInt32(self[offset + 1]) << 16
+            | UInt32(self[offset + 2]) << 8
+            | UInt32(self[offset + 3])
+    }
+}
+
+private extension UInt32 {
+    var apertureReceiveBitcoinBigEndianData: Data {
+        Data([
+            UInt8((self >> 24) & 0xFF),
+            UInt8((self >> 16) & 0xFF),
+            UInt8((self >> 8) & 0xFF),
+            UInt8(self & 0xFF)
+        ])
     }
 }
