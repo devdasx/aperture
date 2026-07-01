@@ -383,7 +383,6 @@ struct PinCodeView: View {
     private var canFocusNativeKeyboard: Bool {
         keyboardFocusAllowed
             && !isCompleting
-            && !isVerifyingPin
             && !isBiometricPromptActive
             && !isLockedOut
             && canRequestNativeKeyboardFocus
