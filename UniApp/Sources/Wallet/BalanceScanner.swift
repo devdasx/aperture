@@ -1019,15 +1019,21 @@ private actor PolkadotBalanceHistoryScanner {
             )
             : [:]
         async let accountTask = account(address: address.address)
+        async let assetHubNativeTask = safeAssetHubNativeAccount(address: address.address)
         async let assetHubTask = safeAssetHubBalances(address: address.address, assets: assetTokens)
         async let historyTask: [PolkadotHistoryEvent] = includeHistory
             ? safeHistory(address: address.address)
             : []
 
         let account = try await accountTask
+        let assetHubNative = await assetHubNativeTask
         let assetHubBalances = await assetHubTask
         let priceMap = await pricesTask
         let events = await historyTask
+        let nativeTotalPlancks = PolkadotCodec.addDecimalStrings(
+            account.totalPlancks,
+            assetHubNative.totalPlancks
+        )
 
         let txRepo = TransactionRepository(modelContainer: modelContainer)
         try await txRepo.upsertBalance(
@@ -1035,9 +1041,9 @@ private actor PolkadotBalanceHistoryScanner {
             tokenSymbol: SupportedChain.polkadot.ticker,
             tokenContract: nil,
             decimals: SupportedChain.polkadot.nativeDecimals,
-            rawBalance: account.totalPlancks,
+            rawBalance: nativeTotalPlancks,
             fiatValueCached: fiatValue(
-                rawBalance: account.totalPlancks,
+                rawBalance: nativeTotalPlancks,
                 decimals: SupportedChain.polkadot.nativeDecimals,
                 symbol: SupportedChain.polkadot.ticker,
                 prices: priceMap
@@ -1047,7 +1053,8 @@ private actor PolkadotBalanceHistoryScanner {
         )
 
         var isUsed = account.accountExists
-            || EVMHexQuantity.isPositiveDecimalString(account.totalPlancks)
+            || assetHubNative.accountExists
+            || EVMHexQuantity.isPositiveDecimalString(nativeTotalPlancks)
             || !events.isEmpty
         for balance in assetHubBalances {
             if EVMHexQuantity.isPositiveDecimalString(balance.rawBalance) {
@@ -1143,6 +1150,15 @@ private actor PolkadotBalanceHistoryScanner {
         }
     }
 
+    private func safeAssetHubNativeAccount(address: String) async -> PolkadotAccountState {
+        do {
+            return try await assetHub.nativeAccount(address: address)
+        } catch {
+            log.debug("Polkadot Asset Hub native DOT failed: \(String(describing: error), privacy: .public)")
+            return .zero(accountExists: false)
+        }
+    }
+
     private func fiatValue(
         rawBalance: String,
         decimals: Int,
@@ -1159,7 +1175,11 @@ private actor PolkadotBalanceHistoryScanner {
 }
 
 private actor PolkadotAssetHubBalanceClient {
-    private let endpoint = URL(string: "https://polkadot-asset-hub-rpc.polkadot.io")!
+    private let endpoints = [
+        URL(string: "https://polkadot-asset-hub-rpc.polkadot.io")!,
+        URL(string: "https://statemint.api.onfinality.io/public")!,
+        URL(string: "https://asset-hub-polkadot-rpc.n.dwellir.com")!,
+    ]
     private let session: URLSession
     private var requestID = 0
 
@@ -1174,6 +1194,22 @@ private actor PolkadotAssetHubBalanceClient {
             configuration.httpMaximumConnectionsPerHost = 6
             self.session = URLSession(configuration: configuration)
         }
+    }
+
+    func nativeAccount(address: String) async throws -> PolkadotAccountState {
+        guard let accountId = SS58.decodeAccountId(address) else {
+            throw PolkadotBalanceHistoryError.invalidAddress(address)
+        }
+        let storageKey = PolkadotCodec.systemAccountStorageKey(accountId: accountId)
+        guard let storage = try await stateGetStorage(
+            storageKey,
+            operation: "Polkadot Asset Hub native DOT state_getStorage"
+        ) else {
+            return .zero(accountExists: false)
+        }
+        var decoded = try PolkadotCodec.decodeAccountInfo(hex: storage)
+        decoded.accountExists = true
+        return decoded
     }
 
     func balances(
@@ -1206,7 +1242,10 @@ private actor PolkadotAssetHubBalanceClient {
         asset: PolkadotAssetRegistry.Entry
     ) async throws -> String {
         let storageKey = assetAccountStorageKey(assetId: asset.assetId, accountId: accountId)
-        guard let storage = try await stateGetStorage(storageKey) else { return "0" }
+        guard let storage = try await stateGetStorage(
+            storageKey,
+            operation: "Polkadot Asset Hub \(asset.symbol) state_getStorage"
+        ) else { return "0" }
         let bytes = try hexBytes(storage)
         guard bytes.count >= 16 else {
             throw PolkadotBalanceHistoryError.malformed("Asset Hub account storage too short: \(bytes.count) bytes")
@@ -1232,36 +1271,48 @@ private actor PolkadotAssetHubBalanceClient {
         return "0x" + bytes.map { String(format: "%02x", $0) }.joined()
     }
 
-    private func stateGetStorage(_ key: String) async throws -> String? {
-        requestID += 1
-        let body: [String: Any] = [
-            "jsonrpc": "2.0",
-            "id": requestID,
-            "method": "state_getStorage",
-            "params": [key],
-        ]
-        var request = URLRequest(url: endpoint)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue("application/json", forHTTPHeaderField: "Accept")
-        request.setValue("Aperture/1.0", forHTTPHeaderField: "User-Agent")
-        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+    private func stateGetStorage(_ key: String, operation: String) async throws -> String? {
+        var lastError: Error?
+        for endpoint in endpoints {
+            do {
+                requestID += 1
+                let body: [String: Any] = [
+                    "jsonrpc": "2.0",
+                    "id": requestID,
+                    "method": "state_getStorage",
+                    "params": [key],
+                ]
+                var request = URLRequest(url: endpoint)
+                request.httpMethod = "POST"
+                request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                request.setValue("application/json", forHTTPHeaderField: "Accept")
+                request.setValue("Aperture/1.0", forHTTPHeaderField: "User-Agent")
+                request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
-        let (data, response) = try await session.apertureData(
-            for: request,
-            family: "balances",
-            operation: "Polkadot Asset Hub state_getStorage",
-            metadata: ["chain": "polkadot", "source": "PolkadotAssetHubBalanceClient"]
-        )
-        if let http = response as? HTTPURLResponse,
-           !(200..<300).contains(http.statusCode) {
-            throw PolkadotBalanceHistoryError.http(http.statusCode)
+                let (data, response) = try await session.apertureData(
+                    for: request,
+                    family: "balances",
+                    operation: operation,
+                    metadata: [
+                        "chain": "polkadot",
+                        "source": "PolkadotAssetHubBalanceClient",
+                        "endpoint": endpoint.host ?? endpoint.absoluteString
+                    ]
+                )
+                if let http = response as? HTTPURLResponse,
+                   !(200..<300).contains(http.statusCode) {
+                    throw PolkadotBalanceHistoryError.http(http.statusCode)
+                }
+                let decoded = try JSONDecoder().decode(PolkadotRPCStorageResponse.self, from: data)
+                if let error = decoded.error {
+                    throw PolkadotBalanceHistoryError.malformed(error.message)
+                }
+                return decoded.result
+            } catch {
+                lastError = error
+            }
         }
-        let decoded = try JSONDecoder().decode(PolkadotRPCStorageResponse.self, from: data)
-        if let error = decoded.error {
-            throw PolkadotBalanceHistoryError.malformed(error.message)
-        }
-        return decoded.result
+        throw lastError ?? PolkadotBalanceHistoryError.noEndpoint
     }
 
     private func hexBytes(_ hex: String) throws -> [UInt8] {
