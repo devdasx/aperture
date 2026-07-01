@@ -614,8 +614,8 @@ private struct KeyRevealScreen: View {
 /// mark for a recovery phrase (2026-06-19 user direction). The mark is a
 /// view overlay (the same recipe `ReceiveQRCard` uses); the QR is rendered
 /// at error-correction level "H" so the centred plate never defeats a scan.
-/// The image saved to Photos is the plain (logo-free) QR — maximally
-/// scannable — which is the standard for transferable key/phrase QRs.
+/// The image saved to Photos is the same branded QR the user sees, so a
+/// saved/shareable key QR keeps the coin/app mark in the middle.
 private struct ExportQRSheet<Center: View>: View {
     let navTitle: String
     let caption: LocalizedStringKey
@@ -709,8 +709,24 @@ private struct ExportQRSheet<Center: View>: View {
         guard let qr else { return }
         #if canImport(UIKit)
         let saver = PhotoSaver { ok in saveResult = ok ? .success : .failure }
-        saver.save(qr)
+        saver.save(brandedImageForSaving() ?? qr)
         #endif
+    }
+
+    private func brandedImageForSaving() -> UIImage? {
+        guard let qr else { return nil }
+        let content = Image(uiImage: qr)
+            .resizable()
+            .interpolation(.none)
+            .scaledToFit()
+            .overlay(alignment: .center) { centreMark }
+            .frame(width: 240, height: 240)
+            .padding(UniSpacing.m)
+            .background(Color.white)
+
+        let renderer = ImageRenderer(content: content)
+        renderer.scale = displayScale
+        return renderer.uiImage
     }
 }
 

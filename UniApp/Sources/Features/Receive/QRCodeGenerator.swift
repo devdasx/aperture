@@ -83,4 +83,118 @@ final class QRCodeGenerator {
         insertionOrder.append(payload)
         return image
     }
+
+    /// Render a share/save-ready QR image with the same centred coin mark
+    /// the receive screen shows. The raw QR remains cached separately so
+    /// the on-screen card stays cheap to rebuild.
+    func brandedImage(
+        for payload: String,
+        chain: SupportedChain,
+        tokenSymbol: String? = nil,
+        scale: CGFloat = 16,
+        displayScale: CGFloat = 3
+    ) async -> UIImage? {
+        guard let qr = await image(for: payload, scale: scale, displayScale: displayScale) else {
+            return nil
+        }
+        return Self.composeBrandedQRCode(
+            qr: qr,
+            chain: chain,
+            symbol: tokenSymbol ?? chain.ticker,
+            displayScale: displayScale
+        )
+    }
+
+    static func composeBrandedQRCode(
+        qr: UIImage,
+        chain: SupportedChain,
+        symbol: String,
+        displayScale: CGFloat = 3
+    ) -> UIImage {
+        let side = max(qr.size.width, qr.size.height)
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = displayScale
+        format.opaque = true
+
+        return UIGraphicsImageRenderer(size: CGSize(width: side, height: side), format: format).image { context in
+            UIColor.white.setFill()
+            context.fill(CGRect(x: 0, y: 0, width: side, height: side))
+
+            let qrRect = CGRect(
+                x: (side - qr.size.width) / 2,
+                y: (side - qr.size.height) / 2,
+                width: qr.size.width,
+                height: qr.size.height
+            )
+            qr.draw(in: qrRect)
+
+            let plateSide = side * 0.18
+            let logoSide = plateSide * 0.74
+            let plateRect = CGRect(
+                x: (side - plateSide) / 2,
+                y: (side - plateSide) / 2,
+                width: plateSide,
+                height: plateSide
+            )
+            let logoRect = CGRect(
+                x: (side - logoSide) / 2,
+                y: (side - logoSide) / 2,
+                width: logoSide,
+                height: logoSide
+            )
+
+            let platePath = UIBezierPath(roundedRect: plateRect, cornerRadius: plateSide * 0.22)
+            UIColor.white.setFill()
+            platePath.fill()
+
+            if let logo = logoImage(chain: chain, symbol: symbol) {
+                context.cgContext.saveGState()
+                UIBezierPath(ovalIn: logoRect).addClip()
+                logo.draw(in: logoRect)
+                context.cgContext.restoreGState()
+            } else {
+                let color = UIColor(AssetLogoSource.brandColor(symbol: symbol, chain: chain))
+                color.setFill()
+                UIBezierPath(ovalIn: logoRect).fill()
+
+                let initials = String(symbol.trimmingCharacters(in: .whitespacesAndNewlines).prefix(3)).uppercased()
+                let attributes: [NSAttributedString.Key: Any] = [
+                    .font: UIFont.systemFont(ofSize: logoSide * 0.34, weight: .bold),
+                    .foregroundColor: UIColor.white
+                ]
+                let text = initials.isEmpty ? "-" : initials
+                let textSize = text.size(withAttributes: attributes)
+                text.draw(
+                    at: CGPoint(
+                        x: logoRect.midX - textSize.width / 2,
+                        y: logoRect.midY - textSize.height / 2
+                    ),
+                    withAttributes: attributes
+                )
+            }
+        }
+    }
+
+    private static func logoImage(chain: SupportedChain, symbol: String) -> UIImage? {
+        if let networkName = chain.logoAssetName, let image = UIImage(named: networkName) {
+            return image
+        }
+        if let stablecoin = AssetLogoSource.stablecoinAssetName(symbol: symbol),
+           let image = UIImage(named: stablecoin) {
+            return image
+        }
+        if let nativeName = AssetLogoSource.nativeTokenAssetName(symbol: symbol),
+           let image = UIImage(named: nativeName) {
+            return image
+        }
+        if let url = AssetLogoSource.stablecoinLogoURL(symbol: symbol),
+           let image = AssetLogoDiskCache.shared.image(for: url) {
+            return image
+        }
+        if let url = AssetLogoSource.networkLogoURL(chain: chain),
+           let image = AssetLogoDiskCache.shared.image(for: url) {
+            return image
+        }
+        return nil
+    }
 }
