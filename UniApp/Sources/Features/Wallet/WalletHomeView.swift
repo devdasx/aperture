@@ -932,8 +932,8 @@ struct WalletHomeView: View {
     ///   section renders below.
     /// - `.combined` — one unified section with every coin AND every
     ///   token mixed, sorted by the user's chosen key + direction.
-    ///   The segmented switcher disappears and only the filter
-    ///   affordance stays in the holdings control row.
+    ///   The segmented switcher remains visible but disabled, making
+    ///   clear that Combined owns the asset-type presentation.
     @ViewBuilder
     private var holdingsBody: some View {
         if showsNetworkErrorState {
@@ -1104,16 +1104,14 @@ struct WalletHomeView: View {
     }
 
     /// The Coins/Tokens segment paired with the Filter & Sort control.
-    /// In `.split` mode the segment leads and the
-    /// filter trails; in `.combined` mode there's no segment, so the
-    /// filter sits alone, trailing-aligned, and stays reachable.
+    /// The segment stays mounted in both Split and Combined modes so the
+    /// holdings card never changes shape; Combined disables it because
+    /// that mode intentionally shows coins and tokens together.
     private var holdingsChromeRow: some View {
         HStack(spacing: UniSpacing.s) {
-            if filterViewMode == .split {
-                holdingsTabPicker
-            } else {
-                Spacer(minLength: 0)
-            }
+            holdingsTabPicker
+                .disabled(filterViewMode == .combined)
+                .opacity(filterViewMode == .combined ? 0.46 : 1)
             filterButton
         }
     }
@@ -1364,8 +1362,8 @@ struct WalletHomeView: View {
     /// **Combined holdings section** — every coin + every token in
     /// one unified, filter-sorted list. Renders only when the
     /// Filter & Sort sheet's "Style" is `.combined`. The Coins /
-    /// Tokens segmented switcher disappears from the holdings control
-    /// row because the picker would be a no-op in this mode.
+    /// Tokens segmented switcher stays visible in the holdings control
+    /// row, but is disabled because the picker would be a no-op in this mode.
     ///
     /// **Why one ForEach and not two stacked Sections.** The whole
     /// point of `.combined` is "one portfolio, sorted by my chosen
