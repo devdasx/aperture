@@ -15,7 +15,7 @@ struct DatabaseExplorerView: View {
             Section {
                 DatabaseSummaryCard(
                     totalRecords: totalRecords,
-                    tableCount: DatabaseTable.allCases.count,
+                    tableCount: DatabaseTable.visibleTables.count,
                     encryptedBlobCount: encryptedBlobCount
                 )
                 .listRowInsets(EdgeInsets())
@@ -47,7 +47,7 @@ struct DatabaseExplorerView: View {
 
             ForEach(DatabaseCategory.allCases) { category in
                 Section(category.title) {
-                    ForEach(DatabaseTable.allCases.filter { $0.category == category }) { table in
+                    ForEach(DatabaseTable.visibleTables.filter { $0.category == category }) { table in
                         NavigationLink {
                             DatabaseTableView(table: table)
                         } label: {
@@ -64,7 +64,7 @@ struct DatabaseExplorerView: View {
             }
 
             Section {
-                Text("Private phrases and private keys are never shown here. Secret rows expose only encrypted blob metadata so you can inspect storage without leaking signing material.")
+                Text("Wallet-owned secrets, addresses, chain state, and UTXOs are grouped under each wallet. Plaintext secrets are shown only after passcode or Face ID verification.")
                     .font(UniTypography.footnote)
                     .foregroundStyle(UniColors.Text.tertiary)
                     .padding(.vertical, UniSpacing.xs)
@@ -303,12 +303,21 @@ private struct DatabaseTableView: View {
             } else {
                 Section {
                     ForEach(filteredRecords) { record in
-                        NavigationLink {
-                            DatabaseRecordDetailView(record: record)
-                        } label: {
-                            DatabaseRecordRow(record: record)
+                        if table == .wallets, let walletId = record.walletId {
+                            NavigationLink {
+                                DatabaseWalletDetailView(walletId: walletId)
+                            } label: {
+                                DatabaseRecordRow(record: record)
+                            }
+                            .listRowBackground(UniColors.List.rowBackground)
+                        } else {
+                            NavigationLink {
+                                DatabaseRecordDetailView(record: record)
+                            } label: {
+                                DatabaseRecordRow(record: record)
+                            }
+                            .listRowBackground(UniColors.List.rowBackground)
                         }
-                        .listRowBackground(UniColors.List.rowBackground)
                     }
                 }
             }
@@ -499,6 +508,348 @@ private struct DatabaseRecordDetailView: View {
         .background(UniColors.Background.primary)
         .navigationTitle(Text(record.table.title))
         .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+private struct DatabaseWalletDetailView: View {
+    let walletId: UUID
+
+    @Environment(\.modelContext) private var modelContext
+    @State private var wallet: WalletRecord?
+    @State private var secrets: [WalletSecretRecord] = []
+    @State private var addresses: [WalletAddressRecord] = []
+    @State private var chainStates: [ChainStateRecord] = []
+    @State private var utxos: [ChainUTXORecord] = []
+    @State private var revealedSecrets: [String: String] = [:]
+    @State private var isLoading = true
+    @State private var isShowingPinGate = false
+    @State private var revealError: String?
+    @State private var loadError: String?
+
+    var body: some View {
+        List {
+            if let wallet {
+                Section {
+                    DatabaseWalletBundleCard(
+                        wallet: wallet,
+                        secretCount: secrets.count,
+                        addressCount: addresses.count,
+                        chainStateCount: chainStates.count,
+                        utxoCount: utxos.count
+                    )
+                    .listRowInsets(EdgeInsets())
+                    .listRowBackground(Color.clear)
+                }
+            }
+
+            if isLoading {
+                Section {
+                    HStack(spacing: UniSpacing.s) {
+                        ProgressView()
+                        Text("Loading wallet database")
+                            .font(UniTypography.body)
+                            .foregroundStyle(UniColors.Text.secondary)
+                    }
+                    .padding(.vertical, UniSpacing.xs)
+                }
+                .listRowBackground(UniColors.List.rowBackground)
+            } else if let loadError {
+                Section {
+                    ContentUnavailableView {
+                        Label("Couldn’t load wallet", systemImage: "exclamationmark.triangle")
+                    } description: {
+                        Text(loadError)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, UniSpacing.xl)
+                }
+                .listRowBackground(UniColors.List.rowBackground)
+            } else {
+                secretsSection
+                childRecordsSection(
+                    title: "Addresses",
+                    emptyTitle: "No addresses",
+                    emptySubtitle: "This wallet has no persisted address rows.",
+                    records: addresses
+                        .sorted { ($0.chainRaw, $0.address) < ($1.chainRaw, $1.address) }
+                        .map(DatabaseExplorerView.snapshot(address:))
+                )
+                childRecordsSection(
+                    title: "Chain State",
+                    emptyTitle: "No chain state",
+                    emptySubtitle: "No per-chain aggregate rows are stored for this wallet yet.",
+                    records: chainStates
+                        .sorted { $0.chainRaw < $1.chainRaw }
+                        .map(DatabaseExplorerView.snapshot(chainState:))
+                )
+                childRecordsSection(
+                    title: "UTXOs",
+                    emptyTitle: "No UTXOs",
+                    emptySubtitle: "This wallet has no persisted unspent outputs.",
+                    records: utxos
+                        .sorted { ($0.chainRaw, $0.txid, $0.vout) < ($1.chainRaw, $1.txid, $1.vout) }
+                        .map(DatabaseExplorerView.snapshot(utxo:))
+                )
+            }
+        }
+        .listStyle(.insetGrouped)
+        .scrollContentBackground(.hidden)
+        .background(UniColors.Background.primary)
+        .navigationTitle(Text(wallet?.name ?? "Wallet"))
+        .navigationBarTitleDisplayMode(.inline)
+        .task(id: walletId) { loadWalletBundle() }
+        .fullScreenCover(isPresented: $isShowingPinGate) {
+            NavigationStack {
+                PinCodeView(
+                    mode: .verify,
+                    onComplete: { _ in
+                        isShowingPinGate = false
+                        revealWalletSecrets()
+                    },
+                    onCancel: {
+                        isShowingPinGate = false
+                    },
+                    onForgotPin: {
+                        isShowingPinGate = false
+                    },
+                    allowsBiometrics: true
+                )
+            }
+            .background(UniColors.Background.primary.ignoresSafeArea())
+            .uniAppEnvironment()
+        }
+    }
+
+    private var secretsSection: some View {
+        Section {
+            if secrets.isEmpty {
+                ContentUnavailableView {
+                    Label("No wallet secrets", systemImage: "key.slash")
+                } description: {
+                    Text("This wallet has no encrypted mnemonic or imported private-key row.")
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, UniSpacing.xl)
+            } else {
+                Button {
+                    beginSecretReveal()
+                } label: {
+                    HStack(spacing: UniSpacing.s) {
+                        Image(systemName: revealedSecrets.isEmpty ? "lock.open" : "lock")
+                            .font(.system(size: 18, weight: .semibold))
+                            .foregroundStyle(UniColors.Tint.indigo)
+                            .frame(width: 30, height: 30)
+                            .background(UniColors.Tint.indigo.opacity(0.14), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+                        VStack(alignment: .leading, spacing: UniSpacing.xxs) {
+                            Text(revealedSecrets.isEmpty ? "Unlock wallet secrets" : "Lock wallet secrets")
+                                .font(UniTypography.bodyEmphasized)
+                                .foregroundStyle(UniColors.Text.primary)
+                            Text(revealedSecrets.isEmpty ? "Verify passcode or Face ID to reveal plaintext on this screen." : "Hide plaintext secret values again.")
+                                .font(UniTypography.footnote)
+                                .foregroundStyle(UniColors.Text.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                    .padding(.vertical, UniSpacing.xxs)
+                }
+
+                if let revealError {
+                    Label(revealError, systemImage: "exclamationmark.triangle")
+                        .font(UniTypography.footnote)
+                        .foregroundStyle(UniColors.Tint.orange)
+                        .padding(.vertical, UniSpacing.xxs)
+                }
+
+                ForEach(secrets.sorted { $0.kindRaw < $1.kindRaw }, id: \.key) { secret in
+                    DatabaseSecretBundleRow(
+                        record: DatabaseExplorerView.snapshot(secret: secret),
+                        revealedValue: revealedSecrets[secret.key]
+                    )
+                }
+            }
+        } header: {
+            Text("Wallet Secrets")
+        } footer: {
+            Text("Plaintext is never stored in the inspector. Unlocking decrypts the local encrypted SwiftData row for this session only.")
+        }
+        .listRowBackground(UniColors.List.rowBackground)
+    }
+
+    @ViewBuilder
+    private func childRecordsSection(
+        title: LocalizedStringKey,
+        emptyTitle: LocalizedStringKey,
+        emptySubtitle: LocalizedStringKey,
+        records: [DatabaseRecordSnapshot]
+    ) -> some View {
+        Section(title) {
+            if records.isEmpty {
+                ContentUnavailableView {
+                    Label(emptyTitle, systemImage: "tray")
+                } description: {
+                    Text(emptySubtitle)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, UniSpacing.xl)
+            } else {
+                ForEach(records) { record in
+                    NavigationLink {
+                        DatabaseRecordDetailView(record: record)
+                    } label: {
+                        DatabaseRecordRow(record: record)
+                    }
+                }
+            }
+        }
+        .listRowBackground(UniColors.List.rowBackground)
+    }
+
+    @MainActor
+    private func loadWalletBundle() {
+        isLoading = true
+        loadError = nil
+        revealedSecrets = [:]
+        revealError = nil
+
+        do {
+            let ownerId = walletId
+            let optionalOwnerId = Optional(walletId)
+            var walletDescriptor = FetchDescriptor<WalletRecord>(
+                predicate: #Predicate { $0.id == ownerId }
+            )
+            walletDescriptor.fetchLimit = 1
+            wallet = try modelContext.fetch(walletDescriptor).first
+            secrets = try modelContext.fetch(
+                FetchDescriptor<WalletSecretRecord>(
+                    predicate: #Predicate { $0.walletId == ownerId }
+                )
+            )
+            addresses = try modelContext.fetch(
+                FetchDescriptor<WalletAddressRecord>(
+                    predicate: #Predicate { $0.walletId == optionalOwnerId }
+                )
+            )
+            chainStates = try modelContext.fetch(
+                FetchDescriptor<ChainStateRecord>(
+                    predicate: #Predicate { $0.walletId == ownerId }
+                )
+            )
+            utxos = try modelContext.fetch(
+                FetchDescriptor<ChainUTXORecord>(
+                    predicate: #Predicate { $0.walletId == ownerId }
+                )
+            )
+        } catch {
+            loadError = error.localizedDescription
+        }
+
+        isLoading = false
+    }
+
+    private func beginSecretReveal() {
+        revealError = nil
+        if !revealedSecrets.isEmpty {
+            revealedSecrets = [:]
+            return
+        }
+        guard PinCodeStorage.hasPin else {
+            revealError = "Turn on Aperture passcode before revealing plaintext secrets."
+            return
+        }
+        isShowingPinGate = true
+    }
+
+    @MainActor
+    private func revealWalletSecrets() {
+        var unlocked: [String: String] = [:]
+        do {
+            for secret in secrets {
+                guard let kind = WalletSecretKind(rawValue: secret.kindRaw) else { continue }
+                switch kind {
+                case .mnemonic:
+                    let words = try WalletSecretPersistence.loadMnemonic(for: secret.walletId, in: modelContext) ?? []
+                    if !words.isEmpty {
+                        unlocked[secret.key] = words.joined(separator: " ")
+                    }
+                case .privateKey:
+                    if let key = try WalletSecretPersistence.loadPrivateKey(for: secret.walletId, in: modelContext),
+                       !key.isEmpty {
+                        unlocked[secret.key] = key
+                    }
+                }
+            }
+            revealedSecrets = unlocked
+            revealError = unlocked.isEmpty ? "No decryptable wallet secrets were found." : nil
+        } catch {
+            revealedSecrets = [:]
+            revealError = "Couldn’t decrypt wallet secrets on this device."
+        }
+    }
+}
+
+private struct DatabaseWalletBundleCard: View {
+    let wallet: WalletRecord
+    let secretCount: Int
+    let addressCount: Int
+    let chainStateCount: Int
+    let utxoCount: Int
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: UniSpacing.m) {
+            HStack(alignment: .top, spacing: UniSpacing.s) {
+                DatabaseIconTile(systemImage: "wallet.pass", tint: UniColors.Tint.indigo, size: 48)
+                VStack(alignment: .leading, spacing: UniSpacing.xxs) {
+                    Text(verbatim: wallet.name)
+                        .font(UniTypography.title3)
+                        .foregroundStyle(UniColors.Text.primary)
+                    Text(verbatim: wallet.id.uuidString)
+                        .font(UniTypography.footnote)
+                        .foregroundStyle(UniColors.Text.secondary)
+                        .textSelection(.enabled)
+                    Text(verbatim: wallet.kindRaw)
+                        .font(UniTypography.caption1)
+                        .foregroundStyle(UniColors.Text.tertiary)
+                }
+            }
+
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: UniSpacing.s), count: 2), spacing: UniSpacing.s) {
+                DatabaseMetricTile(title: "Secrets", value: "\(secretCount)")
+                DatabaseMetricTile(title: "Addresses", value: "\(addressCount)")
+                DatabaseMetricTile(title: "Chains", value: "\(chainStateCount)")
+                DatabaseMetricTile(title: "UTXOs", value: "\(utxoCount)")
+            }
+        }
+        .padding(UniSpacing.m)
+        .background(UniColors.Card.background, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+    }
+}
+
+private struct DatabaseSecretBundleRow: View {
+    let record: DatabaseRecordSnapshot
+    let revealedValue: String?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: UniSpacing.s) {
+            DatabaseRecordRow(record: record)
+
+            if let revealedValue {
+                VStack(alignment: .leading, spacing: UniSpacing.xxs) {
+                    Text("Plaintext")
+                        .font(UniTypography.caption1)
+                        .foregroundStyle(UniColors.Text.tertiary)
+                        .textCase(.uppercase)
+                    Text(verbatim: revealedValue)
+                        .font(.system(.body, design: .monospaced))
+                        .foregroundStyle(UniColors.Text.primary)
+                        .textSelection(.enabled)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(UniSpacing.s)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(UniColors.Card.elevated, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            }
+        }
+        .padding(.vertical, UniSpacing.xxs)
     }
 }
 
@@ -723,7 +1074,20 @@ private enum DatabaseTable: String, CaseIterable, Identifiable, Hashable {
     case biometricEnrollments
     case syncStatus
 
+    static var visibleTables: [DatabaseTable] {
+        allCases.filter { !$0.isWalletOwnedChildTable }
+    }
+
     var id: String { rawValue }
+
+    private var isWalletOwnedChildTable: Bool {
+        switch self {
+        case .walletSecrets, .walletAddresses, .chainStates, .chainUTXOs:
+            true
+        default:
+            false
+        }
+    }
 
     var category: DatabaseCategory {
         switch self {
@@ -834,6 +1198,7 @@ private struct DatabaseRecordSnapshot: Identifiable, Hashable {
     let detail: String
     let badges: [String]
     let fields: [DatabaseField]
+    var walletId: UUID? = nil
 
     var searchableText: String {
         ([title, subtitle, detail] + badges + fields.flatMap { [$0.label, $0.value] })
@@ -957,7 +1322,8 @@ private extension DatabaseExplorerView {
                 .init(label: "Created at", value: DatabaseFormat.date(wallet.createdAt)),
                 .init(label: "Updated at", value: DatabaseFormat.date(wallet.updatedAt)),
                 .init(label: "Address rows", value: DatabaseFormat.integer(wallet.addresses.count))
-            ]
+            ],
+            walletId: wallet.id
         )
     }
 
