@@ -2,246 +2,252 @@ import SwiftData
 import SwiftUI
 
 struct DatabaseExplorerView: View {
-    @Query private var wallets: [WalletRecord]
-    @Query private var walletSecrets: [WalletSecretRecord]
-    @Query private var walletAddresses: [WalletAddressRecord]
-    @Query private var transactions: [TransactionRecord]
-    @Query private var tokenBalances: [TokenBalanceRecord]
-    @Query private var cachedPrices: [CachedPriceRecord]
-    @Query private var biometricEnrollments: [BiometricEnrollmentRecord]
-    @Query private var appMetadata: [AppMetadataRecord]
-    @Query private var customTokens: [CustomTokenRecord]
-    @Query private var historicalPrices: [HistoricalPriceRecord]
-    @Query private var priceSnapshots: [PriceSnapshotRecord]
-    @Query private var walletChartSnapshots: [WalletChartSnapshotRecord]
-    @Query private var syncStatus: [SyncStatusRecord]
-    @Query private var chains: [ChainRecord]
-    @Query private var assets: [AssetRecord]
-    @Query private var appSettings: [AppSettingsRecord]
-    @Query private var marketAssets: [MarketAssetRecord]
-    @Query private var marketCharts: [MarketChartCacheRecord]
-    @Query private var marketWatchlist: [MarketWatchlistRecord]
-    @Query private var chainStates: [ChainStateRecord]
-    @Query private var chainUTXOs: [ChainUTXORecord]
+    @Environment(\.modelContext) private var modelContext
+
+    @State private var summaries: [DatabaseTableOverview] = []
+    @State private var totalRecords = 0
+    @State private var encryptedBlobCount = 0
+    @State private var isLoading = true
+    @State private var loadError: String?
 
     var body: some View {
-        NavigationStack {
-            List {
-                Section {
-                    DatabaseSummaryCard(
-                        totalRecords: totalRecords,
-                        tableCount: DatabaseTable.allCases.count,
-                        encryptedBlobCount: encryptedBlobCount
-                    )
-                    .listRowInsets(EdgeInsets())
-                    .listRowBackground(Color.clear)
-                }
-
-                ForEach(DatabaseCategory.allCases) { category in
-                    Section(category.title) {
-                        ForEach(DatabaseTable.allCases.filter { $0.category == category }) { table in
-                            NavigationLink(value: table) {
-                                DatabaseTableRow(
-                                    table: table,
-                                    count: count(for: table),
-                                    lastUpdated: lastUpdated(for: table)
-                                )
-                            }
-                            .listRowBackground(UniColors.List.rowBackground)
-                        }
-                    }
-                }
-
-                Section {
-                    Text("Private phrases and private keys are never shown here. Secret rows expose only encrypted blob metadata so you can inspect storage without leaking signing material.")
-                        .font(UniTypography.footnote)
-                        .foregroundStyle(UniColors.Text.tertiary)
-                        .padding(.vertical, UniSpacing.xs)
-                }
+        List {
+            Section {
+                DatabaseSummaryCard(
+                    totalRecords: totalRecords,
+                    tableCount: DatabaseTable.allCases.count,
+                    encryptedBlobCount: encryptedBlobCount
+                )
+                .listRowInsets(EdgeInsets())
                 .listRowBackground(Color.clear)
             }
-            .listStyle(.insetGrouped)
-            .scrollContentBackground(.hidden)
-            .background(UniColors.Background.primary)
-            .navigationTitle(Text("Database"))
-            .navigationBarTitleDisplayMode(.large)
-            .navigationDestination(for: DatabaseTable.self) { table in
-                DatabaseTableView(table: table, records: records(for: table))
+
+            if isLoading {
+                Section {
+                    HStack(spacing: UniSpacing.s) {
+                        ProgressView()
+                        Text("Reading database")
+                            .font(UniTypography.body)
+                            .foregroundStyle(UniColors.Text.secondary)
+                    }
+                    .padding(.vertical, UniSpacing.xs)
+                }
+                .listRowBackground(UniColors.List.rowBackground)
             }
+
+            if let loadError {
+                Section {
+                    Label(loadError, systemImage: "exclamationmark.triangle")
+                        .font(UniTypography.body)
+                        .foregroundStyle(UniColors.Tint.orange)
+                        .padding(.vertical, UniSpacing.xs)
+                }
+                .listRowBackground(UniColors.List.rowBackground)
+            }
+
+            ForEach(DatabaseCategory.allCases) { category in
+                Section(category.title) {
+                    ForEach(DatabaseTable.allCases.filter { $0.category == category }) { table in
+                        NavigationLink(value: table) {
+                            let overview = summary(for: table)
+                            DatabaseTableRow(
+                                table: table,
+                                count: overview?.count ?? 0,
+                                lastUpdated: overview?.lastUpdated
+                            )
+                        }
+                        .listRowBackground(UniColors.List.rowBackground)
+                    }
+                }
+            }
+
+            Section {
+                Text("Private phrases and private keys are never shown here. Secret rows expose only encrypted blob metadata so you can inspect storage without leaking signing material.")
+                    .font(UniTypography.footnote)
+                    .foregroundStyle(UniColors.Text.tertiary)
+                    .padding(.vertical, UniSpacing.xs)
+            }
+            .listRowBackground(Color.clear)
+        }
+        .listStyle(.insetGrouped)
+        .scrollContentBackground(.hidden)
+        .background(UniColors.Background.primary)
+        .navigationTitle(Text("Database"))
+        .navigationBarTitleDisplayMode(.large)
+        .navigationDestination(for: DatabaseTable.self) { table in
+            DatabaseTableView(table: table)
+        }
+        .task {
+            reloadSummaries()
         }
     }
 
-    private var totalRecords: Int {
-        DatabaseTable.allCases.reduce(0) { $0 + count(for: $1) }
+    private func summary(for table: DatabaseTable) -> DatabaseTableOverview? {
+        summaries.first { $0.table == table }
     }
 
-    private var encryptedBlobCount: Int {
-        walletSecrets.count + chainStates.filter { $0.encryptedPrivateKey != nil }.count
+    @MainActor
+    private func reloadSummaries() {
+        isLoading = true
+        loadError = nil
+
+        let loaded = DatabaseTable.allCases.map { table in
+            DatabaseTableOverview(
+                table: table,
+                count: count(for: table),
+                lastUpdated: lastUpdated(for: table)
+            )
+        }
+        summaries = loaded
+        totalRecords = loaded.reduce(0) { $0 + $1.count }
+        encryptedBlobCount = count(for: .walletSecrets) + chainStatesWithEncryptedKeysCount()
+        isLoading = false
     }
 
     private func count(for table: DatabaseTable) -> Int {
-        switch table {
-        case .wallets: wallets.count
-        case .walletSecrets: walletSecrets.count
-        case .walletAddresses: walletAddresses.count
-        case .chainStates: chainStates.count
-        case .chainUTXOs: chainUTXOs.count
-        case .transactions: transactions.count
-        case .tokenBalances: tokenBalances.count
-        case .walletChartSnapshots: walletChartSnapshots.count
-        case .cachedPrices: cachedPrices.count
-        case .historicalPrices: historicalPrices.count
-        case .priceSnapshots: priceSnapshots.count
-        case .marketAssets: marketAssets.count
-        case .marketCharts: marketCharts.count
-        case .marketWatchlist: marketWatchlist.count
-        case .chains: chains.count
-        case .assets: assets.count
-        case .customTokens: customTokens.count
-        case .appSettings: appSettings.count
-        case .appMetadata: appMetadata.count
-        case .biometricEnrollments: biometricEnrollments.count
-        case .syncStatus: syncStatus.count
+        do {
+            switch table {
+            case .wallets: return try count(WalletRecord.self)
+            case .walletSecrets: return try count(WalletSecretRecord.self)
+            case .walletAddresses: return try count(WalletAddressRecord.self)
+            case .chainStates: return try count(ChainStateRecord.self)
+            case .chainUTXOs: return try count(ChainUTXORecord.self)
+            case .transactions: return try count(TransactionRecord.self)
+            case .tokenBalances: return try count(TokenBalanceRecord.self)
+            case .walletChartSnapshots: return try count(WalletChartSnapshotRecord.self)
+            case .cachedPrices: return try count(CachedPriceRecord.self)
+            case .historicalPrices: return try count(HistoricalPriceRecord.self)
+            case .priceSnapshots: return try count(PriceSnapshotRecord.self)
+            case .marketAssets: return try count(MarketAssetRecord.self)
+            case .marketCharts: return try count(MarketChartCacheRecord.self)
+            case .marketWatchlist: return try count(MarketWatchlistRecord.self)
+            case .chains: return try count(ChainRecord.self)
+            case .assets: return try count(AssetRecord.self)
+            case .customTokens: return try count(CustomTokenRecord.self)
+            case .appSettings: return try count(AppSettingsRecord.self)
+            case .appMetadata: return try count(AppMetadataRecord.self)
+            case .biometricEnrollments: return try count(BiometricEnrollmentRecord.self)
+            case .syncStatus: return try count(SyncStatusRecord.self)
+            }
+        } catch {
+            loadError = "Some database tables could not be read."
+            return 0
         }
+    }
+
+    private func count<T: PersistentModel>(_ modelType: T.Type) throws -> Int {
+        try modelContext.fetchCount(FetchDescriptor<T>())
+    }
+
+    private func chainStatesWithEncryptedKeysCount() -> Int {
+        let states = (try? modelContext.fetch(FetchDescriptor<ChainStateRecord>())) ?? []
+        return states.filter { $0.encryptedPrivateKey != nil }.count
     }
 
     private func lastUpdated(for table: DatabaseTable) -> Date? {
-        switch table {
-        case .wallets: newest(wallets.map(\.updatedAt))
-        case .walletSecrets: newest(walletSecrets.map(\.updatedAt))
-        case .walletAddresses: newest(walletAddresses.map(\.lastScannedAt))
-        case .chainStates: newest(chainStates.map(\.lastSyncedAt))
-        case .chainUTXOs: newest(chainUTXOs.map(\.updatedAt))
-        case .transactions: newest(transactions.map(\.occurredAt))
-        case .tokenBalances: newest(tokenBalances.map(\.updatedAt))
-        case .walletChartSnapshots: newest(walletChartSnapshots.map(\.capturedAt))
-        case .cachedPrices: newest(cachedPrices.map(\.fetchedAt))
-        case .historicalPrices: newest(historicalPrices.map(\.fetchedAt))
-        case .priceSnapshots: newest(priceSnapshots.map(\.fetchedAt))
-        case .marketAssets: newest(marketAssets.map(\.lastUpdatedAt))
-        case .marketCharts: newest(marketCharts.map(\.updatedAt))
-        case .marketWatchlist: newest(marketWatchlist.map(\.addedAt))
-        case .chains: nil
-        case .assets: nil
-        case .customTokens: newest(customTokens.map(\.addedAt))
-        case .appSettings: newest(appSettings.map(\.updatedAt))
-        case .appMetadata: newest(appMetadata.map(\.lastOpenedAt))
-        case .biometricEnrollments: newest(biometricEnrollments.map(\.updatedAt))
-        case .syncStatus: newest(syncStatus.map(\.updatedAt))
-        }
-    }
-
-    private func records(for table: DatabaseTable) -> [DatabaseRecordSnapshot] {
-        switch table {
-        case .wallets:
-            wallets
-                .sorted { $0.updatedAt > $1.updatedAt }
-                .map { Self.snapshot(wallet: $0) }
-        case .walletSecrets:
-            walletSecrets
-                .sorted { $0.updatedAt > $1.updatedAt }
-                .map { Self.snapshot(secret: $0) }
-        case .walletAddresses:
-            walletAddresses
-                .sorted { lhs, rhs in
-                    (lhs.chainRaw, lhs.address) < (rhs.chainRaw, rhs.address)
-                }
-                .map { Self.snapshot(address: $0) }
-        case .chainStates:
-            chainStates
-                .sorted { lhs, rhs in
-                    (lhs.walletId.uuidString, lhs.chainRaw) < (rhs.walletId.uuidString, rhs.chainRaw)
-                }
-                .map { Self.snapshot(chainState: $0) }
-        case .chainUTXOs:
-            chainUTXOs
-                .sorted { $0.updatedAt > $1.updatedAt }
-                .map { Self.snapshot(utxo: $0) }
-        case .transactions:
-            transactions
-                .sorted { $0.occurredAt > $1.occurredAt }
-                .map { Self.snapshot(transaction: $0) }
-        case .tokenBalances:
-            tokenBalances
-                .sorted { $0.updatedAt > $1.updatedAt }
-                .map { Self.snapshot(balance: $0) }
-        case .walletChartSnapshots:
-            walletChartSnapshots
-                .sorted { $0.capturedAt > $1.capturedAt }
-                .map { Self.snapshot(walletChart: $0) }
-        case .cachedPrices:
-            cachedPrices
-                .sorted { $0.fetchedAt > $1.fetchedAt }
-                .map { Self.snapshot(cachedPrice: $0) }
-        case .historicalPrices:
-            historicalPrices
-                .sorted { lhs, rhs in
-                    if lhs.dayKey == rhs.dayKey { return lhs.symbol < rhs.symbol }
-                    return lhs.dayKey > rhs.dayKey
-                }
-                .map { Self.snapshot(historicalPrice: $0) }
-        case .priceSnapshots:
-            priceSnapshots
-                .sorted { $0.fetchedAt > $1.fetchedAt }
-                .map { Self.snapshot(priceSnapshot: $0) }
-        case .marketAssets:
-            marketAssets
-                .sorted { $0.rank < $1.rank }
-                .map { Self.snapshot(marketAsset: $0) }
-        case .marketCharts:
-            marketCharts
-                .sorted { $0.updatedAt > $1.updatedAt }
-                .map { Self.snapshot(marketChart: $0) }
-        case .marketWatchlist:
-            marketWatchlist
-                .sorted { $0.addedAt > $1.addedAt }
-                .map { Self.snapshot(watchlist: $0) }
-        case .chains:
-            chains
-                .sorted { $0.sortIndex < $1.sortIndex }
-                .map { Self.snapshot(chain: $0) }
-        case .assets:
-            assets
-                .sorted { lhs, rhs in
-                    (lhs.chainRaw, lhs.symbol, lhs.contract) < (rhs.chainRaw, rhs.symbol, rhs.contract)
-                }
-                .map { Self.snapshot(asset: $0) }
-        case .customTokens:
-            customTokens
-                .sorted { $0.addedAt > $1.addedAt }
-                .map { Self.snapshot(customToken: $0) }
-        case .appSettings:
-            appSettings
-                .sorted { $0.updatedAt > $1.updatedAt }
-                .map { Self.snapshot(appSettings: $0) }
-        case .appMetadata:
-            appMetadata
-                .sorted { $0.lastOpenedAt > $1.lastOpenedAt }
-                .map { Self.snapshot(appMetadata: $0) }
-        case .biometricEnrollments:
-            biometricEnrollments
-                .sorted { $0.updatedAt > $1.updatedAt }
-                .map { Self.snapshot(biometric: $0) }
-        case .syncStatus:
-            syncStatus
-                .sorted { $0.updatedAt > $1.updatedAt }
-                .map { Self.snapshot(syncStatus: $0) }
+        do {
+            switch table {
+            case .wallets:
+                var descriptor = FetchDescriptor<WalletRecord>(sortBy: [SortDescriptor(\.updatedAt, order: .reverse)])
+                descriptor.fetchLimit = 1
+                return try modelContext.fetch(descriptor).first?.updatedAt
+            case .walletSecrets:
+                var descriptor = FetchDescriptor<WalletSecretRecord>(sortBy: [SortDescriptor(\.updatedAt, order: .reverse)])
+                descriptor.fetchLimit = 1
+                return try modelContext.fetch(descriptor).first?.updatedAt
+            case .walletAddresses:
+                return newest(try modelContext.fetch(FetchDescriptor<WalletAddressRecord>()).map(\.lastScannedAt))
+            case .chainStates:
+                return newest(try modelContext.fetch(FetchDescriptor<ChainStateRecord>()).map(\.lastSyncedAt))
+            case .chainUTXOs:
+                var descriptor = FetchDescriptor<ChainUTXORecord>(sortBy: [SortDescriptor(\.updatedAt, order: .reverse)])
+                descriptor.fetchLimit = 1
+                return try modelContext.fetch(descriptor).first?.updatedAt
+            case .transactions:
+                var descriptor = FetchDescriptor<TransactionRecord>(sortBy: [SortDescriptor(\.occurredAt, order: .reverse)])
+                descriptor.fetchLimit = 1
+                return try modelContext.fetch(descriptor).first?.occurredAt
+            case .tokenBalances:
+                var descriptor = FetchDescriptor<TokenBalanceRecord>(sortBy: [SortDescriptor(\.updatedAt, order: .reverse)])
+                descriptor.fetchLimit = 1
+                return try modelContext.fetch(descriptor).first?.updatedAt
+            case .walletChartSnapshots:
+                var descriptor = FetchDescriptor<WalletChartSnapshotRecord>(sortBy: [SortDescriptor(\.capturedAt, order: .reverse)])
+                descriptor.fetchLimit = 1
+                return try modelContext.fetch(descriptor).first?.capturedAt
+            case .cachedPrices:
+                var descriptor = FetchDescriptor<CachedPriceRecord>(sortBy: [SortDescriptor(\.fetchedAt, order: .reverse)])
+                descriptor.fetchLimit = 1
+                return try modelContext.fetch(descriptor).first?.fetchedAt
+            case .historicalPrices:
+                var descriptor = FetchDescriptor<HistoricalPriceRecord>(sortBy: [SortDescriptor(\.fetchedAt, order: .reverse)])
+                descriptor.fetchLimit = 1
+                return try modelContext.fetch(descriptor).first?.fetchedAt
+            case .priceSnapshots:
+                var descriptor = FetchDescriptor<PriceSnapshotRecord>(sortBy: [SortDescriptor(\.fetchedAt, order: .reverse)])
+                descriptor.fetchLimit = 1
+                return try modelContext.fetch(descriptor).first?.fetchedAt
+            case .marketAssets:
+                var descriptor = FetchDescriptor<MarketAssetRecord>(sortBy: [SortDescriptor(\.lastUpdatedAt, order: .reverse)])
+                descriptor.fetchLimit = 1
+                return try modelContext.fetch(descriptor).first?.lastUpdatedAt
+            case .marketCharts:
+                var descriptor = FetchDescriptor<MarketChartCacheRecord>(sortBy: [SortDescriptor(\.updatedAt, order: .reverse)])
+                descriptor.fetchLimit = 1
+                return try modelContext.fetch(descriptor).first?.updatedAt
+            case .marketWatchlist:
+                var descriptor = FetchDescriptor<MarketWatchlistRecord>(sortBy: [SortDescriptor(\.addedAt, order: .reverse)])
+                descriptor.fetchLimit = 1
+                return try modelContext.fetch(descriptor).first?.addedAt
+            case .chains, .assets:
+                return nil
+            case .customTokens:
+                var descriptor = FetchDescriptor<CustomTokenRecord>(sortBy: [SortDescriptor(\.addedAt, order: .reverse)])
+                descriptor.fetchLimit = 1
+                return try modelContext.fetch(descriptor).first?.addedAt
+            case .appSettings:
+                var descriptor = FetchDescriptor<AppSettingsRecord>(sortBy: [SortDescriptor(\.updatedAt, order: .reverse)])
+                descriptor.fetchLimit = 1
+                return try modelContext.fetch(descriptor).first?.updatedAt
+            case .appMetadata:
+                var descriptor = FetchDescriptor<AppMetadataRecord>(sortBy: [SortDescriptor(\.lastOpenedAt, order: .reverse)])
+                descriptor.fetchLimit = 1
+                return try modelContext.fetch(descriptor).first?.lastOpenedAt
+            case .biometricEnrollments:
+                var descriptor = FetchDescriptor<BiometricEnrollmentRecord>(sortBy: [SortDescriptor(\.updatedAt, order: .reverse)])
+                descriptor.fetchLimit = 1
+                return try modelContext.fetch(descriptor).first?.updatedAt
+            case .syncStatus:
+                var descriptor = FetchDescriptor<SyncStatusRecord>(sortBy: [SortDescriptor(\.updatedAt, order: .reverse)])
+                descriptor.fetchLimit = 1
+                return try modelContext.fetch(descriptor).first?.updatedAt
+            }
+        } catch {
+            loadError = "Some database metadata could not be read."
+            return nil
         }
     }
 
     private func newest(_ dates: [Date?]) -> Date? {
         dates.compactMap { $0 }.max()
     }
+}
 
-    private func newest(_ dates: [Date]) -> Date? {
-        dates.max()
-    }
+private struct DatabaseTableOverview: Identifiable, Hashable {
+    let table: DatabaseTable
+    let count: Int
+    let lastUpdated: Date?
+
+    var id: DatabaseTable { table }
 }
 
 private struct DatabaseTableView: View {
     let table: DatabaseTable
-    let records: [DatabaseRecordSnapshot]
 
+    @Environment(\.modelContext) private var modelContext
+    @State private var records: [DatabaseRecordSnapshot] = []
+    @State private var isLoading = true
+    @State private var loadError: String?
     @State private var searchText = ""
 
     private var filteredRecords: [DatabaseRecordSnapshot] {
@@ -258,7 +264,29 @@ private struct DatabaseTableView: View {
                     .listRowBackground(Color.clear)
             }
 
-            if filteredRecords.isEmpty {
+            if isLoading {
+                Section {
+                    HStack(spacing: UniSpacing.s) {
+                        ProgressView()
+                        Text("Loading rows")
+                            .font(UniTypography.body)
+                            .foregroundStyle(UniColors.Text.secondary)
+                    }
+                    .padding(.vertical, UniSpacing.xs)
+                }
+                .listRowBackground(UniColors.List.rowBackground)
+            } else if let loadError {
+                Section {
+                    ContentUnavailableView {
+                        Label("Couldn’t load table", systemImage: "exclamationmark.triangle")
+                    } description: {
+                        Text(loadError)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, UniSpacing.xl)
+                    .listRowBackground(UniColors.List.rowBackground)
+                }
+            } else if filteredRecords.isEmpty {
                 Section {
                     ContentUnavailableView {
                         Label("No records", systemImage: table.systemImage)
@@ -292,6 +320,122 @@ private struct DatabaseTableView: View {
         .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .automatic), prompt: Text("Search rows"))
         .navigationDestination(for: DatabaseRecordSnapshot.self) { record in
             DatabaseRecordDetailView(record: record)
+        }
+        .task(id: table) {
+            loadRows()
+        }
+    }
+
+    @MainActor
+    private func loadRows() {
+        isLoading = true
+        loadError = nil
+
+        do {
+            records = try records(for: table)
+        } catch {
+            records = []
+            loadError = error.localizedDescription
+        }
+
+        isLoading = false
+    }
+
+    private func records(for table: DatabaseTable) throws -> [DatabaseRecordSnapshot] {
+        switch table {
+        case .wallets:
+            return try modelContext.fetch(FetchDescriptor<WalletRecord>())
+                .sorted { $0.updatedAt > $1.updatedAt }
+                .map { DatabaseExplorerView.snapshot(wallet: $0) }
+        case .walletSecrets:
+            return try modelContext.fetch(FetchDescriptor<WalletSecretRecord>())
+                .sorted { $0.updatedAt > $1.updatedAt }
+                .map { DatabaseExplorerView.snapshot(secret: $0) }
+        case .walletAddresses:
+            return try modelContext.fetch(FetchDescriptor<WalletAddressRecord>())
+                .sorted { lhs, rhs in
+                    (lhs.chainRaw, lhs.address) < (rhs.chainRaw, rhs.address)
+                }
+                .map { DatabaseExplorerView.snapshot(address: $0) }
+        case .chainStates:
+            return try modelContext.fetch(FetchDescriptor<ChainStateRecord>())
+                .sorted { lhs, rhs in
+                    (lhs.walletId.uuidString, lhs.chainRaw) < (rhs.walletId.uuidString, rhs.chainRaw)
+                }
+                .map { DatabaseExplorerView.snapshot(chainState: $0) }
+        case .chainUTXOs:
+            return try modelContext.fetch(FetchDescriptor<ChainUTXORecord>())
+                .sorted { $0.updatedAt > $1.updatedAt }
+                .map { DatabaseExplorerView.snapshot(utxo: $0) }
+        case .transactions:
+            return try modelContext.fetch(FetchDescriptor<TransactionRecord>())
+                .sorted { $0.occurredAt > $1.occurredAt }
+                .map { DatabaseExplorerView.snapshot(transaction: $0) }
+        case .tokenBalances:
+            return try modelContext.fetch(FetchDescriptor<TokenBalanceRecord>())
+                .sorted { $0.updatedAt > $1.updatedAt }
+                .map { DatabaseExplorerView.snapshot(balance: $0) }
+        case .walletChartSnapshots:
+            return try modelContext.fetch(FetchDescriptor<WalletChartSnapshotRecord>())
+                .sorted { $0.capturedAt > $1.capturedAt }
+                .map { DatabaseExplorerView.snapshot(walletChart: $0) }
+        case .cachedPrices:
+            return try modelContext.fetch(FetchDescriptor<CachedPriceRecord>())
+                .sorted { $0.fetchedAt > $1.fetchedAt }
+                .map { DatabaseExplorerView.snapshot(cachedPrice: $0) }
+        case .historicalPrices:
+            return try modelContext.fetch(FetchDescriptor<HistoricalPriceRecord>())
+                .sorted { lhs, rhs in
+                    if lhs.dayKey == rhs.dayKey { return lhs.symbol < rhs.symbol }
+                    return lhs.dayKey > rhs.dayKey
+                }
+                .map { DatabaseExplorerView.snapshot(historicalPrice: $0) }
+        case .priceSnapshots:
+            return try modelContext.fetch(FetchDescriptor<PriceSnapshotRecord>())
+                .sorted { $0.fetchedAt > $1.fetchedAt }
+                .map { DatabaseExplorerView.snapshot(priceSnapshot: $0) }
+        case .marketAssets:
+            return try modelContext.fetch(FetchDescriptor<MarketAssetRecord>())
+                .sorted { $0.rank < $1.rank }
+                .map { DatabaseExplorerView.snapshot(marketAsset: $0) }
+        case .marketCharts:
+            return try modelContext.fetch(FetchDescriptor<MarketChartCacheRecord>())
+                .sorted { $0.updatedAt > $1.updatedAt }
+                .map { DatabaseExplorerView.snapshot(marketChart: $0) }
+        case .marketWatchlist:
+            return try modelContext.fetch(FetchDescriptor<MarketWatchlistRecord>())
+                .sorted { $0.addedAt > $1.addedAt }
+                .map { DatabaseExplorerView.snapshot(watchlist: $0) }
+        case .chains:
+            return try modelContext.fetch(FetchDescriptor<ChainRecord>())
+                .sorted { $0.sortIndex < $1.sortIndex }
+                .map { DatabaseExplorerView.snapshot(chain: $0) }
+        case .assets:
+            return try modelContext.fetch(FetchDescriptor<AssetRecord>())
+                .sorted { lhs, rhs in
+                    (lhs.chainRaw, lhs.symbol, lhs.contract) < (rhs.chainRaw, rhs.symbol, rhs.contract)
+                }
+                .map { DatabaseExplorerView.snapshot(asset: $0) }
+        case .customTokens:
+            return try modelContext.fetch(FetchDescriptor<CustomTokenRecord>())
+                .sorted { $0.addedAt > $1.addedAt }
+                .map { DatabaseExplorerView.snapshot(customToken: $0) }
+        case .appSettings:
+            return try modelContext.fetch(FetchDescriptor<AppSettingsRecord>())
+                .sorted { $0.updatedAt > $1.updatedAt }
+                .map { DatabaseExplorerView.snapshot(appSettings: $0) }
+        case .appMetadata:
+            return try modelContext.fetch(FetchDescriptor<AppMetadataRecord>())
+                .sorted { $0.lastOpenedAt > $1.lastOpenedAt }
+                .map { DatabaseExplorerView.snapshot(appMetadata: $0) }
+        case .biometricEnrollments:
+            return try modelContext.fetch(FetchDescriptor<BiometricEnrollmentRecord>())
+                .sorted { $0.updatedAt > $1.updatedAt }
+                .map { DatabaseExplorerView.snapshot(biometric: $0) }
+        case .syncStatus:
+            return try modelContext.fetch(FetchDescriptor<SyncStatusRecord>())
+                .sorted { $0.updatedAt > $1.updatedAt }
+                .map { DatabaseExplorerView.snapshot(syncStatus: $0) }
         }
     }
 }
