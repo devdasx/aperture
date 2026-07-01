@@ -74,6 +74,8 @@ struct WalletDetailView: View {
     private enum SensitiveReveal { case phrase, key, chainKeys, backup }
     @State private var pendingReveal: SensitiveReveal?
     @State private var isShowingPasscodeGate: Bool = false
+    @State private var mnemonicAvailability: WalletSecretPersistence.Availability?
+    @State private var privateKeyAvailability: WalletSecretPersistence.Availability?
 
     /// Already-localized message for the shared error alert. Non-nil
     /// presents the alert; dismissing it clears the value.
@@ -88,6 +90,9 @@ struct WalletDetailView: View {
 
     private var wallet: WalletRecord? { matches.first }
     private var hasStoredMnemonic: Bool {
+        if let mnemonicAvailability {
+            return mnemonicAvailability.canReveal
+        }
         if let words = try? WalletSecretPersistence.loadMnemonic(for: walletId, in: modelContext),
            !words.isEmpty {
             return true
@@ -95,11 +100,24 @@ struct WalletDetailView: View {
         return MnemonicVault.hasMnemonic(for: walletId)
     }
     private var hasStoredPrivateKey: Bool {
+        if let privateKeyAvailability {
+            return privateKeyAvailability.canReveal
+        }
         if let key = try? WalletSecretPersistence.loadPrivateKey(for: walletId, in: modelContext),
            !key.isEmpty {
             return true
         }
         return MnemonicVault.hasPrivateKey(for: walletId)
+    }
+    private var currentMnemonicAvailability: WalletSecretPersistence.Availability {
+        if let mnemonicAvailability { return mnemonicAvailability }
+        if hasStoredMnemonic { return .available }
+        return WalletSecretPersistence.availability(kind: .mnemonic, for: walletId, in: modelContext)
+    }
+    private var currentPrivateKeyAvailability: WalletSecretPersistence.Availability {
+        if let privateKeyAvailability { return privateKeyAvailability }
+        if hasStoredPrivateKey { return .available }
+        return WalletSecretPersistence.availability(kind: .privateKey, for: walletId, in: modelContext)
     }
 
     var body: some View {
@@ -326,6 +344,7 @@ struct WalletDetailView: View {
         .scrollContentBackground(.hidden)
         .background(UniColors.Background.primary)
         .task(id: walletId) {
+            await refreshSecretAvailability()
             // Resolve the iCloud-backup status for phrase wallets (the only
             // kind with a recovery phrase to back up).
             guard wallet.kind == .created || wallet.kind == .importedMnemonic else { return }
@@ -711,8 +730,13 @@ struct WalletDetailView: View {
     private func secretFooter(_ wallet: WalletRecord) -> LocalizedStringKey {
         switch wallet.kind {
         case .created, .importedMnemonic:
-            if hasStoredMnemonic {
+            switch currentMnemonicAvailability {
+            case .available:
                 return "Your recovery phrase is stored encrypted in the local database on this iPhone (AES-GCM 256-bit). Tap “View recovery phrase” anytime — the phrase never leaves this device."
+            case .encryptedRecordUnavailable:
+                return "This wallet still has an encrypted recovery-phrase row in the local database, but this iPhone cannot open its encryption key. The wallet data was not removed. Re-enter the phrase to repair local backup access."
+            case .missing:
+                break
             }
             if wallet.kind == .importedMnemonic {
                 // Migration gap: phrase-import wallets persisted before
@@ -722,8 +746,13 @@ struct WalletDetailView: View {
             }
             return "Aperture no longer has your phrase. You're the only copy — write it down and keep it safe."
         case .importedKey:
-            if hasStoredPrivateKey {
+            switch currentPrivateKeyAvailability {
+            case .available:
                 return "Your private key is stored encrypted in the local database on this iPhone (AES-GCM 256-bit). Tap “View private key” anytime — the key never leaves this device."
+            case .encryptedRecordUnavailable:
+                return "This wallet still has an encrypted private-key row in the local database, but this iPhone cannot open its encryption key. The wallet data was not removed. Re-enter the key to repair local export access."
+            case .missing:
+                break
             }
             return "Your key wasn't kept when this wallet was imported. You still have it — to store it on this iPhone too, delete this wallet and import the key again."
         case .watchOnly:
@@ -909,7 +938,11 @@ struct WalletDetailView: View {
             .loadMnemonic(for: id)
         guard let words = loaded, !words.isEmpty else {
             pendingBackupMethod = nil
-            errorAlertMessage = String.apertureLocalized("This wallet's saved recovery phrase is not available on this iPhone. Re-import the phrase to restore local backup access.")
+            if currentMnemonicAvailability == .encryptedRecordUnavailable {
+                errorAlertMessage = String.apertureLocalized("This wallet still has an encrypted recovery-phrase row in the database, but this iPhone cannot open its encryption key. The wallet data was not removed. Re-enter the phrase to repair local backup access.")
+            } else {
+                errorAlertMessage = String.apertureLocalized("This wallet's saved recovery phrase is not available on this iPhone. Re-import the phrase to restore local backup access.")
+            }
             return
         }
         walletBackupPresentation = WalletBackupPresentation(
@@ -935,6 +968,15 @@ struct WalletDetailView: View {
         } catch {
             iCloudStatus = .unavailable
         }
+    }
+
+    @MainActor
+    private func refreshSecretAvailability() async {
+        let repository = WalletSecretRepository(modelContainer: modelContext.container)
+        async let mnemonic = repository.mnemonicAvailability(for: walletId)
+        async let privateKey = repository.privateKeyAvailability(for: walletId)
+        mnemonicAvailability = await mnemonic
+        privateKeyAvailability = await privateKey
     }
 }
 

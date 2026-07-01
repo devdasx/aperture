@@ -624,7 +624,13 @@ struct WalletsListView: View {
             let loaded = try? await WalletSecretRepository(modelContainer: container)
                 .loadMnemonic(for: id)
             guard let words = loaded, !words.isEmpty else {
-                errorAlertMessage = String.apertureLocalized("This wallet's saved recovery phrase is not available on this iPhone. Re-import the phrase to restore local backup access.")
+                let availability = await WalletSecretRepository(modelContainer: container)
+                    .mnemonicAvailability(for: id)
+                if availability == .encryptedRecordUnavailable {
+                    errorAlertMessage = String.apertureLocalized("This wallet still has an encrypted recovery-phrase row in the database, but this iPhone cannot open its encryption key. The wallet data was not removed. Re-enter the phrase to repair local backup access.")
+                } else {
+                    errorAlertMessage = String.apertureLocalized("This wallet's saved recovery phrase is not available on this iPhone. Re-import the phrase to restore local backup access.")
+                }
                 return
             }
             backupWords = words

@@ -34,6 +34,56 @@ import WalletCore
         #expect(WalletSecretPersistence.hasSecret(kind: .mnemonic, for: walletId, in: context))
     }
 
+    @Test("corrupt DB mnemonic falls back to legacy Keychain and repairs SwiftData")
+    func corruptDatabaseMnemonicFallsBackToLegacyAndRepairs() async throws {
+        let container = try TestModelContainerFactory.makeContainer(name: "wallet-data-integrity-mnemonic-repair")
+        let walletId = UUID()
+        defer { try? MnemonicVault.deleteMnemonic(for: walletId) }
+
+        let context = ModelContext(container)
+        try WalletSecretPersistence.upsertMnemonic(["wrong", "words"], for: walletId, in: context)
+        let key = WalletSecretRecord.storageKey(walletId: walletId, kind: .mnemonic)
+        var descriptor = FetchDescriptor<WalletSecretRecord>(
+            predicate: #Predicate { $0.key == key }
+        )
+        descriptor.fetchLimit = 1
+        let row = try #require(context.fetch(descriptor).first)
+        row.cipherData = Data("not-a-valid-aes-gcm-box".utf8)
+        try context.save()
+
+        try MnemonicVault.storeMnemonic(["abandon", "ability"], for: walletId)
+
+        let loaded = try await WalletSecretRepository(modelContainer: container)
+            .loadMnemonic(for: walletId)
+        #expect(loaded == ["abandon", "ability"])
+
+        let repairedContext = ModelContext(container)
+        let repaired = try WalletSecretPersistence.loadMnemonic(for: walletId, in: repairedContext)
+        #expect(repaired == ["abandon", "ability"])
+    }
+
+    @Test("corrupt DB mnemonic without fallback is unavailable, not missing")
+    func corruptDatabaseMnemonicWithoutFallbackIsUnavailable() async throws {
+        let container = try TestModelContainerFactory.makeContainer(name: "wallet-data-integrity-mnemonic-unavailable")
+        let walletId = UUID()
+        try? MnemonicVault.deleteMnemonic(for: walletId)
+
+        let context = ModelContext(container)
+        try WalletSecretPersistence.upsertMnemonic(["wrong", "words"], for: walletId, in: context)
+        let key = WalletSecretRecord.storageKey(walletId: walletId, kind: .mnemonic)
+        var descriptor = FetchDescriptor<WalletSecretRecord>(
+            predicate: #Predicate { $0.key == key }
+        )
+        descriptor.fetchLimit = 1
+        let row = try #require(context.fetch(descriptor).first)
+        row.cipherData = Data("not-a-valid-aes-gcm-box".utf8)
+        try context.save()
+
+        let availability = await WalletSecretRepository(modelContainer: container)
+            .mnemonicAvailability(for: walletId)
+        #expect(availability == .encryptedRecordUnavailable)
+    }
+
     @Test("imported private-key wallet stores the secret and encrypted per-chain key")
     func importedPrivateKeyStoresChainKey() async throws {
         let container = try TestModelContainerFactory.makeContainer(name: "wallet-data-integrity-private-key")
