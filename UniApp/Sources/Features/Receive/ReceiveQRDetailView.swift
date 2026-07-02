@@ -42,6 +42,8 @@ struct ReceiveQRDetailView: View {
     @State private var selectedBitcoinTypeRaw: String = ""
     @State private var evmOverrideAddress: String?
     @State private var isShowingEVMAccountSearch: Bool = false
+    @State private var solanaOverrideAddress: String?
+    @State private var isShowingSolanaAccountSearch: Bool = false
 
     /// What the user is receiving, in the toolbar title. Native →
     /// chain name; token → "USDC".
@@ -67,13 +69,20 @@ struct ReceiveQRDetailView: View {
         if chain.family == .evm {
             return evmOverrideAddress ?? preferredEVMReceiveAddress ?? address
         }
+        if chain == .solana {
+            return solanaOverrideAddress ?? preferredReceiveAddress(for: .solana) ?? address
+        }
         return address
     }
 
     private var preferredEVMReceiveAddress: String? {
         guard chain.family == .evm else { return nil }
+        return preferredReceiveAddress(for: chain)
+    }
+
+    private func preferredReceiveAddress(for targetChain: SupportedChain) -> String? {
         let rows = activeWallet?.addresses.filter {
-            $0.chainRaw == chain.rawValue && !$0.address.isEmpty
+            $0.chainRaw == targetChain.rawValue && !$0.address.isEmpty
         } ?? []
         return rows.first(where: \.isReceivePreferred)?.address ?? rows.first?.address
     }
@@ -154,8 +163,20 @@ struct ReceiveQRDetailView: View {
             .uniSheetDetents([.large])
             .presentationBackground(UniColors.Background.primary)
         }
+        .sheet(isPresented: $isShowingSolanaAccountSearch) {
+            ReceiveSolanaAccountSearchSheet(
+                activeAddress: displayedAddress,
+                wallet: activeWallet
+            ) { newAddress in
+                solanaOverrideAddress = newAddress
+            }
+            .uniAppEnvironment()
+            .uniSheetDetents([.large])
+            .presentationBackground(UniColors.Background.primary)
+        }
         .task(id: "\(activeWalletIdRaw)-\(chain.rawValue)-\(address)") {
             evmOverrideAddress = nil
+            solanaOverrideAddress = nil
             loadBitcoinAddressChoices()
         }
         .onChange(of: selectedBitcoinTypeRaw) { _, newValue in
@@ -336,6 +357,20 @@ struct ReceiveQRDetailView: View {
                         .font(.system(size: 17, weight: .regular))
                 }
                 .accessibilityLabel(Text("Receive options"))
+            } else if chain == .solana {
+                Menu {
+                    Button("Search accounts") {
+                        isShowingSolanaAccountSearch = true
+                    }
+
+                    Button("Address info") {
+                        isShowingGuide = true
+                    }
+                } label: {
+                    Image(systemName: "ellipsis")
+                        .font(.system(size: 17, weight: .regular))
+                }
+                .accessibilityLabel(Text("Solana receive options"))
             } else {
                 Button {
                     isShowingGuide = true

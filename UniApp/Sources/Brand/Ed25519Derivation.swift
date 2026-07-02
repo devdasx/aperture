@@ -28,7 +28,19 @@ enum Ed25519Derivation {
     /// derived at the Phantom-compatible path `m/44'/501'/0'/0'`.
     /// First-account address (no sub-account index).
     static func solanaAddress(seed: Data) -> String {
-        let node = SLIP0010.derive(seed: seed, hardenedPath: [44, 501, 0, 0])
+        solanaPhantomAddress(seed: seed, account: 0)
+    }
+
+    /// Phantom-style Solana address at `m/44'/501'/account'/0'`.
+    static func solanaPhantomAddress(seed: Data, account: UInt32) -> String {
+        let node = SLIP0010.derive(seed: seed, hardenedPath: [44, 501, account, 0])
+        let publicKey = ed25519PublicKey(from: node.privateKey)
+        return Base58.encode(publicKey)
+    }
+
+    /// Trust Wallet-style Solana account address at `m/44'/501'/account'`.
+    static func solanaTrustWalletAddress(seed: Data, account: UInt32) -> String {
+        let node = SLIP0010.derive(seed: seed, hardenedPath: [44, 501, account])
         let publicKey = ed25519PublicKey(from: node.privateKey)
         return Base58.encode(publicKey)
     }
