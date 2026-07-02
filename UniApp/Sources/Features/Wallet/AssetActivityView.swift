@@ -71,6 +71,7 @@ struct AssetActivityView: View {
         let rows = derived.filteredTransactions.filter { tx in
             !ActivityFiat.isDust(amountRaw: tx.amountRaw, symbol: tx.tokenSymbol, usdMap: usdPrices)
         }
+        let sections = ActivityDateGrouper.sections(for: rows, date: \.occurredAt)
         List {
             if rows.isEmpty {
                 Section {
@@ -83,27 +84,35 @@ struct AssetActivityView: View {
                 }
             } else {
                 Section {
-                    ForEach(rows, id: \.id) { tx in
-                        if let chain = chainFor(tx) {
-                            NavigationLink(value: WalletHomeDestination.transaction(tx.id)) {
-                                activityRow(tx, chain: chain)
-                            }
-                        } else {
-                            // The parent address record is missing or
-                            // carries an unrecognized chain — render
-                            // the row plain, with NO NavigationLink,
-                            // so the user is never routed against
-                            // wrong-chain data. The mark chain is a
-                            // display-only proxy from the asset's own
-                            // identity.
-                            activityRow(tx, chain: displayProxyChain(derived))
-                        }
-                    }
-                } header: {
                     Text(headerLabel(
                         count: rows.count,
                         total: derived.assetScopedTransactions.count
                     ))
+                    .font(UniTypography.footnote.weight(.semibold))
+                    .foregroundStyle(UniColors.Text.secondary)
+                    .listRowBackground(Color.clear)
+                }
+                ForEach(sections) { daySection in
+                    Section {
+                        ForEach(daySection.items, id: \.id) { tx in
+                            if let chain = chainFor(tx) {
+                                NavigationLink(value: WalletHomeDestination.transaction(tx.id)) {
+                                    activityRow(tx, chain: chain)
+                                }
+                            } else {
+                                // The parent address record is missing or
+                                // carries an unrecognized chain — render
+                                // the row plain, with NO NavigationLink,
+                                // so the user is never routed against
+                                // wrong-chain data. The mark chain is a
+                                // display-only proxy from the asset's own
+                                // identity.
+                                activityRow(tx, chain: displayProxyChain(derived))
+                            }
+                        }
+                    } header: {
+                        Text(ActivityDateGrouper.title(for: daySection.day))
+                    }
                 }
             }
         }
