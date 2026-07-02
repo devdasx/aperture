@@ -48,7 +48,7 @@ actor WalletBalanceCardSnapshotRepository {
         let transactions = try transactionSnapshots(addressIds: addressIds)
         let prices = try cachedPrices(currencyCode: code)
         let history = try historicalPrices(currencyCode: code)
-        let total = try totalFiat(walletId: walletId, currencyCode: code, addressIds: addressIds)
+        let total = try totalFiat(currencyCode: code, addressIds: addressIds)
         let hourlyHoldings = try holdings(addressIds: addressIds, prices: prices)
         let hourlySnapshots = try hourlyPriceSnapshots(currencyCode: code, since: now.addingTimeInterval(-7_200))
         let lastUpdated = try lastRefreshDate(walletId: walletId)
@@ -265,20 +265,8 @@ actor WalletBalanceCardSnapshotRepository {
         return map
     }
 
-    private func totalFiat(
-        walletId: UUID,
-        currencyCode: String,
-        addressIds: Set<UUID>
-    ) throws -> Decimal {
+    private func totalFiat(currencyCode: String, addressIds: Set<UUID>) throws -> Decimal {
         let code = currencyCode.uppercased()
-        let descriptor = FetchDescriptor<ChainStateRecord>(
-            predicate: #Predicate { $0.walletId == walletId && $0.fiatCurrencyCode == code }
-        )
-        let chainRows = try modelContext.fetch(descriptor)
-        if !chainRows.isEmpty {
-            return chainRows.reduce(Decimal.zero) { $0 + $1.totalFiat }
-        }
-
         return try tokenBalances(addressIds: addressIds)
             .filter { $0.fiatCurrencyCode.caseInsensitiveCompare(code) == .orderedSame }
             .reduce(Decimal.zero) { $0 + $1.fiatValueCached }
