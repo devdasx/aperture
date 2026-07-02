@@ -261,9 +261,10 @@ struct WalletActivityView: View {
                     Button {
                         isShowingExportOptions = true
                     } label: {
-                        Image(systemName: "square.and.arrow.up")
+                        Image(systemName: "doc.text")
                             .accessibilityLabel(Text("Export PDF"))
                     }
+                    .buttonStyle(.plain)
                     .tint(UniColors.Icon.accent)
                     .disabled(isGeneratingPDF)
                 }
@@ -283,6 +284,7 @@ struct WalletActivityView: View {
                     }
                     .accessibilityLabel(Text("Filter and sort"))
                 }
+                .buttonStyle(.plain)
                 .tint(UniColors.Icon.accent)
             }
         }
@@ -366,15 +368,6 @@ struct WalletActivityView: View {
         }
         .listStyle(.insetGrouped)
         .scrollContentBackground(.hidden)
-        .safeAreaInset(edge: .top, spacing: 0) {
-            Text(headerLabel(visible: displayedTransactions.count, total: dustFreeTransactions.count))
-                .font(UniTypography.footnote.weight(.semibold))
-                .foregroundStyle(UniColors.Text.secondary)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, UniSpacing.xl)
-                .padding(.bottom, UniSpacing.xs)
-                .background(UniColors.Background.primary)
-        }
     }
 
     /// Native progress overlay shown while the PDF document renders.
@@ -414,24 +407,6 @@ struct WalletActivityView: View {
                 : "Transactions appear here as they confirm on-chain.",
             mark: hasActivity ? .icon(systemName: "line.3.horizontal.decrease") : .iris,
             minHeight: 360
-        )
-    }
-
-    // MARK: - Header
-
-    /// "All N transactions" when nothing is narrowing the list, else
-    /// the honest "Showing N of M transactions".
-    private func headerLabel(visible: Int, total: Int) -> String {
-        if visible == total {
-            return String(
-                format: String(localized: "All %lld transactions"),
-                Int64(total)
-            )
-        }
-        return String(
-            format: String(localized: "Showing %lld of %lld transactions"),
-            Int64(visible),
-            Int64(total)
         )
     }
 
