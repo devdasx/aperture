@@ -24,7 +24,7 @@ struct ICloudRestoreView: View {
     @Environment(\.openURL) private var openURL
 
     @State private var listState: ListState = .loading
-    @State private var selected: WalletBackupBlob?
+    @State private var selectedBackupId: UUID?
     @State private var password = ""
     @State private var isWorking = false
     @State private var passwordError = false
@@ -45,16 +45,25 @@ struct ICloudRestoreView: View {
     }
 
     var body: some View {
-        Group {
-            if let selected {
-                passwordScreen(for: selected)
+        listScreen
+        .background(UniColors.Background.primary.ignoresSafeArea())
+        .navigationTitle("Restore from iCloud")
+        .navigationBarTitleDisplayMode(.inline)
+        .navigationDestination(item: $selectedBackupId) { backupId in
+            if let blob = backup(withId: backupId) {
+                passwordScreen(for: blob)
+                    .navigationTitle("Enter password")
+                    .navigationBarTitleDisplayMode(.inline)
             } else {
-                listScreen
+                restoreState(
+                    icon: "icloud.slash",
+                    title: "Backup unavailable",
+                    detail: "This iCloud backup is no longer available. Go back and refresh the list."
+                )
+                .navigationTitle("Enter password")
+                .navigationBarTitleDisplayMode(.inline)
             }
         }
-        .background(UniColors.Background.primary.ignoresSafeArea())
-        .navigationTitle(selected == nil ? Text("Restore from iCloud") : Text("Enter password"))
-        .navigationBarTitleDisplayMode(.inline)
         .task { await loadIfNeeded() }
     }
 
@@ -104,7 +113,7 @@ struct ICloudRestoreView: View {
                             UniHapticEngine.shared.play(.selection)
                             password = ""
                             passwordError = false
-                            selected = blob
+                            selectedBackupId = blob.id
                         } label: {
                             backupRow(blob)
                         }
@@ -203,6 +212,11 @@ struct ICloudRestoreView: View {
         .contentShape(Rectangle())
     }
 
+    private func backup(withId id: UUID) -> WalletBackupBlob? {
+        guard case .loaded(let backups) = listState else { return nil }
+        return backups.first { $0.id == id }
+    }
+
     // MARK: - Password
 
     private func passwordScreen(for blob: WalletBackupBlob) -> some View {
@@ -261,15 +275,6 @@ struct ICloudRestoreView: View {
             .padding(.horizontal, UniSpacing.l)
             .padding(.top, UniSpacing.s)
             .padding(.bottom, UniSpacing.m)
-        }
-        .toolbar {
-            ToolbarItem(placement: .topBarLeading) {
-                Button { selected = nil } label: {
-                    Image(systemName: "chevron.left").font(.system(size: 17, weight: .semibold))
-                }
-                .accessibilityLabel(Text("Back"))
-                .disabled(isWorking)
-            }
         }
     }
 
@@ -354,7 +359,7 @@ struct ICloudRestoreView: View {
             Self.log.error("iCloud restore persist failed: \(String(describing: error), privacy: .public)")
             passwordError = false
             listState = .failed(String.apertureLocalized("Couldn't save the restored wallet to this iPhone. Try again."))
-            selected = nil
+            selectedBackupId = nil
         }
     }
 
