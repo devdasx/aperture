@@ -22,12 +22,10 @@ import SwiftUI
 ///   names how the user moves from absence to presence (`UniFootnote`,
 ///   `Text.tertiary`).
 ///
-/// **Mark style.** `.iris` for brand-touching surfaces (the wallet's own
-/// emptiness — wallet-home holdings & activity); `.icon(systemName:)` for
-/// neutral domain surfaces (no contacts, no scanned tokens, no transactions
-/// inside a filter). Per Rule #7, the iris is a real brand asset; the
-/// SF Symbol variant is also a real Apple-designed glyph. No hand-built
-/// shapes.
+/// **Mark style.** All empty states use the dashed Aperture mark from
+/// `Brand/MarkEmptyDashed.imageset`, so filters, searches, wallets, and
+/// activity all read as one family. The enum remains for call-site intent,
+/// but the rendered mark is intentionally unified.
 ///
 /// **Layering (Rule #2 §B.3).** The empty state is content layer
 /// (opaque) sitting beneath the wallet's functional glass chrome. The
@@ -145,33 +143,22 @@ struct UniEmptyState: View {
     private var watermark: some View {
         switch mark {
         case .iris:
-            // Iris brand mark — sized to feel like a watermark, tinted
-            // through `UniColors.Brand.mark` so it lands Ink in light /
-            // Cloud in dark. The breath modulates opacity only — no
-            // scale, no rotation, no positional motion (that would
-            // read as decoration; opacity-only reads as breath).
-            ApertureIrisView()
-                .frame(width: 72, height: 72)
-                .opacity(currentWatermarkOpacity)
+            emptyMarkImage(size: 78, opacityMultiplier: 1.9)
         case .logoCircle:
-            Image("LogoCircle")
-                .resizable()
-                .scaledToFit()
-                .frame(width: 72, height: 72)
-                .opacity(max(0.16, currentWatermarkOpacity * 2.2))
-                .shadow(color: UniColors.EmptyState.logoShadow, radius: 16, x: 0, y: 10)
-        case .icon(let systemName):
-            // Bare SF Symbol — same scale and breath as the iris so
-            // the two empty-state kinds read as siblings.
-            Image(systemName: systemName)
-                .font(.system(size: 56, weight: .light))
-                .foregroundStyle(UniColors.EmptyState.icon)
-                .opacity(currentWatermarkOpacity * 3)
-                // Symbol-form scales opacity differently — symbols are
-                // smaller and already monochrome, so they read at a
-                // higher absolute opacity. The ×3 keeps the symbol
-                // variant legible while the iris stays watermark-soft.
+            emptyMarkImage(size: 78, opacityMultiplier: 1.9)
+        case .icon:
+            emptyMarkImage(size: 78, opacityMultiplier: 1.9)
         }
+    }
+
+    private func emptyMarkImage(size: CGFloat, opacityMultiplier: Double) -> some View {
+        Image("MarkEmptyDashed")
+            .resizable()
+            .renderingMode(.template)
+            .scaledToFit()
+            .foregroundStyle(UniColors.EmptyState.icon)
+            .frame(width: size, height: size)
+            .opacity(max(0.16, currentWatermarkOpacity * opacityMultiplier))
     }
 
     /// Resolves the current opacity in the breath cycle. Reduce Motion

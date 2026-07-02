@@ -214,11 +214,11 @@ struct BitcoinPathSearchView: View {
             }
         } else if results.isEmpty {
             Section {
-                ContentUnavailableView {
-                    Label("No funded paths found", systemImage: "magnifyingglass")
-                } description: {
-                    Text("Try another account, branch, index range, or address type.")
-                }
+                UniListEmptyState(
+                    title: "No funded paths found.",
+                    detail: "Try another account, branch, index range, or address type.",
+                    minHeight: 260
+                )
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, UniSpacing.l)
             }

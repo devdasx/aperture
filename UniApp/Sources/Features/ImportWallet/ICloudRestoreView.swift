@@ -95,7 +95,8 @@ struct ICloudRestoreView: View {
                 iconTint: UniColors.Icon.accent,
                 discTint: UniColors.Icon.accent.opacity(0.12),
                 title: "No backups yet",
-                detail: "When you back a wallet up to iCloud, it shows up here to restore. You can create one from a wallet's recovery-phrase screen → Back up."
+                detail: "When you back a wallet up to iCloud, it shows up here to restore. You can create one from a wallet's recovery-phrase screen → Back up.",
+                usesDashedEmptyMark: true
             )
         case .failed(let message):
             restoreState(
@@ -146,7 +147,8 @@ struct ICloudRestoreView: View {
         title: LocalizedStringKey,
         detail: LocalizedStringKey,
         actionTitle: LocalizedStringKey? = nil,
-        action: (() -> Void)? = nil
+        action: (() -> Void)? = nil,
+        usesDashedEmptyMark: Bool = false
     ) -> some View {
         VStack(spacing: 0) {
             Spacer(minLength: 0)
@@ -155,10 +157,19 @@ struct ICloudRestoreView: View {
                     Circle()
                         .fill(discTint)
                         .frame(width: 96, height: 96)
-                    Image(systemName: icon)
-                        .font(.system(size: 40, weight: .light))
-                        .symbolRenderingMode(.hierarchical)
-                        .foregroundStyle(iconTint)
+                    if usesDashedEmptyMark {
+                        Image("MarkEmptyDashed")
+                            .resizable()
+                            .renderingMode(.template)
+                            .scaledToFit()
+                            .foregroundStyle(iconTint)
+                            .frame(width: 58, height: 58)
+                    } else {
+                        Image(systemName: icon)
+                            .font(.system(size: 40, weight: .light))
+                            .symbolRenderingMode(.hierarchical)
+                            .foregroundStyle(iconTint)
+                    }
                 }
                 .accessibilityHidden(true)
                 VStack(spacing: UniSpacing.s) {

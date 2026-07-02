@@ -1000,11 +1000,24 @@ struct MarketDetailView: View {
                     if isLoadingChart && chartPointsForDisplay.isEmpty {
                         ProgressView()
                     } else if chartError && chartPointsForDisplay.isEmpty {
-                        ContentUnavailableView(
-                            "Chart unavailable",
-                            systemImage: "chart.xyaxis.line",
-                            description: Text("Saved chart data will appear here after a successful refresh.")
-                        )
+                        VStack(spacing: UniSpacing.xs) {
+                            Image("MarkEmptyDashed")
+                                .resizable()
+                                .renderingMode(.template)
+                                .scaledToFit()
+                                .foregroundStyle(UniColors.EmptyState.icon)
+                                .frame(width: 58, height: 58)
+                                .opacity(0.28)
+                                .accessibilityHidden(true)
+                            Text("Chart unavailable")
+                                .font(UniTypography.subheadlineEmphasized)
+                                .foregroundStyle(UniColors.Text.secondary)
+                            Text("Saved chart data will appear here after a successful refresh.")
+                                .font(UniTypography.footnote)
+                                .foregroundStyle(UniColors.Text.tertiary)
+                                .multilineTextAlignment(.center)
+                        }
+                        .padding(.horizontal, UniSpacing.l)
                     }
                 }
 
