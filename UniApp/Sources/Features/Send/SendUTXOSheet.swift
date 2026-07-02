@@ -142,11 +142,10 @@ struct SendUTXOSheet: View {
 
     private var empty: some View {
         VStack(spacing: UniSpacing.m) {
-            Image(systemName: "tray")
-                .font(.system(size: 36, weight: .light))
-                .foregroundStyle(UniColors.Icon.tertiary)
-            UniBody(text: "No spendable coins were found for this address.",
-                    alignment: .center, color: UniColors.Text.secondary)
+            UniEmptyState(
+                title: "No spendable coins were found.",
+                detail: "Try again after balances finish syncing."
+            )
             UniButton(title: "Try again", variant: .secondary) {
                 Task { await model.loadUTXOs() }
             }
