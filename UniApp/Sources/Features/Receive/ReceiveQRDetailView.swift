@@ -1,6 +1,7 @@
 import SwiftUI
 import SwiftData
 import UIKit
+import UniformTypeIdentifiers
 import WalletCore
 
 /// Step 3 of the Receive sheet — the QR card + address + share +
@@ -17,8 +18,8 @@ import WalletCore
 ///
 /// **Layers (Rule #2 §B.3):** content layer — white QR card on opaque
 /// surface + opaque address row + opaque warning footer. Functional
-/// layer — system nav bar (parent NavigationStack), Liquid Glass
-/// share button.
+/// layer — system nav bar (parent NavigationStack), unified action
+/// buttons.
 struct ReceiveQRDetailView: View {
     let chain: SupportedChain
     /// `nil` when the user landed here from a native-asset tap;
@@ -80,7 +81,6 @@ struct ReceiveQRDetailView: View {
     var body: some View {
         ScrollView {
             VStack(spacing: UniSpacing.l) {
-                bitcoinAddressTypePicker
                 ReceiveQRCard(
                     chain: chain,
                     tokenSymbol: tokenSymbol,
@@ -90,7 +90,7 @@ struct ReceiveQRDetailView: View {
                     address: displayedAddress,
                     justCopiedAt: $justCopiedAt
                 )
-                shareButton
+                actionRow
                 ReceiveChainMismatchFooter(
                     chain: chain,
                     tokenSymbol: tokenSymbol,
@@ -120,19 +120,6 @@ struct ReceiveQRDetailView: View {
             .intrinsicHeightSheet()
             .presentationBackground(UniColors.Background.primary)
         }
-        .confirmationDialog(
-            "Share",
-            isPresented: $isShowingShareOptions,
-            titleVisibility: .visible
-        ) {
-            Button("Share QR code") {
-                shareQRCode()
-            }
-            Button("Share address") {
-                sharePayload = ReceiveSharePayload(items: [displayedAddress])
-            }
-            Button("Cancel", role: .cancel) {}
-        }
         .sheet(item: $sharePayload) { payload in
             ReceiveActivityShareSheet(items: payload.items)
                 .ignoresSafeArea()
@@ -150,46 +137,33 @@ struct ReceiveQRDetailView: View {
     // MARK: - Subviews
 
     @ViewBuilder
-    private var bitcoinAddressTypePicker: some View {
-        if showsBitcoinTypePicker {
-            VStack(alignment: .leading, spacing: UniSpacing.xs) {
-                Text("Bitcoin address type")
-                    .font(UniTypography.caption1)
-                    .foregroundStyle(UniColors.Text.secondary)
+    private var actionRow: some View {
+        HStack(spacing: UniSpacing.s) {
+            UniButton(title: "Copy", variant: .primary) {
+                copyDisplayedAddress()
+            }
 
-                Picker("Bitcoin address type", selection: $selectedBitcoinTypeRaw) {
-                    ForEach(bitcoinChoices) { choice in
-                        Text(choice.type.title).tag(choice.type.rawValue)
+            UniButton(title: "Share", variant: .secondary) {
+                isShowingShareOptions = true
+            }
+            .popover(
+                isPresented: $isShowingShareOptions,
+                attachmentAnchor: .rect(.bounds),
+                arrowEdge: .bottom
+            ) {
+                ReceiveShareOptionsPopover(
+                    onShareQR: {
+                        isShowingShareOptions = false
+                        shareQRCode()
+                    },
+                    onShareAddress: {
+                        isShowingShareOptions = false
+                        sharePayload = ReceiveSharePayload(items: [displayedAddress])
                     }
-                }
-                .pickerStyle(.segmented)
+                )
+                .presentationCompactAdaptation(.popover)
             }
-            .padding(UniSpacing.m)
-            .background(
-                RoundedRectangle(cornerRadius: UniRadius.card, style: .continuous)
-                    .fill(UniColors.Card.background)
-            )
         }
-    }
-
-    @ViewBuilder
-    private var shareButton: some View {
-        Button {
-            isShowingShareOptions = true
-        } label: {
-            HStack(spacing: UniSpacing.xs) {
-                Image(systemName: "square.and.arrow.up")
-                    .font(.system(size: 17, weight: .semibold))
-                Text("Share")
-                    .font(UniTypography.buttonLabel)
-            }
-            .frame(maxWidth: .infinity)
-            .frame(height: 47)
-            .contentShape(Capsule())
-        }
-        .buttonStyle(.glassProminent)
-        .tint(UniColors.Button.Primary.tint)
-        .accessibilityLabel(Text("Share receive details"))
     }
 
     private func shareQRCode() {
@@ -207,6 +181,16 @@ struct ReceiveQRDetailView: View {
             } else {
                 sharePayload = ReceiveSharePayload(items: [payloadAddress])
             }
+        }
+    }
+
+    private func copyDisplayedAddress() {
+        SafePasteboard.setItems(
+            [[UTType.plainText.identifier: displayedAddress]],
+            options: [.expirationDate: Date().addingTimeInterval(120)]
+        )
+        withAnimation(.easeInOut(duration: 0.2)) {
+            justCopiedAt = Date()
         }
     }
 
@@ -235,16 +219,75 @@ struct ReceiveQRDetailView: View {
     @ToolbarContentBuilder
     private var toolbarContent: some ToolbarContent {
         ToolbarItem(placement: .topBarTrailing) {
-            Button {
-                isShowingGuide = true
-            } label: {
-                // Bare `info.circle` per M-002/M-003 — toolbar icons
-                // inherit nav-bar tinting; no extra chrome wrapper.
-                Image(systemName: "info.circle")
-                    .font(.system(size: 17, weight: .regular))
+            if chain == .bitcoin {
+                Menu {
+                    if showsBitcoinTypePicker {
+                        Menu("Change type") {
+                            ForEach(bitcoinChoices) { choice in
+                                Button {
+                                    selectedBitcoinTypeRaw = choice.type.rawValue
+                                } label: {
+                                    Label {
+                                        VStack(alignment: .leading, spacing: 2) {
+                                            Text(choice.type.title)
+                                            Text(choice.type.subtitle)
+                                        }
+                                    } icon: {
+                                        if selectedBitcoinTypeRaw == choice.type.rawValue {
+                                            Image(systemName: "checkmark")
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    } else if let choice = selectedBitcoinChoice {
+                        Button {
+                        } label: {
+                            Text("\(choice.type.title) - \(choice.type.subtitle)")
+                        }
+                        .disabled(true)
+                    }
+
+                    Button("Address info") {
+                        isShowingGuide = true
+                    }
+                } label: {
+                    Image(systemName: "ellipsis")
+                        .font(.system(size: 17, weight: .regular))
+                }
+                .accessibilityLabel(Text("Bitcoin receive options"))
+            } else {
+                Button {
+                    isShowingGuide = true
+                } label: {
+                    // Bare `info.circle` per M-002/M-003 — toolbar icons
+                    // inherit nav-bar tinting; no extra chrome wrapper.
+                    Image(systemName: "info.circle")
+                        .font(.system(size: 17, weight: .regular))
+                }
+                .accessibilityLabel(Text("What's a receive address?"))
             }
-            .accessibilityLabel(Text("What's a receive address?"))
         }
+    }
+}
+
+private struct ReceiveShareOptionsPopover: View {
+    let onShareQR: () -> Void
+    let onShareAddress: () -> Void
+
+    var body: some View {
+        VStack(spacing: UniSpacing.s) {
+            Text("Share")
+                .font(UniTypography.title3)
+                .foregroundStyle(UniColors.Text.primary)
+                .frame(maxWidth: .infinity)
+
+            UniButton(title: "Share QR code", variant: .secondary, action: onShareQR)
+            UniButton(title: "Share address", variant: .secondary, action: onShareAddress)
+        }
+        .padding(UniSpacing.m)
+        .frame(width: 270)
+        .background(UniColors.Background.primary)
     }
 }
 
@@ -277,6 +320,19 @@ private enum BitcoinReceiveAddressType: String, CaseIterable, Identifiable {
         case .bip84: return "BIP84"
         case .bip49: return "BIP49"
         case .bip44: return "BIP44"
+        }
+    }
+
+    var subtitle: String {
+        switch self {
+        case .bip86:
+            return "Taproot, starts with bc1p."
+        case .bip84:
+            return "Native SegWit, starts with bc1q."
+        case .bip49:
+            return "Wrapped SegWit, starts with 3."
+        case .bip44:
+            return "Legacy, starts with 1."
         }
     }
 }

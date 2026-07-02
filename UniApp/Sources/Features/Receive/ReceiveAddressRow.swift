@@ -2,16 +2,12 @@ import SwiftUI
 import UIKit
 import UniformTypeIdentifiers
 
-/// The address row beneath the QR card. Monospaced address (middle-
-/// truncated for hero readability) with a leading-aligned label, a
-/// tap-to-copy gesture on the entire row, and an explicit "Copy"
-/// `UniButton(.secondary)` at the trailing edge. Per Rule #19, the
-/// row is a Button (so VoiceOver reads it correctly) and the trailing
-/// affordance is a real `UniButton`, not a hand-rolled chip.
+/// The address row beneath the QR card. Monospaced address with a
+/// leading-aligned label and a tap-to-copy gesture on the entire row.
+/// The visible copy affordance lives in the parent action row.
 ///
-/// **Copy feedback.** Tapping the row writes to `UIPasteboard.general`
-/// and fires `.uniHaptic(.success, trigger: justCopiedAt)`. A small
-/// inline "Copied" label fades in for ~1.5 s — the system already
+/// **Copy feedback.** Tapping the row writes to `UIPasteboard.general`.
+/// A small inline "Copied" label fades in for ~1.5 s — the system already
 /// shows the OS copy toast on iOS 26 too, but the inline confirmation
 /// is the screen's own honesty: yes, that tap did the thing.
 struct ReceiveAddressRow: View {
@@ -37,8 +33,6 @@ struct ReceiveAddressRow: View {
             )
             HStack(alignment: .center, spacing: UniSpacing.s) {
                 addressText
-                Spacer(minLength: 0)
-                copyButton
             }
             .padding(UniSpacing.m)
             .background(
@@ -63,6 +57,10 @@ struct ReceiveAddressRow: View {
         }
         .onDisappear {
             copiedResetTask?.cancel()
+        }
+        .onChange(of: justCopiedAt) { _, newValue in
+            guard newValue != nil else { return }
+            showCopiedFeedback()
         }
     }
 
@@ -101,21 +99,6 @@ struct ReceiveAddressRow: View {
             .environment(\.layoutDirection, .leftToRight)
     }
 
-    private var copyButton: some View {
-        Button {
-            copy()
-        } label: {
-            Image(systemName: "doc.on.doc")
-                .font(.system(size: 17, weight: .semibold))
-                .frame(width: 32, height: 32)
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .foregroundStyle(UniColors.Text.link)
-        .accessibilityLabel(Text("Copy address"))
-        .uniHaptic(.success, trigger: justCopiedAt)
-    }
-
     private func copy() {
         // 2-minute pasteboard expiry. A receive address is public
         // data, but an unbounded pasteboard entry lingers across
@@ -126,8 +109,11 @@ struct ReceiveAddressRow: View {
             [[UTType.plainText.identifier: address]],
             options: [.expirationDate: Date().addingTimeInterval(120)]
         )
+        justCopiedAt = Date()
+    }
+
+    private func showCopiedFeedback() {
         withAnimation(.easeInOut(duration: 0.2)) {
-            justCopiedAt = Date()
             isShowingCopied = true
         }
         copiedResetTask?.cancel()
