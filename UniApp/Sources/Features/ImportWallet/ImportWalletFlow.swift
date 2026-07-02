@@ -330,9 +330,9 @@ private struct ImportMethodSelectionView: View {
                         .foregroundStyle(UniColors.Text.primary)
                     Spacer(minLength: 0)
                 }
-                .contentShape(Rectangle())
+                .uniListRowHitTarget()
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.uniListRow)
 
             // Info icon only (no label), placed BEFORE the chevron
             // (2026-06-20 user direction).

@@ -182,6 +182,7 @@ private struct OnboardingSettingsRow: View {
             }
         }
         .padding(.vertical, UniSpacing.xxs)
+        .uniListRowHitTarget()
     }
 }
 
@@ -256,8 +257,9 @@ private struct OnboardingAboutView: View {
                             .foregroundStyle(UniColors.Icon.tertiary)
                             .accessibilityHidden(true)
                     }
+                    .uniListRowHitTarget()
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.uniListRow)
 
                 Button { onTapPrivacy() } label: {
                     HStack {
@@ -270,8 +272,9 @@ private struct OnboardingAboutView: View {
                             .foregroundStyle(UniColors.Icon.tertiary)
                             .accessibilityHidden(true)
                     }
+                    .uniListRowHitTarget()
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.uniListRow)
             }
 
             Section {

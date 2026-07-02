@@ -42,6 +42,7 @@ enum UniColors {
         static let background = Page.background
         static let rowBackground = Card.background
         static let rowBackgroundElevated = Card.elevated
+        static let rowPressed = Fill.tertiary
         static let separator = Color(uiColor: .separator)
         static let sectionHeader = Color(uiColor: .secondaryLabel)
     }

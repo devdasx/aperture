@@ -57,7 +57,7 @@ struct AssetRow: View {
             }
         }
         .padding(.vertical, UniSpacing.xs)
-        .contentShape(Rectangle())
+        .uniListRowHitTarget()
         .accessibilityElement(children: .combine)
     }
 

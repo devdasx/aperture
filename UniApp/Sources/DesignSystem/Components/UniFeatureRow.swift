@@ -29,3 +29,25 @@ struct UniFeatureRow: View {
         }
     }
 }
+
+extension View {
+    /// Gives custom row content the same full-width hit area that native
+    /// `List` cells expect, so tapping the icon, text, trailing value, or
+    /// empty row space all activates the same control.
+    func uniListRowHitTarget(alignment: Alignment = .leading) -> some View {
+        frame(maxWidth: .infinity, alignment: alignment)
+            .contentShape(Rectangle())
+    }
+}
+
+struct UniListRowButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .uniListRowHitTarget()
+            .background(configuration.isPressed ? UniColors.List.rowPressed : Color.clear)
+    }
+}
+
+extension ButtonStyle where Self == UniListRowButtonStyle {
+    static var uniListRow: UniListRowButtonStyle { UniListRowButtonStyle() }
+}

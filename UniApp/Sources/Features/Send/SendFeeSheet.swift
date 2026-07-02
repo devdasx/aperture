@@ -116,9 +116,9 @@ struct SendFeeSheet: View {
                 Spacer(minLength: UniSpacing.s)
                 feeColumn(choice)
             }
-            .contentShape(Rectangle())
+            .uniListRowHitTarget()
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.uniListRow)
         .listRowBackground(UniColors.List.rowBackground)
     }
 
@@ -175,9 +175,9 @@ struct SendFeeSheet: View {
                         .foregroundStyle(UniColors.Text.primary)
                     Spacer()
                 }
-                .contentShape(Rectangle())
+                .uniListRowHitTarget()
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.uniListRow)
             .listRowBackground(UniColors.List.rowBackground)
 
             customFields(quote)

@@ -69,9 +69,9 @@ struct SendUTXOSheet: View {
                             }
                             Spacer()
                         }
-                        .contentShape(Rectangle())
+                        .uniListRowHitTarget()
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.uniListRow)
                     .listRowBackground(UniColors.List.rowBackground)
                 } header: {
                     UniCaption(text: "Coin selection", color: UniColors.Text.tertiary)
@@ -134,9 +134,9 @@ struct SendUTXOSheet: View {
                 }
                 Spacer()
             }
-            .contentShape(Rectangle())
+            .uniListRowHitTarget()
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.uniListRow)
         .listRowBackground(UniColors.List.rowBackground)
     }
 

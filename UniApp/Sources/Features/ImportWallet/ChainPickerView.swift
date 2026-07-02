@@ -31,7 +31,7 @@ struct ChainPickerView: View {
                     } label: {
                         chainRow(chain)
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.uniListRow)
                     .listRowBackground(UniColors.List.rowBackground)
                 }
             }
@@ -70,7 +70,7 @@ struct ChainPickerView: View {
                 .accessibilityHidden(true)
         }
         .padding(.vertical, UniSpacing.xxs)
-        .contentShape(Rectangle())
+        .uniListRowHitTarget()
     }
 
     @ViewBuilder

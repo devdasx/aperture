@@ -255,9 +255,9 @@ private struct NetworkRow: View {
                     .accessibilityHidden(true)
             }
             .padding(.vertical, UniSpacing.xxs)
-            .contentShape(Rectangle())
+            .uniListRowHitTarget()
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.uniListRow)
         .accessibilityLabel(Text(verbatim: chain.displayName))
         .accessibilityAddTraits(isSelected ? .isSelected : [])
     }

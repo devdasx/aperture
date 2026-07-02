@@ -274,6 +274,7 @@ struct AssetDetailFilterSheet: View {
                 .monospacedDigit()
         }
         .padding(.vertical, UniSpacing.xxs)
+        .uniListRowHitTarget()
     }
 
     private var networksReadout: String {
@@ -398,7 +399,10 @@ private struct AssetDetailNetworksPicker: View {
                                 .foregroundStyle(UniColors.Tint.accent)
                         }
                     }
+                    .padding(.vertical, UniSpacing.xxs)
+                    .uniListRowHitTarget()
                 }
+                .buttonStyle(.uniListRow)
                 .listRowBackground(UniColors.List.rowBackground)
             }
 
@@ -439,7 +443,9 @@ private struct AssetDetailNetworksPicker: View {
                 }
             }
             .padding(.vertical, UniSpacing.xxs)
+            .uniListRowHitTarget()
         }
+        .buttonStyle(.uniListRow)
         .accessibilityLabel(Text("\(row.chain.displayName) network"))
     }
 

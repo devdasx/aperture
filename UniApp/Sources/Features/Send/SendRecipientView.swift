@@ -288,7 +288,7 @@ struct SendRecipientView: View {
                         } label: {
                             RecentRecipientRow(recipient: recipient)
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(.uniListRow)
                         if offset < recentList.count - 1 {
                             UniDivider()
                                 .padding(.leading, UniSpacing.m + 36 + UniSpacing.s)
@@ -698,7 +698,7 @@ private struct RecentRecipientRow: View {
         }
         .padding(.horizontal, UniSpacing.m)
         .padding(.vertical, UniSpacing.s)
-        .contentShape(Rectangle())
+        .uniListRowHitTarget()
         .accessibilityElement(children: .combine)
         .accessibilityLabel(Text(verbatim: SendRecipientView.shorten(recipient.address)))
         .accessibilityHint(Text("Use this recipient"))

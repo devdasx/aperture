@@ -181,9 +181,9 @@ private struct LanguageRow: View {
                 }
             }
             .padding(.vertical, UniSpacing.xxs)
-            .contentShape(Rectangle())
+            .uniListRowHitTarget()
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.uniListRow)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(Text(verbatim: isSystemRow ? "System" : "\(nativeName) — \(localizedName)"))
         .accessibilityAddTraits(isSelected ? [.isSelected, .isButton] : .isButton)

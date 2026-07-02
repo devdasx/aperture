@@ -54,7 +54,7 @@ struct SendNetworkPickerView: View {
                             currencyCode: currencyCode
                         )
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.uniListRow)
                     .listRowBackground(UniColors.List.rowBackground)
                     .accessibilityLabel(Text(verbatim: descriptor.chain.displayName))
                     .accessibilityHint(Text("Send \(symbol) on this network"))

@@ -1119,7 +1119,7 @@ private struct MarketAssetRow: View {
                 .layoutPriority(3)
         }
         .padding(.vertical, 12)
-        .contentShape(Rectangle())
+        .uniListRowHitTarget()
     }
 
     private var assetIdentity: some View {

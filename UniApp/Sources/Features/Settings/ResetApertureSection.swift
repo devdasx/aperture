@@ -27,8 +27,9 @@ struct ResetApertureSection: View {
                     Spacer()
                 }
                 .padding(.vertical, UniSpacing.xxs)
+                .uniListRowHitTarget()
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.uniListRow)
             .listRowBackground(UniColors.List.rowBackground)
         } footer: {
             Text("Deletes every wallet, every encrypted seed, every cached balance, every preference. This cannot be undone — back up any recovery phrases first.")

@@ -70,14 +70,14 @@ struct WalletSwitcherSheet: View {
                     } label: {
                         addRow(systemImage: "plus", title: "Create new wallet")
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.uniListRow)
 
                     Button {
                         onImport()
                     } label: {
                         addRow(systemImage: "square.and.arrow.down", title: "Import existing wallet")
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.uniListRow)
                 }
             }
             .listStyle(.insetGrouped)
@@ -136,9 +136,9 @@ struct WalletSwitcherSheet: View {
                 }
             }
             .padding(.vertical, UniSpacing.xxs)
-            .contentShape(Rectangle())
+            .uniListRowHitTarget()
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.uniListRow)
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(.isButton)
     }
@@ -158,6 +158,6 @@ struct WalletSwitcherSheet: View {
                 .foregroundStyle(UniColors.Icon.tertiary)
         }
         .padding(.vertical, UniSpacing.xxs)
-        .contentShape(Rectangle())
+        .uniListRowHitTarget()
     }
 }
