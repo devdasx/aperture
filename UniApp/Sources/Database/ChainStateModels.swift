@@ -204,6 +204,76 @@ enum ChainSyncState: String, Codable, Sendable {
     case failed    // last refresh could not reach the chain
 }
 
+// MARK: - WalletPortfolioSummaryRecord
+
+/// **One persisted portfolio summary per wallet/currency.**
+///
+/// `ChainStateRecord` remains the per-chain database row. This row is the
+/// wallet-level read model the balance card can load immediately on launch:
+/// total local-currency value, positive chain count, and positive asset count
+/// for one `(walletId, currencyCode)` pair. It is recomputed from
+/// `ChainStateRecord` by `ChainStateRepository.rebuild(...)` after scanners
+/// persist balance/history rows, so it never invents data and never depends on
+/// transient UI state.
+@Model
+final class WalletPortfolioSummaryRecord {
+    @Attribute(.unique) var id: UUID
+
+    /// Unique lookup key: `<wallet UUID>:<FIAT CODE>`.
+    @Attribute(.unique) var lookupKey: String
+
+    /// Owning wallet — `WalletRecord.id`.
+    var walletId: UUID
+
+    /// Fiat currency code for every Decimal field in this row.
+    var currencyCode: String
+
+    /// Total wallet fiat in `currencyCode`, across every persisted chain row.
+    var totalFiat: Decimal
+
+    /// Chains whose persisted aggregate value is positive.
+    var positiveChainCount: Int
+
+    /// Native assets + token rows with positive persisted balances.
+    var positiveAssetCount: Int
+
+    /// Positive token rows only, excluding native assets.
+    var positiveTokenCount: Int
+
+    /// Number of chain rows included in the summary.
+    var sourceChainCount: Int
+
+    /// Last time this summary row changed.
+    var updatedAt: Date
+
+    init(
+        id: UUID = UUID(),
+        walletId: UUID,
+        currencyCode: String,
+        totalFiat: Decimal = 0,
+        positiveChainCount: Int = 0,
+        positiveAssetCount: Int = 0,
+        positiveTokenCount: Int = 0,
+        sourceChainCount: Int = 0,
+        updatedAt: Date = Date()
+    ) {
+        self.id = id
+        self.lookupKey = Self.makeLookupKey(walletId: walletId, currencyCode: currencyCode)
+        self.walletId = walletId
+        self.currencyCode = currencyCode.uppercased()
+        self.totalFiat = totalFiat
+        self.positiveChainCount = positiveChainCount
+        self.positiveAssetCount = positiveAssetCount
+        self.positiveTokenCount = positiveTokenCount
+        self.sourceChainCount = sourceChainCount
+        self.updatedAt = updatedAt
+    }
+
+    static func makeLookupKey(walletId: UUID, currencyCode: String) -> String {
+        "\(walletId.uuidString.lowercased()):\(currencyCode.uppercased())"
+    }
+}
+
 // MARK: - ChainUTXORecord
 
 /// **One unspent transaction output — for UTXO chains only (BTC / BCH /

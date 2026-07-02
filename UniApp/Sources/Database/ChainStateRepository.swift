@@ -123,6 +123,7 @@ actor ChainStateRepository {
             )
             rebuilt += 1
         }
+        try upsertWalletPortfolioSummary(walletId: walletId, fiatCurrencyCode: fiatCurrencyCode)
         if modelContext.hasChanges { try modelContext.save() }
         return rebuilt
     }
@@ -456,6 +457,76 @@ actor ChainStateRepository {
             return (existing, false)
         }
         let record = ChainStateRecord(walletId: walletId, chainRaw: chainRaw, address: address)
+        modelContext.insert(record)
+        return (record, true)
+    }
+
+    /// Rebuild the wallet-level read model the balance card can load on
+    /// launch. This is derived from `ChainStateRecord` only, so the hero
+    /// total and the coin/token rows stay anchored to the same persisted data.
+    private func upsertWalletPortfolioSummary(walletId: UUID, fiatCurrencyCode: String) throws {
+        let code = fiatCurrencyCode.uppercased()
+        let descriptor = FetchDescriptor<ChainStateRecord>(
+            predicate: #Predicate { $0.walletId == walletId }
+        )
+        let rows = try modelContext.fetch(descriptor).filter {
+            $0.fiatCurrencyCode.caseInsensitiveCompare(code) == .orderedSame
+        }
+
+        let totalFiat = rows.reduce(Decimal.zero) { $0 + $1.totalFiat }
+        let positiveChainCount = rows.filter { $0.totalFiat > 0 }.count
+        let positiveTokenCount = rows.reduce(0) { $0 + $1.tokenCount }
+        let positiveAssetCount = rows.reduce(0) { count, row in
+            let nativeAmount = Decimal(string: row.nativeBalanceRaw) ?? 0
+            return count + (nativeAmount > 0 ? 1 : 0) + row.tokenCount
+        }
+        let sourceChainCount = rows.count
+        let lookupKey = WalletPortfolioSummaryRecord.makeLookupKey(walletId: walletId, currencyCode: code)
+        let (summary, isNew) = try fetchOrCreatePortfolioSummary(
+            walletId: walletId,
+            currencyCode: code,
+            lookupKey: lookupKey
+        )
+
+        let unchanged = !isNew
+            && summary.lookupKey == lookupKey
+            && summary.walletId == walletId
+            && summary.currencyCode == code
+            && summary.totalFiat == totalFiat
+            && summary.positiveChainCount == positiveChainCount
+            && summary.positiveAssetCount == positiveAssetCount
+            && summary.positiveTokenCount == positiveTokenCount
+            && summary.sourceChainCount == sourceChainCount
+        if unchanged { return }
+
+        summary.lookupKey = lookupKey
+        summary.walletId = walletId
+        summary.currencyCode = code
+        summary.totalFiat = totalFiat
+        summary.positiveChainCount = positiveChainCount
+        summary.positiveAssetCount = positiveAssetCount
+        summary.positiveTokenCount = positiveTokenCount
+        summary.sourceChainCount = sourceChainCount
+        summary.updatedAt = Date()
+    }
+
+    private func fetchOrCreatePortfolioSummary(
+        walletId: UUID,
+        currencyCode: String,
+        lookupKey: String
+    ) throws -> (record: WalletPortfolioSummaryRecord, isNew: Bool) {
+        var descriptor = FetchDescriptor<WalletPortfolioSummaryRecord>(
+            predicate: #Predicate { $0.lookupKey == lookupKey }
+        )
+        descriptor.fetchLimit = 1
+        if let existing = try modelContext.fetch(descriptor).first {
+            return (existing, false)
+        }
+
+        let record = WalletPortfolioSummaryRecord(
+            walletId: walletId,
+            currencyCode: currencyCode
+        )
         modelContext.insert(record)
         return (record, true)
     }
