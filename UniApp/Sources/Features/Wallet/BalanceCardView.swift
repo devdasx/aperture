@@ -66,6 +66,9 @@ struct BalanceCardView: View {
     let priceHistory: [String: [Int: Decimal]]
     let hourlyHoldings: [BalanceHourlyHolding]
     let hourlyPriceSnapshots: [BalanceHourlyPriceSnapshot]
+    /// Persisted read model for the balance card. When present, the card uses
+    /// this as the single source of truth and skips view-local reconstruction.
+    let persistedSnapshot: WalletBalanceCardDisplaySnapshot?
 
     /// Scrub channel — the hero (this card's balance label) renders the
     /// touched point's value while dragging; resets to `totalFiat` on
@@ -79,6 +82,10 @@ struct BalanceCardView: View {
     let onSwitchWallet: () -> Void
     /// Opens Receive from the zero-state Add funds button.
     let onAddFunds: () -> Void
+    /// Persists per-wallet hidden state in the balance-card read model.
+    let onHiddenChanged: (Bool) -> Void
+    /// Persists the selected chart range in the balance-card read model.
+    let onRangeChanged: (String) -> Void
 
     // MARK: - Environment / persisted state
 
@@ -107,6 +114,7 @@ struct BalanceCardView: View {
     @State private var xFractions: [Double] = []
     @State private var minValue: Double = 0
     @State private var maxValue: Double = 0
+    @State private var hiddenOverride: Bool?
     init(
         walletId: UUID?,
         walletName: String,
@@ -119,9 +127,12 @@ struct BalanceCardView: View {
         priceHistory: [String: [Int: Decimal]],
         hourlyHoldings: [BalanceHourlyHolding],
         hourlyPriceSnapshots: [BalanceHourlyPriceSnapshot],
+        persistedSnapshot: WalletBalanceCardDisplaySnapshot? = nil,
         scrubModel: ChartScrubModel,
         onSwitchWallet: @escaping () -> Void,
-        onAddFunds: @escaping () -> Void
+        onAddFunds: @escaping () -> Void,
+        onHiddenChanged: @escaping (Bool) -> Void = { _ in },
+        onRangeChanged: @escaping (String) -> Void = { _ in }
     ) {
         self.walletId = walletId
         self.walletName = walletName
@@ -134,9 +145,12 @@ struct BalanceCardView: View {
         self.priceHistory = priceHistory
         self.hourlyHoldings = hourlyHoldings
         self.hourlyPriceSnapshots = hourlyPriceSnapshots
+        self.persistedSnapshot = persistedSnapshot
         self.scrubModel = scrubModel
         self.onSwitchWallet = onSwitchWallet
         self.onAddFunds = onAddFunds
+        self.onHiddenChanged = onHiddenChanged
+        self.onRangeChanged = onRangeChanged
         // Per-wallet visibility key; a nil id (no active wallet) shares a
         // single fallback key — harmless because there's nothing to mask.
         let key = "balanceCardHidden." + (walletId?.uuidString ?? "none")
@@ -151,6 +165,49 @@ struct BalanceCardView: View {
 
     private var boostContrast: Bool { legibilityWeight == .bold }
 
+    private var selectedSnapshotRange: WalletBalanceCardRangeSnapshot? {
+        persistedSnapshot?.range(currentRange)
+    }
+
+    private var displayTotalFiat: Decimal {
+        persistedSnapshot?.totalFiat ?? totalFiat
+    }
+
+    private var displayLastUpdated: Date? {
+        persistedSnapshot?.lastUpdatedAt ?? lastUpdated
+    }
+
+    private var effectiveHidden: Bool {
+        hiddenOverride ?? persistedSnapshot?.isBalanceHidden ?? isHidden
+    }
+
+    private var displayPoints: [BalancePoint] {
+        selectedSnapshotRange?.balancePoints ?? points
+    }
+
+    private var displayValues: [Double] {
+        selectedSnapshotRange?.values ?? values
+    }
+
+    private var displayXFractions: [Double] {
+        if let selectedSnapshotRange,
+           selectedSnapshotRange.xFractions.count == displayPoints.count {
+            return selectedSnapshotRange.xFractions
+        }
+        if xFractions.count == displayPoints.count {
+            return xFractions
+        }
+        return Self.timeFractions(for: displayPoints)
+    }
+
+    private var displayMinValue: Double {
+        selectedSnapshotRange?.minValue ?? minValue
+    }
+
+    private var displayMaxValue: Double {
+        selectedSnapshotRange?.maxValue ?? maxValue
+    }
+
     /// The pill's baseline = the **first point in the window** (2026-06-19
     /// Bug 4 fix). The change/percent measure from the real range-start value
     /// to the trailing edge. When the window starts at 0 — the wallet was
@@ -161,7 +218,7 @@ struct BalanceCardView: View {
     /// the first NON-zero point, which manufactured a baseline and produced
     /// the +1136.37% the user saw.)
     private var baselineFiat: Decimal {
-        points.first?.fiat ?? 0
+        selectedSnapshotRange?.baselineFiat ?? displayPoints.first?.fiat ?? 0
     }
 
     /// `true` when the window starts at a zero balance (funded during the
@@ -179,7 +236,14 @@ struct BalanceCardView: View {
     /// stays honest AND consistent with the curve. Flat when
     /// `last == baseline` (no net movement across the window).
     private var sign: UniColors.BalanceCard.Sign {
-        guard let last = points.last else { return .flat }
+        if let raw = selectedSnapshotRange?.signRaw {
+            switch raw {
+            case "up": return .up
+            case "down": return .down
+            default: return .flat
+            }
+        }
+        guard let last = displayPoints.last else { return .flat }
         let baseline = baselineFiat
         if last.fiat > baseline { return .up }
         if last.fiat < baseline { return .down }
@@ -190,7 +254,10 @@ struct BalanceCardView: View {
     /// baselineFiat`, off the chart's own endpoints (first HELD balance →
     /// trailing edge).
     private var change: Decimal {
-        guard let last = points.last else { return 0 }
+        if let cached = selectedSnapshotRange?.changeFiat {
+            return cached
+        }
+        guard let last = displayPoints.last else { return 0 }
         return last.fiat - baselineFiat
     }
 
@@ -201,7 +268,10 @@ struct BalanceCardView: View {
     /// back to "0.00% / No change" rather than dividing by zero or
     /// fabricating a percent.
     private var changePercent: Double {
-        guard let last = points.last else { return 0 }
+        if let cached = selectedSnapshotRange?.changePercent {
+            return cached
+        }
+        guard let last = displayPoints.last else { return 0 }
         let baseline = baselineFiat
         guard baseline > 0 else { return 0 }
         let baselineD = NSDecimalNumber(decimal: baseline).doubleValue
@@ -216,8 +286,8 @@ struct BalanceCardView: View {
         // Hiding always wins — the eye must hide the balance even on a fresh
         // / $0 wallet. The zero state previously shadowed `.hidden` (it was
         // checked first), so tapping the eye on a zero wallet did nothing.
-        if isHidden { return .hidden }
-        if totalFiat <= 0 { return .zero }   // zero overrides the value/change state (handoff)
+        if effectiveHidden { return .hidden }
+        if displayTotalFiat <= 0 { return .zero }   // zero overrides the value/change state (handoff)
         return .value
     }
 
@@ -262,8 +332,17 @@ struct BalanceCardView: View {
         .accessibilityElement(children: .combine)
         .accessibilityLabel(accessibilityLabel)
         .animation(reduceMotion ? nil : .smooth(duration: 0.32), value: resolvedState)
-        .animation(reduceMotion ? nil : .smooth(duration: 0.32), value: totalFiat)
-        .task(id: rebuildKey) { await rebuild() }
+        .animation(reduceMotion ? nil : .smooth(duration: 0.32), value: displayTotalFiat)
+        .task(id: rebuildKey) {
+            guard persistedSnapshot == nil else { return }
+            await rebuild()
+        }
+        .onChange(of: selectedRangeRaw) { _, newValue in
+            onRangeChanged(newValue)
+        }
+        .onChange(of: persistedSnapshot?.isBalanceHidden) { _, _ in
+            hiddenOverride = nil
+        }
     }
 
     /// "Updated 2 min ago" — the localized relative time of the last balance/
@@ -341,7 +420,7 @@ struct BalanceCardView: View {
                 // waking the full card every second; a 30s cadence is enough
                 // for this low-priority caption and avoids background heat
                 // while the user scrolls.
-                if let lastUpdated {
+                if let lastUpdated = displayLastUpdated {
                     TimelineView(.periodic(from: .now, by: 30)) { _ in
                         Text(verbatim: Self.updatedCaption(lastUpdated))
                             .font(UniTypography.caption2)
@@ -358,7 +437,7 @@ struct BalanceCardView: View {
 
             // Eye / visibility button.
             Button(action: toggleHidden) {
-                Image(systemName: isHidden ? "eye.slash" : "eye")
+                Image(systemName: effectiveHidden ? "eye.slash" : "eye")
                     .font(.system(size: 16, weight: .regular))
                     .foregroundStyle(UniColors.BalanceCard.eyeGlyph(colorScheme))
                     .frame(width: 34, height: 34)
@@ -369,7 +448,7 @@ struct BalanceCardView: View {
             }
             .buttonStyle(.plain)
             .frame(width: 44, height: 44)
-            .accessibilityLabel(Text(isHidden ? "Show balance" : "Hide balance"))
+            .accessibilityLabel(Text(effectiveHidden ? "Show balance" : "Hide balance"))
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)
     }
@@ -385,7 +464,7 @@ struct BalanceCardView: View {
         // "Balance hidden" pill. No empty flat chart, no range tabs
         // (2026-06-23 user direction). A wallet with a real balance keeps the
         // (flattened) chart + ranges even when hidden.
-        if !isHidden || totalFiat > 0 {
+        if !effectiveHidden || displayTotalFiat > 0 {
             changeRow
 
             BalanceAreaChart(
@@ -393,7 +472,7 @@ struct BalanceCardView: View {
                 xFractions: chartXFractions,
                 minValue: chartMin,
                 maxValue: chartMax,
-                timestamps: isHidden ? [] : points.map(\.timestamp),
+                timestamps: effectiveHidden ? [] : displayPoints.map(\.timestamp),
                 sign: chartSign,
                 onScrub: { selection in
                     scrubModel.update(selection: selection)
@@ -425,16 +504,16 @@ struct BalanceCardView: View {
     /// The chart series — flattened to a single neutral mid value in the
     /// hidden state so no value shape is exposed (handoff §Hidden).
     private var chartValues: [Double] {
-        isHidden ? Array(repeating: 0, count: max(values.count, 2)) : values
+        effectiveHidden ? Array(repeating: 0, count: max(displayValues.count, 2)) : displayValues
     }
     /// Time-proportional x for the real curve; `[]` while hidden so the
     /// masked flat line falls back to (visually identical) index spacing.
     private var chartXFractions: [Double] {
-        isHidden ? [] : xFractions
+        effectiveHidden ? [] : displayXFractions
     }
-    private var chartMin: Double { isHidden ? 0 : minValue }
-    private var chartMax: Double { isHidden ? 0 : maxValue }
-    private var chartSign: UniColors.BalanceCard.Sign { isHidden ? .flat : sign }
+    private var chartMin: Double { effectiveHidden ? 0 : displayMinValue }
+    private var chartMax: Double { effectiveHidden ? 0 : displayMaxValue }
+    private var chartSign: UniColors.BalanceCard.Sign { effectiveHidden ? .flat : sign }
 
     // MARK: - Balance number (3 runs)
 
@@ -447,12 +526,12 @@ struct BalanceCardView: View {
             .contentShape(Rectangle())
             .onTapGesture { toggleHidden() }
             .accessibilityAddTraits(.isButton)
-            .accessibilityLabel(Text(isHidden ? "Show balance" : "Hide balance"))
+            .accessibilityLabel(Text(effectiveHidden ? "Show balance" : "Hide balance"))
     }
 
     private var balanceNumber: some View {
-        let parts = WalletFormatting.fiatParts(totalFiat, currencyCode: currencyCode)
-        let animatedFiat = NSDecimalNumber(decimal: scrubModel.fiat ?? totalFiat).doubleValue
+        let parts = WalletFormatting.fiatParts(displayTotalFiat, currencyCode: currencyCode)
+        let animatedFiat = NSDecimalNumber(decimal: scrubModel.fiat ?? displayTotalFiat).doubleValue
         let scrubActive = scrubModel.isActive
         // Currency-code run (muted), shown only when it leads (en).
         let currencyRun = Text(verbatim: parts.currency + (parts.currency.isEmpty ? "" : " "))
@@ -460,7 +539,7 @@ struct BalanceCardView: View {
             .foregroundStyle(UniColors.BalanceCard.textMuted(colorScheme, boostContrast: boostContrast))
 
         return Group {
-            if isHidden {
+            if effectiveHidden {
                 // Masked figure — currency code + dots. iOS 26 deprecates
                 // `Text + Text`; compose via string interpolation, which
                 // preserves each run's own font + color.
@@ -479,14 +558,14 @@ struct BalanceCardView: View {
         .contentTransition(reduceMotion || scrubActive ? .identity : .numericText())
         .environment(\.layoutDirection, .leftToRight) // numbers always LTR (Rule #11)
         .animation(reduceMotion || scrubActive ? nil : .smooth(duration: 0.28), value: animatedFiat)
-        .animation(reduceMotion ? nil : .smooth(duration: 0.24), value: isHidden)
+        .animation(reduceMotion ? nil : .smooth(duration: 0.24), value: effectiveHidden)
     }
 
     /// The integer (primary) + decimals (fainter), with the currency code
     /// run placed per the locale (lead for en, trail for de). While
     /// scrubbing, the displayed value is the scrubbed point.
     private func composedBalance(_ restingParts: WalletFormatting.FiatParts) -> Text {
-        let displayed = scrubModel.fiat ?? totalFiat
+        let displayed = scrubModel.fiat ?? displayTotalFiat
         let parts = WalletFormatting.fiatParts(displayed, currencyCode: currencyCode)
 
         let currency = Text(verbatim: parts.currency)
@@ -517,7 +596,7 @@ struct BalanceCardView: View {
     @ViewBuilder
     private var changeRow: some View {
         HStack(spacing: 10) {
-            if isHidden {
+            if effectiveHidden {
                 // Masked pill + "Balance hidden".
                 changePill(text: "••••", systemImage: nil, sign: .flat)
                 Text("Balance hidden")
@@ -574,7 +653,7 @@ struct BalanceCardView: View {
             Text(verbatim: text)
                 .font(UniTypography.BalanceCard.pill)
                 .monospacedDigit()
-                .tracking(systemImage == nil && isHidden ? 2 : 0)
+                .tracking(systemImage == nil && effectiveHidden ? 2 : 0)
         }
         .foregroundStyle(UniColors.BalanceCard.accent(sign, colorScheme))
         .padding(.horizontal, 12)
@@ -676,9 +755,12 @@ struct BalanceCardView: View {
     }
 
     private func toggleHidden() {
+        let newValue = !effectiveHidden
         withAnimation(reduceMotion ? nil : .smooth(duration: 0.28)) {
-            isHidden.toggle()
+            hiddenOverride = newValue
+            isHidden = newValue
         }
+        onHiddenChanged(newValue)
         UniHapticEngine.shared.play(.toggle) // `toggle` on value change
     }
 
@@ -687,10 +769,10 @@ struct BalanceCardView: View {
     /// One combined VoiceOver label (handoff §Accessibility): "Total
     /// balance, 12,480.25 …, up 2.41% today".
     private var accessibilityLabel: Text {
-        if isHidden {
+        if effectiveHidden {
             return Text("Total balance hidden, double tap the eye button to reveal")
         }
-        let value = WalletFormatting.fiat(totalFiat, currencyCode: currencyCode)
+        let value = WalletFormatting.fiat(displayTotalFiat, currencyCode: currencyCode)
         if resolvedState == .zero {
             return Text("Total balance \(value). Add crypto to get started.")
         }
@@ -726,7 +808,7 @@ struct BalanceCardView: View {
         }
         hasher.combine(selectedRangeRaw)
         hasher.combine(currencyCode)
-        hasher.combine(totalFiat)
+        hasher.combine(displayTotalFiat)
         hasher.combine(priceCache.count)
         var priceSum = Decimal.zero
         for price in priceCache.values { priceSum += price }
@@ -777,7 +859,7 @@ struct BalanceCardView: View {
         let history = priceHistory
         let range = currentRange
         let own = ownAddresses
-        let currentTotal = totalFiat
+        let currentTotal = displayTotalFiat
         let hourHoldingsSnapshot = hourlyHoldings
         let hourPriceSnapshots = hourlyPriceSnapshots
         let now = Date()
