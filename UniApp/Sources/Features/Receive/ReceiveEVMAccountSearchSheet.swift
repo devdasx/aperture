@@ -21,6 +21,7 @@ struct ReceiveEVMAccountSearchSheet: View {
     @State private var hasSearched: Bool = false
     @State private var errorMessage: String?
     @State private var searchCandidateCount: Int = 0
+    @State private var searchRequest: EVMReceiveAccountSearchRequest?
     @State private var pendingAddressChoice: EVMReceiveAddressChoice?
 
     private var supportedTokens: [EVMTokenRegistry.Entry] {
@@ -32,7 +33,7 @@ struct ReceiveEVMAccountSearchSheet: View {
               let to = Int(toIndex.trimmingCharacters(in: .whitespacesAndNewlines)),
               from >= 0,
               to >= from,
-              to - from <= 100 else {
+              (to - from + 1) <= EVMReceiveAccountSearchLimits.maxAccountsPerSearch else {
             return nil
         }
         return from...to
@@ -61,6 +62,16 @@ struct ReceiveEVMAccountSearchSheet: View {
                     Button("Close") { dismiss() }
                 }
             }
+        }
+        .sheet(item: $searchRequest) { request in
+            EVMReceiveAccountSearchProgressSheet(
+                request: request,
+                onFinished: finishSearch,
+                onCancel: cancelSearch
+            )
+            .uniAppEnvironment()
+            .intrinsicHeightSheet()
+            .presentationBackground(UniColors.Background.primary)
         }
         .sheet(item: $pendingAddressChoice) { choice in
             EVMReceiveAddressScopeSheet(
@@ -167,7 +178,7 @@ struct ReceiveEVMAccountSearchSheet: View {
             isLoading: isSearching,
             isEnabled: parsedRange != nil && !isSearching && isSavingAddress == nil
         ) {
-            Task { await searchAccounts() }
+            searchAccounts()
         }
     }
 
@@ -199,7 +210,11 @@ struct ReceiveEVMAccountSearchSheet: View {
                     minHeight: 180
                 )
             } else if isSearching {
-                searchingProcessCard
+                UniListEmptyState(
+                    title: "Search running",
+                    detail: "Aperture is checking accounts in a separate progress sheet.",
+                    minHeight: 180
+                )
             } else if results.isEmpty {
                 UniListEmptyState(
                     title: "No funded accounts found",
@@ -320,7 +335,7 @@ struct ReceiveEVMAccountSearchSheet: View {
     }
 
     @MainActor
-    private func searchAccounts() async {
+    private func searchAccounts() {
         guard !isSearching else { return }
         guard chain.family == .evm else { return }
         guard let wallet else {
@@ -328,29 +343,51 @@ struct ReceiveEVMAccountSearchSheet: View {
             return
         }
         guard let range = parsedRange else {
-            errorMessage = "Choose a valid account range. The maximum span is 100 accounts."
+            errorMessage = EVMReceiveAccountSearchLimits.rangeErrorMessage
             return
         }
 
-        isSearching = true
-        hasSearched = true
+        isSearching = false
+        hasSearched = false
         errorMessage = nil
         results = []
         searchCandidateCount = 0
-        defer { isSearching = false }
 
         do {
             let candidates = try deriveCandidates(wallet: wallet, range: range)
             searchCandidateCount = candidates.count
-            let searchResults = try await EVMReceiveAccountSearchService.shared.search(
+            isSearching = true
+            searchRequest = EVMReceiveAccountSearchRequest(
                 candidates: candidates,
                 chain: chain,
                 currencyCode: currencyCode
             )
-            results = searchResults
         } catch {
             errorMessage = EVMReceiveAccountSearchError.message(for: error)
+            isSearching = false
         }
+    }
+
+    @MainActor
+    private func finishSearch(_ outcome: Result<[EVMReceiveAccountSearchResult], Error>) {
+        searchRequest = nil
+        isSearching = false
+        hasSearched = true
+
+        switch outcome {
+        case .success(let searchResults):
+            errorMessage = nil
+            results = searchResults
+        case .failure(let error):
+            results = []
+            errorMessage = EVMReceiveAccountSearchError.message(for: error)
+        }
+    }
+
+    @MainActor
+    private func cancelSearch() {
+        searchRequest = nil
+        isSearching = false
     }
 
     private func deriveCandidates(
@@ -600,6 +637,119 @@ enum AccountSearchStepState: Equatable {
             Image(systemName: "checkmark.circle.fill")
                 .font(.system(size: 18, weight: .semibold))
                 .foregroundStyle(UniColors.Feedback.Success.foreground)
+        }
+    }
+}
+
+private enum EVMReceiveAccountSearchLimits {
+    static let maxAccountsPerSearch = 100
+    static let rangeErrorMessage = "Search up to 100 accounts at once. Use ranges like 0 to 99, then continue with the next 100."
+}
+
+private struct EVMReceiveAccountSearchRequest: Identifiable {
+    let id = UUID()
+    let candidates: [EVMReceiveAccountCandidate]
+    let chain: SupportedChain
+    let currencyCode: String
+}
+
+private struct EVMReceiveAccountSearchProgressSheet: View {
+    let request: EVMReceiveAccountSearchRequest
+    let onFinished: (Result<[EVMReceiveAccountSearchResult], Error>) -> Void
+    let onCancel: () -> Void
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var didFinish = false
+
+    var body: some View {
+        UniSheet(title: "Searching accounts") {
+            VStack(alignment: .leading, spacing: UniSpacing.m) {
+                HStack(alignment: .center, spacing: UniSpacing.s) {
+                    ProgressView()
+                        .controlSize(.regular)
+                        .tint(UniColors.Text.primary)
+
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("Checking \(request.candidates.count) accounts")
+                            .font(UniTypography.headline)
+                            .foregroundStyle(UniColors.Text.primary)
+                        Text("\(request.chain.displayName) balances, history, and supported token balances are running in parallel.")
+                            .font(UniTypography.subheadline)
+                            .foregroundStyle(UniColors.Text.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+
+                UniDivider()
+
+                VStack(alignment: .leading, spacing: UniSpacing.s) {
+                    searchStepRow(
+                        title: "Local addresses ready",
+                        detail: "\(request.candidates.count) accounts derived on this device",
+                        state: .complete
+                    )
+                    searchStepRow(
+                        title: "Parallel network scan",
+                        detail: "\(request.chain.ticker) plus \(EVMTokenRegistry.tokens(for: request.chain).count) supported tokens",
+                        state: .active
+                    )
+                    searchStepRow(
+                        title: "Build results",
+                        detail: "Funded accounts move to the top when the scan completes",
+                        state: .pending
+                    )
+                }
+            }
+        } actions: {
+            UniButton(title: "Cancel", variant: .secondary) {
+                didFinish = true
+                onCancel()
+                dismiss()
+            }
+        }
+        .task(id: request.id) {
+            do {
+                let searchResults = try await EVMReceiveAccountSearchService.shared.search(
+                    candidates: request.candidates,
+                    chain: request.chain,
+                    currencyCode: request.currencyCode
+                )
+                try Task.checkCancellation()
+                didFinish = true
+                onFinished(.success(searchResults))
+                dismiss()
+            } catch is CancellationError {
+                if !didFinish {
+                    didFinish = true
+                    onCancel()
+                }
+            } catch {
+                didFinish = true
+                onFinished(.failure(error))
+                dismiss()
+            }
+        }
+        .onDisappear {
+            guard !didFinish else { return }
+            didFinish = true
+            onCancel()
+        }
+    }
+
+    private func searchStepRow(title: String, detail: String, state: AccountSearchStepState) -> some View {
+        HStack(alignment: .top, spacing: UniSpacing.s) {
+            state.icon
+                .frame(width: 22, height: 22)
+                .padding(.top, 1)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(UniTypography.subheadline.weight(.semibold))
+                    .foregroundStyle(state == .pending ? UniColors.Text.tertiary : UniColors.Text.primary)
+                Text(detail)
+                    .font(UniTypography.caption1)
+                    .foregroundStyle(UniColors.Text.tertiary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
     }
 }
@@ -890,13 +1040,23 @@ actor EVMReceiveAccountSearchService {
             currencyCode: currencyCode
         )
 
-        var results: [EVMReceiveAccountSearchResult] = []
-        results.reserveCapacity(candidates.count)
-        for candidate in candidates {
-            try Task.checkCancellation()
-            if let result = try await search(candidate: candidate, chain: chain, tokens: tokens, prices: prices) {
-                results.append(result)
+        let results = try await withThrowingTaskGroup(
+            of: EVMReceiveAccountSearchResult?.self,
+            returning: [EVMReceiveAccountSearchResult].self
+        ) { group in
+            for candidate in candidates {
+                group.addTask {
+                    try Task.checkCancellation()
+                    return try await self.search(candidate: candidate, chain: chain, tokens: tokens, prices: prices)
+                }
             }
+
+            var searchResults: [EVMReceiveAccountSearchResult] = []
+            searchResults.reserveCapacity(candidates.count)
+            for try await result in group {
+                if let result { searchResults.append(result) }
+            }
+            return searchResults
         }
 
         return results.sorted {
