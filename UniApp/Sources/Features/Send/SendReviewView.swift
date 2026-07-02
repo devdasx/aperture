@@ -445,10 +445,7 @@ struct SendReviewView: View {
         sendTask = Task { @MainActor in
             let pass = walletHasPassphrase ? passphrase : nil
             let result = await SendExecutor().execute(
-                draft: draft,
-                walletId: walletId,
-                currencyCode: currencyCode,
-                passphrase: pass
+                draft: draft, walletId: walletId, passphrase: pass
             )
             // Drop the passphrase from memory immediately after the send.
             passphrase = ""

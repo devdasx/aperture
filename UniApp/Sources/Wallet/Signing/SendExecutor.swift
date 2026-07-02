@@ -53,7 +53,6 @@ struct SendExecutor {
     func execute(
         draft: SendDraft,
         walletId: UUID,
-        currencyCode: String,
         passphrase: String? = nil
     ) async -> Result<SentTransaction, SigningError> {
         // 1. Resolve the wallet descriptor + the address row id (main
@@ -95,11 +94,6 @@ struct SendExecutor {
         let recordId = await writePendingRecord(
             txHash: txHash, draft: draft, addressId: addressId, signed: signed
         )
-        schedulePostBroadcastRefresh(
-            walletId: walletId,
-            chain: draft.chain,
-            currencyCode: currencyCode
-        )
 
         // Fire-and-forget confirmation poll where a cheap, definitive
         // status RPC exists; otherwise the pending row is reconciled by
@@ -121,26 +115,6 @@ struct SendExecutor {
         }
 
         return .success(SentTransaction(txHash: txHash, chain: draft.chain, recordId: recordId))
-    }
-
-    /// After a successful broadcast, reconcile only the touched chain a few
-    /// seconds later. This updates the persisted balance row and pending /
-    /// confirmed transaction history without making the send success screen
-    /// wait for another network round trip.
-    private func schedulePostBroadcastRefresh(
-        walletId: UUID,
-        chain: SupportedChain,
-        currencyCode: String
-    ) {
-        let modelContainer = container
-        Task {
-            await WalletBackgroundWorkCoordinator.shared.schedulePostBroadcastRefresh(
-                walletId: walletId,
-                chain: chain,
-                currencyCode: currencyCode,
-                modelContainer: modelContainer
-            )
-        }
     }
 
     // MARK: - 1. Wallet resolution (main actor)
