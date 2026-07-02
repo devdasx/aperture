@@ -113,6 +113,15 @@ enum ScreenRestoration {
         defaults.set(MainTab.wallet.rawValue, forKey: MainTab.storageKey)
     }
 
+    /// Immediate in-session version of `resetToMainScreen()`. Use this
+    /// after a wallet is actually created/imported/restored so the user
+    /// always lands on the Wallet home, no matter which tab or pushed
+    /// Settings screen opened the flow.
+    static func routeToMainScreenNow() {
+        resetToMainScreen()
+        TabReselectSignal.shared.walletReselectToken &+= 1
+    }
+
     // MARK: - Path mirroring (called from `.onChange(of: navigationPath)`)
 
     /// Mirror the Settings stack as a typed `[SettingsDestination]` (not

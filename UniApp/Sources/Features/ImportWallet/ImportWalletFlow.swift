@@ -142,7 +142,10 @@ struct ImportWalletFlow: View {
                     ImportSuccessView(
                         walletId: walletId,
                         result: result,
-                        onContinue: { onCompleted(result) }
+                        onContinue: {
+                            ScreenRestoration.routeToMainScreenNow()
+                            onCompleted(result)
+                        }
                     )
                 }
             }
