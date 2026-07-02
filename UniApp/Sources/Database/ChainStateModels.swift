@@ -12,8 +12,10 @@ import SwiftData
 /// row."* This model is that row: the single denormalized snapshot of
 /// everything Aperture knows about one chain for one wallet, recomputed
 /// from the normalized tables (`TokenBalanceRecord`, `TransactionRecord`,
-/// `ChainUTXORecord`) after every refresh and read directly by the
-/// balance card / home screen so per-chain balances render live.
+/// `ChainUTXORecord`) after every refresh. Per-chain screens and backend
+/// jobs can read this row for fast chain summaries; the wallet balance card
+/// total is rebuilt from `TokenBalanceRecord` rows so it exactly matches the
+/// Coins/Tokens list.
 ///
 /// **Why denormalize.** The normalized tables stay the source of truth
 /// (every balance row, every tx leg). This aggregate exists so the UI can
@@ -74,7 +76,9 @@ final class ChainStateRecord {
     // MARK: Aggregate
 
     /// Total fiat for this chain = native + every token row, in
-    /// `fiatCurrencyCode`. The balance card sums these across chains.
+    /// `fiatCurrencyCode`. This is a per-chain summary; the wallet balance
+    /// card total is rebuilt from normalized token rows to stay identical to
+    /// the Coins/Tokens list.
     var totalFiat: Decimal
 
     /// Number of positive-balance token rows held on this chain

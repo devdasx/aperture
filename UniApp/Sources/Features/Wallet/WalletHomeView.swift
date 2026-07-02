@@ -403,8 +403,8 @@ struct WalletHomeView: View {
     /// top-level query — and driving the rebuild off a VALUE fingerprint of it
     /// (`balanceRowsRevision`) — makes every balance change render live, no
     /// relaunch, no manual refresh (Rule #25, now honoured for balances as it
-    /// already was for transactions). The hero total itself was already live
-    /// via `BalanceCardLiveSection`'s own `chainStateRecords` query.
+    /// already was for transactions). The hero total reads a persisted
+    /// `WalletBalanceCardSnapshotRecord` rebuilt from these same token rows.
     @Query private var allBalanceRecords: [TokenBalanceRecord]
 
     /// The active wallet's transactions, newest first — the live
@@ -2652,23 +2652,21 @@ struct WalletHomeView: View {
 
 // MARK: - BalanceCardLiveSection (native invalidation-localization leaf)
 
-/// The flagship balance card, wrapped in a leaf that **owns** the high-churn
-/// `chainStateRecords` `@Query`.
+/// The flagship balance card, wrapped in a leaf that **owns** the snapshot
+/// `@Query`.
 ///
 /// **Why this exists (2026-06-18 native perf fix).** The refresh coordinator
-/// rebuilds each chain's `ChainStateRecord` aggregate on a ~300ms cadence
-/// during every balance scan. When the `chainStateRecords` `@Query` was
-/// declared on `WalletHomeView`, each of those commits re-evaluated the entire
-/// 2,790-line `WalletHomeView.body` — Apple's documented `@Query` /
-/// `DynamicProperty` behavior is that a *declared* query invalidates the
-/// owning view's body on ANY change to its results, whether or not the body
-/// reads them. That whole-screen re-evaluation, ~3×/second for the duration of
-/// every 30 s auto-refresh, was the periodic main-screen hitch.
+/// rebuilds and persists the wallet card snapshot after balance rows change.
+/// Keeping the `WalletBalanceCardSnapshotRecord` query here localizes those
+/// invalidations to the card instead of re-evaluating the entire
+/// `WalletHomeView.body` — Apple's documented `@Query` / `DynamicProperty`
+/// behavior is that a *declared* query invalidates the owning view's body on
+/// ANY change to its results, whether or not the body reads them.
 ///
 /// Moving the query into this small leaf (Apple's "extract subviews to localize
 /// invalidation zones" guidance) means a 300ms aggregate commit re-renders ONLY
-/// the card — the parent body stays put. The hero total is now database-only:
-/// it sums persisted per-chain aggregate rows for the active wallet/currency.
+/// the card — the parent body stays put. The hero total is database-only and
+/// comes from the same normalized balance rows as the Coins/Tokens list.
 private struct BalanceCardLiveSection: View {
     let walletId: UUID?
     let walletName: String
