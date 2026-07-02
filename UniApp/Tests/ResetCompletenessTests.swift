@@ -128,30 +128,6 @@ import SwiftData
                 currencyCode: "USD",
                 fiatValue: 1
             ))
-        } else if model == WalletBalanceCardSnapshotRecord.self {
-            let timestamp = Date()
-            context.insert(WalletBalanceCardSnapshotRecord(
-                walletId: UUID(),
-                currencyCode: "USD",
-                totalFiat: 1,
-                lastUpdatedAt: timestamp,
-                selectedRangeRaw: BalanceHistoryRange.all.rawValue,
-                isBalanceHidden: false,
-                ranges: [
-                    WalletBalanceCardRangeSnapshot(
-                        rangeRaw: BalanceHistoryRange.all.rawValue,
-                        points: [WalletBalanceCardPointSnapshot(timestamp: timestamp, fiat: 1)],
-                        xFractions: [0],
-                        minValue: 1,
-                        maxValue: 1,
-                        baselineFiat: 1,
-                        changeFiat: 0,
-                        changePercent: 0,
-                        signRaw: "flat"
-                    )
-                ],
-                updatedAt: timestamp
-            ))
         } else if model == SyncStatusRecord.self {
             context.insert(SyncStatusRecord(
                 key: "balances|test",
@@ -354,7 +330,6 @@ import SwiftData
             "HistoricalPriceRecord",
             "PriceSnapshotRecord",
             "WalletChartSnapshotRecord",
-            "WalletBalanceCardSnapshotRecord",
             "SyncStatusRecord",
             "ChainRecord",
             "AssetRecord",

@@ -11,9 +11,10 @@ import SwiftData
 /// list doesn't carry chrome it doesn't need.
 struct WalletsListView: View {
     @Query(sort: \WalletRecord.sortOrder) private var wallets: [WalletRecord]
-    /// Live per-token balances persisted by the scanners. Wallet totals,
-    /// including the wallet-home hero snapshot, are rebuilt from these
-    /// normalized rows so every wallet total matches the Coins/Tokens list.
+    /// Live per-token balances persisted by the scanners. The wallet-home hero
+    /// now reads its per-chain aggregate (`ChainStateRecord`) rebuilt from this
+    /// same table; this list keeps using the normalized rows so every wallet
+    /// can be totaled without declaring a high-churn aggregate query here.
     @Query private var tokenBalances: [TokenBalanceRecord]
     @AppStorage("activeWalletId") private var activeWalletIdRaw: String = ""
     @AppStorage(CurrencyPreference.storageKey) private var currencyCode: String = CurrencyPreference.defaultCode

@@ -30,7 +30,6 @@ struct ReceiveQRDetailView: View {
     @Environment(\.displayScale) private var displayScale
     @Environment(\.modelContext) private var modelContext
     @AppStorage("activeWalletId") private var activeWalletIdRaw: String = ""
-    @AppStorage(CurrencyPreference.storageKey) private var currencyCode: String = CurrencyPreference.defaultCode
     @Query(sort: \WalletRecord.sortOrder) private var wallets: [WalletRecord]
 
     @State private var justCopiedAt: Date?
@@ -45,8 +44,6 @@ struct ReceiveQRDetailView: View {
     @State private var isShowingEVMAccountSearch: Bool = false
     @State private var solanaOverrideAddress: String?
     @State private var isShowingSolanaAccountSearch: Bool = false
-    @State private var receivedNotice: ReceiveIncomingNotice?
-    @State private var lastReceiveNoticeHash: String?
 
     /// What the user is receiving, in the toolbar title. Native →
     /// chain name; token → "USDC".
@@ -102,16 +99,6 @@ struct ReceiveQRDetailView: View {
         chain == .bitcoin && bitcoinChoices.count > 1
     }
 
-    private var receiveMonitorTaskID: String {
-        [
-            activeWalletIdRaw,
-            chain.rawValue,
-            tokenSymbol ?? chain.ticker,
-            displayedAddress,
-            currencyCode.uppercased()
-        ].joined(separator: "|")
-    }
-
     private var bitcoinSelectionStorageKey: String? {
         guard chain == .bitcoin, let walletID = activeWallet?.id.uuidString else { return nil }
         return "receive.bitcoin.addressType.\(walletID)"
@@ -129,10 +116,6 @@ struct ReceiveQRDetailView: View {
                     address: displayedAddress,
                     justCopiedAt: $justCopiedAt
                 )
-                if let receivedNotice {
-                    ReceiveIncomingNoticeCard(notice: receivedNotice)
-                        .transition(.move(edge: .top).combined(with: .opacity))
-                }
                 actionRow
                 ReceiveChainMismatchFooter(
                     chain: chain,
@@ -195,9 +178,6 @@ struct ReceiveQRDetailView: View {
             evmOverrideAddress = nil
             solanaOverrideAddress = nil
             loadBitcoinAddressChoices()
-        }
-        .task(id: receiveMonitorTaskID) {
-            await runReceiveMonitor()
         }
         .onChange(of: selectedBitcoinTypeRaw) { _, newValue in
             guard let key = bitcoinSelectionStorageKey,
@@ -299,78 +279,6 @@ struct ReceiveQRDetailView: View {
     private func resetCopyButtonFeedback() {
         copyButtonResetTask?.cancel()
         isCopyButtonCopied = false
-    }
-
-    @MainActor
-    private func runReceiveMonitor() async {
-        receivedNotice = nil
-        lastReceiveNoticeHash = nil
-
-        guard let walletID = activeWallet?.id else { return }
-        let monitoredAddress = displayedAddress.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !monitoredAddress.isEmpty else { return }
-
-        let startedAt = Date()
-        let monitoredTokenSymbol = tokenSymbol
-        let monitoredCurrency = currencyCode.uppercased()
-        let container = modelContext.container
-
-        while !Task.isCancelled {
-            await WalletDataRefreshCoordinator.shared.refreshChain(
-                walletId: walletID,
-                chain: chain,
-                currencyCode: monitoredCurrency,
-                modelContainer: container
-            )
-            if Task.isCancelled { return }
-
-            await loadReceiveNotice(
-                walletID: walletID,
-                address: monitoredAddress,
-                tokenSymbol: monitoredTokenSymbol,
-                currencyCode: monitoredCurrency,
-                since: startedAt,
-                modelContainer: container
-            )
-            if Task.isCancelled { return }
-
-            try? await Task.sleep(for: .seconds(8))
-        }
-    }
-
-    @MainActor
-    private func loadReceiveNotice(
-        walletID: UUID,
-        address: String,
-        tokenSymbol: String?,
-        currencyCode: String,
-        since startedAt: Date,
-        modelContainer: ModelContainer
-    ) async {
-        let repository = TransactionRepository(modelContainer: modelContainer)
-        guard let snapshot = try? await repository.latestIncomingReceiveTransaction(
-            walletId: walletID,
-            chain: chain,
-            address: address,
-            tokenSymbol: tokenSymbol,
-            currencyCode: currencyCode,
-            since: startedAt
-        ) else {
-            return
-        }
-
-        let notice = ReceiveIncomingNotice(
-            snapshot: snapshot,
-            chainName: chain.displayName
-        )
-        guard notice.id != receivedNotice?.id || notice.status != receivedNotice?.status else {
-            return
-        }
-
-        lastReceiveNoticeHash = snapshot.txHash
-        withAnimation(.easeInOut(duration: 0.2)) {
-            receivedNotice = notice
-        }
     }
 
     private func loadBitcoinAddressChoices() {
@@ -495,103 +403,6 @@ private struct ReceiveShareOptionsPopover: View {
         .padding(UniSpacing.m)
         .frame(width: 270)
         .background(UniColors.Background.primary)
-    }
-}
-
-private struct ReceiveIncomingNotice: Identifiable, Equatable {
-    let id: String
-    let title: String
-    let subtitle: String
-    let status: TransactionStatus
-
-    init(
-        snapshot: TransactionRepository.ReceiveIncomingTransactionSnapshot,
-        chainName: String
-    ) {
-        let amount = Decimal(string: snapshot.amountRaw) ?? .zero
-        let nativeText = "+\(WalletFormatting.native(amount, decimals: WalletFormatting.maxDisplayFractionDigits)) \(snapshot.tokenSymbol)"
-        let fiatText = snapshot.fiatValue.map {
-            WalletFormatting.fiat($0, currencyCode: snapshot.fiatCurrencyCode)
-        }
-        self.id = snapshot.txHash
-        self.title = "Received \(fiatText ?? nativeText)"
-        self.subtitle = "\(nativeText) in \(chainName) • \(Self.relativeTime(snapshot.occurredAt))"
-        self.status = snapshot.status
-    }
-
-    var statusText: String {
-        switch status {
-        case .confirmed: return "Confirmed"
-        case .pending: return "Pending"
-        case .failed: return "Failed"
-        }
-    }
-
-    var statusColor: Color {
-        switch status {
-        case .confirmed: return UniColors.Feedback.Success.foreground
-        case .pending: return UniColors.Feedback.Warning.foreground
-        case .failed: return UniColors.Feedback.Error.foreground
-        }
-    }
-
-    var statusBackground: Color {
-        switch status {
-        case .confirmed: return UniColors.Feedback.Success.background
-        case .pending: return UniColors.Feedback.Warning.background
-        case .failed: return UniColors.Feedback.Error.background
-        }
-    }
-
-    private static func relativeTime(_ date: Date) -> String {
-        let elapsed = Date().timeIntervalSince(date)
-        if elapsed >= 0 && elapsed < 10 {
-            return String.apertureLocalized("A few seconds ago")
-        }
-        return WalletFormatting.activityRelativeTime(date)
-    }
-}
-
-private struct ReceiveIncomingNoticeCard: View {
-    let notice: ReceiveIncomingNotice
-
-    var body: some View {
-        HStack(alignment: .top, spacing: UniSpacing.s) {
-            Image(systemName: "arrow.down.circle.fill")
-                .font(.system(size: 26, weight: .semibold))
-                .foregroundStyle(UniColors.Feedback.Success.foreground)
-                .frame(width: 34, height: 34)
-
-            VStack(alignment: .leading, spacing: 6) {
-                Text(verbatim: notice.title)
-                    .font(UniTypography.bodyEmphasized)
-                    .foregroundStyle(UniColors.Text.primary)
-                    .fixedSize(horizontal: false, vertical: true)
-
-                Text(verbatim: notice.subtitle)
-                    .font(UniTypography.subheadline)
-                    .foregroundStyle(UniColors.Text.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-
-            Spacer(minLength: UniSpacing.xs)
-
-            Text(verbatim: notice.statusText)
-                .font(UniTypography.caption1)
-                .foregroundStyle(notice.statusColor)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 6)
-                .background(
-                    Capsule(style: .continuous)
-                        .fill(notice.statusBackground)
-                )
-        }
-        .padding(UniSpacing.m)
-        .background(
-            RoundedRectangle(cornerRadius: UniRadius.card, style: .continuous)
-                .fill(UniColors.Card.background)
-        )
-        .accessibilityElement(children: .combine)
     }
 }
 

@@ -56,7 +56,6 @@ actor WalletDataRefreshCoordinator {
     }
 
     private var refreshSlots: [UUID: RefreshSlot] = [:]
-    private var chainRefreshSlots: [String: RefreshSlot] = [:]
 
     func refresh(
         walletId: UUID,
@@ -104,50 +103,12 @@ actor WalletDataRefreshCoordinator {
         }
     }
 
-    func refreshChain(
-        walletId: UUID,
-        chain: SupportedChain,
-        currencyCode: String,
-        modelContainer: ModelContainer
-    ) async {
-        let key = chainRefreshKey(walletId: walletId, chain: chain)
-        if let existing = chainRefreshSlots[key] {
-            existing.task.cancel()
-            await existing.task.value
-            if chainRefreshSlots[key]?.token == existing.token {
-                chainRefreshSlots[key] = nil
-            }
-        }
-
-        if Task.isCancelled {
-            return
-        }
-
-        let token = UUID()
-        let task = Task { [walletId, chain, currencyCode, modelContainer] in
-            await self.performRefresh(
-                walletId: walletId,
-                currencyCode: currencyCode,
-                modelContainer: modelContainer,
-                userInitiated: false,
-                mode: .full,
-                onlyChains: [chain]
-            )
-        }
-        chainRefreshSlots[key] = RefreshSlot(token: token, task: task)
-        await task.value
-        if chainRefreshSlots[key]?.token == token {
-            chainRefreshSlots[key] = nil
-        }
-    }
-
     private func performRefresh(
         walletId: UUID,
         currencyCode: String,
         modelContainer: ModelContainer,
         userInitiated: Bool = false,
-        mode: RefreshMode = .full,
-        onlyChains: Set<SupportedChain>? = nil
+        mode: RefreshMode = .full
     ) async {
         let refreshStart = Date()
         let normalizedCurrency = currencyCode.uppercased()
@@ -164,8 +125,7 @@ actor WalletDataRefreshCoordinator {
                 "walletId": walletId.uuidString,
                 "currency": normalizedCurrency,
                 "userInitiated": "\(userInitiated)",
-                "mode": mode.rawValue,
-                "onlyChains": onlyChains?.map(\.rawValue).sorted().joined(separator: ",") ?? "all"
+                "mode": mode.rawValue
             ]
         )
 
@@ -181,7 +141,6 @@ actor WalletDataRefreshCoordinator {
                 "walletId": walletId.uuidString,
                 "currency": normalizedCurrency,
                 "mode": mode.rawValue,
-                "onlyChains": onlyChains?.map(\.rawValue).sorted().joined(separator: ",") ?? "all",
                 "addressRows": "\(addressSnapshots.count)",
                 "addressChains": "\(addressByChain.count)",
                 "elapsedMs": DiagnosticsLogStore.elapsedMilliseconds(since: addressLoadStart)
@@ -222,12 +181,7 @@ actor WalletDataRefreshCoordinator {
             }
         }
 
-        func shouldScan(_ chain: SupportedChain) -> Bool {
-            guard let onlyChains else { return true }
-            return onlyChains.contains(chain)
-        }
-
-        if shouldScan(.bitcoin), addressByChain[.bitcoin] != nil {
+        if addressByChain[.bitcoin] != nil {
             appendScan(
                 chain: .bitcoin,
                 source: "BitcoinElectrumBalanceScanner"
@@ -242,7 +196,7 @@ actor WalletDataRefreshCoordinator {
             }
         }
 
-        if shouldScan(.bitcoinCash), addressByChain[.bitcoinCash] != nil {
+        if addressByChain[.bitcoinCash] != nil {
             appendScan(
                 chain: .bitcoinCash,
                 source: "BitcoinCashElectrumBalanceScanner"
@@ -257,7 +211,7 @@ actor WalletDataRefreshCoordinator {
         }
 
         for chain in [SupportedChain.litecoin, .dogecoin] {
-            if shouldScan(chain), let address = addressByChain[chain] {
+            if let address = addressByChain[chain] {
                 appendScan(
                     chain: chain,
                     source: "BitcoinFamilyRESTBalanceScanner"
@@ -274,7 +228,7 @@ actor WalletDataRefreshCoordinator {
             }
         }
 
-        if shouldScan(.near), let address = addressByChain[.near] {
+        if let address = addressByChain[.near] {
             appendScan(
                 chain: .near,
                 source: "NearBalanceHistoryScanner"
@@ -290,7 +244,7 @@ actor WalletDataRefreshCoordinator {
             }
         }
 
-        if shouldScan(.stellar), let address = addressByChain[.stellar] {
+        if let address = addressByChain[.stellar] {
             appendScan(
                 chain: .stellar,
                 source: "StellarBalanceHistoryScanner"
@@ -306,7 +260,7 @@ actor WalletDataRefreshCoordinator {
             }
         }
 
-        if shouldScan(.polkadot), let address = addressByChain[.polkadot] {
+        if let address = addressByChain[.polkadot] {
             appendScan(
                 chain: .polkadot,
                 source: "PolkadotBalanceHistoryScanner"
@@ -322,7 +276,7 @@ actor WalletDataRefreshCoordinator {
             }
         }
 
-        if shouldScan(.solana), let address = addressByChain[.solana] {
+        if let address = addressByChain[.solana] {
             appendScan(
                 chain: .solana,
                 source: "SolanaBalanceHistoryScanner"
@@ -338,7 +292,7 @@ actor WalletDataRefreshCoordinator {
             }
         }
 
-        if shouldScan(.aptos), let address = addressByChain[.aptos] {
+        if let address = addressByChain[.aptos] {
             appendScan(
                 chain: .aptos,
                 source: "AptosBalanceHistoryScanner"
@@ -354,7 +308,7 @@ actor WalletDataRefreshCoordinator {
             }
         }
 
-        if shouldScan(.tron), let address = addressByChain[.tron] {
+        if let address = addressByChain[.tron] {
             appendScan(
                 chain: .tron,
                 source: "TronBalanceHistoryScanner"
@@ -370,7 +324,7 @@ actor WalletDataRefreshCoordinator {
             }
         }
 
-        if shouldScan(.ton), let address = addressByChain[.ton] {
+        if let address = addressByChain[.ton] {
             appendScan(
                 chain: .ton,
                 source: "TonBalanceHistoryScanner"
@@ -386,7 +340,7 @@ actor WalletDataRefreshCoordinator {
             }
         }
 
-        if shouldScan(.ripple), let address = addressByChain[.ripple] {
+        if let address = addressByChain[.ripple] {
             appendScan(
                 chain: .ripple,
                 source: "RippleBalanceHistoryScanner"
@@ -402,7 +356,7 @@ actor WalletDataRefreshCoordinator {
             }
         }
 
-        if shouldScan(.sui), let address = addressByChain[.sui] {
+        if let address = addressByChain[.sui] {
             appendScan(
                 chain: .sui,
                 source: "SuiBalanceHistoryScanner"
@@ -419,7 +373,7 @@ actor WalletDataRefreshCoordinator {
         }
 
         for chain in enabledEVMChains {
-            if shouldScan(chain), let address = addressByChain[chain] {
+            if let address = addressByChain[chain] {
                 appendScan(
                     chain: chain,
                     source: "PublicNodeEVMBalanceScanner"
@@ -445,7 +399,6 @@ actor WalletDataRefreshCoordinator {
                 "walletId": walletId.uuidString,
                 "currency": normalizedCurrency,
                 "mode": mode.rawValue,
-                "onlyChains": onlyChains?.map(\.rawValue).sorted().joined(separator: ",") ?? "all",
                 "jobCount": "\(scanJobs.count)",
                 "chains": attemptedChains.map { String(describing: $0) }.sorted().joined(separator: ",")
             ]
@@ -470,7 +423,6 @@ actor WalletDataRefreshCoordinator {
                 "walletId": walletId.uuidString,
                 "currency": normalizedCurrency,
                 "mode": mode.rawValue,
-                "onlyChains": onlyChains?.map(\.rawValue).sorted().joined(separator: ",") ?? "all",
                 "jobCount": "\(scanJobs.count)",
                 "refreshedChains": "\(refreshedChains.count)",
                 "failedChains": failedChains.map { String(describing: $0) }.sorted().joined(separator: ","),
@@ -487,7 +439,6 @@ actor WalletDataRefreshCoordinator {
                     "walletId": walletId.uuidString,
                     "currency": normalizedCurrency,
                     "mode": mode.rawValue,
-                    "onlyChains": onlyChains?.map(\.rawValue).sorted().joined(separator: ",") ?? "all",
                     "elapsedMs": DiagnosticsLogStore.elapsedMilliseconds(since: refreshStart)
                 ]
             )
@@ -511,7 +462,6 @@ actor WalletDataRefreshCoordinator {
                     "walletId": walletId.uuidString,
                     "currency": normalizedCurrency,
                     "mode": mode.rawValue,
-                    "onlyChains": onlyChains?.map(\.rawValue).sorted().joined(separator: ",") ?? "all",
                     "chainCount": "\(attemptedChains.count)",
                     "failedChains": failedChains.map { String(describing: $0) }.sorted().joined(separator: ","),
                     "outcome": rebuilt == nil ? "failed" : "succeeded",
@@ -537,12 +487,6 @@ actor WalletDataRefreshCoordinator {
                 "elapsedMs": DiagnosticsLogStore.elapsedMilliseconds(since: chartSnapshotStart)
             ]
         )
-        await rebuildBalanceCardSnapshot(
-            walletId: walletId,
-            currencyCode: normalizedCurrency,
-            modelContainer: modelContainer,
-            mode: mode
-        )
         DiagnosticsLogStore.shared.record(
             .info,
             category: "scanner",
@@ -555,31 +499,7 @@ actor WalletDataRefreshCoordinator {
                 "refreshedChains": "\(refreshedChains.count)",
                 "failedChains": failedChains.map { String(describing: $0) }.sorted().joined(separator: ","),
                 "mode": mode.rawValue,
-                "onlyChains": onlyChains?.map(\.rawValue).sorted().joined(separator: ",") ?? "all",
                 "elapsedMs": DiagnosticsLogStore.elapsedMilliseconds(since: refreshStart)
-            ]
-        )
-    }
-
-    private func rebuildBalanceCardSnapshot(
-        walletId: UUID,
-        currencyCode: String,
-        modelContainer: ModelContainer,
-        mode: RefreshMode
-    ) async {
-        let snapshotStart = Date()
-        let snapshot = try? await WalletBalanceCardSnapshotRepository(modelContainer: modelContainer)
-            .rebuildFromStoredPreferences(walletId: walletId, currencyCode: currencyCode)
-        DiagnosticsLogStore.shared.record(
-            snapshot == nil ? .warning : .debug,
-            category: "scanner",
-            message: "Wallet balance-card snapshot rebuild finished",
-            metadata: [
-                "walletId": walletId.uuidString,
-                "currency": currencyCode.uppercased(),
-                "mode": mode.rawValue,
-                "outcome": snapshot == nil ? "failed" : "succeeded",
-                "elapsedMs": DiagnosticsLogStore.elapsedMilliseconds(since: snapshotStart)
             ]
         )
     }
@@ -653,10 +573,6 @@ actor WalletDataRefreshCoordinator {
             )
             return false
         }
-    }
-
-    private func chainRefreshKey(walletId: UUID, chain: SupportedChain) -> String {
-        "\(walletId.uuidString)|\(chain.rawValue)"
     }
 }
 
@@ -2962,7 +2878,6 @@ actor WalletBackgroundWorkCoordinator {
         case markets
         case chartSnapshot
         case chainKeys
-        case postBroadcast
     }
 
     private struct JobSlot {
@@ -3049,8 +2964,6 @@ actor WalletBackgroundWorkCoordinator {
             ) {
                 _ = try? await WalletChartSnapshotRepository(modelContainer: modelContainer)
                     .captureFromPersistedBalances(walletId: walletId, currencyCode: currencyCode)
-                _ = try? await WalletBalanceCardSnapshotRepository(modelContainer: modelContainer)
-                    .rebuildFromStoredPreferences(walletId: walletId, currencyCode: currencyCode)
             }
         }
     }
@@ -3068,47 +2981,13 @@ actor WalletBackgroundWorkCoordinator {
         }
     }
 
-    func schedulePostBroadcastRefresh(
-        walletId: UUID,
-        chain: SupportedChain,
-        currencyCode: String,
-        modelContainer: ModelContainer,
-        delay: Duration = .seconds(3)
-    ) {
-        Task {
-            await runReplacing(
-                type: .postBroadcast,
-                walletId: walletId,
-                qualifier: chain.rawValue,
-                waitsForCompletion: false,
-                metadata: ["chain": chain.rawValue]
-            ) {
-                do {
-                    try await Task.sleep(for: delay)
-                } catch {
-                    return
-                }
-                guard !Task.isCancelled else { return }
-                await TokenPricingEngine.shared.configure(container: modelContainer)
-                await WalletDataRefreshCoordinator.shared.refreshChain(
-                    walletId: walletId,
-                    chain: chain,
-                    currencyCode: currencyCode,
-                    modelContainer: modelContainer
-                )
-            }
-        }
-    }
-
     private func runReplacing(
         type: JobType,
         walletId: UUID,
-        qualifier: String? = nil,
         waitsForCompletion: Bool,
-        metadata: [String: String] = [:],
         operation: @escaping @Sendable () async -> Void
     ) async {
-        let key = jobKey(type: type, walletId: walletId, qualifier: qualifier)
+        let key = jobKey(type: type, walletId: walletId)
         if let existing = jobs[key] {
             existing.task.cancel()
             if waitsForCompletion {
@@ -3127,8 +3006,7 @@ actor WalletBackgroundWorkCoordinator {
                 walletId: walletId,
                 message: "Background job started",
                 queuedAt: queuedAt,
-                startedAt: startedAt,
-                metadata: metadata
+                startedAt: startedAt
             )
             await operation()
             let cancelled = Task.isCancelled
@@ -3140,8 +3018,7 @@ actor WalletBackgroundWorkCoordinator {
                 queuedAt: queuedAt,
                 startedAt: startedAt,
                 finishedAt: Date(),
-                cancelled: cancelled,
-                metadata: metadata
+                cancelled: cancelled
             )
         }
         jobs[key] = JobSlot(token: token, task: task, queuedAt: queuedAt)
@@ -3153,7 +3030,7 @@ actor WalletBackgroundWorkCoordinator {
         } else {
             Task {
                 await task.value
-                self.clearJob(key: key, token: token)
+                await self.clearJob(key: key, token: token)
             }
         }
     }
@@ -3164,11 +3041,8 @@ actor WalletBackgroundWorkCoordinator {
         }
     }
 
-    private func jobKey(type: JobType, walletId: UUID, qualifier: String? = nil) -> String {
-        if let qualifier, !qualifier.isEmpty {
-            return "\(walletId.uuidString)|\(type.rawValue)|\(qualifier)"
-        }
-        return "\(walletId.uuidString)|\(type.rawValue)"
+    private func jobKey(type: JobType, walletId: UUID) -> String {
+        "\(walletId.uuidString)|\(type.rawValue)"
     }
 
     private nonisolated static func record(
