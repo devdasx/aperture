@@ -48,7 +48,7 @@ actor WalletBalanceCardSnapshotRepository {
         let transactions = try transactionSnapshots(addressIds: addressIds)
         let prices = try cachedPrices(currencyCode: code)
         let history = try historicalPrices(currencyCode: code)
-        let total = try totalFiat(currencyCode: code, addressIds: addressIds)
+        let total = try totalFiat(currencyCode: code, addressIds: addressIds, prices: prices)
         let hourlyHoldings = try holdings(addressIds: addressIds, prices: prices)
         let hourlySnapshots = try hourlyPriceSnapshots(currencyCode: code, since: now.addingTimeInterval(-7_200))
         let lastUpdated = try lastRefreshDate(walletId: walletId)
@@ -147,6 +147,29 @@ actor WalletBalanceCardSnapshotRepository {
         }
     }
 
+    func shouldRepairZeroSnapshot(
+        walletId: UUID,
+        currencyCode: String,
+        snapshotTotalFiat: Decimal?
+    ) throws -> Bool {
+        guard let snapshotTotalFiat, snapshotTotalFiat <= 0 else { return snapshotTotalFiat == nil }
+        let code = currencyCode.uppercased()
+        let addresses = try walletAddresses(walletId: walletId)
+        let addressIds = Set(addresses.map(\.id))
+        let balances = try tokenBalances(addressIds: addressIds)
+        let hasStoredValue = balances.contains { row in
+            guard !row.rawBalance.isEmpty, row.rawBalance != "0" else { return false }
+            if row.fiatCurrencyCode.caseInsensitiveCompare(code) == .orderedSame {
+                return row.fiatValueCached > 0
+            }
+            return row.fiatValueCached > 0
+        }
+        if modelContext.hasChanges {
+            try modelContext.save()
+        }
+        return hasStoredValue
+    }
+
     private func makeRangeSnapshot(
         range: BalanceHistoryRange,
         totalFiat: Decimal,
@@ -212,7 +235,20 @@ actor WalletBalanceCardSnapshotRepository {
         let descriptor = FetchDescriptor<WalletAddressRecord>(
             predicate: #Predicate { $0.walletId == owner }
         )
-        return try modelContext.fetch(descriptor)
+        var byId: [UUID: WalletAddressRecord] = [:]
+        for row in try modelContext.fetch(descriptor) {
+            byId[row.id] = row
+        }
+
+        let legacyDescriptor = FetchDescriptor<WalletAddressRecord>(
+            predicate: #Predicate { $0.walletId == nil }
+        )
+        for row in try modelContext.fetch(legacyDescriptor) {
+            guard row.wallet?.id == walletId else { continue }
+            row.walletId = walletId
+            byId[row.id] = row
+        }
+        return Array(byId.values)
     }
 
     private func transactionSnapshots(addressIds: Set<UUID>) throws -> [BalanceHistoryReconstructor.HistoryTx] {
@@ -276,11 +312,31 @@ actor WalletBalanceCardSnapshotRepository {
         return map
     }
 
-    private func totalFiat(currencyCode: String, addressIds: Set<UUID>) throws -> Decimal {
+    private func totalFiat(
+        currencyCode: String,
+        addressIds: Set<UUID>,
+        prices: [String: Decimal]
+    ) throws -> Decimal {
         let code = currencyCode.uppercased()
-        return try tokenBalances(addressIds: addressIds)
-            .filter { $0.fiatCurrencyCode.caseInsensitiveCompare(code) == .orderedSame }
-            .reduce(Decimal.zero) { $0 + $1.fiatValueCached }
+        var total = Decimal.zero
+        for row in try tokenBalances(addressIds: addressIds) {
+            guard !row.rawBalance.isEmpty, row.rawBalance != "0" else { continue }
+            if row.fiatCurrencyCode.caseInsensitiveCompare(code) == .orderedSame {
+                total += row.fiatValueCached
+                continue
+            }
+
+            let amount = WalletFormatting.decimalAmount(
+                rawBalance: row.rawBalance,
+                decimals: row.decimals
+            )
+            if amount > 0, let price = prices[row.tokenSymbol.uppercased()] {
+                total += amount * price
+            } else if row.fiatValueCached > 0 {
+                total += row.fiatValueCached
+            }
+        }
+        return total
     }
 
     private func holdings(

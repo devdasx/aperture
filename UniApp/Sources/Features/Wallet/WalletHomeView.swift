@@ -406,6 +406,7 @@ struct WalletHomeView: View {
     /// already was for transactions). The hero total reads a persisted
     /// `WalletBalanceCardSnapshotRecord` rebuilt from these same token rows.
     @Query private var allBalanceRecords: [TokenBalanceRecord]
+    @Query private var allAddressRecords: [WalletAddressRecord]
 
     /// The active wallet's transactions, newest first — the live
     /// top-level `@Query` filtered to the active wallet's address ids.
@@ -430,7 +431,7 @@ struct WalletHomeView: View {
     /// memo above; this runs only on a rebuild trigger.
     private func computeAllTransactions() -> [TransactionRecord] {
         guard let wallet = activeWallet else { return [] }
-        let ids = Set(wallet.addresses.map { $0.id })
+        let ids = activeAddressIds(for: wallet)
         guard !ids.isEmpty else { return [] }
         return allTransactionRecords.filter { tx in
             guard let aid = tx.addressId else { return false }
@@ -664,6 +665,11 @@ struct WalletHomeView: View {
                 .onChange(of: balanceRowsRevision) { _, _ in
                     scheduleDisplayRowsRebuild()
                     scheduleChainStateReconcile()
+                }
+                .onChange(of: addressRowsRevision) { _, _ in
+                    rebuildFilterInputs()
+                    scheduleDisplayRowsRebuild(after: 0)
+                    scheduleChainStateReconcile(after: 0)
                 }
                 // "Hide small balances" threshold (a Settings preference,
                 // a DIFFERENT @AppStorage key than the filter sheet's
@@ -1011,6 +1017,7 @@ struct WalletHomeView: View {
                 walletId: activeWallet?.id,
                 walletName: activeWallet?.name ?? String.apertureLocalized("Wallet"),
                 currencyCode: currencyCode,
+                fallbackTotalFiat: persistedHoldingsTotalFiat,
                 scrubModel: scrubModel,
                 onSwitchWallet: { isShowingSwitcher = true },
                 onAddFunds: { isShowingReceive = true }
@@ -1721,19 +1728,7 @@ struct WalletHomeView: View {
 
     private func computeAllHeldRows() -> [(chain: SupportedChain, balance: TokenBalanceRecord)] {
         guard let wallet = activeWallet else { return [] }
-        // Read balances from the top-level `allBalanceRecords` @Query (live
-        // across cross-context inserts + scalar updates) and attribute each to
-        // a chain via the wallet's own address records — NOT the insert-stale
-        // `address.balances` relationship.
-        let chainByAddressId = chainByActiveAddressId(wallet)
-        var result: [(SupportedChain, TokenBalanceRecord)] = []
-        for balance in allBalanceRecords {
-            guard let aid = balance.addressId ?? balance.address?.id,
-                  let chain = chainByAddressId[aid],
-                  !balance.rawBalance.isEmpty else { continue }
-            result.append((chain, balance))
-        }
-        return result
+        return activeBalanceRows(for: wallet, includeZero: true)
     }
 
     /// Maps each of the active wallet's address UUIDs to its chain, built from
@@ -1743,12 +1738,54 @@ struct WalletHomeView: View {
     /// relationship.
     private func chainByActiveAddressId(_ wallet: WalletRecord) -> [UUID: SupportedChain] {
         var map: [UUID: SupportedChain] = [:]
-        for address in wallet.addresses {
+        for address in activeAddressRows(for: wallet) {
             if let chain = SupportedChain(rawValue: address.chainRaw) {
                 map[address.id] = chain
             }
         }
         return map
+    }
+
+    private func activeAddressRows(for wallet: WalletRecord) -> [WalletAddressRecord] {
+        var byId: [UUID: WalletAddressRecord] = [:]
+        for address in allAddressRecords where address.walletId == wallet.id || (address.walletId == nil && address.wallet?.id == wallet.id) {
+            byId[address.id] = address
+        }
+        if byId.isEmpty {
+            for address in persistedAddressRows(for: wallet) {
+                byId[address.id] = address
+            }
+        }
+        if byId.isEmpty {
+            for address in wallet.addresses {
+                byId[address.id] = address
+            }
+        }
+        return Array(byId.values)
+    }
+
+    private func persistedAddressRows(for wallet: WalletRecord) -> [WalletAddressRecord] {
+        let owner = Optional(wallet.id)
+        var byId: [UUID: WalletAddressRecord] = [:]
+        let descriptor = FetchDescriptor<WalletAddressRecord>(
+            predicate: #Predicate { $0.walletId == owner }
+        )
+        for address in (try? modelContext.fetch(descriptor)) ?? [] {
+            byId[address.id] = address
+        }
+
+        let legacyDescriptor = FetchDescriptor<WalletAddressRecord>(
+            predicate: #Predicate { $0.walletId == nil }
+        )
+        for address in (try? modelContext.fetch(legacyDescriptor)) ?? [] {
+            guard address.wallet?.id == wallet.id else { continue }
+            byId[address.id] = address
+        }
+        return Array(byId.values)
+    }
+
+    private func activeAddressIds(for wallet: WalletRecord) -> Set<UUID> {
+        Set(activeAddressRows(for: wallet).map(\.id))
     }
 
     /// Historical close map filtered to the active fiat, used by
@@ -1827,7 +1864,7 @@ struct WalletHomeView: View {
     /// re-fetch even at an unchanged value, and `fiatSum` catches a value move.
     private var balanceRowsRevision: String {
         guard let wallet = activeWallet else { return "none" }
-        let ids = Set(wallet.addresses.map { $0.id })
+        let ids = activeAddressIds(for: wallet)
         guard !ids.isEmpty else { return "none" }
         var count = 0
         var newest = Date.distantPast
@@ -1839,6 +1876,19 @@ struct WalletHomeView: View {
             fiatSum += balance.fiatValueCached
         }
         return "\(count)|\(newest.timeIntervalSince1970)|\(fiatSum)"
+    }
+
+    private var addressRowsRevision: String {
+        guard let wallet = activeWallet else { return "none" }
+        var count = 0
+        var newest = Date.distantPast
+        for address in allAddressRecords where address.walletId == wallet.id || (address.walletId == nil && address.wallet?.id == wallet.id) {
+            count += 1
+            if let scannedAt = address.lastScannedAt, scannedAt > newest {
+                newest = scannedAt
+            }
+        }
+        return "\(wallet.id.uuidString)|\(count)|\(newest.timeIntervalSince1970)"
     }
 
     /// Decode the `@AppStorage`-bound preference values into the
@@ -2373,21 +2423,82 @@ struct WalletHomeView: View {
     private func computeBalances() -> [(chain: SupportedChain, balance: TokenBalanceRecord)] {
         guard let wallet = activeWallet else { return [] }
         let threshold = Decimal(hideSmallThreshold)
-        // Read from the top-level `allBalanceRecords` @Query (live across
-        // cross-context inserts + scalar updates) attributed via the wallet's
-        // own address records — NOT the insert-stale `address.balances`
-        // relationship that left the holdings frozen until relaunch.
+        return activeBalanceRows(for: wallet, includeZero: false)
+            .filter { $0.balance.fiatValueCached >= threshold }
+            .sorted { $0.balance.fiatValueCached > $1.balance.fiatValueCached }
+    }
+
+    private func activeBalanceRows(
+        for wallet: WalletRecord,
+        includeZero: Bool
+    ) -> [(chain: SupportedChain, balance: TokenBalanceRecord)] {
         let chainByAddressId = chainByActiveAddressId(wallet)
-        var result: [(SupportedChain, TokenBalanceRecord)] = []
+        guard !chainByAddressId.isEmpty else { return [] }
+
+        var byId: [UUID: (chain: SupportedChain, balance: TokenBalanceRecord)] = [:]
         for balance in allBalanceRecords {
-            guard let aid = balance.addressId ?? balance.address?.id,
-                  let chain = chainByAddressId[aid],
-                  !balance.rawBalance.isEmpty, balance.rawBalance != "0" else { continue }
-            if balance.fiatValueCached >= threshold {
-                result.append((chain, balance))
+            addBalanceRow(
+                balance,
+                chainByAddressId: chainByAddressId,
+                includeZero: includeZero,
+                into: &byId
+            )
+        }
+
+        if byId.isEmpty {
+            for balance in persistedBalanceRows(addressIds: Set(chainByAddressId.keys)) {
+                addBalanceRow(
+                    balance,
+                    chainByAddressId: chainByAddressId,
+                    includeZero: includeZero,
+                    into: &byId
+                )
             }
         }
-        return result.sorted { $0.1.fiatValueCached > $1.1.fiatValueCached }
+        return Array(byId.values)
+    }
+
+    private func addBalanceRow(
+        _ balance: TokenBalanceRecord,
+        chainByAddressId: [UUID: SupportedChain],
+        includeZero: Bool,
+        into rows: inout [UUID: (chain: SupportedChain, balance: TokenBalanceRecord)]
+    ) {
+        guard let addressId = balance.addressId ?? balance.address?.id,
+              let chain = chainByAddressId[addressId],
+              !balance.rawBalance.isEmpty else {
+            return
+        }
+        if !includeZero, balance.rawBalance == "0" {
+            return
+        }
+        rows[balance.id] = (chain, balance)
+    }
+
+    private func persistedBalanceRows(addressIds: Set<UUID>) -> [TokenBalanceRecord] {
+        guard !addressIds.isEmpty else { return [] }
+        var byId: [UUID: TokenBalanceRecord] = [:]
+        for addressId in addressIds {
+            let optionalAddressId = Optional(addressId)
+            let descriptor = FetchDescriptor<TokenBalanceRecord>(
+                predicate: #Predicate { $0.addressId == optionalAddressId }
+            )
+            for balance in (try? modelContext.fetch(descriptor)) ?? [] {
+                byId[balance.id] = balance
+            }
+        }
+
+        let legacyDescriptor = FetchDescriptor<TokenBalanceRecord>(
+            predicate: #Predicate { $0.addressId == nil }
+        )
+        for balance in (try? modelContext.fetch(legacyDescriptor)) ?? [] {
+            guard let addressId = balance.address?.id,
+                  addressIds.contains(addressId) else {
+                continue
+            }
+            byId[balance.id] = balance
+        }
+        return Array(byId.values)
     }
 
     /// Distinct chains with at least one non-zero balance row. Used by
@@ -2398,6 +2509,10 @@ struct WalletHomeView: View {
     /// instead of "0 chains · 0 tokens").
     private var chainsHeldCount: Int {
         Set(balances.map { $0.chain }).count
+    }
+
+    private var persistedHoldingsTotalFiat: Decimal {
+        allHeldRows.reduce(Decimal.zero) { $0 + $1.balance.fiatValueCached }
     }
 
     // `recentTransactions` / `allTransactions` are now LIVE computed
@@ -2422,6 +2537,11 @@ struct WalletHomeView: View {
            let chain = SupportedChain(rawValue: raw) {
             return chain
         }
+        if let wallet = activeWallet,
+           let addressId = tx.addressId,
+           let chain = chainByActiveAddressId(wallet)[addressId] {
+            return chain
+        }
         return nil
     }
 
@@ -2429,7 +2549,7 @@ struct WalletHomeView: View {
     /// has ever completed.
     private var mostRecentScanAt: Date? {
         guard let wallet = activeWallet else { return nil }
-        return wallet.addresses.compactMap { $0.lastScannedAt }.max()
+        return activeAddressRows(for: wallet).compactMap { $0.lastScannedAt }.max()
     }
 
     private var requiresBiometricReenrollment: Bool {
@@ -2671,6 +2791,7 @@ private struct BalanceCardLiveSection: View {
     let walletId: UUID?
     let walletName: String
     let currencyCode: String
+    let fallbackTotalFiat: Decimal
     let scrubModel: ChartScrubModel
     let onSwitchWallet: () -> Void
     let onAddFunds: () -> Void
@@ -2682,6 +2803,7 @@ private struct BalanceCardLiveSection: View {
         walletId: UUID?,
         walletName: String,
         currencyCode: String,
+        fallbackTotalFiat: Decimal,
         scrubModel: ChartScrubModel,
         onSwitchWallet: @escaping () -> Void,
         onAddFunds: @escaping () -> Void
@@ -2689,6 +2811,7 @@ private struct BalanceCardLiveSection: View {
         self.walletId = walletId
         self.walletName = walletName
         self.currencyCode = currencyCode
+        self.fallbackTotalFiat = fallbackTotalFiat
         self.scrubModel = scrubModel
         self.onSwitchWallet = onSwitchWallet
         self.onAddFunds = onAddFunds
@@ -2697,21 +2820,22 @@ private struct BalanceCardLiveSection: View {
         if let walletId {
             _snapshots = Query(filter: #Predicate<WalletBalanceCardSnapshotRecord> { row in
                 row.walletId == walletId && row.currencyCode == code
-            })
+            }, sort: [SortDescriptor(\WalletBalanceCardSnapshotRecord.updatedAt, order: .reverse)])
         } else {
             let emptyWalletId = UUID()
             _snapshots = Query(filter: #Predicate<WalletBalanceCardSnapshotRecord> { row in
                 row.walletId == emptyWalletId
-            })
+            }, sort: [SortDescriptor(\WalletBalanceCardSnapshotRecord.updatedAt, order: .reverse)])
         }
     }
 
     var body: some View {
         let snapshot = snapshots.first?.displaySnapshot()
+        let displayTotal = (snapshot?.totalFiat ?? 0) > 0 ? (snapshot?.totalFiat ?? 0) : fallbackTotalFiat
         BalanceCardView(
             walletId: walletId,
             walletName: walletName,
-            totalFiat: snapshot?.totalFiat ?? 0,
+            totalFiat: displayTotal,
             currencyCode: currencyCode,
             lastUpdated: snapshot?.lastUpdatedAt,
             transactions: [],
@@ -2745,9 +2869,21 @@ private struct BalanceCardLiveSection: View {
     }
 
     private func bootstrapSnapshotIfNeeded(_ snapshot: WalletBalanceCardDisplaySnapshot?) async {
-        guard snapshot == nil, let walletId else { return }
+        guard let walletId else { return }
         let container = modelContext.container
-        _ = try? await WalletBalanceCardSnapshotRepository(modelContainer: container)
+        let repository = WalletBalanceCardSnapshotRepository(modelContainer: container)
+        let shouldRebuild: Bool
+        if snapshot == nil {
+            shouldRebuild = true
+        } else {
+            shouldRebuild = (try? await repository.shouldRepairZeroSnapshot(
+                walletId: walletId,
+                currencyCode: currencyCode,
+                snapshotTotalFiat: snapshot?.totalFiat
+            )) ?? false
+        }
+        guard shouldRebuild else { return }
+        _ = try? await repository
             .rebuildFromStoredPreferences(walletId: walletId, currencyCode: currencyCode)
     }
 
