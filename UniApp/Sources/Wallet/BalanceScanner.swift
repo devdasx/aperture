@@ -487,6 +487,12 @@ actor WalletDataRefreshCoordinator {
                 "elapsedMs": DiagnosticsLogStore.elapsedMilliseconds(since: chartSnapshotStart)
             ]
         )
+        await rebuildBalanceCardSnapshot(
+            walletId: walletId,
+            currencyCode: normalizedCurrency,
+            modelContainer: modelContainer,
+            mode: mode
+        )
         DiagnosticsLogStore.shared.record(
             .info,
             category: "scanner",
@@ -500,6 +506,29 @@ actor WalletDataRefreshCoordinator {
                 "failedChains": failedChains.map { String(describing: $0) }.sorted().joined(separator: ","),
                 "mode": mode.rawValue,
                 "elapsedMs": DiagnosticsLogStore.elapsedMilliseconds(since: refreshStart)
+            ]
+        )
+    }
+
+    private func rebuildBalanceCardSnapshot(
+        walletId: UUID,
+        currencyCode: String,
+        modelContainer: ModelContainer,
+        mode: RefreshMode
+    ) async {
+        let snapshotStart = Date()
+        let snapshot = try? await WalletBalanceCardSnapshotRepository(modelContainer: modelContainer)
+            .rebuildFromStoredPreferences(walletId: walletId, currencyCode: currencyCode)
+        DiagnosticsLogStore.shared.record(
+            snapshot == nil ? .warning : .debug,
+            category: "scanner",
+            message: "Wallet balance-card snapshot rebuild finished",
+            metadata: [
+                "walletId": walletId.uuidString,
+                "currency": currencyCode.uppercased(),
+                "mode": mode.rawValue,
+                "outcome": snapshot == nil ? "failed" : "succeeded",
+                "elapsedMs": DiagnosticsLogStore.elapsedMilliseconds(since: snapshotStart)
             ]
         )
     }
@@ -2964,6 +2993,8 @@ actor WalletBackgroundWorkCoordinator {
             ) {
                 _ = try? await WalletChartSnapshotRepository(modelContainer: modelContainer)
                     .captureFromPersistedBalances(walletId: walletId, currencyCode: currencyCode)
+                _ = try? await WalletBalanceCardSnapshotRepository(modelContainer: modelContainer)
+                    .rebuildFromStoredPreferences(walletId: walletId, currencyCode: currencyCode)
             }
         }
     }
