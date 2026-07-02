@@ -445,13 +445,20 @@ struct WalletHomeView: View {
     /// prefix. The "View all" affordance routes to the unbounded
     /// `WalletActivityView` (which applies the same gate).
     private var recentTransactions: [TransactionRecord] {
-        Array(
-            allTransactions
-                .filter { tx in
-                    !ActivityFiat.isDust(amountRaw: tx.amountRaw, symbol: tx.tokenSymbol, usdMap: usdActivityPrices)
-                }
-                .prefix(5)
-        )
+        var rows: [TransactionRecord] = []
+        rows.reserveCapacity(5)
+        for tx in allTransactions {
+            guard !ActivityFiat.isDust(
+                amountRaw: tx.amountRaw,
+                symbol: tx.tokenSymbol,
+                usdMap: usdActivityPrices
+            ) else {
+                continue
+            }
+            rows.append(tx)
+            if rows.count == 5 { break }
+        }
+        return rows
     }
 
     /// Value-typed, TRANSACTION-only snapshot of `recentTransactions` for the
@@ -1976,7 +1983,7 @@ struct WalletHomeView: View {
     /// the first call (engine-cached) and cancellation-safe — a wallet
     /// switch re-keys the task, cancelling this before a stale write.
     private func loadDustPrices() async {
-        let symbols = allTransactions.map(\.tokenSymbol)
+        let symbols = Array(Set(allTransactions.lazy.map { $0.tokenSymbol.uppercased() }))
         let map = await ActivityFiat.usdPriceMap(symbols: symbols)
         guard !Task.isCancelled else { return }
         usdActivityPrices = map
@@ -2676,6 +2683,9 @@ private struct BalanceCardLiveSection: View {
     let onSwitchWallet: () -> Void
     let onAddFunds: () -> Void
 
+    @Environment(\.modelContext) private var modelContext
+    @State private var recentHourlyPriceSnapshots: [BalanceHourlyPriceSnapshot] = []
+
     /// The high-churn aggregate rows — owned HERE, not on the parent, so their
     /// 300ms refresh-commits re-render only this card.
     @Query private var chainStateRecords: [ChainStateRecord]
@@ -2701,7 +2711,61 @@ private struct BalanceCardLiveSection: View {
     /// when no transfer happened during the last hour.
     @Query private var walletAddresses: [WalletAddressRecord]
     @Query private var tokenBalances: [TokenBalanceRecord]
-    @Query private var priceSnapshots: [PriceSnapshotRecord]
+
+    init(
+        walletId: UUID?,
+        walletName: String,
+        currencyCode: String,
+        transactions: [TransactionRecord],
+        ownAddresses: Set<String>,
+        priceHistory: [String: [Int: Decimal]],
+        scrubModel: ChartScrubModel,
+        onSwitchWallet: @escaping () -> Void,
+        onAddFunds: @escaping () -> Void
+    ) {
+        self.walletId = walletId
+        self.walletName = walletName
+        self.currencyCode = currencyCode
+        self.transactions = transactions
+        self.ownAddresses = ownAddresses
+        self.priceHistory = priceHistory
+        self.scrubModel = scrubModel
+        self.onSwitchWallet = onSwitchWallet
+        self.onAddFunds = onAddFunds
+
+        let code = currencyCode.uppercased()
+        _cachedPrices = Query(filter: #Predicate<CachedPriceRecord> { row in
+            row.fiat == code
+        })
+        _tokenBalances = Query()
+
+        if let walletId {
+            let scope = walletId.uuidString
+            let balancesDomain = SyncDomain.balances.rawValue
+            let transactionsDomain = SyncDomain.transactions.rawValue
+            _chainStateRecords = Query(filter: #Predicate<ChainStateRecord> { row in
+                row.walletId == walletId && row.fiatCurrencyCode == code
+            })
+            _syncStatuses = Query(filter: #Predicate<SyncStatusRecord> { row in
+                row.scopeId == scope && (row.domainRaw == balancesDomain || row.domainRaw == transactionsDomain)
+            })
+            _walletAddresses = Query(filter: #Predicate<WalletAddressRecord> { row in
+                row.walletId == walletId
+            })
+        } else {
+            let emptyWalletId = UUID()
+            let emptyScope = "__no-wallet__"
+            _chainStateRecords = Query(filter: #Predicate<ChainStateRecord> { row in
+                row.walletId == emptyWalletId
+            })
+            _syncStatuses = Query(filter: #Predicate<SyncStatusRecord> { row in
+                row.scopeId == emptyScope
+            })
+            _walletAddresses = Query(filter: #Predicate<WalletAddressRecord> { row in
+                row.walletId == emptyWalletId
+            })
+        }
+    }
 
     private var priceCacheMap: [String: Decimal] {
         var map: [String: Decimal] = [:]
@@ -2749,24 +2813,52 @@ private struct BalanceCardLiveSection: View {
             .sorted { $0.symbol < $1.symbol }
     }
 
-    private func hourlyPriceSnapshots(
-        symbols: Set<String>
-    ) -> [BalanceHourlyPriceSnapshot] {
-        guard !symbols.isEmpty else { return [] }
+    private func hourlySnapshotKey(
+        holdings: [BalanceHourlyHolding],
+        prices: [String: Decimal]
+    ) -> String {
+        var hasher = Hasher()
+        hasher.combine(walletId)
+        hasher.combine(currencyCode.uppercased())
+        for holding in holdings {
+            hasher.combine(holding.symbol)
+            hasher.combine(holding.amount)
+            hasher.combine(holding.currentPrice)
+        }
+        for symbol in holdings.map(\.symbol).sorted() {
+            hasher.combine(prices[symbol])
+        }
+        return String(hasher.finalize())
+    }
+
+    @MainActor
+    private func reloadHourlyPriceSnapshots(symbols: Set<String>) async {
+        guard !symbols.isEmpty else {
+            recentHourlyPriceSnapshots = []
+            return
+        }
+
+        let container = modelContext.container
         let code = currencyCode.uppercased()
-        let lowerBound = Date().addingTimeInterval(-7_200)
-        return priceSnapshots.compactMap { snapshot in
-            guard symbols.contains(snapshot.symbol.uppercased()),
-                  snapshot.currencyCode.caseInsensitiveCompare(code) == .orderedSame,
-                  snapshot.price > 0,
-                  snapshot.fetchedAt >= lowerBound else {
-                return nil
+        let since = Date().addingTimeInterval(-7_200)
+
+        do {
+            let observations = try await PriceSnapshotRepository(modelContainer: container)
+                .recentObservations(symbols: symbols, currency: code, since: since)
+            guard !Task.isCancelled else { return }
+            let snapshots = observations.map {
+                BalanceHourlyPriceSnapshot(
+                    symbol: $0.symbol,
+                    price: $0.price,
+                    fetchedAt: $0.fetchedAt
+                )
             }
-            return BalanceHourlyPriceSnapshot(
-                symbol: snapshot.symbol,
-                price: snapshot.price,
-                fetchedAt: snapshot.fetchedAt
-            )
+            withTransaction(Transaction(animation: nil)) {
+                recentHourlyPriceSnapshots = snapshots
+            }
+        } catch {
+            guard !Task.isCancelled else { return }
+            recentHourlyPriceSnapshots = []
         }
     }
 
@@ -2806,7 +2898,8 @@ private struct BalanceCardLiveSection: View {
         let priceMap = priceCacheMap
         let addressIds = activeAddressIds
         let hourHoldings = hourlyHoldings(addressIds: addressIds, prices: priceMap)
-        let hourSnapshots = hourlyPriceSnapshots(symbols: Set(hourHoldings.map(\.symbol)))
+        let hourlySymbols = Set(hourHoldings.map(\.symbol))
+        let snapshotKey = hourlySnapshotKey(holdings: hourHoldings, prices: priceMap)
         BalanceCardView(
             walletId: walletId,
             walletName: walletName,
@@ -2818,11 +2911,14 @@ private struct BalanceCardLiveSection: View {
             priceCache: priceMap,
             priceHistory: priceHistory,
             hourlyHoldings: hourHoldings,
-            hourlyPriceSnapshots: hourSnapshots,
+            hourlyPriceSnapshots: recentHourlyPriceSnapshots,
             scrubModel: scrubModel,
             onSwitchWallet: onSwitchWallet,
             onAddFunds: onAddFunds
         )
+        .task(id: snapshotKey) {
+            await reloadHourlyPriceSnapshots(symbols: hourlySymbols)
+        }
     }
 }
 

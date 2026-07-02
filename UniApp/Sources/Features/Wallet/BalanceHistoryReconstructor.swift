@@ -168,6 +168,7 @@ enum BalanceHistoryReconstructor {
         now: Date = Date()
     ) -> [BalancePoint] {
         let cutoff = range.cutoff(from: now)
+        if Task.isCancelled { return [] }
 
         // Non-failed, non-self-transfer transactions, oldest-first.
         let sorted = txSnapshots
@@ -180,14 +181,17 @@ enum BalanceHistoryReconstructor {
 
         // No transactions → empty (the caller renders the zero baseline).
         guard !sorted.isEmpty else { return [] }
+        if Task.isCancelled { return [] }
 
         var normalizedSpot: [String: Decimal] = [:]
         for (symbol, price) in priceCache {
+            if Task.isCancelled { return [] }
             normalizedSpot[symbol.uppercased()] = price
         }
 
         var normalizedHistory: [String: [Int: Decimal]] = [:]
         for (symbol, series) in priceHistory {
+            if Task.isCancelled { return [] }
             let key = symbol.uppercased()
             for (day, close) in series {
                 normalizedHistory[key, default: [:]][day] = close
@@ -197,6 +201,7 @@ enum BalanceHistoryReconstructor {
         // Sorted day-keys per symbol for carry-forward (last-known close).
         var sortedDays: [String: [Int]] = [:]
         for (symbol, series) in normalizedHistory {
+            if Task.isCancelled { return [] }
             sortedDays[symbol] = series.keys.sorted()
         }
 
@@ -298,6 +303,7 @@ enum BalanceHistoryReconstructor {
         // movement can move the curve even when no transfer happened.
         var idx = 0
         while idx < sorted.count, sorted[idx].occurredAt < effectiveStart {
+            if Task.isCancelled { return [] }
             apply(sorted[idx])
             idx += 1
         }
@@ -306,6 +312,7 @@ enum BalanceHistoryReconstructor {
         // at the first held balance instead of drawing a fake empty lead.
         if cutoff <= firstTxDate, effectiveStart == firstTxDate {
             while idx < sorted.count, sorted[idx].occurredAt == effectiveStart {
+                if Task.isCancelled { return [] }
                 apply(sorted[idx])
                 idx += 1
             }
@@ -317,6 +324,7 @@ enum BalanceHistoryReconstructor {
 
         var scanIdx = idx
         while scanIdx < sorted.count, sorted[scanIdx].occurredAt <= now {
+            if Task.isCancelled { return [] }
             sampleDates.insert(sorted[scanIdx].occurredAt)
             scanIdx += 1
         }
@@ -325,7 +333,9 @@ enum BalanceHistoryReconstructor {
             let startDay = DayKey.from(date: effectiveStart)
             let endDay = DayKey.from(date: now)
             for days in sortedDays.values {
+                if Task.isCancelled { return [] }
                 for day in days where day >= startDay && day <= endDay {
+                    if Task.isCancelled { return [] }
                     guard var sample = dayStart(for: day) else { continue }
                     if sample < effectiveStart { sample = effectiveStart }
                     if sample > now { sample = now }
@@ -338,7 +348,9 @@ enum BalanceHistoryReconstructor {
         points.reserveCapacity(sampleDates.count)
 
         for timestamp in sampleDates.sorted() {
+            if Task.isCancelled { return [] }
             while idx < sorted.count, sorted[idx].occurredAt <= timestamp {
+                if Task.isCancelled { return [] }
                 apply(sorted[idx])
                 idx += 1
             }
@@ -369,6 +381,7 @@ enum BalanceHourPortfolioReconstructor {
         now: Date = Date()
     ) -> [BalancePoint] {
         let start = BalanceHistoryRange.hour.cutoff(from: now)
+        if Task.isCancelled { return [] }
         guard currentTotalFiat > 0 else {
             return flatBaseline(start: start, now: now, fiat: 0)
         }
@@ -384,9 +397,11 @@ enum BalanceHourPortfolioReconstructor {
             where heldSymbols.contains(snapshot.symbol)
                 && snapshot.price > 0
                 && snapshot.fetchedAt <= now {
+            if Task.isCancelled { return [] }
             snapshotsBySymbol[snapshot.symbol, default: []].append(snapshot)
         }
         for holding in positiveHoldings {
+            if Task.isCancelled { return [] }
             if let currentPrice = holding.currentPrice, currentPrice > 0 {
                 snapshotsBySymbol[holding.symbol, default: []].append(
                     BalanceHourlyPriceSnapshot(symbol: holding.symbol, price: currentPrice, fetchedAt: now)
@@ -394,6 +409,7 @@ enum BalanceHourPortfolioReconstructor {
             }
         }
         for symbol in snapshotsBySymbol.keys {
+            if Task.isCancelled { return [] }
             snapshotsBySymbol[symbol]?.sort { $0.fetchedAt < $1.fetchedAt }
         }
 
@@ -401,23 +417,25 @@ enum BalanceHourPortfolioReconstructor {
         timestamps.insert(start)
         timestamps.insert(now)
         for series in snapshotsBySymbol.values {
+            if Task.isCancelled { return [] }
             for snapshot in series where snapshot.fetchedAt >= start && snapshot.fetchedAt <= now {
                 timestamps.insert(snapshot.fetchedAt)
             }
         }
 
-        let rawPoints = timestamps
-            .sorted()
-            .map { timestamp in
-                BalancePoint(
-                    timestamp: timestamp,
-                    fiat: portfolioValue(
-                        at: timestamp,
-                        holdings: positiveHoldings,
-                        snapshotsBySymbol: snapshotsBySymbol
-                    )
+        var rawPoints: [BalancePoint] = []
+        rawPoints.reserveCapacity(timestamps.count)
+        for timestamp in timestamps.sorted() {
+            if Task.isCancelled { return [] }
+            rawPoints.append(BalancePoint(
+                timestamp: timestamp,
+                fiat: portfolioValue(
+                    at: timestamp,
+                    holdings: positiveHoldings,
+                    snapshotsBySymbol: snapshotsBySymbol
                 )
-            }
+            ))
+        }
 
         return reconcile(rawPoints, currentTotalFiat: currentTotalFiat, start: start, now: now)
     }
