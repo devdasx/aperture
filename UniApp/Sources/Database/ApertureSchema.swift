@@ -39,6 +39,7 @@ enum ApertureSchemaV1: VersionedSchema {
             HistoricalPriceRecord.self,
             PriceSnapshotRecord.self,
             WalletChartSnapshotRecord.self,
+            WalletPortfolioSummaryRecord.self,
             // 2026-06-13 — local-first freshness ledger (Rule #27 §B):
             // when each domain (balances / tx / prices / historical /
             // chart) last synced, so the UI shows an honest "Updated …"

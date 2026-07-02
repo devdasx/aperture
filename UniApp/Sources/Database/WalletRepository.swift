@@ -810,6 +810,7 @@ actor WalletRepository {
             // this id (also primitive-keyed), then report whoever is
             // active now so callers can still route.
             try? deleteChartSnapshots(walletId: walletId, save: true)
+            try? deletePortfolioSummaries(walletId: walletId, save: true)
             try? WalletSecretPersistence.deleteAll(for: walletId, in: modelContext)
             if modelContext.hasChanges {
                 try? modelContext.save()
@@ -853,6 +854,7 @@ actor WalletRepository {
             // `WalletChartSnapshotRepository.deleteAll(walletId:)`,
             // in-context for atomicity.
             try deleteChartSnapshots(walletId: walletId, save: false)
+            try deletePortfolioSummaries(walletId: walletId, save: false)
             // Commit the durable record delete. If the save throws
             // (disk full is the realistic trigger), the wallet stays
             // fully intact — record, seed, and mnemonic — and the
@@ -954,6 +956,10 @@ actor WalletRepository {
             FetchDescriptor<WalletChartSnapshotRecord>()
         )
         for snapshot in snapshots { modelContext.delete(snapshot) }
+        let summaries = try modelContext.fetch(
+            FetchDescriptor<WalletPortfolioSummaryRecord>()
+        )
+        for summary in summaries { modelContext.delete(summary) }
         let secrets = try modelContext.fetch(FetchDescriptor<WalletSecretRecord>())
         for secret in secrets { modelContext.delete(secret) }
         try modelContext.save()
@@ -977,6 +983,20 @@ actor WalletRepository {
     ///   immediately (the idempotent orphan sweep).
     private func deleteChartSnapshots(walletId: UUID, save: Bool) throws {
         let descriptor = FetchDescriptor<WalletChartSnapshotRecord>(
+            predicate: #Predicate { $0.walletId == walletId }
+        )
+        for row in try modelContext.fetch(descriptor) {
+            modelContext.delete(row)
+        }
+        if save, modelContext.hasChanges {
+            try modelContext.save()
+        }
+    }
+
+    /// Delete every wallet portfolio summary for `walletId`. The summary
+    /// table is primitive-keyed, so it does not cascade with `WalletRecord`.
+    private func deletePortfolioSummaries(walletId: UUID, save: Bool) throws {
+        let descriptor = FetchDescriptor<WalletPortfolioSummaryRecord>(
             predicate: #Predicate { $0.walletId == walletId }
         )
         for row in try modelContext.fetch(descriptor) {

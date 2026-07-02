@@ -2690,6 +2690,11 @@ private struct BalanceCardLiveSection: View {
     /// 300ms refresh-commits re-render only this card.
     @Query private var chainStateRecords: [ChainStateRecord]
 
+    /// One-row wallet/currency portfolio summary. This is the fast-launch
+    /// read model for the hero total; `chainStateRecords` remains the fallback
+    /// and per-chain source when an older store has not rebuilt the summary yet.
+    @Query private var portfolioSummaries: [WalletPortfolioSummaryRecord]
+
     /// The freshness ledger (Rule #27) — the source for the "Updated …"
     /// caption. `ChainStateRecord.lastSyncedAt` is deliberately NOT used:
     /// it advances only when an aggregate actually changes AND is
@@ -2741,10 +2746,14 @@ private struct BalanceCardLiveSection: View {
 
         if let walletId {
             let scope = walletId.uuidString
+            let summaryLookupKey = WalletPortfolioSummaryRecord.makeLookupKey(walletId: walletId, currencyCode: code)
             let balancesDomain = SyncDomain.balances.rawValue
             let transactionsDomain = SyncDomain.transactions.rawValue
             _chainStateRecords = Query(filter: #Predicate<ChainStateRecord> { row in
                 row.walletId == walletId && row.fiatCurrencyCode == code
+            })
+            _portfolioSummaries = Query(filter: #Predicate<WalletPortfolioSummaryRecord> { row in
+                row.lookupKey == summaryLookupKey
             })
             _syncStatuses = Query(filter: #Predicate<SyncStatusRecord> { row in
                 row.scopeId == scope && (row.domainRaw == balancesDomain || row.domainRaw == transactionsDomain)
@@ -2755,8 +2764,12 @@ private struct BalanceCardLiveSection: View {
         } else {
             let emptyWalletId = UUID()
             let emptyScope = "__no-wallet__"
+            let emptyLookupKey = WalletPortfolioSummaryRecord.makeLookupKey(walletId: emptyWalletId, currencyCode: code)
             _chainStateRecords = Query(filter: #Predicate<ChainStateRecord> { row in
                 row.walletId == emptyWalletId
+            })
+            _portfolioSummaries = Query(filter: #Predicate<WalletPortfolioSummaryRecord> { row in
+                row.lookupKey == emptyLookupKey
             })
             _syncStatuses = Query(filter: #Predicate<SyncStatusRecord> { row in
                 row.scopeId == emptyScope
@@ -2868,6 +2881,13 @@ private struct BalanceCardLiveSection: View {
     /// per-chain rows for the active wallet/currency.
     private var totalFiat: Decimal {
         guard let walletId else { return 0 }
+        if let summary = portfolioSummaries.first(where: {
+            $0.walletId == walletId
+            && $0.currencyCode.caseInsensitiveCompare(currencyCode) == .orderedSame
+        }) {
+            return summary.totalFiat
+        }
+
         return chainStateRecords
             .filter {
                 $0.walletId == walletId
