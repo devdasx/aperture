@@ -39,9 +39,9 @@ struct AppearancePickerView: View {
                             }
                         }
                         .padding(.vertical, UniSpacing.xxs)
-                        .contentShape(Rectangle())
+                        .uniListRowHitTarget()
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.uniListRow)
                     .accessibilityAddTraits(current == option ? [.isSelected, .isButton] : .isButton)
                     .listRowBackground(UniColors.List.rowBackground)
                 }

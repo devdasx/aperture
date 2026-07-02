@@ -386,6 +386,7 @@ struct WalletActivityFilterSheet: View {
                 .monospacedDigit()
         }
         .padding(.vertical, UniSpacing.xxs)
+        .uniListRowHitTarget()
     }
 
     private func readout(selected: Int, total: Int) -> String {
@@ -600,7 +601,10 @@ private struct WalletActivityNetworksPicker: View {
                                 .foregroundStyle(UniColors.Tint.accent)
                         }
                     }
+                    .padding(.vertical, UniSpacing.xxs)
+                    .uniListRowHitTarget()
                 }
+                .buttonStyle(.uniListRow)
                 .listRowBackground(UniColors.List.rowBackground)
             }
 
@@ -641,7 +645,9 @@ private struct WalletActivityNetworksPicker: View {
                 }
             }
             .padding(.vertical, UniSpacing.xxs)
+            .uniListRowHitTarget()
         }
+        .buttonStyle(.uniListRow)
         .accessibilityLabel(Text("\(chain.displayName) network"))
     }
 
@@ -692,7 +698,10 @@ private struct WalletActivityAssetsPicker: View {
                                 .foregroundStyle(UniColors.Tint.accent)
                         }
                     }
+                    .padding(.vertical, UniSpacing.xxs)
+                    .uniListRowHitTarget()
                 }
+                .buttonStyle(.uniListRow)
                 .listRowBackground(UniColors.List.rowBackground)
             }
 
@@ -731,7 +740,9 @@ private struct WalletActivityAssetsPicker: View {
                 }
             }
             .padding(.vertical, UniSpacing.xxs)
+            .uniListRowHitTarget()
         }
+        .buttonStyle(.uniListRow)
         .accessibilityLabel(Text(verbatim: symbol))
     }
 

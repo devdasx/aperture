@@ -132,9 +132,9 @@ private struct CurrencyRow: View {
                 }
             }
             .padding(.vertical, UniSpacing.xxs)
-            .contentShape(Rectangle())
+            .uniListRowHitTarget()
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.uniListRow)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(Text(verbatim: "\(localizedName) — \(currency.code)"))
         .accessibilityAddTraits(isSelected ? [.isSelected, .isButton] : .isButton)

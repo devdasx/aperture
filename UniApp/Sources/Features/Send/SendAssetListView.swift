@@ -96,7 +96,7 @@ struct SendAssetListView: View {
                         currencyCode: currencyCode
                     )
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.uniListRow)
                 .listRowBackground(UniColors.List.rowBackground)
             }
         } header: {
@@ -121,7 +121,7 @@ struct SendAssetListView: View {
                             currencyCode: currencyCode
                         )
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.uniListRow)
                     .listRowBackground(UniColors.List.rowBackground)
                 }
             }

@@ -292,9 +292,9 @@ struct ChooseMethodScreen: View {
                     .foregroundStyle(UniColors.Icon.tertiary)
             }
             .padding(.vertical, UniSpacing.xs)
-            .contentShape(Rectangle())
+            .uniListRowHitTarget()
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.uniListRow)
         .listRowBackground(UniColors.List.rowBackground)
     }
 }

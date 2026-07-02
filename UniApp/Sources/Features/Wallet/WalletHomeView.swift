@@ -1664,7 +1664,7 @@ struct WalletHomeView: View {
                 Spacer(minLength: UniSpacing.s)
             }
             .padding(.vertical, UniSpacing.xs)
-            .contentShape(Rectangle())
+            .uniListRowHitTarget()
         }
         .accessibilityLabel(Text("Show all supported assets"))
     }
@@ -2954,7 +2954,7 @@ private struct SupportedTokenRow: View, Equatable {
             }
         }
         .padding(.vertical, UniSpacing.xs)
-        .contentShape(Rectangle())
+        .uniListRowHitTarget()
     }
 }
 

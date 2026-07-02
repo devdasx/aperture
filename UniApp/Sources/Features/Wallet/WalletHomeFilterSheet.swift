@@ -417,6 +417,7 @@ struct WalletHomeFilterSheet: View {
                 .monospacedDigit()
         }
         .padding(.vertical, UniSpacing.xxs)
+        .uniListRowHitTarget()
     }
 
     /// "Networks" link — leading globe glyph, trailing N-of-M
@@ -440,6 +441,7 @@ struct WalletHomeFilterSheet: View {
                 .monospacedDigit()
         }
         .padding(.vertical, UniSpacing.xxs)
+        .uniListRowHitTarget()
     }
 
     /// "Hidden assets" navigation row with the count badge.
@@ -463,6 +465,7 @@ struct WalletHomeFilterSheet: View {
             }
         }
         .padding(.vertical, UniSpacing.xxs)
+        .uniListRowHitTarget()
     }
 
     /// "Hidden chains" navigation row with the count badge.
@@ -486,6 +489,7 @@ struct WalletHomeFilterSheet: View {
             }
         }
         .padding(.vertical, UniSpacing.xxs)
+        .uniListRowHitTarget()
     }
 
     /// "Pinned assets" navigation row with the count badge.
@@ -509,6 +513,7 @@ struct WalletHomeFilterSheet: View {
             }
         }
         .padding(.vertical, UniSpacing.xxs)
+        .uniListRowHitTarget()
     }
 
     // MARK: - Reset section

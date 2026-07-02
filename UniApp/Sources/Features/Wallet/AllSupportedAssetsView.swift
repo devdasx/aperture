@@ -384,7 +384,7 @@ private struct TokenSupportedRow: View {
             }
         }
         .padding(.vertical, UniSpacing.xs)
-        .contentShape(Rectangle())
+        .uniListRowHitTarget()
         .accessibilityElement(children: .combine)
         .accessibilityLabel(Text(verbatim: "\(row.symbol), \(row.name), on \(row.chain.displayName)"))
     }

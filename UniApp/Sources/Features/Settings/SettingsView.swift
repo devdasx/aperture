@@ -550,6 +550,7 @@ private struct SettingsRow: View {
             }
         }
         .padding(.vertical, UniSpacing.xxs)
+        .uniListRowHitTarget()
     }
 }
 
@@ -617,9 +618,9 @@ private struct AboutView: View {
                         .foregroundStyle(UniColors.Icon.tertiary)
                         .accessibilityHidden(true)
                 }
-                .contentShape(Rectangle())
+                .uniListRowHitTarget()
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.uniListRow)
             .accessibilityHint(Text("Opens outside Aperture"))
         }
     }
@@ -763,9 +764,9 @@ struct HideSmallBalancesPicker: View {
                             }
                         }
                         .padding(.vertical, UniSpacing.xxs)
-                        .contentShape(Rectangle())
+                        .uniListRowHitTarget()
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.uniListRow)
                     .listRowBackground(UniColors.List.rowBackground)
                 }
             } footer: {

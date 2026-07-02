@@ -585,7 +585,7 @@ struct AssetDetailView: View {
                                 .monospacedDigit()
                         }
                         .padding(.vertical, UniSpacing.xs)
-                        .contentShape(Rectangle())
+                        .uniListRowHitTarget()
                     }
                     .accessibilityLabel(Text("View all \(rows.count) transactions"))
                 }
@@ -872,7 +872,7 @@ private struct AssetNetworkRowView: View {
             }
         }
         .padding(.vertical, UniSpacing.xs)
-        .contentShape(Rectangle())
+        .uniListRowHitTarget()
         .accessibilityElement(children: .combine)
     }
 

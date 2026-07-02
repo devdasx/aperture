@@ -99,7 +99,7 @@ struct ActivityRow: View {
             }
         }
         .padding(.vertical, UniSpacing.xs)
-        .contentShape(Rectangle())
+        .uniListRowHitTarget()
         .accessibilityElement(children: .combine)
         // Long-press → copy hash / amount / address, or open the explorer
         // (2026-06-20 user direction). Tap still navigates to the tx detail.

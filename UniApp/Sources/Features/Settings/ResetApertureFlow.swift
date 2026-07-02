@@ -328,9 +328,9 @@ struct ResetApertureFlow: View {
             .padding(.horizontal, 16)
             .padding(.vertical, 14)
             .opacity(isWatchOnly ? 0.5 : 1)
-            .contentShape(Rectangle())
+            .uniListRowHitTarget()
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.uniListRow)
         .disabled(isWatchOnly)
     }
 
@@ -507,9 +507,9 @@ struct ResetApertureFlow: View {
                     .padding(.top, 4)
             }
             .padding(.vertical, 8)
-            .contentShape(Rectangle())
+            .uniListRowHitTarget()
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.uniListRow)
         .accessibilityElement(children: .combine)
         .animation(.smooth(duration: 0.22), value: isOn.wrappedValue)
     }

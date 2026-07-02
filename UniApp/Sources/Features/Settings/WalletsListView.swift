@@ -350,7 +350,7 @@ struct WalletsListView: View {
                 } label: {
                     entryRow(systemImage: "plus", title: "Create new wallet")
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.uniListRow)
                 .listRowBackground(UniColors.List.rowBackground)
 
                 Button {
@@ -358,7 +358,7 @@ struct WalletsListView: View {
                 } label: {
                     entryRow(systemImage: "square.and.arrow.down", title: "Import existing wallet")
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.uniListRow)
                 .listRowBackground(UniColors.List.rowBackground)
             }
         }
@@ -541,6 +541,7 @@ struct WalletsListView: View {
             Spacer(minLength: UniSpacing.s)
         }
         .padding(.vertical, UniSpacing.xxs)
+        .uniListRowHitTarget()
     }
 
     private func entryRow(systemImage: String, title: LocalizedStringKey) -> some View {
@@ -559,7 +560,7 @@ struct WalletsListView: View {
                 .foregroundStyle(UniColors.Icon.tertiary)
         }
         .padding(.vertical, UniSpacing.xxs)
-        .contentShape(Rectangle())
+        .uniListRowHitTarget()
     }
 
     // MARK: - Swipe actions
@@ -1295,9 +1296,9 @@ private struct WalletsListNetworkFilterView: View {
                 }
             }
             .padding(.vertical, UniSpacing.xxs)
-            .contentShape(Rectangle())
+            .uniListRowHitTarget()
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.uniListRow)
         .accessibilityLabel(Text("\(chain.displayName) network"))
     }
 

@@ -196,9 +196,9 @@ struct SecuritySettingsView: View {
                             Spacer()
                         }
                         .padding(.vertical, UniSpacing.xxs)
-                        .contentShape(Rectangle())
+                        .uniListRowHitTarget()
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.uniListRow)
                     .listRowBackground(UniColors.List.rowBackground)
 
                     Button {
@@ -211,9 +211,9 @@ struct SecuritySettingsView: View {
                             Spacer()
                         }
                         .padding(.vertical, UniSpacing.xxs)
-                        .contentShape(Rectangle())
+                        .uniListRowHitTarget()
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.uniListRow)
                     .listRowBackground(UniColors.List.rowBackground)
                 } footer: {
                     Text("Turning off the passcode removes the lock from this iPhone's copy of your wallets. Your wallet secrets stay encrypted locally — but anyone with this phone unlocked can open Aperture without proving they own it.")
@@ -318,9 +318,9 @@ struct SecuritySettingsView: View {
                 Spacer()
             }
             .padding(.vertical, UniSpacing.xxs)
-            .contentShape(Rectangle())
+            .uniListRowHitTarget()
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.uniListRow)
         .listRowBackground(UniColors.List.rowBackground)
     }
 
@@ -464,6 +464,7 @@ struct SettingsRowShared: View {
             }
         }
         .padding(.vertical, UniSpacing.xxs)
+        .uniListRowHitTarget()
     }
 }
 
@@ -491,9 +492,9 @@ struct AutoLockPickerView: View {
                             }
                         }
                         .padding(.vertical, UniSpacing.xxs)
-                        .contentShape(Rectangle())
+                        .uniListRowHitTarget()
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.uniListRow)
                     .listRowBackground(UniColors.List.rowBackground)
                 }
             } footer: {

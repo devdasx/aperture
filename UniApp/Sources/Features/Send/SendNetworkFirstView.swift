@@ -150,7 +150,7 @@ struct SendNetworkFirstView: View {
                         currencyCode: currencyCode
                     )
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.uniListRow)
                 .listRowBackground(UniColors.List.rowBackground)
                 .accessibilityLabel(Text(verbatim: chain.displayName))
                 .accessibilityHint(Text("Send \(assetPrefill.symbol) on this network"))

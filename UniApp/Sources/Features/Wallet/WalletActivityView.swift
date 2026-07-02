@@ -1225,6 +1225,7 @@ private struct ActivityPDFExportSheet: View {
                 .monospacedDigit()
         }
         .padding(.vertical, UniSpacing.xxs)
+        .uniListRowHitTarget()
     }
 
     @ViewBuilder
@@ -1249,6 +1250,7 @@ private struct ActivityPDFExportSheet: View {
                 .monospacedDigit()
         }
         .padding(.vertical, UniSpacing.xxs)
+        .uniListRowHitTarget()
     }
 
     @ViewBuilder

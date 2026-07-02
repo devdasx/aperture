@@ -59,7 +59,7 @@ struct MnemonicWordAdviceSheet: View {
                 } label: {
                     suggestionRow(suggestion)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.uniListRow)
                 if index < suggestions.count - 1 {
                     UniDivider()
                 }
@@ -90,7 +90,7 @@ struct MnemonicWordAdviceSheet: View {
         }
         .padding(.horizontal, UniSpacing.m)
         .padding(.vertical, UniSpacing.s)
-        .contentShape(Rectangle())
+        .uniListRowHitTarget()
     }
 
     private func distanceLabel(_ distance: Int) -> LocalizedStringKey {

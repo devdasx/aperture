@@ -43,7 +43,7 @@ struct AssetPickerAssetRow: View {
                 .foregroundStyle(UniColors.Icon.tertiary)
         }
         .padding(.vertical, 4)
-        .contentShape(Rectangle())
+        .uniListRowHitTarget()
         .accessibilityElement(children: .combine)
         .accessibilityLabel(Text(verbatim: "\(fullName), \(ticker)"))
     }
@@ -81,7 +81,7 @@ struct AssetPickerNetworkRow: View {
                 .foregroundStyle(UniColors.Icon.tertiary)
         }
         .padding(.vertical, 4)
-        .contentShape(Rectangle())
+        .uniListRowHitTarget()
     }
 }
 

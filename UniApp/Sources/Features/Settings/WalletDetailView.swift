@@ -536,8 +536,9 @@ struct WalletDetailView: View {
                     .foregroundStyle(UniColors.Icon.tertiary)
             }
             .padding(.vertical, UniSpacing.xxs)
+            .uniListRowHitTarget()
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.uniListRow)
         .listRowBackground(UniColors.List.rowBackground)
     }
 
@@ -590,8 +591,9 @@ struct WalletDetailView: View {
                 }
             }
             .padding(.vertical, UniSpacing.xxs)
+            .uniListRowHitTarget()
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.uniListRow)
         .disabled(!hasMnemonic)
         .listRowBackground(UniColors.List.rowBackground)
     }
@@ -623,8 +625,9 @@ struct WalletDetailView: View {
                 }
             }
             .padding(.vertical, UniSpacing.xxs)
+            .uniListRowHitTarget()
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.uniListRow)
         .disabled(!hasKey)
         .listRowBackground(UniColors.List.rowBackground)
     }
@@ -656,8 +659,9 @@ struct WalletDetailView: View {
                 }
             }
             .padding(.vertical, UniSpacing.xxs)
+            .uniListRowHitTarget()
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.uniListRow)
         .disabled(!hasSecret)
         .listRowBackground(UniColors.List.rowBackground)
     }
@@ -692,8 +696,9 @@ struct WalletDetailView: View {
                 Spacer()
             }
             .padding(.vertical, UniSpacing.xxs)
+            .uniListRowHitTarget()
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.uniListRow)
         .listRowBackground(UniColors.List.rowBackground)
     }
 
@@ -902,9 +907,9 @@ struct WalletDetailView: View {
                 }
             }
             .padding(.vertical, UniSpacing.xxs)
-            .contentShape(Rectangle())
+            .uniListRowHitTarget()
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.uniListRow)
         // Only blocked while the iCloud status is still resolving — never
         // permanently disabled, so a backed-up wallet can still be backed up
         // again (e.g. add the other method, or re-upload to iCloud).

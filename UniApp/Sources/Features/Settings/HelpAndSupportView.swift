@@ -130,7 +130,7 @@ struct HelpAndSupportView: View {
                     .accessibilityHidden(true)
             }
             .padding(.vertical, UniSpacing.xxs)
-            .contentShape(Rectangle())
+            .uniListRowHitTarget()
         }
         .listRowBackground(UniColors.List.rowBackground)
     }

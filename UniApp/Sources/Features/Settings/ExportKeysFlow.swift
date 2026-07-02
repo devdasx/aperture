@@ -406,9 +406,9 @@ private struct PickNetworkScreen: View {
                                 .foregroundStyle(UniColors.Icon.tertiary)
                         }
                         .padding(.vertical, UniSpacing.xxs)
-                        .contentShape(Rectangle())
+                        .uniListRowHitTarget()
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.uniListRow)
                     .listRowBackground(UniColors.List.rowBackground)
                 }
             } header: {

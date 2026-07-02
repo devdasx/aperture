@@ -117,7 +117,7 @@ struct ICloudRestoreView: View {
                         } label: {
                             backupRow(blob)
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(.uniListRow)
                         .listRowBackground(UniColors.List.rowBackground)
                     }
                 } header: {
@@ -209,7 +209,7 @@ struct ICloudRestoreView: View {
                 .foregroundStyle(UniColors.Icon.tertiary)
         }
         .padding(.vertical, UniSpacing.xxs)
-        .contentShape(Rectangle())
+        .uniListRowHitTarget()
     }
 
     private func backup(withId id: UUID) -> WalletBackupBlob? {
