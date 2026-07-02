@@ -2621,7 +2621,7 @@ private actor PublicNodeEVMBalanceScanner {
     }
 }
 
-private actor PublicNodeEVMRPCClient {
+actor PublicNodeEVMRPCClient {
     static let shared = PublicNodeEVMRPCClient()
 
     private let session: URLSession

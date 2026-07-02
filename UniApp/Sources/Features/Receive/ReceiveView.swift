@@ -223,9 +223,10 @@ struct ReceiveView: View {
 
     private func address(for chain: SupportedChain) -> String? {
         guard let wallet = activeWallet else { return nil }
-        return wallet.addresses.first(where: {
+        let rows = wallet.addresses.filter {
             $0.chainRaw == chain.rawValue && !$0.address.isEmpty
-        })?.address
+        }
+        return rows.first(where: \.isReceivePreferred)?.address ?? rows.first?.address
     }
 
     private func seedAssetPrefillIfNeeded() {
