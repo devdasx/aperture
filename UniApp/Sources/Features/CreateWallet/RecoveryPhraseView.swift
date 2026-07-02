@@ -127,7 +127,9 @@ struct RecoveryPhraseView: View {
         .safeAreaInset(edge: .bottom) {
             actionRegion
                 .padding(.horizontal, UniSpacing.l)
+                .padding(.top, UniSpacing.s)
                 .padding(.bottom, UniSpacing.l)
+                .background(UniColors.Background.primary.ignoresSafeArea(edges: .bottom))
         }
         .navigationTitle(Text("Recovery Phrase"))
         .navigationBarTitleDisplayMode(.inline)
@@ -325,22 +327,24 @@ struct RecoveryPhraseView: View {
 
     /// Footer: [Copy | Back up now] on one row, Skip for now full-width below.
     private var actionRegion: some View {
-        VStack(spacing: UniSpacing.s) {
+        VStack(spacing: UniSpacing.m) {
             GeometryReader { proxy in
                 let availableWidth = max(0, proxy.size.width - UniSpacing.s)
                 HStack(spacing: UniSpacing.s) {
                     copyButton
-                        .frame(width: availableWidth * 0.3)
+                        .frame(width: availableWidth * 0.3, height: 47)
                     UniButton(title: "Back up now", variant: .primary) {
                         onBackUpNow()
                     }
-                    .frame(width: availableWidth * 0.7)
+                    .frame(width: availableWidth * 0.7, height: 47)
                 }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             }
             .frame(height: 47)
             UniButton(title: "Skip for now", variant: .secondary) {
                 onSkipForNow()
             }
+            .frame(height: 47)
         }
     }
 
