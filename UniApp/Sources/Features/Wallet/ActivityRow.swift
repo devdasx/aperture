@@ -112,7 +112,7 @@ struct ActivityRow: View {
     private var transactionActions: some View {
         if !txHash.isEmpty {
             Button { copyToPasteboard(txHash) } label: {
-                Label("Copy transaction hash", systemImage: "number")
+                Label("Copy hash", systemImage: "number")
             }
         }
         Button { copyToPasteboard(copyableAmount) } label: {

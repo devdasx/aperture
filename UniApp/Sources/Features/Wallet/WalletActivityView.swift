@@ -142,6 +142,13 @@ struct WalletActivityView: View {
         transactions(for: filterInputs)
     }
 
+    /// Calendar-day buckets for the visible rows. The activity feed should
+    /// scan like iOS Photos/Messages history: Today, Yesterday, then concrete
+    /// dates, with each bucket newest-first inside.
+    private var displayedSections: [ActivityDateSection<TransactionRecord>] {
+        ActivityDateGrouper.sections(for: displayedTransactions, date: \.occurredAt)
+    }
+
     private func transactions(for inputs: WalletActivityFilterInputs) -> [TransactionRecord] {
         WalletActivityFilterApply.apply(
             transactions: dustFreeTransactions,
@@ -334,29 +341,40 @@ struct WalletActivityView: View {
 
     private var activityList: some View {
         List {
-            Section {
-                ForEach(displayedTransactions, id: \.id) { tx in
-                    if let chain = chainFor(tx) {
-                        NavigationLink(value: WalletHomeDestination.transaction(tx.id)) {
-                            activityRow(tx, chain: chain)
+            ForEach(displayedSections) { daySection in
+                Section {
+                    ForEach(daySection.items, id: \.id) { tx in
+                        if let chain = chainFor(tx) {
+                            NavigationLink(value: WalletHomeDestination.transaction(tx.id)) {
+                                activityRow(tx, chain: chain)
+                            }
+                        } else {
+                            // The parent address record is missing or
+                            // carries an unrecognized chain — render the
+                            // row plain, with NO NavigationLink, so the
+                            // user is never routed against wrong-chain
+                            // data. (Same guard `AssetActivityView`
+                            // uses — a silent `.ethereum` fallback once
+                            // showed users the wrong chain's detail.)
+                            activityRow(tx, chain: .ethereum)
                         }
-                    } else {
-                        // The parent address record is missing or
-                        // carries an unrecognized chain — render the
-                        // row plain, with NO NavigationLink, so the
-                        // user is never routed against wrong-chain
-                        // data. (Same guard `AssetActivityView`
-                        // uses — a silent `.ethereum` fallback once
-                        // showed users the wrong chain's detail.)
-                        activityRow(tx, chain: .ethereum)
                     }
+                } header: {
+                    Text(ActivityDateGrouper.title(for: daySection.day))
                 }
-            } header: {
-                Text(headerLabel(visible: displayedTransactions.count, total: dustFreeTransactions.count))
             }
         }
         .listStyle(.insetGrouped)
         .scrollContentBackground(.hidden)
+        .safeAreaInset(edge: .top, spacing: 0) {
+            Text(headerLabel(visible: displayedTransactions.count, total: dustFreeTransactions.count))
+                .font(UniTypography.footnote.weight(.semibold))
+                .foregroundStyle(UniColors.Text.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, UniSpacing.xl)
+                .padding(.bottom, UniSpacing.xs)
+                .background(UniColors.Background.primary)
+        }
     }
 
     /// Native progress overlay shown while the PDF document renders.
@@ -830,6 +848,66 @@ struct WalletActivityView: View {
         f.locale = Locale(identifier: "en_US_POSIX")
         f.dateFormat = "yyyy-MM-dd"
         return f
+    }()
+}
+
+// MARK: - Activity Date Sections
+
+/// Shared day bucketing for wallet-wide and asset-scoped activity lists.
+/// Kept value-based and generic so sectioning stays deterministic and
+/// testable without SwiftData.
+struct ActivityDateSection<Item>: Identifiable {
+    let day: Date
+    let items: [Item]
+
+    var id: TimeInterval { day.timeIntervalSinceReferenceDate }
+}
+
+enum ActivityDateGrouper {
+    static func sections<Item>(
+        for items: [Item],
+        date: (Item) -> Date,
+        calendar: Calendar = .current
+    ) -> [ActivityDateSection<Item>] {
+        let grouped = Dictionary(grouping: items) { item in
+            calendar.startOfDay(for: date(item))
+        }
+
+        return grouped
+            .map { day, items in
+                ActivityDateSection(
+                    day: day,
+                    items: items.sorted { lhs, rhs in
+                        date(lhs) > date(rhs)
+                    }
+                )
+            }
+            .sorted { $0.day > $1.day }
+    }
+
+    static func title(
+        for day: Date,
+        calendar: Calendar = .current,
+        reference: Date = Date()
+    ) -> String {
+        if calendar.isDate(day, inSameDayAs: reference) {
+            return String.apertureLocalized("Today")
+        }
+
+        let referenceDay = calendar.startOfDay(for: reference)
+        if let yesterday = calendar.date(byAdding: .day, value: -1, to: referenceDay),
+           calendar.isDate(day, inSameDayAs: yesterday) {
+            return String.apertureLocalized("Yesterday")
+        }
+
+        return sectionDateFormatter.string(from: day)
+    }
+
+    private static let sectionDateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = .current
+        formatter.setLocalizedDateFormatFromTemplate("dMMMy")
+        return formatter
     }()
 }
 
