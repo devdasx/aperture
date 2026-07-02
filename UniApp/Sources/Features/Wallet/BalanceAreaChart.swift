@@ -38,71 +38,66 @@ enum BalanceChartScrubResolver {
         guard !values.isEmpty, plotArea.width > 0 else { return nil }
         let clamped = max(plotArea.minX, min(plotArea.maxX, touchX))
         let xFraction = Double((clamped - plotArea.minX) / plotArea.width)
-        let samples = sourceSamples(values: values, xFractions: xFractions)
-        guard let first = samples.first else { return nil }
-        guard samples.count > 1 else {
+        let fractions = resolvedFractions(count: values.count, xFractions: xFractions)
+        guard !fractions.isEmpty else { return nil }
+        let firstIndex = lastDuplicateIndex(startingAt: 0, in: fractions)
+        guard values.count > 1 else {
             return BalanceChartScrubSelection(
                 xFraction: xFraction,
-                lowerIndex: first.index,
-                upperIndex: first.index,
+                lowerIndex: firstIndex,
+                upperIndex: firstIndex,
                 progress: 0,
-                fiat: first.value,
-                timestamp: timestamp(at: first.index, timestamps: timestamps)
+                fiat: values[firstIndex],
+                timestamp: timestamp(at: firstIndex, timestamps: timestamps)
             )
         }
 
-        if xFraction <= first.x {
+        if xFraction <= fractions[firstIndex] {
             return BalanceChartScrubSelection(
                 xFraction: xFraction,
-                lowerIndex: first.index,
-                upperIndex: first.index,
+                lowerIndex: firstIndex,
+                upperIndex: firstIndex,
                 progress: 0,
-                fiat: first.value,
-                timestamp: timestamp(at: first.index, timestamps: timestamps)
+                fiat: values[firstIndex],
+                timestamp: timestamp(at: firstIndex, timestamps: timestamps)
             )
         }
 
-        guard let last = samples.last else { return nil }
-        if xFraction >= last.x {
+        let lastIndex = values.count - 1
+        if xFraction >= fractions[lastIndex] {
             return BalanceChartScrubSelection(
                 xFraction: xFraction,
-                lowerIndex: last.index,
-                upperIndex: last.index,
+                lowerIndex: lastIndex,
+                upperIndex: lastIndex,
                 progress: 0,
-                fiat: last.value,
-                timestamp: timestamp(at: last.index, timestamps: timestamps)
+                fiat: values[lastIndex],
+                timestamp: timestamp(at: lastIndex, timestamps: timestamps)
             )
         }
 
-        for pair in samples.adjacentPairs() {
-            let lower = pair.0
-            let upper = pair.1
-            guard xFraction <= upper.x else { continue }
-            let span = upper.x - lower.x
-            let progress = span > duplicateXEpsilon ? (xFraction - lower.x) / span : 1
-            let fiat = lower.value + (upper.value - lower.value) * progress
-            return BalanceChartScrubSelection(
-                xFraction: xFraction,
-                lowerIndex: lower.index,
-                upperIndex: upper.index,
-                progress: max(0, min(1, progress)),
-                fiat: fiat,
-                timestamp: interpolatedTimestamp(
-                    lower: lower.index,
-                    upper: upper.index,
-                    progress: progress,
-                    timestamps: timestamps
-                )
-            )
-        }
-
+        var upperIndex = lowerBound(for: xFraction, in: fractions)
+        upperIndex = lastDuplicateIndex(startingAt: upperIndex, in: fractions)
+        let lowerIndex = previousDistinctIndex(before: upperIndex, in: fractions) ?? firstIndex
+        let lowerX = fractions[lowerIndex]
+        let upperX = fractions[upperIndex]
+        let span = upperX - lowerX
+        let progress = span > duplicateXEpsilon ? (xFraction - lowerX) / span : 1
+        let clampedProgress = max(0, min(1, progress))
+        let lowerValue = values[lowerIndex]
+        let upperValue = values[upperIndex]
+        let fiat = lowerValue + (upperValue - lowerValue) * clampedProgress
         return BalanceChartScrubSelection(
             xFraction: xFraction,
-            lowerIndex: last.index,
-            upperIndex: last.index,
-            progress: 0,
-            fiat: last.value,
-            timestamp: timestamp(at: last.index, timestamps: timestamps)
+            lowerIndex: lowerIndex,
+            upperIndex: upperIndex,
+            progress: clampedProgress,
+            fiat: fiat,
+            timestamp: interpolatedTimestamp(
+                lower: lowerIndex,
+                upper: upperIndex,
+                progress: clampedProgress,
+                timestamps: timestamps
+            )
         )
     }
 
@@ -177,6 +172,44 @@ enum BalanceChartScrubResolver {
         return (0..<count).map { Double($0) / Double(count - 1) }
     }
 
+    private static func lowerBound(for xFraction: Double, in fractions: [Double]) -> Int {
+        var low = 0
+        var high = fractions.count - 1
+        while low < high {
+            let mid = (low + high) / 2
+            if fractions[mid] < xFraction {
+                low = mid + 1
+            } else {
+                high = mid
+            }
+        }
+        return low
+    }
+
+    private static func lastDuplicateIndex(startingAt index: Int, in fractions: [Double]) -> Int {
+        guard !fractions.isEmpty else { return index }
+        var result = max(0, min(index, fractions.count - 1))
+        while result < fractions.count - 1,
+              abs(fractions[result + 1] - fractions[result]) <= duplicateXEpsilon {
+            result += 1
+        }
+        return result
+    }
+
+    private static func previousDistinctIndex(before index: Int, in fractions: [Double]) -> Int? {
+        guard !fractions.isEmpty, index > 0 else { return nil }
+        let reference = fractions[max(0, min(index, fractions.count - 1))]
+        var candidate = index - 1
+        while candidate >= 0 {
+            if abs(fractions[candidate] - reference) > duplicateXEpsilon {
+                return candidate
+            }
+            if candidate == 0 { break }
+            candidate -= 1
+        }
+        return nil
+    }
+
     private static func timestamp(at index: Int, timestamps: [Date]) -> Date? {
         guard index >= 0, index < timestamps.count else { return nil }
         return timestamps[index]
@@ -194,12 +227,6 @@ enum BalanceChartScrubResolver {
         }
         let clampedProgress = max(0, min(1, progress))
         return lowerDate.addingTimeInterval(upperDate.timeIntervalSince(lowerDate) * clampedProgress)
-    }
-}
-
-private extension Array {
-    func adjacentPairs() -> Zip2Sequence<Array<Element>, Array<Element>.SubSequence> {
-        zip(self, dropFirst())
     }
 }
 
@@ -241,11 +268,13 @@ struct BalanceAreaChart: View {
     private let padding: CGFloat = 0.1
 
     var body: some View {
+        let samples = BalanceChartScrubResolver.chartSamples(values: values, xFractions: xFractions)
+        let domain = yDomain
         Chart {
-            ForEach(chartSamples, id: \.id) { sample in
+            ForEach(samples, id: \.id) { sample in
                 AreaMark(
                     x: .value("Time", sample.x),
-                    yStart: .value("Baseline", yDomain.lowerBound),
+                    yStart: .value("Baseline", domain.lowerBound),
                     yEnd: .value("Balance", sample.y)
                 )
                 .interpolationMethod(.monotone)
@@ -269,7 +298,7 @@ struct BalanceAreaChart: View {
                 .foregroundStyle(strokeColor)
             }
 
-            if scrubSelection == nil, let last = chartSamples.last {
+            if scrubSelection == nil, let last = samples.last {
                 PointMark(
                     x: .value("Time", last.x),
                     y: .value("Balance", last.y)
@@ -291,7 +320,7 @@ struct BalanceAreaChart: View {
             }
         }
         .chartXScale(domain: 0...1)
-        .chartYScale(domain: yDomain)
+        .chartYScale(domain: domain)
         .chartXAxis(.hidden)
         .chartYAxis(.hidden)
         .chartLegend(.hidden)
@@ -331,10 +360,6 @@ struct BalanceAreaChart: View {
         UniColors.BalanceCard.chartFillHue(sign, colorScheme)
     }
 
-    private var chartSamples: [BalanceChartSample] {
-        BalanceChartScrubResolver.chartSamples(values: values, xFractions: xFractions)
-    }
-
     private var selectedSample: (x: Double, y: Double)? {
         guard let scrubSelection else { return nil }
         return (scrubSelection.xFraction, scrubSelection.fiat)
@@ -355,7 +380,7 @@ struct BalanceAreaChart: View {
         return (minValue - domainPadding)...(maxValue + domainPadding)
     }
 
-    // MARK: - Cursor math (O(1) per tick)
+    // MARK: - Cursor math (O(log n) per tick)
 
     private func handleScrubChanged(_ value: DragGesture.Value, plotArea: CGRect) {
         if rejectedCurrentDrag { return }
