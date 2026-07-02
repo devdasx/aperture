@@ -185,6 +185,260 @@ actor BitcoinElectrumBalanceScanner {
     }
 }
 
+enum BitcoinPathSearchPurpose: String, CaseIterable, Identifiable, Sendable {
+    case bip84
+    case bip49
+    case bip44
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .bip84: return "BIP84"
+        case .bip49: return "BIP49"
+        case .bip44: return "BIP44"
+        }
+    }
+
+    var subtitle: String {
+        switch self {
+        case .bip84:
+            return "Native SegWit receive paths, addresses start with bc1q."
+        case .bip49:
+            return "Wrapped SegWit receive paths, addresses start with 3."
+        case .bip44:
+            return "Legacy receive paths, addresses start with 1."
+        }
+    }
+
+    var pathTemplate: String {
+        switch self {
+        case .bip84: return "m/84'/0'/account'/change/index"
+        case .bip49: return "m/49'/0'/account'/change/index"
+        case .bip44: return "m/44'/0'/account'/change/index"
+        }
+    }
+
+    fileprivate var accountKind: BitcoinAccountKind {
+        switch self {
+        case .bip84: return .bip84
+        case .bip49: return .bip49
+        case .bip44: return .bip44
+        }
+    }
+}
+
+struct BitcoinPathSearchRequest: Sendable {
+    static let maxTargets = 250
+
+    let purpose: BitcoinPathSearchPurpose
+    let accountStart: Int
+    let accountEnd: Int
+    let changeStart: Int
+    let changeEnd: Int
+    let indexStart: Int
+    let indexEnd: Int
+
+    var accountRange: ClosedRange<Int> { accountStart...accountEnd }
+    var changeRange: ClosedRange<Int> { changeStart...changeEnd }
+    var indexRange: ClosedRange<Int> { indexStart...indexEnd }
+
+    var targetCount: Int {
+        (accountEnd - accountStart + 1)
+            * (changeEnd - changeStart + 1)
+            * (indexEnd - indexStart + 1)
+    }
+
+    func validate() throws {
+        guard accountStart >= 0, changeStart >= 0, indexStart >= 0,
+              accountEnd >= accountStart,
+              changeEnd >= changeStart,
+              indexEnd >= indexStart else {
+            throw BitcoinPathSearchError.invalidRange
+        }
+        guard targetCount > 0 else { throw BitcoinPathSearchError.invalidRange }
+        guard targetCount <= Self.maxTargets else {
+            throw BitcoinPathSearchError.tooManyAddresses(targetCount)
+        }
+    }
+}
+
+struct BitcoinPathSearchResult: Identifiable, Equatable, Sendable {
+    let address: String
+    let path: String
+    let confirmedSats: Int64
+    let unconfirmedSats: Int64
+    let historyCount: Int
+
+    var id: String { "\(path)|\(address)" }
+    var totalSats: Int64 { confirmedSats + unconfirmedSats }
+    var hasActivity: Bool { totalSats > 0 || historyCount > 0 }
+
+    var btcAmount: Decimal {
+        Decimal(totalSats) / Decimal(100_000_000)
+    }
+}
+
+enum BitcoinPathSearchError: LocalizedError {
+    case walletNotFound
+    case unsupportedWallet
+    case passphraseWalletUnsupported
+    case missingMnemonic
+    case invalidRange
+    case tooManyAddresses(Int)
+    case noTargets
+
+    var errorDescription: String? {
+        switch self {
+        case .walletNotFound:
+            return "This wallet is no longer in the local database."
+        case .unsupportedWallet:
+            return "Bitcoin path search works with created or phrase-imported wallets."
+        case .passphraseWalletUnsupported:
+            return "This wallet uses a BIP-39 passphrase, so Aperture cannot safely search alternate paths from the stored words alone."
+        case .missingMnemonic:
+            return "This wallet does not have a stored recovery phrase on this iPhone."
+        case .invalidRange:
+            return "Enter a valid non-negative from/to range."
+        case .tooManyAddresses(let count):
+            return "This search covers \(count) addresses. Keep each run under \(BitcoinPathSearchRequest.maxTargets) addresses so the phone stays responsive."
+        case .noTargets:
+            return "No Bitcoin addresses could be derived for this range."
+        }
+    }
+}
+
+enum BitcoinPathSearchEngine {
+    static func search(
+        walletId: UUID,
+        request: BitcoinPathSearchRequest,
+        modelContainer: ModelContainer
+    ) async throws -> [BitcoinPathSearchResult] {
+        try request.validate()
+
+        let repository = BitcoinPathSearchSecretRepository(modelContainer: modelContainer)
+        let words = try await repository.mnemonic(walletId: walletId)
+        let derived = try BitcoinHDAddressDeriver.deriveFromMnemonic(
+            words,
+            kind: request.purpose.accountKind,
+            accountRange: request.accountRange,
+            changeRange: request.changeRange,
+            indexRange: request.indexRange
+        )
+
+        var seen: Set<String> = []
+        let targets = try derived.compactMap { target -> BitcoinElectrumScanTarget? in
+            guard seen.insert(target.address).inserted else { return nil }
+            return try BitcoinElectrumScanTarget(address: target.address, path: target.path)
+        }
+        guard !targets.isEmpty else { throw BitcoinPathSearchError.noTargets }
+
+        let liveScan = try await BitcoinElectrumClient.scanFirst(
+            servers: BitcoinElectrumServer.defaults,
+            targets: targets,
+            includeHistory: true
+        )
+
+        return liveScan.scans
+            .map { scan in
+                BitcoinPathSearchResult(
+                    address: scan.address,
+                    path: scan.path,
+                    confirmedSats: scan.confirmedSats,
+                    unconfirmedSats: scan.unconfirmedSats,
+                    historyCount: scan.historyCount
+                )
+            }
+            .filter(\.hasActivity)
+            .sorted { lhs, rhs in
+                lhs.path.localizedStandardCompare(rhs.path) == .orderedAscending
+            }
+    }
+}
+
+@ModelActor
+private actor BitcoinPathSearchSecretRepository {
+    func mnemonic(walletId: UUID) throws -> [String] {
+        var descriptor = FetchDescriptor<WalletRecord>(
+            predicate: #Predicate { $0.id == walletId }
+        )
+        descriptor.fetchLimit = 1
+        guard let wallet = try modelContext.fetch(descriptor).first else {
+            throw BitcoinPathSearchError.walletNotFound
+        }
+        guard wallet.kind == .created || wallet.kind == .importedMnemonic else {
+            throw BitcoinPathSearchError.unsupportedWallet
+        }
+        guard !wallet.hasPassphrase else {
+            throw BitcoinPathSearchError.passphraseWalletUnsupported
+        }
+        if let words = try? WalletSecretPersistence.loadMnemonic(for: wallet.id, in: modelContext),
+           !words.isEmpty {
+            return words
+        }
+        if let words = try? MnemonicVault.loadMnemonic(for: wallet.id),
+           !words.isEmpty {
+            return words
+        }
+        throw BitcoinPathSearchError.missingMnemonic
+    }
+}
+
+@ModelActor
+actor BitcoinPathSearchAddressStore {
+    func save(
+        walletId: UUID,
+        results: [BitcoinPathSearchResult]
+    ) throws -> Int {
+        let found = results.filter(\.hasActivity)
+        guard !found.isEmpty else { return 0 }
+
+        var walletDescriptor = FetchDescriptor<WalletRecord>(
+            predicate: #Predicate { $0.id == walletId }
+        )
+        walletDescriptor.fetchLimit = 1
+        guard let wallet = try modelContext.fetch(walletDescriptor).first else {
+            throw BitcoinPathSearchError.walletNotFound
+        }
+
+        let ownerId = Optional(walletId)
+        let chainRaw = SupportedChain.bitcoin.rawValue
+        let descriptor = FetchDescriptor<WalletAddressRecord>(
+            predicate: #Predicate { $0.walletId == ownerId && $0.chainRaw == chainRaw }
+        )
+        let existing = try modelContext.fetch(descriptor)
+        var existingByAddress: [String: WalletAddressRecord] = [:]
+        for row in existing {
+            existingByAddress[row.address] = row
+        }
+
+        let scannedAt = Date()
+        var saved = 0
+        for result in found {
+            if let row = existingByAddress[result.address] {
+                row.derivationPath = result.path
+                row.isUsed = true
+                row.lastScannedAt = scannedAt
+            } else {
+                let row = WalletAddressRecord(
+                    walletId: walletId,
+                    chainRaw: chainRaw,
+                    address: result.address,
+                    derivationPath: result.path,
+                    isUsed: true
+                )
+                row.lastScannedAt = scannedAt
+                row.wallet = wallet
+                modelContext.insert(row)
+                existingByAddress[result.address] = row
+            }
+            saved += 1
+        }
+        try modelContext.save()
+        return saved
+    }
+}
+
 @ModelActor
 private actor BitcoinWalletScanTargetRepository {
     private let gapLimit = 20
@@ -303,6 +557,14 @@ private enum BitcoinAccountKind: CaseIterable, Sendable {
         }
     }
 
+    var purposeNumber: Int {
+        switch self {
+        case .bip44: return 44
+        case .bip49: return 49
+        case .bip84: return 84
+        }
+    }
+
     var publicVersion: HDVersion {
         switch self {
         case .bip44: return .xpub
@@ -351,6 +613,38 @@ private enum BitcoinHDAddressDeriver {
                 kind: kind,
                 gapLimit: gapLimit
             ))
+        }
+        return targets
+    }
+
+    static func deriveFromMnemonic(
+        _ words: [String],
+        kind: BitcoinAccountKind,
+        accountRange: ClosedRange<Int>,
+        changeRange: ClosedRange<Int>,
+        indexRange: ClosedRange<Int>
+    ) throws -> [DerivedTarget] {
+        guard let wallet = HDWallet(
+            mnemonic: words.joined(separator: " "),
+            passphrase: ""
+        ) else {
+            throw BitcoinElectrumError.invalidMnemonic
+        }
+
+        var targets: [DerivedTarget] = []
+        targets.reserveCapacity(accountRange.count * changeRange.count * indexRange.count)
+        for account in accountRange {
+            for change in changeRange {
+                for index in indexRange {
+                    let path = "m/\(kind.purposeNumber)'/0'/\(account)'/\(change)/\(index)"
+                    let privateKey = wallet.getKey(coin: .bitcoin, derivationPath: path)
+                    let publicKey = privateKey.getPublicKeySecp256k1(compressed: true)
+                    targets.append(DerivedTarget(
+                        address: try address(publicKey: publicKey, kind: kind),
+                        path: path
+                    ))
+                }
+            }
         }
         return targets
     }

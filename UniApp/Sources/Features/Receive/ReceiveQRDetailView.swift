@@ -33,6 +33,8 @@ struct ReceiveQRDetailView: View {
     @Query(sort: \WalletRecord.sortOrder) private var wallets: [WalletRecord]
 
     @State private var justCopiedAt: Date?
+    @State private var isCopyButtonCopied: Bool = false
+    @State private var copyButtonResetTask: Task<Void, Never>?
     @State private var isShowingGuide: Bool = false
     @State private var isShowingShareOptions: Bool = false
     @State private var sharePayload: ReceiveSharePayload?
@@ -132,6 +134,16 @@ struct ReceiveQRDetailView: View {
                   BitcoinReceiveAddressType(rawValue: newValue) != nil else { return }
             UserDefaults.standard.set(newValue, forKey: key)
         }
+        .onChange(of: justCopiedAt) { _, newValue in
+            guard newValue != nil else { return }
+            showCopyButtonFeedback()
+        }
+        .onChange(of: displayedAddress) { _, _ in
+            resetCopyButtonFeedback()
+        }
+        .onDisappear {
+            copyButtonResetTask?.cancel()
+        }
     }
 
     // MARK: - Subviews
@@ -139,7 +151,11 @@ struct ReceiveQRDetailView: View {
     @ViewBuilder
     private var actionRow: some View {
         HStack(spacing: UniSpacing.s) {
-            UniButton(title: "Copy", variant: .primary) {
+            UniButton(
+                verbatim: isCopyButtonCopied ? "Copied" : "Copy",
+                variant: .primary,
+                tint: isCopyButtonCopied ? UniColors.Feedback.Success.foreground : nil
+            ) {
                 copyDisplayedAddress()
             }
 
@@ -192,6 +208,27 @@ struct ReceiveQRDetailView: View {
         withAnimation(.easeInOut(duration: 0.2)) {
             justCopiedAt = Date()
         }
+    }
+
+    private func showCopyButtonFeedback() {
+        copyButtonResetTask?.cancel()
+        withAnimation(.easeInOut(duration: 0.2)) {
+            isCopyButtonCopied = true
+        }
+        copyButtonResetTask = Task {
+            try? await Task.sleep(for: .seconds(1.6))
+            guard !Task.isCancelled else { return }
+            await MainActor.run {
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    isCopyButtonCopied = false
+                }
+            }
+        }
+    }
+
+    private func resetCopyButtonFeedback() {
+        copyButtonResetTask?.cancel()
+        isCopyButtonCopied = false
     }
 
     private func loadBitcoinAddressChoices() {
