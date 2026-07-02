@@ -319,6 +319,19 @@ actor TransactionRepository {
         let feeRaw: String?
     }
 
+    struct ReceiveIncomingTransactionSnapshot: Identifiable, Sendable {
+        let id: UUID
+        let txHash: String
+        let chain: SupportedChain
+        let amountRaw: String
+        let tokenSymbol: String
+        let tokenContract: String?
+        let occurredAt: Date
+        let status: TransactionStatus
+        let fiatValue: Decimal?
+        let fiatCurrencyCode: String
+    }
+
     /// Query one wallet's transaction legs, newest first, with
     /// optional taxonomy filters. The three axes compose:
     ///
@@ -412,6 +425,89 @@ actor TransactionRepository {
             snapshots.removeLast(snapshots.count - limit)
         }
         return snapshots
+    }
+
+    func latestIncomingReceiveTransaction(
+        walletId: UUID,
+        chain: SupportedChain,
+        address: String,
+        tokenSymbol: String?,
+        currencyCode: String,
+        since startedAt: Date
+    ) throws -> ReceiveIncomingTransactionSnapshot? {
+        try ensureLegacyAddressIdBackfill()
+
+        let normalizedAddress = address.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedAddress.isEmpty else { return nil }
+
+        let chainRaw = chain.rawValue
+        let ownerId = Optional(walletId)
+        let addressDescriptor = FetchDescriptor<WalletAddressRecord>(
+            predicate: #Predicate { row in
+                row.walletId == ownerId
+                && row.chainRaw == chainRaw
+                && row.address == normalizedAddress
+            }
+        )
+        let addressRows = try modelContext.fetch(addressDescriptor)
+        guard !addressRows.isEmpty else { return nil }
+
+        let expectedSymbol = (tokenSymbol ?? chain.ticker).uppercased()
+        let nativeOnly = tokenSymbol == nil
+        var matches: [TransactionRecord] = []
+
+        for addressRow in addressRows {
+            let addressId = addressRow.id
+            let descriptor = FetchDescriptor<TransactionRecord>(
+                predicate: #Predicate { row in
+                    row.addressId == addressId
+                },
+                sortBy: [SortDescriptor(\.occurredAt, order: .reverse)]
+            )
+            let fetched = try modelContext.fetch(descriptor)
+            matches.append(contentsOf: fetched.filter { row in
+                guard row.directionRaw == TransactionDirection.incoming.rawValue,
+                      row.statusRaw != TransactionStatus.failed.rawValue,
+                      row.occurredAt >= startedAt else {
+                    return false
+                }
+
+                let rowSymbol = row.tokenSymbol.uppercased()
+                if nativeOnly {
+                    return row.tokenContract == nil && rowSymbol == expectedSymbol
+                }
+                return rowSymbol == expectedSymbol
+            })
+        }
+
+        guard let row = matches.max(by: { $0.occurredAt < $1.occurredAt }) else {
+            return nil
+        }
+
+        let upperCurrency = currencyCode.uppercased()
+        let upperSymbol = row.tokenSymbol.uppercased()
+        var priceDescriptor = FetchDescriptor<PriceSnapshotRecord>(
+            predicate: #Predicate { price in
+                price.symbol == upperSymbol && price.currencyCode == upperCurrency
+            },
+            sortBy: [SortDescriptor(\.fetchedAt, order: .reverse)]
+        )
+        priceDescriptor.fetchLimit = 1
+        let price = try modelContext.fetch(priceDescriptor).first?.price
+        let nativeAmount = Decimal(string: row.amountRaw) ?? .zero
+
+        return ReceiveIncomingTransactionSnapshot(
+            id: row.id,
+            txHash: row.txHash,
+            chain: chain,
+            amountRaw: row.amountRaw,
+            tokenSymbol: row.tokenSymbol,
+            tokenContract: row.tokenContract,
+            occurredAt: row.occurredAt,
+            status: TransactionStatus(rawValue: row.statusRaw) ?? .pending,
+            fiatValue: price.map { nativeAmount * $0 },
+            fiatCurrencyCode: upperCurrency
+        )
     }
 
     private func addressRows(walletId: UUID) throws -> [WalletAddressRecord] {
