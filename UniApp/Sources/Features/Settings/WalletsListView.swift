@@ -136,6 +136,7 @@ struct WalletsListView: View {
     @State private var isShowingWalletBackup: Bool = false
     /// Already-localized message for the shared error alert.
     @State private var errorAlertMessage: String?
+    @State private var walletErrorReport: ApertureErrorReport?
 
     /// Identifiable payload for the delete confirmation sheet (a wallet row
     /// can't drive `.sheet(item:)` directly — its `id` is the SwiftData
@@ -483,6 +484,10 @@ struct WalletsListView: View {
         } message: {
             Text(LocalizedStringKey(errorAlertMessage ?? ""))
         }
+        .sheet(item: $walletErrorReport) { report in
+            ApertureErrorReportSheet(report: report)
+                .uniAppEnvironment()
+        }
     }
 
     private var walletsEmptyDetail: LocalizedStringKey {
@@ -594,7 +599,15 @@ struct WalletsListView: View {
         do {
             try await repo.deleteWallet(id: id)
         } catch {
-            errorAlertMessage = String.apertureLocalized("Couldn't delete this wallet from the local database. Try again.")
+            let message = String.apertureLocalized("Couldn't delete this wallet from the local database. Try again.")
+            walletErrorReport = ApertureErrorReport(
+                context: "Remove wallet",
+                title: "Couldn't remove wallet",
+                message: message,
+                error: error,
+                recoverySuggestion: "Try again. If the wallet remains, email support with the advanced details.",
+                metadata: ["walletId": id.uuidString]
+            )
         }
     }
 

@@ -763,6 +763,7 @@ private struct SendFailedView: View {
                 VStack(spacing: UniSpacing.l) {
                     hero
                     messageCard
+                    ApertureErrorSupportSection(report: errorReport)
                 }
                 .padding(.horizontal, UniSpacing.l)
                 .padding(.top, UniSpacing.xl)
@@ -802,6 +803,26 @@ private struct SendFailedView: View {
 
     private var failureTitle: LocalizedStringKey {
         isRefusal ? "Can't send" : "Send failed"
+    }
+
+    private var failureTitleText: String {
+        isRefusal ? "Can't send" : "Send failed"
+    }
+
+    private var errorReport: ApertureErrorReport {
+        ApertureErrorReport(
+            context: "Send transaction",
+            title: failureTitleText,
+            message: error.userMessage,
+            error: error,
+            recoverySuggestion: nothingWasSent
+                ? "Nothing was broadcast from this device. Review the transaction and try again."
+                : "Check the transaction on an explorer before retrying.",
+            metadata: [
+                "nothingWasSent": "\(nothingWasSent)",
+                "retryable": "\(canRetry)"
+            ]
+        )
     }
 
     private var messageCard: some View {

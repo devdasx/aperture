@@ -65,6 +65,7 @@ struct ResetApertureFlow: View {
     @State private var stagesDone: Set<FactoryReset.Stage> = []
     @State private var isComplete = false
     @State private var eraseError: String?
+    @State private var eraseErrorReport: ApertureErrorReport?
     @State private var confirmFocused = false
 
     @State private var backupTarget: BackupTarget?
@@ -615,7 +616,12 @@ struct ResetApertureFlow: View {
             GlassEffectContainer(spacing: 10) {
                 VStack(spacing: 10) {
                     if eraseError != nil {
-                        dangerButton("Try again") { eraseError = nil; stagesDone = []; Task { await runWipe() } }
+                        dangerButton("Try again") {
+                            eraseError = nil
+                            eraseErrorReport = nil
+                            stagesDone = []
+                            Task { await runWipe() }
+                        }
                         ghostButton("Cancel") { close() }
                     } else if isComplete {
                         primaryButton("Get Started") { close() }
@@ -644,6 +650,10 @@ struct ResetApertureFlow: View {
                         ? "Aperture has been restored to its original state. Everything on this device has been erased."
                         : "Securely erasing all wallets and data from this device.",
                         centered: true)
+                }
+                if let eraseErrorReport {
+                    ApertureErrorSupportSection(report: eraseErrorReport)
+                        .padding(.top, UniSpacing.xs)
                 }
             }
             .frame(maxWidth: .infinity)
@@ -817,7 +827,19 @@ struct ResetApertureFlow: View {
         } catch {
             UniHapticEngine.shared.play(.error)
             withAnimation { stagesDone = [] }
-            eraseError = String.apertureLocalized("Couldn’t erase Aperture. Nothing was removed — your wallets, keys, and settings are untouched. Try again.")
+            let message = String.apertureLocalized("Couldn’t erase Aperture. Nothing was removed — your wallets, keys, and settings are untouched. Try again.")
+            eraseError = message
+            eraseErrorReport = ApertureErrorReport(
+                context: "Reset Aperture",
+                title: "Couldn't reset",
+                message: message,
+                error: error,
+                recoverySuggestion: "Try again. If reset keeps failing, email support with the advanced details.",
+                metadata: [
+                    "completedStages": stagesDone.map { String(describing: $0) }.sorted().joined(separator: ", "),
+                    "visibleStages": Self.visibleProcessStages.map { String(describing: $0) }.joined(separator: ", ")
+                ]
+            )
             return
         }
 

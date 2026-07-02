@@ -57,6 +57,7 @@ struct WalletReadyView: View {
         case failed(String)
     }
     @State private var persistState: PersistState = .idle
+    @State private var persistErrorReport: ApertureErrorReport?
 
     /// The in-flight persist task. Stored so Retry can cancel any
     /// previous launch before spawning a new one — two concurrent
@@ -114,6 +115,10 @@ struct WalletReadyView: View {
                 )
             }
             .padding(.horizontal, UniSpacing.l)
+            if let persistErrorReport {
+                ApertureErrorSupportSection(report: persistErrorReport)
+                    .padding(.horizontal, UniSpacing.l)
+            }
             Spacer()
         }
         .safeAreaInset(edge: .bottom) {
@@ -145,6 +150,7 @@ struct WalletReadyView: View {
         if !force, persistState == .persisted { return }
         persistTask?.cancel()
         persistState = .persisting
+        persistErrorReport = nil
         let repository = WalletRepository(modelContainer: modelContext.container)
         let requiresBackupFlag = requiresBackup
         let manualBackupFlag = manualBackup
@@ -165,7 +171,20 @@ struct WalletReadyView: View {
                 Self.log.error(
                     "Create-wallet persist failed: \(String(describing: error), privacy: .public)"
                 )
-                persistState = .failed(Self.failureMessage(for: error))
+                let message = Self.failureMessage(for: error)
+                persistErrorReport = ApertureErrorReport(
+                    context: "Create wallet",
+                    title: "Couldn't save your wallet",
+                    message: message,
+                    error: error,
+                    recoverySuggestion: "Tap Retry. If it keeps failing, email support with the advanced details.",
+                    metadata: [
+                        "walletId": state.pendingWalletId.uuidString,
+                        "requiresBackup": "\(requiresBackupFlag)",
+                        "manualBackup": "\(manualBackupFlag)"
+                    ]
+                )
+                persistState = .failed(message)
             }
         }
     }

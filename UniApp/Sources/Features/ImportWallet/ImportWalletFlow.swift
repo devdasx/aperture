@@ -45,10 +45,9 @@ struct ImportWalletFlow: View {
 
     @State private var state = ImportWalletState()
 
-    /// Set when `persist` throws — drives the retryable error alert.
-    /// Navigation stays in place so the user can simply tap the
-    /// commit button again.
-    @State private var isShowingPersistError = false
+    /// Set when `persist` throws. Navigation stays in place so the user can
+    /// retry from the same commit screen after reading or emailing details.
+    @State private var persistErrorReport: ApertureErrorReport?
 
     /// True while `persistThen` is running (derive + write to SwiftData +
     /// Keychain + fire first refresh). Passed down to the active commit
@@ -151,13 +150,9 @@ struct ImportWalletFlow: View {
             }
         }
         .background(UniColors.Background.primary.ignoresSafeArea())
-        .alert(
-            Text("Couldn't save your wallet"),
-            isPresented: $isShowingPersistError
-        ) {
-            Button("OK", role: .cancel) {}
-        } message: {
-            Text("Aperture couldn't write your wallet to this iPhone. Nothing was imported. Try again.")
+        .sheet(item: $persistErrorReport) { report in
+            ApertureErrorReportSheet(report: report)
+                .uniAppEnvironment()
         }
     }
 
@@ -192,7 +187,17 @@ struct ImportWalletFlow: View {
                 Self.log.error(
                     "Wallet import persist failed: \(String(describing: error), privacy: .public)"
                 )
-                isShowingPersistError = true
+                let message = String.apertureLocalized("Aperture couldn't write your wallet to this iPhone. Nothing was imported. Try again.")
+                persistErrorReport = ApertureErrorReport(
+                    context: "Import wallet",
+                    title: "Couldn't save your wallet",
+                    message: message,
+                    error: error,
+                    recoverySuggestion: "Try importing again from the same screen. If it keeps failing, email support with the advanced details.",
+                    metadata: [
+                        "importResult": String(describing: result)
+                    ]
+                )
             }
         }
     }
