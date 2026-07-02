@@ -29,6 +29,10 @@ import UIKit
 /// nav bar + tab bar; the `List` rows inside are opaque content
 /// (Rule #2 §B.3). All visible strings flow through
 /// `LocalizedStringKey` and the String Catalog (Rule #9).
+private enum SettingsInternalVisibility {
+    static let showsDiagnosticsAndDatabase = false
+}
+
 enum SettingsDestination: Hashable, Codable {
     case wallets
     case walletDetail(UUID)
@@ -58,9 +62,10 @@ enum SettingsDestination: Hashable, Codable {
         switch self {
         case .security:
             return false
+        case .database, .diagnostics:
+            return SettingsInternalVisibility.showsDiagnosticsAndDatabase
         case .wallets, .walletDetail, .autoLock, .hideSmallBalances,
-             .language, .appearance, .currency, .preferences, .database, .diagnostics,
-             .help, .about:
+             .language, .appearance, .currency, .preferences, .help, .about:
             return true
         }
     }
@@ -345,25 +350,27 @@ struct SettingsView: View {
                 }
                 .listRowBackground(UniColors.List.rowBackground)
 
-                NavigationLink(value: SettingsDestination.diagnostics) {
-                    SettingsRow(
-                        systemImage: "doc.text.magnifyingglass",
-                        title: "Diagnostics Logs",
-                        trailing: nil,
-                        iconTint: .purple
-                    )
-                }
-                .listRowBackground(UniColors.List.rowBackground)
+                if SettingsInternalVisibility.showsDiagnosticsAndDatabase {
+                    NavigationLink(value: SettingsDestination.diagnostics) {
+                        SettingsRow(
+                            systemImage: "doc.text.magnifyingglass",
+                            title: "Diagnostics Logs",
+                            trailing: nil,
+                            iconTint: .purple
+                        )
+                    }
+                    .listRowBackground(UniColors.List.rowBackground)
 
-                NavigationLink(value: SettingsDestination.database) {
-                    SettingsRow(
-                        systemImage: "cylinder.split.1x2",
-                        title: "Database",
-                        trailing: nil,
-                        iconTint: .indigo
-                    )
+                    NavigationLink(value: SettingsDestination.database) {
+                        SettingsRow(
+                            systemImage: "cylinder.split.1x2",
+                            title: "Database",
+                            trailing: nil,
+                            iconTint: .indigo
+                        )
+                    }
+                    .listRowBackground(UniColors.List.rowBackground)
                 }
-                .listRowBackground(UniColors.List.rowBackground)
             }
 
             // Section 6 — Reset Aperture (terminal nuclear hatch). Moved
