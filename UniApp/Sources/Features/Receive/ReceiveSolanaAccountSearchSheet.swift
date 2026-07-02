@@ -18,6 +18,7 @@ struct ReceiveSolanaAccountSearchSheet: View {
     @State private var hasSearched: Bool = false
     @State private var errorMessage: String?
     @State private var searchCandidateCount: Int = 0
+    @State private var searchRequest: SolanaReceiveAccountSearchRequest?
 
     private var supportedTokens: [SolanaReceiveSupportedToken] {
         SolanaReceiveSupportedToken.supported
@@ -28,7 +29,7 @@ struct ReceiveSolanaAccountSearchSheet: View {
               let to = Int(toIndex.trimmingCharacters(in: .whitespacesAndNewlines)),
               from >= 0,
               to >= from,
-              to - from <= 100 else {
+              (to - from + 1) <= SolanaReceiveAccountSearchLimits.maxAccountsPerSearch else {
             return nil
         }
         return from...to
@@ -57,6 +58,16 @@ struct ReceiveSolanaAccountSearchSheet: View {
                     Button("Close") { dismiss() }
                 }
             }
+        }
+        .sheet(item: $searchRequest) { request in
+            SolanaReceiveAccountSearchProgressSheet(
+                request: request,
+                onFinished: finishSearch,
+                onCancel: cancelSearch
+            )
+            .uniAppEnvironment()
+            .intrinsicHeightSheet()
+            .presentationBackground(UniColors.Background.primary)
         }
     }
 
@@ -162,7 +173,7 @@ struct ReceiveSolanaAccountSearchSheet: View {
             isLoading: isSearching,
             isEnabled: parsedRange != nil && !isSearching && isSavingAddress == nil
         ) {
-            Task { await searchAccounts() }
+            searchAccounts()
         }
     }
 
@@ -194,7 +205,11 @@ struct ReceiveSolanaAccountSearchSheet: View {
                     minHeight: 180
                 )
             } else if isSearching {
-                searchingProcessCard
+                UniListEmptyState(
+                    title: "Search running",
+                    detail: "Aperture is checking Solana accounts in a separate progress sheet.",
+                    minHeight: 180
+                )
             } else if results.isEmpty {
                 UniListEmptyState(
                     title: "No Solana accounts found",
@@ -315,34 +330,57 @@ struct ReceiveSolanaAccountSearchSheet: View {
     }
 
     @MainActor
-    private func searchAccounts() async {
+    private func searchAccounts() {
         guard !isSearching else { return }
         guard let wallet else {
             errorMessage = "No active wallet was found for this receive screen."
             return
         }
         guard let range = parsedRange else {
-            errorMessage = "Choose a valid account range. The maximum span is 100 accounts."
+            errorMessage = SolanaReceiveAccountSearchLimits.rangeErrorMessage
             return
         }
 
-        isSearching = true
-        hasSearched = true
+        isSearching = false
+        hasSearched = false
         errorMessage = nil
         results = []
         searchCandidateCount = 0
-        defer { isSearching = false }
 
         do {
             let candidates = try deriveCandidates(wallet: wallet, range: range)
             searchCandidateCount = candidates.count
-            results = try await SolanaReceiveAccountSearchService.shared.search(
+            isSearching = true
+            searchRequest = SolanaReceiveAccountSearchRequest(
                 candidates: candidates,
                 currencyCode: currencyCode
             )
         } catch {
             errorMessage = SolanaReceiveAccountSearchError.message(for: error)
+            isSearching = false
         }
+    }
+
+    @MainActor
+    private func finishSearch(_ outcome: Result<[SolanaReceiveAccountSearchResult], Error>) {
+        searchRequest = nil
+        isSearching = false
+        hasSearched = true
+
+        switch outcome {
+        case .success(let searchResults):
+            errorMessage = nil
+            results = searchResults
+        case .failure(let error):
+            results = []
+            errorMessage = SolanaReceiveAccountSearchError.message(for: error)
+        }
+    }
+
+    @MainActor
+    private func cancelSearch() {
+        searchRequest = nil
+        isSearching = false
     }
 
     private func deriveCandidates(
@@ -639,6 +677,117 @@ private struct SolanaReceiveAccountSearchResult: Identifiable, Sendable, Hashabl
     }
 }
 
+private enum SolanaReceiveAccountSearchLimits {
+    static let maxAccountsPerSearch = 100
+    static let rangeErrorMessage = "Search up to 100 accounts at once. Use ranges like 0 to 99, then continue with the next 100."
+}
+
+private struct SolanaReceiveAccountSearchRequest: Identifiable {
+    let id = UUID()
+    let candidates: [SolanaReceiveAccountCandidate]
+    let currencyCode: String
+}
+
+private struct SolanaReceiveAccountSearchProgressSheet: View {
+    let request: SolanaReceiveAccountSearchRequest
+    let onFinished: (Result<[SolanaReceiveAccountSearchResult], Error>) -> Void
+    let onCancel: () -> Void
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var didFinish = false
+
+    var body: some View {
+        UniSheet(title: "Searching accounts") {
+            VStack(alignment: .leading, spacing: UniSpacing.m) {
+                HStack(alignment: .center, spacing: UniSpacing.s) {
+                    ProgressView()
+                        .controlSize(.regular)
+                        .tint(UniColors.Text.primary)
+
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("Checking \(request.candidates.count) Solana addresses")
+                            .font(UniTypography.headline)
+                            .foregroundStyle(UniColors.Text.primary)
+                        Text("Trust Wallet and Phantom balances, history, and supported SPL token balances are running in parallel.")
+                            .font(UniTypography.subheadline)
+                            .foregroundStyle(UniColors.Text.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+
+                UniDivider()
+
+                VStack(alignment: .leading, spacing: UniSpacing.s) {
+                    searchStepRow(
+                        title: "Local addresses ready",
+                        detail: "\(request.candidates.count) addresses derived on this device",
+                        state: .complete
+                    )
+                    searchStepRow(
+                        title: "Parallel Solana scan",
+                        detail: "SOL plus \(SolanaReceiveSupportedToken.supported.count) supported SPL tokens",
+                        state: .active
+                    )
+                    searchStepRow(
+                        title: "Build results",
+                        detail: "Funded accounts move to the top when the scan completes",
+                        state: .pending
+                    )
+                }
+            }
+        } actions: {
+            UniButton(title: "Cancel", variant: .secondary) {
+                didFinish = true
+                onCancel()
+                dismiss()
+            }
+        }
+        .task(id: request.id) {
+            do {
+                let searchResults = try await SolanaReceiveAccountSearchService.shared.search(
+                    candidates: request.candidates,
+                    currencyCode: request.currencyCode
+                )
+                try Task.checkCancellation()
+                didFinish = true
+                onFinished(.success(searchResults))
+                dismiss()
+            } catch is CancellationError {
+                if !didFinish {
+                    didFinish = true
+                    onCancel()
+                }
+            } catch {
+                didFinish = true
+                onFinished(.failure(error))
+                dismiss()
+            }
+        }
+        .onDisappear {
+            guard !didFinish else { return }
+            didFinish = true
+            onCancel()
+        }
+    }
+
+    private func searchStepRow(title: String, detail: String, state: AccountSearchStepState) -> some View {
+        HStack(alignment: .top, spacing: UniSpacing.s) {
+            state.icon
+                .frame(width: 22, height: 22)
+                .padding(.top, 1)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(UniTypography.subheadline.weight(.semibold))
+                    .foregroundStyle(state == .pending ? UniColors.Text.tertiary : UniColors.Text.primary)
+                Text(detail)
+                    .font(UniTypography.caption1)
+                    .foregroundStyle(UniColors.Text.tertiary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+}
+
 private enum SolanaReceiveAccountSearchError: Error {
     case missingMnemonic
     case invalidRange
@@ -717,13 +866,23 @@ private actor SolanaReceiveAccountSearchService {
             currencyCode: currencyCode
         )
 
-        var results: [SolanaReceiveAccountSearchResult] = []
-        results.reserveCapacity(candidates.count)
-        for candidate in candidates {
-            try Task.checkCancellation()
-            if let result = await search(candidate: candidate, tokens: tokens, prices: prices) {
-                results.append(result)
+        let results = try await withThrowingTaskGroup(
+            of: SolanaReceiveAccountSearchResult?.self,
+            returning: [SolanaReceiveAccountSearchResult].self
+        ) { group in
+            for candidate in candidates {
+                group.addTask {
+                    try Task.checkCancellation()
+                    return await self.search(candidate: candidate, tokens: tokens, prices: prices)
+                }
             }
+
+            var searchResults: [SolanaReceiveAccountSearchResult] = []
+            searchResults.reserveCapacity(candidates.count)
+            for try await result in group {
+                if let result { searchResults.append(result) }
+            }
+            return searchResults
         }
 
         return results.sorted {
