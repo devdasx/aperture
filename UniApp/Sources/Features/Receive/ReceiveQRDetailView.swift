@@ -40,6 +40,8 @@ struct ReceiveQRDetailView: View {
     @State private var sharePayload: ReceiveSharePayload?
     @State private var bitcoinChoices: [BitcoinReceiveAddressChoice] = []
     @State private var selectedBitcoinTypeRaw: String = ""
+    @State private var evmOverrideAddress: String?
+    @State private var isShowingEVMAccountSearch: Bool = false
 
     /// What the user is receiving, in the toolbar title. Native →
     /// chain name; token → "USDC".
@@ -59,8 +61,21 @@ struct ReceiveQRDetailView: View {
     }
 
     private var displayedAddress: String {
-        guard chain == .bitcoin else { return address }
-        return selectedBitcoinChoice?.address ?? bitcoinChoices.first?.address ?? address
+        if chain == .bitcoin {
+            return selectedBitcoinChoice?.address ?? bitcoinChoices.first?.address ?? address
+        }
+        if chain.family == .evm {
+            return evmOverrideAddress ?? preferredEVMReceiveAddress ?? address
+        }
+        return address
+    }
+
+    private var preferredEVMReceiveAddress: String? {
+        guard chain.family == .evm else { return nil }
+        let rows = activeWallet?.addresses.filter {
+            $0.chainRaw == chain.rawValue && !$0.address.isEmpty
+        } ?? []
+        return rows.first(where: \.isReceivePreferred)?.address ?? rows.first?.address
     }
 
     private var selectedBitcoinChoice: BitcoinReceiveAddressChoice? {
@@ -126,7 +141,21 @@ struct ReceiveQRDetailView: View {
             ReceiveActivityShareSheet(items: payload.items)
                 .ignoresSafeArea()
         }
+        .sheet(isPresented: $isShowingEVMAccountSearch) {
+            ReceiveEVMAccountSearchSheet(
+                chain: chain,
+                tokenSymbol: tokenSymbol,
+                activeAddress: displayedAddress,
+                wallet: activeWallet
+            ) { newAddress in
+                evmOverrideAddress = newAddress
+            }
+            .uniAppEnvironment()
+            .uniSheetDetents([.large])
+            .presentationBackground(UniColors.Background.primary)
+        }
         .task(id: "\(activeWalletIdRaw)-\(chain.rawValue)-\(address)") {
+            evmOverrideAddress = nil
             loadBitcoinAddressChoices()
         }
         .onChange(of: selectedBitcoinTypeRaw) { _, newValue in
@@ -293,6 +322,20 @@ struct ReceiveQRDetailView: View {
                         .font(.system(size: 17, weight: .regular))
                 }
                 .accessibilityLabel(Text("Bitcoin receive options"))
+            } else if chain.family == .evm {
+                Menu {
+                    Button("Search accounts") {
+                        isShowingEVMAccountSearch = true
+                    }
+
+                    Button("Address info") {
+                        isShowingGuide = true
+                    }
+                } label: {
+                    Image(systemName: "ellipsis")
+                        .font(.system(size: 17, weight: .regular))
+                }
+                .accessibilityLabel(Text("Receive options"))
             } else {
                 Button {
                     isShowingGuide = true

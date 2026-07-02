@@ -506,6 +506,11 @@ final class WalletAddressRecord {
     /// balance scan. Drives the green "used" dot in review/list rows.
     var isUsed: Bool
 
+    /// User-selected receive address for this wallet + chain. Extra
+    /// derived accounts can be discovered from the receive sheet; the QR
+    /// screen should prefer this row without deleting the original account.
+    var isReceivePreferred: Bool
+
     /// Wall-clock of the last successful balance scan for this address.
     /// `nil` until the first scan completes.
     var lastScannedAt: Date?
@@ -526,7 +531,8 @@ final class WalletAddressRecord {
         chainRaw: String,
         address: String,
         derivationPath: String = "",
-        isUsed: Bool = false
+        isUsed: Bool = false,
+        isReceivePreferred: Bool = false
     ) {
         self.id = id
         self.walletId = walletId
@@ -534,6 +540,7 @@ final class WalletAddressRecord {
         self.address = address
         self.derivationPath = derivationPath
         self.isUsed = isUsed
+        self.isReceivePreferred = isReceivePreferred
         self.lastScannedAt = nil
     }
 }
