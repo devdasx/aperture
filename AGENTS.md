@@ -7,4 +7,4 @@ These rules are project-specific and apply to every Codex session in this reposi
 3. Push only when the requested work is complete and the relevant verification has passed. If verification fails, report the failure and do not push unless the user explicitly asks.
 4. After substantial iOS app changes, build a signed Debug app and install it on the paired iPhone named `Thuglife` before the final response.
 5. For small text-only or configuration-rule edits, a device install is not required unless the user asks for it.
-
+6. Any wallet feature or wallet behavior change must be backed by the wallet database when it creates, edits, selects, or depends on wallet state. Address types, derived addresses, private keys, chain keys, wallet preferences, backup state, and per-wallet options must persist by wallet ID and be restored from the database; UI-only state is not acceptable for wallet data.
