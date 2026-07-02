@@ -187,6 +187,7 @@ struct RecoveryPhraseFlow: View {
                         requiresBackup: didSkipBackup,
                         manualBackup: didManualBackup
                     ) {
+                        ScreenRestoration.routeToMainScreenNow()
                         onUserCompletedBackup()
                         onDismiss()
                     }
