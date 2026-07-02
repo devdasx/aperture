@@ -6,24 +6,14 @@ import UniformTypeIdentifiers
 /// leading-aligned label and a tap-to-copy gesture on the entire row.
 /// The visible copy affordance lives in the parent action row.
 ///
-/// **Copy feedback.** Tapping the row writes to `UIPasteboard.general`.
-/// A small inline "Copied" label fades in for ~1.5 s — the system already
-/// shows the OS copy toast on iOS 26 too, but the inline confirmation
-/// is the screen's own honesty: yes, that tap did the thing.
+/// **Copy feedback.** Tapping the row writes to `UIPasteboard.general`
+/// and notifies the parent through `justCopiedAt`; the visible feedback
+/// lives in the action button so the screen has one clear confirmation.
 struct ReceiveAddressRow: View {
     let address: String
-    /// `true` immediately after copy; controlled by parent so the
-    /// rest of the screen can react if it wants to.
+    /// Non-nil immediately after copy; controlled by the parent so the
+    /// rest of the screen can react with a single shared copy state.
     @Binding var justCopiedAt: Date?
-
-    /// Visibility of the inline "Copied" confirmation. Flipped true
-    /// on copy and back false ~1.5s later by `copiedResetTask`, so
-    /// the label actually expires instead of lingering until some
-    /// unrelated re-render happens to re-evaluate a date check.
-    @State private var isShowingCopied: Bool = false
-    /// Pending auto-hide task — cancelled and recreated on re-copy,
-    /// cancelled in `onDisappear`.
-    @State private var copiedResetTask: Task<Void, Never>?
 
     var body: some View {
         VStack(alignment: .leading, spacing: UniSpacing.xs) {
@@ -47,20 +37,6 @@ struct ReceiveAddressRow: View {
             .accessibilityLabel(Text("Address \(spokenAddress)"))
             .accessibilityHint(Text("Double tap to copy"))
 
-            if isShowingCopied {
-                UniFootnote(
-                    text: "Copied",
-                    color: UniColors.Feedback.Success.foreground
-                )
-                .transition(.opacity)
-            }
-        }
-        .onDisappear {
-            copiedResetTask?.cancel()
-        }
-        .onChange(of: justCopiedAt) { _, newValue in
-            guard newValue != nil else { return }
-            showCopiedFeedback()
         }
     }
 
@@ -83,8 +59,8 @@ struct ReceiveAddressRow: View {
         // / Persian / Urdu layout, the BiDi algorithm would
         // otherwise reorder address segments at line breaks and
         // the user would copy a corrupted address. Scoped to just
-        // this text subtree so the surrounding chrome (label,
-        // "Copied" status) keeps the ambient locale's direction.
+        // this text subtree so the surrounding chrome keeps the
+        // ambient locale's direction.
         //
         // **`.fixedSize(horizontal: false, vertical: true)`** lets
         // the text grow vertically for long addresses while staying
@@ -110,20 +86,6 @@ struct ReceiveAddressRow: View {
             options: [.expirationDate: Date().addingTimeInterval(120)]
         )
         justCopiedAt = Date()
-    }
-
-    private func showCopiedFeedback() {
-        withAnimation(.easeInOut(duration: 0.2)) {
-            isShowingCopied = true
-        }
-        copiedResetTask?.cancel()
-        copiedResetTask = Task {
-            try? await Task.sleep(for: .seconds(1.5))
-            guard !Task.isCancelled else { return }
-            withAnimation(.easeInOut(duration: 0.2)) {
-                isShowingCopied = false
-            }
-        }
     }
 
     /// VoiceOver pronunciation. Reading every character of a 42-char

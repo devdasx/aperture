@@ -36,6 +36,7 @@ private enum SettingsInternalVisibility {
 enum SettingsDestination: Hashable, Codable {
     case wallets
     case walletDetail(UUID)
+    case bitcoinPathSearch(UUID)
     case security
     case autoLock
     case hideSmallBalances
@@ -64,7 +65,7 @@ enum SettingsDestination: Hashable, Codable {
             return false
         case .database, .diagnostics:
             return SettingsInternalVisibility.showsDiagnosticsAndDatabase
-        case .wallets, .walletDetail, .autoLock, .hideSmallBalances,
+        case .wallets, .walletDetail, .bitcoinPathSearch, .autoLock, .hideSmallBalances,
              .language, .appearance, .currency, .preferences, .help, .about:
             return true
         }
@@ -383,6 +384,7 @@ struct SettingsView: View {
         switch destination {
         case .wallets:                   WalletsListView()
         case .walletDetail(let id):      WalletDetailView(walletId: id)
+        case .bitcoinPathSearch(let id): BitcoinPathSearchView(walletId: id)
         case .security:                  SecuritySettingsView()
         case .autoLock:                  AutoLockPickerView()
         case .hideSmallBalances:         HideSmallBalancesPicker()
@@ -438,7 +440,7 @@ struct SettingsView: View {
             return (first, Array(stack.dropFirst()))
         }
         switch first {
-        case .walletDetail:
+        case .walletDetail, .bitcoinPathSearch:
             return (.wallets, stack)
         case .autoLock:
             return (.security, stack)
@@ -455,7 +457,7 @@ struct SettingsView: View {
         case .wallets, .security, .language, .appearance, .currency,
              .preferences, .database, .diagnostics, .help, .about:
             return true
-        case .walletDetail, .autoLock, .hideSmallBalances:
+        case .walletDetail, .bitcoinPathSearch, .autoLock, .hideSmallBalances:
             return false
         }
     }
