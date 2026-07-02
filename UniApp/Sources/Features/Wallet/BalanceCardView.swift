@@ -811,17 +811,46 @@ struct BalanceCardView: View {
         }.value
 
         guard !Task.isCancelled else { return }
-        let resolved = reconstructed.count >= 2 ? reconstructed : Self.zeroBaseline(for: range)
+        let resolved = Self.downsample(
+            reconstructed.count >= 2 ? reconstructed : Self.zeroBaseline(for: range),
+            maxCount: Self.maxRenderedChartSamples
+        )
         points = resolved
         let projected = resolved.map { NSDecimalNumber(decimal: $0.fiat).doubleValue }
         let fractions = Self.timeFractions(for: resolved)
-        // Reload chart + pill together — handoff §Interactions ~300ms ease.
-        withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.3)) {
+        // Refresh writes can arrive in dense bursts. Publishing chart arrays
+        // without numeric/layout animation keeps scrolling and tab navigation
+        // responsive while the normal range-selector interaction remains
+        // animated by its own controls.
+        withTransaction(Transaction(animation: nil)) {
             values = projected
             xFractions = fractions
             minValue = projected.min() ?? 0
             maxValue = projected.max() ?? 0
         }
+    }
+
+    private static let maxRenderedChartSamples = 180
+
+    private static func downsample(_ points: [BalancePoint], maxCount: Int) -> [BalancePoint] {
+        guard maxCount > 1, points.count > maxCount else { return points }
+        var result: [BalancePoint] = []
+        result.reserveCapacity(maxCount)
+        var lastIndex: Int?
+        for outputIndex in 0..<maxCount {
+            let rawIndex = Double(outputIndex) * Double(points.count - 1) / Double(maxCount - 1)
+            let sourceIndex = max(0, min(points.count - 1, Int(rawIndex.rounded())))
+            guard sourceIndex != lastIndex else { continue }
+            result.append(points[sourceIndex])
+            lastIndex = sourceIndex
+        }
+        if result.first?.timestamp != points.first?.timestamp {
+            result.insert(points[0], at: 0)
+        }
+        if result.last?.timestamp != points.last?.timestamp {
+            result.append(points[points.count - 1])
+        }
+        return result
     }
 
     /// Per-point horizontal position in `[0, 1]` from each sample's

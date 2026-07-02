@@ -499,6 +499,15 @@ struct WalletHomeView: View {
     /// second currency flip cancels the first pass so two re-prices
     /// never interleave writes for different currencies.
     @State private var currencyChangeTask: Task<Void, Never>?
+    /// Coalesces high-frequency SwiftData merge waves into one display
+    /// projection rebuild. Balance refreshes can write dozens of rows in
+    /// bursts; rebuilding the holdings lists after every individual merge is
+    /// the main-screen hitch.
+    @State private var displayRebuildTask: Task<Void, Never>?
+    /// Rebuilds the persisted chain read model after balance merges settle.
+    /// Kept cancellable so repeated refresh writes never stack reconciliation
+    /// jobs on top of the active scan.
+    @State private var chainReconcileTask: Task<Void, Never>?
 
     init() {
         // Last-screen restoration seed (2026-06-13). `@State` reads
@@ -555,6 +564,7 @@ struct WalletHomeView: View {
                     // read live from the top-level `@Query`.
                     rebuildFilterInputs()
                     rebuildDisplayRows()
+                    scheduleChainStateReconcile(after: 0)
                     // Auto-refresh on appear AND on active-wallet
                     // change so the wallet shows live balances +
                     // transaction history without forcing the user
@@ -593,38 +603,23 @@ struct WalletHomeView: View {
                     // per render (2026-06-13 perf fix).
                     rebuildPriceMemos()
                 }
-                .task(id: chainStateReconcileKey) {
-                    // Database-only chain aggregate reconciliation. Scanners
-                    // persist every coin/token balance into TokenBalanceRecord;
-                    // the balance card reads ChainStateRecord only. This keeps
-                    // that per-chain read model current on app launch, wallet
-                    // switch, currency switch, and cross-context balance writes
-                    // without waiting for a network refresh.
-                    await reconcileChainStateFromPersistedBalances()
-                }
                 .task(id: dustPriceKey) {
                     // USD unit prices for the $0.01-USD dust gate on the
                     // Recent-activity preview. Off-body, engine-cached;
                     // re-fires on wallet switch / new tx (2026-06-19).
                     await loadDustPrices()
                 }
-                .task(id: historicalEnsureKey) {
-                    // Historical-price ensure-loop. Per the
-                    // 2026-06-12 fix: the chart values past holdings
-                    // at then-prices instead of today's spot. Each
-                    // unique symbol across (held balances + tx
-                    // history) needs ~300 daily closes from Coinbase
-                    // market endpoint. Only fetches symbols we don't
-                    // already have history for — idempotent.
-                    await ensureHistoricalPricesLoaded()
-                }
                 .onChange(of: filterPreferenceFingerprint) { _, _ in
                     rebuildFilterInputs()
                     rebuildFilteredRows()
                 }
                 .onChange(of: activeWalletIdRaw) { _, _ in
+                    displayRebuildTask?.cancel()
+                    chainReconcileTask?.cancel()
                     clearWalletScopedSnapshots()
+                    rebuildFilterInputs()
                     rebuildDisplayRows()
+                    scheduleChainStateReconcile(after: 0)
                 }
                 // Last-screen restoration mirror (2026-06-13). Every
                 // push / pop lands in `ScreenRestoration`'s
@@ -647,7 +642,8 @@ struct WalletHomeView: View {
                 .onChange(of: currencyCode) { _, _ in
                     // Labels react immediately (the hero + unheld rows
                     // read `currencyCode` directly)…
-                    rebuildDisplayRows()
+                    scheduleDisplayRowsRebuild(after: 50_000_000)
+                    scheduleChainStateReconcile(after: 120_000_000)
                     // …and the VALUES re-price right behind them
                     // (2026-06-13): a fast re-price of the persisted
                     // balances into the new currency (one price batch,
@@ -659,7 +655,8 @@ struct WalletHomeView: View {
                     currencyChangeTask = Task { await repriceForCurrencyChange() }
                 }
                 .onChange(of: balanceRowsRevision) { _, _ in
-                    rebuildDisplayRows()
+                    scheduleDisplayRowsRebuild()
+                    scheduleChainStateReconcile()
                 }
                 // "Hide small balances" threshold (a Settings preference,
                 // a DIFFERENT @AppStorage key than the filter sheet's
@@ -669,14 +666,14 @@ struct WalletHomeView: View {
                 // explicitly or the hero/holdings/chart stay on the old
                 // threshold until the next refresh (Rule #25). 2026-06-14.
                 .onChange(of: hideSmallThreshold) { _, _ in
-                    rebuildDisplayRows()
+                    scheduleDisplayRowsRebuild(after: 50_000_000)
                 }
                 // New transactions landed in the top-level @Query (live
                 // cross-context inserts, Rule #25) — refresh the cached
                 // `allTransactions` so the Recent activity list + chart
                 // reflect them immediately, not only after a refresh ends.
                 .onChange(of: allTransactionRecords.count) { _, _ in
-                    rebuildTransactionMemos()
+                    scheduleDisplayRowsRebuild()
                 }
                 // Re-derive when the DB asset seed lands (Rule #27 §D — the
                 // list moves from the static fallback to DB `AssetRecord`
@@ -686,7 +683,11 @@ struct WalletHomeView: View {
                 // combined key keeps the body's modifier chain inside the
                 // Swift type-checker's complexity budget.
                 .onChange(of: "\(assetRecords.count)-\(customTokenRecords.count)") { _, _ in
-                    rebuildDisplayRows()
+                    scheduleDisplayRowsRebuild()
+                }
+                .onDisappear {
+                    displayRebuildTask?.cancel()
+                    chainReconcileTask?.cancel()
                 }
         }
         // Settings is now reached via the four-tab shell (`MainTabView`
@@ -1943,20 +1944,31 @@ struct WalletHomeView: View {
         "\(activeWalletIdRaw)|\(allTransactionRecords.count)"
     }
 
-    /// O(1) key for local chain-state reconciliation. The balance revision
-    /// includes raw amounts, fiat values, and fiat currencies, so scalar
-    /// balance updates rebuild the per-chain rows even when no new balance row
-    /// is inserted.
-    private var chainStateReconcileKey: String {
-        "\(activeWalletIdRaw)|\(currencyCode)|\(balanceRowsRevision)"
+    private func scheduleDisplayRowsRebuild(after delayNanoseconds: UInt64 = 120_000_000) {
+        displayRebuildTask?.cancel()
+        displayRebuildTask = Task { @MainActor in
+            if delayNanoseconds > 0 {
+                try? await Task.sleep(nanoseconds: delayNanoseconds)
+            }
+            guard !Task.isCancelled else { return }
+            rebuildDisplayRows()
+        }
     }
 
-    private func reconcileChainStateFromPersistedBalances() async {
-        guard let walletId = await resolveRefreshWalletId() else { return }
+    private func scheduleChainStateReconcile(after delayNanoseconds: UInt64 = 250_000_000) {
+        let rawWalletId = activeWalletIdRaw
         let code = (CurrencyPreference.currency(for: currencyCode)?.code
             ?? CurrencyPreference.defaultCode).uppercased()
-        _ = try? await ChainStateRepository(modelContainer: modelContext.container)
-            .rebuild(walletId: walletId, fiatCurrencyCode: code)
+        let container = modelContext.container
+        chainReconcileTask?.cancel()
+        chainReconcileTask = Task {
+            if delayNanoseconds > 0 {
+                try? await Task.sleep(nanoseconds: delayNanoseconds)
+            }
+            guard !Task.isCancelled, let walletId = UUID(uuidString: rawWalletId) else { return }
+            _ = try? await ChainStateRepository(modelContainer: container)
+                .rebuild(walletId: walletId, fiatCurrencyCode: code)
+        }
     }
 
     /// Resolve USD unit prices for the recent feed's distinct symbols so
@@ -2472,34 +2484,6 @@ struct WalletHomeView: View {
         return ((try? modelContext.fetchCount(descriptor)) ?? 0) > 0
     }
 
-    // MARK: - Historical-price ensure-loop (2026-06-12)
-
-    /// `(walletId, currencyCode, txCount, balanceCount)` fingerprint —
-    /// re-runs the ensure-loop when any of these change so a new tx
-    /// involving an asset we don't have history for triggers a
-    /// fetch. Counts are cheap; symbol-set scans are not, so we
-    /// gate on count first.
-    private var historicalEnsureKey: String {
-        [
-            activeWallet?.id.uuidString ?? "",
-            currencyCode,
-            String(allTransactions.count),
-            String(allHeldRows.count)
-        ].joined(separator: "|")
-    }
-
-    /// Fetch historical close prices for every unique symbol the
-    /// wallet has touched (current holdings + tx history), skipping
-    /// any (symbol, fiat) pair we already have rows for in
-    /// `HistoricalPriceRepository`. Best-effort; failures degrade
-    /// silently to today's spot via the reconstructor's fallback
-    /// chain.
-    private func ensureHistoricalPricesLoaded() async {
-        // Historical-price fetch removed with the data-fetching layer
-        // (2026-06-25). The chart values holdings only from whatever is already
-        // stored (now nothing), so it renders a flat baseline with no fetch.
-    }
-
     // MARK: - Refresh
 
     /// Run one wallet refresh. The coordinator serializes refresh work per
@@ -2734,8 +2718,10 @@ private struct BalanceCardLiveSection: View {
         })
     }
 
-    private var hourlyHoldings: [BalanceHourlyHolding] {
-        let addressIds = activeAddressIds
+    private func hourlyHoldings(
+        addressIds: Set<UUID>,
+        prices: [String: Decimal]
+    ) -> [BalanceHourlyHolding] {
         guard !addressIds.isEmpty else { return [] }
 
         var amountsBySymbol: [String: Decimal] = [:]
@@ -2752,7 +2738,6 @@ private struct BalanceCardLiveSection: View {
             amountsBySymbol[symbol, default: 0] += amount
         }
 
-        let prices = priceCacheMap
         return amountsBySymbol
             .map { symbol, amount in
                 BalanceHourlyHolding(
@@ -2764,8 +2749,9 @@ private struct BalanceCardLiveSection: View {
             .sorted { $0.symbol < $1.symbol }
     }
 
-    private var hourlyPriceSnapshots: [BalanceHourlyPriceSnapshot] {
-        let symbols = Set(hourlyHoldings.map(\.symbol))
+    private func hourlyPriceSnapshots(
+        symbols: Set<String>
+    ) -> [BalanceHourlyPriceSnapshot] {
         guard !symbols.isEmpty else { return [] }
         let code = currencyCode.uppercased()
         let lowerBound = Date().addingTimeInterval(-7_200)
@@ -2817,6 +2803,10 @@ private struct BalanceCardLiveSection: View {
     }
 
     var body: some View {
+        let priceMap = priceCacheMap
+        let addressIds = activeAddressIds
+        let hourHoldings = hourlyHoldings(addressIds: addressIds, prices: priceMap)
+        let hourSnapshots = hourlyPriceSnapshots(symbols: Set(hourHoldings.map(\.symbol)))
         BalanceCardView(
             walletId: walletId,
             walletName: walletName,
@@ -2825,10 +2815,10 @@ private struct BalanceCardLiveSection: View {
             lastUpdated: lastUpdated,
             transactions: transactions,
             ownAddresses: ownAddresses,
-            priceCache: priceCacheMap,
+            priceCache: priceMap,
             priceHistory: priceHistory,
-            hourlyHoldings: hourlyHoldings,
-            hourlyPriceSnapshots: hourlyPriceSnapshots,
+            hourlyHoldings: hourHoldings,
+            hourlyPriceSnapshots: hourSnapshots,
             scrubModel: scrubModel,
             onSwitchWallet: onSwitchWallet,
             onAddFunds: onAddFunds
