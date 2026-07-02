@@ -80,6 +80,7 @@ struct WalletDetailView: View {
     /// Already-localized message for the shared error alert. Non-nil
     /// presents the alert; dismissing it clears the value.
     @State private var errorAlertMessage: String?
+    @State private var walletErrorReport: ApertureErrorReport?
 
     init(walletId: UUID) {
         self.walletId = walletId
@@ -143,6 +144,10 @@ struct WalletDetailView: View {
             Button("OK", role: .cancel) {}
         } message: {
             Text(LocalizedStringKey(errorAlertMessage ?? ""))
+        }
+        .sheet(item: $walletErrorReport) { report in
+            ApertureErrorReportSheet(report: report)
+                .uniAppEnvironment()
         }
     }
 
@@ -824,7 +829,15 @@ struct WalletDetailView: View {
                 // Revert the field to the persisted name so the UI
                 // never shows a rename that didn't land.
                 editedName = persistedName
-                errorAlertMessage = String.apertureLocalized("Couldn't rename this wallet. Try again.")
+                let message = String.apertureLocalized("Couldn't rename this wallet. Try again.")
+                walletErrorReport = ApertureErrorReport(
+                    context: "Rename wallet",
+                    title: "Couldn't rename wallet",
+                    message: message,
+                    error: error,
+                    recoverySuggestion: "Try again. If the name still does not save, email support with the advanced details.",
+                    metadata: ["walletId": id.uuidString]
+                )
             }
         }
     }
@@ -847,7 +860,15 @@ struct WalletDetailView: View {
         do {
             try await repo.deleteWallet(id: id)
         } catch {
-            errorAlertMessage = String.apertureLocalized("Couldn't delete this wallet from the local database. Try again.")
+            let message = String.apertureLocalized("Couldn't delete this wallet from the local database. Try again.")
+            walletErrorReport = ApertureErrorReport(
+                context: "Remove wallet",
+                title: "Couldn't remove wallet",
+                message: message,
+                error: error,
+                recoverySuggestion: "Try again. If the wallet remains, email support with the advanced details.",
+                metadata: ["walletId": id.uuidString]
+            )
             return
         }
         // The deleted wallet's detail screen can't stay on screen —
