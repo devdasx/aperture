@@ -17,14 +17,10 @@ import SwiftUI
 /// every element is content the user reads/acts on or chrome they touch;
 /// nothing decorative survives.
 ///
-/// **Layers (Rule #2 §B.3).** Content layer: the recipient container + the
-/// recents card + all copy — opaque `UniCard` on `Background.primary`.
-/// Functional layer (Liquid Glass via system APIs only): the parent
-/// nav bar, the Paste / Scan / Add chips (`.buttonStyle(.glass)` inside a
-/// `GlassEffectContainer` so they morph together), and the bottom
-/// Continue CTA (`UniButton(.primary)` → `.glassProminent`) in its own
-/// `GlassEffectContainer`. Two glass layers max in any region; content
-/// scrolls under the CTA.
+/// **Layers (Rule #2 §B.3).** Content layer: unified input fields, custom
+/// action chips, the recents card, and all copy. This recipient screen avoids
+/// drop shadows and glass chips; the Send sheet chrome itself owns any system
+/// presentation material.
 ///
 /// **Multi-recipient.** Chains whose protocol can pay many recipients in
 /// one transaction (UTXO, Solana, Stellar, TON, Cosmos, Sui, Polkadot,
@@ -203,36 +199,20 @@ struct SendRecipientView: View {
                 )
             }
 
-            // CONNECTED, the Apple-native way: one inset-grouped container
-            // (a single rounded `UniCard` surface) holding every recipient
-            // as a ROW, rows separated by inset hairline dividers — the way
-            // iOS Contacts "new contact" fields and Settings grouped forms
-            // read. One continuous control, not separate floating pills.
-            // The card owns the radius + the surface, so each row's field is
-            // PLAIN (no per-field fill / radius). In v2 the surface is liquid
-            // glass on the bloom, not an opaque card.
-            SendGlassCard(cornerRadius: UniRadius.xl, padding: 0) {
-                VStack(spacing: 0) {
-                    ForEach(Array($entries.enumerated()), id: \.element.id) { offset, $entry in
-                        RecipientRow(
-                            entry: $entry,
-                            chain: chain,
-                            index: offset + 1,
-                            showsIndex: isMulti && entries.count > 1,
-                            nameHint: nameHint,
-                            canRemove: entries.count > 1,
-                            isDuplicate: isDuplicateAddress(entry),
-                            focusBinding: $focusedEntry,
-                            sendCount: { recents.sendCount(to: $0, chain: chain) },
-                            onRemove: { remove(entry.id) }
-                        )
-                        if offset < entries.count - 1 {
-                            // Inset hairline aligned under the field's text,
-                            // not full-bleed — the native grouped-form look.
-                            UniDivider()
-                                .padding(.leading, UniSpacing.m)
-                        }
-                    }
+            VStack(spacing: UniSpacing.s) {
+                ForEach(Array($entries.enumerated()), id: \.element.id) { offset, $entry in
+                    RecipientRow(
+                        entry: $entry,
+                        chain: chain,
+                        index: offset + 1,
+                        showsIndex: isMulti && entries.count > 1,
+                        nameHint: nameHint,
+                        canRemove: entries.count > 1,
+                        isDuplicate: isDuplicateAddress(entry),
+                        focusBinding: $focusedEntry,
+                        sendCount: { recents.sendCount(to: $0, chain: chain) },
+                        onRemove: { remove(entry.id) }
+                    )
                 }
             }
 
@@ -241,26 +221,23 @@ struct SendRecipientView: View {
         }
     }
 
-    /// The Liquid Glass ambient-action chips (Paste / Scan / Add). Grouped
-    /// in a `GlassEffectContainer` so the system can morph them as a set —
-    /// the canonical place for `.buttonStyle(.glass)` (chrome, not content).
+    /// Custom flat action chips (Paste / Scan / Add). They intentionally avoid
+    /// liquid-glass button styling and shadows on this recipient screen.
     private var actionChips: some View {
         ScrollView(.horizontal, showsIndicators: false) {
-            GlassEffectContainer(spacing: UniSpacing.s) {
-                HStack(spacing: UniSpacing.s) {
-                    glassChip("Paste") { pasteFromClipboard() }
-                    glassChip("Scan") { isScanning = true }
-                    if isMulti {
-                        glassChip("Add recipient", systemImage: "plus", isEnabled: canAddMore) { addEntry() }
-                    }
+            HStack(spacing: UniSpacing.s) {
+                actionChip("Paste") { pasteFromClipboard() }
+                actionChip("Scan") { isScanning = true }
+                if isMulti {
+                    actionChip("Add recipient", systemImage: "plus", isEnabled: canAddMore) { addEntry() }
                 }
-                .padding(.vertical, 2)
             }
+            .padding(.vertical, 2)
         }
         .scrollClipDisabled()
     }
 
-    private func glassChip(
+    private func actionChip(
         _ title: LocalizedStringKey,
         systemImage: String? = nil,
         isEnabled: Bool = true,
@@ -282,16 +259,17 @@ struct SendRecipientView: View {
             }
             .padding(.horizontal, UniSpacing.s)
             .frame(height: 36)
-            // Hit-test the painted glass capsule, not the label's intrinsic
-            // bounds (Rule #19 §D / UniButton hit-test contract).
+            .background(
+                Capsule(style: .continuous)
+                    .fill(isEnabled ? UniColors.Card.background : UniColors.Button.disabledFill)
+            )
+            .overlay {
+                Capsule(style: .continuous)
+                    .stroke(UniColors.Stroke.regular.opacity(isEnabled ? 0.22 : 0.12), lineWidth: 1)
+            }
             .contentShape(Capsule())
         }
-        .buttonStyle(.glass)
-        // Disabled goes through the named disabled roles (Rule #4) — the
-        // glass tint quiets to `Button.disabledFill` and the label / icon
-        // to the disabled tone, replacing the prior `.opacity(0.4)` magic
-        // literal.
-        .tint(isEnabled ? UniColors.Button.Secondary.tint : UniColors.Button.Secondary.disabledTint)
+        .buttonStyle(.plain)
         .disabled(!isEnabled)
     }
 
@@ -301,7 +279,7 @@ struct SendRecipientView: View {
     private var recentsBlock: some View {
         VStack(alignment: .leading, spacing: UniSpacing.s) {
             sectionHeader("Recent")
-            SendGlassCard(cornerRadius: UniRadius.xl, padding: 0) {
+            UniCard(padding: 0, cornerRadius: UniRadius.xl) {
                 VStack(spacing: 0) {
                     ForEach(Array(recentList.enumerated()), id: \.element.id) { offset, recipient in
                         Button {
@@ -469,10 +447,8 @@ struct SendRecipientView: View {
 // MARK: - One recipient row (owns its resolution)
 
 /// A single recipient ROW inside the connected, inset-grouped container.
-/// The parent `UniCard` owns the surface + radius; this row is PLAIN — a
-/// transparent (`Color.clear`-filled) address field, so the rows read as
-/// one continuous control separated by inset hairlines (the iOS Contacts /
-/// Settings grouped-form pattern), not as separate floating pills.
+/// The address itself is a normal `UniTextField` so the screen uses the
+/// app-wide input design rather than a bespoke transparent row.
 ///
 /// Row anatomy (top to bottom): an optional index label (when more than one
 /// recipient), the full address field (expanding, LTR-locked) on a line with
@@ -512,23 +488,12 @@ private struct RecipientRow: View {
             }
 
             HStack(alignment: .top, spacing: 0) {
-                // PLAIN field: the container (`UniCard`) owns the surface,
-                // so the field's own fill is cleared. It keeps the
-                // Enter-dismiss contract, LTR lock, `axis: .vertical`
-                // growth, and the external focus passthrough — only its
-                // pill is removed so the rows read as one connected set.
                 UniTextField(
                     placeholder: nameHint == nil ? "Recipient address" : "Address or \(nameHint!)",
                     text: $entry.text,
                     directionPolicy: .forceLTR,
                     axis: .vertical,
                     lineLimit: nil,
-                    fill: Color.clear,
-                    // Standard input vertical padding now that the row's
-                    // own padding sets the grouped-cell height; the field
-                    // still grows vertically to show a full pasted address.
-                    verticalPadding: UniSpacing.s,
-                    showsChrome: false,
                     autocapitalization: .never,
                     focusBinding: focusBinding,
                     focusValue: entry.id
@@ -555,6 +520,7 @@ private struct RecipientRow: View {
                 .padding(.bottom, UniSpacing.s)
         }
         .task(id: entry.text) { await resolve() }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     @ViewBuilder
