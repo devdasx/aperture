@@ -227,6 +227,17 @@ actor WalletBalanceCardSnapshotRepository {
                 byId[row.id] = row
             }
         }
+        let legacyDescriptor = FetchDescriptor<TransactionRecord>(
+            predicate: #Predicate { $0.addressId == nil }
+        )
+        for row in try modelContext.fetch(legacyDescriptor) {
+            guard let resolvedAddressId = row.address?.id,
+                  addressIds.contains(resolvedAddressId) else {
+                continue
+            }
+            row.addressId = resolvedAddressId
+            byId[row.id] = row
+        }
 
         return byId.values.map {
             BalanceHistoryReconstructor.HistoryTx(
@@ -308,6 +319,17 @@ actor WalletBalanceCardSnapshotRepository {
             for row in try modelContext.fetch(descriptor) {
                 byId[row.id] = row
             }
+        }
+        let legacyDescriptor = FetchDescriptor<TokenBalanceRecord>(
+            predicate: #Predicate { $0.addressId == nil }
+        )
+        for row in try modelContext.fetch(legacyDescriptor) {
+            guard let resolvedAddressId = row.address?.id,
+                  addressIds.contains(resolvedAddressId) else {
+                continue
+            }
+            row.addressId = resolvedAddressId
+            byId[row.id] = row
         }
         return Array(byId.values)
     }

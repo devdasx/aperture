@@ -73,4 +73,54 @@ import SwiftData
 
         #expect(snapshot.totalFiat == 165, "100 + 50 + 15 from TokenBalanceRecord rows")
     }
+
+    @Test("balance-card total backfills legacy relation-only token rows")
+    func totalUsesLegacyRelationOnlyTokenRows() async throws {
+        let container = try TestModelContainerFactory.makeContainer(name: "balance-card-legacy-token-source")
+        let context = ModelContext(container)
+        let wallet = WalletRecord(
+            name: "Legacy Source Truth",
+            kind: .watchOnly,
+            mnemonicWordCount: nil,
+            hasPassphrase: false,
+            colorTag: "default",
+            sortOrder: 0,
+            requiresBackup: false
+        )
+        context.insert(wallet)
+
+        let ethereum = WalletAddressRecord(chainRaw: "ethereum", address: "0xlegacy")
+        ethereum.wallet = wallet
+        ethereum.walletId = wallet.id
+        context.insert(ethereum)
+
+        let balance = TokenBalanceRecord(
+            tokenSymbol: "ETH",
+            decimals: 18,
+            rawBalance: "1000000000000000000",
+            fiatValueCached: 123,
+            fiatCurrencyCode: "USD"
+        )
+        balance.address = ethereum
+        // Simulates rows written before the scalar addressId column was
+        // populated. The wallet list resolves address?.id; the balance card
+        // snapshot must do the same and backfill the scalar id.
+        balance.addressId = nil
+        context.insert(balance)
+        try context.save()
+
+        let snapshot = try await WalletBalanceCardSnapshotRepository(modelContainer: container)
+            .rebuild(
+                walletId: wallet.id,
+                currencyCode: "USD",
+                selectedRangeRaw: BalanceHistoryRange.all.rawValue,
+                isBalanceHidden: false,
+                now: Date()
+            )
+
+        #expect(snapshot.totalFiat == 123)
+
+        let stored = try #require(try context.fetch(FetchDescriptor<TokenBalanceRecord>()).first)
+        #expect(stored.addressId == ethereum.id)
+    }
 }
