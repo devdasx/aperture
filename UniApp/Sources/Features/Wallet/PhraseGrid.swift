@@ -27,6 +27,11 @@ struct PhraseGrid: View {
             RoundedRectangle(cornerRadius: UniRadius.card, style: .continuous)
                 .fill(UniColors.SeedGrid.surface)
         )
+        .overlay(
+            RoundedRectangle(cornerRadius: UniRadius.card, style: .continuous)
+                .stroke(UniColors.SeedGrid.hairline, lineWidth: 1)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: UniRadius.card, style: .continuous))
         .environment(\.layoutDirection, .leftToRight)
     }
 
