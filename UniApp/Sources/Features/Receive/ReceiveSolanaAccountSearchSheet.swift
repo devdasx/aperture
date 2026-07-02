@@ -17,6 +17,7 @@ struct ReceiveSolanaAccountSearchSheet: View {
     @State private var results: [SolanaReceiveAccountSearchResult] = []
     @State private var hasSearched: Bool = false
     @State private var errorMessage: String?
+    @State private var searchCandidateCount: Int = 0
 
     private var supportedTokens: [SolanaReceiveSupportedToken] {
         SolanaReceiveSupportedToken.supported
@@ -173,7 +174,11 @@ struct ReceiveSolanaAccountSearchSheet: View {
                     .font(UniTypography.headline)
                     .foregroundStyle(UniColors.Text.primary)
                 Spacer()
-                if hasSearched {
+                if isSearching, searchCandidateCount > 0 {
+                    Text("\(searchCandidateCount)")
+                        .font(UniTypography.subheadline.weight(.semibold))
+                        .foregroundStyle(UniColors.Text.secondary)
+                } else if hasSearched {
                     Text("\(results.count)")
                         .font(UniTypography.subheadline.weight(.semibold))
                         .foregroundStyle(UniColors.Text.secondary)
@@ -188,6 +193,8 @@ struct ReceiveSolanaAccountSearchSheet: View {
                     detail: "Aperture will check Trust Wallet and Phantom addresses for SOL and supported SPL token balances.",
                     minHeight: 180
                 )
+            } else if isSearching {
+                searchingProcessCard
             } else if results.isEmpty {
                 UniListEmptyState(
                     title: "No Solana accounts found",
@@ -214,6 +221,65 @@ struct ReceiveSolanaAccountSearchSheet: View {
                 }
                 .background(UniColors.Card.background)
                 .clipShape(RoundedRectangle(cornerRadius: UniRadius.card, style: .continuous))
+            }
+        }
+    }
+
+    private var searchingProcessCard: some View {
+        VStack(alignment: .leading, spacing: UniSpacing.m) {
+            HStack(alignment: .center, spacing: UniSpacing.s) {
+                ProgressView()
+                    .controlSize(.regular)
+                    .tint(UniColors.Text.primary)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Searching accounts")
+                        .font(UniTypography.headline)
+                        .foregroundStyle(UniColors.Text.primary)
+                    Text(searchCandidateCount > 0 ? "Checking \(searchCandidateCount) Solana addresses." : "Preparing Trust Wallet and Phantom addresses.")
+                        .font(UniTypography.subheadline)
+                        .foregroundStyle(UniColors.Text.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+
+            UniDivider()
+
+            VStack(alignment: .leading, spacing: UniSpacing.s) {
+                searchStepRow(
+                    title: "Derive local addresses",
+                    detail: searchCandidateCount > 0 ? "\(searchCandidateCount) addresses ready" : "Trust Wallet and Phantom paths",
+                    state: searchCandidateCount > 0 ? .complete : .active
+                )
+                searchStepRow(
+                    title: "Check SOL and SPL tokens",
+                    detail: "SOL plus \(supportedTokens.count) supported SPL tokens",
+                    state: searchCandidateCount > 0 ? .active : .pending
+                )
+                searchStepRow(
+                    title: "Build results",
+                    detail: "Funded addresses move to the top",
+                    state: .pending
+                )
+            }
+        }
+        .padding(UniSpacing.m)
+        .background(UniColors.Card.background)
+        .clipShape(RoundedRectangle(cornerRadius: UniRadius.card, style: .continuous))
+    }
+
+    private func searchStepRow(title: String, detail: String, state: AccountSearchStepState) -> some View {
+        HStack(alignment: .top, spacing: UniSpacing.s) {
+            state.icon
+                .frame(width: 22, height: 22)
+                .padding(.top, 1)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(UniTypography.subheadline.weight(.semibold))
+                    .foregroundStyle(state == .pending ? UniColors.Text.tertiary : UniColors.Text.primary)
+                Text(detail)
+                    .font(UniTypography.caption1)
+                    .foregroundStyle(UniColors.Text.tertiary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
     }
@@ -264,9 +330,12 @@ struct ReceiveSolanaAccountSearchSheet: View {
         hasSearched = true
         errorMessage = nil
         results = []
+        searchCandidateCount = 0
+        defer { isSearching = false }
 
         do {
             let candidates = try deriveCandidates(wallet: wallet, range: range)
+            searchCandidateCount = candidates.count
             results = try await SolanaReceiveAccountSearchService.shared.search(
                 candidates: candidates,
                 currencyCode: currencyCode
@@ -274,8 +343,6 @@ struct ReceiveSolanaAccountSearchSheet: View {
         } catch {
             errorMessage = SolanaReceiveAccountSearchError.message(for: error)
         }
-
-        isSearching = false
     }
 
     private func deriveCandidates(

@@ -20,6 +20,8 @@ struct ReceiveEVMAccountSearchSheet: View {
     @State private var results: [EVMReceiveAccountSearchResult] = []
     @State private var hasSearched: Bool = false
     @State private var errorMessage: String?
+    @State private var searchCandidateCount: Int = 0
+    @State private var pendingAddressChoice: EVMReceiveAddressChoice?
 
     private var supportedTokens: [EVMTokenRegistry.Entry] {
         EVMTokenRegistry.tokens(for: chain)
@@ -59,6 +61,22 @@ struct ReceiveEVMAccountSearchSheet: View {
                     Button("Close") { dismiss() }
                 }
             }
+        }
+        .sheet(item: $pendingAddressChoice) { choice in
+            EVMReceiveAddressScopeSheet(
+                chain: chain,
+                result: choice.result,
+                isSaving: isSavingAddress == choice.result.address,
+                onCurrentChain: {
+                    Task { await saveAndUse(choice.result, scope: .currentChain) }
+                },
+                onAllEVMChains: {
+                    Task { await saveAndUse(choice.result, scope: .allEVMChains) }
+                }
+            )
+            .uniAppEnvironment()
+            .intrinsicHeightSheet()
+            .presentationBackground(UniColors.Background.primary)
         }
     }
 
@@ -161,7 +179,11 @@ struct ReceiveEVMAccountSearchSheet: View {
                     .font(UniTypography.headline)
                     .foregroundStyle(UniColors.Text.primary)
                 Spacer()
-                if hasSearched {
+                if isSearching, searchCandidateCount > 0 {
+                    Text("\(searchCandidateCount)")
+                        .font(UniTypography.subheadline.weight(.semibold))
+                        .foregroundStyle(UniColors.Text.secondary)
+                } else if hasSearched {
                     Text("\(results.count)")
                         .font(UniTypography.subheadline.weight(.semibold))
                         .foregroundStyle(UniColors.Text.secondary)
@@ -176,6 +198,8 @@ struct ReceiveEVMAccountSearchSheet: View {
                     detail: "Aperture will check account balances for this receive network only.",
                     minHeight: 180
                 )
+            } else if isSearching {
+                searchingProcessCard
             } else if results.isEmpty {
                 UniListEmptyState(
                     title: "No funded accounts found",
@@ -191,7 +215,7 @@ struct ReceiveEVMAccountSearchSheet: View {
                             isCurrent: result.address.caseInsensitiveCompare(activeAddress) == .orderedSame,
                             isSaving: isSavingAddress == result.address,
                             onUse: {
-                                Task { await saveAndUse(result) }
+                                pendingAddressChoice = EVMReceiveAddressChoice(result: result)
                             }
                         )
                         if result.id != results.last?.id {
@@ -202,6 +226,65 @@ struct ReceiveEVMAccountSearchSheet: View {
                 }
                 .background(UniColors.Card.background)
                 .clipShape(RoundedRectangle(cornerRadius: UniRadius.card, style: .continuous))
+            }
+        }
+    }
+
+    private var searchingProcessCard: some View {
+        VStack(alignment: .leading, spacing: UniSpacing.m) {
+            HStack(alignment: .center, spacing: UniSpacing.s) {
+                ProgressView()
+                    .controlSize(.regular)
+                    .tint(UniColors.Text.primary)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Searching accounts")
+                        .font(UniTypography.headline)
+                        .foregroundStyle(UniColors.Text.primary)
+                    Text(searchCandidateCount > 0 ? "Checking \(searchCandidateCount) addresses on \(chain.displayName)." : "Preparing local account addresses.")
+                        .font(UniTypography.subheadline)
+                        .foregroundStyle(UniColors.Text.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+
+            UniDivider()
+
+            VStack(alignment: .leading, spacing: UniSpacing.s) {
+                searchStepRow(
+                    title: "Derive local addresses",
+                    detail: searchCandidateCount > 0 ? "\(searchCandidateCount) accounts ready" : "Using this wallet on-device",
+                    state: searchCandidateCount > 0 ? .complete : .active
+                )
+                searchStepRow(
+                    title: "Check balances and tokens",
+                    detail: "\(chain.ticker) plus \(supportedTokens.count) supported tokens",
+                    state: searchCandidateCount > 0 ? .active : .pending
+                )
+                searchStepRow(
+                    title: "Build results",
+                    detail: "Funded accounts move to the top",
+                    state: .pending
+                )
+            }
+        }
+        .padding(UniSpacing.m)
+        .background(UniColors.Card.background)
+        .clipShape(RoundedRectangle(cornerRadius: UniRadius.card, style: .continuous))
+    }
+
+    private func searchStepRow(title: String, detail: String, state: AccountSearchStepState) -> some View {
+        HStack(alignment: .top, spacing: UniSpacing.s) {
+            state.icon
+                .frame(width: 22, height: 22)
+                .padding(.top, 1)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(UniTypography.subheadline.weight(.semibold))
+                    .foregroundStyle(state == .pending ? UniColors.Text.tertiary : UniColors.Text.primary)
+                Text(detail)
+                    .font(UniTypography.caption1)
+                    .foregroundStyle(UniColors.Text.tertiary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
     }
@@ -253,9 +336,12 @@ struct ReceiveEVMAccountSearchSheet: View {
         hasSearched = true
         errorMessage = nil
         results = []
+        searchCandidateCount = 0
+        defer { isSearching = false }
 
         do {
             let candidates = try deriveCandidates(wallet: wallet, range: range)
+            searchCandidateCount = candidates.count
             let searchResults = try await EVMReceiveAccountSearchService.shared.search(
                 candidates: candidates,
                 chain: chain,
@@ -265,8 +351,6 @@ struct ReceiveEVMAccountSearchSheet: View {
         } catch {
             errorMessage = EVMReceiveAccountSearchError.message(for: error)
         }
-
-        isSearching = false
     }
 
     private func deriveCandidates(
@@ -297,15 +381,19 @@ struct ReceiveEVMAccountSearchSheet: View {
     }
 
     @MainActor
-    private func saveAndUse(_ result: EVMReceiveAccountSearchResult) async {
+    private func saveAndUse(
+        _ result: EVMReceiveAccountSearchResult,
+        scope: EVMReceiveAddressSaveScope
+    ) async {
         guard isSavingAddress == nil else { return }
         guard let wallet else { return }
         isSavingAddress = result.address
         defer { isSavingAddress = nil }
 
         do {
-            let addressId = try upsertAddressRow(wallet: wallet, result: result)
+            let addressId = try upsertAddressRows(wallet: wallet, result: result, scope: scope)
             try await persistBalances(addressId: addressId, walletId: wallet.id, result: result)
+            pendingAddressChoice = nil
             onUseAddress(result.address)
             dismiss()
         } catch {
@@ -314,27 +402,117 @@ struct ReceiveEVMAccountSearchSheet: View {
     }
 
     @MainActor
+    private func upsertAddressRows(
+        wallet: WalletRecord,
+        result: EVMReceiveAccountSearchResult,
+        scope: EVMReceiveAddressSaveScope
+    ) throws -> UUID {
+        let targets = try addressTargets(wallet: wallet, result: result, scope: scope)
+        var currentChainAddressId: UUID?
+
+        for target in targets {
+            let addressId = try upsertAddressRow(wallet: wallet, target: target)
+            if target.chain == chain {
+                currentChainAddressId = addressId
+            }
+        }
+
+        try modelContext.save()
+
+        guard let currentChainAddressId else {
+            throw EVMReceiveAccountSearchError.unsupportedChain
+        }
+        return currentChainAddressId
+    }
+
+    @MainActor
+    private func addressTargets(
+        wallet: WalletRecord,
+        result: EVMReceiveAccountSearchResult,
+        scope: EVMReceiveAddressSaveScope
+    ) throws -> [EVMReceiveAddressTarget] {
+        switch scope {
+        case .currentChain:
+            return [
+                EVMReceiveAddressTarget(
+                    chain: chain,
+                    accountIndex: result.accountIndex,
+                    derivationPath: result.derivationPath,
+                    address: result.address,
+                    isUsed: result.isUsed
+                )
+            ]
+        case .allEVMChains:
+            let evmChains = SupportedChain.allCases.filter { $0.family == .evm }
+            switch wallet.kind {
+            case .created, .importedMnemonic:
+                guard !wallet.hasPassphrase else { throw EVMReceiveAccountSearchError.passphraseWallet }
+                guard let words = try WalletSecretPersistence.loadMnemonic(for: wallet.id, in: modelContext),
+                      !words.isEmpty else {
+                    throw EVMReceiveAccountSearchError.missingMnemonic
+                }
+                return try evmChains.map { targetChain in
+                    if targetChain == chain {
+                        return EVMReceiveAddressTarget(
+                            chain: targetChain,
+                            accountIndex: result.accountIndex,
+                            derivationPath: result.derivationPath,
+                            address: result.address,
+                            isUsed: result.isUsed
+                        )
+                    }
+                    guard let candidate = try EVMReceiveAccountDeriver.deriveMnemonicAccounts(
+                        words: words,
+                        chain: targetChain,
+                        range: result.accountIndex...result.accountIndex
+                    ).first else {
+                        throw EVMReceiveAccountSearchError.invalidMnemonic
+                    }
+                    return EVMReceiveAddressTarget(
+                        chain: targetChain,
+                        accountIndex: result.accountIndex,
+                        derivationPath: candidate.derivationPath,
+                        address: candidate.address,
+                        isUsed: false
+                    )
+                }
+            case .importedKey, .watchOnly:
+                let derivationPath = wallet.kind == .watchOnly ? "watch-only" : "imported-private-key"
+                return evmChains.map { targetChain in
+                    EVMReceiveAddressTarget(
+                        chain: targetChain,
+                        accountIndex: result.accountIndex,
+                        derivationPath: derivationPath,
+                        address: result.address,
+                        isUsed: targetChain == chain ? result.isUsed : false
+                    )
+                }
+            }
+        }
+    }
+
+    @MainActor
     private func upsertAddressRow(
         wallet: WalletRecord,
-        result: EVMReceiveAccountSearchResult
+        target: EVMReceiveAddressTarget
     ) throws -> UUID {
         let walletId = Optional(wallet.id)
-        let chainRaw = chain.rawValue
+        let chainRaw = target.chain.rawValue
         let descriptor = FetchDescriptor<WalletAddressRecord>(
             predicate: #Predicate { $0.walletId == walletId && $0.chainRaw == chainRaw }
         )
         var rows = try modelContext.fetch(descriptor)
 
         let row: WalletAddressRecord
-        if let existing = rows.first(where: { $0.address.caseInsensitiveCompare(result.address) == .orderedSame }) {
+        if let existing = rows.first(where: { $0.address.caseInsensitiveCompare(target.address) == .orderedSame }) {
             row = existing
         } else {
             row = WalletAddressRecord(
                 walletId: wallet.id,
-                chainRaw: chain.rawValue,
-                address: result.address,
-                derivationPath: result.derivationPath,
-                isUsed: result.isUsed,
+                chainRaw: target.chain.rawValue,
+                address: target.address,
+                derivationPath: target.derivationPath,
+                isUsed: target.isUsed,
                 isReceivePreferred: true
             )
             row.wallet = wallet
@@ -346,13 +524,14 @@ struct ReceiveEVMAccountSearchSheet: View {
             existing.isReceivePreferred = false
         }
         row.isReceivePreferred = true
-        row.isUsed = row.isUsed || result.isUsed
-        row.lastScannedAt = Date()
-        if row.derivationPath.isEmpty {
-            row.derivationPath = result.derivationPath
+        row.isUsed = row.isUsed || target.isUsed
+        if target.chain == chain {
+            row.lastScannedAt = Date()
+        }
+        if !target.derivationPath.isEmpty {
+            row.derivationPath = target.derivationPath
         }
 
-        try modelContext.save()
         return row.id
     }
 
@@ -393,6 +572,127 @@ struct ReceiveEVMAccountSearchSheet: View {
             fiatCurrencyCode: currencyCode,
             onlyChains: [chain]
         )
+    }
+
+    private func shortAddress(_ address: String) -> String {
+        guard address.count > 14 else { return address }
+        return "\(address.prefix(7))...\(address.suffix(5))"
+    }
+}
+
+enum AccountSearchStepState: Equatable {
+    case pending
+    case active
+    case complete
+
+    @ViewBuilder
+    var icon: some View {
+        switch self {
+        case .pending:
+            Image(systemName: "circle")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(UniColors.Text.quaternary)
+        case .active:
+            ProgressView()
+                .controlSize(.small)
+                .tint(UniColors.Text.primary)
+        case .complete:
+            Image(systemName: "checkmark.circle.fill")
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundStyle(UniColors.Feedback.Success.foreground)
+        }
+    }
+}
+
+private struct EVMReceiveAddressChoice: Identifiable {
+    let result: EVMReceiveAccountSearchResult
+    var id: String { result.id }
+}
+
+private enum EVMReceiveAddressSaveScope {
+    case currentChain
+    case allEVMChains
+}
+
+private struct EVMReceiveAddressTarget {
+    let chain: SupportedChain
+    let accountIndex: Int
+    let derivationPath: String
+    let address: String
+    let isUsed: Bool
+}
+
+private struct EVMReceiveAddressScopeSheet: View {
+    let chain: SupportedChain
+    let result: EVMReceiveAccountSearchResult
+    let isSaving: Bool
+    let onCurrentChain: () -> Void
+    let onAllEVMChains: () -> Void
+
+    var body: some View {
+        UniSheet(title: "Use this address") {
+            VStack(alignment: .leading, spacing: UniSpacing.m) {
+                Text("Choose where Aperture should make Account \(result.accountIndex) the preferred receive account.")
+                    .font(UniTypography.body)
+                    .foregroundStyle(UniColors.Text.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                VStack(spacing: 0) {
+                    optionRow(
+                        title: "\(chain.displayName) only",
+                        detail: "Use \(shortAddress(result.address)) for this receive network. Other EVM chains keep their current receive address.",
+                        systemImage: "network"
+                    )
+                    UniDivider()
+                        .padding(.leading, 52)
+                    optionRow(
+                        title: "All EVM chains",
+                        detail: "Use the same account index across Ethereum-compatible networks. Mnemonic wallets save each chain's correctly derived address; imported-key and watch-only wallets reuse the same 0x address.",
+                        systemImage: "square.stack.3d.up"
+                    )
+                }
+                .background(UniColors.Card.background)
+                .clipShape(RoundedRectangle(cornerRadius: UniRadius.card, style: .continuous))
+            }
+        } actions: {
+            VStack(spacing: UniSpacing.s) {
+                UniButton(
+                    verbatim: "Use on \(chain.displayName)",
+                    variant: .primary,
+                    isLoading: isSaving,
+                    isEnabled: !isSaving,
+                    action: onCurrentChain
+                )
+                UniButton(
+                    title: "Use on all EVM chains",
+                    variant: .secondary,
+                    isLoading: isSaving,
+                    isEnabled: !isSaving,
+                    action: onAllEVMChains
+                )
+            }
+        }
+    }
+
+    private func optionRow(title: String, detail: String, systemImage: String) -> some View {
+        HStack(alignment: .top, spacing: UniSpacing.s) {
+            Image(systemName: systemImage)
+                .font(.system(size: 20, weight: .semibold))
+                .foregroundStyle(UniColors.Icon.secondary)
+                .frame(width: 36, height: 36)
+                .background(UniColors.Fill.secondary)
+                .clipShape(RoundedRectangle(cornerRadius: UniRadius.s, style: .continuous))
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title)
+                    .font(UniTypography.headline)
+                    .foregroundStyle(UniColors.Text.primary)
+                Text(detail)
+                    .font(UniTypography.subheadline)
+                    .foregroundStyle(UniColors.Text.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(UniSpacing.m)
     }
 
     private func shortAddress(_ address: String) -> String {
