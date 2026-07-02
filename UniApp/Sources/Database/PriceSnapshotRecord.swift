@@ -31,6 +31,11 @@ import SwiftData
 /// price tables.
 @Model
 final class PriceSnapshotRecord {
+    #Index<PriceSnapshotRecord>(
+        [\.currencyCode, \.fetchedAt],
+        [\.symbol, \.currencyCode, \.fetchedAt]
+    )
+
     /// Stable identifier. The table is append-only, so the unique key
     /// is a plain UUID — there is deliberately NO composite
     /// `(symbol, currency, time)` key; two fetches in the same second

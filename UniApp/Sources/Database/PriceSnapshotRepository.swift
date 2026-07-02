@@ -27,6 +27,18 @@ struct TokenPriceChange: Sendable {
     let percent: Decimal
 }
 
+// MARK: - PriceObservation
+
+/// Lightweight sendable price observation used by UI/chart callers.
+/// This keeps SwiftData rows inside the repository actor and lets views
+/// consume only value snapshots.
+struct PriceObservation: Sendable {
+    let symbol: String
+    let currencyCode: String
+    let price: Decimal
+    let fetchedAt: Date
+}
+
 // MARK: - PriceSnapshotRepository
 
 /// Actor-isolated owner of the append-only `PriceSnapshotRecord`
@@ -112,6 +124,40 @@ actor PriceSnapshotRepository {
             sortBy: [SortDescriptor(\.fetchedAt, order: .forward)]
         )
         return try modelContext.fetch(descriptor).map { ($0.price, $0.fetchedAt) }
+    }
+
+    /// Recent observations for a group of symbols in one fiat currency.
+    /// Used by the one-hour wallet chart. The fetch is currency/time
+    /// bounded and the symbol membership test happens inside the actor,
+    /// keeping the SwiftUI render path away from the append-only table.
+    func recentObservations(
+        symbols: Set<String>,
+        currency: String,
+        since: Date,
+        until: Date = Date()
+    ) throws -> [PriceObservation] {
+        let upperSymbols = Set(symbols.map { $0.uppercased() })
+        guard !upperSymbols.isEmpty else { return [] }
+
+        let upperCurrency = currency.uppercased()
+        let descriptor = FetchDescriptor<PriceSnapshotRecord>(
+            predicate: #Predicate { row in
+                row.currencyCode == upperCurrency
+                    && row.fetchedAt >= since
+                    && row.fetchedAt <= until
+                    && row.price > 0
+            },
+            sortBy: [SortDescriptor(\.fetchedAt, order: .forward)]
+        )
+        return try modelContext.fetch(descriptor).compactMap { row in
+            guard upperSymbols.contains(row.symbol.uppercased()) else { return nil }
+            return PriceObservation(
+                symbol: row.symbol,
+                currencyCode: row.currencyCode,
+                price: row.price,
+                fetchedAt: row.fetchedAt
+            )
+        }
     }
 
     // MARK: - 24h change

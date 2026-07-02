@@ -337,13 +337,12 @@ struct BalanceCardView: View {
                 .buttonStyle(.plain)
                 .accessibilityLabel(Text("Switch wallet, currently \(walletName)"))
 
-                // Last refresh of balances + history. LIVE — a 1s
-                // `TimelineView` re-renders the relative time so it ticks
-                // ("Updated 2s ago" → "3s ago" …) without a manual timer
-                // (2026-06-19 user direction: "updated in … should be
-                // live"). Hidden until the first scan completes.
+                // Last refresh of balances + history. Kept live without
+                // waking the full card every second; a 30s cadence is enough
+                // for this low-priority caption and avoids background heat
+                // while the user scrolls.
                 if let lastUpdated {
-                    TimelineView(.periodic(from: .now, by: 1)) { _ in
+                    TimelineView(.periodic(from: .now, by: 30)) { _ in
                         Text(verbatim: Self.updatedCaption(lastUpdated))
                             .font(UniTypography.caption2)
                             .foregroundStyle(UniColors.BalanceCard.textMuted(colorScheme, boostContrast: boostContrast))
@@ -790,8 +789,17 @@ struct BalanceCardView: View {
                 && ($0.counterparty.isEmpty || !own.contains($0.counterparty.lowercased()))
         }
 
-        let reconstructed = await Task.detached(priority: .userInitiated) {
-            let transactionPoints = BalanceHistoryReconstructor.reconstruct(
+        let worker = Task.detached(priority: .userInitiated) { () -> [BalancePoint] in
+            if Task.isCancelled { return [] }
+            if range == .hour, !hasInHourTransaction {
+                return BalanceHourPortfolioReconstructor.reconstruct(
+                    holdings: hourHoldingsSnapshot,
+                    priceSnapshots: hourPriceSnapshots,
+                    currentTotalFiat: currentTotal,
+                    now: now
+                )
+            }
+            return BalanceHistoryReconstructor.reconstruct(
                 txSnapshots: txSnapshots,
                 priceCache: cache,
                 priceHistory: history,
@@ -799,16 +807,12 @@ struct BalanceCardView: View {
                 range: range,
                 now: now
             )
-            guard range == .hour, !hasInHourTransaction else {
-                return transactionPoints
-            }
-            return BalanceHourPortfolioReconstructor.reconstruct(
-                holdings: hourHoldingsSnapshot,
-                priceSnapshots: hourPriceSnapshots,
-                currentTotalFiat: currentTotal,
-                now: now
-            )
-        }.value
+        }
+        let reconstructed = await withTaskCancellationHandler(operation: {
+            await worker.value
+        }, onCancel: {
+            worker.cancel()
+        })
 
         guard !Task.isCancelled else { return }
         let resolved = Self.downsample(
