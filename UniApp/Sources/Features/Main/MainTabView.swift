@@ -289,14 +289,6 @@ struct MainTabView: View {
                 tabLabel(.markets)
             }
 
-            Tab(value: MainTab.chartLab) {
-                NavigationStack {
-                    ChartLabView()
-                }
-            } label: {
-                tabLabel(.chartLab)
-            }
-
             Tab(value: MainTab.settings) {
                 SettingsView()
             } label: {
@@ -340,10 +332,6 @@ struct MainTabView: View {
             case .markets:
                 NavigationStack {
                     MarketsView()
-                }
-            case .chartLab:
-                NavigationStack {
-                    ChartLabView()
                 }
             case .settings:
                 SettingsView(allowsSplitLayout: false)
@@ -536,7 +524,6 @@ enum MainTab: String, Hashable, CaseIterable {
     case wallet
     case activity
     case markets
-    case chartLab
     case settings
 
     /// The `@AppStorage` / `UserDefaults` key the selected tab persists
@@ -551,7 +538,6 @@ enum MainTab: String, Hashable, CaseIterable {
         case .wallet:   return "Wallet"
         case .activity: return "Activity"
         case .markets:  return "Markets"
-        case .chartLab: return "Chart Lab"
         case .settings: return "Settings"
         }
     }
@@ -561,7 +547,6 @@ enum MainTab: String, Hashable, CaseIterable {
         case .wallet:   return "wallet.bifold"
         case .activity: return "clock.arrow.circlepath"
         case .markets:  return "chart.line.uptrend.xyaxis"
-        case .chartLab: return "chart.xyaxis.line"
         case .settings: return "gearshape"
         }
     }
@@ -571,7 +556,6 @@ enum MainTab: String, Hashable, CaseIterable {
         case .wallet:   return .blue
         case .activity: return .orange
         case .markets:  return .green
-        case .chartLab: return .purple
         case .settings: return .gray
         }
     }
