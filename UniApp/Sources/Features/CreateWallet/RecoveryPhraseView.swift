@@ -327,7 +327,7 @@ struct RecoveryPhraseView: View {
 
     /// Footer: [Copy | Back up now] on one row, Skip for now full-width below.
     private var actionRegion: some View {
-        VStack(spacing: UniSpacing.m) {
+        VStack(spacing: UniSpacing.mPlus) {
             GeometryReader { proxy in
                 let availableWidth = max(0, proxy.size.width - UniSpacing.s)
                 HStack(spacing: UniSpacing.s) {
