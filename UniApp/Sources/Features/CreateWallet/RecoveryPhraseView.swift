@@ -124,12 +124,12 @@ struct RecoveryPhraseView: View {
             .padding(.top, UniSpacing.m)
             .padding(.bottom, UniSpacing.l)
         }
+        .background(UniColors.Background.primary.ignoresSafeArea())
         .safeAreaInset(edge: .bottom) {
             actionRegion
                 .padding(.horizontal, UniSpacing.l)
                 .padding(.top, UniSpacing.s)
                 .padding(.bottom, UniSpacing.l)
-                .background(UniColors.Background.primary.ignoresSafeArea(edges: .bottom))
         }
         .navigationTitle(Text("Recovery Phrase"))
         .navigationBarTitleDisplayMode(.inline)
