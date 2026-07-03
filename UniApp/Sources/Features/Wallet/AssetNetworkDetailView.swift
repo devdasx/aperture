@@ -68,7 +68,6 @@ struct AssetNetworkDetailView: View {
         List {
             heroCardSection
             actionsSection
-            addressSection
             activitySection
             footerSection
         }
@@ -363,28 +362,6 @@ struct AssetNetworkDetailView: View {
         let amount = networkRow?.amount ?? .zero
         let amountText = WalletFormatting.native(amount, decimals: 6)
         return "\(amountText) \(identity.symbol)"
-    }
-
-    // MARK: - Address section
-
-    @ViewBuilder
-    private var addressSection: some View {
-        if let address = walletAddress {
-            Section {
-                VStack(alignment: .leading, spacing: UniSpacing.xxs) {
-                    Text("Your address")
-                        .font(UniTypography.footnote)
-                        .foregroundStyle(UniColors.Text.secondary)
-                    Text(verbatim: address.address)
-                        .font(UniTypography.monoBody)
-                        .foregroundStyle(UniColors.Text.primary)
-                        .textSelection(.enabled)
-                        .lineLimit(2)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                .padding(.vertical, UniSpacing.xxs)
-            }
-        }
     }
 
     // MARK: - Activity section
