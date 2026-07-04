@@ -1,5 +1,4 @@
 import SwiftUI
-import SwiftData
 
 /// Settings → Security. Single surface for all device-side
 /// authentication: PIN enable/change/disable, biometric toggle,
@@ -16,7 +15,6 @@ struct SecuritySettingsView: View {
     // in `AppLockView` against `PinCodeStorage`'s dedicated unlock counter.
     @AppStorage("eraseDataAfterFailedAttempts") private var eraseDataEnabled: Bool = false
     @AppStorage(AutoLockPreference.storageKey) private var autoLockRaw: Int = AutoLockPreference.defaultValue
-    @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
 
     @State private var isShowingPinSetup: Bool = false
@@ -418,7 +416,7 @@ struct SecuritySettingsView: View {
         )
         if case .success = outcome {
             setBiometricEnabled(true)
-            BiometricEnrollmentTracker.captureSnapshot(in: modelContext.container)
+            BiometricEnrollmentTracker.captureSnapshot(database: AppDatabase.shared)
         } else {
             setBiometricEnabled(false)
         }

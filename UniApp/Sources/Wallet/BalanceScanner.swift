@@ -1,5 +1,4 @@
 import Foundation
-import SwiftData
 import OSLog
 
 /// One per-chain balance snapshot. `nativeBalance` is in the chain's
@@ -60,7 +59,7 @@ actor WalletDataRefreshCoordinator {
     func refresh(
         walletId: UUID,
         currencyCode: String,
-        modelContainer: ModelContainer,
+        database: AppDatabase,
         userInitiated: Bool = false,
         mode: RefreshMode = .full
     ) async {
@@ -87,11 +86,11 @@ actor WalletDataRefreshCoordinator {
         }
 
         let token = UUID()
-        let task = Task { [walletId, currencyCode, modelContainer, userInitiated, mode] in
+        let task = Task { [walletId, currencyCode, database, userInitiated, mode] in
             await self.performRefresh(
                 walletId: walletId,
                 currencyCode: currencyCode,
-                modelContainer: modelContainer,
+                database: database,
                 userInitiated: userInitiated,
                 mode: mode
             )
@@ -106,7 +105,7 @@ actor WalletDataRefreshCoordinator {
     private func performRefresh(
         walletId: UUID,
         currencyCode: String,
-        modelContainer: ModelContainer,
+        database: AppDatabase,
         userInitiated: Bool = false,
         mode: RefreshMode = .full
     ) async {
@@ -129,7 +128,7 @@ actor WalletDataRefreshCoordinator {
             ]
         )
 
-        let walletRepository = WalletRepository(modelContainer: modelContainer)
+        let walletRepository = WalletRepository(database: database)
         let addressLoadStart = Date()
         let addressSnapshots = (try? await walletRepository.addresses(walletId: walletId)) ?? []
         let addressByChain = Dictionary(addressSnapshots.map { ($0.chain, $0) }, uniquingKeysWith: { first, _ in first })
@@ -189,7 +188,7 @@ actor WalletDataRefreshCoordinator {
                 try await bitcoinScanner.scanAndPersist(
                     walletId: walletId,
                     currencyCode: normalizedCurrency,
-                    modelContainer: modelContainer,
+                    database: database,
                     includePrices: includePrices,
                     includeHistory: includeHistory
                 )
@@ -204,7 +203,7 @@ actor WalletDataRefreshCoordinator {
                 try await bitcoinCashScanner.scanAndPersist(
                     walletId: walletId,
                     currencyCode: normalizedCurrency,
-                    modelContainer: modelContainer,
+                    database: database,
                     includePrices: includePrices
                 )
             }
@@ -220,7 +219,7 @@ actor WalletDataRefreshCoordinator {
                         walletId: walletId,
                         address: address,
                         currencyCode: normalizedCurrency,
-                        modelContainer: modelContainer,
+                        database: database,
                         includePrices: includePrices,
                         includeHistory: includeHistory
                     )
@@ -237,7 +236,7 @@ actor WalletDataRefreshCoordinator {
                     walletId: walletId,
                     address: address,
                     currencyCode: normalizedCurrency,
-                    modelContainer: modelContainer,
+                    database: database,
                     includePrices: includePrices,
                     includeHistory: includeHistory
                 )
@@ -253,7 +252,7 @@ actor WalletDataRefreshCoordinator {
                     walletId: walletId,
                     address: address,
                     currencyCode: normalizedCurrency,
-                    modelContainer: modelContainer,
+                    database: database,
                     includePrices: includePrices,
                     includeHistory: includeHistory
                 )
@@ -269,7 +268,7 @@ actor WalletDataRefreshCoordinator {
                     walletId: walletId,
                     address: address,
                     currencyCode: normalizedCurrency,
-                    modelContainer: modelContainer,
+                    database: database,
                     includePrices: includePrices,
                     includeHistory: includeHistory
                 )
@@ -285,7 +284,7 @@ actor WalletDataRefreshCoordinator {
                     walletId: walletId,
                     address: address,
                     currencyCode: normalizedCurrency,
-                    modelContainer: modelContainer,
+                    database: database,
                     includePrices: includePrices,
                     includeHistory: includeHistory
                 )
@@ -301,7 +300,7 @@ actor WalletDataRefreshCoordinator {
                     walletId: walletId,
                     address: address,
                     currencyCode: normalizedCurrency,
-                    modelContainer: modelContainer,
+                    database: database,
                     includePrices: includePrices,
                     includeHistory: includeHistory
                 )
@@ -317,7 +316,7 @@ actor WalletDataRefreshCoordinator {
                     walletId: walletId,
                     address: address,
                     currencyCode: normalizedCurrency,
-                    modelContainer: modelContainer,
+                    database: database,
                     includePrices: includePrices,
                     includeHistory: includeHistory
                 )
@@ -333,7 +332,7 @@ actor WalletDataRefreshCoordinator {
                     walletId: walletId,
                     address: address,
                     currencyCode: normalizedCurrency,
-                    modelContainer: modelContainer,
+                    database: database,
                     includePrices: includePrices,
                     includeHistory: includeHistory
                 )
@@ -349,7 +348,7 @@ actor WalletDataRefreshCoordinator {
                     walletId: walletId,
                     address: address,
                     currencyCode: normalizedCurrency,
-                    modelContainer: modelContainer,
+                    database: database,
                     includePrices: includePrices,
                     includeHistory: includeHistory
                 )
@@ -365,7 +364,7 @@ actor WalletDataRefreshCoordinator {
                     walletId: walletId,
                     address: address,
                     currencyCode: normalizedCurrency,
-                    modelContainer: modelContainer,
+                    database: database,
                     includePrices: includePrices,
                     includeHistory: includeHistory
                 )
@@ -382,7 +381,7 @@ actor WalletDataRefreshCoordinator {
                         walletId: walletId,
                         address: address,
                         currencyCode: normalizedCurrency,
-                        modelContainer: modelContainer,
+                        database: database,
                         includePrices: includePrices,
                         includeHistory: includeHistory
                     )
@@ -447,7 +446,7 @@ actor WalletDataRefreshCoordinator {
 
         if !attemptedChains.isEmpty {
             let rebuildStart = Date()
-            let rebuilt = try? await ChainStateRepository(modelContainer: modelContainer).rebuild(
+            let rebuilt = try? await ChainStateRepository(database: database).rebuild(
                 walletId: walletId,
                 fiatCurrencyCode: normalizedCurrency,
                 onlyChains: attemptedChains,
@@ -470,7 +469,7 @@ actor WalletDataRefreshCoordinator {
             )
         }
         let chartSnapshotStart = Date()
-        let chartSnapshot = try? await WalletChartSnapshotRepository(modelContainer: modelContainer)
+        let chartSnapshot = try? await WalletChartSnapshotRepository(database: database)
             .captureFromPersistedBalances(
                 walletId: walletId,
                 currencyCode: normalizedCurrency
@@ -584,7 +583,7 @@ private actor StellarBalanceHistoryScanner {
         walletId: UUID,
         address: WalletRepository.AddressSnapshot,
         currencyCode: String,
-        modelContainer: ModelContainer,
+        database: AppDatabase,
         includePrices: Bool = true,
         includeHistory: Bool = true
     ) async throws {
@@ -609,7 +608,7 @@ private actor StellarBalanceHistoryScanner {
         let payments = await paymentsTask
         let transactions = await transactionsTask
 
-        let txRepo = TransactionRepository(modelContainer: modelContainer)
+        let txRepo = TransactionRepository(database: database)
         try await txRepo.upsertBalance(
             addressId: address.id,
             tokenSymbol: SupportedChain.stellar.ticker,
@@ -651,7 +650,7 @@ private actor StellarBalanceHistoryScanner {
         try await txRepo.markScanComplete(addressId: address.id, isUsed: isUsed, save: false)
         try await txRepo.flush()
 
-        _ = try await ChainStateRepository(modelContainer: modelContainer).rebuild(
+        _ = try await ChainStateRepository(database: database).rebuild(
             walletId: walletId,
             fiatCurrencyCode: currencyCode,
             onlyChains: [.stellar],
@@ -1004,7 +1003,7 @@ private actor PolkadotBalanceHistoryScanner {
         walletId: UUID,
         address: WalletRepository.AddressSnapshot,
         currencyCode: String,
-        modelContainer: ModelContainer,
+        database: AppDatabase,
         includePrices: Bool = true,
         includeHistory: Bool = true
     ) async throws {
@@ -1036,7 +1035,7 @@ private actor PolkadotBalanceHistoryScanner {
             assetHubNative.totalPlancks
         )
 
-        let txRepo = TransactionRepository(modelContainer: modelContainer)
+        let txRepo = TransactionRepository(database: database)
         try await txRepo.upsertBalance(
             addressId: address.id,
             tokenSymbol: SupportedChain.polkadot.ticker,
@@ -1098,7 +1097,7 @@ private actor PolkadotBalanceHistoryScanner {
         try await txRepo.markScanComplete(addressId: address.id, isUsed: isUsed, save: false)
         try await txRepo.flush()
 
-        _ = try await ChainStateRepository(modelContainer: modelContainer).rebuild(
+        _ = try await ChainStateRepository(database: database).rebuild(
             walletId: walletId,
             fiatCurrencyCode: currencyCode,
             onlyChains: [.polkadot],
@@ -1755,7 +1754,7 @@ private actor SolanaBalanceHistoryScanner {
         walletId: UUID,
         address: WalletRepository.AddressSnapshot,
         currencyCode: String,
-        modelContainer: ModelContainer,
+        database: AppDatabase,
         includePrices: Bool = true,
         includeHistory: Bool = true
     ) async throws {
@@ -1787,7 +1786,7 @@ private actor SolanaBalanceHistoryScanner {
         let priceMap = await pricesTask
         let events = await historyTask
 
-        let txRepo = TransactionRepository(modelContainer: modelContainer)
+        let txRepo = TransactionRepository(database: database)
         try await txRepo.upsertBalance(
             addressId: address.id,
             tokenSymbol: SupportedChain.solana.ticker,
@@ -1849,7 +1848,7 @@ private actor SolanaBalanceHistoryScanner {
         try await txRepo.markScanComplete(addressId: address.id, isUsed: isUsed, save: false)
         try await txRepo.flush()
 
-        _ = try await ChainStateRepository(modelContainer: modelContainer).rebuild(
+        _ = try await ChainStateRepository(database: database).rebuild(
             walletId: walletId,
             fiatCurrencyCode: currencyCode,
             onlyChains: [.solana],
@@ -2460,7 +2459,7 @@ private actor PublicNodeEVMBalanceScanner {
         walletId: UUID,
         address: WalletRepository.AddressSnapshot,
         currencyCode: String,
-        modelContainer: ModelContainer,
+        database: AppDatabase,
         includePrices: Bool = true,
         includeHistory: Bool = true
     ) async throws {
@@ -2491,7 +2490,7 @@ private actor PublicNodeEVMBalanceScanner {
         let txCount = await transactionCount
         let historyEvents = await transactionHistory
 
-        let txRepo = TransactionRepository(modelContainer: modelContainer)
+        let txRepo = TransactionRepository(database: database)
         try await txRepo.upsertBalance(
             addressId: address.id,
             tokenSymbol: chain.ticker,
@@ -2539,7 +2538,7 @@ private actor PublicNodeEVMBalanceScanner {
 
         try await txRepo.markScanComplete(addressId: address.id, isUsed: isUsed, save: false)
         try await txRepo.flush()
-        _ = try await ChainStateRepository(modelContainer: modelContainer).rebuild(
+        _ = try await ChainStateRepository(database: database).rebuild(
             walletId: walletId,
             fiatCurrencyCode: currencyCode,
             onlyChains: [chain],
@@ -2891,7 +2890,7 @@ actor WalletBackgroundWorkCoordinator {
     func refreshBalances(
         walletId: UUID,
         currencyCode: String,
-        modelContainer: ModelContainer,
+        database: AppDatabase,
         userInitiated: Bool
     ) async {
         await runReplacing(
@@ -2899,11 +2898,11 @@ actor WalletBackgroundWorkCoordinator {
             walletId: walletId,
             waitsForCompletion: true
         ) {
-            await TokenPricingEngine.shared.configure(container: modelContainer)
+            await TokenPricingEngine.shared.configure(database: database)
             await WalletDataRefreshCoordinator.shared.refresh(
                 walletId: walletId,
                 currencyCode: currencyCode,
-                modelContainer: modelContainer,
+                database: database,
                 userInitiated: userInitiated,
                 mode: .balancesOnly
             )
@@ -2913,7 +2912,7 @@ actor WalletBackgroundWorkCoordinator {
     func startFullRefresh(
         walletId: UUID,
         currencyCode: String,
-        modelContainer: ModelContainer
+        database: AppDatabase
     ) {
         Task {
             await runReplacing(
@@ -2921,11 +2920,11 @@ actor WalletBackgroundWorkCoordinator {
                 walletId: walletId,
                 waitsForCompletion: false
             ) {
-                await TokenPricingEngine.shared.configure(container: modelContainer)
+                await TokenPricingEngine.shared.configure(database: database)
                 await WalletDataRefreshCoordinator.shared.refresh(
                     walletId: walletId,
                     currencyCode: currencyCode,
-                    modelContainer: modelContainer,
+                    database: database,
                     userInitiated: false,
                     mode: .full
                 )
@@ -2937,7 +2936,7 @@ actor WalletBackgroundWorkCoordinator {
         walletId: UUID,
         symbols: [String],
         currencyCode: String,
-        modelContainer: ModelContainer
+        database: AppDatabase
     ) {
         Task {
             await runReplacing(
@@ -2945,7 +2944,7 @@ actor WalletBackgroundWorkCoordinator {
                 walletId: walletId,
                 waitsForCompletion: false
             ) {
-                await TokenPricingEngine.shared.configure(container: modelContainer)
+                await TokenPricingEngine.shared.configure(database: database)
                 _ = await TokenPricingEngine.shared.unitPrices(symbols: symbols, currencyCode: currencyCode)
             }
         }
@@ -2954,7 +2953,7 @@ actor WalletBackgroundWorkCoordinator {
     func startChartSnapshot(
         walletId: UUID,
         currencyCode: String,
-        modelContainer: ModelContainer
+        database: AppDatabase
     ) {
         Task {
             await runReplacing(
@@ -2962,20 +2961,20 @@ actor WalletBackgroundWorkCoordinator {
                 walletId: walletId,
                 waitsForCompletion: false
             ) {
-                _ = try? await WalletChartSnapshotRepository(modelContainer: modelContainer)
+                _ = try? await WalletChartSnapshotRepository(database: database)
                     .captureFromPersistedBalances(walletId: walletId, currencyCode: currencyCode)
             }
         }
     }
 
-    func startChainKeyBackfill(walletId: UUID, modelContainer: ModelContainer) {
+    func startChainKeyBackfill(walletId: UUID, database: AppDatabase) {
         Task {
             await runReplacing(
                 type: .chainKeys,
                 walletId: walletId,
                 waitsForCompletion: false
             ) {
-                try? await WalletRepository(modelContainer: modelContainer)
+                try? await WalletRepository(database: database)
                     .backfillEncryptedChainKeysFromStoredSecrets()
             }
         }

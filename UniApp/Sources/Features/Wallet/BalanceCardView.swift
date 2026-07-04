@@ -759,7 +759,7 @@ struct BalanceCardView: View {
 
     private func rebuild() async {
         // Snapshot the few needed transaction fields on the main actor (these
-        // are main-context @Models), then run the transaction-only
+        // are main-context records), then run the transaction-only
         // reconstruction OFF the main actor. Prices only translate transaction
         // amounts into the active local currency.
         let txSnapshots = transactions.map {

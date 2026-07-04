@@ -80,7 +80,7 @@ import SwiftUI
 /// auditable property we want.
 ///
 /// **Identity (`assetID`).** A hidden / pinned entry needs to
-/// survive the lifecycle of a token balance row in SwiftData
+/// survive the lifecycle of a token balance row in GRDB
 /// (which can be re-created on every scan). The identifier is
 /// `chainRaw | contract | symbol` — a string the row builder
 /// reconstructs deterministically from `WalletCoinSupportedRow` /

@@ -1,5 +1,5 @@
 import SwiftUI
-import SwiftData
+import GRDB
 
 struct ReceiveSolanaAccountSearchSheet: View {
     let activeAddress: String
@@ -7,7 +7,6 @@ struct ReceiveSolanaAccountSearchSheet: View {
     let onUseAddress: (String) -> Void
 
     @Environment(\.dismiss) private var dismiss
-    @Environment(\.modelContext) private var modelContext
     @AppStorage(CurrencyPreference.storageKey) private var currencyCode: String = CurrencyPreference.defaultCode
 
     @State private var fromIndex: String = "0"
@@ -390,7 +389,7 @@ struct ReceiveSolanaAccountSearchSheet: View {
         switch wallet.kind {
         case .created, .importedMnemonic:
             guard !wallet.hasPassphrase else { throw SolanaReceiveAccountSearchError.passphraseWallet }
-            guard let words = try WalletSecretPersistence.loadMnemonic(for: wallet.id, in: modelContext),
+            guard let words = try WalletSecretPersistence.loadMnemonic(for: wallet.id, database: AppDatabase.shared),
                   !words.isEmpty else {
                 throw SolanaReceiveAccountSearchError.missingMnemonic
             }
@@ -429,42 +428,73 @@ struct ReceiveSolanaAccountSearchSheet: View {
         wallet: WalletRecord,
         result: SolanaReceiveAccountSearchResult
     ) throws -> UUID {
-        let walletId = Optional(wallet.id)
         let chainRaw = SupportedChain.solana.rawValue
-        let descriptor = FetchDescriptor<WalletAddressRecord>(
-            predicate: #Predicate { $0.walletId == walletId && $0.chainRaw == chainRaw }
-        )
-        var rows = try modelContext.fetch(descriptor)
-
-        let row: WalletAddressRecord
-        if let existing = rows.first(where: { $0.address == result.address }) {
-            row = existing
-        } else {
-            row = WalletAddressRecord(
-                walletId: wallet.id,
-                chainRaw: SupportedChain.solana.rawValue,
-                address: result.address,
-                derivationPath: result.derivationPath,
-                isUsed: result.isUsed,
-                isReceivePreferred: true
+        return try AppDatabase.shared.write { db in
+            let existingIdRaw = try String.fetchOne(
+                db,
+                sql: """
+                SELECT id FROM wallet_addresses
+                WHERE wallet_id = ? AND chain_raw = ? AND address = ?
+                LIMIT 1
+                """,
+                arguments: [wallet.id.uuidString, chainRaw, result.address]
             )
-            row.wallet = wallet
-            modelContext.insert(row)
-            rows.append(row)
-        }
+            let addressId = existingIdRaw.flatMap(UUID.init(uuidString:)) ?? UUID()
+            let now = Date.databaseMilliseconds
 
-        for existing in rows where existing.id != row.id {
-            existing.isReceivePreferred = false
-        }
-        row.isReceivePreferred = true
-        row.isUsed = row.isUsed || result.isUsed
-        row.lastScannedAt = Date()
-        if row.derivationPath.isEmpty || row.derivationPath == "m/44'/501'/0'/0'" {
-            row.derivationPath = result.derivationPath
-        }
+            try db.execute(
+                sql: """
+                UPDATE wallet_addresses
+                SET is_receive_preferred = 0
+                WHERE wallet_id = ? AND chain_raw = ?
+                """,
+                arguments: [wallet.id.uuidString, chainRaw]
+            )
 
-        try modelContext.save()
-        return row.id
+            if existingIdRaw != nil {
+                let replacementPath = result.derivationPath
+                try db.execute(
+                    sql: """
+                    UPDATE wallet_addresses
+                    SET derivation_path = CASE
+                            WHEN derivation_path = '' OR derivation_path = ? THEN ?
+                            ELSE derivation_path
+                        END,
+                        is_used = CASE WHEN is_used = 1 OR ? = 1 THEN 1 ELSE 0 END,
+                        is_receive_preferred = 1,
+                        last_scanned_at_ms = ?
+                    WHERE id = ?
+                    """,
+                    arguments: [
+                        "m/44'/501'/0'/0'",
+                        replacementPath,
+                        result.isUsed ? 1 : 0,
+                        now,
+                        addressId.uuidString
+                    ]
+                )
+            } else {
+                try db.execute(
+                    sql: """
+                    INSERT INTO wallet_addresses
+                    (id, wallet_id, chain_raw, address, derivation_path,
+                     is_used, is_receive_preferred, last_scanned_at_ms)
+                    VALUES (?, ?, ?, ?, ?, ?, 1, ?)
+                    """,
+                    arguments: [
+                        addressId.uuidString,
+                        wallet.id.uuidString,
+                        chainRaw,
+                        result.address,
+                        result.derivationPath,
+                        result.isUsed ? 1 : 0,
+                        now
+                    ]
+                )
+            }
+
+            return addressId
+        }
     }
 
     private func persistBalances(
@@ -472,7 +502,7 @@ struct ReceiveSolanaAccountSearchSheet: View {
         walletId: UUID,
         result: SolanaReceiveAccountSearchResult
     ) async throws {
-        let txRepo = TransactionRepository(modelContainer: modelContext.container)
+        let txRepo = TransactionRepository(database: AppDatabase.shared)
         try await txRepo.upsertBalance(
             addressId: addressId,
             tokenSymbol: SupportedChain.solana.ticker,
@@ -498,7 +528,7 @@ struct ReceiveSolanaAccountSearchSheet: View {
         try await txRepo.markScanComplete(addressId: addressId, isUsed: result.isUsed, save: false)
         try await txRepo.flush()
 
-        let chainStateRepo = ChainStateRepository(modelContainer: modelContext.container)
+        let chainStateRepo = ChainStateRepository(database: AppDatabase.shared)
         _ = try await chainStateRepo.rebuild(
             walletId: walletId,
             fiatCurrencyCode: currencyCode,

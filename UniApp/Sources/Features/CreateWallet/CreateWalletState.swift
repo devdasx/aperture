@@ -137,8 +137,8 @@ final class CreateWalletState {
     }
 
     /// Persist this wallet end-to-end: encrypt + store the 64-byte
-    /// seed in `SeedVault` (Keychain), then insert the `WalletRecord`
-    /// (SwiftData) via the supplied `WalletRepository`. Both writes are
+    /// seed in `SeedVault` (Keychain), then insert the wallet rows
+    /// via the supplied `WalletCommandRepository`. Both writes are
     /// gated on each other — if the Keychain write fails, the database
     /// row is not inserted (the seed is the wallet; there's no point
     /// storing metadata for a wallet whose key material we couldn't
@@ -146,9 +146,7 @@ final class CreateWalletState {
     /// the Keychain item is removed to leave consistent state.
     ///
     /// - parameters:
-    ///   - repository: a `WalletRepository` bound to the app's
-    ///     `ModelContainer` (typically built ad-hoc by the caller as
-    ///     `WalletRepository(modelContainer: container)`).
+    ///   - repository: a GRDB-backed `WalletCommandRepository`.
     ///   - requiresBackup: `true` when the user reached this method via
     ///     the skip-backup branch (they have not yet verified the
     ///     phrase). Used to set the `WalletRecord.requiresBackup`
@@ -157,11 +155,11 @@ final class CreateWalletState {
     /// - returns: the persisted wallet's UUID (same as
     ///   `pendingWalletId`).
     /// - throws: `SeedVault.VaultError` if Keychain refuses; any
-    ///   SwiftData error if the row insert fails. Caller surfaces the
+    ///   database error if the row insert fails. Caller surfaces the
     ///   error via the wallet-ready screen's error state.
     @discardableResult
     func persist(
-        into repository: WalletRepository,
+        into repository: WalletCommandRepository,
         requiresBackup: Bool,
         manualBackup: Bool = false,
         defaultName: String? = nil
@@ -260,8 +258,8 @@ final class CreateWalletState {
         }
 
         // The wallet is now fully persisted (seed in Keychain,
-        // mnemonic encrypted in SwiftData + compatibility Keychain storage,
-        // metadata in SwiftData).
+        // mnemonic encrypted in SQLite + compatibility Keychain storage,
+        // metadata in SQLite).
         // Make it the active wallet immediately so the user lands
         // on it after WalletReadyView and so the refresh coordinator
         // starts pulling balances/history/tokens for it. Persisted

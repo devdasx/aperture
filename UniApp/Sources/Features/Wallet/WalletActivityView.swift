@@ -1,5 +1,4 @@
 import SwiftUI
-import SwiftData
 
 /// **"View all" destination** behind the wallet-home "Recent activity"
 /// header's `View all` link. Lists EVERY transaction across EVERY
@@ -30,30 +29,29 @@ import SwiftData
 ///
 /// **Wallet truth (matches `WalletHomeView`).** The active wallet is
 /// resolved the same hardened store-truth way the home does — the
-/// `@Query`-backed `allWallets` lags repository inserts/switches, so a
+/// GRDB observation-backed `allWallets` lags repository inserts/switches, so a
 /// freshly-switched or freshly-imported wallet would otherwise show
 /// the *previous* wallet's history for one merge window. Asking the
-/// store directly (`modelContext.fetch`) closes that gap, so this
+/// store directly (`database.fetch`) closes that gap, so this
 /// screen never shows the wrong wallet's transactions.
 struct WalletActivityView: View {
-    @Environment(\.modelContext) private var modelContext
+    @StateObject private var databaseSnapshot = DatabaseSnapshotObservation()
 
-    @Query(sort: \WalletRecord.sortOrder) private var allWallets: [WalletRecord]
-    /// Top-level transaction feed, newest-first at the STORE level (no
-    /// per-render sort). The same hardened pattern `WalletHomeView` uses:
-    /// filter this by the active wallet's address-id set in ONE in-memory
-    /// pass (`addressId` is a stored column — no relationship faulting),
-    /// instead of `wallet.addresses.flatMap { $0.transactions }` (which
-    /// faults every address's transaction relationship) gated by the
-    /// O(all-tx) `WalletDataFingerprint.make` key recomputed every body
-    /// pass (2026-06-14 Activity-lag fix).
-    @Query(sort: \TransactionRecord.occurredAt, order: .reverse)
-    private var allTransactionRecords: [TransactionRecord]
     @AppStorage("activeWalletId") private var activeWalletIdRaw: String = ""
     // Local-currency activity amounts (2026-06-18): spot prices feed
     // `priceMap` (symbol → unit price in `currencyCode`).
     @AppStorage(CurrencyPreference.storageKey) private var currencyCode: String = CurrencyPreference.defaultCode
-    @Query private var cachedPrices: [CachedPriceRecord]
+    private var allWallets: [WalletRecord] {
+        databaseSnapshot.wallets
+    }
+
+    private var allTransactionRecords: [TransactionRecord] {
+        databaseSnapshot.transactions.sorted { $0.occurredAt > $1.occurredAt }
+    }
+
+    private var cachedPrices: [CachedPriceRecord] {
+        databaseSnapshot.cachedPrices
+    }
 
     private var priceMap: [String: Decimal] {
         ActivityFiat.priceMap(cachedPrices, currency: currencyCode)
@@ -115,9 +113,9 @@ struct WalletActivityView: View {
 
     /// Cheap rebuild key — O(1). Replaces the O(all-tx) data fingerprint.
     /// Wallet switch changes `activeWalletIdRaw`; a new/removed tx changes
-    /// the @Query count. A status change (pending→confirmed, same count)
+    /// the GRDB observation count. A status change (pending→confirmed, same count)
     /// doesn't re-key, but the rows read `tx.statusRaw` live off the
-    /// shared SwiftData reference, so status still updates without a
+    /// shared GRDB reference, so status still updates without a
     /// feed rebuild.
     private var feedKey: String {
         "\(activeWalletIdRaw)|\(allTransactionRecords.count)"
@@ -448,23 +446,11 @@ struct WalletActivityView: View {
     // MARK: - Wallet plumbing (store-truth, matches WalletHomeView)
 
     /// Active wallet resolved with the same hardened precedence the
-    /// wallet-home uses: stored id → `@Query` match → direct store
-    /// fetch (covers the `@Query` merge lag). An explicit missing id
+    /// wallet-home uses: stored id → GRDB observation match → direct store
+    /// fetch (covers the GRDB observation merge lag). An explicit missing id
     /// returns nil instead of showing a different wallet's rows.
     private var activeWallet: WalletRecord? {
-        ActiveWalletResolver.resolve(
-            rawID: activeWalletIdRaw,
-            wallets: allWallets,
-            modelContext: modelContext
-        )
-    }
-
-    private func walletExists(id: UUID) -> Bool {
-        var descriptor = FetchDescriptor<WalletRecord>(
-            predicate: #Predicate { $0.id == id }
-        )
-        descriptor.fetchLimit = 1
-        return ((try? modelContext.fetchCount(descriptor)) ?? 0) > 0
+        ActiveWalletResolver.resolve(rawID: activeWalletIdRaw, wallets: allWallets)
     }
 
     /// Resolves the chain a `TransactionRecord` belongs to. Returns
@@ -830,7 +816,7 @@ struct WalletActivityView: View {
 
 /// Shared day bucketing for wallet-wide and asset-scoped activity lists.
 /// Kept value-based and generic so sectioning stays deterministic and
-/// testable without SwiftData.
+/// testable without GRDB.
 struct ActivityDateSection<Item>: Identifiable {
     let day: Date
     let items: [Item]

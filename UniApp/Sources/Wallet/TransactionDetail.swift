@@ -4,7 +4,7 @@ import Foundation
 /// than the normalized triple stored in `TransactionRecord`
 /// (`TransactionScanner.TransactionEvent`). Built by
 /// `TransactionDetailService` on demand when the user opens the Transaction
-/// Detail screen; it is a pure read (no SwiftData write, no schema
+/// Detail screen; it is a pure read (no GRDB write, no schema
 /// migration) layered over the fast first-paint the stored row already
 /// gives.
 ///

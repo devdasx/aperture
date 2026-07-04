@@ -6,9 +6,9 @@ import Foundation
 /// amount + counterparty triple so the UI renders every chain the
 /// same way.
 ///
-/// **Why a value type and not the SwiftData `TransactionRecord`.** The
+/// **Why a value type and not the GRDB `TransactionRecord`.** The
 /// scanner is a pure read pipeline — it must work the same in test
-/// mode (no SwiftData write) as in real-wallet mode (write through
+/// mode (no GRDB write) as in real-wallet mode (write through
 /// `TransactionRepository`). The value type is the boundary; both
 /// modes share the same fetch + parse stages and diverge only at the
 /// sink.
@@ -36,7 +36,7 @@ struct TransactionEvent: Hashable, Sendable {
     /// Amount as a `Decimal` already divided by the token's decimals
     /// (so 0.001 BTC, not 100_000 sats). Serialize with
     /// `NSDecimalNumber(decimal:).stringValue` when writing to
-    /// SwiftData's `amountRaw` — `String(describing:)` can emit
+    /// GRDB's `amountRaw` — `String(describing:)` can emit
     /// scientific notation that `Decimal(string:)` mis-parses on
     /// read-back.
     let amount: Decimal

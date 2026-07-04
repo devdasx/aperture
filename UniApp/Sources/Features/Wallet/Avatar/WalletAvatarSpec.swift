@@ -20,7 +20,7 @@ import Foundation
 /// **Why Codable / Sendable / Hashable.** Codable for parity with the
 /// design handoff's JSON storage shape (the iOS bundle ships the same
 /// shape the web prototype consumes). Sendable so the spec can cross
-/// actor boundaries (WalletRepository's @ModelActor writes it; SwiftUI
+/// actor boundaries (WalletRepository's repository actor writes it; SwiftUI
 /// views read it). Hashable so `.id(spec)` invalidates a parent view's
 /// child when the spec changes — useful for the picker's live preview.
 ///
@@ -150,7 +150,7 @@ struct WalletAvatarSpec: Hashable, Sendable, Codable {
 
     // MARK: - Hydration from primitive columns
 
-    /// Build a spec from the SwiftData-persisted primitive columns plus
+    /// Build a spec from the GRDB-persisted primitive columns plus
     /// the wallet's name (used for the auto(name) fallback if the
     /// persisted columns are empty — fresh-install / pre-migration row)
     /// and kind (used to derive the type badge).
@@ -159,7 +159,7 @@ struct WalletAvatarSpec: Hashable, Sendable, Codable {
     /// every avatar column at its empty default (the schema defaults
     /// to empty strings on additive columns at decode-time even though
     /// the Swift-level `init` has named defaults — `M-008` documents
-    /// the underlying SwiftData decode-vs-init asymmetry). When ALL
+    /// the underlying GRDB decode-vs-init asymmetry). When ALL
     /// avatar columns are empty we compute `auto(name)` to land a
     /// deterministic, on-brand identity — the design handoff's hard
     /// rule #3: *"New wallets default via deterministic auto(name)
@@ -367,8 +367,8 @@ struct WalletAvatarSpec: Hashable, Sendable, Codable {
     ///
     /// **Why not call this from `auto(name:)`.** Several surfaces use
     /// `auto(name:)` as a fallback when the active wallet is briefly
-    /// nil (cold-launch frame between SwiftData open and the first
-    /// `@Query` snapshot). If those calls were random, the tab icon
+    /// nil (cold-launch frame between GRDB open and the first
+    /// GRDB observation snapshot). If those calls were random, the tab icon
     /// would flash a different color on every body recompute. Keeping
     /// `auto(name:)` deterministic and adding `randomDefault()`
     /// exclusively for the new-wallet write paths preserves stability

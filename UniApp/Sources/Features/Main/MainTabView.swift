@@ -1,5 +1,4 @@
 import SwiftUI
-import SwiftData
 import UIKit
 import TipKit
 
@@ -94,12 +93,7 @@ struct MainTabView: View {
     /// updates both atomically.
     @AppStorage("activeWalletId") private var activeWalletIdRaw: String = ""
 
-    /// Every persisted wallet, sorted by user-chosen display order.
-    /// Drives the Wallet tab icon's active-wallet lookup. `@Query`
-    /// reactivity means adding / deleting / renaming / re-skinning
-    /// a wallet from any surface shows up here live without any
-    /// per-surface refresh logic.
-    @Query(sort: \WalletRecord.sortOrder) private var allWallets: [WalletRecord]
+    @StateObject private var walletList = WalletListObservation()
 
     /// iPad adaptation: compact width uses the shipping iPhone
     /// `TabView`; regular width uses one root `NavigationSplitView`
@@ -152,8 +146,12 @@ struct MainTabView: View {
     /// An explicit stale ID returns nil instead of falling back to another
     /// wallet, so the tab bar never shows the previous wallet's avatar while
     /// a switch/create/import is settling.
-    private var activeWallet: WalletRecord? {
-        ActiveWalletResolver.resolve(rawID: activeWalletIdRaw, wallets: allWallets)
+    private var allWallets: [WalletListRowDTO] {
+        walletList.wallets
+    }
+
+    private var activeWallet: WalletListRowDTO? {
+        walletList.activeWallet(rawID: activeWalletIdRaw)
     }
 
     private var currentTab: MainTab {
@@ -367,7 +365,7 @@ struct MainTabView: View {
     // **Reactivity.** `buildWalletTabMenu()` runs every time the
     // interaction fires (the `TabBarLongPressInstaller` calls the
     // closure lazily, not at view body), so the menu reflects the
-    // live `@Query` snapshot. A wallet renamed in Settings shows up
+    // live GRDB observation snapshot. A wallet renamed in Settings shows up
     // with its new name on the next long-press without any cache
     // invalidation step.
     //
@@ -481,7 +479,7 @@ struct MainTabView: View {
     /// downscale produces a crisp result at the system's ~22-26pt
     /// menu-icon envelope.
     @MainActor
-    private func renderWalletAvatarMenuImage(for wallet: WalletRecord) -> UIImage {
+    private func renderWalletAvatarMenuImage(for wallet: WalletListRowDTO) -> UIImage {
         let renderer = ImageRenderer(
             content: WalletAvatar(spec: wallet.avatarSpec, size: .row)
                 .frame(width: 96, height: 96)

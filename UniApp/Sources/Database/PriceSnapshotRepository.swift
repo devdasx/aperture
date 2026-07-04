@@ -1,37 +1,17 @@
 import Foundation
-import SwiftData
+import GRDB
 
-// MARK: - TokenPriceChange
-
-/// One token's 24-hour price movement in one currency, computed
-/// entirely from locally persisted `PriceSnapshotRecord` observations
-/// — no network. Produced by
-/// `PriceSnapshotRepository.change24h(symbol:currency:now:)`.
 struct TokenPriceChange: Sendable {
-    /// Uppercased ticker the change describes.
     let symbol: String
-    /// Uppercased fiat code both prices are denominated in.
     let currencyCode: String
-    /// The newest persisted price (the "now" side of the comparison).
     let currentPrice: Decimal
-    /// When `currentPrice` was fetched.
     let currentAt: Date
-    /// The ~24h-ago reference price (nearest-neighbor — see
-    /// `change24h`'s rule).
     let referencePrice: Decimal
-    /// When `referencePrice` was fetched.
     let referenceAt: Date
-    /// `currentPrice - referencePrice`. Positive = price went up.
     let absolute: Decimal
-    /// `absolute / referencePrice × 100`. Exact `Decimal` math.
     let percent: Decimal
 }
 
-// MARK: - PriceObservation
-
-/// Lightweight sendable price observation used by UI/chart callers.
-/// This keeps SwiftData rows inside the repository actor and lets views
-/// consume only value snapshots.
 struct PriceObservation: Sendable {
     let symbol: String
     let currencyCode: String
@@ -39,211 +19,153 @@ struct PriceObservation: Sendable {
     let fetchedAt: Date
 }
 
-// MARK: - PriceSnapshotRepository
-
-/// Actor-isolated owner of the append-only `PriceSnapshotRecord`
-/// table. Three jobs:
-///
-/// 1. **Record** — `record(_:at:)` batch-appends every live quote the
-///    `TokenPricingEngine` resolves, then prunes.
-/// 2. **Answer** — `latest(symbol:currency:)` and
-///    `change24h(symbol:currency:now:)` serve the 24h-change surface
-///    from local observations only.
-/// 3. **Bound** — `prune(now:)` enforces the documented growth bound:
-///    everything ≤ 48 h old kept verbatim; older rows decimated to one
-///    per `(symbol, currency, day)` — the last observation of the day.
-///
-/// Per `CLAUDE.md` Rule #2 §C (actor-isolated repositories).
-@ModelActor
-actor PriceSnapshotRepository {
-
-    /// Raw-retention window: snapshots younger than this are never
-    /// decimated.
+final class PriceSnapshotRepository {
     static let rawRetentionWindow: TimeInterval = 48 * 3600
-
-    /// Half-width of the reference window around the −24 h target used
-    /// by `change24h` — i.e. candidates between 22 h and 26 h old.
     static let referenceWindowHalfWidth: TimeInterval = 2 * 3600
 
-    // MARK: - Record
+    private let database: AppDatabase
 
-    /// Batch-append one observation per entry, all stamped `now`, then
-    /// prune. One save for the whole batch (one batch per pricing-
-    /// ladder run — the `PriceCacheRepository.upsertMany` precedent).
-    ///
-    /// Symbols and currency codes are uppercased by the record's init;
-    /// callers may pass any casing.
+    init(database: AppDatabase = .shared) {
+        self.database = database
+    }
+
     func record(
         _ entries: [(symbol: String, currencyCode: String, price: Decimal, source: String)],
         at now: Date = Date()
     ) throws {
         guard !entries.isEmpty else { return }
-        for entry in entries {
-            modelContext.insert(PriceSnapshotRecord(
-                symbol: entry.symbol,
-                currencyCode: entry.currencyCode,
-                price: entry.price,
-                fetchedAt: now,
-                source: entry.source
-            ))
+        let nowMs = now.databaseMilliseconds
+        try database.write { db in
+            for entry in entries {
+                let symbol = entry.symbol.uppercased()
+                let currency = entry.currencyCode.uppercased()
+                try db.execute(
+                    sql: """
+                    INSERT INTO price_snapshots
+                    (id, symbol, currency_code, price, price_numeric, fetched_at_ms, source, day_key)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    arguments: [
+                        UUID().uuidString,
+                        symbol,
+                        currency,
+                        entry.price.databaseText,
+                        entry.price.databaseDouble,
+                        nowMs,
+                        entry.source,
+                        DayKey.from(date: now)
+                    ]
+                )
+            }
+            try prune(db: db, now: now)
         }
-        // Rule #28: stage the inserts AND the prune deletions, then commit
-        // in ONE save (was two — insert-save + prune-save).
-        try prune(now: now, save: false)
-        try modelContext.save()
     }
 
-    // MARK: - Latest
-
-    /// Newest persisted observation for `(symbol, currency)`, or `nil`
-    /// when the pair has never been fetched live.
     func latest(symbol: String, currency: String) throws -> (price: Decimal, fetchedAt: Date)? {
-        guard let record = try latestRecord(symbol: symbol, currency: currency) else { return nil }
-        return (record.price, record.fetchedAt)
+        try database.read { db in
+            guard let row = try latestRow(db: db, symbol: symbol, currency: currency) else { return nil }
+            return (Decimal(string: row["price"] as String) ?? 0, Date(databaseMilliseconds: row["fetched_at_ms"]))
+        }
     }
 
-    private func latestRecord(symbol: String, currency: String) throws -> PriceSnapshotRecord? {
-        let upperSymbol = symbol.uppercased()
-        let upperCurrency = currency.uppercased()
-        var descriptor = FetchDescriptor<PriceSnapshotRecord>(
-            predicate: #Predicate { $0.symbol == upperSymbol && $0.currencyCode == upperCurrency },
-            sortBy: [SortDescriptor(\.fetchedAt, order: .reverse)]
-        )
-        descriptor.fetchLimit = 1
-        return try modelContext.fetch(descriptor).first
-    }
-
-    /// Every persisted observation for `(symbol, currency)`, oldest
-    /// first. Powers diagnostics, the pruning tests, and any future
-    /// local price sparkline.
     func observations(symbol: String, currency: String) throws -> [(price: Decimal, fetchedAt: Date)] {
-        let upperSymbol = symbol.uppercased()
-        let upperCurrency = currency.uppercased()
-        let descriptor = FetchDescriptor<PriceSnapshotRecord>(
-            predicate: #Predicate { $0.symbol == upperSymbol && $0.currencyCode == upperCurrency },
-            sortBy: [SortDescriptor(\.fetchedAt, order: .forward)]
-        )
-        return try modelContext.fetch(descriptor).map { ($0.price, $0.fetchedAt) }
+        let symbol = symbol.uppercased()
+        let currency = currency.uppercased()
+        return try database.read { db in
+            try Row.fetchAll(
+                db,
+                sql: """
+                SELECT price, fetched_at_ms FROM price_snapshots
+                WHERE symbol = ? AND currency_code = ?
+                ORDER BY fetched_at_ms ASC
+                """,
+                arguments: [symbol, currency]
+            ).map { (Decimal(string: $0["price"] as String) ?? 0, Date(databaseMilliseconds: $0["fetched_at_ms"])) }
+        }
     }
 
-    /// Recent observations for a group of symbols in one fiat currency.
-    /// Used by the one-hour wallet chart. The fetch is currency/time
-    /// bounded and the symbol membership test happens inside the actor,
-    /// keeping the SwiftUI render path away from the append-only table.
     func recentObservations(
         symbols: Set<String>,
         currency: String,
         since: Date,
         until: Date = Date()
     ) throws -> [PriceObservation] {
-        let upperSymbols = Set(symbols.map { $0.uppercased() })
-        guard !upperSymbols.isEmpty else { return [] }
+        let wanted = Set(symbols.map { $0.uppercased() })
+        guard !wanted.isEmpty else { return [] }
+        let currency = currency.uppercased()
+        return try database.read { db in
+            let rows = try Row.fetchAll(
+                db,
+                sql: """
+                SELECT symbol, currency_code, price, fetched_at_ms
+                FROM price_snapshots
+                WHERE currency_code = ? AND fetched_at_ms >= ? AND fetched_at_ms <= ? AND price_numeric > 0
+                ORDER BY fetched_at_ms ASC
+                """,
+                arguments: [currency, since.databaseMilliseconds, until.databaseMilliseconds]
+            )
+            return rows.compactMap { row in
+                let symbol: String = row["symbol"]
+                guard wanted.contains(symbol) else { return nil }
+                return PriceObservation(
+                    symbol: symbol,
+                    currencyCode: row["currency_code"],
+                    price: Decimal(string: row["price"] as String) ?? 0,
+                    fetchedAt: Date(databaseMilliseconds: row["fetched_at_ms"])
+                )
+            }
+        }
+    }
 
-        let upperCurrency = currency.uppercased()
-        let descriptor = FetchDescriptor<PriceSnapshotRecord>(
-            predicate: #Predicate { row in
-                row.currencyCode == upperCurrency
-                    && row.fetchedAt >= since
-                    && row.fetchedAt <= until
-                    && row.price > 0
-            },
-            sortBy: [SortDescriptor(\.fetchedAt, order: .forward)]
-        )
-        return try modelContext.fetch(descriptor).compactMap { row in
-            guard upperSymbols.contains(row.symbol.uppercased()) else { return nil }
-            return PriceObservation(
-                symbol: row.symbol,
-                currencyCode: row.currencyCode,
-                price: row.price,
-                fetchedAt: row.fetchedAt
+    func change24h(symbol: String, currency: String, now: Date = Date()) throws -> TokenPriceChange? {
+        let symbol = symbol.uppercased()
+        let currency = currency.uppercased()
+        let windowStart = now.addingTimeInterval(-(24 * 3600 + Self.referenceWindowHalfWidth))
+        let windowEnd = now.addingTimeInterval(-(24 * 3600 - Self.referenceWindowHalfWidth))
+        return try database.read { db in
+            guard
+                let current = try latestRow(db: db, symbol: symbol, currency: currency),
+                Date(databaseMilliseconds: current["fetched_at_ms"]) > windowEnd
+            else { return nil }
+            let rows = try Row.fetchAll(
+                db,
+                sql: """
+                SELECT price, fetched_at_ms
+                FROM price_snapshots
+                WHERE symbol = ? AND currency_code = ? AND fetched_at_ms >= ? AND fetched_at_ms <= ?
+                ORDER BY fetched_at_ms ASC
+                """,
+                arguments: [symbol, currency, windowStart.databaseMilliseconds, windowEnd.databaseMilliseconds]
+            )
+            let target = now.addingTimeInterval(-24 * 3600)
+            var reference: Row?
+            var bestDelta: TimeInterval = .infinity
+            for row in rows {
+                let delta = abs(Date(databaseMilliseconds: row["fetched_at_ms"]).timeIntervalSince(target))
+                if delta < bestDelta {
+                    bestDelta = delta
+                    reference = row
+                }
+            }
+            guard let reference else { return nil }
+            let currentPrice = Decimal(string: current["price"] as String) ?? 0
+            let referencePrice = Decimal(string: reference["price"] as String) ?? 0
+            guard referencePrice > 0 else { return nil }
+            let absolute = currentPrice - referencePrice
+            return TokenPriceChange(
+                symbol: symbol,
+                currencyCode: currency,
+                currentPrice: currentPrice,
+                currentAt: Date(databaseMilliseconds: current["fetched_at_ms"]),
+                referencePrice: referencePrice,
+                referenceAt: Date(databaseMilliseconds: reference["fetched_at_ms"]),
+                absolute: absolute,
+                percent: absolute / referencePrice * 100
             )
         }
     }
 
-    // MARK: - 24h change
-
-    /// Price movement over the last ~24 hours for `(symbol, currency)`.
-    ///
-    /// **Nearest-neighbor rule.** The reference is the snapshot whose
-    /// `fetchedAt` is closest to `now − 24h`, considering ONLY
-    /// snapshots inside the `[now − 26h, now − 24h ± 2h … now − 22h]`
-    /// window (±2 h around the target). Ties — two candidates equally
-    /// distant from the target — resolve to the EARLIER snapshot (the
-    /// ascending scan only replaces the best candidate on a strictly
-    /// smaller delta).
-    ///
-    /// Returns `nil` when the change cannot be stated honestly:
-    /// - no snapshot exists in the ±2 h reference window (the app
-    ///   hasn't been observing prices for ~24 h yet), or
-    /// - the newest snapshot is itself older than 22 h (a "current"
-    ///   price that stale would make the comparison meaningless —
-    ///   refresh prices first), or
-    /// - the reference price is non-positive (cannot divide; corrupt
-    ///   or zero observation).
-    func change24h(
-        symbol: String,
-        currency: String,
-        now: Date = Date()
-    ) throws -> TokenPriceChange? {
-        let upperSymbol = symbol.uppercased()
-        let upperCurrency = currency.uppercased()
-
-        let windowStart = now.addingTimeInterval(-(24 * 3600 + Self.referenceWindowHalfWidth))
-        let windowEnd = now.addingTimeInterval(-(24 * 3600 - Self.referenceWindowHalfWidth))
-
-        guard
-            let current = try latestRecord(symbol: upperSymbol, currency: upperCurrency),
-            current.fetchedAt > windowEnd
-        else {
-            return nil
-        }
-
-        let descriptor = FetchDescriptor<PriceSnapshotRecord>(
-            predicate: #Predicate { row in
-                row.symbol == upperSymbol
-                    && row.currencyCode == upperCurrency
-                    && row.fetchedAt >= windowStart
-                    && row.fetchedAt <= windowEnd
-            },
-            sortBy: [SortDescriptor(\.fetchedAt, order: .forward)]
-        )
-        let candidates = try modelContext.fetch(descriptor)
-
-        let target = now.addingTimeInterval(-24 * 3600)
-        var reference: PriceSnapshotRecord?
-        var bestDelta: TimeInterval = .infinity
-        for row in candidates {
-            let delta = abs(row.fetchedAt.timeIntervalSince(target))
-            if delta < bestDelta {
-                bestDelta = delta
-                reference = row
-            }
-        }
-
-        guard let reference, reference.price > 0 else { return nil }
-
-        let absolute = current.price - reference.price
-        let percent = absolute / reference.price * 100
-        return TokenPriceChange(
-            symbol: upperSymbol,
-            currencyCode: upperCurrency,
-            currentPrice: current.price,
-            currentAt: current.fetchedAt,
-            referencePrice: reference.price,
-            referenceAt: reference.fetchedAt,
-            absolute: absolute,
-            percent: percent
-        )
-    }
-
-    /// Bulk variant for list surfaces — one repository hop for a whole
-    /// token list. Symbols absent from the result had no honest 24h
-    /// answer (see `change24h`'s nil conditions).
-    func changes24h(
-        symbols: [String],
-        currency: String,
-        now: Date = Date()
-    ) throws -> [String: TokenPriceChange] {
+    func changes24h(symbols: [String], currency: String, now: Date = Date()) throws -> [String: TokenPriceChange] {
         var out: [String: TokenPriceChange] = [:]
         for symbol in Set(symbols.map { $0.uppercased() }) {
             if let change = try change24h(symbol: symbol, currency: currency, now: now) {
@@ -253,54 +175,57 @@ actor PriceSnapshotRepository {
         return out
     }
 
-    // MARK: - Prune
-
-    /// Enforce the growth bound: keep every snapshot ≤ 48 h old;
-    /// beyond 48 h decimate to one row per `(symbol, currency, day)` —
-    /// the LAST observation of the day (the `HistoricalPriceRecord`
-    /// daily-close convention). Idempotent; runs after every
-    /// `record(_:at:)` batch.
     func prune(now: Date = Date(), save: Bool = true) throws {
-        let cutoff = now.addingTimeInterval(-Self.rawRetentionWindow)
-        let descriptor = FetchDescriptor<PriceSnapshotRecord>(
-            predicate: #Predicate { $0.fetchedAt < cutoff },
-            sortBy: [SortDescriptor(\.fetchedAt, order: .forward)]
-        )
-        let oldRows = try modelContext.fetch(descriptor)
-        guard !oldRows.isEmpty else { return }
-
-        // Keep the latest row per (symbol, currency, day); delete the
-        // rest. The ascending scan means a later row in the same group
-        // replaces the current keeper (and deletes it).
-        var keeperByGroup: [String: PriceSnapshotRecord] = [:]
-        for row in oldRows {
-            let groupKey = "\(row.symbol)|\(row.currencyCode)|\(row.dayKey)"
-            if let keeper = keeperByGroup[groupKey] {
-                if row.fetchedAt >= keeper.fetchedAt {
-                    modelContext.delete(keeper)
-                    keeperByGroup[groupKey] = row
-                } else {
-                    modelContext.delete(row)
-                }
-            } else {
-                keeperByGroup[groupKey] = row
-            }
-        }
-        if save && modelContext.hasChanges {
-            try modelContext.save()
+        try database.write { db in
+            try prune(db: db, now: now)
         }
     }
 
-    // MARK: - Reset
-
-    /// Wipe every snapshot row. Settings → Advanced "clear price
-    /// cache" class of reset, and the wallet-reset flow, extend to
-    /// this table (see the reset-coverage note in the build report).
     func deleteAll() throws {
-        let descriptor = FetchDescriptor<PriceSnapshotRecord>()
-        for row in try modelContext.fetch(descriptor) {
-            modelContext.delete(row)
+        try database.write { db in try db.execute(sql: "DELETE FROM price_snapshots") }
+    }
+
+    private func latestRow(db: Database, symbol: String, currency: String) throws -> Row? {
+        try Row.fetchOne(
+            db,
+            sql: """
+            SELECT price, fetched_at_ms
+            FROM price_snapshots
+            WHERE symbol = ? AND currency_code = ?
+            ORDER BY fetched_at_ms DESC
+            LIMIT 1
+            """,
+            arguments: [symbol.uppercased(), currency.uppercased()]
+        )
+    }
+
+    private func prune(db: Database, now: Date) throws {
+        let cutoff = now.addingTimeInterval(-Self.rawRetentionWindow).databaseMilliseconds
+        let oldRows = try Row.fetchAll(
+            db,
+            sql: """
+            SELECT id, symbol, currency_code, day_key, fetched_at_ms
+            FROM price_snapshots
+            WHERE fetched_at_ms < ?
+            ORDER BY fetched_at_ms ASC
+            """,
+            arguments: [cutoff]
+        )
+        var keeperByGroup: [String: (id: String, fetchedAt: Int64)] = [:]
+        for row in oldRows {
+            let id: String = row["id"]
+            let groupKey = "\(row["symbol"] as String)|\(row["currency_code"] as String)|\(row["day_key"] as Int)"
+            let fetchedAt: Int64 = row["fetched_at_ms"]
+            if let keeper = keeperByGroup[groupKey] {
+                if fetchedAt >= keeper.fetchedAt {
+                    try db.execute(sql: "DELETE FROM price_snapshots WHERE id = ?", arguments: [keeper.id])
+                    keeperByGroup[groupKey] = (id, fetchedAt)
+                } else {
+                    try db.execute(sql: "DELETE FROM price_snapshots WHERE id = ?", arguments: [id])
+                }
+            } else {
+                keeperByGroup[groupKey] = (id, fetchedAt)
+            }
         }
-        try modelContext.save()
     }
 }

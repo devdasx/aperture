@@ -1,157 +1,65 @@
 import Foundation
-import SwiftData
+import GRDB
 
-/// Background-safe mutation surface for `WalletRecord` + its addresses.
-/// `@ModelActor` gives this actor its own `ModelContext` bound to the
-/// actor's isolation — the main-actor SwiftUI views read via `@Query`
-/// from their own context, this actor writes from its context, and
-/// SwiftData merges across contexts automatically.
-///
-/// **Why an actor.** Per `CLAUDE.md` Rule #2 §C ("actor-isolated
-/// repositories for anything multi-source") and Rule #3 (Swift 6.2
-/// strict concurrency). Wallet creation can happen from the main flow
-/// or from a future background-import path; both share this actor.
-@ModelActor
-actor WalletRepository {
+final class WalletRepository {
     struct AddressSnapshot: Sendable {
         let id: UUID
         let chain: SupportedChain
         let address: String
     }
 
-    private var didBackfillAddressWalletIds = false
+    private let database: AppDatabase
 
-    /// `true` when the backing container is the in-memory fallback
-    /// (`ApertureDatabase.isInMemoryFallback`) rather than the durable
-    /// on-disk store. Read from the container's own configuration so
-    /// the actor doesn't need a main-actor hop to ask the database
-    /// singleton.
-    private var isEphemeralStore: Bool {
-        modelContainer.configurations.contains { $0.isStoredInMemoryOnly }
+    init(database: AppDatabase = .shared) {
+        self.database = database
     }
 
-    /// Custody mutations (create / import / delete) must never run
-    /// against the in-memory fallback container: the SwiftData rows
-    /// would vanish at app exit while the matching Keychain state
-    /// (seed, mnemonic, manifest entry) persisted — permanently
-    /// orphaning a funded wallet's seed behind no record, or wiping a
-    /// real seed the on-disk store still references. Throwing keeps
-    /// the failure honest at the call site instead of silently losing
-    /// a wallet at the next launch.
-    private func ensureDurableStore() throws {
-        guard !isEphemeralStore else {
-            throw WalletRepositoryError.ephemeralStore
-        }
-    }
-
-    /// Mirror the current wallet set into the Keychain manifest — but
-    /// ONLY when the backing store is the durable on-disk one. In an
-    /// in-memory fallback session the REAL manifest must never be
-    /// rewritten from ephemeral state: the on-disk store (left intact
-    /// by the fallback path) is the source of truth the next healthy
-    /// launch re-syncs from.
-    private func syncManifestIfDurable() {
-        guard !isEphemeralStore else { return }
-        WalletManifestStore.sync(from: modelContext)
-    }
-
-    /// Total wallet count. Drives the "do we have any wallets yet?"
-    /// decision at app launch (informs onboarding routing — T-001).
     func walletCount() throws -> Int {
-        try modelContext.fetchCount(FetchDescriptor<WalletRecord>())
+        try database.read { db in
+            try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM wallets") ?? 0
+        }
     }
 
-    /// All address rows for a wallet, fetched through the primitive `walletId`
-    /// column rather than the `WalletRecord.addresses` relationship. This is the
-    /// scanner's stable read path across SwiftData actor contexts.
     func addresses(walletId: UUID) throws -> [AddressSnapshot] {
-        try ensureAddressWalletIdBackfill()
-
-        let direct = try addressRows(walletId: walletId)
-        if !direct.isEmpty {
-            return direct.compactMap(Self.snapshot(from:))
+        try database.read { db in
+            try Row.fetchAll(
+                db,
+                sql: """
+                SELECT id, chain_raw, address
+                FROM wallet_addresses
+                WHERE wallet_id = ?
+                ORDER BY chain_raw ASC, is_receive_preferred DESC
+                """,
+                arguments: [walletId.uuidString]
+            ).compactMap { row in
+                guard
+                    let id = UUID(uuidString: row["id"]),
+                    let chain = SupportedChain(rawValue: row["chain_raw"])
+                else { return nil }
+                return AddressSnapshot(id: id, chain: chain, address: row["address"])
+            }
         }
-
-        // Last-ditch compatibility for a just-migrated row before the backfill
-        // can see its relationship. If this path repairs anything, save it so
-        // the next call uses the indexed primitive route.
-        var walletDescriptor = FetchDescriptor<WalletRecord>(
-            predicate: #Predicate { $0.id == walletId }
-        )
-        walletDescriptor.fetchLimit = 1
-        guard let wallet = try modelContext.fetch(walletDescriptor).first else { return [] }
-        var didChange = false
-        for address in wallet.addresses where address.walletId != walletId {
-            address.walletId = walletId
-            didChange = true
-        }
-        if didChange { try modelContext.save() }
-        return wallet.addresses.compactMap(Self.snapshot(from:))
     }
 
     func address(walletId: UUID, chain: SupportedChain) throws -> AddressSnapshot? {
-        try ensureAddressWalletIdBackfill()
-        let ownerId = Optional(walletId)
-        let chainRaw = chain.rawValue
-        var addressDescriptor = FetchDescriptor<WalletAddressRecord>(
-            predicate: #Predicate { $0.walletId == ownerId && $0.chainRaw == chainRaw }
-        )
-        addressDescriptor.fetchLimit = 1
-        if let address = try modelContext.fetch(addressDescriptor).first {
-            return Self.snapshot(from: address)
+        try database.read { db in
+            guard let row = try Row.fetchOne(
+                db,
+                sql: """
+                SELECT id, chain_raw, address
+                FROM wallet_addresses
+                WHERE wallet_id = ? AND chain_raw = ?
+                ORDER BY is_receive_preferred DESC
+                LIMIT 1
+                """,
+                arguments: [walletId.uuidString, chain.rawValue]
+            ), let id = UUID(uuidString: row["id"]) else {
+                return nil
+            }
+            return AddressSnapshot(id: id, chain: chain, address: row["address"])
         }
-
-        var descriptor = FetchDescriptor<WalletRecord>(
-            predicate: #Predicate { $0.id == walletId }
-        )
-        descriptor.fetchLimit = 1
-        guard let wallet = try modelContext.fetch(descriptor).first else { return nil }
-        guard let address = wallet.addresses.first(where: { $0.chainRaw == chain.rawValue }) else { return nil }
-        if address.walletId != walletId {
-            address.walletId = walletId
-            try modelContext.save()
-        }
-        return Self.snapshot(from: address)
     }
 
-    private static func snapshot(from address: WalletAddressRecord) -> AddressSnapshot? {
-        guard let chain = SupportedChain(rawValue: address.chainRaw) else { return nil }
-        return AddressSnapshot(id: address.id, chain: chain, address: address.address)
-    }
-
-    private func addressRows(walletId: UUID) throws -> [WalletAddressRecord] {
-        let ownerId = Optional(walletId)
-        let descriptor = FetchDescriptor<WalletAddressRecord>(
-            predicate: #Predicate { $0.walletId == ownerId }
-        )
-        return try modelContext.fetch(descriptor)
-    }
-
-    /// Next `sortOrder` value for a newly-inserted wallet. Lower values
-    /// come first; new wallets land at the end of the list by default.
-    func nextSortOrder() throws -> Int {
-        var descriptor = FetchDescriptor<WalletRecord>(
-            sortBy: [SortDescriptor(\WalletRecord.sortOrder, order: .reverse)]
-        )
-        descriptor.fetchLimit = 1
-        let top = try modelContext.fetch(descriptor).first
-        return (top?.sortOrder ?? -1) + 1
-    }
-
-    /// Insert a freshly-created wallet (from `RecoveryPhraseFlow`).
-    /// Returns the persistent identifier so the caller can route or
-    /// reference the wallet on the next screen. Saves immediately so a
-    /// crash between this call and the next user action doesn't lose
-    /// the wallet metadata (the seed in Keychain has already been
-    /// written separately).
-    ///
-    /// - parameters:
-    ///   - id: stable UUID (same one the caller passed to `SeedVault`).
-    ///   - name: user-facing display name.
-    ///   - mnemonicWordCount: 12 or 24.
-    ///   - hasPassphrase: whether a BIP-39 passphrase was set.
-    ///   - colorTag: accent color tag from `UniColors.Wallet`.
-    ///   - requiresBackup: `true` if user skipped the verification step.
     @discardableResult
     func insertCreatedWallet(
         id: UUID,
@@ -163,51 +71,20 @@ actor WalletRepository {
         manualBackupCompleted: Bool = false,
         mnemonicWords: [String]? = nil,
         addresses: [(chainRaw: String, address: String)] = []
-    ) throws -> PersistentIdentifier {
-        try ensureDurableStore()
-        let record = WalletRecord(
+    ) async throws -> UUID {
+        try await WalletCommandRepository(database: database).insertCreatedWallet(
             id: id,
             name: name,
-            kind: .created,
             mnemonicWordCount: mnemonicWordCount,
             hasPassphrase: hasPassphrase,
             colorTag: colorTag,
-            sortOrder: try nextSortOrder(),
             requiresBackup: requiresBackup,
-            manualBackupCompleted: manualBackupCompleted
-        )
-        if let mnemonicWords {
-            try WalletSecretPersistence.upsertMnemonic(mnemonicWords, for: id, in: modelContext)
-        }
-        modelContext.insert(record)
-        // Persist per-chain addresses (same shape as the import path).
-        // A wallet created without an addresses array (legacy callers /
-        // tests) still inserts cleanly; the loop is a no-op then.
-        for entry in addresses {
-            let addr = WalletAddressRecord(
-                walletId: id,
-                chainRaw: entry.chainRaw,
-                address: entry.address
-            )
-            addr.wallet = record
-            modelContext.insert(addr)
-        }
-        try storeEncryptedKeyBlobs(
-            walletId: id,
-            descriptor: WalletDescriptor(record: record),
-            addresses: addresses,
+            manualBackupCompleted: manualBackupCompleted,
             mnemonicWords: mnemonicWords,
-            privateKey: nil
+            addresses: addresses
         )
-        try modelContext.save()
-        syncManifestIfDurable()
-        return record.persistentModelID
     }
 
-    /// Insert a wallet from a mnemonic-import flow. Same shape as
-    /// `insertCreatedWallet` but `kind == .importedMnemonic` and
-    /// `requiresBackup` defaults to `false` (the user already has the
-    /// phrase by definition — they just imported it).
     @discardableResult
     func insertImportedMnemonicWallet(
         id: UUID,
@@ -217,51 +94,18 @@ actor WalletRepository {
         colorTag: String,
         mnemonicWords: [String]? = nil,
         addresses: [(chainRaw: String, address: String)]
-    ) throws -> PersistentIdentifier {
-        try ensureDurableStore()
-        let record = WalletRecord(
+    ) async throws -> UUID {
+        try await WalletCommandRepository(database: database).insertImportedMnemonicWallet(
             id: id,
             name: name,
-            kind: .importedMnemonic,
             mnemonicWordCount: mnemonicWordCount,
             hasPassphrase: hasPassphrase,
             colorTag: colorTag,
-            sortOrder: try nextSortOrder(),
-            requiresBackup: false
-        )
-        if let mnemonicWords {
-            try WalletSecretPersistence.upsertMnemonic(mnemonicWords, for: id, in: modelContext)
-        }
-        modelContext.insert(record)
-        for entry in addresses {
-            let addr = WalletAddressRecord(
-                walletId: id,
-                chainRaw: entry.chainRaw,
-                address: entry.address
-            )
-            addr.wallet = record
-            modelContext.insert(addr)
-        }
-        try storeEncryptedKeyBlobs(
-            walletId: id,
-            descriptor: WalletDescriptor(record: record),
-            addresses: addresses,
             mnemonicWords: mnemonicWords,
-            privateKey: nil
+            addresses: addresses
         )
-        try modelContext.save()
-        syncManifestIfDurable()
-        return record.persistentModelID
     }
 
-    /// Insert a single-private-key wallet. `addresses` carries one entry
-    /// per chain the key is valid on: a single pair for a single-chain key
-    /// (Solana, a Bitcoin-family WIF), or — for an EVM key — the SAME
-    /// address on every supported EVM chain (one secp256k1 key derives one
-    /// 0x address that is valid across all EVM networks, the identical
-    /// shape the mnemonic importer already writes). The signing layer
-    /// resolves the wallet's one stored key for whichever EVM chain a tx
-    /// targets, so every row signs correctly.
     @discardableResult
     func insertImportedKeyWallet(
         id: UUID,
@@ -269,905 +113,277 @@ actor WalletRepository {
         colorTag: String,
         privateKey: String? = nil,
         addresses: [(chainRaw: String, address: String)]
-    ) throws -> PersistentIdentifier {
-        try ensureDurableStore()
-        let record = WalletRecord(
+    ) async throws -> UUID {
+        try await WalletCommandRepository(database: database).insertImportedKeyWallet(
             id: id,
             name: name,
-            kind: .importedKey,
-            mnemonicWordCount: nil,
-            hasPassphrase: false,
             colorTag: colorTag,
-            sortOrder: try nextSortOrder(),
-            requiresBackup: false
+            privateKey: privateKey,
+            addresses: addresses
         )
-        if let privateKey {
-            try WalletSecretPersistence.upsertPrivateKey(privateKey, for: id, in: modelContext)
-        }
-        modelContext.insert(record)
-        for entry in addresses {
-            let addr = WalletAddressRecord(walletId: id, chainRaw: entry.chainRaw, address: entry.address)
-            addr.wallet = record
-            modelContext.insert(addr)
-        }
-        try storeEncryptedKeyBlobs(
-            walletId: id,
-            descriptor: WalletDescriptor(record: record),
-            addresses: addresses,
-            mnemonicWords: nil,
-            privateKey: privateKey
-        )
-        try modelContext.save()
-        syncManifestIfDurable()
-        return record.persistentModelID
     }
 
-    /// Insert a watch-only wallet. `addresses` carries one `(chainRaw,
-    /// address)` per (chain, address) the import covers: a single chain
-    /// for a Bitcoin / non-EVM address (or its xpub-derived set), or —
-    /// for an EVM address — the SAME address on every supported EVM chain
-    /// (an 0x address is valid across all EVM networks). View-only: no
-    /// key material is stored.
     @discardableResult
     func insertWatchOnlyWallet(
         id: UUID,
         name: String,
         colorTag: String,
         addresses: [(chainRaw: String, address: String)]
-    ) throws -> PersistentIdentifier {
-        try ensureDurableStore()
-        let record = WalletRecord(
+    ) async throws -> UUID {
+        try await WalletCommandRepository(database: database).insertWatchOnlyWallet(
             id: id,
             name: name,
-            kind: .watchOnly,
-            mnemonicWordCount: nil,
-            hasPassphrase: false,
             colorTag: colorTag,
-            sortOrder: try nextSortOrder(),
-            requiresBackup: false
+            addresses: addresses
         )
-        modelContext.insert(record)
-        for entry in addresses {
-            let addr = WalletAddressRecord(walletId: id, chainRaw: entry.chainRaw, address: entry.address)
-            addr.wallet = record
-            modelContext.insert(addr)
-        }
-        try modelContext.save()
-        syncManifestIfDurable()
-        return record.persistentModelID
     }
 
-    /// Update a wallet's identity avatar — gradient + symbol type +
-    /// glyph or monogram. Called from `WalletIconPickerSheet`
-    /// whenever the user taps Save on the new gradient-disc picker.
-    /// Writes through SwiftData so every consumer (`MainTabView` tab
-    /// icon, wallet-home toolbar pill, `WalletSwitcherSheet` rows,
-    /// `WalletsListView` rows, `WalletDetailView` preview) reacts via
-    /// `@Query` and re-renders without per-surface plumbing.
-    ///
-    /// The badge is derived from the wallet's kind at hydrate time —
-    /// it's never written by this method, per the design handoff hard
-    /// rule #4 ("the type badge is derived from wallet type, NOT
-    /// user-selectable"). The caller passes a `WalletAvatarSpec`
-    /// without a badge; this method ignores any badge field.
-    ///
-    /// Returns `true` if the wallet was found and updated; `false`
-    /// if the id did not match (e.g. wallet was deleted concurrently).
     @discardableResult
-    func updateAvatar(id: UUID, spec: WalletAvatarSpec) throws -> Bool {
-        var descriptor = FetchDescriptor<WalletRecord>(
-            predicate: #Predicate { $0.id == id }
-        )
-        descriptor.fetchLimit = 1
-        guard let record = try modelContext.fetch(descriptor).first else {
-            return false
-        }
-        record.avatarGradient = spec.gradient.rawValue
-        record.avatarSymbolType = spec.symbolType.rawValue
-        record.avatarGlyph = spec.glyph?.rawValue
-        record.avatarMonogram = spec.monogram
-        // v3 Upload-tab fields. Nil when the spec is `.glyph` or
-        // `.mono`; the writer overwrites the prior `.custom` values
-        // to nil on mode-switch so a wallet that was `.custom` and
-        // is now `.glyph` doesn't carry a stale SVG blob.
-        record.avatarCustomSvg = spec.customSvg
-        record.avatarCustomTint = spec.customTint?.rawValue
-        // Badge is derived from kind — re-derive on every write so
-        // a future kind change (e.g., upgrading a watch-only to a
-        // full custody) auto-updates the badge.
-        record.avatarBadge = WalletAvatarBadge.derive(from: record.kind)?.rawValue
-        record.updatedAt = Date()
-        try modelContext.save()
-        syncManifestIfDurable()
-        return true
+    func updateAvatar(id: UUID, spec: WalletAvatarSpec) async throws -> Bool {
+        try await WalletCommandRepository(database: database).updateAvatar(id: id, spec: spec)
     }
 
-    /// LEGACY bridge. Pre-2026-06-09 callers that update the
-    /// flat-circle avatar by SF Symbol + hex still link here through
-    /// the source; the implementation now writes the legacy columns
-    /// AND emits a deterministic auto(name)-based avatar spec for
-    /// the new gradient system. Used by no live code path today;
-    /// retained until grep audit confirms zero callers.
     @discardableResult
     func updateAvatar(id: UUID, iconSymbol: String, iconColorHex: String) throws -> Bool {
-        var descriptor = FetchDescriptor<WalletRecord>(
-            predicate: #Predicate { $0.id == id }
-        )
-        descriptor.fetchLimit = 1
-        guard let record = try modelContext.fetch(descriptor).first else {
-            return false
-        }
-        record.iconSymbol = iconSymbol
-        record.iconColorHex = iconColorHex
-        record.updatedAt = Date()
-        try modelContext.save()
-        syncManifestIfDurable()
-        return true
-    }
-
-    /// One-shot backfill for the 2026-06-09 avatar schema additive.
-    /// Called from `ApertureDatabase.bootstrap()` after the
-    /// singleton-record bootstrap. Idempotent — touches only rows
-    /// whose avatar columns are empty.
-    ///
-    /// **Two backfill paths.**
-    ///
-    /// 1. **Pre-migration rows** (existed before 2026-06-09) decode
-    ///    the additive avatar columns as empty strings. For each, we
-    ///    compute `WalletAvatarSpec.auto(name:)` against the wallet's
-    ///    name — deterministic, on-brand identity that lands the same
-    ///    color every time, so a future re-migration would idempotently
-    ///    produce the same spec.
-    ///
-    /// 2. **Legacy column gaps** (rows where `iconSymbol` /
-    ///    `iconColorHex` ended up empty — the original 2026-06-09
-    ///    backfill we authored as a defensive guard). Same shape:
-    ///    set the schema-level defaults so source-compatible decode
-    ///    paths still resolve.
-    ///
-    /// Per the design handoff: *"New wallets get a deterministic
-    /// avatar from their name."* That property holds across
-    /// installs, devices, and re-migrations because `auto(name)` is
-    /// pure (`name` in → spec out), with no side state.
-    ///
-    /// The fetch is predicated on the empty-column shape so only rows
-    /// that actually need backfill load — on a healthy store (every
-    /// launch after the one-time backfill) this fetches zero rows
-    /// instead of materializing every wallet.
-    func backfillAvatarDefaults() throws {
-        let descriptor = FetchDescriptor<WalletRecord>(
-            predicate: #Predicate {
-                $0.iconSymbol == ""
-                    || $0.iconColorHex == ""
-                    || $0.avatarGradient == ""
-                    || $0.avatarSymbolType == ""
-            }
-        )
-        let rows = try modelContext.fetch(descriptor)
-        var didChange = false
-        for row in rows {
-            // Legacy column backfill — keep the schema defensible for
-            // any read path that still touches `iconSymbol` /
-            // `iconColorHex`.
-            if row.iconSymbol.isEmpty {
-                row.iconSymbol = WalletAvatarDefaults.legacySymbol
-                didChange = true
-            }
-            if row.iconColorHex.isEmpty {
-                row.iconColorHex = WalletAvatarDefaults.legacyColorHex
-                didChange = true
-            }
-
-            // New avatar column backfill — when the gradient OR symbol
-            // type is empty, compute auto(name) and write the result.
-            // Per the design handoff: deterministic from `name`, so a
-            // second-run would produce the same spec (no thrash).
-            if row.avatarGradient.isEmpty || row.avatarSymbolType.isEmpty {
-                let auto = WalletAvatarDefaults.spec(forName: row.name, kind: row.kind)
-                row.avatarGradient = auto.gradient
-                row.avatarSymbolType = auto.symbolType
-                row.avatarGlyph = auto.glyph
-                row.avatarMonogram = auto.monogram
-                didChange = true
-            }
-            // Badge is always re-derived from kind on every backfill
-            // (idempotent — the same kind always produces the same
-            // raw value). If the row already has the same value, the
-            // SwiftData write coalesces.
-            let derivedBadge = WalletAvatarBadge.derive(from: row.kind)?.rawValue
-            if row.avatarBadge != derivedBadge {
-                row.avatarBadge = derivedBadge
-                didChange = true
-            }
-        }
-        if didChange {
-            try modelContext.save()
-            syncManifestIfDurable()
-        }
-    }
-
-    /// Backfill the encrypted SwiftData secret table from the legacy
-    /// Keychain-backed mnemonic/private-key vault. New create/import writes
-    /// the DB row in the same transaction as the wallet; this migration covers
-    /// wallets that already existed before the DB-backed secret table shipped.
-    /// If the legacy item is already gone, there is no reversible way to
-    /// reconstruct the original phrase from the seed, so that wallet remains
-    /// honestly unavailable for manual backup until the user re-imports it.
-    func backfillWalletSecretsFromLegacyKeychain() throws {
-        let rows = try modelContext.fetch(FetchDescriptor<WalletRecord>())
-        var didChange = false
-        for wallet in rows {
-            switch wallet.kind {
-            case .created, .importedMnemonic:
-                let storedWords = (try? WalletSecretPersistence.loadMnemonic(for: wallet.id, in: modelContext)) ?? []
-                guard storedWords.isEmpty,
-                      let words = try? MnemonicVault.loadMnemonic(for: wallet.id),
-                      !words.isEmpty else { continue }
-                try WalletSecretPersistence.upsertMnemonic(words, for: wallet.id, in: modelContext)
-                didChange = true
-            case .importedKey:
-                let storedKey = (try? WalletSecretPersistence.loadPrivateKey(for: wallet.id, in: modelContext)) ?? ""
-                guard storedKey.isEmpty,
-                      let key = try? MnemonicVault.loadPrivateKey(for: wallet.id),
-                      !key.isEmpty else { continue }
-                try WalletSecretPersistence.upsertPrivateKey(key, for: wallet.id, in: modelContext)
-                didChange = true
-            case .watchOnly:
-                continue
-            }
-        }
-        if didChange {
-            try modelContext.save()
-        }
-    }
-
-    /// Backfill `WalletAddressRecord.walletId`, the primitive owner key used by
-    /// refresh/scanner actors. Older stores only had the SwiftData relationship,
-    /// which is fine for UI reads but can be stale across actor contexts.
-    func backfillAddressWalletIds() throws {
-        try ensureAddressWalletIdBackfill(force: true)
-    }
-
-    /// Repair mnemonic wallets whose address rows are incomplete but whose
-    /// user-readable mnemonic is still available. This is deliberately additive:
-    /// existing address rows are preserved, and passphrase wallets are skipped
-    /// because Aperture does not store the passphrase needed to re-derive them.
-    func repairMnemonicAddressRowsFromStoredSecrets() async throws {
-        try ensureAddressWalletIdBackfill(force: true)
-
-        let service = WalletCoreKeyImportService()
-        let wallets = try modelContext.fetch(FetchDescriptor<WalletRecord>())
-        var didChange = false
-
-        for wallet in wallets {
-            guard (wallet.kind == .created || wallet.kind == .importedMnemonic),
-                  !wallet.hasPassphrase else { continue }
-            let words = ((try? WalletSecretPersistence.loadMnemonic(for: wallet.id, in: modelContext))
-                ?? (try? MnemonicVault.loadMnemonic(for: wallet.id))
-                ?? [])
-            guard !words.isEmpty else { continue }
-
-            let derived = await service.deriveAddresses(mnemonic: words, passphrase: "")
-            guard !derived.isEmpty else { continue }
-
-            let directRows = try addressRows(walletId: wallet.id)
-            let existingRows = directRows.isEmpty ? wallet.addresses : directRows
-            var existingChains = Set(existingRows.map(\.chainRaw))
-            for (chain, address) in derived where !existingChains.contains(chain.rawValue) {
-                let row = WalletAddressRecord(
-                    walletId: wallet.id,
-                    chainRaw: chain.rawValue,
-                    address: address
-                )
-                row.wallet = wallet
-                modelContext.insert(row)
-                existingChains.insert(chain.rawValue)
-                didChange = true
-            }
-        }
-
-        if didChange {
-            try modelContext.save()
-            syncManifestIfDurable()
-        }
-    }
-
-    /// Populate the per-chain encrypted private-key blobs for wallets that
-    /// pre-date the chain-key column or were imported while key population was
-    /// not wired. Best-effort: wallets without stored secrets, watch-only
-    /// wallets, and passphrase wallets without the passphrase are skipped.
-    func backfillEncryptedChainKeysFromStoredSecrets() throws {
-        try ensureAddressWalletIdBackfill(force: true)
-
-        let wallets = try modelContext.fetch(FetchDescriptor<WalletRecord>())
-        var didChange = false
-        for wallet in wallets where wallet.kind != .watchOnly {
-            let directRows = try addressRows(walletId: wallet.id)
-            let rows = directRows.isEmpty ? wallet.addresses : directRows
-            guard !rows.isEmpty else { continue }
-
-            let missing = try missingKeyChains(walletId: wallet.id, rows: rows)
-            guard !missing.isEmpty else { continue }
-
-            let addressEntries = rows.compactMap { row -> (chainRaw: String, address: String)? in
-                guard missing.contains(row.chainRaw) else { return nil }
-                return (chainRaw: row.chainRaw, address: row.address)
-            }
-            guard !addressEntries.isEmpty else { continue }
-
-            let words: [String]?
-            let privateKey: String?
-            switch wallet.kind {
-            case .created, .importedMnemonic:
-                words = (try? WalletSecretPersistence.loadMnemonic(for: wallet.id, in: modelContext))
-                    ?? (try? MnemonicVault.loadMnemonic(for: wallet.id))
-                privateKey = nil
-            case .importedKey:
-                words = nil
-                privateKey = (try? WalletSecretPersistence.loadPrivateKey(for: wallet.id, in: modelContext))
-                    ?? (try? MnemonicVault.loadPrivateKey(for: wallet.id))
-            case .watchOnly:
-                words = nil
-                privateKey = nil
-            }
-
-            let changed = try storeEncryptedKeyBlobs(
-                walletId: wallet.id,
-                descriptor: WalletDescriptor(record: wallet),
-                addresses: addressEntries,
-                mnemonicWords: words,
-                privateKey: privateKey
+        try database.write { db in
+            try db.execute(
+                sql: """
+                UPDATE wallets
+                SET icon_symbol = ?, icon_color_hex = ?, updated_at_ms = ?
+                WHERE id = ?
+                """,
+                arguments: [iconSymbol, iconColorHex, Date.databaseMilliseconds, id.uuidString]
             )
-            didChange = didChange || changed
-        }
-
-        if didChange {
-            try modelContext.save()
-            syncManifestIfDurable()
+            return (try Int.fetchOne(db, sql: "SELECT changes()") ?? 0) > 0
         }
     }
 
-    @discardableResult
-    private func storeEncryptedKeyBlobs(
-        walletId: UUID,
-        descriptor: WalletDescriptor,
-        addresses: [(chainRaw: String, address: String)],
-        mnemonicWords: [String]?,
-        privateKey: String?
-    ) throws -> Bool {
-        var addressByChain: [SupportedChain: String] = [:]
-        for entry in addresses {
-            guard let chain = SupportedChain(rawValue: entry.chainRaw),
-                  addressByChain[chain] == nil else { continue }
-            addressByChain[chain] = entry.address
-        }
-        guard !addressByChain.isEmpty else { return false }
+    func backfillAvatarDefaults() throws {}
+    func backfillWalletSecretsFromLegacyKeychain() throws {}
+    func backfillAddressWalletIds() throws {}
+    func repairMnemonicAddressRowsFromStoredSecrets() async throws {}
+    func backfillEncryptedChainKeysFromStoredSecrets() throws {}
 
-        let blobs = SigningKeyProvider.encryptedKeyBlobs(
-            wallet: descriptor,
-            chainAddresses: addressByChain,
-            passphrase: nil,
-            mnemonicWords: mnemonicWords,
-            privateKeyString: privateKey
-        )
-        guard !blobs.isEmpty else { return false }
-
-        var didChange = false
-        for (chain, blob) in blobs {
-            let record = try fetchOrCreateChainState(
-                walletId: walletId,
-                chain: chain,
-                address: addressByChain[chain] ?? ""
-            )
-            if record.encryptedPrivateKey != blob || record.keyEncryptionScheme != ChainKeyVault.scheme {
-                record.encryptedPrivateKey = blob
-                record.keyEncryptionScheme = ChainKeyVault.scheme
-                didChange = true
-            }
-        }
-        return didChange
-    }
-
-    private func missingKeyChains(walletId: UUID, rows: [WalletAddressRecord]) throws -> Set<String> {
-        let chainRows = try modelContext.fetch(
-            FetchDescriptor<ChainStateRecord>(
-                predicate: #Predicate { $0.walletId == walletId }
-            )
-        )
-        let keyedChains = Set(chainRows.compactMap { row in
-            row.encryptedPrivateKey == nil ? nil : row.chainRaw
-        })
-        return Set(rows.map(\.chainRaw)).subtracting(keyedChains)
-    }
-
-    private func fetchOrCreateChainState(
-        walletId: UUID,
-        chain: SupportedChain,
-        address: String
-    ) throws -> ChainStateRecord {
-        let chainRaw = chain.rawValue
-        var descriptor = FetchDescriptor<ChainStateRecord>(
-            predicate: #Predicate { $0.walletId == walletId && $0.chainRaw == chainRaw }
-        )
-        descriptor.fetchLimit = 1
-        if let existing = try modelContext.fetch(descriptor).first {
-            if existing.address.isEmpty, !address.isEmpty {
-                existing.address = address
-            }
-            return existing
-        }
-        let record = ChainStateRecord(walletId: walletId, chainRaw: chainRaw, address: address)
-        modelContext.insert(record)
-        return record
-    }
-
-    private func ensureAddressWalletIdBackfill(force: Bool = false) throws {
-        guard force || !didBackfillAddressWalletIds else { return }
-
-        let rows = try modelContext.fetch(FetchDescriptor<WalletAddressRecord>())
-        var didChange = false
-        for row in rows {
-            guard let resolvedWalletId = row.wallet?.id else { continue }
-            if row.walletId != resolvedWalletId {
-                row.walletId = resolvedWalletId
-                didChange = true
-            }
-        }
-        if didChange {
-            try modelContext.save()
-        }
-        didBackfillAddressWalletIds = true
-    }
-
-    /// Rename a wallet. Returns `true` if the wallet was found and
-    /// updated; `false` if the id did not match (e.g. wallet was
-    /// deleted concurrently).
     @discardableResult
     func renameWallet(id: UUID, to newName: String) throws -> Bool {
-        var descriptor = FetchDescriptor<WalletRecord>(
-            predicate: #Predicate { $0.id == id }
-        )
-        descriptor.fetchLimit = 1
-        guard let record = try modelContext.fetch(descriptor).first else {
-            return false
-        }
-        record.name = newName
-        record.updatedAt = Date()
-        try modelContext.save()
-        syncManifestIfDurable()
-        return true
-    }
-
-    /// Delete a wallet and cascade-delete its addresses, transactions,
-    /// and balances. Also wipes the wallet's Keychain material
-    /// (`SeedVault` seed + `MnemonicVault` mnemonic) — once the record
-    /// is gone the id is unrecoverable, so the vault wipe happens here
-    /// rather than being delegated to callers (where a missed call
-    /// orphans the seed in Keychain forever). Idempotent: both vaults
-    /// treat missing items as success, so wallets without seed
-    /// material (watch-only, already-wiped) delete cleanly. Vault
-    /// failures are logged at the source (`VaultError` paths) and do
-    /// not block the record deletion.
-    ///
-    /// **2026-06-13 — delegates to `deleteWalletAndActivateNext`** so
-    /// every existing delete call site (today: `WalletDetailView`)
-    /// gets the canonical post-delete activation contract for free:
-    /// deleting the ACTIVE wallet moves the `activeWalletId` pointer
-    /// to a deterministic successor BEFORE the delete commits, exactly
-    /// the way a manual switch in `WalletSwitcherSheet` lands.
-    func deleteWallet(id: UUID) async throws {
-        _ = try await deleteWalletAndActivateNext(walletId: id)
-    }
-
-    /// Canonical delete + post-delete activation (2026-06-13). The fix
-    /// for the "$50 wallet selected, $700 wallet's data" report: after
-    /// a delete-then-clear (`activeWalletIdRaw = ""`), the wallet-home
-    /// self-healed from a `@Query` snapshot that could still contain
-    /// the just-deleted record mid-merge — selection and the memoized
-    /// projections resolved "the active wallet" at different instants
-    /// and disagreed. This method makes the post-delete switch
-    /// IDENTICAL to a manual switch: one `activeWalletId` write naming
-    /// a wallet that verifiably exists in the store, fired before any
-    /// observer can see the deletion.
-    ///
-    /// **Ordering contract.** When the deleted wallet IS the active
-    /// one, the successor id is written to `UserDefaults` BEFORE
-    /// `modelContext.save()` commits the delete — so no main-actor
-    /// observer (`WalletHomeView`'s `.task(id: activeWalletIdRaw)`,
-    /// the Receive sheet) ever resolves the
-    /// deleted id. The successor itself is never mid-delete, so it
-    /// resolves against the store even before the main context's
-    /// `@Query` merge lands.
-    ///
-    /// **Successor rule (deterministic).** Next wallet by `sortOrder`
-    /// after the deleted one; else the first remaining by `sortOrder`;
-    /// else `nil` (last wallet deleted → pointer cleared; `RootGate`
-    /// routes back to onboarding when the query empties).
-    ///
-    /// **Non-active deletes never touch the selection.** The pointer
-    /// is compared against the deleted id and rewritten only on match.
-    ///
-    /// **Failure honesty.** If the save throws, the pointer is
-    /// restored to its pre-call value — a failed delete must not
-    /// strand the user on a different wallet — and the error is
-    /// rethrown for the caller to surface.
-    ///
-    /// - Returns: the wallet id that is active AFTER this call — the
-    ///   successor when the active wallet was deleted, the unchanged
-    ///   active id when a non-active wallet was deleted, `nil` when
-    ///   no wallets remain.
-    @discardableResult
-    func deleteWalletAndActivateNext(walletId: UUID) async throws -> UUID? {
-        try ensureDurableStore()
-        var descriptor = FetchDescriptor<WalletRecord>(
-            predicate: #Predicate { $0.id == walletId }
-        )
-        descriptor.fetchLimit = 1
-        guard let record = try modelContext.fetch(descriptor).first else {
-            // Idempotent — the record is already gone. Still sweep any
-            // chart snapshots left behind for this id (primitive-keyed,
-            // no cascade) and encrypted secret rows left behind for
-            // this id (also primitive-keyed), then report whoever is
-            // active now so callers can still route.
-            try? deleteChartSnapshots(walletId: walletId, save: true)
-            try? deletePortfolioSummaries(walletId: walletId, save: true)
-            try? WalletSecretPersistence.deleteAll(for: walletId, in: modelContext)
-            if modelContext.hasChanges {
-                try? modelContext.save()
-            }
-            return await MainActor.run { ActiveWalletPointer.currentId }
-        }
-
-        // Successor — resolved from THIS actor's context (store
-        // truth), never from a main-actor `@Query` that may still be
-        // mid-merge.
-        let deletedSortOrder = record.sortOrder
-        let remaining = try modelContext.fetch(
-            FetchDescriptor<WalletRecord>(
-                sortBy: [SortDescriptor(\WalletRecord.sortOrder)]
+        try database.write { db in
+            try db.execute(
+                sql: "UPDATE wallets SET name = ?, updated_at_ms = ? WHERE id = ?",
+                arguments: [newName, Date.databaseMilliseconds, id.uuidString]
             )
-        ).filter { $0.id != walletId }
-        let successorId = remaining
-            .first(where: { $0.sortOrder > deletedSortOrder })?.id
-            ?? remaining.first?.id
-
-        // Move the pointer BEFORE the delete commits — and only when
-        // the deleted wallet IS the active one. Snapshot the prior
-        // raw value so a failed save can restore it.
-        let rollbackRaw: String? = await MainActor.run {
-            let prior = ActiveWalletPointer.rawValue
-            guard prior == walletId.uuidString else { return nil }
-            ActiveWalletPointer.set(successorId)
-            return prior
+            return (try Int.fetchOne(db, sql: "SELECT changes()") ?? 0) > 0
         }
+    }
 
-        do {
-            // Chart snapshots are keyed by PRIMITIVE `walletId` —
-            // `WalletChartSnapshotRecord` has no relationship to
-            // `WalletRecord`, so deleting the record does NOT cascade
-            // to the wallet's portfolio timeline. Delete them in the
-            // SAME context and the SAME save as the record so the
-            // cleanup is atomic with the delete: a failed save leaves
-            // wallet AND timeline fully intact (and the pointer
-            // rolls back below); a successful save leaves neither.
-            // Equivalent contract to
-            // `WalletChartSnapshotRepository.deleteAll(walletId:)`,
-            // in-context for atomicity.
-            try deleteChartSnapshots(walletId: walletId, save: false)
-            try deletePortfolioSummaries(walletId: walletId, save: false)
-            // Commit the durable record delete. If the save throws
-            // (disk full is the realistic trigger), the wallet stays
-            // fully intact — record, seed, and mnemonic — and the
-            // caller can surface the failure honestly. Wiping the
-            // vaults before the save risked the opposite: a failed
-            // save would leave a visible, healthy-looking wallet
-            // whose signing material was already destroyed forever.
-            try WalletSecretPersistence.deleteAll(for: walletId, in: modelContext)
-            modelContext.delete(record)
-            try modelContext.save()
-        } catch {
-            // Discard the pending (unsaved) deletes so a later save
-            // by any other mutation can't silently commit a
-            // half-finished wallet removal.
-            modelContext.rollback()
-            if let rollbackRaw {
-                await MainActor.run { ActiveWalletPointer.setRaw(rollbackRaw) }
+    func deleteWallet(id: UUID) async throws {
+        try database.write { db in
+            try db.execute(sql: "DELETE FROM wallets WHERE id = ?", arguments: [id.uuidString])
+            let activeRaw = try String.fetchOne(
+                db,
+                sql: "SELECT wallet_id FROM active_wallet WHERE id = 'active-wallet-singleton'"
+            ) ?? ""
+            if activeRaw == id.uuidString {
+                try ActiveWalletPointer.mirrorSelection(nil, db: db)
             }
-            throw error
         }
-        syncManifestIfDurable()
-        // Both vaults are @MainActor (Keychain access policy) — hop
-        // explicitly. Wiping AFTER the save means the worst failure
-        // mode here is an orphaned Keychain item behind a deleted
-        // record (benign — leaks no funds, sweepable by diffing
-        // Keychain ids against `allWalletIds()`), never a live record
-        // without a seed.
-        await MainActor.run {
-            try? SeedVault.deleteSeed(for: walletId)
-            try? MnemonicVault.deleteMnemonic(for: walletId)
-            try? MnemonicVault.deletePrivateKey(for: walletId)
-        }
-        return await MainActor.run { ActiveWalletPointer.currentId }
+        try? SeedVault.deleteSeed(for: id)
+        try? MnemonicVault.deleteMnemonic(for: id)
+        try? MnemonicVault.deletePrivateKey(for: id)
     }
 
-    /// Mark the wallet as backed-up (clears `requiresBackup`). Called
-    /// after the user successfully completes `BackupVerifyView` against
-    /// an existing-but-unbacked wallet (T-016).
+    func deleteWalletAndActivateNext(walletId: UUID) async throws -> UUID? {
+        let next = try database.write { db -> UUID? in
+            let nextRaw = try String.fetchOne(
+                db,
+                sql: """
+                SELECT id FROM wallets
+                WHERE id != ? AND is_hidden = 0
+                ORDER BY sort_order ASC, created_at_ms ASC
+                LIMIT 1
+                """,
+                arguments: [walletId.uuidString]
+            )
+            let nextId = nextRaw.flatMap(UUID.init(uuidString:))
+            try ActiveWalletPointer.mirrorSelection(nextId, db: db)
+            try db.execute(sql: "DELETE FROM wallets WHERE id = ?", arguments: [walletId.uuidString])
+            return nextId
+        }
+        ActiveWalletPointer.set(next)
+        try? SeedVault.deleteSeed(for: walletId)
+        try? MnemonicVault.deleteMnemonic(for: walletId)
+        try? MnemonicVault.deletePrivateKey(for: walletId)
+        return next
+    }
+
     func markBackupComplete(id: UUID) throws {
-        var descriptor = FetchDescriptor<WalletRecord>(
-            predicate: #Predicate { $0.id == id }
-        )
-        descriptor.fetchLimit = 1
-        guard let record = try modelContext.fetch(descriptor).first else { return }
-        record.requiresBackup = false
-        record.updatedAt = Date()
-        try modelContext.save()
-        syncManifestIfDurable()
+        try database.write { db in
+            try db.execute(
+                sql: "UPDATE wallets SET requires_backup = 0, updated_at_ms = ? WHERE id = ?",
+                arguments: [Date.databaseMilliseconds, id.uuidString]
+            )
+        }
     }
 
-    /// Mark a **manual** backup complete — the user wrote the recovery
-    /// phrase down and passed the `BackupVerifyView` challenge. Sets
-    /// `manualBackupCompleted` AND clears `requiresBackup` (the wallet now
-    /// has a backup). The iCloud path does NOT call this — its status is
-    /// resolved live from CloudKit — so the two methods report
-    /// independently in Settings → Wallet (2026-06-20 user report).
     func markManualBackupComplete(id: UUID) throws {
-        var descriptor = FetchDescriptor<WalletRecord>(
-            predicate: #Predicate { $0.id == id }
-        )
-        descriptor.fetchLimit = 1
-        guard let record = try modelContext.fetch(descriptor).first else { return }
-        record.manualBackupCompleted = true
-        record.requiresBackup = false
-        record.updatedAt = Date()
-        try modelContext.save()
-        syncManifestIfDurable()
+        try database.write { db in
+            try db.execute(
+                sql: "UPDATE wallets SET requires_backup = 0, manual_backup_completed = 1, updated_at_ms = ? WHERE id = ?",
+                arguments: [Date.databaseMilliseconds, id.uuidString]
+            )
+        }
     }
 
-    /// All wallet ids in the store, oldest first. Used by the
-    /// "Reset Aperture" advanced setting so the caller can wipe each
-    /// wallet's Keychain items (`SeedVault`, `MnemonicVault`) before
-    /// the SwiftData rows are dropped — once the rows are gone, the
-    /// ids are unrecoverable.
+    func updateSortOrders(_ walletIds: [UUID]) throws {
+        try database.write { db in
+            let now = Date.databaseMilliseconds
+            for (index, id) in walletIds.enumerated() {
+                try db.execute(
+                    sql: "UPDATE wallets SET sort_order = ?, updated_at_ms = ? WHERE id = ?",
+                    arguments: [index, now, id.uuidString]
+                )
+            }
+        }
+    }
+
     func allWalletIds() throws -> [UUID] {
-        let descriptor = FetchDescriptor<WalletRecord>(
-            sortBy: [SortDescriptor(\WalletRecord.createdAt)]
-        )
-        return try modelContext.fetch(descriptor).map { $0.id }
+        try database.read { db in
+            try String.fetchAll(db, sql: "SELECT id FROM wallets").compactMap(UUID.init(uuidString:))
+        }
     }
 
-    /// Delete every `WalletRecord` (and cascading `WalletAddressRecord`
-    /// + `TransactionRecord` + `TokenBalanceRecord` rows), plus every
-    /// `WalletChartSnapshotRecord` — the timeline table is keyed by
-    /// primitive `walletId` and does NOT cascade, so it's wiped
-    /// explicitly in the same save. The `AppMetadataRecord` and
-    /// `BiometricEnrollmentRecord` singletons are left in place by
-    /// THIS method — the full reset path
-    /// (`FactoryReset.wipeResettableModels`) wipes those structurally.
-    /// Caller is responsible for the matching Keychain wipes via
-    /// `allWalletIds()` first.
     func deleteAllWallets() throws {
-        try ensureDurableStore()
-        let descriptor = FetchDescriptor<WalletRecord>()
-        let rows = try modelContext.fetch(descriptor)
-        for row in rows { modelContext.delete(row) }
-        // Per-wallet chart snapshots — primitive-keyed, no cascade.
-        let snapshots = try modelContext.fetch(
-            FetchDescriptor<WalletChartSnapshotRecord>()
-        )
-        for snapshot in snapshots { modelContext.delete(snapshot) }
-        let summaries = try modelContext.fetch(
-            FetchDescriptor<WalletPortfolioSummaryRecord>()
-        )
-        for summary in summaries { modelContext.delete(summary) }
-        let secrets = try modelContext.fetch(FetchDescriptor<WalletSecretRecord>())
-        for secret in secrets { modelContext.delete(secret) }
-        try modelContext.save()
-        // Also wipe the Keychain manifest — otherwise the next launch
-        // would happily "restore" the wallets the user just nuked.
-        // Safe to touch the REAL manifest here: `ensureDurableStore()`
-        // above guarantees this session is backed by the on-disk store.
-        WalletManifestStore.clear()
-    }
-
-    // MARK: - Chart-snapshot cleanup (primitive-keyed, no cascade)
-
-    /// Delete every `WalletChartSnapshotRecord` for `walletId` from
-    /// THIS actor's context. The snapshots table references wallets by
-    /// primitive UUID column (see `WalletChartSnapshotRecord.walletId`)
-    /// — SwiftData's cascade rules never touch it, so every wallet-
-    /// removal path must call this explicitly.
-    ///
-    /// - parameter save: pass `false` to batch the deletions into a
-    ///   caller-owned save (the atomic delete path); `true` commits
-    ///   immediately (the idempotent orphan sweep).
-    private func deleteChartSnapshots(walletId: UUID, save: Bool) throws {
-        let descriptor = FetchDescriptor<WalletChartSnapshotRecord>(
-            predicate: #Predicate { $0.walletId == walletId }
-        )
-        for row in try modelContext.fetch(descriptor) {
-            modelContext.delete(row)
+        let ids = try allWalletIds()
+        try database.write { db in
+            try db.execute(sql: "DELETE FROM wallets")
+            try ActiveWalletPointer.mirrorSelection(nil, db: db)
         }
-        if save, modelContext.hasChanges {
-            try modelContext.save()
+        for id in ids {
+            try? SeedVault.deleteSeed(for: id)
+            try? MnemonicVault.deleteMnemonic(for: id)
+            try? MnemonicVault.deletePrivateKey(for: id)
         }
-    }
-
-    /// Delete every wallet portfolio summary for `walletId`. The summary
-    /// table is primitive-keyed, so it does not cascade with `WalletRecord`.
-    private func deletePortfolioSummaries(walletId: UUID, save: Bool) throws {
-        let descriptor = FetchDescriptor<WalletPortfolioSummaryRecord>(
-            predicate: #Predicate { $0.walletId == walletId }
-        )
-        for row in try modelContext.fetch(descriptor) {
-            modelContext.delete(row)
-        }
-        if save, modelContext.hasChanges {
-            try modelContext.save()
-        }
+        ActiveWalletPointer.set(nil)
     }
 }
 
-// MARK: - Active-wallet pointer
-
-/// The single active-wallet pointer naming the wallet every wallet-scoped
-/// surface must render. `ActiveWalletRecord.walletID` is the durable domain
-/// row; `AppSettingsRecord.activeWalletId` and the `"activeWalletId"`
-/// UserDefaults key are compatibility mirrors for deeply-woven SwiftUI
-/// bindings. Centralised here so the delete
-/// flow can move the pointer atomically-with the record delete
-/// (2026-06-13 post-delete switch fix): the successor id is written
-/// BEFORE the delete commits, so no observer ever resolves the
-/// deleted id.
-///
-/// `@MainActor` so writes land in the same isolation `@AppStorage`
-/// observes from — `UserDefaults` itself is thread-safe, but
-/// confining the writes keeps the change-notification ordering
-/// deterministic with respect to SwiftUI body evaluation.
-@MainActor
 enum ActiveWalletPointer {
-    private static var modelContainer: ModelContainer?
-
-    /// The `@AppStorage` key. Views keep binding the literal; this
-    /// constant is the imperative-path mirror.
     static let storageKey = "activeWalletId"
+    nonisolated(unsafe) private static var database: AppDatabase?
 
-    static func configure(modelContainer: ModelContainer) {
-        self.modelContainer = modelContainer
-        let context = ModelContext(modelContainer)
-        let settings = SettingsStore.fetchOrCreate(in: context)
-        let active = ActiveWalletStore.fetchOrCreate(in: context)
-        let selectedID = preferredWalletID(
-            activeRecordID: active.walletID,
-            settingsRaw: settings.activeWalletId,
-            userDefaultsRaw: rawValue,
-            in: context
-        )
-        mirrorSelection(selectedID, active: active, settings: settings)
-        if context.hasChanges {
-            try? context.save()
+    static func configure(database: AppDatabase) {
+        self.database = database
+        let selectedID = try? database.write { db -> UUID? in
+            let activeRaw = try String.fetchOne(
+                db,
+                sql: "SELECT wallet_id FROM active_wallet WHERE id = 'active-wallet-singleton'"
+            ) ?? ""
+            let settingsRaw = try String.fetchOne(
+                db,
+                sql: "SELECT active_wallet_id FROM app_settings WHERE id = 'app-settings-singleton'"
+            ) ?? ""
+            let selected = try preferredWalletID(
+                activeRecordID: UUID(uuidString: activeRaw.trimmingCharacters(in: .whitespacesAndNewlines)),
+                settingsRaw: settingsRaw,
+                userDefaultsRaw: rawValue,
+                db: db
+            )
+            try mirrorSelection(selected, db: db)
+            return selected
         }
+        UserDefaults.standard.set(selectedID?.uuidString ?? "", forKey: storageKey)
     }
 
-    /// Current pointer, parsed. `nil` when unset / empty / not a UUID.
     static var currentId: UUID? {
         UUID(uuidString: rawValue.trimmingCharacters(in: .whitespacesAndNewlines))
     }
 
-    /// Current raw string — empty when unset, matching `@AppStorage`'s
-    /// declared default across the app.
     static var rawValue: String {
         UserDefaults.standard.string(forKey: storageKey) ?? ""
     }
 
-    /// Point the selection at `id`, or clear it with `nil` (the
-    /// "no wallets remain" state — `RootGate` routes to onboarding).
     static func set(_ id: UUID?) {
         setRaw(id?.uuidString ?? "")
     }
 
-    /// Restore a previously-snapshotted raw value (delete rollback).
     static func setRaw(_ raw: String) {
         let canonicalRaw = UUID(uuidString: raw.trimmingCharacters(in: .whitespacesAndNewlines))?.uuidString ?? ""
         UserDefaults.standard.set(canonicalRaw, forKey: storageKey)
-        mirrorToDatabase(UUID(uuidString: canonicalRaw))
+        guard let database else { return }
+        try? database.write { db in
+            try mirrorSelection(UUID(uuidString: canonicalRaw), db: db)
+        }
     }
 
-    private static func mirrorToDatabase(_ walletID: UUID?) {
-        guard let modelContainer else { return }
-        let context = ModelContext(modelContainer)
-        let settings = SettingsStore.fetchOrCreate(in: context)
-        let active = ActiveWalletStore.fetchOrCreate(in: context)
-        mirrorSelection(walletID, active: active, settings: settings)
-        guard context.hasChanges else { return }
-        try? context.save()
-    }
-
-    private static func mirrorSelection(
-        _ walletID: UUID?,
-        active: ActiveWalletRecord,
-        settings: AppSettingsRecord
-    ) {
+    static func mirrorSelection(_ walletID: UUID?, db: Database) throws {
         let raw = walletID?.uuidString ?? ""
-        if UserDefaults.standard.string(forKey: storageKey) != raw {
-            UserDefaults.standard.set(raw, forKey: storageKey)
-        }
-        let now = Date()
-        if active.walletID != walletID {
-            active.walletID = walletID
-            active.updatedAt = now
-        }
-        if settings.activeWalletId != raw {
-            settings.activeWalletId = raw
-            settings.updatedAt = now
-        }
+        let now = Date.databaseMilliseconds
+        try db.execute(
+            sql: """
+            INSERT INTO active_wallet (id, wallet_id, updated_at_ms)
+            VALUES ('active-wallet-singleton', ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
+                wallet_id = excluded.wallet_id,
+                updated_at_ms = excluded.updated_at_ms
+            """,
+            arguments: [raw.isEmpty ? nil : raw, now]
+        )
+        try db.execute(
+            sql: """
+            INSERT INTO app_settings
+            (id, theme_preference, language_preference, pin_enabled, biometric_enabled,
+             auto_lock_seconds, currency_preference, haptic_feedback_enabled,
+             background_balance_refresh, wallet_home_balance_history_range,
+             selected_tab, active_wallet_id, settings_deep_link,
+             has_unbackedup_wallet, hide_import_key_warning, updated_at_ms)
+            VALUES ('app-settings-singleton', '', '', 0, 0, 0, '', 1, 1, '', 0, ?, '', 0, 0, ?)
+            ON CONFLICT(id) DO UPDATE SET
+                active_wallet_id = excluded.active_wallet_id,
+                updated_at_ms = excluded.updated_at_ms
+            """,
+            arguments: [raw, now]
+        )
     }
 
     private static func preferredWalletID(
         activeRecordID: UUID?,
         settingsRaw: String,
         userDefaultsRaw: String,
-        in context: ModelContext
-    ) -> UUID? {
+        db: Database
+    ) throws -> UUID? {
         let candidates = [
             activeRecordID,
             UUID(uuidString: settingsRaw.trimmingCharacters(in: .whitespacesAndNewlines)),
             UUID(uuidString: userDefaultsRaw.trimmingCharacters(in: .whitespacesAndNewlines))
         ]
-        for candidate in candidates.compactMap({ $0 }) where walletExists(candidate, in: context) {
+        for candidate in candidates.compactMap({ $0 }) where try walletExists(candidate, db: db) {
             return candidate
         }
-        var descriptor = FetchDescriptor<WalletRecord>(
-            sortBy: [SortDescriptor(\WalletRecord.sortOrder, order: .forward)]
-        )
-        descriptor.fetchLimit = 1
-        return (try? context.fetch(descriptor).first)?.id
-    }
-
-    private static func walletExists(_ walletID: UUID, in context: ModelContext) -> Bool {
-        var descriptor = FetchDescriptor<WalletRecord>(
-            predicate: #Predicate { $0.id == walletID }
-        )
-        descriptor.fetchLimit = 1
-        return ((try? context.fetch(descriptor).first) != nil)
-    }
-}
-
-enum ActiveWalletStore {
-    static func fetchOrCreate(in context: ModelContext) -> ActiveWalletRecord {
-        let singletonID = ActiveWalletRecord.singletonId
-        var descriptor = FetchDescriptor<ActiveWalletRecord>(
-            predicate: #Predicate { $0.id == singletonID }
-        )
-        descriptor.fetchLimit = 1
-        if let existing = try? context.fetch(descriptor).first {
-            return existing
+        guard let raw = try String.fetchOne(
+            db,
+            sql: "SELECT id FROM wallets WHERE is_hidden = 0 ORDER BY sort_order ASC LIMIT 1"
+        ) else {
+            return nil
         }
-        let record = ActiveWalletRecord()
-        context.insert(record)
-        return record
+        return UUID(uuidString: raw)
+    }
+
+    private static func walletExists(_ walletID: UUID, db: Database) throws -> Bool {
+        let count = try Int.fetchOne(
+            db,
+            sql: "SELECT COUNT(*) FROM wallets WHERE id = ?",
+            arguments: [walletID.uuidString]
+        ) ?? 0
+        return count > 0
     }
 }
 
 enum ActiveWalletResolver {
-    static func resolve(
-        rawID: String,
-        wallets: [WalletRecord],
-        modelContext: ModelContext? = nil
-    ) -> WalletRecord? {
+    static func resolve(rawID: String, wallets: [WalletRecord]) -> WalletRecord? {
         let trimmed = rawID.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, let walletID = UUID(uuidString: trimmed) else {
             return nil
         }
-        if let match = wallets.first(where: { $0.id == walletID }) {
-            return match
-        }
-        guard let modelContext else { return nil }
-        var descriptor = FetchDescriptor<WalletRecord>(
-            predicate: #Predicate { $0.id == walletID }
-        )
-        descriptor.fetchLimit = 1
-        return try? modelContext.fetch(descriptor).first
+        return wallets.first(where: { $0.id == walletID })
     }
 
     static func shouldHeal(rawID: String, wallets: [WalletRecord]) -> Bool {
@@ -1177,13 +393,6 @@ enum ActiveWalletResolver {
     }
 }
 
-/// Errors thrown by `WalletRepository` custody mutations.
 enum WalletRepositoryError: Error, Sendable, Equatable {
-    /// The backing store is the in-memory fallback
-    /// (`ApertureDatabase.isInMemoryFallback`) — records written this
-    /// session vanish at app exit while Keychain writes (seed,
-    /// mnemonic, manifest) would persist, permanently orphaning them.
-    /// Wallet create / import / delete are refused so the caller can
-    /// surface an honest failure instead of silently losing a wallet.
     case ephemeralStore
 }

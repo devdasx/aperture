@@ -20,7 +20,6 @@ struct ICloudRestoreView: View {
     /// routes to the success screen.
     let onImported: (UUID) -> Void
 
-    @Environment(\.modelContext) private var modelContext
     @Environment(\.openURL) private var openURL
 
     @State private var listState: ListState = .loading
@@ -351,8 +350,7 @@ struct ICloudRestoreView: View {
             mnemonic: words, passphrase: ""
         )
 
-        let container = modelContext.container
-        let repo = WalletRepository(modelContainer: container)
+        let repo = WalletCommandRepository()
         do {
             let walletId = try await state.persist(
                 result: .mnemonic, into: repo, defaultName: blob.walletName

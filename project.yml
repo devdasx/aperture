@@ -30,6 +30,9 @@ packages:
   WalletCore:
     url: https://github.com/trustwallet/wallet-core
     from: "4.2.0"
+  GRDB:
+    url: https://github.com/groue/GRDB.swift.git
+    from: "7.11.1"
 
 targets:
   UniApp:
@@ -44,6 +47,8 @@ targets:
         product: WalletCore
       - package: WalletCore
         product: WalletCoreSwiftProtobuf
+      - package: GRDB
+        product: GRDB
     # API keys come from the local, gitignored Secrets.xcconfig. Keep
     # Secrets.xcconfig.template committed as the value-free setup guide.
     configFiles:
@@ -140,6 +145,8 @@ targets:
       - path: UniApp/Tests
     dependencies:
       - target: UniApp
+      - package: GRDB
+        product: GRDB
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.aperture.wallet.tests

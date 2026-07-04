@@ -44,7 +44,7 @@ import SwiftUI
 /// always-store contract (`CreateWalletState.persist`), the phrase
 /// stays viewable from Settings → Wallets → "View recovery phrase"
 /// for the wallet's lifetime; only wallet deletion / Reset Aperture
-/// removes it. Dismisses the sheet; SwiftData `@Query` reactivity on
+/// removes it. Dismisses the sheet; GRDB GRDB observation reactivity on
 /// the parent `WalletDetailView` changes the backup card from "Back up
 /// this wallet" → "Backed up." in front of the user.
 ///
@@ -59,12 +59,11 @@ struct BackupExistingWalletFlow: View {
 
     /// Fires after the verify view succeeds AND the database has been
     /// updated. The caller (`WalletDetailView`) uses this to dismiss
-    /// the sheet — the `@Query` reactivity then animates the card
+    /// the sheet — the GRDB observation reactivity then animates the card
     /// from State A → State B.
     let onCompleted: () -> Void
 
     @Environment(\.dismiss) private var dismiss
-    @Environment(\.modelContext) private var modelContext
 
     /// Loaded mnemonic words. `nil` until the on-appear load
     /// resolves; empty + `loadError` populated on failure.
@@ -119,7 +118,7 @@ struct BackupExistingWalletFlow: View {
     // MARK: - States while the mnemonic is resolved
 
     /// Brief progress surface while `WalletSecretRepository.loadMnemonic`
-    /// returns. The load can cross SwiftData + Keychain-backed migration
+    /// returns. The load can cross GRDB + Keychain-backed migration
     /// paths, so we show a calm spinner while it resolves.
     private var loadingView: some View {
         UniLoadingState(caption: "Preparing your phrase…")
@@ -161,8 +160,7 @@ struct BackupExistingWalletFlow: View {
         guard state == nil, loadError == nil else { return }
         let id = walletId
         do {
-            let container = modelContext.container
-            let words = try await WalletSecretRepository(modelContainer: container)
+            let words = try await WalletSecretRepository(database: AppDatabase.shared)
                 .loadMnemonic(for: id)
             guard let words, !words.isEmpty else {
                 loadError = "There's no encrypted phrase stored for this wallet. If you saved it elsewhere, you're already its only copy."
@@ -180,7 +178,7 @@ struct BackupExistingWalletFlow: View {
     }
 
     /// Run after `BackupVerifyView` reports success. Flips the
-    /// persistence flag and dismisses. SwiftData `@Query` reactivity
+    /// persistence flag and dismisses. GRDB GRDB observation reactivity
     /// on the parent surfaces the Done state.
     ///
     /// The encrypted local mnemonic is deliberately KEPT. An earlier
@@ -193,7 +191,7 @@ struct BackupExistingWalletFlow: View {
     /// Reset Aperture removes the vault entry.
     @MainActor
     private func complete() async {
-        let repo = WalletRepository(modelContainer: modelContext.container)
+        let repo = WalletRepository(database: AppDatabase.shared)
         do {
             try await repo.markBackupComplete(id: walletId)
         } catch {

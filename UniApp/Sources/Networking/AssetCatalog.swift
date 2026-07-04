@@ -47,7 +47,7 @@ enum AssetCatalog {
     /// seeded `AssetRecord` rows to `CatalogAsset`; falls back to the
     /// identical static catalog during the pre-seed cold-launch window
     /// so a list is never empty. The single place every UI surface
-    /// (wallet home, Send, Receive) turns `@Query AssetRecord` results
+    /// (wallet home, Send, Receive) turns `GRDB observation AssetRecord` results
     /// into the registry-agnostic shape its builders consume.
     static func assets(from records: [AssetRecord]) -> [CatalogAsset] {
         let mapped = records.compactMap { $0.catalogAsset }

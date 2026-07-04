@@ -35,7 +35,7 @@ import os.log
 ///
 /// **Where this runs.** Synchronously from `UniAppApp.init()` BEFORE
 /// any other subsystem touches Keychain — before
-/// `ApertureDatabase.shared.bootstrap()`, before
+/// `AppDatabase.shared.bootstrap()`, before
 /// `CurrencyPreference.bootstrapIfNeeded()`, before any vault read.
 /// This guarantees a fresh install starts from a known-empty
 /// state across every storage tier.
@@ -79,7 +79,7 @@ enum FreshInstallGuard {
         "com.thuglife.aperture.mnemonic.key",      // MnemonicVault.keyService — AES-GCM keys
         "com.thuglife.aperture.privatekey.cipher", // MnemonicVault.privateKeyCipherService — encrypted imported key strings
         "com.thuglife.aperture.privatekey.key",    // MnemonicVault.privateKeyKeyService — AES-GCM keys (imported keys)
-        "com.thuglife.aperture.wallet-secret.master-key", // WalletSecretCrypto — AES-GCM master key for SwiftData secret rows
+        "com.thuglife.aperture.wallet-secret.master-key", // WalletSecretCrypto — AES-GCM master key for GRDB secret rows
         "com.thuglife.aperture.wallet-manifest",   // WalletManifestStore.service — wallet list metadata
         "com.thuglife.aperture.pin",               // PinCodeStorage.service — PBKDF2 hash + salt + failure record
         "com.thuglife.aperture.pin.smoketest",     // PinCodeStorage.smokeCheckService — DEBUG smoke check
@@ -89,6 +89,22 @@ enum FreshInstallGuard {
     /// Read-only mirror of `knownServices` for the audit test
     /// (`ResetCompletenessTests`). Never used by production code.
     static var knownServicesForAudit: [String] { knownServices }
+
+    /// One-time destructive transition used by the GRDB replacement build.
+    /// It intentionally clears every Aperture-owned Keychain service even
+    /// when the app is not a fresh install, because the old GRDB store is
+    /// discarded instead of migrated.
+    static func purgeAllKnownKeychainServicesForDatabaseReplacement() {
+        for serviceName in knownServices {
+            for secClass in serviceScopedClasses {
+                let query: [String: Any] = [
+                    kSecClass as String: secClass,
+                    kSecAttrService as String: serviceName,
+                ]
+                SecItemDelete(query as CFDictionary)
+            }
+        }
+    }
 
     /// Password classes Aperture writes today. Future key/cert-class vaults
     /// must add their own explicit service/account purge path; this guard does
@@ -119,12 +135,12 @@ enum FreshInstallGuard {
         let shouldRespectExistingStore = true
         #endif
         if shouldRespectExistingStore, hasExistingLocalStore() {
-            // A missing marker with an existing SwiftData store is not a fresh
+            // A missing marker with an existing GRDB store is not a fresh
             // install; it is an interrupted/debug reinstall or settings restore.
             // Purging Keychain here would orphan encrypted WalletSecretRecord
             // rows from the master key that opens them.
             UserDefaults.standard.set(true, forKey: installedMarkerKey)
-            log.warning("Fresh-install marker missing but local SwiftData store exists — preserving Keychain and setting marker")
+            log.warning("Fresh-install marker missing but local GRDB store exists — preserving Keychain and setting marker")
             return false
         }
 

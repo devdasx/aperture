@@ -15,7 +15,7 @@ import WalletCore
 /// **Security (same contract as `SigningKeyProvider`).** Raw key material
 /// — the mnemonic, the `HDWallet`, every `PrivateKey` — lives ONLY inside
 /// this function and drops at return. Only the AES-GCM-sealed `Data`
-/// blobs escape; plaintext keys never reach SwiftData. Each key is
+/// blobs escape; plaintext keys never reach GRDB. Each key is
 /// parity-checked against the wallet's funded address before sealing, so
 /// a wrong-address key is never stored. Best-effort by design: watch-only
 /// wallets, backed-up / passphrase wallets without the secret, and any

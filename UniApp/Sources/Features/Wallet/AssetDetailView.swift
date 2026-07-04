@@ -1,5 +1,4 @@
 import SwiftUI
-import SwiftData
 
 /// **The asset-detail screen.** Pushed onto the wallet-home
 /// `NavigationStack` when the user taps any coin or token row.
@@ -60,31 +59,30 @@ struct AssetDetailView: View {
     /// detail's @State is rebuilt from scratch on the next visit.
     let identity: AssetIdentity
 
-    @Query(sort: \WalletRecord.sortOrder) private var allWallets: [WalletRecord]
-    /// Top-level transaction feed (store-sorted). Filtered in-memory by
-    /// the active wallet's address ids — no relationship faulting — and
-    /// its `.count` is the cheap tx-change signal that replaces the
-    /// O(all-tx) `WalletDataFingerprint.make` in `derivedKey`
-    /// (2026-06-14 Rule #28 fix).
-    @Query(sort: \TransactionRecord.occurredAt, order: .reverse)
-    private var allTransactionRecords: [TransactionRecord]
-    /// On-disk price cache so `BalanceHistoryChart` can convert each
-    /// transaction amount into the active local currency.
-    @Query private var cachedPrices: [CachedPriceRecord]
-    /// User-added custom tokens — so a custom token's networks include
-    /// every chain the user explicitly added it on (e.g. LINK on both
-    /// Ethereum and Polygon), even ones with a 0 balance (2026-06-19).
-    @Query private var customTokenRecords: [CustomTokenRecord]
-    /// On-disk historical-price cache — used only at transaction timestamps
-    /// so past transaction amounts convert at their then-local price.
-    @Query private var historicalPrices: [HistoricalPriceRecord]
-    /// Needed for the historical-price ensure-loop that constructs
-    /// `HistoricalPriceRepository(modelContainer:)` to write fetched
-    /// candles into the SwiftData store.
-    @Environment(\.modelContext) private var modelContext
+    @StateObject private var databaseSnapshot = DatabaseSnapshotObservation()
     @AppStorage("activeWalletId") private var activeWalletIdRaw: String = ""
     @AppStorage(CurrencyPreference.storageKey) private var currencyCode: String = CurrencyPreference.defaultCode
     @AppStorage(HideBalancesPreference.hideBalanceOnHomeKey) private var hideBalance: Bool = false
+
+    private var allWallets: [WalletRecord] {
+        databaseSnapshot.wallets
+    }
+
+    private var allTransactionRecords: [TransactionRecord] {
+        databaseSnapshot.transactions.sorted { $0.occurredAt > $1.occurredAt }
+    }
+
+    private var cachedPrices: [CachedPriceRecord] {
+        databaseSnapshot.cachedPrices
+    }
+
+    private var customTokenRecords: [CustomTokenRecord] {
+        databaseSnapshot.customTokenRecords
+    }
+
+    private var historicalPrices: [HistoricalPriceRecord] {
+        databaseSnapshot.historicalPrices
+    }
 
     // MARK: - Filter preferences (Rule #14-class declarative reads)
     //
@@ -671,7 +669,7 @@ struct AssetDetailView: View {
 
     /// Cheap data-change signal replacing `WalletDataFingerprint.make`
     /// (which faulted every address's transaction relationship every body
-    /// pass). Tx changes come from the top-level `@Query` count (no
+    /// pass). Tx changes come from the top-level GRDB observation count (no
     /// faulting); balance value changes from a small O(balances) scan of
     /// `updatedAt` (balances are dozens, not thousands). 2026-06-14.
     private var walletDataSignal: String {
@@ -779,7 +777,7 @@ struct AssetDetailView: View {
     }
 
     /// All transactions across the active wallet's addresses, via the
-    /// top-level `@Query` filtered on the stored `addressId` column (no
+    /// top-level GRDB observation filtered on the stored `addressId` column (no
     /// relationship faulting). Asset-scoping happens in the filter
     /// applier, not here. Read only inside `computeDerived()`, which runs
     /// on a `derivedKey` change — not per body pass.

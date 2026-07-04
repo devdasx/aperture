@@ -1,15 +1,14 @@
 import Foundation
 import Charts
-import SwiftData
+import GRDB
 import SwiftUI
 import TipKit
 import UIKit
 
-// MARK: - SwiftData
+// MARK: - Market Cache Records
 
-@Model
 final class MarketAssetRecord {
-    @Attribute(.unique) var symbol: String
+    var symbol: String
     var name: String
     var providerId: String
     var rank: Int
@@ -97,9 +96,8 @@ final class MarketAssetRecord {
     }
 }
 
-@Model
 final class MarketChartCacheRecord {
-    @Attribute(.unique) var cacheKey: String
+    var cacheKey: String
     var symbol: String
     var rangeRaw: String
     var currencyCode: String
@@ -129,9 +127,8 @@ final class MarketChartCacheRecord {
     }
 }
 
-@Model
 final class MarketWatchlistRecord {
-    @Attribute(.unique) var symbol: String
+    var symbol: String
     var addedAt: Date
 
     init(symbol: String, addedAt: Date = Date()) {
@@ -391,39 +388,46 @@ final class MarketsViewModel: ObservableObject {
     @Published var errorMessage: String?
 
     private let service = MarketDataService()
+    private let database: AppDatabase
     private var activeCurrencyCode = CurrencyPreference.defaultCode
 
-    func loadCached(from context: ModelContext) {
-        let descriptor = FetchDescriptor<MarketAssetRecord>(
-            sortBy: [SortDescriptor(\.rank, order: .forward)]
-        )
-        if let records = try? context.fetch(descriptor) {
-            assets = records.map(\.snapshot)
-        }
-        watchlist = fetchWatchlist(from: context)
+    init(database: AppDatabase = .shared) {
+        self.database = database
     }
 
-    func repriceCachedAssets(context: ModelContext, currencyCode: String) async {
+    func loadCached() {
+        if let cached = try? database.read({ db in
+            try Row.fetchAll(
+                db,
+                sql: "SELECT * FROM market_assets ORDER BY rank ASC, symbol ASC"
+            ).map(Self.marketAsset)
+        }) {
+            assets = cached
+        }
+        watchlist = fetchWatchlist()
+    }
+
+    func repriceCachedAssets(currencyCode: String) async {
         let target = normalizedCurrencyCode(currencyCode)
         activeCurrencyCode = target
-        await repriceCurrentAssets(to: target, context: context)
+        await repriceCurrentAssets(to: target)
     }
 
-    func refresh(context: ModelContext, currencyCode: String) async {
+    func refresh(currencyCode: String) async {
         let target = normalizedCurrencyCode(currencyCode)
         activeCurrencyCode = target
         isLoading = assets.isEmpty
         do {
             let fresh = try await service.fetchMarkets(currencyCode: target)
             guard activeCurrencyCode == target else { return }
-            try upsert(fresh, in: context)
+            try upsert(fresh)
             assets = fresh.sorted { lhs, rhs in lhs.rank < rhs.rank }
-            watchlist = fetchWatchlist(from: context)
+            watchlist = fetchWatchlist()
             errorMessage = nil
         } catch {
             guard activeCurrencyCode == target else { return }
-            loadCached(from: context)
-            await repriceCurrentAssets(to: target, context: context)
+            loadCached()
+            await repriceCurrentAssets(to: target)
             if assets.isEmpty {
                 errorMessage = "Market data is unavailable. Pull to refresh when the network is back."
             } else {
@@ -439,51 +443,65 @@ final class MarketsViewModel: ObservableObject {
         watchlist.contains(symbol.uppercased())
     }
 
-    func toggleWatchlist(symbol: String, context: ModelContext) {
+    func toggleWatchlist(symbol: String) {
         let normalized = symbol.uppercased()
-        if let record = watchRecord(symbol: normalized, in: context) {
-            context.delete(record)
+        if watchlist.contains(normalized) {
+            try? database.write { db in
+                try db.execute(sql: "DELETE FROM market_watchlist WHERE symbol = ?", arguments: [normalized])
+            }
             watchlist.remove(normalized)
         } else {
-            context.insert(MarketWatchlistRecord(symbol: normalized))
+            try? database.write { db in
+                try db.execute(
+                    sql: """
+                    INSERT OR IGNORE INTO market_watchlist (symbol, added_at_ms)
+                    VALUES (?, ?)
+                    """,
+                    arguments: [normalized, Date.databaseMilliseconds]
+                )
+            }
             watchlist.insert(normalized)
         }
-        try? context.save()
     }
 
-    func cachedChart(symbol: String, range: MarketChartRange, currencyCode: String, context: ModelContext) -> MarketChartResponse? {
+    func cachedChart(symbol: String, range: MarketChartRange, currencyCode: String) -> MarketChartResponse? {
         let key = MarketChartCacheRecord.key(symbol: symbol, range: range, currencyCode: normalizedCurrencyCode(currencyCode))
-        var descriptor = FetchDescriptor<MarketChartCacheRecord>(
-            predicate: #Predicate { $0.cacheKey == key }
-        )
-        descriptor.fetchLimit = 1
-        guard let record = try? context.fetch(descriptor).first else { return nil }
-        let points = MarketPoint.codec.decode(record.samplesJSON)
+        let row = try? database.read { db in
+            try Row.fetchOne(db, sql: "SELECT * FROM market_chart_cache WHERE cache_key = ? LIMIT 1", arguments: [key])
+        }
+        guard let row else { return nil }
+        let points = MarketPoint.codec.decode(row["samples_json"] as String)
         guard !points.isEmpty else { return nil }
-        return MarketChartResponse(points: points, currencyCode: record.currencyCode, source: record.source)
+        return MarketChartResponse(points: points, currencyCode: row["currency_code"], source: row["source"])
     }
 
-    func cachedOrConvertedChart(symbol: String, range: MarketChartRange, currencyCode: String, context: ModelContext) async -> MarketChartResponse? {
+    func cachedOrConvertedChart(symbol: String, range: MarketChartRange, currencyCode: String) async -> MarketChartResponse? {
         let target = normalizedCurrencyCode(currencyCode)
-        if let exact = cachedChart(symbol: symbol, range: range, currencyCode: target, context: context) {
+        if let exact = cachedChart(symbol: symbol, range: range, currencyCode: target) {
             return exact
         }
 
         let normalizedSymbol = symbol.uppercased()
         let rangeRaw = range.rawValue
-        var descriptor = FetchDescriptor<MarketChartCacheRecord>(
-            predicate: #Predicate { $0.symbol == normalizedSymbol && $0.rangeRaw == rangeRaw },
-            sortBy: [SortDescriptor(\.updatedAt, order: .reverse)]
-        )
-        descriptor.fetchLimit = 1
-
-        guard let record = try? context.fetch(descriptor).first else { return nil }
-        let points = MarketPoint.codec.decode(record.samplesJSON)
+        let row = try? database.read { db in
+            try Row.fetchOne(
+                db,
+                sql: """
+                SELECT * FROM market_chart_cache
+                WHERE symbol = ? AND range_raw = ?
+                ORDER BY updated_at_ms DESC
+                LIMIT 1
+                """,
+                arguments: [normalizedSymbol, rangeRaw]
+            )
+        }
+        guard let row else { return nil }
+        let points = MarketPoint.codec.decode(row["samples_json"] as String)
         guard !points.isEmpty else { return nil }
 
-        let sourceCurrency = record.currencyCode.uppercased()
+        let sourceCurrency = (row["currency_code"] as String).uppercased()
         guard sourceCurrency != target else {
-            return MarketChartResponse(points: points, currencyCode: record.currencyCode, source: record.source)
+            return MarketChartResponse(points: points, currencyCode: row["currency_code"], source: row["source"])
         }
         guard let conversion = try? await service.crossRate(from: sourceCurrency, to: target) else {
             return nil
@@ -491,17 +509,17 @@ final class MarketsViewModel: ObservableObject {
 
         let converted = points.converted(rate: conversion.rate)
         let source = "Saved chart data · \(conversion.source)"
-        upsertChart(symbol: normalizedSymbol, range: range, currencyCode: target, samples: converted, source: source, context: context)
+        upsertChart(symbol: normalizedSymbol, range: range, currencyCode: target, samples: converted, source: source)
         return MarketChartResponse(points: converted, currencyCode: target, source: source)
     }
 
-    func refreshChart(symbol: String, range: MarketChartRange, currencyCode: String, context: ModelContext) async throws -> MarketChartResponse {
+    func refreshChart(symbol: String, range: MarketChartRange, currencyCode: String) async throws -> MarketChartResponse {
         let response = try await service.fetchChart(symbol: symbol, range: range, currencyCode: normalizedCurrencyCode(currencyCode))
-        upsertChart(symbol: symbol, range: range, currencyCode: response.currencyCode, samples: response.points, source: response.source, context: context)
+        upsertChart(symbol: symbol, range: range, currencyCode: response.currencyCode, samples: response.points, source: response.source)
         return response
     }
 
-    func reprice(asset: MarketAsset, currencyCode: String, context: ModelContext) async -> MarketAsset {
+    func reprice(asset: MarketAsset, currencyCode: String) async -> MarketAsset {
         let target = normalizedCurrencyCode(currencyCode)
         guard asset.currencyCode.uppercased() != target else { return asset }
         guard let conversion = try? await service.crossRate(from: asset.currencyCode, to: target) else {
@@ -512,7 +530,7 @@ final class MarketsViewModel: ObservableObject {
             rate: conversion.rate,
             source: "Saved market data · \(conversion.source)"
         )
-        try? upsert([converted], in: context)
+        try? upsert([converted])
         if let index = assets.firstIndex(where: { $0.symbol == converted.symbol }) {
             assets[index] = converted
             assets.sort { lhs, rhs in lhs.rank < rhs.rank }
@@ -520,9 +538,9 @@ final class MarketsViewModel: ObservableObject {
         return converted
     }
 
-    func refreshDetail(for asset: MarketAsset, currencyCode: String, context: ModelContext) async -> MarketAsset {
+    func refreshDetail(for asset: MarketAsset, currencyCode: String) async -> MarketAsset {
         let target = normalizedCurrencyCode(currencyCode)
-        let repriced = await reprice(asset: asset, currencyCode: target, context: context)
+        let repriced = await reprice(asset: asset, currencyCode: target)
         guard let detail = try? await service.fetchDetail(symbol: repriced.symbol, currencyCode: target) else {
             return repriced
         }
@@ -535,19 +553,7 @@ final class MarketsViewModel: ObservableObject {
             high24h: detail.high24h > 0 ? detail.high24h : nil,
             low24h: detail.low24h > 0 ? detail.low24h : nil
         )
-        let symbol = repriced.symbol
-        var descriptor = FetchDescriptor<MarketAssetRecord>(
-            predicate: #Predicate { $0.symbol == symbol }
-        )
-        descriptor.fetchLimit = 1
-        if let record = try? context.fetch(descriptor).first {
-            record.apply(updated)
-        } else {
-            context.insert(MarketAssetRecord(asset: updated))
-        }
-        if context.hasChanges {
-            try? context.save()
-        }
+        try? upsert([updated])
         return updated
     }
 
@@ -556,54 +562,50 @@ final class MarketsViewModel: ObservableObject {
         range: MarketChartRange,
         currencyCode: String,
         samples: [MarketPoint],
-        source: String,
-        context: ModelContext
+        source: String
     ) {
         let key = MarketChartCacheRecord.key(symbol: symbol, range: range, currencyCode: currencyCode)
-        var descriptor = FetchDescriptor<MarketChartCacheRecord>(
-            predicate: #Predicate { $0.cacheKey == key }
-        )
-        descriptor.fetchLimit = 1
-        if let record = try? context.fetch(descriptor).first {
-            record.apply(samples: samples, source: source)
-        } else {
-            context.insert(
-                MarketChartCacheRecord(
-                    symbol: symbol,
-                    range: range,
-                    currencyCode: currencyCode,
-                    samples: samples,
-                    source: source
-                )
+        let normalizedSymbol = symbol.uppercased()
+        let normalizedCurrency = currencyCode.uppercased()
+        try? database.write { db in
+            try db.execute(
+                sql: """
+                INSERT INTO market_chart_cache
+                (cache_key, symbol, range_raw, currency_code, samples_json, source, updated_at_ms)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(cache_key) DO UPDATE SET
+                    samples_json = excluded.samples_json,
+                    source = excluded.source,
+                    updated_at_ms = excluded.updated_at_ms
+                """,
+                arguments: [
+                    key,
+                    normalizedSymbol,
+                    range.rawValue,
+                    normalizedCurrency,
+                    MarketPoint.codec.encode(samples),
+                    source,
+                    Date.databaseMilliseconds
+                ]
             )
         }
-        try? context.save()
     }
 
-    private func upsert(_ assets: [MarketAsset], in context: ModelContext) throws {
-        let records = (try? context.fetch(FetchDescriptor<MarketAssetRecord>())) ?? []
-        var bySymbol = Dictionary(uniqueKeysWithValues: records.map { ($0.symbol, $0) })
+    private func upsert(_ assets: [MarketAsset]) throws {
+        try database.write { db in
         for asset in assets {
-            if let record = bySymbol[asset.symbol] {
-                record.apply(asset)
-            } else {
-                let record = MarketAssetRecord(asset: asset)
-                context.insert(record)
-                bySymbol[asset.symbol] = record
+                try upsertMarketAsset(asset, db: db)
             }
         }
-        if context.hasChanges {
-            try context.save()
-        }
     }
 
-    private func repriceCurrentAssets(to target: String, context: ModelContext) async {
+    private func repriceCurrentAssets(to target: String) async {
         guard !assets.isEmpty else { return }
 
         let sourceCurrencies = Set(assets.map { $0.currencyCode.uppercased() })
             .filter { $0 != target }
         guard !sourceCurrencies.isEmpty else {
-            watchlist = fetchWatchlist(from: context)
+            watchlist = fetchWatchlist()
             return
         }
 
@@ -630,9 +632,9 @@ final class MarketsViewModel: ObservableObject {
         }
         guard didConvert else { return }
 
-        try? upsert(converted, in: context)
+        try? upsert(converted)
         assets = converted.sorted { lhs, rhs in lhs.rank < rhs.rank }
-        watchlist = fetchWatchlist(from: context)
+        watchlist = fetchWatchlist()
     }
 
     private func normalizedCurrencyCode(_ currencyCode: String) -> String {
@@ -640,24 +642,90 @@ final class MarketsViewModel: ObservableObject {
         return CurrencyPreference.currency(for: uppercased)?.code ?? CurrencyPreference.defaultCode
     }
 
-    private func fetchWatchlist(from context: ModelContext) -> Set<String> {
-        let records = (try? context.fetch(FetchDescriptor<MarketWatchlistRecord>())) ?? []
-        return Set(records.map { $0.symbol.uppercased() })
+    private func fetchWatchlist() -> Set<String> {
+        (try? database.read { db in
+            Set(try String.fetchAll(db, sql: "SELECT symbol FROM market_watchlist").map { $0.uppercased() })
+        }) ?? []
     }
 
-    private func watchRecord(symbol: String, in context: ModelContext) -> MarketWatchlistRecord? {
-        var descriptor = FetchDescriptor<MarketWatchlistRecord>(
-            predicate: #Predicate { $0.symbol == symbol }
+    private static func marketAsset(_ row: Row) -> MarketAsset {
+        MarketAsset(
+            symbol: row["symbol"],
+            name: row["name"],
+            providerId: row["provider_id"],
+            rank: row["rank"],
+            price: row["price"],
+            currencyCode: row["currency_code"],
+            priceChange24hPercent: row["price_change_24h_percent"],
+            priceChange24hAmount: row["price_change_24h_amount"],
+            marketCap: row["market_cap"],
+            volume24h: row["volume_24h"],
+            circulatingSupply: row["circulating_supply"],
+            ath: row["ath"],
+            high24h: row["high_24h"],
+            low24h: row["low_24h"],
+            about: row["about"],
+            sparkline: MarketPoint.codec.decode(row["sparkline_json"]),
+            source: row["source"],
+            lastUpdatedAt: Date(databaseMilliseconds: row["last_updated_at_ms"])
         )
-        descriptor.fetchLimit = 1
-        return try? context.fetch(descriptor).first
+    }
+
+    private func upsertMarketAsset(_ asset: MarketAsset, db: Database) throws {
+        try db.execute(
+            sql: """
+            INSERT INTO market_assets
+            (symbol, name, provider_id, rank, price, currency_code,
+             price_change_24h_percent, price_change_24h_amount,
+             market_cap, volume_24h, circulating_supply, ath, high_24h, low_24h,
+             about, sparkline_json, source, last_updated_at_ms)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(symbol) DO UPDATE SET
+                name = excluded.name,
+                provider_id = excluded.provider_id,
+                rank = excluded.rank,
+                price = excluded.price,
+                currency_code = excluded.currency_code,
+                price_change_24h_percent = excluded.price_change_24h_percent,
+                price_change_24h_amount = excluded.price_change_24h_amount,
+                market_cap = CASE WHEN excluded.market_cap > 0 THEN excluded.market_cap ELSE market_assets.market_cap END,
+                volume_24h = CASE WHEN excluded.volume_24h > 0 THEN excluded.volume_24h ELSE market_assets.volume_24h END,
+                circulating_supply = CASE WHEN excluded.circulating_supply > 0 THEN excluded.circulating_supply ELSE market_assets.circulating_supply END,
+                ath = CASE WHEN excluded.ath > 0 THEN excluded.ath ELSE market_assets.ath END,
+                high_24h = CASE WHEN excluded.high_24h > 0 THEN excluded.high_24h ELSE market_assets.high_24h END,
+                low_24h = CASE WHEN excluded.low_24h > 0 THEN excluded.low_24h ELSE market_assets.low_24h END,
+                about = CASE WHEN excluded.about != '' THEN excluded.about ELSE market_assets.about END,
+                sparkline_json = CASE WHEN excluded.sparkline_json != '[]' THEN excluded.sparkline_json ELSE market_assets.sparkline_json END,
+                source = excluded.source,
+                last_updated_at_ms = excluded.last_updated_at_ms
+            """,
+            arguments: [
+                asset.symbol.uppercased(),
+                asset.name,
+                asset.providerId,
+                asset.rank,
+                asset.price,
+                asset.currencyCode.uppercased(),
+                asset.priceChange24hPercent,
+                asset.priceChange24hAmount,
+                asset.marketCap,
+                asset.volume24h,
+                asset.circulatingSupply,
+                asset.ath,
+                asset.high24h,
+                asset.low24h,
+                asset.about,
+                MarketPoint.codec.encode(asset.sparkline),
+                asset.source,
+                asset.lastUpdatedAt.databaseMilliseconds
+            ]
+        )
     }
 }
 
 // MARK: - Screens
 
 struct MarketsView: View {
-    @Environment(\.modelContext) private var modelContext
     @Environment(\.layoutDirection) private var layoutDirection
     @AppStorage(CurrencyPreference.storageKey) private var currencyCode: String = CurrencyPreference.defaultCode
     @StateObject private var model = MarketsViewModel()
@@ -739,7 +807,7 @@ struct MarketsView: View {
                         // and by swiping right in RTL languages.
                         .swipeActions(edge: .trailing, allowsFullSwipe: true) {
                             Button {
-                                model.toggleWatchlist(symbol: asset.symbol, context: modelContext)
+                                model.toggleWatchlist(symbol: asset.symbol)
                             } label: {
                                 Label(model.isWatchlisted(asset.symbol) ? "Remove" : "Watch", systemImage: model.isWatchlisted(asset.symbol) ? "star.slash" : "star")
                             }
@@ -763,19 +831,19 @@ struct MarketsView: View {
             MarketDetailView(asset: asset, model: model)
         }
         .refreshable {
-            await model.refresh(context: modelContext, currencyCode: currencyCode)
+            await model.refresh(currencyCode: currencyCode)
         }
         .task {
-            model.loadCached(from: modelContext)
-            await model.repriceCachedAssets(context: modelContext, currencyCode: currencyCode)
+            model.loadCached()
+            await model.repriceCachedAssets(currencyCode: currencyCode)
             if model.assets.isEmpty {
-                await model.refresh(context: modelContext, currencyCode: currencyCode)
+                await model.refresh(currencyCode: currencyCode)
             }
         }
         .onChange(of: currencyCode) { _, newValue in
             Task {
-                await model.repriceCachedAssets(context: modelContext, currencyCode: newValue)
-                await model.refresh(context: modelContext, currencyCode: newValue)
+                await model.repriceCachedAssets(currencyCode: newValue)
+                await model.refresh(currencyCode: newValue)
             }
         }
         .alert("Markets", isPresented: Binding(
@@ -842,7 +910,6 @@ private struct MarketWatchlistSwipeTip: Tip {
 
 struct MarketDetailView: View {
     let model: MarketsViewModel
-    @Environment(\.modelContext) private var modelContext
     @AppStorage(CurrencyPreference.storageKey) private var currencyCode: String = CurrencyPreference.defaultCode
 
     @State private var asset: MarketAsset
@@ -915,7 +982,7 @@ struct MarketDetailView: View {
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
-                    model.toggleWatchlist(symbol: asset.symbol, context: modelContext)
+                    model.toggleWatchlist(symbol: asset.symbol)
                 } label: {
                     Image(systemName: model.isWatchlisted(asset.symbol) ? "star.fill" : "star")
                 }
@@ -943,7 +1010,7 @@ struct MarketDetailView: View {
             chart = []
             chartCurrencyCode = displayCurrencyCode.uppercased()
             Task {
-                asset = await model.reprice(asset: asset, currencyCode: displayCurrencyCode, context: modelContext)
+                asset = await model.reprice(asset: asset, currencyCode: displayCurrencyCode)
                 await loadCachedOrConvertedChart()
                 await refreshDetail()
             }
@@ -1070,7 +1137,7 @@ struct MarketDetailView: View {
     }
 
     private func loadCachedChart() {
-        guard let cached = model.cachedChart(symbol: asset.symbol, range: range, currencyCode: displayCurrencyCode, context: modelContext) else {
+        guard let cached = model.cachedChart(symbol: asset.symbol, range: range, currencyCode: displayCurrencyCode) else {
             return
         }
         chart = cached.points
@@ -1078,7 +1145,7 @@ struct MarketDetailView: View {
     }
 
     private func loadCachedOrConvertedChart() async {
-        if let cached = await model.cachedOrConvertedChart(symbol: asset.symbol, range: range, currencyCode: displayCurrencyCode, context: modelContext) {
+        if let cached = await model.cachedOrConvertedChart(symbol: asset.symbol, range: range, currencyCode: displayCurrencyCode) {
             chart = cached.points
             chartCurrencyCode = cached.currencyCode.uppercased()
         } else {
@@ -1087,7 +1154,7 @@ struct MarketDetailView: View {
     }
 
     private func refreshDetail() async {
-        asset = await model.refreshDetail(for: asset, currencyCode: displayCurrencyCode, context: modelContext)
+        asset = await model.refreshDetail(for: asset, currencyCode: displayCurrencyCode)
         await refreshChart()
     }
 
@@ -1095,7 +1162,7 @@ struct MarketDetailView: View {
         isLoadingChart = true
         chartError = false
         do {
-            let response = try await model.refreshChart(symbol: asset.symbol, range: range, currencyCode: displayCurrencyCode, context: modelContext)
+            let response = try await model.refreshChart(symbol: asset.symbol, range: range, currencyCode: displayCurrencyCode)
             if !response.points.isEmpty {
                 chart = response.points
                 chartCurrencyCode = response.currencyCode.uppercased()

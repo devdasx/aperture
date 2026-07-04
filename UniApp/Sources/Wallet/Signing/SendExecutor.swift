@@ -1,5 +1,5 @@
 import Foundation
-import SwiftData
+import GRDB
 
 /// The outbox orchestrator (Rule #27 §C): sign → broadcast → persist →
 /// poll. The single API the Send UI calls AFTER it has authenticated the
@@ -7,8 +7,8 @@ import SwiftData
 /// authorization already happened and just performs the send).
 ///
 /// **Pipeline (adapted from Stabro's `SmartTransactionExecutor`).**
-/// 1. Resolve the wallet + its address row for the chain (main actor —
-///    SwiftData), as `Sendable` values.
+/// 1. Resolve the wallet + its address row for the chain, as `Sendable`
+///    values.
 /// 2. JUST-IN-TIME refresh the volatile pre-sign data off-main (Rule #27
 ///    §C): EVM live pending nonce. (Bitcoin's UTXO set + fee rate are
 ///    already in the draft, refreshed by the compose layer immediately
@@ -24,9 +24,8 @@ import SwiftData
 /// **Result.** `SentTransaction` (the real hash + chain) on success, a
 /// typed `SigningError` on failure — never a fabricated success.
 ///
-/// `@MainActor` API surface (it touches SwiftData on the main context for
-/// the live-update write); the heavy sign/broadcast runs off-main via a
-/// detached task and only `Sendable` values cross back.
+/// `@MainActor` API surface for UI callers; the heavy sign/broadcast
+/// runs off-main via a detached task and only `Sendable` values cross back.
 @MainActor
 struct SendExecutor {
 
@@ -38,12 +37,12 @@ struct SendExecutor {
         let recordId: UUID?
     }
 
-    private let container: ModelContainer
+    private let database: AppDatabase
     private let broadcaster: BroadcastService
 
-    init(container: ModelContainer = ApertureDatabase.shared.container,
+    init(database: AppDatabase = .shared,
          broadcaster: BroadcastService = BroadcastService()) {
-        self.container = container
+        self.database = database
         self.broadcaster = broadcaster
     }
 
@@ -55,9 +54,7 @@ struct SendExecutor {
         walletId: UUID,
         passphrase: String? = nil
     ) async -> Result<SentTransaction, SigningError> {
-        // 1. Resolve the wallet descriptor + the address row id (main
-        //    actor — SwiftData). `WalletRecord` is not Sendable; we
-        //    extract Sendable values.
+        // 1. Resolve the wallet descriptor + the address row id.
         guard let resolved = resolveWallet(walletId: walletId, chain: draft.chain) else {
             return .failure(.noWallet)
         }
@@ -122,13 +119,42 @@ struct SendExecutor {
     private struct ResolvedWallet { let descriptor: WalletDescriptor; let addressId: UUID? }
 
     private func resolveWallet(walletId: UUID, chain: SupportedChain) -> ResolvedWallet? {
-        let context = ModelContext(container)
-        var descriptor = FetchDescriptor<WalletRecord>(predicate: #Predicate { $0.id == walletId })
-        descriptor.fetchLimit = 1
-        guard let record = try? context.fetch(descriptor).first else { return nil }
-        let chainRaw = chain.rawValue
-        let addressId = record.addresses.first(where: { $0.chainRaw == chainRaw })?.id
-        return ResolvedWallet(descriptor: WalletDescriptor(record: record), addressId: addressId)
+        do {
+            return try database.read { db in
+                guard let walletRow = try Row.fetchOne(
+                    db,
+                    sql: """
+                    SELECT id, kind_raw, has_passphrase
+                    FROM wallets
+                    WHERE id = ?
+                    LIMIT 1
+                    """,
+                    arguments: [walletId.uuidString]
+                ), let id = UUID(uuidString: walletRow["id"]) else {
+                    return nil
+                }
+                let addressRaw = try String.fetchOne(
+                    db,
+                    sql: """
+                    SELECT id FROM wallet_addresses
+                    WHERE wallet_id = ? AND chain_raw = ?
+                    ORDER BY is_receive_preferred DESC
+                    LIMIT 1
+                    """,
+                    arguments: [walletId.uuidString, chain.rawValue]
+                )
+                return ResolvedWallet(
+                    descriptor: WalletDescriptor(
+                        id: id,
+                        kind: WalletKind(rawValue: walletRow["kind_raw"]) ?? .watchOnly,
+                        hasPassphrase: (walletRow["has_passphrase"] as Int) != 0
+                    ),
+                    addressId: addressRaw.flatMap(UUID.init(uuidString:))
+                )
+            }
+        } catch {
+            return nil
+        }
     }
 
     // MARK: - 2+3. Just-in-time refresh + sign (off-main)
@@ -227,7 +253,7 @@ struct SendExecutor {
         let symbol = draft.tokenSymbol ?? draft.chain.ticker
         let amountRaw = draft.totalAmount.description
         let counterparty = draft.recipients.first?.address ?? ""
-        let repository = TransactionRepository(modelContainer: container)
+        let repository = TransactionRepository(database: database)
         do {
             try await repository.upsertTransaction(
                 addressId: addressId,
@@ -263,7 +289,7 @@ struct SendExecutor {
         draft: SendDraft
     ) {
         guard let addressId else { return }
-        let container = self.container
+        let database = self.database
         let symbol = draft.tokenSymbol ?? draft.chain.ticker
         let amountRaw = draft.totalAmount.description
         let counterparty = draft.recipients.first?.address ?? ""
@@ -287,7 +313,7 @@ struct SendExecutor {
                 default:    resolved = nil
                 }
                 guard let resolved else { continue }
-                let repository = TransactionRepository(modelContainer: container)
+                let repository = TransactionRepository(database: database)
                 try? await repository.upsertTransaction(
                     addressId: addressId,
                     txHash: txHash,
@@ -321,7 +347,7 @@ struct SendExecutor {
         draft: SendDraft
     ) {
         guard let addressId, !txHash.isEmpty else { return }
-        let container = self.container
+        let database = self.database
         let symbol = draft.tokenSymbol ?? draft.chain.ticker
         let amountRaw = draft.totalAmount.description
         let counterparty = draft.recipients.first?.address ?? ""
@@ -342,7 +368,7 @@ struct SendExecutor {
                 guard confirmation == "confirmed" || confirmation == "finalized" else { continue }
                 let resolved: TransactionStatus = (status["err"] is NSNull || status["err"] == nil) ? .confirmed : .failed
                 let slot = (status["slot"] as? NSNumber)?.int64Value
-                let repository = TransactionRepository(modelContainer: container)
+                let repository = TransactionRepository(database: database)
                 try? await repository.upsertTransaction(
                     addressId: addressId,
                     txHash: txHash,

@@ -1,5 +1,5 @@
 import Foundation
-import SwiftData
+import GRDB
 import WalletCore
 
 /// Resolves the wallet-core `PrivateKey` for a `(wallet, chain)` pair —
@@ -35,27 +35,27 @@ import WalletCore
 ///
 /// `enum` with only static members — no instance state to leak.
 enum SigningKeyProvider {
-    private final class ContainerBox: @unchecked Sendable {
+    private final class DatabaseBox: @unchecked Sendable {
         private let lock = NSLock()
-        private var container: ModelContainer?
+        private var database: AppDatabase?
 
-        func set(_ container: ModelContainer) {
+        func set(_ database: AppDatabase) {
             lock.lock()
-            self.container = container
+            self.database = database
             lock.unlock()
         }
 
-        func get() -> ModelContainer? {
+        func get() -> AppDatabase? {
             lock.lock()
             defer { lock.unlock() }
-            return container
+            return database
         }
     }
 
-    private static let containerBox = ContainerBox()
+    private static let databaseBox = DatabaseBox()
 
-    static func configure(modelContainer: ModelContainer) {
-        containerBox.set(modelContainer)
+    static func configure(database: AppDatabase) {
+        databaseBox.set(database)
     }
 
     /// Run `body` with the freshly-derived `PrivateKey` for
@@ -177,7 +177,7 @@ enum SigningKeyProvider {
         }
 
         // The original imported key string (hex / WIF / base58) is
-        // preserved in encrypted SwiftData, with legacy Keychain as a
+        // preserved in encrypted GRDB, with legacy Keychain as a
         // migration fallback; decode it to raw bytes for THIS chain exactly
         // the way the importer did (format- and chain-aware).
         let keyString = loadStoredPrivateKey(for: wallet.id)
@@ -315,9 +315,8 @@ enum SigningKeyProvider {
     // MARK: - DB-first local secret reads
 
     private static func loadStoredMnemonic(for walletId: UUID) -> [String]? {
-        if let container = containerBox.get() {
-            let context = ModelContext(container)
-            if let words = try? WalletSecretPersistence.loadMnemonic(for: walletId, in: context),
+        if let database = databaseBox.get() {
+            if let words = try? WalletSecretPersistence.loadMnemonic(for: walletId, database: database),
                !words.isEmpty {
                 return words
             }
@@ -326,9 +325,8 @@ enum SigningKeyProvider {
     }
 
     private static func loadStoredPrivateKey(for walletId: UUID) -> String? {
-        if let container = containerBox.get() {
-            let context = ModelContext(container)
-            if let key = try? WalletSecretPersistence.loadPrivateKey(for: walletId, in: context),
+        if let database = databaseBox.get() {
+            if let key = try? WalletSecretPersistence.loadPrivateKey(for: walletId, database: database),
                !key.isEmpty {
                 return key
             }
@@ -341,16 +339,21 @@ enum SigningKeyProvider {
         chain: SupportedChain,
         coin: CoinType
     ) -> PrivateKey? {
-        guard let container = containerBox.get() else { return nil }
-        let context = ModelContext(container)
-        let chainRaw = chain.rawValue
-        var descriptor = FetchDescriptor<ChainStateRecord>(
-            predicate: #Predicate { $0.walletId == walletId && $0.chainRaw == chainRaw }
-        )
-        descriptor.fetchLimit = 1
-        guard let record = try? context.fetch(descriptor).first,
-              record.keyEncryptionScheme == ChainKeyVault.scheme,
-              let blob = record.encryptedPrivateKey,
+        guard let database = databaseBox.get() else { return nil }
+        guard let row = try? database.read({ db in
+            try Row.fetchOne(
+                db,
+                sql: """
+                SELECT encrypted_private_key, key_encryption_scheme
+                FROM chain_states
+                WHERE wallet_id = ? AND chain_raw = ?
+                LIMIT 1
+                """,
+                arguments: [walletId.uuidString, chain.rawValue]
+            )
+        }),
+              (row["key_encryption_scheme"] as String?) == ChainKeyVault.scheme,
+              let blob = row["encrypted_private_key"] as Data?,
               let keyData = try? ChainKeyVault.open(blob),
               PrivateKey.isValid(data: keyData, curve: coin.curve),
               let privateKey = PrivateKey(data: keyData) else {
@@ -385,10 +388,7 @@ enum SigningKeyProvider {
     }
 }
 
-/// A `Sendable` snapshot of the wallet fields the signer needs, so the
-/// `SendExecutor` can resolve the wallet on the main actor (SwiftData)
-/// and hand a value type to the off-main signing path — `WalletRecord`
-/// (a SwiftData `@Model`) is main-actor-bound and not `Sendable`.
+/// A `Sendable` snapshot of the wallet fields the signer needs.
 struct WalletDescriptor: Sendable, Hashable {
     let id: UUID
     let kind: WalletKind

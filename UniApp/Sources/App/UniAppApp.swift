@@ -1,5 +1,4 @@
 import SwiftUI
-import SwiftData
 import TipKit
 // UIKit is imported ONLY for the detached lock-overlay `UIWindow` +
 // `UIHostingController` (see `AppRoot.mountLockOverlayWindowIfNeeded`).
@@ -25,15 +24,15 @@ struct UniAppApp: App {
 
     /// App-launch initialization in dependency order. Runs synchronously
     /// from `init()` so every subsystem is warm before `WindowGroup`
-    /// renders its first frame — the wallet screen's `@Query` reads
-    /// resolve against an already-open SwiftData store, biometric drift
+    /// renders its first frame — the wallet screen's database reads
+    /// resolve against an already-open SQLite store, biometric drift
     /// has already been checked, and the device's natural currency is
     /// already seeded into `UserDefaults`. This is what makes "zero
     /// latency on open" honest rather than aspirational.
     ///
     /// **Order matters:**
     /// 1. Preference bootstrap (Locale-driven currency seed).
-    /// 2. SwiftData container open + row bootstrap (AppMetadata + biometric).
+    /// 2. SQLite database open + row bootstrap.
     ///
     /// The biometric enrollment drift check is intentionally NOT here
     /// (2026-06-10): it performs blocking Keychain / LocalAuthentication
@@ -80,23 +79,20 @@ struct UniAppApp: App {
         CurrencyPreference.bootstrapIfNeeded()
         Self.diagnostic(.debug, "Currency preference bootstrapped", start: currencyStart)
 
-        // 2) SwiftData container — synchronous open. `shared` is a
-        //    `static let`; first access constructs the container and
-        //    opens the SQLite file. `bootstrap()` then writes the
-        //    singleton AppMetadata + BiometricEnrollment rows on first
-        //    install (idempotent on subsequent launches).
+        // 2) SQLite database — synchronous open. `shared` is a
+        //    `static let`; first access opens the SQLite file.
         let databaseStart = Date()
-        ApertureDatabase.shared.bootstrap()
+        AppDatabase.shared.bootstrap()
         Self.diagnostic(.debug, "Database bootstrap requested", start: databaseStart)
 
         // 3) TipKit data store for first-time-feature hints. The
         //    `WalletTabSwitcherTip` reads its eligibility rule against
-        //    `MainTabView`'s `@Query` wallet count, then iOS 17+
+        //    `MainTabView`'s GRDB observation wallet count, then iOS 17+
         //    `TipKit` owns the popover chrome, the dismiss
         //    persistence, the accessibility tree. `.immediate` means
         //    a tip presents as soon as its `#Rule`s evaluate true;
         //    `.applicationDefault` data store lives in the app
-        //    sandbox alongside SwiftData. Tip dismissals persist
+        //    sandbox alongside app data. Tip dismissals persist
         //    across launches — the *"only for first time"* contract.
         // A prior factory reset can't reset TipKit's "seen" datastore itself
         // (TipKit was already configured for that session, so resetting it
@@ -121,10 +117,6 @@ struct UniAppApp: App {
         WindowGroup {
             AppRoot()
                 .uniAppEnvironment()
-                // SwiftData injection per Rule #2 §C. Every descendant view
-                // can now use `@Query`, `@Environment(\.modelContext)`, and
-                // the `@ModelActor` repositories share the same store.
-                .modelContainer(ApertureDatabase.shared.container)
                 // Inject the shared auto-lock controller into the
                 // environment so `WalletHomeView` can read its `isLocked`
                 // flag and present `AppLockView` as a `.fullScreenCover`.
@@ -145,18 +137,15 @@ struct UniAppApp: App {
                 .task {
                     let startupTaskStart = Date()
                     Self.diagnostic(.info, "Root startup task started")
-                    await TokenPricingEngine.shared.configure(container: ApertureDatabase.shared.container)
-                    BiometricEnrollmentTracker.checkForDrift(
-                        in: ApertureDatabase.shared.container
-                    )
+                    await TokenPricingEngine.shared.configure(database: AppDatabase.shared)
+                    BiometricEnrollmentTracker.checkForDrift(database: AppDatabase.shared)
                     Self.diagnostic(.debug, "Biometric drift check finished")
                     // Data fetching is disabled for some chains (2026-06-21 —
                     // EVM + Bitcoin family + Tron) — clear any balances /
                     // history / UTXOs persisted before the cutover. One-shot,
                     // off the first frame, self-gated.
-                    let container = ApertureDatabase.shared.container
                     await Task.detached(priority: .utility) {
-                        DisabledChainDataPurge.runIfNeeded(container: container)
+                        await DisabledChainDataPurge.runIfNeeded(database: AppDatabase.shared)
                     }.value
                     Self.diagnostic(.info, "Root startup task finished", start: startupTaskStart)
                 }
@@ -222,7 +211,7 @@ struct UniAppApp: App {
 ///   haptic fires on logo landing.
 /// - `.onboarding` — splash chrome fully unmounted. Onboarding is
 ///   the only interactive surface. `RootGate`'s reactive
-///   `@Query` continues to handle the wallet/no-wallet route.
+///   GRDB observation continues to handle the wallet/no-wallet route.
 /// **2026-06-09 v4 — rebuilt from scratch.** The user reported
 /// repeatedly seeing the wallet home flash between splash and lock
 /// even after the v2 (lock-mount-during-transitioning) and v3
@@ -427,9 +416,8 @@ private struct AppRoot: View {
 
     /// Creates the overlay window on the app's `UIWindowScene`. The
     /// window hosts `LockOverlayRoot` with the same environment the
-    /// main window gets: the shared lock controller, the SwiftData
-    /// container (`AppLockView` captures a biometric snapshot after a
-    /// successful unlock), and `.uniAppEnvironment()` per Rule #12 §B
+    /// main window gets: the shared lock controller and
+    /// `.uniAppEnvironment()` per Rule #12 §B
     /// item 5 (a detached `UIWindow` is a presentation surface).
     private func mountLockOverlayWindowIfNeeded() {
         guard lockOverlayWindow == nil else { return }
@@ -441,7 +429,6 @@ private struct AppRoot: View {
         let host = UIHostingController(
             rootView: LockOverlayRoot()
                 .environment(\.autoLockController, lockController)
-                .modelContainer(ApertureDatabase.shared.container)
                 .uniAppEnvironment()
         )
         // The hosting view must be transparent — `UIHostingController`

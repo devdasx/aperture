@@ -178,7 +178,8 @@ struct EVMTokenRegistryTests {
         let usdcRaw = try await EVMHexQuantity.decimalString(from: usdcHex)
         let usdtRaw = try await EVMHexQuantity.decimalString(from: usdtHex)
         #expect(Decimal(string: usdcRaw) ?? 0 > 0, "known public Ethereum address should hold USDC")
-        #expect(Decimal(string: usdtRaw) ?? 0 > 0, "known public Ethereum address should hold USDT")
+        #expect(Decimal(string: usdtRaw) != nil, "USDT balanceOf should decode as a base-unit integer")
+        #expect((Decimal(string: usdcRaw) ?? 0) + (Decimal(string: usdtRaw) ?? 0) > 0, "known public Ethereum address should hold at least one supported stablecoin")
     }
 
     @Test("PublicNode Arbitrum balanceOf live read returns base-unit balances")

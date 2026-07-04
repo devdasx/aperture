@@ -1,5 +1,4 @@
 import SwiftUI
-import SwiftData
 
 /// Sheet that lists all the user's wallets so they can switch the
 /// active one. Two extra rows at the bottom — "Create new wallet" and
@@ -11,15 +10,21 @@ import SwiftData
 /// `.large` detent because this is a navigation experience (it could
 /// push to a wallet-detail screen later, T-042).
 struct WalletSwitcherSheet: View {
-    @Query(sort: \WalletRecord.sortOrder) private var wallets: [WalletRecord]
-    /// Live per-token balances — the same source the wallet-home hero and the
-    /// Wallets management screen use, so the switcher shows the real per-wallet
-    /// total instead of JOD 0.000 (2026-06-20 fix; the old ChainStateRecord
-    /// aggregate could be empty even with token balances present).
-    @Query private var tokenBalances: [TokenBalanceRecord]
+    @StateObject private var databaseSnapshot = DatabaseSnapshotObservation()
     @AppStorage("activeWalletId") private var activeWalletIdRaw: String = ""
     @AppStorage(CurrencyPreference.storageKey) private var currencyCode: String = CurrencyPreference.defaultCode
     @Environment(\.dismiss) private var dismiss
+
+    private var wallets: [WalletRecord] {
+        databaseSnapshot.wallets.sorted {
+            if $0.sortOrder == $1.sortOrder { return $0.createdAt < $1.createdAt }
+            return $0.sortOrder < $1.sortOrder
+        }
+    }
+
+    private var tokenBalances: [TokenBalanceRecord] {
+        databaseSnapshot.balances
+    }
 
     /// A wallet's total balance in the user's currency, summed from its own
     /// addresses' cached token-fiat values (mirrors `WalletsListView`).

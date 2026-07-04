@@ -1,269 +1,182 @@
 import Foundation
-import SwiftData
+import GRDB
 
-// MARK: - WalletChartPoint
-
-/// One point of a wallet's persisted portfolio-value timeline,
-/// flattened to a Sendable value for cross-actor reads.
 struct WalletChartPoint: Sendable {
     let capturedAt: Date
     let fiatValue: Decimal
 }
 
-// MARK: - WalletChartSnapshotRepository
-
-/// Actor-isolated owner of the `WalletChartSnapshotRecord` table —
-/// each wallet's durable, independently-persisted portfolio-value
-/// timeline (one series per `(wallet, currency)` pair).
-///
-/// **Capture throttle.** `capture(...)` skips when a snapshot newer
-/// than 10 minutes already exists for the pair — refreshes fire far
-/// more often than the timeline needs points.
-///
-/// **Growth bound.** `prune(...)` runs after each capture: everything
-/// ≤ 48 h old kept (≤ 288 rows/pair at the throttle), older rows
-/// decimated to one per day (last of the day), and a hard cap of
-/// 2,000 rows per pair deletes oldest-first beyond it.
-///
-/// Per `CLAUDE.md` Rule #2 §C (actor-isolated repositories).
-@ModelActor
-actor WalletChartSnapshotRepository {
-
-    /// Minimum spacing between two captures for one (wallet, currency).
+final class WalletChartSnapshotRepository {
     static let captureThrottle: TimeInterval = 10 * 60
-
-    /// Raw-retention window: snapshots younger than this are never
-    /// decimated.
     static let rawRetentionWindow: TimeInterval = 48 * 3600
-
-    /// Hard row cap per `(wallet, currency)` series.
     static let defaultHardCap = 2_000
 
-    /// Test seam — `_setHardCapForTesting(_:)` shrinks the cap so the
-    /// oldest-first eviction is testable without inserting 2,000 rows.
+    private let database: AppDatabase
     private var hardCapOverrideForTesting: Int?
+    private var hardCap: Int { hardCapOverrideForTesting ?? Self.defaultHardCap }
+
+    init(database: AppDatabase = .shared) {
+        self.database = database
+    }
 
     func _setHardCapForTesting(_ cap: Int) {
         hardCapOverrideForTesting = cap
     }
 
-    private var hardCap: Int { hardCapOverrideForTesting ?? Self.defaultHardCap }
-
-    // MARK: - Capture
-
-    /// Record one portfolio-value observation, unless one newer than
-    /// `captureThrottle` already exists for `(walletId, currencyCode)`.
-    /// Returns `true` when a snapshot was written, `false` when the
-    /// throttle skipped it. Prunes after a successful write.
     @discardableResult
-    func capture(
-        walletId: UUID,
-        currencyCode: String,
-        fiatValue: Decimal,
-        now: Date = Date()
-    ) throws -> Bool {
+    func capture(walletId: UUID, currencyCode: String, fiatValue: Decimal, now: Date = Date()) throws -> Bool {
         let code = currencyCode.uppercased()
-        var newestDescriptor = FetchDescriptor<WalletChartSnapshotRecord>(
-            predicate: #Predicate { $0.walletId == walletId && $0.currencyCode == code },
-            sortBy: [SortDescriptor(\.capturedAt, order: .reverse)]
-        )
-        newestDescriptor.fetchLimit = 1
-        if let newest = try modelContext.fetch(newestDescriptor).first,
-           now.timeIntervalSince(newest.capturedAt) < Self.captureThrottle {
-            return false
+        return try database.write { db in
+            if let newestMs = try Int64.fetchOne(
+                db,
+                sql: """
+                SELECT captured_at_ms FROM wallet_chart_snapshots
+                WHERE wallet_id = ? AND currency_code = ?
+                ORDER BY captured_at_ms DESC
+                LIMIT 1
+                """,
+                arguments: [walletId.uuidString, code]
+            ), now.timeIntervalSince(Date(databaseMilliseconds: newestMs)) < Self.captureThrottle {
+                return false
+            }
+            try record(db: db, walletId: walletId, currencyCode: code, fiatValue: fiatValue, capturedAt: now)
+            try prune(db: db, walletId: walletId, currencyCode: code, now: now)
+            return true
         }
-        // Rule #28: stage the insert + both prune stages, then ONE save
-        // (was up to three: record-save + prune stage-1 + prune stage-3).
-        try record(walletId: walletId, currencyCode: code, fiatValue: fiatValue, capturedAt: now, save: false)
-        try prune(walletId: walletId, currencyCode: code, now: now, save: false)
-        if modelContext.hasChanges { try modelContext.save() }
-        return true
     }
 
-    /// Unthrottled insert primitive `capture` builds on. Exposed for
-    /// backfills and tests that need explicit timestamps; production
-    /// paths go through `capture` so the throttle holds.
-    func record(
-        walletId: UUID,
-        currencyCode: String,
-        fiatValue: Decimal,
-        capturedAt: Date,
-        save: Bool = true
-    ) throws {
-        modelContext.insert(WalletChartSnapshotRecord(
-            walletId: walletId,
-            currencyCode: currencyCode,
-            fiatValue: fiatValue,
-            capturedAt: capturedAt
-        ))
-        // Rule #28 batch flag — `capture` stages record + prune then saves
-        // once; default `true` keeps standalone callers single-save.
-        if save { try modelContext.save() }
+    func record(walletId: UUID, currencyCode: String, fiatValue: Decimal, capturedAt: Date, save: Bool = true) throws {
+        try database.write { db in
+            try record(db: db, walletId: walletId, currencyCode: currencyCode.uppercased(), fiatValue: fiatValue, capturedAt: capturedAt)
+        }
     }
 
-    /// Convenience used by `WalletRefreshCoordinator`: value the
-    /// wallet from its **persisted** `TokenBalanceRecord` rows (sum of
-    /// `fiatValueCached` over rows denominated in `currencyCode`) and
-    /// `capture(...)` the total. Honesty guard: when the wallet has
-    /// balance rows but NONE in the requested currency (mid
-    /// currency-switch, before the re-price pass lands), the capture
-    /// is skipped — recording a fabricated 0 would carve a false
-    /// cliff into the timeline. A wallet with no balance rows at all
-    /// captures an honest 0.
     @discardableResult
-    func captureFromPersistedBalances(
-        walletId: UUID,
-        currencyCode: String,
-        now: Date = Date()
-    ) throws -> Bool {
+    func captureFromPersistedBalances(walletId: UUID, currencyCode: String, now: Date = Date()) throws -> Bool {
         let code = currencyCode.uppercased()
-        var walletDescriptor = FetchDescriptor<WalletRecord>(
-            predicate: #Predicate { $0.id == walletId }
-        )
-        walletDescriptor.fetchLimit = 1
-        guard let wallet = try modelContext.fetch(walletDescriptor).first else { return false }
-
-        let directAddressRows = try addressRows(walletId: walletId)
-        let addressRows = directAddressRows.isEmpty ? wallet.addresses : directAddressRows
-
-        var total = Decimal(0)
-        var totalRows = 0
-        var matchingRows = 0
-        for address in addressRows {
-            let addressId = Optional(address.id)
-            let balanceDescriptor = FetchDescriptor<TokenBalanceRecord>(
-                predicate: #Predicate { $0.addressId == addressId }
+        let total = try database.read { db -> (total: Decimal, totalRows: Int, matchingRows: Int) in
+            let rows = try Row.fetchAll(
+                db,
+                sql: """
+                SELECT b.fiat_value_cached, b.fiat_currency_code
+                FROM token_balances b
+                JOIN wallet_addresses a ON a.id = b.address_id
+                WHERE a.wallet_id = ?
+                """,
+                arguments: [walletId.uuidString]
             )
-            for balance in try modelContext.fetch(balanceDescriptor) {
-                totalRows += 1
-                guard balance.fiatCurrencyCode.uppercased() == code else { continue }
-                matchingRows += 1
-                total += balance.fiatValueCached
+            var total: Decimal = 0
+            var matching = 0
+            for row in rows where (row["fiat_currency_code"] as String).uppercased() == code {
+                matching += 1
+                total += Decimal(string: row["fiat_value_cached"] as String) ?? 0
+            }
+            return (total, rows.count, matching)
+        }
+        if total.totalRows > 0 && total.matchingRows == 0 { return false }
+        return try capture(walletId: walletId, currencyCode: code, fiatValue: total.total, now: now)
+    }
+
+    func series(walletId: UUID, currencyCode: String, from: Date? = nil) throws -> [WalletChartPoint] {
+        let code = currencyCode.uppercased()
+        let lowerBound = (from ?? Date.distantPast).databaseMilliseconds
+        return try database.read { db in
+            try Row.fetchAll(
+                db,
+                sql: """
+                SELECT fiat_value, captured_at_ms
+                FROM wallet_chart_snapshots
+                WHERE wallet_id = ? AND currency_code = ? AND captured_at_ms >= ?
+                ORDER BY captured_at_ms ASC
+                """,
+                arguments: [walletId.uuidString, code, lowerBound]
+            ).map {
+                WalletChartPoint(
+                    capturedAt: Date(databaseMilliseconds: $0["captured_at_ms"]),
+                    fiatValue: Decimal(string: $0["fiat_value"] as String) ?? 0
+                )
             }
         }
-        if totalRows > 0 && matchingRows == 0 {
-            return false
-        }
-        return try capture(walletId: walletId, currencyCode: code, fiatValue: total, now: now)
     }
 
-    private func addressRows(walletId: UUID) throws -> [WalletAddressRecord] {
-        let ownerId = Optional(walletId)
-        let descriptor = FetchDescriptor<WalletAddressRecord>(
-            predicate: #Predicate { $0.walletId == ownerId }
-        )
-        return try modelContext.fetch(descriptor)
-    }
-
-    // MARK: - Series
-
-    /// The persisted timeline for `(walletId, currencyCode)`, oldest
-    /// first, optionally bounded to points at or after `from`.
-    func series(
-        walletId: UUID,
-        currencyCode: String,
-        from: Date? = nil
-    ) throws -> [WalletChartPoint] {
-        let code = currencyCode.uppercased()
-        let lowerBound = from ?? Date.distantPast
-        let descriptor = FetchDescriptor<WalletChartSnapshotRecord>(
-            predicate: #Predicate { row in
-                row.walletId == walletId
-                    && row.currencyCode == code
-                    && row.capturedAt >= lowerBound
-            },
-            sortBy: [SortDescriptor(\.capturedAt, order: .forward)]
-        )
-        return try modelContext.fetch(descriptor).map {
-            WalletChartPoint(capturedAt: $0.capturedAt, fiatValue: $0.fiatValue)
-        }
-    }
-
-    // MARK: - Delete
-
-    /// Drop every snapshot for one wallet (all currencies). Called by
-    /// the wallet-removal flow so a deleted wallet leaves no timeline
-    /// behind.
     func deleteAll(walletId: UUID) throws {
-        let descriptor = FetchDescriptor<WalletChartSnapshotRecord>(
-            predicate: #Predicate { $0.walletId == walletId }
-        )
-        for row in try modelContext.fetch(descriptor) {
-            modelContext.delete(row)
+        try database.write { db in
+            try db.execute(sql: "DELETE FROM wallet_chart_snapshots WHERE wallet_id = ?", arguments: [walletId.uuidString])
         }
-        try modelContext.save()
     }
 
-    /// Wipe the whole table — wallet-reset / fresh-install coverage.
     func deleteAll() throws {
-        let descriptor = FetchDescriptor<WalletChartSnapshotRecord>()
-        for row in try modelContext.fetch(descriptor) {
-            modelContext.delete(row)
-        }
-        try modelContext.save()
+        try database.write { db in try db.execute(sql: "DELETE FROM wallet_chart_snapshots") }
     }
 
-    // MARK: - Prune
+    func prune(walletId: UUID, currencyCode: String, now: Date = Date(), save: Bool = true) throws {
+        try database.write { db in
+            try prune(db: db, walletId: walletId, currencyCode: currencyCode.uppercased(), now: now)
+        }
+    }
 
-    /// Enforce the growth bound for one `(walletId, currencyCode)`
-    /// series:
-    ///
-    /// 1. Snapshots ≤ 48 h old are untouched.
-    /// 2. Older snapshots are decimated to one per day — the LAST
-    ///    observation of each day.
-    /// 3. If the series still exceeds the hard cap (2,000 rows), the
-    ///    oldest rows are deleted until it fits.
-    ///
-    /// Idempotent; runs after every successful `capture`.
-    func prune(
-        walletId: UUID,
-        currencyCode: String,
-        now: Date = Date(),
-        save: Bool = true
-    ) throws {
-        let code = currencyCode.uppercased()
-        let cutoff = now.addingTimeInterval(-Self.rawRetentionWindow)
-
-        // Stage 1+2 — daily decimation beyond the raw window.
-        let oldDescriptor = FetchDescriptor<WalletChartSnapshotRecord>(
-            predicate: #Predicate { row in
-                row.walletId == walletId
-                    && row.currencyCode == code
-                    && row.capturedAt < cutoff
-            },
-            sortBy: [SortDescriptor(\.capturedAt, order: .forward)]
+    private func record(db: Database, walletId: UUID, currencyCode: String, fiatValue: Decimal, capturedAt: Date) throws {
+        try db.execute(
+            sql: """
+            INSERT INTO wallet_chart_snapshots
+            (id, wallet_id, currency_code, fiat_value, fiat_value_numeric, captured_at_ms, day_key)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            arguments: [
+                UUID().uuidString,
+                walletId.uuidString,
+                currencyCode.uppercased(),
+                fiatValue.databaseText,
+                fiatValue.databaseDouble,
+                capturedAt.databaseMilliseconds,
+                DayKey.from(date: capturedAt)
+            ]
         )
-        let oldRows = try modelContext.fetch(oldDescriptor)
-        var keeperByDay: [Int: WalletChartSnapshotRecord] = [:]
+    }
+
+    private func prune(db: Database, walletId: UUID, currencyCode: String, now: Date) throws {
+        let code = currencyCode.uppercased()
+        let cutoff = now.addingTimeInterval(-Self.rawRetentionWindow).databaseMilliseconds
+        let oldRows = try Row.fetchAll(
+            db,
+            sql: """
+            SELECT id, day_key, captured_at_ms
+            FROM wallet_chart_snapshots
+            WHERE wallet_id = ? AND currency_code = ? AND captured_at_ms < ?
+            ORDER BY captured_at_ms ASC
+            """,
+            arguments: [walletId.uuidString, code, cutoff]
+        )
+        var keeperByDay: [Int: (id: String, capturedAt: Int64)] = [:]
         for row in oldRows {
-            if let keeper = keeperByDay[row.dayKey] {
-                if row.capturedAt >= keeper.capturedAt {
-                    modelContext.delete(keeper)
-                    keeperByDay[row.dayKey] = row
+            let id: String = row["id"]
+            let day: Int = row["day_key"]
+            let capturedAt: Int64 = row["captured_at_ms"]
+            if let keeper = keeperByDay[day] {
+                if capturedAt >= keeper.capturedAt {
+                    try db.execute(sql: "DELETE FROM wallet_chart_snapshots WHERE id = ?", arguments: [keeper.id])
+                    keeperByDay[day] = (id, capturedAt)
                 } else {
-                    modelContext.delete(row)
+                    try db.execute(sql: "DELETE FROM wallet_chart_snapshots WHERE id = ?", arguments: [id])
                 }
             } else {
-                keeperByDay[row.dayKey] = row
+                keeperByDay[day] = (id, capturedAt)
             }
         }
-        // Stage-3's fetch below reflects these pending deletes in-context,
-        // so we can defer the save when batching (Rule #28).
-        if save && modelContext.hasChanges {
-            try modelContext.save()
-        }
 
-        // Stage 3 — hard cap, oldest-first eviction.
-        let allDescriptor = FetchDescriptor<WalletChartSnapshotRecord>(
-            predicate: #Predicate { $0.walletId == walletId && $0.currencyCode == code },
-            sortBy: [SortDescriptor(\.capturedAt, order: .forward)]
+        let allRows = try Row.fetchAll(
+            db,
+            sql: """
+            SELECT id FROM wallet_chart_snapshots
+            WHERE wallet_id = ? AND currency_code = ?
+            ORDER BY captured_at_ms ASC
+            """,
+            arguments: [walletId.uuidString, code]
         )
-        let allRows = try modelContext.fetch(allDescriptor)
         let overflow = allRows.count - hardCap
         guard overflow > 0 else { return }
         for row in allRows.prefix(overflow) {
-            modelContext.delete(row)
+            try db.execute(sql: "DELETE FROM wallet_chart_snapshots WHERE id = ?", arguments: [row["id"] as String])
         }
-        if save { try modelContext.save() }
     }
 }

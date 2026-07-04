@@ -1,5 +1,4 @@
 import SwiftUI
-import SwiftData
 
 /// Add Custom Token sheet — paste a contract / mint, Aperture fetches
 /// the rest.
@@ -45,7 +44,6 @@ struct AddCustomTokenSheet: View {
     let onSaved: () -> Void
 
     @Environment(\.dismiss) private var dismiss
-    @Environment(\.modelContext) private var modelContext
 
     @State private var selectedChain: SupportedChain
     @State private var contractInput: String = ""
@@ -444,10 +442,9 @@ struct AddCustomTokenSheet: View {
         let metadataFromChain = result.metadataFromChain
 
         let onSavedClosure = self.onSaved
-        let container = modelContext.container
 
         Task { @MainActor in
-            let repo = CustomTokenRepository(modelContainer: container)
+            let repo = CustomTokenRepository(database: AppDatabase.shared)
             do {
                 try await repo.add(
                     chain: chain,

@@ -1,5 +1,4 @@
 import Foundation
-import SwiftData
 
 /// The one pricing front door. Every consumer that needs "unit price of
 /// SYMBOL in the user's currency" calls `unitPrices(symbols:currencyCode:)`
@@ -35,21 +34,21 @@ actor TokenPricingEngine {
         let fetchedAt: Date
     }
 
-    private let injectedContainer: ModelContainer?
-    private var configuredContainer: ModelContainer?
+    private let injectedDatabase: AppDatabase?
+    private var configuredDatabase: AppDatabase?
     private var priceMemory: [String: CachedPrice] = [:]
     private var fxMemory: [String: FXRate] = [:]
     private let priceTTL: TimeInterval = 60
     private let fxTTL: TimeInterval = 10 * 60
 
-    init(container: ModelContainer? = nil) {
-        self.injectedContainer = container
+    init(database: AppDatabase? = nil) {
+        self.injectedDatabase = database
     }
 
     // MARK: - Public API
 
-    func configure(container: ModelContainer) {
-        configuredContainer = container
+    func configure(database: AppDatabase) {
+        configuredDatabase = database
     }
 
     func unitPrices(symbols: [String], currencyCode: String) async -> [String: ResolvedPrice] {
@@ -286,15 +285,15 @@ actor TokenPricingEngine {
 
     // MARK: - Persistence
 
-    private var persistenceContainer: ModelContainer? {
-        injectedContainer ?? configuredContainer
+    private var persistenceDatabase: AppDatabase? {
+        injectedDatabase ?? configuredDatabase
     }
 
     private func diskCachedPrices(symbols: [String], currency: String) async -> [String: ResolvedPrice] {
-        guard let container = persistenceContainer else { return [:] }
+        guard let database = persistenceDatabase else { return [:] }
         let upperCurrency = currency.uppercased()
         let upperSymbols = symbols.map { $0.uppercased() }
-        guard let rows = try? await PriceCacheRepository(modelContainer: container)
+        guard let rows = try? await PriceCacheRepository(database: database)
             .prices(symbols: upperSymbols, fiat: upperCurrency) else { return [:] }
         return rows.reduce(into: [:]) { output, entry in
             output[entry.key.uppercased()] = ResolvedPrice(
@@ -306,10 +305,10 @@ actor TokenPricingEngine {
     }
 
     private func diskConvertedPrices(symbols: [String], currency: String) async -> [String: ResolvedPrice] {
-        guard let container = persistenceContainer else { return [:] }
+        guard let database = persistenceDatabase else { return [:] }
         let upperCurrency = currency.uppercased()
         let upperSymbols = symbols.map { $0.uppercased() }
-        guard let rows = try? await PriceCacheRepository(modelContainer: container)
+        guard let rows = try? await PriceCacheRepository(database: database)
             .latestPriceAnyCurrency(symbols: upperSymbols) else { return [:] }
 
         var output: [String: ResolvedPrice] = [:]
@@ -337,7 +336,7 @@ actor TokenPricingEngine {
         currency: String,
         now: Date
     ) async {
-        guard let container = persistenceContainer, !prices.isEmpty else { return }
+        guard let database = persistenceDatabase, !prices.isEmpty else { return }
         let entries = prices
             .filter { !$0.value.isStale && $0.value.amount > 0 }
             .map {
@@ -349,8 +348,8 @@ actor TokenPricingEngine {
                 )
             }
         guard !entries.isEmpty else { return }
-        try? await PriceCacheRepository(modelContainer: container).upsertMany(entries)
-        try? await PriceSnapshotRepository(modelContainer: container).record(
+        try? await PriceCacheRepository(database: database).upsertMany(entries)
+        try? await PriceSnapshotRepository(database: database).record(
             entries.map {
                 (
                     symbol: $0.symbol,
@@ -361,7 +360,7 @@ actor TokenPricingEngine {
             },
             at: now
         )
-        try? await SyncStatusRepository(modelContainer: container)
+        try? await SyncStatusRepository(database: database)
             .markSynced(domain: .prices, scopeId: SyncDomain.globalScope)
     }
 

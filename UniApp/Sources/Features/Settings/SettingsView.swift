@@ -30,7 +30,7 @@ import UIKit
 /// (Rule #2 §B.3). All visible strings flow through
 /// `LocalizedStringKey` and the String Catalog (Rule #9).
 private enum SettingsInternalVisibility {
-    static let showsDiagnosticsAndDatabase = false
+    static let showsDiagnostics = false
 }
 
 enum SettingsDestination: Hashable, Codable {
@@ -45,7 +45,6 @@ enum SettingsDestination: Hashable, Codable {
     case appearance
     case currency
     case preferences
-    case database
     case diagnostics
     case help
     case about
@@ -63,8 +62,8 @@ enum SettingsDestination: Hashable, Codable {
         switch self {
         case .security:
             return false
-        case .database, .diagnostics:
-            return SettingsInternalVisibility.showsDiagnosticsAndDatabase
+        case .diagnostics:
+            return SettingsInternalVisibility.showsDiagnostics
         case .wallets, .walletDetail, .bitcoinPathSearch, .autoLock, .hideSmallBalances,
              .language, .appearance, .currency, .preferences, .help, .about:
             return true
@@ -351,23 +350,13 @@ struct SettingsView: View {
                 }
                 .listRowBackground(UniColors.List.rowBackground)
 
-                if SettingsInternalVisibility.showsDiagnosticsAndDatabase {
+                if SettingsInternalVisibility.showsDiagnostics {
                     NavigationLink(value: SettingsDestination.diagnostics) {
                         SettingsRow(
                             systemImage: "doc.text.magnifyingglass",
                             title: "Diagnostics Logs",
                             trailing: nil,
                             iconTint: .purple
-                        )
-                    }
-                    .listRowBackground(UniColors.List.rowBackground)
-
-                    NavigationLink(value: SettingsDestination.database) {
-                        SettingsRow(
-                            systemImage: "cylinder.split.1x2",
-                            title: "Database",
-                            trailing: nil,
-                            iconTint: .indigo
                         )
                     }
                     .listRowBackground(UniColors.List.rowBackground)
@@ -392,7 +381,6 @@ struct SettingsView: View {
         case .appearance:                AppearancePickerView()
         case .currency:                  CurrencyPickerView()
         case .preferences:               PreferencesView()
-        case .database:                  DatabaseExplorerView()
         case .diagnostics:               DiagnosticsLogView()
         case .help:                      HelpAndSupportView()
         case .about:                     AboutView()
@@ -447,7 +435,7 @@ struct SettingsView: View {
         case .hideSmallBalances:
             return (.preferences, stack)
         case .wallets, .security, .language, .appearance, .currency,
-             .preferences, .database, .diagnostics, .help, .about:
+             .preferences, .diagnostics, .help, .about:
             return (first, Array(stack.dropFirst()))
         }
     }
@@ -455,7 +443,7 @@ struct SettingsView: View {
     private static func isSplitRoot(_ destination: SettingsDestination) -> Bool {
         switch destination {
         case .wallets, .security, .language, .appearance, .currency,
-             .preferences, .database, .diagnostics, .help, .about:
+             .preferences, .diagnostics, .help, .about:
             return true
         case .walletDetail, .bitcoinPathSearch, .autoLock, .hideSmallBalances:
             return false

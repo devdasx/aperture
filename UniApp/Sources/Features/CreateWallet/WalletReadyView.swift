@@ -1,5 +1,4 @@
 import SwiftUI
-import SwiftData
 import OSLog
 
 /// Terminal placeholder for the create-wallet flow, pushed onto the
@@ -11,8 +10,8 @@ import OSLog
 /// **What changed 2026-06-06.** This screen is now also the moment the
 /// wallet is **persisted to the local database**. On appear, the view
 /// runs `state.persist(into:requiresBackup:)` which encrypts and stores
-/// the BIP-39 seed in Keychain (`SeedVault`) and inserts a `WalletRecord`
-/// via `WalletRepository`. The Done button is disabled until persistence
+/// the BIP-39 seed in Keychain (`SeedVault`) and inserts wallet rows
+/// via GRDB. The Done button is disabled until persistence
 /// resolves so the user cannot dismiss with an unpersisted wallet. On
 /// failure, the view surfaces an error footnote with a Retry button
 /// rather than silently swallowing.
@@ -45,11 +44,6 @@ struct WalletReadyView: View {
     /// `fullScreenCover` and clears the unbacked-up flag.
     let onDone: () -> Void
 
-    /// SwiftData container injected by `UniAppApp`'s
-    /// `.modelContainer(...)` modifier. Used to construct a
-    /// `WalletRepository` actor for the one-shot persist call.
-    @Environment(\.modelContext) private var modelContext
-
     private enum PersistState: Equatable {
         case idle
         case persisting
@@ -61,7 +55,7 @@ struct WalletReadyView: View {
 
     /// The in-flight persist task. Stored so Retry can cancel any
     /// previous launch before spawning a new one — two concurrent
-    /// persists of the same wallet would race on Keychain + SwiftData.
+    /// persists of the same wallet would race on Keychain + SQLite.
     @State private var persistTask: Task<Void, Never>? = nil
 
     private static let log = Logger(
@@ -77,7 +71,7 @@ struct WalletReadyView: View {
                 // The SAME success screen as import (2026-06-20 user
                 // direction), shown immediately — the wallet persists silently
                 // in the background, so there is no "Saving your wallet…"
-                // state. The card fills in from the screen's own `@Query` as
+                // state. The card fills in from the screen's own GRDB observation as
                 // the save lands; the CTA is gated until then so the user can
                 // never leave onto a not-yet-saved wallet. The seal animation +
                 // haptics are ImportSuccessView's, so create matches import.
@@ -151,7 +145,7 @@ struct WalletReadyView: View {
         persistTask?.cancel()
         persistState = .persisting
         persistErrorReport = nil
-        let repository = WalletRepository(modelContainer: modelContext.container)
+        let repository = WalletCommandRepository()
         let requiresBackupFlag = requiresBackup
         let manualBackupFlag = manualBackup
         persistTask = Task { @MainActor in
@@ -221,7 +215,6 @@ struct WalletReadyView: View {
         WalletReadyView(state: CreateWalletState(), requiresBackup: false, onDone: {})
     }
     .preferredColorScheme(.light)
-    .modelContainer(ApertureDatabase.shared.container)
 }
 
 #Preview("Dark") {
@@ -229,5 +222,4 @@ struct WalletReadyView: View {
         WalletReadyView(state: CreateWalletState(), requiresBackup: false, onDone: {})
     }
     .preferredColorScheme(.dark)
-    .modelContainer(ApertureDatabase.shared.container)
 }

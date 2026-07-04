@@ -1,51 +1,21 @@
 import Foundation
-import SwiftData
 
-/// The local-first settings store (Rule #27 §D). A single row holding
-/// every user preference, so settings live in the database alongside the
-/// rest of the app's state.
-///
-/// **Why `@AppStorage` still exists alongside it.** Several preferences
-/// (`languagePreference` — 17 files, `activeWalletId` — 18 files,
-/// `themePreference`, the lock keys) are read directly by the deeply-
-/// woven env / navigation / RTL / lock plumbing via `@AppStorage`'s
-/// zero-cost reactivity (Rules #11, #12, #17). Ripping that out is a
-/// launch- and security-critical rewrite. Instead `SettingsStore` keeps
-/// this record and `@AppStorage` **perfectly in sync**: the DB is the
-/// authoritative copy, `@AppStorage` is the synchronized reactive mirror
-/// those readers consume. New / safe reads go straight to the DB.
-///
-/// Singleton: exactly one row, fetched-or-created by `SettingsStore`.
-/// Brand-new entity → additive lightweight migration.
-@Model
-final class AppSettingsRecord {
-    /// Pins the singleton — always `AppSettingsRecord.singletonId`.
-    @Attribute(.unique) var id: String
-
-    // Appearance / locale (mirrored to @AppStorage for the env plumbing).
+final class AppSettingsRecord: Identifiable {
+    var id: String
     var themePreference: String
     var languagePreference: String
-
-    // Security (mirrored; read by the lock plumbing via @AppStorage).
     var pinEnabled: Bool
     var biometricEnabled: Bool
     var autoLockSeconds: Int
-
-    // Functional preferences.
     var currencyPreference: String
     var hapticFeedbackEnabled: Bool
     var backgroundBalanceRefresh: Bool
     var walletHomeBalanceHistoryRange: String
-
-    // Navigation / session.
     var selectedTab: Int
     var activeWalletId: String
     var settingsDeepLink: String
-
-    // Onboarding / one-shot flags.
     var hasUnbackedupWallet: Bool
     var hideImportKeyWarning: Bool
-
     var updatedAt: Date
 
     static let singletonId = "app-settings-singleton"
@@ -87,27 +57,14 @@ final class AppSettingsRecord {
     }
 }
 
-/// Dedicated active-wallet row. `AppSettingsRecord.activeWalletId` and
-/// `@AppStorage("activeWalletId")` remain synchronized mirrors for SwiftUI
-/// reactivity, but this row is the domain schema that names the selected
-/// wallet by its stable UUID.
-@Model
-final class ActiveWalletRecord {
-    /// Pins the singleton — always `ActiveWalletRecord.singletonId`.
-    @Attribute(.unique) var id: String
-
-    /// The currently active wallet. Nil only when no wallet exists yet.
+final class ActiveWalletRecord: Identifiable {
+    var id: String
     var walletID: UUID?
-
     var updatedAt: Date
 
     static let singletonId = "active-wallet-singleton"
 
-    init(
-        id: String = ActiveWalletRecord.singletonId,
-        walletID: UUID? = nil,
-        updatedAt: Date = Date()
-    ) {
+    init(id: String = ActiveWalletRecord.singletonId, walletID: UUID? = nil, updatedAt: Date = Date()) {
         self.id = id
         self.walletID = walletID
         self.updatedAt = updatedAt

@@ -3,7 +3,7 @@ import Security
 import CryptoKit
 import OSLog
 
-/// **AES-GCM encryption for per-chain private keys stored in SwiftData.**
+/// **AES-GCM encryption for per-chain private keys stored in GRDB.**
 ///
 /// User direction (2026-06-17): each chain's private key is stored as an
 /// encrypted blob in the local DB (`ChainStateRecord.encryptedPrivateKey`).

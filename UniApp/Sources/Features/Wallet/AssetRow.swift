@@ -84,7 +84,7 @@ struct AssetRow: View {
 
 /// `AssetRow` is value-typed, so wallet-home renders it via `.equatable()` to
 /// skip re-evaluating the row's body (logo + labels) when its inputs are
-/// unchanged — i.e. on the many SwiftData merges a holdings row doesn't depend
+/// unchanged — i.e. on the many GRDB merges a holdings row doesn't depend
 /// on. `nonisolated` because `Equatable.==` is a nonisolated requirement while
 /// a SwiftUI `View` is main-actor-isolated under Swift 6; it reads only the
 /// row's Sendable value inputs.

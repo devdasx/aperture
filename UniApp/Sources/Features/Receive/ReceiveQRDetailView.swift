@@ -1,5 +1,4 @@
 import SwiftUI
-import SwiftData
 import UIKit
 import UniformTypeIdentifiers
 import WalletCore
@@ -28,9 +27,8 @@ struct ReceiveQRDetailView: View {
     let address: String
 
     @Environment(\.displayScale) private var displayScale
-    @Environment(\.modelContext) private var modelContext
+    @StateObject private var databaseSnapshot = DatabaseSnapshotObservation()
     @AppStorage("activeWalletId") private var activeWalletIdRaw: String = ""
-    @Query(sort: \WalletRecord.sortOrder) private var wallets: [WalletRecord]
 
     @State private var justCopiedAt: Date?
     @State private var isCopyButtonCopied: Bool = false
@@ -55,11 +53,7 @@ struct ReceiveQRDetailView: View {
     }
 
     private var activeWallet: WalletRecord? {
-        ActiveWalletResolver.resolve(
-            rawID: activeWalletIdRaw,
-            wallets: wallets,
-            modelContext: modelContext
-        )
+        ActiveWalletResolver.resolve(rawID: activeWalletIdRaw, wallets: databaseSnapshot.wallets)
     }
 
     private var displayedAddress: String {
@@ -291,7 +285,7 @@ struct ReceiveQRDetailView: View {
         let resolution = BitcoinReceiveAddressResolver.resolve(
             wallet: activeWallet,
             fallbackAddress: address,
-            modelContext: modelContext
+            database: AppDatabase.shared
         )
         bitcoinChoices = resolution.choices
 
@@ -468,18 +462,18 @@ private enum BitcoinReceiveAddressResolver {
     static func resolve(
         wallet: WalletRecord?,
         fallbackAddress: String,
-        modelContext: ModelContext
+        database: AppDatabase
     ) -> BitcoinReceiveAddressResolution {
         if let wallet,
            wallet.hasPassphrase == false,
-           let words = try? WalletSecretPersistence.loadMnemonic(for: wallet.id, in: modelContext),
+           let words = try? WalletSecretPersistence.loadMnemonic(for: wallet.id, database: database),
            !words.isEmpty,
            let result = resolveMnemonic(words) {
             return result
         }
 
         if let wallet,
-           let privateKey = try? WalletSecretPersistence.loadPrivateKey(for: wallet.id, in: modelContext),
+           let privateKey = try? WalletSecretPersistence.loadPrivateKey(for: wallet.id, database: database),
            let result = resolvePrivateKey(privateKey) {
             return result
         }

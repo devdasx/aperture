@@ -5,7 +5,7 @@ import OSLog
 
 /// Keychain-backed encrypted storage for BIP-39 64-byte seeds. One
 /// Keychain item per wallet, keyed by the wallet's UUID. The cleartext
-/// seed never lives in SwiftData — `WalletRecord` only holds the UUID,
+/// seed never lives in GRDB — `WalletRecord` only holds the UUID,
 /// `SeedVault` holds the ciphertext + key reference in Keychain.
 ///
 /// **Cipher.** AES-GCM (CryptoKit). 256-bit key generated fresh per

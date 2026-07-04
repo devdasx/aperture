@@ -1,86 +1,53 @@
 import Foundation
-import SwiftData
+import GRDB
 
-/// Background-safe writer for the freshness ledger (`SyncStatusRecord`).
-/// The sync layer (`WalletRefreshCoordinator` / `SyncCoordinator`) calls
-/// these to stamp when each domain last synced, is syncing, or failed —
-/// the data the UI's honest "Updated · Syncing…" footer reads via
-/// `@Query` (Rule #27 §B).
-///
-/// Per Rule #2 §C — actor-isolated repository on its own `ModelContext`.
-/// All writes are no-op-skipped when nothing changed so the 10 s poll
-/// doesn't churn `@Query` (mirrors `TransactionRepository`).
-@ModelActor
-actor SyncStatusRepository {
+final class SyncStatusRepository {
+    private let database: AppDatabase
 
-    /// Mark a domain/scope as actively syncing. Sets `lastAttemptAt`
-    /// and clears any stale error so the UI shows "Syncing…".
+    init(database: AppDatabase = .shared) {
+        self.database = database
+    }
+
     func markSyncing(domain: SyncDomain, scopeId: String) throws {
-        try update(domain: domain, scopeId: scopeId) { row, now in
-            guard !row.isSyncing || row.lastErrorMessage != nil else { return false }
-            row.isSyncing = true
-            row.lastAttemptAt = now
-            row.lastErrorMessage = nil
-            return true
-        }
+        try upsert(domain: domain, scopeId: scopeId, synced: false, syncing: true, error: nil)
     }
 
-    /// Mark a domain/scope synced successfully — stamps `lastSyncedAt`
-    /// (the value the freshness footer shows) and clears syncing/error.
     func markSynced(domain: SyncDomain, scopeId: String) throws {
-        try update(domain: domain, scopeId: scopeId) { row, now in
-            row.lastSyncedAt = now
-            row.lastAttemptAt = now
-            row.isSyncing = false
-            row.lastErrorMessage = nil
-            return true
-        }
+        try upsert(domain: domain, scopeId: scopeId, synced: true, syncing: false, error: nil)
     }
 
-    /// Mark a domain/scope's most recent attempt as failed. Preserves
-    /// `lastSyncedAt` (the last KNOWN-good time stays honest) and records
-    /// a redacted error string for the offline/failure surface.
     func markFailed(domain: SyncDomain, scopeId: String, error: String) throws {
-        let redacted = String(error.prefix(200))
-        try update(domain: domain, scopeId: scopeId) { row, now in
-            row.isSyncing = false
-            row.lastAttemptAt = now
-            row.lastErrorMessage = redacted
-            return true
-        }
+        try upsert(domain: domain, scopeId: scopeId, synced: false, syncing: false, error: String(error.prefix(200)))
     }
 
-    // MARK: - Upsert core
-
-    /// Fetch-or-create the row for `(domain, scope)` and apply `mutate`.
-    /// `mutate` returns `false` to signal a no-op (skip the save), so a
-    /// steady-state poll that changes nothing writes nothing — no
-    /// `@Query` churn (the idle-lag discipline from `TransactionRepository`).
-    private func update(
-        domain: SyncDomain,
-        scopeId: String,
-        _ mutate: (SyncStatusRecord, Date) -> Bool
-    ) throws {
+    private func upsert(domain: SyncDomain, scopeId: String, synced: Bool, syncing: Bool, error: String?) throws {
+        let now = Date.databaseMilliseconds
         let key = SyncStatusRecord.makeKey(domain: domain, scopeId: scopeId)
-        var descriptor = FetchDescriptor<SyncStatusRecord>(
-            predicate: #Predicate { $0.key == key }
-        )
-        descriptor.fetchLimit = 1
-        let now = Date()
-
-        if let existing = try modelContext.fetch(descriptor).first {
-            guard mutate(existing, now) else { return }
-            existing.updatedAt = now
-        } else {
-            let record = SyncStatusRecord(
-                key: key,
-                domainRaw: domain.rawValue,
-                scopeId: scopeId
+        try database.write { db in
+            try db.execute(
+                sql: """
+                INSERT INTO sync_statuses
+                (key, domain_raw, scope_id, last_synced_at_ms, last_attempt_at_ms,
+                 is_syncing, last_error_message, updated_at_ms)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(key) DO UPDATE SET
+                    last_synced_at_ms = COALESCE(excluded.last_synced_at_ms, sync_statuses.last_synced_at_ms),
+                    last_attempt_at_ms = excluded.last_attempt_at_ms,
+                    is_syncing = excluded.is_syncing,
+                    last_error_message = excluded.last_error_message,
+                    updated_at_ms = excluded.updated_at_ms
+                """,
+                arguments: [
+                    key,
+                    domain.rawValue,
+                    scopeId,
+                    synced ? now : nil,
+                    now,
+                    syncing,
+                    error,
+                    now
+                ]
             )
-            _ = mutate(record, now)
-            record.updatedAt = now
-            modelContext.insert(record)
         }
-        try modelContext.save()
     }
 }

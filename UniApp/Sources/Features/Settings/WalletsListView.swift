@@ -1,5 +1,4 @@
 import SwiftUI
-import SwiftData
 
 /// Settings → Wallets list. Multi-wallet management surface: list
 /// every persisted wallet, show kind + backup status + active marker,
@@ -10,16 +9,21 @@ import SwiftData
 /// only visible when the user has > 5 wallets so the empty / small
 /// list doesn't carry chrome it doesn't need.
 struct WalletsListView: View {
-    @Query(sort: \WalletRecord.sortOrder) private var wallets: [WalletRecord]
-    /// Live per-token balances persisted by the scanners. The wallet-home hero
-    /// now reads its per-chain aggregate (`ChainStateRecord`) rebuilt from this
-    /// same table; this list keeps using the normalized rows so every wallet
-    /// can be totaled without declaring a high-churn aggregate query here.
-    @Query private var tokenBalances: [TokenBalanceRecord]
+    @StateObject private var databaseSnapshot = DatabaseSnapshotObservation()
     @AppStorage("activeWalletId") private var activeWalletIdRaw: String = ""
     @AppStorage(CurrencyPreference.storageKey) private var currencyCode: String = CurrencyPreference.defaultCode
     @AppStorage("languagePreference") private var languageCode: String = LanguagePreference.systemCode
-    @Environment(\.modelContext) private var modelContext
+
+    private var wallets: [WalletRecord] {
+        databaseSnapshot.wallets.sorted {
+            if $0.sortOrder == $1.sortOrder { return $0.createdAt < $1.createdAt }
+            return $0.sortOrder < $1.sortOrder
+        }
+    }
+
+    private var tokenBalances: [TokenBalanceRecord] {
+        databaseSnapshot.balances
+    }
 
     // MARK: - Filter & Sort (2026-06-20 — replaced the Edit button)
     @AppStorage("walletsListSortKey") private var sortKeyRaw: String = WalletsListSortKey.custom.rawValue
@@ -139,7 +143,7 @@ struct WalletsListView: View {
     @State private var walletErrorReport: ApertureErrorReport?
 
     /// Identifiable payload for the delete confirmation sheet (a wallet row
-    /// can't drive `.sheet(item:)` directly — its `id` is the SwiftData
+    /// can't drive `.sheet(item:)` directly — its `id` is the GRDB
     /// persistent id, not this UUID).
     private struct PendingDelete: Identifiable {
         let id: UUID
@@ -595,7 +599,7 @@ struct WalletsListView: View {
 
     @MainActor
     private func deleteWallet(_ id: UUID) async {
-        let repo = WalletRepository(modelContainer: modelContext.container)
+        let repo = WalletRepository(database: AppDatabase.shared)
         do {
             try await repo.deleteWallet(id: id)
         } catch {
@@ -633,12 +637,11 @@ struct WalletsListView: View {
     @MainActor
     private func loadAndPresentBackup() {
         guard let id = backupTargetId else { return }
-        let container = modelContext.container
         Task { @MainActor in
-            let loaded = try? await WalletSecretRepository(modelContainer: container)
+            let loaded = try? await WalletSecretRepository(database: AppDatabase.shared)
                 .loadMnemonic(for: id)
             guard let words = loaded, !words.isEmpty else {
-                let availability = await WalletSecretRepository(modelContainer: container)
+                let availability = await WalletSecretRepository(database: AppDatabase.shared)
                     .mnemonicAvailability(for: id)
                 if availability == .encryptedRecordUnavailable {
                     errorAlertMessage = String.apertureLocalized("This wallet still has an encrypted recovery-phrase row in the database, but this iPhone cannot open its encryption key. The wallet data was not removed. Re-enter the phrase to repair local backup access.")
@@ -667,13 +670,13 @@ struct WalletsListView: View {
     private func hasStoredSecret(kind: WalletSecretKind, for walletId: UUID) -> Bool {
         switch kind {
         case .mnemonic:
-            if let words = try? WalletSecretPersistence.loadMnemonic(for: walletId, in: modelContext),
+            if let words = try? WalletSecretPersistence.loadMnemonic(for: walletId, database: AppDatabase.shared),
                !words.isEmpty {
                 return true
             }
             return MnemonicVault.hasMnemonic(for: walletId)
         case .privateKey:
-            if let key = try? WalletSecretPersistence.loadPrivateKey(for: walletId, in: modelContext),
+            if let key = try? WalletSecretPersistence.loadPrivateKey(for: walletId, database: AppDatabase.shared),
                !key.isEmpty {
                 return true
             }
@@ -686,12 +689,8 @@ struct WalletsListView: View {
     private func moveWallets(from source: IndexSet, to destination: Int) {
         var reordered = wallets
         reordered.move(fromOffsets: source, toOffset: destination)
-        for (index, wallet) in reordered.enumerated() {
-            wallet.sortOrder = index
-            wallet.updatedAt = Date()
-        }
         do {
-            try modelContext.save()
+            try WalletRepository(database: AppDatabase.shared).updateSortOrders(reordered.map(\.id))
         } catch {
             isShowingReorderError = true
         }
