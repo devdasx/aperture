@@ -429,7 +429,7 @@ final class DatabaseSnapshotObservation: ObservableObject {
                 colorTag: row["color_tag"],
                 sortOrder: row["sort_order"],
                 requiresBackup: (row["requires_backup"] as Int) != 0,
-                manualBackupCompleted: row["manual_backup_completed"],
+                manualBackupCompleted: ((row["manual_backup_completed"] as Int?) ?? 0) != 0,
                 iconSymbol: row["icon_symbol"],
                 iconColorHex: row["icon_color_hex"],
                 avatarGradient: row["avatar_gradient"],

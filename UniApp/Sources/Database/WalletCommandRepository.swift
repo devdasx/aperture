@@ -100,7 +100,7 @@ final class WalletCommandRepository {
             hasPassphrase: hasPassphrase,
             colorTag: colorTag,
             requiresBackup: false,
-            manualBackupCompleted: nil,
+            manualBackupCompleted: false,
             mnemonicWords: mnemonicWords,
             privateKey: nil,
             addresses: addresses
@@ -123,7 +123,7 @@ final class WalletCommandRepository {
             hasPassphrase: false,
             colorTag: colorTag,
             requiresBackup: false,
-            manualBackupCompleted: nil,
+            manualBackupCompleted: false,
             mnemonicWords: nil,
             privateKey: privateKey,
             addresses: addresses
@@ -145,7 +145,7 @@ final class WalletCommandRepository {
             hasPassphrase: false,
             colorTag: colorTag,
             requiresBackup: false,
-            manualBackupCompleted: nil,
+            manualBackupCompleted: false,
             mnemonicWords: nil,
             privateKey: nil,
             addresses: addresses
@@ -161,7 +161,7 @@ final class WalletCommandRepository {
         hasPassphrase: Bool,
         colorTag: String,
         requiresBackup: Bool,
-        manualBackupCompleted: Bool?,
+        manualBackupCompleted: Bool,
         mnemonicWords: [String]?,
         privateKey: String?,
         addresses: [(chainRaw: String, address: String)]
