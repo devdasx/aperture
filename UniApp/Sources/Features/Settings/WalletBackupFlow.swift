@@ -14,7 +14,7 @@ import SwiftUI
 ///   the device.
 ///
 /// Security: the decrypted `words` are passed in from the already-authed
-/// reveal screen (no second Keychain hit); the backup password lives only
+/// reveal screen (no second secret fetch); the backup password lives only
 /// in this flow's memory and is never stored. Everything is real — no
 /// stubbed timers, no placeholder success (handoff requirement).
 /// Which method a finished backup used — reported to the create flow so it

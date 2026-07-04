@@ -165,7 +165,7 @@ private actor BitcoinCashWalletScanTargetRepository {
            !words.isEmpty {
             return words
         }
-        return (try? MnemonicVault.loadMnemonic(for: walletId)) ?? nil
+        return nil
     }
 
     private func loadPrivateKey(walletId: UUID) -> String? {
@@ -173,7 +173,7 @@ private actor BitcoinCashWalletScanTargetRepository {
            !key.isEmpty {
             return key
         }
-        return (try? MnemonicVault.loadPrivateKey(for: walletId)) ?? nil
+        return nil
     }
 }
 

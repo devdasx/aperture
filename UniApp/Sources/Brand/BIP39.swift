@@ -48,8 +48,7 @@ enum BIP39WordCount: Int, Sendable, Hashable, Codable, CaseIterable {
 /// The bytes are drawn from the platform CSPRNG and never logged, persisted
 /// to `UserDefaults`, sent over the network, or otherwise leaked. The seed
 /// derivation step (BIP-39 → 64-byte seed via PBKDF2-HMAC-SHA512) is not
-/// performed here; it lives with the future Keychain persistence work
-/// (`T-012`).
+/// performed here; it happens at wallet persistence time and is stored in GRDB.
 enum BIP39 {
 
     /// Word → index lookup over the canonical wordlist. Built once on

@@ -33,7 +33,6 @@ enum FactoryReset {
         onStageComplete: (Stage) async -> Void
     ) async throws {
         let log = Logger(subsystem: "com.thuglife.aperture", category: "reset")
-        let walletIds = try WalletRepository(database: database).allWalletIds()
 
         try database.write { db in
             let preservedPreferences = try snapshotPreservedPreferences(db: db)
@@ -47,7 +46,14 @@ enum FactoryReset {
             try db.execute(sql: "DELETE FROM chain_utxos")
             try db.execute(sql: "DELETE FROM wallet_preferences")
             try db.execute(sql: "DELETE FROM app_preferences")
+            try db.execute(sql: "DELETE FROM asset_logo_cache")
+            try db.execute(sql: "DELETE FROM wallet_avatar_raster_cache")
+            try db.execute(sql: "DELETE FROM generated_documents")
+            try db.execute(sql: "DELETE FROM cloudkit_backup_cache")
+            try db.execute(sql: "DELETE FROM diagnostic_log_entries")
+            try db.execute(sql: "DELETE FROM local_secure_blobs")
             try db.execute(sql: "DELETE FROM sync_statuses WHERE scope_id != ?", arguments: [SyncDomain.globalScope])
+            try LocalSecureBlobStore.ensureSecurityKeys(db: db)
             try restorePreservedPreferences(preservedPreferences, db: db)
             try AppPreferenceStore.upsert(.bool(false), forKey: PinCodePreference.pinEnabledKey, db: db)
             try AppPreferenceStore.upsert(.bool(false), forKey: PinCodePreference.biometricEnabledKey, db: db)
@@ -68,29 +74,20 @@ enum FactoryReset {
         }
         await onStageComplete(.wallets)
         await onStageComplete(.privateData)
-
-        for id in walletIds {
-            try? SeedVault.deleteSeed(for: id)
-            try? MnemonicVault.deleteMnemonic(for: id)
-            try? MnemonicVault.deletePrivateKey(for: id)
-        }
         await onStageComplete(.keys)
 
         PinCodeStorage.clear()
-        ChainKeyVault.clear()
-        WalletSecretCrypto.clearMasterKey()
+        ChainKeyVault.configure(database: database)
+        WalletSecretCrypto.configure(database: database)
         await onStageComplete(.security)
 
         URLCache.shared.removeAllCachedResponses()
         HTTPCookieStorage.shared.removeCookies(since: .distantPast)
 
-        if let bundleId = Bundle.main.bundleIdentifier {
-            UserDefaults.standard.removePersistentDomain(forName: bundleId)
-        }
         SettingsStore.shared.start(database: database)
         ActiveWalletPointer.set(nil)
         await onStageComplete(.settings)
-        log.notice("Full wipe completed: \(walletIds.count, privacy: .public) wallets purged.")
+        log.notice("Full wipe completed.")
     }
 
     static func wipeResettableModels(database: AppDatabase = .shared) throws {
@@ -104,6 +101,10 @@ enum FactoryReset {
             try db.execute(sql: "DELETE FROM chain_states")
             try db.execute(sql: "DELETE FROM chain_utxos")
             try db.execute(sql: "DELETE FROM wallet_preferences")
+            try db.execute(sql: "DELETE FROM asset_logo_cache")
+            try db.execute(sql: "DELETE FROM wallet_avatar_raster_cache")
+            try db.execute(sql: "DELETE FROM generated_documents")
+            try db.execute(sql: "DELETE FROM cloudkit_backup_cache")
             try db.execute(sql: "DELETE FROM sync_statuses WHERE scope_id != ?", arguments: [SyncDomain.globalScope])
         }
     }

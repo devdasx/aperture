@@ -328,14 +328,13 @@ struct PinSetupFlow: View {
             guard !Task.isCancelled else {
                 // The flow went away mid-commit (user backed out of the
                 // parent stack). The enabled flags were never flipped, so
-                // don't leave a half-committed PIN in Keychain.
+                // don't leave a half-committed PIN in GRDB.
                 PinCodeStorage.clear()
                 return
             }
             guard success else {
-                // Keychain write failed — extremely rare (only when the device
-                // can't unlock its own keychain). Honest fallback: don't claim
-                // the PIN is set; route the user to finish without PIN.
+                // GRDB write failed. Honest fallback: don't claim the PIN is
+                // set; route the user to finish without PIN.
                 pinEnabled = false
                 onFinish()
                 return

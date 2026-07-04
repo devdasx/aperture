@@ -20,6 +20,12 @@ final class AppDatabase: @unchecked Sendable {
             try Self.runFreshGRDBTransitionWipeIfNeeded(storeURL: url)
             pool = try Self.openPool(at: url)
             try Self.migrator.migrate(pool)
+            try pool.write { db in
+                try Self.ensureSingletonRows(db)
+            }
+            WalletSecretCrypto.configure(database: self)
+            ChainKeyVault.configure(database: self)
+            DiagnosticsLogStore.shared.configure(database: self)
             try Self.validateIntegrity(pool)
             try Self.markExcludedFromBackup(url)
             DiagnosticsLogStore.shared.record(
@@ -44,6 +50,9 @@ final class AppDatabase: @unchecked Sendable {
                 try Self.ensureSingletonRows(db)
             }
         }
+        WalletSecretCrypto.configure(database: self)
+        ChainKeyVault.configure(database: self)
+        DiagnosticsLogStore.shared.configure(database: self)
         try Self.validateIntegrity(pool)
         try Self.markExcludedFromBackup(url)
     }
@@ -51,11 +60,14 @@ final class AppDatabase: @unchecked Sendable {
     @MainActor
     func bootstrap() {
         do {
-            try pool.write { db in
-                try AppDatabase.ensureSingletonRows(db)
-            }
-            AppPreferenceStore.shared.configure(database: self)
-            ActiveWalletPointer.configure(database: self)
+        try pool.write { db in
+            try AppDatabase.ensureSingletonRows(db)
+        }
+        WalletSecretCrypto.configure(database: self)
+        ChainKeyVault.configure(database: self)
+        DiagnosticsLogStore.shared.configure(database: self)
+        AppPreferenceStore.shared.configure(database: self)
+        ActiveWalletPointer.configure(database: self)
             Task(priority: .utility) {
                 do {
                     try AssetCatalogSeeder.seed(database: self)
@@ -251,6 +263,7 @@ final class AppDatabase: @unchecked Sendable {
             """,
             arguments: [now]
         )
+        try LocalSecureBlobStore.ensureSecurityKeys(db: db)
     }
 }
 
@@ -269,6 +282,9 @@ private extension AppDatabase {
             for column in appSettingsPreferenceColumns where !appSettingsColumns.contains(column.name) {
                 try db.execute(sql: "ALTER TABLE app_settings ADD COLUMN \(column.sql)")
             }
+        }
+        migrator.registerMigration("v4_grdb_blob_and_security_stores") { db in
+            try db.execute(sql: blobAndSecurityTablesSQL)
         }
         return migrator
     }
@@ -310,6 +326,58 @@ private extension AppDatabase {
         PRIMARY KEY(wallet_id, key)
     );
     CREATE INDEX IF NOT EXISTS idx_wallet_preferences_wallet ON wallet_preferences(wallet_id);
+    """
+
+    nonisolated static let blobAndSecurityTablesSQL = """
+    CREATE TABLE IF NOT EXISTS local_secure_blobs (
+        key TEXT PRIMARY KEY,
+        blob BLOB NOT NULL,
+        created_at_ms INTEGER NOT NULL,
+        updated_at_ms INTEGER NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS diagnostic_log_entries (
+        id TEXT PRIMARY KEY,
+        timestamp_ms INTEGER NOT NULL,
+        level_raw TEXT NOT NULL,
+        category TEXT NOT NULL,
+        message TEXT NOT NULL,
+        metadata_json TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_diagnostic_log_entries_time
+        ON diagnostic_log_entries(timestamp_ms DESC);
+
+    CREATE TABLE IF NOT EXISTS asset_logo_cache (
+        cache_key TEXT PRIMARY KEY,
+        source_url TEXT NOT NULL UNIQUE,
+        png_data BLOB NOT NULL,
+        updated_at_ms INTEGER NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS wallet_avatar_raster_cache (
+        wallet_id TEXT PRIMARY KEY REFERENCES wallets(id) ON DELETE CASCADE,
+        png_data BLOB NOT NULL,
+        updated_at_ms INTEGER NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS generated_documents (
+        id TEXT PRIMARY KEY,
+        kind_raw TEXT NOT NULL,
+        file_name TEXT NOT NULL,
+        mime_type TEXT NOT NULL,
+        data BLOB NOT NULL,
+        created_at_ms INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_generated_documents_created
+        ON generated_documents(created_at_ms DESC);
+
+    CREATE TABLE IF NOT EXISTS cloudkit_backup_cache (
+        wallet_id TEXT PRIMARY KEY,
+        version INTEGER NOT NULL,
+        encoded_blob BLOB NOT NULL,
+        created_at_ms INTEGER NOT NULL,
+        updated_at_ms INTEGER NOT NULL
+    );
     """
 
     nonisolated static let schemaSQL = """
@@ -638,6 +706,8 @@ private extension AppDatabase {
     );
     CREATE INDEX idx_chain_utxos_wallet_chain ON chain_utxos(wallet_id, chain_raw);
     CREATE INDEX idx_chain_utxos_address ON chain_utxos(address_id);
+
+    \(blobAndSecurityTablesSQL)
     """
 }
 

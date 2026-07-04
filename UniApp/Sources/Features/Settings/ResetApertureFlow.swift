@@ -217,7 +217,7 @@ struct ResetApertureFlow: View {
     private var resetImpactSection: some View {
         Section {
             resetImpactRow("creditcard", "Wallets", "Every wallet you’ve created, imported, or are watching.")
-            resetImpactRow("key", "Keys & Recovery Phrases", "Permanently removed from this device’s Keychain.")
+            resetImpactRow("key", "Keys & Recovery Phrases", "Permanently removed from this device’s local database.")
             resetImpactRow("clock.arrow.circlepath", "Transactions & Balances", "Your wallet history, contacts, cached balances, and portfolio snapshots.")
         }
     }

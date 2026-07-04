@@ -2,14 +2,13 @@ import Foundation
 import CryptoKit
 import Security
 
-/// Keychain-backed PIN storage. Stores a PBKDF2-HMAC-SHA256 hash of the PIN
+/// GRDB-backed PIN storage. Stores a PBKDF2-HMAC-SHA256 hash of the PIN
 /// plus a 16-byte random salt — **never plaintext**. iterations = 100,000
 /// (OWASP 2023 PBKDF2-SHA256 minimum recommendation).
 ///
-/// Why Keychain, not `UserDefaults` / `@GRDBStorage`: Keychain items are
-/// protected by iOS data protection; `UserDefaults` is a plain plist on disk.
-/// PIN material — even hashed — belongs in Keychain
-/// (`kSecAttrAccessibleWhenUnlockedThisDeviceOnly`).
+/// Why `local_secure_blobs`, not `UserDefaults` / `@GRDBStorage`: PIN
+/// material is app-security state, so it is written as opaque bytes in the
+/// GRDB secure blob table and kept out of plain preference rows.
 ///
 /// **Native-only (Rule #3).** PBKDF2 is implemented as a pure-Swift loop
 /// over `CryptoKit.HMAC<SHA256>` — same pattern `BIP39Seed.swift` uses
@@ -30,9 +29,8 @@ enum PinCodeStorage {
 
     // MARK: - Configuration
 
-    /// Keychain service identifier. Distinct from any other UniApp service
-    /// so the PIN hash never collides with the seed (T-012) or any other
-    /// future secret.
+    /// Legacy service namespace folded into the GRDB blob key. Kept stable so
+    /// old cleanup code and new rows are easy to audit together.
     private static let service: String = "com.thuglife.aperture.pin"
     /// Account for the PBKDF2 hash blob (32 bytes).
     private static let hashAccount: String = "pin.hash"
@@ -63,12 +61,12 @@ enum PinCodeStorage {
     /// PBKDF2 derived-key length — SHA-256 native output size.
     private static let keyLength: Int = 32
     /// Salt length. 16 bytes is the standard for password storage; more
-    /// gives no real benefit and wastes Keychain space.
+    /// gives no real benefit and wastes storage space.
     private static let saltLength: Int = 16
 
     // MARK: - Public surface
 
-    /// `true` iff a PIN is currently set (Keychain contains both salt + hash).
+    /// `true` iff a PIN is currently set (GRDB contains both salt + hash).
     static var hasPin: Bool {
         return read(account: hashAccount) != nil && read(account: saltAccount) != nil
     }
@@ -79,9 +77,9 @@ enum PinCodeStorage {
     /// runs on a detached task; the caller awaits the result.
     ///
     /// Generates a fresh 16-byte salt, derives the PBKDF2-SHA256 hash,
-    /// writes both to Keychain, and resets the failed-attempt record
+    /// writes both to GRDB, and resets the failed-attempt record
     /// (a fresh PIN starts with a clean slate). Overwrites any existing
-    /// PIN. Returns `true` on successful Keychain write.
+    /// PIN. Returns `true` on successful GRDB write.
     static func setPin(_ pin: String) async -> Bool {
         await Task.detached(priority: .userInitiated) { _setPinSync(pin) }.value
     }
@@ -148,8 +146,8 @@ enum PinCodeStorage {
     // MARK: - Failed-attempt rate limiting
 
     /// Record a failed verify attempt. Persists the incremented count and
-    /// the current timestamp to Keychain (same accessibility class as the
-    /// PIN material, so the counter survives app kill and reinstall).
+    /// the current timestamp to GRDB with the PIN material, so the counter
+    /// survives app kill.
     /// Returns the new failure count.
     @discardableResult
     static func recordFailure() -> Int {
@@ -346,52 +344,28 @@ enum PinCodeStorage {
         return bytes
     }
 
-    // MARK: - Keychain primitives
+    // MARK: - GRDB primitives
 
-    /// Write `data` to Keychain under `(service, account)`. Overwrites any
+    /// Write `data` to GRDB under `(service, account)`. Overwrites any
     /// existing value. Returns `true` on success. The `service` parameter
-    /// defaults to the production PIN service; the DEBUG smoke check
-    /// passes a distinct test service so it never touches real PIN
-    /// material.
+    /// defaults to the production PIN namespace; the DEBUG smoke check
+    /// passes a distinct test namespace so it never touches real PIN material.
     @discardableResult
     private static func write(
         _ data: Data,
         account: String,
         service: String = PinCodeStorage.service
     ) -> Bool {
-        // Delete any existing item first so the add doesn't fail with
-        // `errSecDuplicateItem`.
-        delete(account: account, service: service)
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: account,
-            kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly,
-            kSecValueData as String: data
-        ]
-        let status = SecItemAdd(query as CFDictionary, nil)
-        return status == errSecSuccess
+        (try? LocalSecureBlobStore.upsert(data, forKey: storageKey(service: service, account: account))) == true
     }
 
-    /// Read the `Data` stored under `(service, account)`, or `nil` if
-    /// the item is missing or unreadable.
+    /// Read the `Data` stored under `(service, account)`, or `nil` if the
+    /// blob is missing or unreadable.
     private static func read(
         account: String,
         service: String = PinCodeStorage.service
     ) -> Data? {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: account,
-            kSecReturnData as String: true,
-            kSecMatchLimit as String: kSecMatchLimitOne
-        ]
-        var result: AnyObject?
-        let status = SecItemCopyMatching(query as CFDictionary, &result)
-        guard status == errSecSuccess, let data = result as? Data else {
-            return nil
-        }
-        return data
+        try? LocalSecureBlobStore.read(storageKey(service: service, account: account))
     }
 
     /// Delete the item stored under `(service, account)`. Silently
@@ -400,18 +374,17 @@ enum PinCodeStorage {
         account: String,
         service: String = PinCodeStorage.service
     ) {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: account
-        ]
-        SecItemDelete(query as CFDictionary)
+        LocalSecureBlobStore.delete(storageKey(service: service, account: account))
+    }
+
+    private static func storageKey(service: String, account: String) -> String {
+        "pin.\(service).\(account)"
     }
 }
 
 #if DEBUG
 extension PinCodeStorage {
-    /// Keychain service used exclusively by the DEBUG smoke check —
+    /// GRDB namespace used exclusively by the DEBUG smoke check —
     /// distinct from the production PIN service so the check never
     /// reads, writes, or deletes real PIN material.
     fileprivate static let smokeCheckService: String = "com.thuglife.aperture.pin.smoketest"
@@ -421,7 +394,7 @@ extension PinCodeStorage {
     /// storage has drifted from the expected behavior.
     ///
     /// Two hardening properties (2026-06-10):
-    /// 1. **Distinct service.** All Keychain traffic goes to
+    /// 1. **Distinct namespace.** All smoke-check traffic goes to
     ///    `smokeCheckService`, never the production PIN service, so a
     ///    user's real PIN can never be racing against (or clobbered by)
     ///    the smoke check.

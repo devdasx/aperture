@@ -18,7 +18,7 @@ import UIKit
 ///   warning + the key format.
 ///
 /// **Security (handoff "build requirements").** Secrets render only from
-/// the Keychain-backed vault / scoped key derivation, decrypted off-main.
+/// encrypted GRDB wallet-secret rows / scoped key derivation, decrypted off-main.
 /// The phrase/key stays blurred until an explicit tap and re-blurs when
 /// the app backgrounds. Copy auto-clears the clipboard after 20s with a
 /// visible countdown. Nothing is logged or sent anywhere.

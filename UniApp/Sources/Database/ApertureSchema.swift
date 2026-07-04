@@ -117,6 +117,7 @@ final class WalletSecretRecord {
 }
 
 enum WalletSecretKind: String, Codable, Sendable, CaseIterable {
+    case seed
     case mnemonic
     case privateKey
 }

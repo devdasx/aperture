@@ -67,7 +67,7 @@ enum ImportInfo: String, Identifiable, Sendable {
                       detail: "Every account on every network is derived from these words, so the whole wallet comes in at once."),
                 .init(icon: "hand.raised",
                       lead: "Anyone with the words has the funds",
-                      detail: "Type them only on a device you trust. Aperture stores them encrypted in this iPhone's Keychain and never sends them anywhere."),
+                      detail: "Type them only on a device you trust. Aperture stores them encrypted in this iPhone's local database and never sends them anywhere."),
                 .init(icon: "list.number",
                       lead: "12 or 24 words, in order",
                       detail: "Enter them in the exact order they were given — the order is part of the key.")
@@ -82,7 +82,7 @@ enum ImportInfo: String, Identifiable, Sendable {
                       detail: "Paste it as that chain expects — 0x-hex for Ethereum and EVM, WIF for Bitcoin, base58 for Solana, and so on."),
                 .init(icon: "lock.shield",
                       lead: "Stored only on this device",
-                      detail: "Encrypted in this iPhone's Keychain; it never leaves the device.")
+                      detail: "Encrypted in this iPhone's local database; it never leaves the device.")
             ]
         case .watchOnly:
             return [

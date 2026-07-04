@@ -655,7 +655,7 @@ struct WalletsListView: View {
         }
     }
 
-    /// `true` iff this wallet's secret material lives in the Keychain.
+    /// `true` iff this wallet's secret material lives in GRDB.
     private func walletHasStoredSecret(_ wallet: WalletRecord) -> Bool {
         switch wallet.kind {
         case .importedKey:
@@ -669,18 +669,20 @@ struct WalletsListView: View {
 
     private func hasStoredSecret(kind: WalletSecretKind, for walletId: UUID) -> Bool {
         switch kind {
+        case .seed:
+            return WalletSecretPersistence.hasSecret(kind: .seed, for: walletId, database: AppDatabase.shared)
         case .mnemonic:
             if let words = try? WalletSecretPersistence.loadMnemonic(for: walletId, database: AppDatabase.shared),
                !words.isEmpty {
                 return true
             }
-            return MnemonicVault.hasMnemonic(for: walletId)
+            return false
         case .privateKey:
             if let key = try? WalletSecretPersistence.loadPrivateKey(for: walletId, database: AppDatabase.shared),
                !key.isEmpty {
                 return true
             }
-            return MnemonicVault.hasPrivateKey(for: walletId)
+            return false
         }
     }
 

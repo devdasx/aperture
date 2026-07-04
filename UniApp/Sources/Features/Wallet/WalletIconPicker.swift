@@ -772,7 +772,7 @@ struct WalletIconPickerSheet: View {
 // MARK: - Live preview for `.custom` specs
 //
 // The persisted `.custom` render goes through
-// `WalletCustomSvgRenderer`'s disk cache; the picker's live preview
+// `WalletCustomSvgRenderer`'s GRDB cache; the picker's live preview
 // can't use that path because the cache invalidates on Save and the
 // preview needs to reflect every keystroke / tint flip immediately.
 // So we render the live preview through a per-frame `WKWebView`
@@ -866,12 +866,12 @@ private struct WalletAvatarCustomLivePreview: View {
         .task(id: renderKey) {
             // Use a one-shot snapshot off the same renderer, with a
             // throw-away UUID so the cache doesn't pollute the
-            // persisted directory. The `defer` guarantees the scratch
+            // persisted wallet row. The `defer` guarantees the scratch
             // PNG is evicted on EVERY exit path — success, render
             // failure, AND task cancellation (the user flipping
             // gradient/tint mid-render re-keys `.task(id:)`, which
             // cancels this body; without the defer the cancelled
-            // path leaked the scratch file on disk).
+            // path leaked the scratch cache entry).
             let scratchId = UUID()
             defer { WalletCustomSvgRenderer.invalidate(walletId: scratchId) }
             do {

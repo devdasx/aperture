@@ -37,6 +37,11 @@ struct CloudKitBackupStore: Sendable {
     private static let indexIdsKey = "walletIds"
 
     private static let log = Logger(subsystem: "com.thuglife.aperture", category: "backup-cloudkit")
+    private let appDatabase: AppDatabase
+
+    init(database: AppDatabase = .shared) {
+        self.appDatabase = database
+    }
 
     /// Human-surfaceable failure. Every case maps to a real CloudKit / account
     /// condition so the UI can show an honest message + Retry (handoff:
@@ -101,8 +106,10 @@ struct CloudKitBackupStore: Sendable {
         } else {
             record = CKRecord(recordType: Self.recordType, recordID: recordID)
         }
+        let encoded: Data
         do {
-            record[Self.blobKey] = try blob.encoded() as NSData
+            encoded = try blob.encoded()
+            record[Self.blobKey] = encoded as NSData
             record[Self.versionKey] = blob.version as NSNumber
         } catch {
             throw StoreError.unknown("Could not encode the backup.")
@@ -126,6 +133,7 @@ struct CloudKitBackupStore: Sendable {
             }
             database.add(op)
         }
+        CloudKitBackupCacheStore.upsert(blob, encoded: encoded, database: appDatabase)
         // Backup is safely uploaded — now record it in the query-free index
         // (best-effort: never let an index hiccup undo a successful backup).
         await addToIndex(blob.walletId)
@@ -145,6 +153,9 @@ struct CloudKitBackupStore: Sendable {
         do {
             let record = try await database.record(for: recordID)
             let blob = try Self.decode(record)
+            if let encoded = try? blob.encoded() {
+                CloudKitBackupCacheStore.upsert(blob, encoded: encoded, database: appDatabase)
+            }
             // Self-heal: any confirmed backup gets listed in the index, so a
             // backup made BEFORE the index existed becomes restorable the next
             // time the app checks its status (e.g. opening the wallet detail) —
@@ -188,6 +199,9 @@ struct CloudKitBackupStore: Sendable {
             let recordID = CKRecord.ID(recordName: idString)
             if let record = try? await database.record(for: recordID),
                let blob = try? Self.decode(record) {
+                if let encoded = try? blob.encoded() {
+                    CloudKitBackupCacheStore.upsert(blob, encoded: encoded, database: appDatabase)
+                }
                 blobs.append(blob)
             }
         }
@@ -204,6 +218,9 @@ struct CloudKitBackupStore: Sendable {
             var blobs: [WalletBackupBlob] = []
             for (_, result) in matchResults {
                 if case .success(let record) = result, let blob = try? Self.decode(record) {
+                    if let encoded = try? blob.encoded() {
+                        CloudKitBackupCacheStore.upsert(blob, encoded: encoded, database: appDatabase)
+                    }
                     blobs.append(blob)
                 }
             }
@@ -228,11 +245,13 @@ struct CloudKitBackupStore: Sendable {
         } catch {
             let mapped = Self.map(error)
             if case .notFound = mapped {
+                CloudKitBackupCacheStore.delete(walletId: walletId, database: appDatabase)
                 await removeFromIndex(walletId) // keep the index honest
                 return // already gone — idempotent
             }
             throw mapped
         }
+        CloudKitBackupCacheStore.delete(walletId: walletId, database: appDatabase)
         await removeFromIndex(walletId)
     }
 

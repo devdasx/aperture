@@ -63,15 +63,14 @@ final class ImportWalletState {
     var watchOnlyAddresses: [String] = []
 
     /// Stable identifier for the wallet being imported. Same role as
-    /// `CreateWalletState.pendingWalletId` — used as the `SeedVault`
-    /// Keychain key and the `WalletRecord.id` so both writes target
-    /// the same logical wallet.
+    /// `CreateWalletState.pendingWalletId` — used as the wallet-secret
+    /// owner id and the `WalletRecord.id` so every row targets the same
+    /// logical wallet.
     let pendingWalletId: UUID = UUID()
 
     /// Persist this import end-to-end via the appropriate
-    /// `WalletCommandRepository` shape. Mirrors `CreateWalletState.persist(...)`'s
-    /// Keychain-then-database transactional pattern: seed (if any) goes
-    /// to Keychain first; on database failure the seed is rolled back.
+    /// `WalletCommandRepository` shape. Mirrors `CreateWalletState.persist(...)`:
+    /// key material and wallet metadata are committed together in GRDB.
     ///
     /// `result` tells us which import method finished so we pick the
     /// right repository call (mnemonic → `insertImportedMnemonicWallet`,
@@ -120,115 +119,72 @@ final class ImportWalletState {
             // addresses. `service.deriveAddresses(mnemonic:)` returns `[:]`
             // (it does NOT throw) when WalletCore can't build an HDWallet —
             // e.g. an iCloud backup that decrypts to a non-BIP-39 word list.
-            // Guard before any seed derivation or Keychain write so a
+            // Guard before any seed derivation or database write so a
             // zero-address "zombie" wallet can never land in the store via
             // any path. Nothing has been written yet, so there's nothing to
             // roll back.
             guard !derivedAddressesFromMnemonic.isEmpty else {
                 throw KeyImportError.derivationFailed
             }
-            // BIP-39 mnemonic import — derive the seed and store it
-            // in Keychain, then persist the WalletRecord with one
-            // address per supported chain.
-            //
-            // PBKDF2 (2048 × HMAC-SHA512) runs off the main actor so
-            // the UI doesn't hitch during commit; the Keychain writes
-            // below stay on `@MainActor`.
+            // BIP-39 mnemonic import — derive the seed off-main, then
+            // persist seed, mnemonic, wallet metadata, and addresses in
+            // one GRDB transaction.
             let seed = await Self.deriveSeedOffMain(
                 words: normalizedWords,
                 passphrase: mnemonicPassphrase
             )
-            // Encrypt + Keychain-write the seed and legacy mnemonic copy OFF
-            // the main actor. The canonical user-readable mnemonic is written
-            // into `WalletSecretRecord` by `insertImportedMnemonicWallet(...)`,
-            // encrypted with an app-owned device-local key that is not derived
-            // from the app passcode or Face ID.
-            try await Self.storeMnemonicKeyMaterial(
-                seed: seed,
-                mnemonic: normalizedWords,
-                walletId: walletId
+            let addressEntries: [(chainRaw: String, address: String)] =
+                derivedAddressesFromMnemonic.map { (chain, address) in
+                    (chainRaw: chain.rawValue, address: address)
+                }
+            try await repository.insertImportedMnemonicWallet(
+                id: walletId,
+                name: resolvedName,
+                mnemonicWordCount: normalizedWords.count,
+                hasPassphrase: !mnemonicPassphrase.isEmpty,
+                colorTag: "default",
+                seedData: seed,
+                mnemonicWords: normalizedWords,
+                addresses: addressEntries
             )
-            do {
-                let addressEntries: [(chainRaw: String, address: String)] =
-                    derivedAddressesFromMnemonic.map { (chain, address) in
-                        (chainRaw: chain.rawValue, address: address)
-                    }
-                try await repository.insertImportedMnemonicWallet(
-                    id: walletId,
-                    name: resolvedName,
-                    mnemonicWordCount: normalizedWords.count,
-                    hasPassphrase: !mnemonicPassphrase.isEmpty,
-                    colorTag: "default",
-                    mnemonicWords: normalizedWords,
-                    addresses: addressEntries
-                )
-            } catch {
-                try? SeedVault.deleteSeed(for: walletId)
-                try? MnemonicVault.deleteMnemonic(for: walletId)
-                throw error
-            }
 
         case .privateKey(let chain):
             // Defensive: never persist a private-key wallet with no derived
             // address. The decoder positively identifies the key before we
             // reach here, so this is belt-and-braces — but guard before any
-            // Keychain write so an empty derivation can't yield an unusable,
+            // database write so an empty derivation can't yield an unusable,
             // addressless wallet.
             guard !derivedAddressFromKey.isEmpty else {
                 throw KeyImportError.derivationFailed
             }
             // Single private-key import — decode the typed key into
-            // its raw byte payload, positively identified for `chain`
-            // (hex → 32 raw bytes; Bitcoin-family WIF → base58check
-            // payload without version byte / compression flag; Solana
-            // base58 secret → the 32-byte ed25519 seed). The decoder
-            // throws on anything it can't positively identify, so
-            // garbage never lands in the Keychain.
-            //
-            // **Byte format stored:** the 32 raw private-key bytes
-            // (secp256k1 scalar or ed25519 seed, per the chain's
-            // curve), zero-padded to SeedVault's fixed 64-byte slot —
-            // bytes 0..<32 are the key, bytes 32..<64 are zero padding.
-            // Decode + encrypt + Keychain-write the key material OFF the
-            // main actor (2026-06-17) so the import commit never hitches.
-            // The `MnemonicVault` copy keeps the original key string (hex
-            // / WIF, trimmed) so the user can re-view it from Settings →
-            // Wallets → "View private key"; the SeedVault slot holds only
-            // the decoded raw bytes, which can't render back to WIF /
-            // base58. The canonical user-readable key string is also written
-            // into `WalletSecretRecord` by `insertImportedKeyWallet(...)`,
-            // encrypted with an app-owned device-local key.
-            try await Self.storePrivateKeyMaterial(
+            // its raw byte payload off-main, then store the padded seed
+            // bytes and original key string in GRDB with the wallet.
+            let seedData = try await Self.privateKeySeedMaterial(
                 privateKeyRaw: privateKeyRaw,
-                chain: chain,
-                walletId: walletId
+                chain: chain
             )
-            do {
-                // An EVM key derives one 0x address valid on EVERY EVM
-                // chain, so light them all up (the same shape the mnemonic
-                // importer writes — identical address across EVM rows). A
-                // single-chain key (Solana, Bitcoin WIF) stays on its one
-                // chain. The stored key signs any of these chains.
-                let keyAddresses: [(chainRaw: String, address: String)]
-                if chain.family == .evm {
-                    keyAddresses = Self.evmChains.map {
-                        (chainRaw: $0.rawValue, address: derivedAddressFromKey)
-                    }
-                } else {
-                    keyAddresses = [(chainRaw: chain.rawValue, address: derivedAddressFromKey)]
+            // An EVM key derives one 0x address valid on EVERY EVM
+            // chain, so light them all up (the same shape the mnemonic
+            // importer writes — identical address across EVM rows). A
+            // single-chain key (Solana, Bitcoin WIF) stays on its one
+            // chain. The stored key signs any of these chains.
+            let keyAddresses: [(chainRaw: String, address: String)]
+            if chain.family == .evm {
+                keyAddresses = Self.evmChains.map {
+                    (chainRaw: $0.rawValue, address: derivedAddressFromKey)
                 }
-                try await repository.insertImportedKeyWallet(
-                    id: walletId,
-                    name: resolvedName,
-                    colorTag: "default",
-                    privateKey: privateKeyRaw.trimmingCharacters(in: .whitespacesAndNewlines),
-                    addresses: keyAddresses
-                )
-            } catch {
-                try? SeedVault.deleteSeed(for: walletId)
-                try? MnemonicVault.deletePrivateKey(for: walletId)
-                throw error
+            } else {
+                keyAddresses = [(chainRaw: chain.rawValue, address: derivedAddressFromKey)]
             }
+            try await repository.insertImportedKeyWallet(
+                id: walletId,
+                name: resolvedName,
+                colorTag: "default",
+                seedData: seedData,
+                privateKey: privateKeyRaw.trimmingCharacters(in: .whitespacesAndNewlines),
+                addresses: keyAddresses
+            )
 
         case .watchOnly(let chain):
             // Watch-only: no key material. SeedVault is skipped on
@@ -310,52 +266,18 @@ final class ImportWalletState {
         return padded
     }
 
-    /// Encrypt the seed + mnemonic and write them to Keychain OFF the
-    /// main actor (2026-06-17). AES-GCM (CryptoKit) plus four `SecItemAdd`
-    /// writes are CPU + I/O that has no business on `@MainActor`; running
-    /// them on a detached task is what keeps the import commit from
-    /// freezing the UI. On a mnemonic-vault failure the just-written seed
-    /// is rolled back, preserving the original all-or-nothing contract.
-    nonisolated private static func storeMnemonicKeyMaterial(
-        seed: Data,
-        mnemonic: [String],
-        walletId: UUID
-    ) async throws {
-        try await Task.detached(priority: .userInitiated) {
-            try SeedVault.storeSeed(seed, for: walletId)
-            do {
-                try MnemonicVault.storeMnemonic(mnemonic, for: walletId)
-            } catch {
-                try? SeedVault.deleteSeed(for: walletId)
-                throw error
-            }
-        }.value
-    }
-
-    /// Decode, encrypt, and Keychain-write a single private key's material
-    /// OFF the main actor (2026-06-17) — same rollback contract as the
-    /// mnemonic path. Key decoding (WalletCore) + AES-GCM + Keychain all
-    /// run on a detached task so the commit never hitches.
-    nonisolated private static func storePrivateKeyMaterial(
+    /// Decode a single private key's material off the main actor and pad it
+    /// to the fixed 64-byte seed slot stored in GRDB.
+    nonisolated private static func privateKeySeedMaterial(
         privateKeyRaw: String,
-        chain: SupportedChain,
-        walletId: UUID
-    ) async throws {
+        chain: SupportedChain
+    ) async throws -> Data {
         try await Task.detached(priority: .userInitiated) {
             let keyBytes = try WalletCoreKeyImportService.decodePrivateKeyBytes(
                 privateKeyRaw,
                 on: chain
             )
-            try SeedVault.storeSeed(paddedTo64(bytes: keyBytes), for: walletId)
-            do {
-                try MnemonicVault.storePrivateKey(
-                    privateKeyRaw.trimmingCharacters(in: .whitespacesAndNewlines),
-                    for: walletId
-                )
-            } catch {
-                try? SeedVault.deleteSeed(for: walletId)
-                throw error
-            }
+            return paddedTo64(bytes: keyBytes)
         }.value
     }
 

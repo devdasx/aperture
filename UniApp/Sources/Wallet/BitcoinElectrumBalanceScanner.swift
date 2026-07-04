@@ -379,10 +379,6 @@ private actor BitcoinPathSearchSecretRepository {
            !words.isEmpty {
             return words
         }
-        if let words = try? MnemonicVault.loadMnemonic(for: wallet.id),
-           !words.isEmpty {
-            return words
-        }
         throw BitcoinPathSearchError.missingMnemonic
     }
 }
@@ -515,7 +511,7 @@ private actor BitcoinWalletScanTargetRepository {
            !words.isEmpty {
             return words
         }
-        return (try? MnemonicVault.loadMnemonic(for: walletId)) ?? nil
+        return nil
     }
 
     private func loadPrivateKey(walletId: UUID) -> String? {
@@ -523,7 +519,7 @@ private actor BitcoinWalletScanTargetRepository {
            !key.isEmpty {
             return key
         }
-        return (try? MnemonicVault.loadPrivateKey(for: walletId)) ?? nil
+        return nil
     }
 }
 

@@ -1,6 +1,5 @@
 import SwiftUI
 import UIKit
-import TipKit
 
 /// The post-onboarding shell for Aperture. Hosts the top-level surfaces the
 /// user navigates between — Wallet, Activity, Markets, and Settings — via the native

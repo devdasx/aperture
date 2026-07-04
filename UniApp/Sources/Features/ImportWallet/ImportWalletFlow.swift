@@ -38,8 +38,7 @@ struct ImportWalletFlow: View {
     ///
     /// **Persistence happens before this fires.** The active commit
     /// path calls `state.persist(result:into:)` inside the commit
-    /// handler; the wallet is in SQLite (and its seed, if any, in
-    /// Keychain) by the time the parent sees the
+    /// handler; the wallet and its seed, if any, are in GRDB by the time the parent sees the
     /// `onCompleted` callback.
     let onCompleted: (ImportResult) -> Void
 
@@ -49,8 +48,8 @@ struct ImportWalletFlow: View {
     /// retry from the same commit screen after reading or emailing details.
     @State private var persistErrorReport: ApertureErrorReport?
 
-    /// True while `persistThen` is running (derive + write to SQLite +
-    /// Keychain + fire first refresh). Passed down to the active commit
+    /// True while `persistThen` is running (derive + write to GRDB +
+    /// fire first refresh). Passed down to the active commit
     /// screen so its `UniButton` shows the native loading spinner while
     /// the wallet is being saved — the work takes a real beat, and a
     /// silent button reads as a frozen app (Rule #28: the work stays
@@ -157,8 +156,8 @@ struct ImportWalletFlow: View {
     /// Persist the imported wallet via `WalletCommandRepository`, then fire
     /// `onCompleted` so the parent can dismiss. On failure the flow
     /// does NOT complete — completing without a persisted seed would
-    /// hand the parent a zombie wallet with no key material in the
-    /// Keychain. Instead the error is logged, an alert names the
+    /// hand the parent a zombie wallet with no key material in GRDB.
+    /// Instead the error is logged, an alert names the
     /// failure, and navigation stays in place so the user can retry
     /// the commit from the same screen.
     private func persistThen(_ result: ImportResult) {
@@ -171,7 +170,7 @@ struct ImportWalletFlow: View {
             defer { isCommitting = false }
             do {
                 let walletId = try await state.persist(result: result, into: repository)
-                // Seed / key bytes are now encrypted in Keychain —
+                // Seed / key bytes are now encrypted in GRDB —
                 // the plaintext inputs have no reason to outlive the
                 // flow.
                 state.zeroSensitiveInput()

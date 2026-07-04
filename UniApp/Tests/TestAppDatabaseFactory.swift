@@ -19,6 +19,12 @@ enum TestAppDatabaseFactory {
     }
 
     static func cleanup(_ database: AppDatabase) {
+        let diagnosticsDetached = DispatchSemaphore(value: 0)
+        Task {
+            await DiagnosticsLogStore.shared.detachForTesting()
+            diagnosticsDetached.signal()
+        }
+        diagnosticsDetached.wait()
         try? database.pool.close()
         try? AppDatabase.resetStoreFiles(at: database.storeURL)
         try? FileManager.default.removeItem(at: database.storeURL.deletingLastPathComponent())

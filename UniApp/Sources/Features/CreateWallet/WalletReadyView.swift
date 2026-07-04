@@ -10,8 +10,7 @@ import OSLog
 /// **What changed 2026-06-06.** This screen is now also the moment the
 /// wallet is **persisted to the local database**. On appear, the view
 /// runs `state.persist(into:requiresBackup:)` which encrypts and stores
-/// the BIP-39 seed in Keychain (`SeedVault`) and inserts wallet rows
-/// via GRDB. The Done button is disabled until persistence
+/// the BIP-39 seed, mnemonic, and wallet rows via GRDB. The Done button is disabled until persistence
 /// resolves so the user cannot dismiss with an unpersisted wallet. On
 /// failure, the view surfaces an error footnote with a Retry button
 /// rather than silently swallowing.
@@ -55,7 +54,7 @@ struct WalletReadyView: View {
 
     /// The in-flight persist task. Stored so Retry can cancel any
     /// previous launch before spawning a new one — two concurrent
-    /// persists of the same wallet would race on Keychain + SQLite.
+    /// persists of the same wallet would race on GRDB writes.
     @State private var persistTask: Task<Void, Never>? = nil
 
     private static let log = Logger(
@@ -156,7 +155,7 @@ struct WalletReadyView: View {
                     manualBackup: manualBackupFlag
                 )
                 persistState = .persisted
-                // The seed + encrypted mnemonic are in Keychain — wipe the
+                // The seed + encrypted mnemonic are in GRDB — wipe the
                 // plaintext secrets before the user moves on. (The success
                 // seal + its haptic are ImportSuccessView's, fired on appear,
                 // so create matches import exactly.)
@@ -183,25 +182,16 @@ struct WalletReadyView: View {
         }
     }
 
-    /// Turn the real persist error into an honest, diagnosable message — so a
-    /// "couldn't save" never hides WHY (Keychain code, missing entitlement,
-    /// no device passcode, etc.). Keeps the friendly lead + the real cause.
+    /// Turn the real persist error into an honest, diagnosable message.
     private static func failureMessage(for error: Error) -> String {
         if let vault = error as? SeedVault.VaultError {
             switch vault {
-            case .keychainWriteFailed(let status):
-                switch status {
-                case -34018:
-                    return String.apertureLocalized("Couldn't save to the Keychain (missing entitlement). This usually means the app needs a fresh signed install — rebuild and reinstall from Xcode, then tap Retry.")
-                case -25308, -25293:
-                    return String.apertureLocalized("Couldn't save securely — your iPhone needs a passcode. Set one in iOS Settings → Face ID & Passcode, then tap Retry.")
-                default:
-                    return String(format: String.apertureLocalized("Couldn't save your wallet to the Keychain (code %lld). Tap Retry."), Int64(status))
-                }
             case .invalidSeedLength:
                 return String.apertureLocalized("The wallet's key material looked invalid. Tap Retry.")
+            case .databaseWriteFailed(let detail), .databaseReadFailed(let detail), .databaseDeleteFailed(let detail):
+                return String(format: String.apertureLocalized("Couldn't save your wallet to the database: %@. Tap Retry."), detail)
             default:
-                return String.apertureLocalized("Couldn't save your wallet to the Keychain. Tap Retry.")
+                return String.apertureLocalized("Couldn't save your wallet to the database. Tap Retry.")
             }
         }
         return String(format: String.apertureLocalized("Couldn't save your wallet: %@. Tap Retry."), error.localizedDescription)

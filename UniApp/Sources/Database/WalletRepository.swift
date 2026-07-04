@@ -159,7 +159,6 @@ final class WalletRepository {
     }
 
     func backfillAvatarDefaults() throws {}
-    func backfillWalletSecretsFromLegacyKeychain() throws {}
     func backfillAddressWalletIds() throws {}
     func repairMnemonicAddressRowsFromStoredSecrets() async throws {}
     func backfillEncryptedChainKeysFromStoredSecrets() throws {}
@@ -186,9 +185,6 @@ final class WalletRepository {
                 try ActiveWalletPointer.mirrorSelection(nil, db: db)
             }
         }
-        try? SeedVault.deleteSeed(for: id)
-        try? MnemonicVault.deleteMnemonic(for: id)
-        try? MnemonicVault.deletePrivateKey(for: id)
     }
 
     func deleteWalletAndActivateNext(walletId: UUID) async throws -> UUID? {
@@ -209,9 +205,6 @@ final class WalletRepository {
             return nextId
         }
         ActiveWalletPointer.set(next)
-        try? SeedVault.deleteSeed(for: walletId)
-        try? MnemonicVault.deleteMnemonic(for: walletId)
-        try? MnemonicVault.deletePrivateKey(for: walletId)
         return next
     }
 
@@ -252,15 +245,9 @@ final class WalletRepository {
     }
 
     func deleteAllWallets() throws {
-        let ids = try allWalletIds()
         try database.write { db in
             try db.execute(sql: "DELETE FROM wallets")
             try ActiveWalletPointer.mirrorSelection(nil, db: db)
-        }
-        for id in ids {
-            try? SeedVault.deleteSeed(for: id)
-            try? MnemonicVault.deleteMnemonic(for: id)
-            try? MnemonicVault.deletePrivateKey(for: id)
         }
         ActiveWalletPointer.set(nil)
     }
