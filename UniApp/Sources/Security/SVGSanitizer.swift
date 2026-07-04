@@ -35,8 +35,7 @@ import Foundation
 /// 1. **Byte-size precheck.** Reject if the UTF-8 byte count of the
 ///    input exceeds `maxBytes` (50 KB ceiling per the brief). The
 ///    ceiling protects against parser pathologies AND against a user
-///    bundling a megabyte-scale SVG that would balloon the Keychain
-///    manifest on `WalletManifestStore.sync(...)`.
+///    bundling a megabyte-scale SVG that would balloon the GRDB wallet row.
 /// 2. **Strip XML prolog** — `<?xml ... ?>` blocks. These carry no
 ///    visual content; only encoding declarations that `WKWebView`
 ///    can already infer.

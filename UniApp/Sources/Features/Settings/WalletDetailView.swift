@@ -92,7 +92,7 @@ struct WalletDetailView: View {
            !words.isEmpty {
             return true
         }
-        return MnemonicVault.hasMnemonic(for: walletId)
+        return false
     }
     private var hasStoredPrivateKey: Bool {
         if let privateKeyAvailability {
@@ -102,7 +102,7 @@ struct WalletDetailView: View {
            !key.isEmpty {
             return true
         }
-        return MnemonicVault.hasPrivateKey(for: walletId)
+        return false
     }
     private var currentMnemonicAvailability: WalletSecretPersistence.Availability {
         if let mnemonicAvailability { return mnemonicAvailability }
@@ -346,7 +346,7 @@ struct WalletDetailView: View {
             Section {
                 deleteRow(wallet)
             } footer: {
-                Text("Deleting this wallet removes it from this iPhone and erases its encrypted seed from Keychain. Your recovery phrase, if you wrote it down, is still yours — you can restore the wallet later by importing it.")
+                Text("Deleting this wallet removes it from this iPhone and erases its encrypted seed from the local database. Your recovery phrase, if you wrote it down, is still yours — you can restore the wallet later by importing it.")
                     .font(UniTypography.footnote)
                     .foregroundStyle(UniColors.Text.tertiary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -841,13 +841,11 @@ struct WalletDetailView: View {
         let id = wallet.id
         // `deleteWallet(id:)` delegates to the canonical
         // `deleteWalletAndActivateNext(walletId:)`, which owns the whole
-        // contract atomically (2026-06-13): it wipes both Keychain vaults
-        // idempotently, deletes the record, and — when the deleted wallet
+        // contract atomically (2026-06-13): it deletes the wallet-private
+        // GRDB rows and — when the deleted wallet
         // is the active one — moves `activeWalletId` to a deterministic
-        // successor BEFORE the save commits. So no manual `SeedVault` /
-        // `MnemonicVault` wipes here (the repo does it, and doing it
-        // twice risked destroying the secret before a failed save left a
-        // live record), and no `activeWalletIdRaw = ""` clobber (the repo
+        // successor BEFORE the save commits. So no manual secret wipes here
+        // (the repo does it), and no `activeWalletIdRaw = ""` clobber (the repo
         // names a real successor; the old clear was the source of the
         // "$50 wallet selected, $700 wallet's data" report).
         let repo = WalletRepository(database: AppDatabase.shared)
@@ -871,7 +869,7 @@ struct WalletDetailView: View {
     }
 
     /// `true` iff this wallet's secret material (recovery phrase or
-    /// private key) actually lives in the Keychain on this iPhone.
+    /// private key) actually lives in GRDB on this iPhone.
     /// Watch-only wallets and imports persisted before the always-store
     /// policy hold none — drives `WalletDeleteSheet`'s reversible-vs-final
     /// consequence line and the inventory's encrypted-secret row.

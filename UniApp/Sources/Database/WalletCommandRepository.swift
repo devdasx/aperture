@@ -64,6 +64,7 @@ final class WalletCommandRepository {
         colorTag: String,
         requiresBackup: Bool,
         manualBackupCompleted: Bool = false,
+        seedData: Data? = nil,
         mnemonicWords: [String]? = nil,
         addresses: [(chainRaw: String, address: String)] = []
     ) async throws -> UUID {
@@ -76,6 +77,7 @@ final class WalletCommandRepository {
             colorTag: colorTag,
             requiresBackup: requiresBackup,
             manualBackupCompleted: manualBackupCompleted,
+            seedData: seedData,
             mnemonicWords: mnemonicWords,
             privateKey: nil,
             addresses: addresses
@@ -89,6 +91,7 @@ final class WalletCommandRepository {
         mnemonicWordCount: Int,
         hasPassphrase: Bool,
         colorTag: String,
+        seedData: Data? = nil,
         mnemonicWords: [String]? = nil,
         addresses: [(chainRaw: String, address: String)]
     ) async throws -> UUID {
@@ -101,6 +104,7 @@ final class WalletCommandRepository {
             colorTag: colorTag,
             requiresBackup: false,
             manualBackupCompleted: false,
+            seedData: seedData,
             mnemonicWords: mnemonicWords,
             privateKey: nil,
             addresses: addresses
@@ -112,6 +116,7 @@ final class WalletCommandRepository {
         id: UUID,
         name: String,
         colorTag: String,
+        seedData: Data? = nil,
         privateKey: String? = nil,
         addresses: [(chainRaw: String, address: String)]
     ) async throws -> UUID {
@@ -124,6 +129,7 @@ final class WalletCommandRepository {
             colorTag: colorTag,
             requiresBackup: false,
             manualBackupCompleted: false,
+            seedData: seedData,
             mnemonicWords: nil,
             privateKey: privateKey,
             addresses: addresses
@@ -146,6 +152,7 @@ final class WalletCommandRepository {
             colorTag: colorTag,
             requiresBackup: false,
             manualBackupCompleted: false,
+            seedData: nil,
             mnemonicWords: nil,
             privateKey: nil,
             addresses: addresses
@@ -162,6 +169,7 @@ final class WalletCommandRepository {
         colorTag: String,
         requiresBackup: Bool,
         manualBackupCompleted: Bool,
+        seedData: Data?,
         mnemonicWords: [String]?,
         privateKey: String?,
         addresses: [(chainRaw: String, address: String)]
@@ -212,6 +220,13 @@ final class WalletCommandRepository {
                 db: db
             )
 
+            if let seedData {
+                try insertSecret(
+                    try WalletSecretPersistence.encryptedSeedRow(seedData, for: id),
+                    now: now,
+                    db: db
+                )
+            }
             if let mnemonicWords {
                 try insertSecret(
                     try WalletSecretPersistence.encryptedMnemonicRow(mnemonicWords, for: id),

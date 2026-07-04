@@ -118,8 +118,8 @@ struct BackupExistingWalletFlow: View {
     // MARK: - States while the mnemonic is resolved
 
     /// Brief progress surface while `WalletSecretRepository.loadMnemonic`
-    /// returns. The load can cross GRDB + Keychain-backed migration
-    /// paths, so we show a calm spinner while it resolves.
+    /// returns. The load reads encrypted GRDB wallet-secret rows, so we show
+    /// a calm spinner while it resolves.
     private var loadingView: some View {
         UniLoadingState(caption: "Preparing your phrase…")
     }

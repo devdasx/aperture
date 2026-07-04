@@ -25,7 +25,7 @@ import Foundation
 enum PinCodePreference {
     /// `@GRDBStorage` key for the PIN-enabled flag. Mirrors `PinCodeStorage.hasPin`
     /// at the moment of setup; the GRDB preference is the user-intent flag
-    /// while Keychain holds the actual material.
+    /// while `local_secure_blobs` holds the actual material.
     static let pinEnabledKey: String = "pinEnabled"
 
     /// `@GRDBStorage` key for the biometric-enabled flag. Set to `true` only

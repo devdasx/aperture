@@ -64,7 +64,7 @@ extension SigningKeyProvider {
         if wallet.hasPassphrase && passphrase == nil { return [:] }
         let resolvedPassphrase = passphrase ?? ""
 
-        guard let words = mnemonicWords ?? ((try? MnemonicVault.loadMnemonic(for: wallet.id)) ?? nil),
+        guard let words = mnemonicWords,
               !words.isEmpty,
               let hdWallet = HDWallet(mnemonic: words.joined(separator: " "), passphrase: resolvedPassphrase)
         else { return [:] }
@@ -87,7 +87,7 @@ extension SigningKeyProvider {
         chainAddresses: [SupportedChain: String],
         privateKeyString: String?
     ) -> [SupportedChain: Data] {
-        guard let keyString = privateKeyString ?? ((try? MnemonicVault.loadPrivateKey(for: wallet.id)) ?? nil),
+        guard let keyString = privateKeyString,
               !keyString.isEmpty
         else { return [:] }
 

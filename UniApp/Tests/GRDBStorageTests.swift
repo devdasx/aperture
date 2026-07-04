@@ -23,8 +23,8 @@ import Testing
         #expect(try TestAppDatabaseFactory.count("assets", database: database) == AssetCatalog.allAssets.count)
     }
 
-    @Test("legacy defaults migrate only safe display preferences into GRDB")
-    func legacyDefaultsMigrationDropsWalletSessionAndSecurityState() throws {
+    @Test("legacy defaults are ignored because GRDB is the single preference store")
+    func legacyDefaultsAreIgnoredByGRDBPreferenceStore() throws {
         let defaultsSnapshot = UserDefaults.standard.dictionaryRepresentation()
         defer { restoreStandardDefaults(defaultsSnapshot) }
         if let bundleId = Bundle.main.bundleIdentifier {
@@ -46,19 +46,19 @@ import Testing
         defer { TestAppDatabaseFactory.cleanup(database) }
         let store = AppPreferenceStore.shared
 
-        #expect(store.string("themePreference") == "dark")
-        #expect(store.string("languagePreference") == "vi")
-        #expect(store.string(CurrencyPreference.storageKey) == "EUR")
-        #expect(store.bool(HapticPreference.storageKey, default: true) == false)
-        #expect(store.bool("backgroundBalanceRefresh", default: true) == false)
-        #expect(store.string("walletHomeBalanceHistoryRange") == BalanceHistoryRange.month.rawValue)
+        #expect(store.string("themePreference") == ThemePreference.defaultRaw)
+        #expect(store.string("languagePreference") == LanguagePreference.systemCode)
+        #expect(store.string(CurrencyPreference.storageKey) == CurrencyPreference.defaultForCurrentRegion())
+        #expect(store.bool(HapticPreference.storageKey, default: true) == HapticPreference.defaultValue)
+        #expect(store.bool("backgroundBalanceRefresh", default: true) == true)
+        #expect(store.string("walletHomeBalanceHistoryRange") == BalanceHistoryRange.all.rawValue)
         #expect(store.string(ActiveWalletPointer.storageKey) == "")
         #expect(store.bool(PinCodePreference.pinEnabledKey) == false)
         #expect(store.bool(PinCodePreference.biometricEnabledKey) == false)
         #expect(store.string("settingsDeepLink") == "")
-        #expect(UserDefaults.standard.object(forKey: "themePreference") == nil)
-        #expect(UserDefaults.standard.object(forKey: ActiveWalletPointer.storageKey) == nil)
-        #expect(UserDefaults.standard.object(forKey: "onboardingSession") == nil)
+        #expect(UserDefaults.standard.string(forKey: "themePreference") == "dark")
+        #expect(UserDefaults.standard.object(forKey: ActiveWalletPointer.storageKey) != nil)
+        #expect(UserDefaults.standard.string(forKey: "onboardingSession") == "session-token")
     }
 
     @Test("wallet create, import, active selection, delete, and encrypted secrets are database-backed")
@@ -332,10 +332,18 @@ import Testing
             "wallets", "wallet_addresses", "wallet_secrets", "transactions",
             "token_balances", "chain_states", "chain_utxos",
             "wallet_chart_snapshots", "wallet_portfolio_summaries",
-            "custom_tokens", "biometric_enrollment"
+            "custom_tokens", "biometric_enrollment", "asset_logo_cache",
+            "wallet_avatar_raster_cache", "generated_documents",
+            "cloudkit_backup_cache", "diagnostic_log_entries"
         ] {
             #expect(try TestAppDatabaseFactory.count(table, database: database) == 0, "\(table) was not reset")
         }
+        #expect(try TestAppDatabaseFactory.count("local_secure_blobs", database: database) == 2)
+        #expect(try TestAppDatabaseFactory.scalarInt(
+            "SELECT COUNT(*) FROM local_secure_blobs WHERE key IN (?, ?)",
+            arguments: [LocalSecureBlobStore.walletSecretMasterKey, LocalSecureBlobStore.chainKeyMasterKey],
+            database: database
+        ) == 2)
         #expect(try TestAppDatabaseFactory.scalarInt(
             "SELECT COUNT(*) FROM sync_statuses WHERE scope_id != ?",
             arguments: [SyncDomain.globalScope],
@@ -511,6 +519,48 @@ import Testing
                 VALUES ('ETH|USD|1', 'ETH', 'USD', 1, '1', 1, ?)
                 """,
                 arguments: [now]
+            )
+            try db.execute(
+                sql: """
+                INSERT INTO asset_logo_cache (cache_key, source_url, png_data, updated_at_ms)
+                VALUES ('logo', 'https://example.com/logo.png', ?, ?)
+                """,
+                arguments: [Data([1, 2, 3]), now]
+            )
+            try db.execute(
+                sql: """
+                INSERT INTO wallet_avatar_raster_cache (wallet_id, png_data, updated_at_ms)
+                VALUES (?, ?, ?)
+                """,
+                arguments: [walletID.uuidString, Data([4, 5, 6]), now]
+            )
+            try db.execute(
+                sql: """
+                INSERT INTO generated_documents (id, kind_raw, file_name, mime_type, data, created_at_ms)
+                VALUES (?, 'activityStatement', 'statement.pdf', 'application/pdf', ?, ?)
+                """,
+                arguments: [UUID().uuidString, Data([7, 8, 9]), now]
+            )
+            try db.execute(
+                sql: """
+                INSERT INTO cloudkit_backup_cache (wallet_id, version, encoded_blob, created_at_ms, updated_at_ms)
+                VALUES (?, 1, ?, ?, ?)
+                """,
+                arguments: [walletID.uuidString, Data([10, 11, 12]), now, now]
+            )
+            try db.execute(
+                sql: """
+                INSERT INTO diagnostic_log_entries (id, timestamp_ms, level_raw, category, message, metadata_json)
+                VALUES (?, ?, 'debug', 'test', 'reset fixture', '{}')
+                """,
+                arguments: [UUID().uuidString, now]
+            )
+            try db.execute(
+                sql: """
+                INSERT INTO local_secure_blobs (key, blob, created_at_ms, updated_at_ms)
+                VALUES ('pin.test.fixture', ?, ?, ?)
+                """,
+                arguments: [Data([13, 14, 15]), now, now]
             )
         }
         let sync = SyncStatusRepository(database: database)

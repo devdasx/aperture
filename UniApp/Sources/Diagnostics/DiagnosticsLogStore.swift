@@ -1,4 +1,5 @@
 import Foundation
+import GRDB
 
 enum DiagnosticsLogLevel: String, Codable, CaseIterable, Sendable {
     case debug
@@ -36,15 +37,17 @@ actor DiagnosticsLogStore {
     static let shared = DiagnosticsLogStore()
 
     nonisolated static var sharedLogFileURL: URL {
-        makeLogFileURL()
+        FileManager.default.temporaryDirectory.appendingPathComponent("aperture-diagnostics-grdb.jsonl")
     }
 
-    private static let maxLogFileBytes = 2_000_000
     private static let newlineData = Data([0x0A])
+    private static let maxStoredEntries = 5_000
 
     private let encoder: JSONEncoder
     private let decoder: JSONDecoder
-    private let logFileURL: URL
+    private var database: AppDatabase?
+    private var pendingEntries: [DiagnosticsLogEntry] = []
+    private var dropsEntriesUntilAttached = false
 
     private init() {
         let encoder = JSONEncoder()
@@ -55,8 +58,12 @@ actor DiagnosticsLogStore {
         decoder.dateDecodingStrategy = .iso8601
         self.decoder = decoder
 
-        self.logFileURL = Self.makeLogFileURL()
-        Self.prepareLogDirectory(for: logFileURL)
+    }
+
+    nonisolated func configure(database: AppDatabase) {
+        Task.detached(priority: .utility) {
+            await DiagnosticsLogStore.shared.attach(database: database)
+        }
     }
 
     nonisolated func record(
@@ -76,17 +83,29 @@ actor DiagnosticsLogStore {
         }
     }
 
-    func load(limit: Int = 1_500) -> [DiagnosticsLogEntry] {
-        guard let data = try? Data(contentsOf: logFileURL),
-              let text = String(data: data, encoding: .utf8) else {
-            return []
-        }
+    func detachForTesting() {
+        database = nil
+        pendingEntries.removeAll()
+        dropsEntriesUntilAttached = true
+    }
 
-        let lines = text.split(separator: "\n", omittingEmptySubsequences: true)
-        return lines.suffix(limit).compactMap { line in
-            guard let lineData = String(line).data(using: .utf8) else { return nil }
-            return try? decoder.decode(DiagnosticsLogEntry.self, from: lineData)
+    func load(limit: Int = 1_500) -> [DiagnosticsLogEntry] {
+        guard let database else {
+            return Array(pendingEntries.suffix(limit))
         }
+        let rows = (try? database.read { db in
+            try Row.fetchAll(
+                db,
+                sql: """
+                SELECT id, timestamp_ms, level_raw, category, message, metadata_json
+                FROM diagnostic_log_entries
+                ORDER BY timestamp_ms DESC
+                LIMIT ?
+                """,
+                arguments: [limit]
+            )
+        }) ?? []
+        return rows.reversed().compactMap(decodeEntry(row:))
     }
 
     func copyableText(limit: Int = 1_500) -> String {
@@ -94,7 +113,14 @@ actor DiagnosticsLogStore {
     }
 
     func exportFile() throws -> URL {
-        let sourceData = (try? Data(contentsOf: logFileURL)) ?? Data()
+        let entries = load(limit: Self.maxStoredEntries)
+        var sourceData = Data()
+        for entry in entries {
+            if let data = try? encoder.encode(entry) {
+                sourceData.append(data)
+                sourceData.append(Self.newlineData)
+            }
+        }
         let stamp = Self.exportStampFormatter.string(from: Date())
         let exportURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("aperture-diagnostics-\(stamp).jsonl", isDirectory: false)
@@ -106,48 +132,34 @@ actor DiagnosticsLogStore {
     }
 
     func clear() throws {
-        Self.prepareLogDirectory(for: logFileURL)
-        try Data().write(to: logFileURL, options: .atomic)
+        pendingEntries.removeAll()
+        try database?.write { db in
+            try db.execute(sql: "DELETE FROM diagnostic_log_entries")
+        }
     }
 
     private func append(_ entry: DiagnosticsLogEntry) {
-        Self.prepareLogDirectory(for: logFileURL)
-        rotateIfNeeded()
-
-        guard let data = try? encoder.encode(entry) else { return }
-        if !FileManager.default.fileExists(atPath: logFileURL.path) {
-            FileManager.default.createFile(atPath: logFileURL.path, contents: nil)
-        }
-        guard let handle = try? FileHandle(forWritingTo: logFileURL) else { return }
-        defer { try? handle.close() }
-        do {
-            try handle.seekToEnd()
-            handle.write(data)
-            handle.write(Self.newlineData)
-        } catch {
-            try? handle.close()
-        }
-    }
-
-    private func rotateIfNeeded() {
-        guard let values = try? logFileURL.resourceValues(forKeys: [.fileSizeKey]),
-              let size = values.fileSize,
-              size > Self.maxLogFileBytes else {
+        guard let database else {
+            guard !dropsEntriesUntilAttached else { return }
+            pendingEntries.append(entry)
+            if pendingEntries.count > Self.maxStoredEntries {
+                pendingEntries.removeFirst(pendingEntries.count - Self.maxStoredEntries)
+            }
             return
         }
-
-        let marker = DiagnosticsLogEntry(
-            level: .info,
-            category: "diagnostics",
-            message: "Diagnostics log rotated",
-            metadata: ["previousBytes": "\(size)"]
-        )
-        if let markerData = try? encoder.encode(marker) {
-            var data = markerData
-            data.append(Self.newlineData)
-            try? data.write(to: logFileURL, options: .atomic)
-        } else {
-            try? Data().write(to: logFileURL, options: .atomic)
+        try? database.write { db in
+            try insert(entry, db: db)
+            try db.execute(
+                sql: """
+                DELETE FROM diagnostic_log_entries
+                WHERE id IN (
+                    SELECT id FROM diagnostic_log_entries
+                    ORDER BY timestamp_ms DESC
+                    LIMIT -1 OFFSET ?
+                )
+                """,
+                arguments: [Self.maxStoredEntries]
+            )
         }
     }
 
@@ -194,34 +206,61 @@ actor DiagnosticsLogStore {
         return String(format: "%.1f", milliseconds)
     }
 
-    private static func makeLogFileURL() -> URL {
-        let fm = FileManager.default
-        let base = (try? fm.url(
-            for: .applicationSupportDirectory,
-            in: .userDomainMask,
-            appropriateFor: nil,
-            create: true
-        )) ?? fm.urls(for: .documentDirectory, in: .userDomainMask).first
-            ?? URL(fileURLWithPath: NSTemporaryDirectory())
-        return base
-            .appendingPathComponent("Aperture", isDirectory: true)
-            .appendingPathComponent("Diagnostics", isDirectory: true)
-            .appendingPathComponent("aperture-diagnostics.jsonl", isDirectory: false)
+    private func attach(database: AppDatabase) {
+        self.database = database
+        dropsEntriesUntilAttached = false
+        guard !pendingEntries.isEmpty else { return }
+        let pending = pendingEntries
+        pendingEntries.removeAll()
+        try? database.write { db in
+            for entry in pending {
+                try insert(entry, db: db)
+            }
+        }
     }
 
-    private static func prepareLogDirectory(for fileURL: URL) {
-        let directory = fileURL.deletingLastPathComponent()
-        if !FileManager.default.fileExists(atPath: directory.path) {
-            try? FileManager.default.createDirectory(
-                at: directory,
-                withIntermediateDirectories: true
-            )
-        }
+    private func insert(_ entry: DiagnosticsLogEntry, db: Database) throws {
+        let metadataData = (try? JSONEncoder().encode(entry.metadata)) ?? Data()
+        let metadataJSON = String(data: metadataData, encoding: .utf8) ?? "{}"
+        try db.execute(
+            sql: """
+            INSERT INTO diagnostic_log_entries
+            (id, timestamp_ms, level_raw, category, message, metadata_json)
+            VALUES (?, ?, ?, ?, ?, ?)
+            ON CONFLICT(id) DO NOTHING
+            """,
+            arguments: [
+                entry.id.uuidString,
+                entry.timestamp.databaseMilliseconds,
+                entry.level.rawValue,
+                entry.category,
+                entry.message,
+                metadataJSON
+            ]
+        )
+    }
 
-        var excludedDirectory = directory
-        var values = URLResourceValues()
-        values.isExcludedFromBackup = true
-        try? excludedDirectory.setResourceValues(values)
+    private func decodeEntry(row: Row) -> DiagnosticsLogEntry? {
+        guard let idRaw = row["id"] as String?,
+              let id = UUID(uuidString: idRaw),
+              let timestampMs = row["timestamp_ms"] as Int64?,
+              let levelRaw = row["level_raw"] as String?,
+              let level = DiagnosticsLogLevel(rawValue: levelRaw),
+              let category = row["category"] as String?,
+              let message = row["message"] as String? else {
+            return nil
+        }
+        let metadataJSON = row["metadata_json"] as String? ?? "{}"
+        let metadataData = Data(metadataJSON.utf8)
+        let metadata = (try? decoder.decode([String: String].self, from: metadataData)) ?? [:]
+        return DiagnosticsLogEntry(
+            id: id,
+            timestamp: Date(databaseMilliseconds: timestampMs),
+            level: level,
+            category: category,
+            message: message,
+            metadata: metadata
+        )
     }
 
     private nonisolated(unsafe) static let isoFormatter: ISO8601DateFormatter = {

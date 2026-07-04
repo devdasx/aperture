@@ -2,7 +2,6 @@ import Foundation
 import Charts
 import GRDB
 import SwiftUI
-import TipKit
 import UIKit
 
 // MARK: - Market Cache Records
@@ -731,7 +730,7 @@ struct MarketsView: View {
     @StateObject private var model = MarketsViewModel()
     @State private var segment: MarketsSegment = .top
     @State private var searchText: String = ""
-    private let watchlistSwipeTip = MarketWatchlistSwipeTip()
+    @GRDBStorage("tip.marketsWatchlistSwipe.dismissed") private var watchlistSwipeTipDismissed: Bool = false
 
     private var visibleAssets: [MarketAsset] {
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
@@ -781,8 +780,16 @@ struct MarketsView: View {
                     marketsEmptyState
                 }
             } else {
-                Section {
-                    TipView(watchlistSwipeTip)
+                if !watchlistSwipeTipDismissed {
+                    Section {
+                        ApertureTipCard(
+                            title: String.apertureLocalized("Tip"),
+                            message: layoutDirection == .rightToLeft
+                                ? String.apertureLocalized("Swipe a coin row to the right to add or remove it from your watchlist.")
+                                : String.apertureLocalized("Swipe a coin row to the left to add or remove it from your watchlist."),
+                            systemImage: "star",
+                            onDismiss: { watchlistSwipeTipDismissed = true }
+                        )
                         .listRowBackground(Color.clear)
                         .listRowSeparator(.hidden)
                         .listRowInsets(EdgeInsets(
@@ -791,9 +798,7 @@ struct MarketsView: View {
                             bottom: UniSpacing.s,
                             trailing: UniSpacing.m
                         ))
-                        .task(id: layoutDirection) {
-                            MarketWatchlistSwipeTip.isRightToLeft = layoutDirection == .rightToLeft
-                        }
+                    }
                 }
 
                 Section {
@@ -880,31 +885,6 @@ struct MarketsView: View {
                 minHeight: 360
             )
         }
-    }
-}
-
-private struct MarketWatchlistSwipeTip: Tip {
-    @Parameter
-    static var isRightToLeft: Bool = false
-
-    var title: Text {
-        Text("Tip")
-    }
-
-    var message: Text? {
-        if Self.isRightToLeft {
-            Text("Swipe a coin row to the right to add or remove it from your watchlist.")
-        } else {
-            Text("Swipe a coin row to the left to add or remove it from your watchlist.")
-        }
-    }
-
-    var image: Image? {
-        Image(systemName: "star")
-    }
-
-    var options: [any TipOption] {
-        [Tips.MaxDisplayCount(1)]
     }
 }
 

@@ -118,7 +118,6 @@ final class AppPreferenceStore: @unchecked Sendable {
         do {
             try database.write { db in
                 try seedDefaults(db)
-                try migrateLegacyDefaultsIfNeeded(db)
                 try synchronizeAppSettingsProjection(db)
             }
         } catch {
@@ -267,29 +266,6 @@ final class AppPreferenceStore: @unchecked Sendable {
         }
     }
 
-    private func migrateLegacyDefaultsIfNeeded(_ db: Database) throws {
-        let markerKey = "internal.legacyPreferencesMigrated"
-        let migrated = try fetchValue(markerKey, default: false, db: db)
-        guard migrated == false else { return }
-
-        let defaults = UserDefaults.standard
-        for entry in Self.legacyDefaults {
-            guard defaults.object(forKey: entry.key) != nil else { continue }
-            if let stored = entry.read(defaults) {
-                try Self.upsert(stored, forKey: entry.key, db: db)
-                try mirrorAppSettingsPreference(key: entry.key, stored: stored, db: db)
-            }
-        }
-        clearLegacyDefaults(defaults)
-        try Self.upsert(StoredPreferenceValue.bool(true), forKey: markerKey, db: db)
-    }
-
-    private func clearLegacyDefaults(_ defaults: UserDefaults) {
-        for key in Self.legacyDefaultsToClear {
-            defaults.removeObject(forKey: key)
-        }
-    }
-
     private func synchronizeAppSettingsProjection(_ db: Database) throws {
         for (key, _) in Self.defaultPreferences {
             guard let row = try Row.fetchOne(
@@ -413,11 +389,6 @@ final class AppPreferenceStore: @unchecked Sendable {
         }
     }
 
-    private struct LegacyDefault {
-        let key: String
-        let read: @Sendable (UserDefaults) -> StoredPreferenceValue?
-    }
-
     private static let defaultPreferences: [String: StoredPreferenceValue] = [
         "themePreference": .string(ThemePreference.defaultRaw),
         "languagePreference": .string(LanguagePreference.systemCode),
@@ -476,40 +447,6 @@ final class AppPreferenceStore: @unchecked Sendable {
         ScreenRestoration.PreferenceKey.walletHomePath: .data(Data())
     ]
 
-    private static let legacyMigratablePreferenceKeys: Set<String> = [
-        "themePreference",
-        "languagePreference",
-        CurrencyPreference.storageKey,
-        HapticPreference.storageKey,
-        "backgroundBalanceRefresh",
-        "walletHomeBalanceHistoryRange"
-    ]
-
-    private static let legacyDefaultsToClear: Set<String> = Set(defaultPreferences.keys)
-        .union([
-            "onboardingSession",
-            "aperture.grdb.v1.freshWipeCompleted"
-        ])
-
-    private static let legacyDefaults: [LegacyDefault] = defaultPreferences.compactMap { key, fallback in
-        guard legacyMigratablePreferenceKeys.contains(key) else { return nil }
-        return LegacyDefault(key: key) { defaults in
-            switch fallback.valueType {
-            case "string":
-                return defaults.string(forKey: key).map(StoredPreferenceValue.string)
-            case "int":
-                return .int(defaults.integer(forKey: key))
-            case "bool":
-                return .bool(defaults.bool(forKey: key))
-            case "double":
-                return .double(defaults.double(forKey: key))
-            case "data":
-                return defaults.data(forKey: key).map(StoredPreferenceValue.data)
-            default:
-                return nil
-            }
-        }
-    }
 }
 
 final class WalletPreferenceStore: @unchecked Sendable {

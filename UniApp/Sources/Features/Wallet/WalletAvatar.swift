@@ -238,7 +238,7 @@ struct WalletAvatar: View {
     }
 
     /// Render the user-uploaded sanitized SVG via `WalletCustomSvgRenderer`'s
-    /// disk cache. Strategy:
+    /// GRDB cache. Strategy:
     ///
     /// - If a `walletId` is threaded and the renderer has a cached PNG
     ///   for that id, draw it inside a ~48/100-of-disc box centered on
@@ -346,11 +346,11 @@ extension WalletAvatar {
 /// a monogram placeholder until the PNG lands.
 ///
 /// **Why a separate view, not inline.** The async render needs an
-/// `@State` to know when the PNG is on disk so the body re-evaluates.
+/// `@State` to know when the PNG is available so the body re-evaluates.
 /// `WalletAvatar`'s body is `@ViewBuilder` and switches on
 /// `spec.symbolType` — adding state to one branch would force the
 /// whole `WalletAvatar` to carry state for every render. Pulling the
-/// cached path into its own value-type view keeps `WalletAvatar`
+/// cached render into its own value-type view keeps `WalletAvatar`
 /// stateless and `CustomSvgCachedView` owns the refresh-on-completion.
 ///
 /// **The 48/100 box.** Per the JS reference engine: the custom SVG

@@ -23,9 +23,8 @@ import CryptoKit
 ///
 /// **Honesty (Rule #2 §A.7).** The 64-byte seed is the *real* root of the
 /// HD tree. It must never be logged, never persisted to `UserDefaults`,
-/// never sent over the network. The current call site (`CreateWalletState`)
-/// holds it in memory only for the lifetime of the create-wallet cover;
-/// Keychain persistence lands with T-012.
+/// never sent over the network. Call sites pass it directly into the
+/// GRDB wallet-secret transaction, then clear the plaintext copy.
 extension BIP39 {
 
     /// Derives the 64-byte BIP-39 seed from a mnemonic + optional passphrase.

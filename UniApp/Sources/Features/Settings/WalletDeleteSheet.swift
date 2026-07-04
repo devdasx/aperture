@@ -44,8 +44,8 @@ struct WalletDeleteSheet: View {
     /// no model traversal of its own.
     let networkCount: Int
     /// `true` iff this wallet's encrypted secret (seed / phrase / key)
-    /// is actually held in the Keychain on this iPhone — resolved by the
-    /// caller from `MnemonicVault`. Selects between the reversible and
+    /// is actually held in GRDB on this iPhone — resolved by the caller
+    /// from `MnemonicVault`. Selects between the reversible and
     /// the final consequence line for imported wallets, and decides
     /// whether the "encrypted secret" inventory row appears at all.
     let hasStoredSecret: Bool
@@ -280,9 +280,9 @@ struct WalletDeleteSheet: View {
     private var secretRowLabel: LocalizedStringKey {
         switch kind {
         case .importedKey:
-            return "Its encrypted private key in the Keychain"
+            return "Its encrypted private key in the database"
         default:
-            return "Its encrypted recovery phrase in the Keychain"
+            return "Its encrypted recovery phrase in the database"
         }
     }
 

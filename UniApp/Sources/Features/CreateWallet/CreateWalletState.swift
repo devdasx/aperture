@@ -17,7 +17,7 @@ import SwiftUI
 /// `ObservableObject`-is-banned-in-this-project list.
 ///
 /// **Passphrase storage.** The `passphrase` field lives **in memory only**
-/// — never persisted to `@GRDBStorage`, never written to Keychain in this
+/// — never persisted to `@GRDBStorage`, never written to GRDB in this
 /// pass (`T-019`). When the cover dismisses, the entire state instance is
 /// released and the passphrase is gone. The future seed-derivation step
 /// (`T-012`) is what consumes mnemonic + passphrase together via
@@ -47,7 +47,7 @@ final class CreateWalletState {
     private(set) var words: [String]
 
     /// Stable identifier for the wallet being created. Generated once
-    /// at construction so the same UUID flows through `SeedVault.storeSeed`
+    /// at construction so the same UUID flows through wallet-secret rows
     /// and `WalletRepository.insertCreatedWallet`. If the user regenerates
     /// the phrase (screenshot warning → "Generate new phrase", Roll your
     /// own commit), this id is rolled too — a different phrase is a
@@ -82,9 +82,8 @@ final class CreateWalletState {
     /// Also rolls `pendingWalletId` because a different phrase is a
     /// different wallet identity. If we kept the same id, the
     /// screenshot-of-a-now-invalidated-phrase scenario would land in
-    /// `SeedVault` overwriting the old seed under the same Keychain
-    /// account — fine for storage but conceptually wrong, and would
-    /// give the new wallet the createdAt of the old one if the
+    /// the old seed row — fine mechanically but conceptually wrong, and
+    /// would give the new wallet the createdAt of the old one if the
     /// `WalletRecord` was already persisted.
     func regenerate() {
         words = BIP39.generateMnemonic(wordCount: wordCount)
@@ -127,7 +126,7 @@ final class CreateWalletState {
     }
 
     /// Wipe the in-memory secrets once persistence has succeeded. The
-    /// seed and the encrypted mnemonic now live in Keychain; the
+    /// seed and the encrypted mnemonic now live in GRDB; the
     /// plaintext words and passphrase have no reason to outlive the
     /// flow. Called by `WalletReadyView` after a successful
     /// `persist(into:requiresBackup:)`, before the PIN flow.
@@ -137,13 +136,9 @@ final class CreateWalletState {
     }
 
     /// Persist this wallet end-to-end: encrypt + store the 64-byte
-    /// seed in `SeedVault` (Keychain), then insert the wallet rows
-    /// via the supplied `WalletCommandRepository`. Both writes are
-    /// gated on each other — if the Keychain write fails, the database
-    /// row is not inserted (the seed is the wallet; there's no point
-    /// storing metadata for a wallet whose key material we couldn't
-    /// save). If the database write fails after Keychain succeeded,
-    /// the Keychain item is removed to leave consistent state.
+    /// seed, mnemonic, wallet metadata, and addresses via the supplied
+    /// `WalletCommandRepository`. The repository writes them in one GRDB
+    /// transaction, so there is no split secret/database state to roll back.
     ///
     /// - parameters:
     ///   - repository: a GRDB-backed `WalletCommandRepository`.
@@ -154,9 +149,8 @@ final class CreateWalletState {
     ///     row (T-016).
     /// - returns: the persisted wallet's UUID (same as
     ///   `pendingWalletId`).
-    /// - throws: `SeedVault.VaultError` if Keychain refuses; any
-    ///   database error if the row insert fails. Caller surfaces the
-    ///   error via the wallet-ready screen's error state.
+    /// - throws: Any database error if the row insert fails. Caller surfaces
+    ///   the error via the wallet-ready screen's error state.
     @discardableResult
     func persist(
         into repository: WalletCommandRepository,
@@ -192,21 +186,6 @@ final class CreateWalletState {
         // derived from, byte for byte.
         let lowercasedWords = words.map { $0.lowercased() }
 
-        // Keychain first — if this fails, the database is untouched.
-        try SeedVault.storeSeed(seed, for: walletId)
-
-        // Write the legacy Keychain phrase copy for signing/export
-        // compatibility. The canonical user-readable copy is also written
-        // into `WalletSecretRecord` by `insertCreatedWallet(...)`, encrypted
-        // with an app-owned device-local key that is not derived from the app
-        // passcode or Face ID.
-        do {
-            try MnemonicVault.storeMnemonic(lowercasedWords, for: walletId)
-        } catch {
-            try? SeedVault.deleteSeed(for: walletId)
-            throw error
-        }
-
         // Derive a per-chain address for every supported chain via
         // Trust Wallet Core (same library + paths Trust Wallet uses),
         // then write the WalletRecord + WalletAddressRecord rows in
@@ -215,7 +194,7 @@ final class CreateWalletState {
         // read addresses from `WalletAddressRecord`, so the user saw
         // an empty wallet with "No addresses available for this
         // wallet yet" until they re-imported. With this step the
-        // new wallet has its 24-chain address set on disk before
+        // new wallet has its 24-chain address set in GRDB before
         // `persist(...)` returns.
         let service = WalletCoreKeyImportService()
         let derivedAddresses = await service.deriveAddresses(
@@ -224,12 +203,9 @@ final class CreateWalletState {
         )
         // Defensive: a freshly app-generated mnemonic always derives the full
         // address set, so this never fires in practice — but never persist a
-        // zero-address wallet. Roll back the Keychain material we just wrote
-        // and fail loud rather than leaving an addressless wallet the user
+        // zero-address wallet. Fail loud rather than leaving an addressless wallet the user
         // can't receive into. (Mirrors the same guard on the import path.)
         guard !derivedAddresses.isEmpty else {
-            try? SeedVault.deleteSeed(for: walletId)
-            try? MnemonicVault.deleteMnemonic(for: walletId)
             throw KeyImportError.derivationFailed
         }
         let addressEntries: [(chainRaw: String, address: String)] =
@@ -237,29 +213,21 @@ final class CreateWalletState {
                 (chainRaw: chain.rawValue, address: address)
             }
 
-        // Database last. On failure, roll back both Keychain items
-        // so we don't leave an orphaned seed or mnemonic.
-        do {
-            try await repository.insertCreatedWallet(
-                id: walletId,
-                name: resolvedName,
-                mnemonicWordCount: wordCount.rawValue,
-                hasPassphrase: !passphrase.isEmpty,
-                colorTag: "default",
-                requiresBackup: requiresBackup,
-                manualBackupCompleted: manualBackup,
-                mnemonicWords: lowercasedWords,
-                addresses: addressEntries
-            )
-        } catch {
-            try? SeedVault.deleteSeed(for: walletId)
-            try? MnemonicVault.deleteMnemonic(for: walletId)
-            throw error
-        }
+        try await repository.insertCreatedWallet(
+            id: walletId,
+            name: resolvedName,
+            mnemonicWordCount: wordCount.rawValue,
+            hasPassphrase: !passphrase.isEmpty,
+            colorTag: "default",
+            requiresBackup: requiresBackup,
+            manualBackupCompleted: manualBackup,
+            seedData: seed,
+            mnemonicWords: lowercasedWords,
+            addresses: addressEntries
+        )
 
-        // The wallet is now fully persisted (seed in Keychain,
-        // mnemonic encrypted in SQLite + compatibility Keychain storage,
-        // metadata in SQLite).
+        // The wallet is now fully persisted in SQLite: seed, mnemonic,
+        // metadata, addresses, and per-chain encrypted key blobs.
         // Make it the active wallet immediately so the user lands
         // on it after WalletReadyView and so the refresh coordinator
         // starts pulling balances/history/tokens for it. Persisted

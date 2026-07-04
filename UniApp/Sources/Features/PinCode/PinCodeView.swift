@@ -12,7 +12,7 @@ import UIKit
 ///   `PinCodeStorage.verify(pin)` itself; on match, `onComplete("")`
 ///   (the storage layer holds the hash, not the plaintext); on mismatch,
 ///   the dots shake + clear, a transient footnote. Failed attempts are
-///   recorded in Keychain and an escalating lockout (1 s doubling to a
+///   recorded in GRDB and an escalating lockout (1 s doubling to a
 ///   16-minute cap from the fifth failure) disables input with a
 ///   countdown under the dots — brute-force protection that survives
 ///   app kill. No wipe: the recovery path is the recovery phrase.
@@ -130,7 +130,7 @@ struct PinCodeView: View {
 
     /// Seconds remaining in the active brute-force lockout window.
     /// `0` means input is allowed. Mirrors
-    /// `PinCodeStorage.lockoutRemaining()` — the Keychain record is the
+    /// `PinCodeStorage.lockoutRemaining()` — the GRDB record is the
     /// source of truth; this is the UI-facing copy the countdown updates.
     @State private var lockoutRemaining: TimeInterval = 0
 
@@ -190,7 +190,7 @@ struct PinCodeView: View {
                 return
             }
             // Restore any persisted brute-force lockout before anything
-            // else — the Keychain record survives app kill, so a user
+            // else — the GRDB record survives app kill, so a user
             // who force-quits mid-lockout lands back in the countdown.
             refreshLockout()
             // Auto-fire Face ID / Touch ID on `.verify` entry when
@@ -468,7 +468,7 @@ struct PinCodeView: View {
     /// beat (a `.task`-style sleeping loop — deliberately NOT a `Timer`,
     /// which would keep firing detached from the view lifecycle). The
     /// loop re-reads `PinCodeStorage.lockoutRemaining()` on every beat
-    /// so the Keychain record stays the single source of truth.
+    /// so the GRDB record stays the single source of truth.
     private func refreshLockout() {
         lockoutTask?.cancel()
         let remaining = PinCodeStorage.lockoutRemaining()
@@ -614,7 +614,7 @@ struct PinCodeView: View {
     /// - The 100k-iteration derivation runs off the main thread via the
     ///   async `PinCodeStorage.verify(_:)` — keyboard input stays responsive.
     /// - Wrong PIN → `recordFailure()` persists the incremented count +
-    ///   timestamp to Keychain; success → `clearFailures()`.
+    ///   timestamp to GRDB; success → `clearFailures()`.
     private func verifyPin() {
         guard PinCodeStorage.lockoutRemaining() <= 0 else {
             // Input is disabled during lockout; this guard covers any

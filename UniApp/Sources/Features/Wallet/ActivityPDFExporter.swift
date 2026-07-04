@@ -33,16 +33,11 @@ enum ActivityPDFExporter {
         let data = ActivityPDFRenderer.render(rows: rows, document: document, assets: assets)
 
         let safeName = sanitize(fileName)
-        let url = FileManager.default.temporaryDirectory.appendingPathComponent(safeName)
-        do {
-            // Replace any stale export of the same name so the share
-            // sheet never picks up a previous run's bytes.
-            try? FileManager.default.removeItem(at: url)
-            try data.write(to: url, options: .atomic)
-            return url
-        } catch {
-            return nil
-        }
+        return GeneratedDocumentStore.storePDF(
+            data,
+            fileName: safeName,
+            kind: .activityStatement
+        )
     }
 
     /// Render one focused transaction receipt to a PDF temp file. This is
@@ -59,14 +54,11 @@ enum ActivityPDFExporter {
         let data = ActivityPDFRenderer.render(rows: [row], document: document, assets: assets)
 
         let safeName = sanitize(fileName)
-        let url = FileManager.default.temporaryDirectory.appendingPathComponent(safeName)
-        do {
-            try? FileManager.default.removeItem(at: url)
-            try data.write(to: url, options: .atomic)
-            return url
-        } catch {
-            return nil
-        }
+        return GeneratedDocumentStore.storePDF(
+            data,
+            fileName: safeName,
+            kind: .transactionReceipt
+        )
     }
 
     /// Strip path-hostile characters so the chosen filename is a valid,

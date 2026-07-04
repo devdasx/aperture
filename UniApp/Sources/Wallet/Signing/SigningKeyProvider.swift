@@ -177,9 +177,8 @@ enum SigningKeyProvider {
         }
 
         // The original imported key string (hex / WIF / base58) is
-        // preserved in encrypted GRDB, with legacy Keychain as a
-        // migration fallback; decode it to raw bytes for THIS chain exactly
-        // the way the importer did (format- and chain-aware).
+        // preserved in encrypted GRDB; decode it to raw bytes for THIS chain
+        // exactly the way the importer did (format- and chain-aware).
         let keyString = loadStoredPrivateKey(for: wallet.id)
         guard let keyString, !keyString.isEmpty else {
             throw SigningError.secretUnavailable
@@ -321,7 +320,7 @@ enum SigningKeyProvider {
                 return words
             }
         }
-        return (try? MnemonicVault.loadMnemonic(for: walletId)) ?? nil
+        return nil
     }
 
     private static func loadStoredPrivateKey(for walletId: UUID) -> String? {
@@ -331,7 +330,7 @@ enum SigningKeyProvider {
                 return key
             }
         }
-        return (try? MnemonicVault.loadPrivateKey(for: walletId)) ?? nil
+        return nil
     }
 
     private static func loadEncryptedChainKey(

@@ -3,8 +3,8 @@ import WebKit
 import OSLog
 
 /// `WalletCustomSvgRenderer` turns a sanitized SVG string + a tint
-/// choice into a cached PNG on disk, then hands the cached PNG back to
-/// the avatar pipeline. It exists because:
+/// choice into a cached PNG stored in GRDB, then hands the cached PNG back
+/// to the avatar pipeline. It exists because:
 ///
 /// 1. Rendering arbitrary user SVG natively in SwiftUI is unsafe —
 ///    there is no public `Path`-from-SVG-string API and Rule #3 forbids
@@ -15,16 +15,13 @@ import OSLog
 ///    exactly the pipeline the v3 design handoff prescribes.
 ///
 /// **The contract.**
-/// - `cachedImage(walletId:)` returns the on-disk PNG for a wallet, or
-///   `nil` if no cache exists. Async — the file read + decode runs off
-///   the main actor so body passes and list scrolls never block on
-///   disk I/O.
+/// - `cachedImage(walletId:)` returns the GRDB-cached PNG for a wallet, or
+///   `nil` if no cache exists. Async — the decode runs off the main actor
+///   so body passes and list scrolls never block.
 /// - `renderAndCache(walletId:svg:tint:)` is the async write path —
 ///   spins up an off-screen `WKWebView`, loads the sanitized SVG with
-///   the appropriate tint inline, takes a snapshot, writes the PNG to
-///   `~/Library/Caches/ApertureCustomAvatars/{walletId}.png`. Returns
-///   the `UIImage` so the caller can use it without re-reading from
-///   disk.
+///   the appropriate tint inline, takes a snapshot, writes the PNG to GRDB,
+///   and returns the `UIImage` so the caller can use it immediately.
 /// - `invalidate(walletId:)` deletes the cached PNG so the next call
 ///   to `cachedImage` returns nil and the next `renderAndCache` will
 ///   recompute. Called from `WalletIconPickerSheet.commit(...)` before
@@ -36,11 +33,8 @@ import OSLog
 /// fine but operationally fragile. Per-wallet UUID gives one-PNG-per-
 /// wallet, no collisions, simple invalidation.
 ///
-/// **Cache directory.** `Library/Caches/ApertureCustomAvatars/` — iOS
-/// is allowed to evict this directory under storage pressure. If
-/// eviction happens, the next render re-creates the PNG from the
-/// sanitized SVG (which lives in GRDB + Keychain as the source
-/// of truth). No data loss; just a one-time re-render.
+/// **Cache storage.** Cached PNGs live in GRDB beside the sanitized SVG source.
+/// A cache miss re-creates the PNG from that source of truth.
 ///
 /// **Render resolution.** 192×192 pixels = 96pt × 2x (Retina). The
 /// largest avatar size the picker presents is `.editor` (96pt); at
@@ -80,40 +74,7 @@ enum WalletCustomSvgRenderer {
         case writeFailed(underlying: Error)
     }
 
-    // MARK: - Cache directory
-
-    /// Lazy-created cache directory under `Library/Caches/`. iOS evicts
-    /// `Caches/` under pressure; that's a feature, not a bug — the
-    /// GRDB spec is the source of truth and re-rendering is cheap.
-    ///
-    /// `static let` so the URL resolution + ensure-exists check runs
-    /// once per process (Swift's lazy static initialization), not on
-    /// every cache read/write. If iOS evicts the directory mid-run the
-    /// next `writeCache` throws and the caller's error path handles it.
-    private static let cacheDirectory: URL = {
-        // `.cachesDirectory` is guaranteed in the iOS sandbox, but fall
-        // back to the temp dir rather than force-unwrap — a crash here
-        // would take down a cold launch (2026-06-14 audit hardening).
-        let base = FileManager.default
-            .urls(for: .cachesDirectory, in: .userDomainMask)
-            .first ?? FileManager.default.temporaryDirectory
-        let dir = base.appendingPathComponent("ApertureCustomAvatars", isDirectory: true)
-        if !FileManager.default.fileExists(atPath: dir.path) {
-            do {
-                try FileManager.default.createDirectory(
-                    at: dir,
-                    withIntermediateDirectories: true
-                )
-            } catch {
-                log.error("Failed to create cache directory: \(String(describing: error), privacy: .public)")
-            }
-        }
-        return dir
-    }()
-
-    private static func cacheURL(for walletId: UUID) -> URL {
-        cacheDirectory.appendingPathComponent("\(walletId.uuidString).png", isDirectory: false)
-    }
+    // MARK: - GRDB cache
 
     // MARK: - Public surface
 
@@ -124,13 +85,8 @@ enum WalletCustomSvgRenderer {
     /// `.task` to decide whether to render the cached image immediately
     /// or fall back to a placeholder while the async render runs.
     static func cachedImage(walletId: UUID) async -> UIImage? {
-        let url = cacheURL(for: walletId)
         return await Task.detached(priority: .userInitiated) {
-            guard let data = try? Data(contentsOf: url),
-                  let image = UIImage(data: data) else {
-                return nil
-            }
-            return image
+            WalletAvatarRasterCacheStore.image(walletId: walletId)
         }.value
     }
 
@@ -152,8 +108,7 @@ enum WalletCustomSvgRenderer {
     /// exist. Called from the picker's commit handler before
     /// `renderAndCache(...)` so each save lands a fresh pixel buffer.
     static func invalidate(walletId: UUID) {
-        let url = cacheURL(for: walletId)
-        try? FileManager.default.removeItem(at: url)
+        WalletAvatarRasterCacheStore.invalidate(walletId: walletId)
     }
 
     // MARK: - Snapshot pipeline
@@ -268,16 +223,8 @@ enum WalletCustomSvgRenderer {
     // MARK: - Disk write
 
     private static func writeCache(walletId: UUID, image: UIImage) throws {
-        guard let data = image.pngData() else {
-            throw RendererError.writeFailed(underlying: NSError(
-                domain: "WalletCustomSvgRenderer",
-                code: -1,
-                userInfo: [NSLocalizedDescriptionKey: "Image had no PNG representation"]
-            ))
-        }
-        let url = cacheURL(for: walletId)
         do {
-            try data.write(to: url, options: [.atomic])
+            try WalletAvatarRasterCacheStore.store(image, walletId: walletId)
         } catch {
             throw RendererError.writeFailed(underlying: error)
         }

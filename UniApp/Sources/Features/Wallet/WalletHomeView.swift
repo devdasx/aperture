@@ -1,5 +1,4 @@
 import SwiftUI
-import TipKit
 
 // MARK: - RootGate
 
@@ -83,10 +82,7 @@ struct WalletHomeView: View {
     @StateObject private var databaseSnapshot = DatabaseSnapshotObservation()
     private var allWallets: [WalletRecord] { databaseSnapshot.wallets }
 
-    /// TipKit instance shared via type identity — every
-    /// `WalletTabSwitcherTip()` reads the same persisted state, so a
-    /// dismissal here is the same dismissal `MainTabView` would see.
-    private let walletSwitcherTip = WalletTabSwitcherTip()
+    @GRDBStorage("tip.walletSwitcher.dismissed") private var walletSwitcherTipDismissed: Bool = false
     private var metadataRows: [AppMetadataRecord] { databaseSnapshot.metadataRows }
     // **2026-06-18 Part 3.1.** The spot-price `cachedPrices` GRDB observation was MOVED
     // off this parent and into the two leaves that consume it —
@@ -1055,19 +1051,13 @@ struct WalletHomeView: View {
     @ViewBuilder
     private var chromeSection: some View {
         Section {
-            // First-time-feature hint anchored to the wallet home
-            // (not the tab label — iOS 26's TabView label closure
-            // sits inside UIKit's tab-bar button chrome which has
-            // no SwiftUI popover anchor). `TipView` renders the
-            // same TipKit data as a native card inline, with the
-            // X dismiss button, the image, the title, the message
-            // — same chrome Apple ships in Mail's tip cards.
-            // Eligibility predicates on `WalletTabSwitcherTip`'s
-            // `walletCount >= 2` rule + `MaxDisplayCount(1)` so the
-            // card appears exactly once per user, then never
-            // again. `task(id: allWallets.count)` keeps the
-            // `@Parameter` in sync as wallets get created.
-            TipView(walletSwitcherTip)
+            if allWallets.count >= 2 && !walletSwitcherTipDismissed {
+                ApertureTipCard(
+                    title: String.apertureLocalized("Switch between wallets"),
+                    message: String.apertureLocalized("Long-press the Wallet tab to switch, customise, create, or import."),
+                    systemImage: "rectangle.stack.fill",
+                    onDismiss: { walletSwitcherTipDismissed = true }
+                )
                 .listRowBackground(Color.clear)
                 .listRowSeparator(.hidden)
                 .listRowInsets(EdgeInsets(
@@ -1076,9 +1066,7 @@ struct WalletHomeView: View {
                     bottom: UniSpacing.m,
                     trailing: UniSpacing.m
                 ))
-                .task(id: allWallets.count) {
-                    WalletTabSwitcherTip.walletCount = allWallets.count
-                }
+            }
 
             if requiresBiometricReenrollment {
                 BiometricReenrollmentBanner()

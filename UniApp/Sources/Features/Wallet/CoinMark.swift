@@ -122,19 +122,14 @@ struct CoinMark: View {
     }
 }
 
-// MARK: - Stabro-style disk cache
+// MARK: - Stabro-style GRDB cache
 
 final class AssetLogoDiskCache: @unchecked Sendable {
     static let shared = AssetLogoDiskCache()
 
     private let memoryCache = NSCache<NSString, UIImage>()
-    private let fileManager = FileManager.default
-    private let cacheDirectory: URL
 
     private init() {
-        let caches = fileManager.urls(for: .cachesDirectory, in: .userDomainMask)[0]
-        cacheDirectory = caches.appendingPathComponent("TokenIcons", isDirectory: true)
-        try? fileManager.createDirectory(at: cacheDirectory, withIntermediateDirectories: true)
         memoryCache.countLimit = 100
     }
 
@@ -143,9 +138,7 @@ final class AssetLogoDiskCache: @unchecked Sendable {
         if let cached = memoryCache.object(forKey: key as NSString) {
             return cached
         }
-        let filePath = cacheDirectory.appendingPathComponent(key)
-        guard let data = try? Data(contentsOf: filePath),
-              let image = UIImage(data: data) else {
+        guard let image = AssetLogoCacheStore.image(for: url) else {
             return nil
         }
         memoryCache.setObject(image, forKey: key as NSString)
@@ -155,12 +148,7 @@ final class AssetLogoDiskCache: @unchecked Sendable {
     func store(_ image: UIImage, for url: URL) {
         let key = cacheKey(for: url)
         memoryCache.setObject(image, forKey: key as NSString)
-        let filePath = cacheDirectory.appendingPathComponent(key)
-        Task.detached(priority: .utility) {
-            if let data = image.pngData() {
-                try? data.write(to: filePath, options: .atomic)
-            }
-        }
+        AssetLogoCacheStore.store(image, for: url)
     }
 
     private func cacheKey(for url: URL) -> String {

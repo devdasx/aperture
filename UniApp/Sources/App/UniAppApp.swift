@@ -1,5 +1,4 @@
 import SwiftUI
-import TipKit
 // UIKit is imported ONLY for the detached lock-overlay `UIWindow` +
 // `UIHostingController` (see `AppRoot.mountLockOverlayWindowIfNeeded`).
 // Rule #12 §B item 5 names a detached `UIWindow` as a legitimate
@@ -35,7 +34,7 @@ struct UniAppApp: App {
     /// 2. SQLite database open + row bootstrap.
     ///
     /// The biometric enrollment drift check is intentionally NOT here
-    /// (2026-06-10): it performs blocking Keychain / LocalAuthentication
+    /// (2026-06-10): it performs blocking biometric LocalAuthentication
     /// I/O, and running it synchronously in `init()` stalled the first
     /// frame. It now runs from the root view's `.task` — after the
     /// first frame is on screen, before any biometric-gated surface
@@ -47,13 +46,13 @@ struct UniAppApp: App {
         // 0) Fresh-install guard. iOS Keychain items survive app
         //    deletion by default; without this call a user who
         //    deletes Aperture and re-installs would see their old
-        //    wallets, PIN hash, and seed manifest come back — which
+        //    legacy wallet/security compatibility items come back — which
         //    breaks the Rule #16 §A.5 contract ("your wallet only
         //    lives on this iPhone"). The guard checks for a local
-        //    GRDB store file; if it's missing we delete every Keychain item under
+        //    GRDB store file; if it's missing we delete every legacy Keychain item under
         //    our known service identifiers. Runs BEFORE every other
-        //    bootstrap call so vaults read against a known-empty
-        //    Keychain on first launch after install.
+        //    bootstrap call so legacy compatibility state is known-empty on
+        //    first launch after install.
         let freshInstallStart = Date()
         FreshInstallGuard.purgeKeychainIfFreshInstall()
         Self.diagnostic(.debug, "Fresh-install guard finished", start: freshInstallStart)
@@ -84,21 +83,6 @@ struct UniAppApp: App {
         AppDatabase.shared.bootstrap()
         Self.diagnostic(.debug, "Database bootstrap requested", start: databaseStart)
 
-        // 3) TipKit data store for first-time-feature hints. The
-        //    `WalletTabSwitcherTip` reads its eligibility rule against
-        //    `MainTabView`'s GRDB observation wallet count, then iOS 17+
-        //    `TipKit` owns the popover chrome, the dismiss
-        //    persistence, the accessibility tree. `.immediate` means
-        //    a tip presents as soon as its `#Rule`s evaluate true;
-        //    `.applicationDefault` data store lives in the app
-        //    sandbox alongside app data. Tip dismissals persist
-        //    across launches — the *"only for first time"* contract.
-        let tipsStart = Date()
-        try? Tips.configure([
-            .displayFrequency(.immediate),
-            .datastoreLocation(.applicationDefault)
-        ])
-        Self.diagnostic(.debug, "TipKit configured", start: tipsStart)
         Self.diagnostic(.info, "App init finished", start: appInitStart)
     }
 
@@ -121,8 +105,8 @@ struct UniAppApp: App {
                 // `requiresBiometricReenrollment` so the next
                 // biometric-gated surface knows to re-prompt.
                 // Runs in `.task` (after the first frame) instead of
-                // `App.init()` because the check does blocking
-                // Keychain I/O (2026-06-10).
+                // `App.init()` because the check can perform blocking
+                // LocalAuthentication work (2026-06-10).
                 .task {
                     let startupTaskStart = Date()
                     Self.diagnostic(.info, "Root startup task started")
