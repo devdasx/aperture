@@ -29,11 +29,14 @@ struct GRDBWalletFlowPersistenceTests {
         #expect(try walletKind(walletID, database: database) == WalletKind.created.rawValue)
         #expect(try activeWalletRaw(database: database) == walletID.uuidString)
         #expect(try WalletSecretPersistence.loadMnemonic(for: walletID, database: database) == mnemonic)
+        #expect(try manualBackupRaw(walletID, database: database) == 0)
         #expect(try TestAppDatabaseFactory.scalarInt(
             "SELECT COUNT(*) FROM wallet_addresses WHERE wallet_id = ?",
             arguments: [walletID.uuidString],
             database: database
         ) > 0)
+        let snapshotWallets = try await observedWalletSnapshot(database: database)
+        #expect(snapshotWallets.map(\.id).contains(walletID))
     }
 
     @Test("mnemonic import state persists with the iCloud restore naming path")
@@ -56,11 +59,21 @@ struct GRDBWalletFlowPersistenceTests {
         #expect(try walletKind(walletID, database: database) == WalletKind.importedMnemonic.rawValue)
         #expect(try activeWalletRaw(database: database) == walletID.uuidString)
         #expect(try WalletSecretPersistence.loadMnemonic(for: walletID, database: database) == mnemonic)
+        #expect(try manualBackupRaw(walletID, database: database) == 0)
         #expect(try TestAppDatabaseFactory.scalarInt(
             "SELECT COUNT(*) FROM chain_states WHERE wallet_id = ? AND encrypted_private_key IS NOT NULL",
             arguments: [walletID.uuidString],
             database: database
         ) > 0)
+        try database.write { db in
+            try db.execute(
+                sql: "UPDATE wallets SET manual_backup_completed = NULL WHERE id = ?",
+                arguments: [walletID.uuidString]
+            )
+        }
+        let snapshotWallets = try await observedWalletSnapshot(database: database)
+        let wallet = try #require(snapshotWallets.first { $0.id == walletID })
+        #expect(wallet.manualBackupCompleted == false)
     }
 
     @Test("private-key import state persists EVM wallet and encrypted secret rows")
@@ -84,12 +97,15 @@ struct GRDBWalletFlowPersistenceTests {
 
         #expect(ActiveWalletPointer.currentId == walletID)
         #expect(try walletKind(walletID, database: database) == WalletKind.importedKey.rawValue)
+        #expect(try manualBackupRaw(walletID, database: database) == 0)
         #expect(try WalletSecretPersistence.loadPrivateKey(for: walletID, database: database) == privateKey)
         #expect(try TestAppDatabaseFactory.scalarInt(
             "SELECT COUNT(*) FROM wallet_addresses WHERE wallet_id = ?",
             arguments: [walletID.uuidString],
             database: database
         ) == ImportWalletState.evmChains.count)
+        let snapshotWallets = try await observedWalletSnapshot(database: database)
+        #expect(snapshotWallets.map(\.id).contains(walletID))
     }
 
     @Test("watch-only import state persists address-only wallet without key material")
@@ -108,6 +124,7 @@ struct GRDBWalletFlowPersistenceTests {
 
         #expect(ActiveWalletPointer.currentId == walletID)
         #expect(try walletKind(walletID, database: database) == WalletKind.watchOnly.rawValue)
+        #expect(try manualBackupRaw(walletID, database: database) == 0)
         #expect(try TestAppDatabaseFactory.count("wallet_secrets", database: database) == 0)
         #expect(try TestAppDatabaseFactory.scalarInt(
             "SELECT COUNT(*) FROM chain_states WHERE wallet_id = ? AND encrypted_private_key IS NOT NULL",
@@ -119,6 +136,8 @@ struct GRDBWalletFlowPersistenceTests {
             arguments: [walletID.uuidString],
             database: database
         ) == ImportWalletState.evmChains.count)
+        let snapshotWallets = try await observedWalletSnapshot(database: database)
+        #expect(snapshotWallets.map(\.id).contains(walletID))
     }
 
     private func walletName(_ walletID: UUID, database: AppDatabase) throws -> String? {
@@ -142,6 +161,31 @@ struct GRDBWalletFlowPersistenceTests {
             "SELECT wallet_id FROM active_wallet WHERE id = 'active-wallet-singleton'",
             database: database
         )
+    }
+
+    private func manualBackupRaw(_ walletID: UUID, database: AppDatabase) throws -> Int {
+        try TestAppDatabaseFactory.scalarInt(
+            "SELECT manual_backup_completed FROM wallets WHERE id = ?",
+            arguments: [walletID.uuidString],
+            database: database
+        )
+    }
+
+    private func observedWalletSnapshot(database: AppDatabase) async throws -> [WalletRecord] {
+        let observation = DatabaseSnapshotObservation(database: database)
+        for _ in 0..<20 {
+            if let error = observation.lastError {
+                throw error
+            }
+            if !observation.wallets.isEmpty {
+                return observation.wallets
+            }
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        if let error = observation.lastError {
+            throw error
+        }
+        return observation.wallets
     }
 
     private func cleanup(database: AppDatabase, previousActiveWalletRaw: String?) {

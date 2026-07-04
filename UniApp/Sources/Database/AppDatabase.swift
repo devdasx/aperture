@@ -284,6 +284,9 @@ private extension AppDatabase {
         migrator.registerMigration("v1_initial") { db in
             try db.execute(sql: schemaSQL)
         }
+        migrator.registerMigration("v2_wallet_manual_backup_defaults") { db in
+            try db.execute(sql: "UPDATE wallets SET manual_backup_completed = 0 WHERE manual_backup_completed IS NULL")
+        }
         return migrator
     }
 
@@ -307,7 +310,7 @@ private extension AppDatabase {
         sort_order INTEGER NOT NULL,
         is_hidden INTEGER NOT NULL DEFAULT 0,
         requires_backup INTEGER NOT NULL DEFAULT 0,
-        manual_backup_completed INTEGER,
+        manual_backup_completed INTEGER DEFAULT 0,
         created_at_ms INTEGER NOT NULL,
         updated_at_ms INTEGER NOT NULL
     );
