@@ -1,5 +1,4 @@
 import SwiftUI
-import SwiftData
 
 /// **Pinned assets sub-screen** — the roster of assets the user has
 /// pinned to the top of the wallet-home holdings list. Pushed onto
@@ -28,7 +27,7 @@ import SwiftData
 /// content in a `NavigationStack`. The parent sheet owns the stack
 /// and the sub-screen consumes it.
 struct WalletHomePinnedAssetsView: View {
-    @Query(sort: \WalletRecord.sortOrder) private var allWallets: [WalletRecord]
+    @StateObject private var databaseSnapshot = DatabaseSnapshotObservation()
     @AppStorage("activeWalletId") private var activeWalletIdRaw: String = ""
     @AppStorage(CurrencyPreference.storageKey)
     private var currencyCode: String = CurrencyPreference.defaultCode
@@ -46,6 +45,10 @@ struct WalletHomePinnedAssetsView: View {
     // renders on the very first frame.
     @State private var pinnedCoins: [WalletCoinSupportedRow] = []
     @State private var pinnedTokens: [WalletTokenSupportedDisplayRow] = []
+
+    private var allWallets: [WalletRecord] {
+        databaseSnapshot.wallets
+    }
 
     var body: some View {
         Group {

@@ -1,5 +1,4 @@
 import SwiftUI
-import SwiftData
 
 /// **The Filter & Sort sheet** for the wallet home. Single screen
 /// hosting every preference that shapes how holdings render: view
@@ -97,7 +96,7 @@ struct WalletHomeFilterSheet: View {
     private var currencyCode: String = CurrencyPreference.defaultCode
     @AppStorage("activeWalletId") private var activeWalletIdRaw: String = ""
 
-    @Query(sort: \WalletRecord.sortOrder) private var allWallets: [WalletRecord]
+    @StateObject private var databaseSnapshot = DatabaseSnapshotObservation()
 
     @State private var isShowingResetConfirmation: Bool = false
 
@@ -114,6 +113,10 @@ struct WalletHomeFilterSheet: View {
     @State private var hiddenAssetCount: Int = 0
     @State private var hiddenChainCount: Int = 0
     @State private var pinnedAssetCount: Int = 0
+
+    private var allWallets: [WalletRecord] {
+        databaseSnapshot.wallets
+    }
     @State private var networksReadout: String = ""
 
     // MARK: - Body

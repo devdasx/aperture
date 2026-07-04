@@ -1,5 +1,4 @@
 import SwiftUI
-import SwiftData
 import UIKit
 import UniformTypeIdentifiers
 
@@ -31,11 +30,7 @@ import UniformTypeIdentifiers
 /// + Trust Wallet coin marks; every color is a `UniColors` role.
 struct TransactionDetailView: View {
     let transactionId: UUID
-    @Query private var matches: [TransactionRecord]
-
-    /// The live store — so a pending tx that confirms while this screen is
-    /// open is written back (the activity list + future opens reflect it).
-    @Environment(\.modelContext) private var modelContext
+    @StateObject private var databaseSnapshot = DatabaseSnapshotObservation()
     @Environment(\.displayScale) private var displayScale
 
     /// The live, fetched detail. `nil` until the fetch lands (or if it
@@ -67,12 +62,8 @@ struct TransactionDetailView: View {
     @State private var exportedPDF: ExportedActivityPDF?
     @State private var exportFailed = false
 
-    init(transactionId: UUID) {
-        self.transactionId = transactionId
-        _matches = Query(
-            filter: #Predicate<TransactionRecord> { $0.id == transactionId },
-            sort: \TransactionRecord.occurredAt
-        )
+    private var matches: [TransactionRecord] {
+        databaseSnapshot.transactions.filter { $0.id == transactionId }
     }
 
     var body: some View {
@@ -1082,27 +1073,58 @@ struct TransactionDetailView: View {
     /// Write resolved live fields back to the record so activity rows and
     /// future opens reflect confirmation, block, and fee updates.
     private func persistResolved(_ detail: TransactionDetail) {
-        guard let tx = matches.first else { return }
-        var changed = false
-
-        if tx.statusRaw != detail.status.rawValue {
-            tx.statusRaw = detail.status.rawValue
-            changed = true
-        }
-        if tx.blockNumber != detail.blockNumber {
-            tx.blockNumber = detail.blockNumber
-            changed = true
-        }
+        guard let tx = matches.first,
+              let addressId = tx.addressId,
+              let direction = TransactionDirection(rawValue: tx.directionRaw) else { return }
         if let feeNative = detail.feeNative {
-            let feeRaw = feeNative.description
-            if tx.feeRaw != feeRaw {
-                tx.feeRaw = feeRaw
-                changed = true
-            }
+            persistResolvedTransaction(
+                tx,
+                addressId: addressId,
+                direction: direction,
+                status: detail.status,
+                blockNumber: detail.blockNumber,
+                occurredAt: detail.blockTime ?? tx.occurredAt,
+                feeRaw: feeNative.description
+            )
+        } else {
+            persistResolvedTransaction(
+                tx,
+                addressId: addressId,
+                direction: direction,
+                status: detail.status,
+                blockNumber: detail.blockNumber,
+                occurredAt: detail.blockTime ?? tx.occurredAt,
+                feeRaw: tx.feeRaw
+            )
         }
+    }
 
-        if changed {
-            try? modelContext.save()
+    private func persistResolvedTransaction(
+        _ tx: TransactionRecord,
+        addressId: UUID,
+        direction: TransactionDirection,
+        status: TransactionStatus,
+        blockNumber: Int64?,
+        occurredAt: Date,
+        feeRaw: String?
+    ) {
+        Task { @MainActor in
+            try? await TransactionRepository(database: AppDatabase.shared).upsertTransaction(
+                addressId: addressId,
+                txHash: tx.txHash,
+                direction: direction,
+                amountRaw: tx.amountRaw,
+                tokenSymbol: tx.tokenSymbol,
+                tokenContract: tx.tokenContract,
+                kind: tx.kindRaw.flatMap(TransactionKind.init(rawValue:)),
+                blockNumber: blockNumber,
+                occurredAt: occurredAt,
+                status: status,
+                counterparty: tx.counterparty,
+                feeRaw: feeRaw,
+                id: tx.id,
+                save: true
+            )
         }
     }
 

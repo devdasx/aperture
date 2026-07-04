@@ -1,5 +1,4 @@
 import Foundation
-import SwiftData
 
 /// Small, focused formatting helpers shared across the wallet-home
 /// surface. Locale-aware. No view code — these are pure functions

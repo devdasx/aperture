@@ -1,5 +1,4 @@
 import SwiftUI
-import SwiftData
 
 /// Send flow for callers that already know the asset.
 ///
@@ -8,10 +7,7 @@ import SwiftData
 /// stack starts at the useful place: recipient for single-network assets,
 /// or the network list for multi-network tokens.
 struct SendNetworkFirstView: View {
-    @Query(sort: \WalletRecord.sortOrder) private var allWallets: [WalletRecord]
-    @Query(sort: [SortDescriptor(\CustomTokenRecord.symbol, order: .forward)])
-    private var customTokenRecords: [CustomTokenRecord]
-    @Query private var assetRecords: [AssetRecord]
+    @StateObject private var databaseSnapshot = DatabaseSnapshotObservation()
     @AppStorage("activeWalletId") private var activeWalletIdRaw: String = ""
 
     @Binding var navigationPath: NavigationPath
@@ -29,6 +25,20 @@ struct SendNetworkFirstView: View {
 
     private var currencyCode: String {
         UserDefaults.standard.string(forKey: CurrencyPreference.storageKey) ?? CurrencyPreference.defaultCode
+    }
+
+    private var allWallets: [WalletRecord] {
+        databaseSnapshot.wallets
+    }
+
+    private var customTokenRecords: [CustomTokenRecord] {
+        databaseSnapshot.customTokenRecords.sorted {
+            $0.symbol.localizedStandardCompare($1.symbol) == .orderedAscending
+        }
+    }
+
+    private var assetRecords: [AssetRecord] {
+        databaseSnapshot.assetRecords
     }
 
     private var holdingsKey: String {

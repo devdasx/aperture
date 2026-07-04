@@ -1,5 +1,4 @@
 import SwiftUI
-import SwiftData
 
 /// Inline banner shown when `BiometricEnrollmentTracker.checkForDrift`
 /// flipped `AppMetadataRecord.requiresBiometricReenrollment = true` —
@@ -9,10 +8,9 @@ import SwiftData
 ///
 /// Tapping opens the system biometric prompt; on success we capture
 /// the new snapshot via `BiometricEnrollmentTracker.acknowledgeReenrollment`
-/// and the banner disappears (the `@Query` of `AppMetadataRecord` is
+/// and the banner disappears (the GRDB observation of `AppMetadataRecord` is
 /// reactive — flipping the flag re-renders the wallet home without it).
 struct BiometricReenrollmentBanner: View {
-    @Environment(\.modelContext) private var modelContext
     @AppStorage("biometricEnabled") private var biometricEnabled: Bool = false
     @AppStorage(PinCodePreference.requireBiometricForSendKey) private var requireForSend: Bool = true
 
@@ -65,7 +63,7 @@ struct BiometricReenrollmentBanner: View {
         )
         switch outcome {
         case .success:
-            BiometricEnrollmentTracker.acknowledgeReenrollment(in: modelContext.container)
+            BiometricEnrollmentTracker.acknowledgeReenrollment(database: AppDatabase.shared)
             biometricEnabled = true
             requireForSend = true
         case .failure:

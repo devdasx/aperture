@@ -857,7 +857,6 @@ private struct ManualVerifyScreen: View {
     var skipPersist: Bool = false
     let onConfirmed: () -> Void
 
-    @Environment(\.modelContext) private var modelContext
     @State private var isShowingError = false
 
     var body: some View {
@@ -879,7 +878,7 @@ private struct ManualVerifyScreen: View {
             onConfirmed()
             return
         }
-        let repo = WalletRepository(modelContainer: modelContext.container)
+        let repo = WalletRepository(database: AppDatabase.shared)
         do {
             try await repo.markManualBackupComplete(id: walletId)
         } catch {

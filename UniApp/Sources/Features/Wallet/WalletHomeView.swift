@@ -1,14 +1,13 @@
 import SwiftUI
-import SwiftData
 import TipKit
 
 // MARK: - RootGate
 
 /// App-launch routing gate. Reads the wallet count reactively via
-/// `@Query`; routes to `MainTabView` (the post-onboarding shell) if
+/// GRDB; routes to `MainTabView` (the post-onboarding shell) if
 /// the user has at least one wallet,
 /// otherwise to `OnboardingView`. When the create/import flows
-/// insert a `WalletRecord`, the gate flips automatically — no
+/// insert a wallet row, the gate flips automatically — no
 /// explicit navigation needed from those flows.
 ///
 /// **2026-06-09 — `MainTabView` replaces `WalletHomeView` as the
@@ -31,7 +30,7 @@ struct RootGate: View {
     let logoNamespace: Namespace.ID
     let phase: AppPhase
 
-    @Query private var wallets: [WalletRecord]
+    @StateObject private var walletList = WalletListObservation()
 
     /// Keeps onboarding mounted while a create/import flow's full-screen
     /// cover is up — so the success screen (`WalletReadyView`), which now
@@ -42,7 +41,7 @@ struct RootGate: View {
     @State private var onboardingFlowActive = false
 
     var body: some View {
-        if wallets.isEmpty || onboardingFlowActive {
+        if walletList.wallets.isEmpty || onboardingFlowActive {
             OnboardingView(
                 logoNamespace: logoNamespace,
                 phase: phase,
@@ -81,14 +80,15 @@ struct RootGate: View {
 /// - Biometric drift detected → top banner
 ///   (`BiometricReenrollmentBanner`).
 struct WalletHomeView: View {
-    @Query(sort: \WalletRecord.sortOrder) private var allWallets: [WalletRecord]
+    @StateObject private var databaseSnapshot = DatabaseSnapshotObservation()
+    private var allWallets: [WalletRecord] { databaseSnapshot.wallets }
 
     /// TipKit instance shared via type identity — every
     /// `WalletTabSwitcherTip()` reads the same persisted state, so a
     /// dismissal here is the same dismissal `MainTabView` would see.
     private let walletSwitcherTip = WalletTabSwitcherTip()
-    @Query private var metadataRows: [AppMetadataRecord]
-    // **2026-06-18 Part 3.1.** The spot-price `cachedPrices` @Query was MOVED
+    private var metadataRows: [AppMetadataRecord] { databaseSnapshot.metadataRows }
+    // **2026-06-18 Part 3.1.** The spot-price `cachedPrices` GRDB observation was MOVED
     // off this parent and into the two leaves that consume it —
     // `BalanceCardLiveSection` (the chart map) and `RecentActivityRows` (row
     // fiat). The per-refresh price-batch commit is the most frequent merge, so
@@ -101,28 +101,28 @@ struct WalletHomeView: View {
     /// honest historical fiat ($4000 then) not today's collapsed
     /// valuation ($50). Populated by `CoinbaseHistoricalPriceService`
     /// via the `.task` ensure-loop below.
-    @Query private var historicalPrices: [HistoricalPriceRecord]
+    private var historicalPrices: [HistoricalPriceRecord] { databaseSnapshot.historicalPrices }
     /// **Local-first asset universe (Rule #27 §D).** The supported
     /// chains + tokens, read from the DB (seeded by `AssetCatalogSeeder`
     /// from the static registries). `catalogChains` / `catalogAssets`
     /// map these to the registry-agnostic shape the display builders
     /// consume, falling back to the identical static `AssetCatalog`
     /// during the pre-seed cold-launch window so the list never blanks.
-    @Query(sort: \ChainRecord.sortIndex) private var chainRecords: [ChainRecord]
-    @Query private var assetRecords: [AssetRecord]
+    private var chainRecords: [ChainRecord] { databaseSnapshot.chainRecords }
+    private var assetRecords: [AssetRecord] { databaseSnapshot.assetRecords }
     /// User-added custom tokens (2026-06-19). Merged into the home's
     /// token holdings so a token the user pasted into "Add custom token"
     /// shows in the Tokens section with its (scanned) balance — or a 0
     /// placeholder — exactly like the catalog tokens, not only in the asset picker.
-    @Query private var customTokenRecords: [CustomTokenRecord]
+    private var customTokenRecords: [CustomTokenRecord] { databaseSnapshot.customTokenRecords }
 
     // **Per-chain aggregate rows (2026-06-17).** The `chainStateRecords`
-    // `@Query` that drives the hero total now lives in the
+    // GRDB observation that drives the hero total now lives in the
     // `BalanceCardLiveSection` leaf (2026-06-18 native perf fix), NOT here.
     // The refresh coordinator rebuilds a chain's `ChainStateRecord` on a
-    // ~300ms cadence during every scan; a top-level `@Query` here made each
+    // ~300ms cadence during every scan; a top-level GRDB observation here made each
     // of those commits re-evaluate this entire 2,790-line body (Apple's
-    // documented `@Query`/DynamicProperty invalidation — a declared query
+    // documented GRDB observation/DynamicProperty invalidation — a declared query
     // invalidates the owning view's body on ANY result change, read or not).
     // Moving the query into the small leaf that actually renders the total
     // localizes that 300ms invalidation to the card alone — the parent body
@@ -204,7 +204,6 @@ struct WalletHomeView: View {
     /// environment without rebuilding the sheet content, preserving
     /// the user's nav-stack position inside Settings.
     @AppStorage("languagePreference") private var sheetLanguageCode: String = LanguagePreference.systemCode
-    @Environment(\.modelContext) private var modelContext
     // The auto-lock surface (`AppLockView`) is presented by
     // `AppRoot` at the window root — not from this view. See
     // `UniAppApp.swift` for the gating logic and the privacy
@@ -332,7 +331,7 @@ struct WalletHomeView: View {
     // frame). They are now `@State` snapshots rebuilt only when an
     // actual dependency changes: the filter preferences (via
     // `.onChange` of `filterPreferenceFingerprint`), the active
-    // wallet / currency, the SwiftData row-count proxies, and
+    // wallet / currency, the GRDB row-count proxies, and
     // refresh completion. Behavior is unchanged — only the
     // computation timing moved out of the render path.
 
@@ -362,7 +361,7 @@ struct WalletHomeView: View {
     // which already fires on the COMPLETE set of change triggers (wallet
     // switch, currency change, balance-count change, asset seed, refresh
     // completion incl. the 10 s auto-refresh, and the currency re-price).
-    // The stored rows are SwiftData references, so their scalar values
+    // The stored rows are GRDB references, so their scalar values
     // stay live between rebuilds; a rebuild re-applies the non-zero filter
     // + fiat sort whenever a refresh/re-price changes those values.
     @State private var balancesMemo: [(chain: SupportedChain, balance: TokenBalanceRecord)]? = nil
@@ -373,28 +372,27 @@ struct WalletHomeView: View {
     /// "never show transactions with less than $0.01, always in dollars").
     /// Loaded async (see `loadDustPrices`); until it arrives every row shows.
     @State private var usdActivityPrices: [String: Decimal] = [:]
-    /// **Live transaction feed (2026-06-13).** A TOP-LEVEL `@Query`,
+    /// **Live transaction feed (2026-06-13).** A TOP-LEVEL GRDB observation,
     /// NOT a `wallet.addresses[].transactions` relationship traversal.
-    /// SwiftData merges scalar UPDATES to already-materialized rows
+    /// GRDB merges scalar UPDATES to already-materialized rows
     /// (which is why balances refresh live) but does NOT append newly-
     /// INSERTED children to an already-materialized to-many array — so a
     /// transaction the background scanner inserted on pull-to-refresh
     /// never appeared until an app relaunch re-fetched the relationship
     /// (the Rule #25 live-state violation the user reported: "received
     /// 11 USDT, had to close & reopen to see it in activity"). A
-    /// top-level `@Query` re-runs its fetch whenever ANY context on the
+    /// top-level GRDB observation re-runs its fetch whenever ANY context on the
     /// shared container inserts a `TransactionRecord`, so new activity
     /// shows the instant it's persisted — no relaunch, no navigate-away.
-    @Query(sort: \TransactionRecord.occurredAt, order: .reverse)
-    private var allTransactionRecords: [TransactionRecord]
+    private var allTransactionRecords: [TransactionRecord] { databaseSnapshot.transactions }
 
-    /// **Live balance feed (2026-06-21).** A TOP-LEVEL `@Query`, NOT a
+    /// **Live balance feed (2026-06-21).** A TOP-LEVEL GRDB observation, NOT a
     /// `wallet.addresses[].balances` relationship traversal — for the SAME
     /// reasons as `allTransactionRecords` above. The holdings list, chart,
     /// rollup, and the hero's fallback sum were all fed by the memoized
     /// `balances`/`allHeldRows` projections, which read the `balances`
     /// relationship and rebuilt only when the relationship-COUNT changed.
-    /// That broke live balance updates two ways: (1) SwiftData does NOT append
+    /// That broke live balance updates two ways: (1) GRDB does NOT append
     /// a newly-INSERTED balance (a token received for the FIRST time) to an
     /// already-materialized to-many array, so a new asset never showed until
     /// relaunch; and (2) a scalar VALUE update (receiving MORE of an asset you
@@ -405,17 +403,17 @@ struct WalletHomeView: View {
     /// relaunch, no manual refresh (Rule #25, now honoured for balances as it
     /// already was for transactions). The hero total itself was already live
     /// via `BalanceCardLiveSection`'s own `chainStateRecords` query.
-    @Query private var allBalanceRecords: [TokenBalanceRecord]
+    private var allBalanceRecords: [TokenBalanceRecord] { databaseSnapshot.balances }
 
     /// The active wallet's transactions, newest first — the live
-    /// top-level `@Query` filtered to the active wallet's address ids.
+    /// top-level GRDB observation filtered to the active wallet's address ids.
     /// Address ids are stable (addresses aren't inserted during normal
-    /// use), so reading them off the `@Query`-backed `activeWallet` is
+    /// use), so reading them off the GRDB observation-backed `activeWallet` is
     /// safe; only per-tx membership changes, and the top-level query
     /// sees those inserts live. The in-memory filter is O(total tx) —
     /// a few thousand rows at most (the scanner caps history per chain),
     /// well under a millisecond per render, and there is no per-render
-    /// SORT (the `@Query` sorts at the store level).
+    /// SORT (the GRDB observation sorts at the store level).
     /// Cached (`allTransactionsMemo`); falls back to a live compute only
     /// when unseeded. Rebuilt by `rebuildTransactionMemos()` on wallet
     /// switch, refresh completion, and `allTransactionRecords` count
@@ -424,8 +422,8 @@ struct WalletHomeView: View {
         allTransactionsMemo ?? computeAllTransactions()
     }
 
-    /// The live filter: top-level `@Query` narrowed to the active
-    /// wallet's address ids, newest-first (the `@Query` sorts at the
+    /// The live filter: top-level GRDB observation narrowed to the active
+    /// wallet's address ids, newest-first (the GRDB observation sorts at the
     /// store level). O(total tx) — moved out of the render path by the
     /// memo above; this runs only on a rebuild trigger.
     private func computeAllTransactions() -> [TransactionRecord] {
@@ -506,7 +504,7 @@ struct WalletHomeView: View {
     /// second currency flip cancels the first pass so two re-prices
     /// never interleave writes for different currencies.
     @State private var currencyChangeTask: Task<Void, Never>?
-    /// Coalesces high-frequency SwiftData merge waves into one display
+    /// Coalesces high-frequency GRDB merge waves into one display
     /// projection rebuild. Balance refreshes can write dozens of rows in
     /// bursts; rebuilding the holdings lists after every individual merge is
     /// the main-screen hitch.
@@ -568,7 +566,7 @@ struct WalletHomeView: View {
                     // coin / token rows) before the first refresh lands
                     // so the home renders the persisted state
                     // immediately. Transactions need no seeding — they
-                    // read live from the top-level `@Query`.
+                    // read live from the top-level GRDB observation.
                     rebuildFilterInputs()
                     rebuildDisplayRows()
                     scheduleChainStateReconcile(after: 0)
@@ -675,7 +673,7 @@ struct WalletHomeView: View {
                 .onChange(of: hideSmallThreshold) { _, _ in
                     scheduleDisplayRowsRebuild(after: 50_000_000)
                 }
-                // New transactions landed in the top-level @Query (live
+                // New transactions landed in the top-level GRDB observation (live
                 // cross-context inserts, Rule #25) — refresh the cached
                 // `allTransactions` so the Recent activity list + chart
                 // reflect them immediately, not only after a refresh ends.
@@ -1001,7 +999,7 @@ struct WalletHomeView: View {
         // prior two-row hero + sparkline split.
         Section {
             // 2026-06-18 native perf fix — the balance card is wrapped in a
-            // leaf that OWNS the high-churn `chainStateRecords` @Query, so the
+            // leaf that OWNS the high-churn `chainStateRecords` GRDB observation, so the
             // refresh coordinator's ~300ms aggregate commits re-render only
             // the card, never this whole body (Apple "extract subviews to
             // localize invalidation"). The leaf computes the hero total only
@@ -1726,7 +1724,7 @@ struct WalletHomeView: View {
 
     private func computeAllHeldRows() -> [(chain: SupportedChain, balance: TokenBalanceRecord)] {
         guard let wallet = activeWallet else { return [] }
-        // Read balances from the top-level `allBalanceRecords` @Query (live
+        // Read balances from the top-level `allBalanceRecords` GRDB observation (live
         // across cross-context inserts + scalar updates) and attribute each to
         // a chain via the wallet's own address records — NOT the insert-stale
         // `address.balances` relationship.
@@ -1743,7 +1741,7 @@ struct WalletHomeView: View {
 
     /// Maps each of the active wallet's address UUIDs to its chain, built from
     /// the wallet's own (stable, cross-context-safe) address records — so the
-    /// balance rows from the top-level `allBalanceRecords` @Query can be
+    /// balance rows from the top-level `allBalanceRecords` GRDB observation can be
     /// attributed to a chain without traversing the insert-stale `balances`
     /// relationship.
     private func chainByActiveAddressId(_ wallet: WalletRecord) -> [UUID: SupportedChain] {
@@ -1775,7 +1773,7 @@ struct WalletHomeView: View {
     }
 
     /// Rebuild the memoized history dictionary. The only place that pays
-    /// the O(N) iteration over the price `@Query` results — called from
+    /// the O(N) iteration over the price GRDB observation results — called from
     /// `.task(id: priceDataFingerprint)`, not from `body`.
     private func rebuildPriceMemos() {
         var history: [String: [Int: Decimal]] = [:]
@@ -1809,19 +1807,19 @@ struct WalletHomeView: View {
         ].joined(separator: "\u{1F}")
     }
 
-    /// Cheap SwiftData change proxy — balance-row count across the
+    /// Cheap GRDB change proxy — balance-row count across the
     /// active wallet's addresses. Counting is O(addresses) per body
     /// pass; the expensive registry enumeration + flatMap + sort only
     /// runs when the count actually changes. Value-only updates (a
     /// refresh re-pricing existing rows) are caught by the explicit
     /// rebuild at the end of `runRefresh()` and the refresh-completion
     /// observer. (Transactions used to have a parallel proxy here, but
-    /// they now read live from a top-level `@Query` — see
+    /// they now read live from a top-level GRDB observation — see
     /// `allTransactionRecords` — so no relationship-count proxy is
     /// needed, and the relationship-count proxy never saw cross-context
     /// inserts anyway, which was the live-tx bug.)
     /// A VALUE fingerprint of the active wallet's balance rows, read from the
-    /// top-level `allBalanceRecords` @Query (NOT the insert-stale `balances`
+    /// top-level `allBalanceRecords` GRDB observation (NOT the insert-stale `balances`
     /// relationship). It changes whenever a balance row is inserted, removed,
     /// OR its value updates — so the `.onChange` rebuild of the display
     /// projections fires on every real balance change, not only when the ROW
@@ -1966,14 +1964,13 @@ struct WalletHomeView: View {
         let rawWalletId = activeWalletIdRaw
         let code = (CurrencyPreference.currency(for: currencyCode)?.code
             ?? CurrencyPreference.defaultCode).uppercased()
-        let container = modelContext.container
         chainReconcileTask?.cancel()
         chainReconcileTask = Task {
             if delayNanoseconds > 0 {
                 try? await Task.sleep(nanoseconds: delayNanoseconds)
             }
             guard !Task.isCancelled, let walletId = UUID(uuidString: rawWalletId) else { return }
-            _ = try? await ChainStateRepository(modelContainer: container)
+            _ = try? await ChainStateRepository(database: AppDatabase.shared)
                 .rebuild(walletId: walletId, fiatCurrencyCode: code)
         }
     }
@@ -2149,13 +2146,14 @@ struct WalletHomeView: View {
     /// `RecentActivityRows` leaf (2026-06-18, Part 3.5). The parent maps the 5
     /// recent transactions into a small `ActivityRowModel` snapshot; the leaf
     /// then skips rebuilding the `ActivityRow` subtrees whenever that snapshot +
-    /// currency are unchanged — so an unrelated SwiftData merge that re-evaluates
+    /// currency are unchanged — so an unrelated GRDB merge that re-evaluates
     /// this body no longer reconstructs the activity rows.
     @ViewBuilder
     private var productionActivityRows: some View {
         RecentActivityRows(
             rows: recentActivityModels,
             currencyCode: currencyCode,
+            cachedPrices: databaseSnapshot.cachedPrices,
             onSelect: { navigationPath.append(WalletHomeDestination.transaction($0)) }
         )
     }
@@ -2266,7 +2264,7 @@ struct WalletHomeView: View {
     private var walletPillContextMenu: some View {
         // One row per persisted wallet. Tapping a non-active row
         // flips `activeWalletIdRaw`; the wallet-home re-renders
-        // through the existing `@Query` machinery, the tab icon
+        // through the existing GRDB observation machinery, the tab icon
         // re-renders, every consumer updates simultaneously.
         ForEach(allWallets) { wallet in
             Button {
@@ -2340,7 +2338,7 @@ struct WalletHomeView: View {
 
     /// Single resolution rule for "the active wallet" (2026-06-13).
     /// The STORED id is authoritative, verified against the store; the
-    /// `@Query` is only an index. Every projection input — hero
+    /// GRDB observation is only an index. Every projection input — hero
     /// `balances`, `allHeldRows`, the memoized display/transaction
     /// rows, the chart inputs, the revision proxies — and the toolbar
     /// pill resolve through this one property, so the displayed
@@ -2348,7 +2346,7 @@ struct WalletHomeView: View {
     /// id on every pass and cannot disagree.
     ///
     /// Resolution order:
-    /// 1. Stored id has a `@Query` match → that record (the normal,
+    /// 1. Stored id has a GRDB observation match → that record (the normal,
     ///    cheap path; no store round-trip).
     /// 2. Stored id resolves directly against the store → that
     ///    record. Covers BOTH merge windows: an import the main
@@ -2361,8 +2359,7 @@ struct WalletHomeView: View {
     private var activeWallet: WalletRecord? {
         ActiveWalletResolver.resolve(
             rawID: activeWalletIdRaw,
-            wallets: allWallets,
-            modelContext: modelContext
+            wallets: allWallets
         )
     }
 
@@ -2378,7 +2375,7 @@ struct WalletHomeView: View {
     private func computeBalances() -> [(chain: SupportedChain, balance: TokenBalanceRecord)] {
         guard let wallet = activeWallet else { return [] }
         let threshold = Decimal(hideSmallThreshold)
-        // Read from the top-level `allBalanceRecords` @Query (live across
+        // Read from the top-level `allBalanceRecords` GRDB observation (live across
         // cross-context inserts + scalar updates) attributed via the wallet's
         // own address records — NOT the insert-stale `address.balances`
         // relationship that left the holdings frozen until relaunch.
@@ -2406,13 +2403,13 @@ struct WalletHomeView: View {
     }
 
     // `recentTransactions` / `allTransactions` are now LIVE computed
-    // properties over the top-level `@Query` (`allTransactionRecords`)
+    // properties over the top-level GRDB observation (`allTransactionRecords`)
     // — see their declarations near the top of the view. The old
     // `rebuildTransactionRows()` snapshot builder was removed
     // (2026-06-13): it read `wallet.addresses.flatMap { $0.transactions }`,
     // a relationship traversal that never reflected cross-context
     // inserts, so newly-scanned transactions only appeared after an
-    // app relaunch. The live `@Query` fixes that with no rebuild calls.
+    // app relaunch. The live GRDB observation fixes that with no rebuild calls.
 
     /// Resolves the chain a `TransactionRecord` belongs to via its
     /// back-pointer to `WalletAddressRecord.chainRaw`. Returns nil when the
@@ -2451,7 +2448,7 @@ struct WalletHomeView: View {
         // A deliberately-set, VALID active id is TRUSTED — even when the
         // main context can't see its wallet yet (cross-context merge lag
         // right after a create / import: the new WalletRecord is saved in
-        // a background `@ModelActor` context and merges a beat later, so
+        // a background repository actor context and merges a beat later, so
         // BOTH `allWallets` and a `walletExists` fetch can transiently
         // miss it). Healing it to "the first wallet" in that window
         // hijacked the just-created wallet's identity and surfaced the
@@ -2470,11 +2467,7 @@ struct WalletHomeView: View {
         // wallet by `sortOrder`, the same deterministic landing the delete
         // flow uses, which a direct store fetch sees correctly even
         // mid-merge).
-        var descriptor = FetchDescriptor<WalletRecord>(
-            sortBy: [SortDescriptor(\WalletRecord.sortOrder)]
-        )
-        descriptor.fetchLimit = 1
-        if let first = try? modelContext.fetch(descriptor).first {
+        if let first = allWallets.sorted(by: { $0.sortOrder < $1.sortOrder }).first {
             ActiveWalletPointer.set(first.id)
         }
     }
@@ -2482,13 +2475,9 @@ struct WalletHomeView: View {
     /// Store-truth existence check for a wallet id. A direct
     /// `fetchCount` hits the persistent store, so it sees rows the
     /// repository actor has already saved even before this view's
-    /// `@Query` has merged them.
+    /// GRDB observation has merged them.
     private func walletExists(id: UUID) -> Bool {
-        var descriptor = FetchDescriptor<WalletRecord>(
-            predicate: #Predicate { $0.id == id }
-        )
-        descriptor.fetchLimit = 1
-        return ((try? modelContext.fetchCount(descriptor)) ?? 0) > 0
+        allWallets.contains { $0.id == id }
     }
 
     // MARK: - Refresh
@@ -2502,17 +2491,16 @@ struct WalletHomeView: View {
     @MainActor
     private func runRefresh(userInitiated: Bool = false) async {
         guard let walletId = await resolveRefreshWalletId() else { return }
-        let container = modelContext.container
         if !userInitiated {
             Task {
                 await WalletBackgroundWorkCoordinator.shared.startFullRefresh(
                     walletId: walletId,
                     currencyCode: currencyCode,
-                    modelContainer: container
+                    database: AppDatabase.shared
                 )
                 await WalletBackgroundWorkCoordinator.shared.startChainKeyBackfill(
                     walletId: walletId,
-                    modelContainer: container
+                    database: AppDatabase.shared
                 )
             }
             return
@@ -2524,7 +2512,7 @@ struct WalletHomeView: View {
         await WalletBackgroundWorkCoordinator.shared.refreshBalances(
             walletId: walletId,
             currencyCode: currencyCode,
-            modelContainer: container,
+            database: AppDatabase.shared,
             userInitiated: true
         )
         guard UUID(uuidString: activeWalletIdRaw) == walletId else { return }
@@ -2538,8 +2526,8 @@ struct WalletHomeView: View {
     /// **The bug this replaces.** The previous version re-priced via
     /// `WalletRefreshCoordinator.repriceWallet`, which writes the new
     /// `fiatValueCached` / `fiatCurrencyCode` through a background
-    /// `@ModelActor` context. SwiftData reliably propagates *inserts*
-    /// from another context into an observing `@Query` (that's why a
+    /// repository actor context. GRDB reliably propagates *inserts*
+    /// from another context into an observing GRDB observation (that's why a
     /// first scan / import shows balances), but it does **not**
     /// reliably refresh already-materialized to-many CHILD objects
     /// when another context UPDATES their scalar fields — the main
@@ -2551,7 +2539,7 @@ struct WalletHomeView: View {
     /// only a cold launch (fresh context, fresh fetch from the store)
     /// healed it. Exactly the user's report.
     ///
-    /// **The fix.** Re-price by mutating the LIVE `@Query` objects on
+    /// **The fix.** Re-price by mutating the LIVE GRDB observation objects on
     /// the MAIN context, then `save()`. The view's own context owns
     /// these objects, so `totalFiat` and the per-row display see the
     /// new currency the instant the save returns — zero cross-context
@@ -2576,7 +2564,7 @@ struct WalletHomeView: View {
         let symbols = Array(Set(rows.map { $0.tokenSymbol.uppercased() }))
 
         // Fetch unit prices in the new currency (off-main hop).
-        await TokenPricingEngine.shared.configure(container: modelContext.container)
+        await TokenPricingEngine.shared.configure(database: AppDatabase.shared)
         let prices = await TokenPricingEngine.shared.unitPrices(
             symbols: symbols,
             currencyCode: code
@@ -2617,9 +2605,29 @@ struct WalletHomeView: View {
             changed += 1
         }
         if changed > 0 {
-            try? modelContext.save()
+            try? AppDatabase.shared.write { db in
+                for row in rows {
+                    try db.execute(
+                        sql: """
+                        UPDATE token_balances
+                        SET fiat_value_cached = ?,
+                            fiat_value_cached_numeric = ?,
+                            fiat_currency_code = ?,
+                            updated_at_ms = ?
+                        WHERE id = ?
+                        """,
+                        arguments: [
+                            row.fiatValueCached.databaseText,
+                            row.fiatValueCached.databaseDouble,
+                            row.fiatCurrencyCode,
+                            Date.databaseMilliseconds,
+                            row.id.uuidString
+                        ]
+                    )
+                }
+            }
         }
-        _ = try? await ChainStateRepository(modelContainer: modelContext.container)
+        _ = try? await ChainStateRepository(database: AppDatabase.shared)
             .rebuild(walletId: walletId, fiatCurrencyCode: code)
         // Value-only updates don't move the count proxies — rebuild the
         // memoized display projections explicitly.
@@ -2628,12 +2636,12 @@ struct WalletHomeView: View {
 
     /// Resolve the wallet id a refresh should run against. Prefers
     /// the stored `activeWalletId` — verified against the store
-    /// directly, because the `@Query`-backed `activeWallet` lags the
+    /// directly, because the GRDB observation-backed `activeWallet` lags the
     /// import flow's actor-context insert: in the merge window right
     /// after an import it silently resolved to the WRONG wallet (the
     /// first one), so the freshly-imported wallet never got scanned
     /// in-session and showed $0.00 until relaunch (2026-06-12). The
-    /// bounded retry covers the save-to-visible gap; the `@Query`
+    /// bounded retry covers the save-to-visible gap; the GRDB observation
     /// fallback keeps the legacy behavior for an empty or genuinely
     /// stale stored id.
     private func resolveRefreshWalletId() async -> UUID? {
@@ -2656,13 +2664,13 @@ struct WalletHomeView: View {
 // MARK: - BalanceCardLiveSection (native invalidation-localization leaf)
 
 /// The flagship balance card, wrapped in a leaf that **owns** the high-churn
-/// `chainStateRecords` `@Query`.
+/// `chainStateRecords` GRDB observation.
 ///
 /// **Why this exists (2026-06-18 native perf fix).** The refresh coordinator
 /// rebuilds each chain's `ChainStateRecord` aggregate on a ~300ms cadence
-/// during every balance scan. When the `chainStateRecords` `@Query` was
+/// during every balance scan. When the `chainStateRecords` GRDB observation was
 /// declared on `WalletHomeView`, each of those commits re-evaluated the entire
-/// 2,790-line `WalletHomeView.body` — Apple's documented `@Query` /
+/// 2,790-line `WalletHomeView.body` — Apple's documented GRDB observation /
 /// `DynamicProperty` behavior is that a *declared* query invalidates the
 /// owning view's body on ANY change to its results, whether or not the body
 /// reads them. That whole-screen re-evaluation, ~3×/second for the duration of
@@ -2683,39 +2691,8 @@ private struct BalanceCardLiveSection: View {
     let onSwitchWallet: () -> Void
     let onAddFunds: () -> Void
 
-    @Environment(\.modelContext) private var modelContext
+    @StateObject private var databaseSnapshot = DatabaseSnapshotObservation()
     @State private var recentHourlyPriceSnapshots: [BalanceHourlyPriceSnapshot] = []
-
-    /// The high-churn aggregate rows — owned HERE, not on the parent, so their
-    /// 300ms refresh-commits re-render only this card.
-    @Query private var chainStateRecords: [ChainStateRecord]
-
-    /// One-row wallet/currency portfolio summary. This is the fast-launch
-    /// read model for the hero total; `chainStateRecords` remains the fallback
-    /// and per-chain source when an older store has not rebuilt the summary yet.
-    @Query private var portfolioSummaries: [WalletPortfolioSummaryRecord]
-
-    /// The freshness ledger (Rule #27) — the source for the "Updated …"
-    /// caption. `ChainStateRecord.lastSyncedAt` is deliberately NOT used:
-    /// it advances only when an aggregate actually changes AND is
-    /// currency-scoped, so a zero-balance wallet (or one whose rows were
-    /// last priced in another currency) would never surface a stamp.
-    /// `SyncStatusRecord` is stamped once per refresh, per wallet,
-    /// regardless of balance or currency (2026-06-19 fix).
-    @Query private var syncStatuses: [SyncStatusRecord]
-
-    /// On-disk spot prices — owned HERE (2026-06-18, Part 3.1) instead of on
-    /// the parent, so the per-refresh price-batch commit re-renders only this
-    /// card, not the whole `WalletHomeView` body. Filtered to the active fiat
-    /// into the `[symbol: price]` map the chart consumes (the exact shape the
-    /// parent's old `priceCacheMemo` produced).
-    @Query private var cachedPrices: [CachedPriceRecord]
-
-    /// Inputs for the 1H portfolio curve. Longer ranges stay transaction-led,
-    /// but 1H needs local price observations so it can move red/green even
-    /// when no transfer happened during the last hour.
-    @Query private var walletAddresses: [WalletAddressRecord]
-    @Query private var tokenBalances: [TokenBalanceRecord]
 
     init(
         walletId: UUID?,
@@ -2737,47 +2714,41 @@ private struct BalanceCardLiveSection: View {
         self.scrubModel = scrubModel
         self.onSwitchWallet = onSwitchWallet
         self.onAddFunds = onAddFunds
+    }
 
+    private var chainStateRecords: [ChainStateRecord] {
+        guard let walletId else { return [] }
         let code = currencyCode.uppercased()
-        _cachedPrices = Query(filter: #Predicate<CachedPriceRecord> { row in
-            row.fiat == code
-        })
-        _tokenBalances = Query()
-
-        if let walletId {
-            let scope = walletId.uuidString
-            let summaryLookupKey = WalletPortfolioSummaryRecord.makeLookupKey(walletId: walletId, currencyCode: code)
-            let balancesDomain = SyncDomain.balances.rawValue
-            let transactionsDomain = SyncDomain.transactions.rawValue
-            _chainStateRecords = Query(filter: #Predicate<ChainStateRecord> { row in
-                row.walletId == walletId && row.fiatCurrencyCode == code
-            })
-            _portfolioSummaries = Query(filter: #Predicate<WalletPortfolioSummaryRecord> { row in
-                row.lookupKey == summaryLookupKey
-            })
-            _syncStatuses = Query(filter: #Predicate<SyncStatusRecord> { row in
-                row.scopeId == scope && (row.domainRaw == balancesDomain || row.domainRaw == transactionsDomain)
-            })
-            _walletAddresses = Query(filter: #Predicate<WalletAddressRecord> { row in
-                row.walletId == walletId
-            })
-        } else {
-            let emptyWalletId = UUID()
-            let emptyScope = "__no-wallet__"
-            let emptyLookupKey = WalletPortfolioSummaryRecord.makeLookupKey(walletId: emptyWalletId, currencyCode: code)
-            _chainStateRecords = Query(filter: #Predicate<ChainStateRecord> { row in
-                row.walletId == emptyWalletId
-            })
-            _portfolioSummaries = Query(filter: #Predicate<WalletPortfolioSummaryRecord> { row in
-                row.lookupKey == emptyLookupKey
-            })
-            _syncStatuses = Query(filter: #Predicate<SyncStatusRecord> { row in
-                row.scopeId == emptyScope
-            })
-            _walletAddresses = Query(filter: #Predicate<WalletAddressRecord> { row in
-                row.walletId == emptyWalletId
-            })
+        return databaseSnapshot.chainStates.filter {
+            $0.walletId == walletId && $0.fiatCurrencyCode.caseInsensitiveCompare(code) == .orderedSame
         }
+    }
+
+    private var portfolioSummaries: [WalletPortfolioSummaryRecord] {
+        guard let walletId else { return [] }
+        let key = WalletPortfolioSummaryRecord.makeLookupKey(walletId: walletId, currencyCode: currencyCode)
+        return databaseSnapshot.portfolioSummaries.filter { $0.lookupKey == key }
+    }
+
+    private var syncStatuses: [SyncStatusRecord] {
+        guard let walletId else { return [] }
+        let scope = walletId.uuidString
+        return databaseSnapshot.syncStatuses.filter {
+            $0.scopeId == scope && ($0.domainRaw == SyncDomain.balances.rawValue || $0.domainRaw == SyncDomain.transactions.rawValue)
+        }
+    }
+
+    private var cachedPrices: [CachedPriceRecord] {
+        databaseSnapshot.cachedPrices.filter { $0.fiat.caseInsensitiveCompare(currencyCode) == .orderedSame }
+    }
+
+    private var walletAddresses: [WalletAddressRecord] {
+        guard let walletId else { return [] }
+        return databaseSnapshot.walletAddresses.filter { $0.walletId == walletId }
+    }
+
+    private var tokenBalances: [TokenBalanceRecord] {
+        databaseSnapshot.balances
     }
 
     private var priceCacheMap: [String: Decimal] {
@@ -2851,12 +2822,11 @@ private struct BalanceCardLiveSection: View {
             return
         }
 
-        let container = modelContext.container
         let code = currencyCode.uppercased()
         let since = Date().addingTimeInterval(-7_200)
 
         do {
-            let observations = try await PriceSnapshotRepository(modelContainer: container)
+            let observations = try await PriceSnapshotRepository(database: AppDatabase.shared)
                 .recentObservations(symbols: symbols, currency: code, since: since)
             guard !Task.isCancelled else { return }
             let snapshots = observations.map {
@@ -2967,7 +2937,7 @@ private struct ActivityRowModel: Identifiable, Equatable {
 }
 
 /// The recent-activity `ForEach`, extracted from `WalletHomeView.body` into a
-/// leaf that OWNS the spot-price `@Query` (2026-06-18, Part 3.1). Because
+/// leaf that OWNS the spot-price GRDB observation (2026-06-18, Part 3.1). Because
 /// `cachedPrices` lives here, a price-batch commit re-renders only this leaf —
 /// never the parent body — and each row's fiat is computed from the leaf's own
 /// prices. The transaction-derived rows arrive as a value-typed snapshot from
@@ -2976,9 +2946,8 @@ private struct ActivityRowModel: Identifiable, Equatable {
 private struct RecentActivityRows: View {
     let rows: [ActivityRowModel]
     let currencyCode: String
+    let cachedPrices: [CachedPriceRecord]
     let onSelect: (UUID) -> Void
-
-    @Query private var cachedPrices: [CachedPriceRecord]
 
     private var priceMap: [String: Decimal] {
         ActivityFiat.priceMap(cachedPrices, currency: currencyCode)
@@ -3015,7 +2984,7 @@ private struct RecentActivityRows: View {
 /// One token holdings row — the logo (`CoinMark`), name/symbol, amount, and
 /// fiat — extracted from `WalletHomeView` into a value-typed `Equatable` leaf
 /// (2026-06-18, Part 3.5). Rendered via `.equatable()` so a parent body
-/// re-evaluation (a SwiftData merge the row doesn't depend on) skips rebuilding
+/// re-evaluation (a GRDB merge the row doesn't depend on) skips rebuilding
 /// the row's body + its `CoinMark` when the row model is unchanged. `==` is
 /// `nonisolated` (Equatable requirement vs main-actor `View`) and reads only
 /// the Sendable value-typed row.

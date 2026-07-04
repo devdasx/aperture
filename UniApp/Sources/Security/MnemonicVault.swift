@@ -2,7 +2,7 @@ import Foundation
 import Security
 import CryptoKit
 import OSLog
-import SwiftData
+import GRDB
 
 /// Keychain-backed encrypted storage for the **user-readable secret**
 /// behind each wallet — the BIP-39 mnemonic for created / phrase-import
@@ -389,14 +389,14 @@ enum MnemonicVault {
     }
 }
 
-// MARK: - SwiftData-backed encrypted wallet secrets
+// MARK: - GRDB-backed encrypted wallet secrets
 
 /// Device-local encryption for `WalletSecretRecord` rows.
 ///
 /// The master key is an app-owned random 256-bit key stored in Keychain with
 /// `AfterFirstUnlockThisDeviceOnly`. It is not derived from the app passcode
 /// or Face ID, so turning those app locks off cannot make manual backup
-/// unable to read a phrase. The SwiftData row stores only AES-GCM ciphertext.
+/// unable to read a phrase. The GRDB row stores only AES-GCM ciphertext.
 enum WalletSecretCrypto {
     private static let masterKeyService = "com.thuglife.aperture.wallet-secret.master-key"
     private static let masterKeyAccount = "v1"
@@ -500,6 +500,13 @@ enum WalletSecretCrypto {
 }
 
 enum WalletSecretPersistence {
+    struct EncryptedSecretRow: Sendable {
+        let key: String
+        let walletId: UUID
+        let kindRaw: String
+        let cipherData: Data
+    }
+
     enum StoreError: Error, Sendable, Equatable {
         case encodingFailed
         case decodingFailed
@@ -519,62 +526,73 @@ enum WalletSecretPersistence {
     static func upsertMnemonic(
         _ words: [String],
         for walletId: UUID,
-        in context: ModelContext
+        database: AppDatabase = .shared
     ) throws {
         let canonical = words.map { $0.lowercased() }.joined(separator: " ")
-        try upsertSecret(canonical, kind: .mnemonic, walletId: walletId, in: context)
+        try upsertSecret(canonical, kind: .mnemonic, walletId: walletId, database: database)
     }
 
     static func upsertPrivateKey(
         _ keyString: String,
         for walletId: UUID,
-        in context: ModelContext
+        database: AppDatabase = .shared
     ) throws {
         let trimmed = keyString.trimmingCharacters(in: .whitespacesAndNewlines)
-        try upsertSecret(trimmed, kind: .privateKey, walletId: walletId, in: context)
+        try upsertSecret(trimmed, kind: .privateKey, walletId: walletId, database: database)
     }
 
-    static func loadMnemonic(for walletId: UUID, in context: ModelContext) throws -> [String]? {
-        guard let secret = try loadSecret(kind: .mnemonic, walletId: walletId, in: context) else {
+    static func encryptedMnemonicRow(_ words: [String], for walletId: UUID) throws -> EncryptedSecretRow {
+        let canonical = words.map { $0.lowercased() }.joined(separator: " ")
+        return try encryptedSecretRow(canonical, kind: .mnemonic, walletId: walletId)
+    }
+
+    static func encryptedPrivateKeyRow(_ keyString: String, for walletId: UUID) throws -> EncryptedSecretRow {
+        let trimmed = keyString.trimmingCharacters(in: .whitespacesAndNewlines)
+        return try encryptedSecretRow(trimmed, kind: .privateKey, walletId: walletId)
+    }
+
+    static func loadMnemonic(for walletId: UUID, database: AppDatabase = .shared) throws -> [String]? {
+        guard let secret = try loadSecret(kind: .mnemonic, walletId: walletId, database: database) else {
             return nil
         }
         let words = secret.split(separator: " ").map(String.init)
         return words.isEmpty ? nil : words
     }
 
-    static func loadPrivateKey(for walletId: UUID, in context: ModelContext) throws -> String? {
-        try loadSecret(kind: .privateKey, walletId: walletId, in: context)
+    static func loadPrivateKey(for walletId: UUID, database: AppDatabase = .shared) throws -> String? {
+        try loadSecret(kind: .privateKey, walletId: walletId, database: database)
     }
 
-    static func hasSecret(kind: WalletSecretKind, for walletId: UUID, in context: ModelContext) -> Bool {
-        (try? existingRecord(kind: kind, walletId: walletId, in: context)) != nil
+    static func hasSecret(kind: WalletSecretKind, for walletId: UUID, database: AppDatabase = .shared) -> Bool {
+        (try? existingRecord(kind: kind, walletId: walletId, database: database)) != nil
     }
 
-    static func availability(kind: WalletSecretKind, for walletId: UUID, in context: ModelContext) -> Availability {
+    static func availability(kind: WalletSecretKind, for walletId: UUID, database: AppDatabase = .shared) -> Availability {
         do {
-            guard try existingRecord(kind: kind, walletId: walletId, in: context) != nil else {
+            guard try existingRecord(kind: kind, walletId: walletId, database: database) != nil else {
                 return .missing
             }
             switch kind {
             case .mnemonic:
-                return ((try loadMnemonic(for: walletId, in: context)) ?? []).isEmpty ? .missing : .available
+                return ((try loadMnemonic(for: walletId, database: database)) ?? []).isEmpty ? .missing : .available
             case .privateKey:
-                return ((try loadPrivateKey(for: walletId, in: context)) ?? "").isEmpty ? .missing : .available
+                return ((try loadPrivateKey(for: walletId, database: database)) ?? "").isEmpty ? .missing : .available
             }
         } catch {
             return .encryptedRecordUnavailable
         }
     }
 
-    static func deleteSecret(kind: WalletSecretKind, for walletId: UUID, in context: ModelContext) throws {
-        if let record = try existingRecord(kind: kind, walletId: walletId, in: context) {
-            context.delete(record)
+    static func deleteSecret(kind: WalletSecretKind, for walletId: UUID, database: AppDatabase = .shared) throws {
+        let storageKey = WalletSecretRecord.storageKey(walletId: walletId, kind: kind)
+        try database.write { db in
+            try db.execute(sql: "DELETE FROM wallet_secrets WHERE key = ?", arguments: [storageKey])
         }
     }
 
-    static func deleteAll(for walletId: UUID, in context: ModelContext) throws {
-        for kind in WalletSecretKind.allCases {
-            try deleteSecret(kind: kind, for: walletId, in: context)
+    static func deleteAll(for walletId: UUID, database: AppDatabase = .shared) throws {
+        try database.write { db in
+            try db.execute(sql: "DELETE FROM wallet_secrets WHERE wallet_id = ?", arguments: [walletId.uuidString])
         }
     }
 
@@ -582,26 +600,55 @@ enum WalletSecretPersistence {
         _ secret: String,
         kind: WalletSecretKind,
         walletId: UUID,
-        in context: ModelContext
+        database: AppDatabase
     ) throws {
+        let encrypted = try encryptedSecretRow(secret, kind: kind, walletId: walletId)
+        let now = Date.databaseMilliseconds
+        try database.write { db in
+            try db.execute(
+                sql: """
+                INSERT INTO wallet_secrets
+                (key, wallet_id, kind_raw, cipher_data, created_at_ms, updated_at_ms)
+                VALUES (?, ?, ?, ?, ?, ?)
+                ON CONFLICT(wallet_id, kind_raw) DO UPDATE SET
+                    cipher_data = excluded.cipher_data,
+                    updated_at_ms = excluded.updated_at_ms
+                """,
+                arguments: [
+                    encrypted.key,
+                    encrypted.walletId.uuidString,
+                    encrypted.kindRaw,
+                    encrypted.cipherData,
+                    now,
+                    now
+                ]
+            )
+        }
+    }
+
+    private static func encryptedSecretRow(
+        _ secret: String,
+        kind: WalletSecretKind,
+        walletId: UUID
+    ) throws -> EncryptedSecretRow {
         guard let plaintext = secret.data(using: .utf8) else { throw StoreError.encodingFailed }
         let storageKey = WalletSecretRecord.storageKey(walletId: walletId, kind: kind)
         let associatedData = Data(storageKey.utf8)
         let ciphertext = try WalletSecretCrypto.seal(plaintext, associatedData: associatedData)
-        if let existing = try existingRecord(kind: kind, walletId: walletId, in: context) {
-            existing.cipherData = ciphertext
-            existing.updatedAt = Date()
-        } else {
-            context.insert(WalletSecretRecord(walletId: walletId, kind: kind, cipherData: ciphertext))
-        }
+        return EncryptedSecretRow(
+            key: storageKey,
+            walletId: walletId,
+            kindRaw: kind.rawValue,
+            cipherData: ciphertext
+        )
     }
 
     private static func loadSecret(
         kind: WalletSecretKind,
         walletId: UUID,
-        in context: ModelContext
+        database: AppDatabase
     ) throws -> String? {
-        guard let record = try existingRecord(kind: kind, walletId: walletId, in: context) else {
+        guard let record = try existingRecord(kind: kind, walletId: walletId, database: database) else {
             return nil
         }
         let associatedData = Data(record.key.utf8)
@@ -615,23 +662,40 @@ enum WalletSecretPersistence {
     private static func existingRecord(
         kind: WalletSecretKind,
         walletId: UUID,
-        in context: ModelContext
+        database: AppDatabase
     ) throws -> WalletSecretRecord? {
         let storageKey = WalletSecretRecord.storageKey(walletId: walletId, kind: kind)
-        var descriptor = FetchDescriptor<WalletSecretRecord>(
-            predicate: #Predicate { $0.key == storageKey }
-        )
-        descriptor.fetchLimit = 1
-        return try context.fetch(descriptor).first
+        return try database.read { db in
+            guard let row = try Row.fetchOne(
+                db,
+                sql: "SELECT key, wallet_id, kind_raw, cipher_data, created_at_ms, updated_at_ms FROM wallet_secrets WHERE key = ?",
+                arguments: [storageKey]
+            ), let walletId = UUID(uuidString: row["wallet_id"]) else {
+                return nil
+            }
+            return WalletSecretRecord(
+                walletId: walletId,
+                kind: WalletSecretKind(rawValue: row["kind_raw"]) ?? kind,
+                cipherData: row["cipher_data"],
+                createdAt: Date(databaseMilliseconds: row["created_at_ms"]),
+                updatedAt: Date(databaseMilliseconds: row["updated_at_ms"])
+            )
+        }
     }
 }
 
-@ModelActor
-actor WalletSecretRepository {
+@MainActor
+final class WalletSecretRepository {
+    private let database: AppDatabase
+
+    init(database: AppDatabase = .shared) {
+        self.database = database
+    }
+
     func loadMnemonic(for walletId: UUID) throws -> [String]? {
         let dbError: Error?
         do {
-            if let words = try WalletSecretPersistence.loadMnemonic(for: walletId, in: modelContext) {
+            if let words = try WalletSecretPersistence.loadMnemonic(for: walletId, database: database) {
                 return words
             }
             dbError = nil
@@ -640,8 +704,7 @@ actor WalletSecretRepository {
         }
 
         if let words = try MnemonicVault.loadMnemonic(for: walletId), !words.isEmpty {
-            try? WalletSecretPersistence.upsertMnemonic(words, for: walletId, in: modelContext)
-            try? modelContext.save()
+            try? WalletSecretPersistence.upsertMnemonic(words, for: walletId, database: database)
             return words
         }
 
@@ -654,7 +717,7 @@ actor WalletSecretRepository {
     func loadPrivateKey(for walletId: UUID) throws -> String? {
         let dbError: Error?
         do {
-            if let key = try WalletSecretPersistence.loadPrivateKey(for: walletId, in: modelContext) {
+            if let key = try WalletSecretPersistence.loadPrivateKey(for: walletId, database: database) {
                 return key
             }
             dbError = nil
@@ -663,8 +726,7 @@ actor WalletSecretRepository {
         }
 
         if let key = try MnemonicVault.loadPrivateKey(for: walletId), !key.isEmpty {
-            try? WalletSecretPersistence.upsertPrivateKey(key, for: walletId, in: modelContext)
-            try? modelContext.save()
+            try? WalletSecretPersistence.upsertPrivateKey(key, for: walletId, database: database)
             return key
         }
 
@@ -675,7 +737,7 @@ actor WalletSecretRepository {
     }
 
     func hasMnemonic(for walletId: UUID) -> Bool {
-        if let words = try? WalletSecretPersistence.loadMnemonic(for: walletId, in: modelContext),
+        if let words = try? WalletSecretPersistence.loadMnemonic(for: walletId, database: database),
            !words.isEmpty {
             return true
         }
@@ -683,7 +745,7 @@ actor WalletSecretRepository {
     }
 
     func hasPrivateKey(for walletId: UUID) -> Bool {
-        if let key = try? WalletSecretPersistence.loadPrivateKey(for: walletId, in: modelContext),
+        if let key = try? WalletSecretPersistence.loadPrivateKey(for: walletId, database: database),
            !key.isEmpty {
             return true
         }
@@ -694,7 +756,7 @@ actor WalletSecretRepository {
         if hasMnemonic(for: walletId) {
             return .available
         }
-        let availability = WalletSecretPersistence.availability(kind: .mnemonic, for: walletId, in: modelContext)
+        let availability = WalletSecretPersistence.availability(kind: .mnemonic, for: walletId, database: database)
         if availability == .encryptedRecordUnavailable {
             return .encryptedRecordUnavailable
         }
@@ -705,7 +767,7 @@ actor WalletSecretRepository {
         if hasPrivateKey(for: walletId) {
             return .available
         }
-        let availability = WalletSecretPersistence.availability(kind: .privateKey, for: walletId, in: modelContext)
+        let availability = WalletSecretPersistence.availability(kind: .privateKey, for: walletId, database: database)
         if availability == .encryptedRecordUnavailable {
             return .encryptedRecordUnavailable
         }

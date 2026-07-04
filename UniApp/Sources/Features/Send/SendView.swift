@@ -1,5 +1,4 @@
 import SwiftUI
-import SwiftData
 
 /// **Send screen — asset-first bottom sheet.** The twin of `ReceiveView`,
 /// rebuilt step by step from our own Receive design (no external handoff):
@@ -17,10 +16,7 @@ import SwiftData
 /// lists the real networks the wallet can sign from. Step 3 (compose) is
 /// the seam where the next increment — amount entry + recipient — lands.
 struct SendView: View {
-    @Query(sort: \WalletRecord.sortOrder) private var allWallets: [WalletRecord]
-    @Query(sort: [SortDescriptor(\CustomTokenRecord.symbol, order: .forward)])
-    private var customTokenRecords: [CustomTokenRecord]
-    @Query private var assetRecords: [AssetRecord]
+    @StateObject private var databaseSnapshot = DatabaseSnapshotObservation()
     @AppStorage("activeWalletId") private var activeWalletIdRaw: String = ""
 
     /// The sheet's own NavigationPath — lives on the sheet root so it can
@@ -66,6 +62,20 @@ struct SendView: View {
 
     private var currencyCode: String {
         UserDefaults.standard.string(forKey: CurrencyPreference.storageKey) ?? CurrencyPreference.defaultCode
+    }
+
+    private var allWallets: [WalletRecord] {
+        databaseSnapshot.wallets
+    }
+
+    private var customTokenRecords: [CustomTokenRecord] {
+        databaseSnapshot.customTokenRecords.sorted {
+            $0.symbol.localizedStandardCompare($1.symbol) == .orderedAscending
+        }
+    }
+
+    private var assetRecords: [AssetRecord] {
+        databaseSnapshot.assetRecords
     }
 
     /// Cheap change-detector for the holdings rebuild — wallet id + the

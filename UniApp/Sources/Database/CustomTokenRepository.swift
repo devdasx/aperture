@@ -1,32 +1,13 @@
 import Foundation
-import SwiftData
+import GRDB
 
-/// Background-safe mutation surface for `CustomTokenRecord`. Parallels
-/// `WalletRepository` in shape — `@ModelActor` with its own
-/// `ModelContext`, methods return after `save()` so callers can rely on
-/// `@Query`-driven SwiftUI views to pick up the change on the next
-/// frame.
-///
-/// **Dedup contract.** `(chain, contract)` uniquely identifies a custom
-/// token. `add(_:)` throws `CustomTokenError.duplicate` if a row with
-/// the same `dedupKey` already exists. `fetchByContract(...)` uses the
-/// same case-insensitive compare so callers can detect the duplicate
-/// before showing the Add sheet's "Save" CTA.
-///
-/// **Read consistency.** `fetchAll(chain:)` and `fetchByContract(...)`
-/// take a snapshot at call time — repeat callers of `fetchAll` after
-/// an `add` see the new row. Callers get plain-value snapshots so they
-/// can safely cross actor boundaries without holding SwiftData models.
-@ModelActor
-actor CustomTokenRepository {
+final class CustomTokenRepository {
+    private let database: AppDatabase
 
-    /// Insert a new custom-token row. Throws `.duplicate` if the
-    /// `(chain, contract)` pair already exists.
-    ///
-    /// The caller is expected to have validated the contract via
-    /// `ContractValidator` and to have passed the normalized form
-    /// (EIP-55 checksummed for EVM, verbatim base58 for Solana).
-    /// Repository does NOT re-validate — that's the Add sheet's job.
+    init(database: AppDatabase = .shared) {
+        self.database = database
+    }
+
     func add(
         id: UUID = UUID(),
         chain: SupportedChain,
@@ -36,112 +17,61 @@ actor CustomTokenRepository {
         decimals: Int,
         metadataFromChain: Bool = true
     ) throws {
-        if try fetchRecord(chain: chain, contract: contract) != nil {
-            throw CustomTokenError.duplicate
+        let dedupKey = "\(chain.rawValue)|\(contract.lowercased())"
+        try database.write { db in
+            let exists = try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM custom_tokens WHERE dedup_key = ?", arguments: [dedupKey]) ?? 0
+            if exists > 0 { throw CustomTokenError.duplicate }
+            try db.execute(
+                sql: """
+                INSERT INTO custom_tokens
+                (id, chain_raw, contract, symbol, name, decimals, icon_url, added_at_ms, metadata_from_chain, dedup_key)
+                VALUES (?, ?, ?, ?, ?, ?, NULL, ?, ?, ?)
+                """,
+                arguments: [
+                    id.uuidString,
+                    chain.rawValue,
+                    contract,
+                    symbol,
+                    name,
+                    decimals,
+                    Date.databaseMilliseconds,
+                    metadataFromChain,
+                    dedupKey
+                ]
+            )
         }
-        let record = CustomTokenRecord(
-            id: id,
-            chainRaw: chain.rawValue,
-            contract: contract,
-            symbol: symbol,
-            name: name,
-            decimals: decimals,
-            iconURL: nil,
-            addedAt: Date(),
-            metadataFromChain: metadataFromChain
-        )
-        modelContext.insert(record)
-        try modelContext.save()
     }
 
-    /// Delete a custom-token row by its UUID. No-op if the row is
-    /// already gone.
     func remove(id: UUID) throws {
-        var descriptor = FetchDescriptor<CustomTokenRecord>(
-            predicate: #Predicate { $0.id == id }
-        )
-        descriptor.fetchLimit = 1
-        guard let match = try modelContext.fetch(descriptor).first else { return }
-        modelContext.delete(match)
-        try modelContext.save()
+        try database.write { db in
+            try db.execute(sql: "DELETE FROM custom_tokens WHERE id = ?", arguments: [id.uuidString])
+        }
     }
 
-    /// Fetch every custom token, optionally filtered to one chain.
-    /// `nil` chain returns every row across every chain — used by
-    /// the Custom Tokens list screen when displaying sections by
-    /// chain.
-    ///
-    /// Returns a snapshot of plain-value `CustomTokenSnapshot`
-    /// structs (Sendable) so callers across actor boundaries don't
-    /// hold `@Model` references.
     func fetchAll(chain: SupportedChain? = nil) throws -> [CustomTokenSnapshot] {
-        let descriptor = FetchDescriptor<CustomTokenRecord>(
-            sortBy: [SortDescriptor(\.symbol, order: .forward)]
-        )
-        let all = try modelContext.fetch(descriptor)
-        // Gate on `hasKnownChain` HERE — `CustomTokenSnapshot` carries a
-        // non-optional `chain` whose decode falls back to `.ethereum`,
-        // so the snapshot type erases the unknown-chain signal. A row
-        // whose `chainRaw` no longer decodes (e.g. a retired
-        // `SupportedChain` rawValue) must not be scanned or displayed
-        // as if it lived on Ethereum, per the contract documented on
-        // `CustomTokenRecord.hasKnownChain`.
-        let known = all.filter { $0.hasKnownChain }
-        let filtered: [CustomTokenRecord]
-        if let chain {
-            filtered = known.filter { $0.chainRaw == chain.rawValue }
-        } else {
-            filtered = known
+        try database.read { db in
+            let rows: [Row]
+            if let chain {
+                rows = try Row.fetchAll(
+                    db,
+                    sql: "SELECT * FROM custom_tokens WHERE chain_raw = ? ORDER BY symbol ASC",
+                    arguments: [chain.rawValue]
+                )
+            } else {
+                rows = try Row.fetchAll(db, sql: "SELECT * FROM custom_tokens ORDER BY symbol ASC")
+            }
+            return rows.compactMap(CustomTokenSnapshot.init(row:))
         }
-        return filtered.map { CustomTokenSnapshot(from: $0) }
     }
 
-    /// Lookup a single custom token by `(chain, contract)`. Returns
-    /// `nil` if not found. Used by the Add sheet to detect a
-    /// duplicate before the user taps Save.
-    func fetchByContract(
-        chain: SupportedChain,
-        contract: String
-    ) throws -> CustomTokenSnapshot? {
-        guard let match = try fetchRecord(chain: chain, contract: contract) else {
-            return nil
+    func fetchByContract(chain: SupportedChain, contract: String) throws -> CustomTokenSnapshot? {
+        let dedupKey = "\(chain.rawValue)|\(contract.lowercased())"
+        return try database.read { db in
+            try Row.fetchOne(db, sql: "SELECT * FROM custom_tokens WHERE dedup_key = ?", arguments: [dedupKey]).flatMap(CustomTokenSnapshot.init(row:))
         }
-        return CustomTokenSnapshot(from: match)
-    }
-
-    /// Dedup lookup by `(chain, contract)`. Two-step fetch instead of a
-    /// full-table scan: an exact-equality predicate (`chainRaw` +
-    /// `contract`, fetchLimit 1) catches the normalized-form fast path,
-    /// then a chain-scoped predicate narrows the case-insensitive
-    /// `dedupKey` comparison to that one chain's rows. `#Predicate`
-    /// has no store-evaluated case-insensitive equality, so the
-    /// lowercased compare runs in memory — but only over the handful
-    /// of custom tokens on the matching chain, never the whole table.
-    private func fetchRecord(
-        chain: SupportedChain,
-        contract: String
-    ) throws -> CustomTokenRecord? {
-        let chainValue = chain.rawValue
-        var exactDescriptor = FetchDescriptor<CustomTokenRecord>(
-            predicate: #Predicate { $0.chainRaw == chainValue && $0.contract == contract }
-        )
-        exactDescriptor.fetchLimit = 1
-        if let exact = try modelContext.fetch(exactDescriptor).first {
-            return exact
-        }
-
-        let key = "\(chainValue)|\(contract.lowercased())"
-        let chainDescriptor = FetchDescriptor<CustomTokenRecord>(
-            predicate: #Predicate { $0.chainRaw == chainValue }
-        )
-        return try modelContext.fetch(chainDescriptor).first { $0.dedupKey == key }
     }
 }
 
-/// Sendable value snapshot of a `CustomTokenRecord`. Used to cross
-/// actor boundaries — `@Model` instances are tied to their owning
-/// `ModelContext` and can't be passed across isolation domains; this
-/// struct is the carrier.
 struct CustomTokenSnapshot: Sendable, Hashable, Identifiable {
     let id: UUID
     let chain: SupportedChain
@@ -153,19 +83,32 @@ struct CustomTokenSnapshot: Sendable, Hashable, Identifiable {
     let metadataFromChain: Bool
 
     init(from record: CustomTokenRecord) {
-        self.id = record.id
-        self.chain = record.chain
-        self.contract = record.contract
-        self.symbol = record.symbol
-        self.name = record.name
-        self.decimals = record.decimals
-        self.addedAt = record.addedAt
-        self.metadataFromChain = record.metadataFromChain
+        id = record.id
+        chain = record.chain
+        contract = record.contract
+        symbol = record.symbol
+        name = record.name
+        decimals = record.decimals
+        addedAt = record.addedAt
+        metadataFromChain = record.metadataFromChain
+    }
+
+    init?(row: Row) {
+        guard
+            let id = UUID(uuidString: row["id"]),
+            let chain = SupportedChain(rawValue: row["chain_raw"])
+        else { return nil }
+        self.id = id
+        self.chain = chain
+        contract = row["contract"]
+        symbol = row["symbol"]
+        name = row["name"]
+        decimals = row["decimals"]
+        addedAt = Date(databaseMilliseconds: row["added_at_ms"])
+        metadataFromChain = (row["metadata_from_chain"] as Int) != 0
     }
 }
 
-/// Errors a `CustomTokenRepository` can throw.
 enum CustomTokenError: Error, Sendable, Equatable {
-    /// A row with the same `(chain, contract)` already exists.
     case duplicate
 }

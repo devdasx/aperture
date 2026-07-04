@@ -1,252 +1,136 @@
 import Foundation
-import SwiftData
+import GRDB
 
-/// On-disk repository for `HistoricalPriceRecord`. Mirror of
-/// `PriceCacheRepository` (which holds the latest spot) but for
-/// per-day historical close prices used by
-/// `BalanceHistoryReconstructor` to value past holdings at their
-/// then-prices.
-///
-/// **Why this is separate from `PriceCacheRepository`.** Latest
-/// spot rotates fast (every refresh overwrites the row); historical
-/// close prices are immutable per day. Splitting the actors lets the
-/// historical table grow without churn on the spot row, and lets the
-/// historical fetcher write through a single owner without
-/// interleaving with the live spot writer.
-@ModelActor
-actor HistoricalPriceRepository {
+final class HistoricalPriceRepository {
+    private let database: AppDatabase
 
-    /// Upsert one day's close price. Idempotent. The composite key
-    /// `"SYMBOL-FIAT-yyyymmdd"` lets duplicate writes collapse to a
-    /// fetch-then-update.
-    func upsert(symbol: String, fiat: String, dayKey: Int, price: Decimal) throws {
-        let upperSymbol = symbol.uppercased()
-        let upperFiat = fiat.uppercased()
-        let key = "\(upperSymbol)-\(upperFiat)-\(dayKey)"
-        var descriptor = FetchDescriptor<HistoricalPriceRecord>(
-            predicate: #Predicate { $0.key == key }
-        )
-        descriptor.fetchLimit = 1
-
-        if let existing = try modelContext.fetch(descriptor).first {
-            // **2026-06-18 — skip no-op writes (idle-lag fix).** A day's close
-            // is immutable once fetched, so the chart's ensure-loop re-writing
-            // the same candles would only dirty the row (via `fetchedAt`) and
-            // churn the wallet-home `historicalPrices` @Query for no UI change.
-            // Only write when the close actually changed (a same-day candle
-            // still settling).
-            if existing.price == price { return }
-            existing.price = price
-            existing.fetchedAt = Date()
-        } else {
-            let record = HistoricalPriceRecord(
-                symbol: upperSymbol,
-                fiat: upperFiat,
-                dayKey: dayKey,
-                price: price
-            )
-            modelContext.insert(record)
-        }
-        if modelContext.hasChanges { try modelContext.save() }
+    init(database: AppDatabase = .shared) {
+        self.database = database
     }
 
-    /// Bulk upsert. One transaction commit instead of N. Used by
-    /// `CoinbaseHistoricalPriceService` to write ~300 daily candles in
-    /// one shot after a single network round-trip.
+    func upsert(symbol: String, fiat: String, dayKey: Int, price: Decimal) throws {
+        try upsertMany([(symbol: symbol, fiat: fiat, dayKey: dayKey, price: price)])
+    }
+
     func upsertMany(_ entries: [(symbol: String, fiat: String, dayKey: Int, price: Decimal)]) throws {
         guard !entries.isEmpty else { return }
-        // Rule #28 batch-fetch (2026-06-14): fetch ALL matching records in
-        // ONE query keyed on the entry keys, instead of a FetchDescriptor
-        // per entry (~300 queries for a full candle set). Off-main on the
-        // actor, but the per-entry fetch loop was real CPU during every
-        // chart/refresh historical write.
-        let now = Date()
-        let keyed = entries.map { entry -> (key: String, symbol: String, fiat: String, dayKey: Int, price: Decimal) in
-            let upperSymbol = entry.symbol.uppercased()
-            let upperFiat = entry.fiat.uppercased()
-            return ("\(upperSymbol)-\(upperFiat)-\(entry.dayKey)", upperSymbol, upperFiat, entry.dayKey, entry.price)
-        }
-        let allKeys = Array(Set(keyed.map { $0.key }))
-        let descriptor = FetchDescriptor<HistoricalPriceRecord>(
-            predicate: #Predicate { allKeys.contains($0.key) }
-        )
-        var byKey = Dictionary(
-            try modelContext.fetch(descriptor).map { ($0.key, $0) },
-            uniquingKeysWith: { first, _ in first }
-        )
-        for entry in keyed {
-            if let existing = byKey[entry.key] {
-                // Skip no-op writes — see `upsert` above. An unchanged candle
-                // must not dirty the row and churn the `historicalPrices` @Query.
-                if existing.price == entry.price { continue }
-                existing.price = entry.price
-                existing.fetchedAt = now
-            } else {
-                let record = HistoricalPriceRecord(
-                    symbol: entry.symbol,
-                    fiat: entry.fiat,
-                    dayKey: entry.dayKey,
-                    price: entry.price
+        let now = Date.databaseMilliseconds
+        try database.write { db in
+            for entry in entries {
+                let symbol = entry.symbol.uppercased()
+                let fiat = entry.fiat.uppercased()
+                let key = "\(symbol)-\(fiat)-\(entry.dayKey)"
+                try db.execute(
+                    sql: """
+                    INSERT INTO historical_prices
+                    (key, symbol, fiat, day_key, price, price_numeric, fetched_at_ms)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(key) DO UPDATE SET
+                        price = excluded.price,
+                        price_numeric = excluded.price_numeric,
+                        fetched_at_ms = excluded.fetched_at_ms
+                    WHERE historical_prices.price != excluded.price
+                    """,
+                    arguments: [key, symbol, fiat, entry.dayKey, entry.price.databaseText, entry.price.databaseDouble, now]
                 )
-                modelContext.insert(record)
-                byKey[entry.key] = record  // a later duplicate key updates this row
             }
         }
-        if modelContext.hasChanges { try modelContext.save() }
     }
 
-    /// All historical prices for one symbol in one fiat, keyed by
-    /// dayKey. The reconstructor consumes this shape directly —
-    /// O(1) per point lookup.
     func priceSeries(symbol: String, fiat: String) throws -> [Int: Decimal] {
-        let upperSymbol = symbol.uppercased()
-        let upperFiat = fiat.uppercased()
-        let descriptor = FetchDescriptor<HistoricalPriceRecord>(
-            predicate: #Predicate { $0.symbol == upperSymbol && $0.fiat == upperFiat }
-        )
-        let rows = try modelContext.fetch(descriptor)
-        var out: [Int: Decimal] = [:]
-        out.reserveCapacity(rows.count)
-        for r in rows { out[r.dayKey] = r.price }
-        return out
+        try priceSeries(symbol: symbol, fiat: fiat, fromDay: Int.min, toDay: Int.max)
     }
 
-    /// All historical prices for many symbols in one fiat. Bulk read
-    /// for the chart's reconstruction — single fetch, then in-memory
-    /// bucketing by symbol.
     func priceSeriesBySymbol(symbols: [String], fiat: String) throws -> [String: [Int: Decimal]] {
-        let upperSymbols = Set(symbols.map { $0.uppercased() })
-        let upperFiat = fiat.uppercased()
-        let descriptor = FetchDescriptor<HistoricalPriceRecord>(
-            predicate: #Predicate { upperSymbols.contains($0.symbol) && $0.fiat == upperFiat }
-        )
-        let rows = try modelContext.fetch(descriptor)
-        var out: [String: [Int: Decimal]] = [:]
-        for r in rows {
-            out[r.symbol, default: [:]][r.dayKey] = r.price
-        }
-        return out
-    }
-
-    /// Range query — useful when the chart's range is short (`.week`)
-    /// and we don't need the full series. dayKeys are inclusive on
-    /// both ends.
-    func priceSeries(
-        symbol: String,
-        fiat: String,
-        fromDay: Int,
-        toDay: Int
-    ) throws -> [Int: Decimal] {
-        let upperSymbol = symbol.uppercased()
-        let upperFiat = fiat.uppercased()
-        let descriptor = FetchDescriptor<HistoricalPriceRecord>(
-            predicate: #Predicate { row in
-                row.symbol == upperSymbol
-                    && row.fiat == upperFiat
-                    && row.dayKey >= fromDay
-                    && row.dayKey <= toDay
+        let wanted = Set(symbols.map { $0.uppercased() })
+        guard !wanted.isEmpty else { return [:] }
+        let fiat = fiat.uppercased()
+        return try database.read { db in
+            let rows = try Row.fetchAll(db, sql: "SELECT symbol, day_key, price FROM historical_prices WHERE fiat = ?", arguments: [fiat])
+            var out: [String: [Int: Decimal]] = [:]
+            for row in rows {
+                let symbol: String = row["symbol"]
+                guard wanted.contains(symbol) else { continue }
+                out[symbol, default: [:]][row["day_key"]] = Decimal(string: row["price"] as String) ?? 0
             }
-        )
-        let rows = try modelContext.fetch(descriptor)
-        var out: [Int: Decimal] = [:]
-        for r in rows { out[r.dayKey] = r.price }
-        return out
+            return out
+        }
     }
 
-    /// **Latest-close fallback (2026-06-13).** The most recent daily
-    /// close per symbol in `fiat` — the price the chart already values
-    /// holdings at. Used as a pricing-engine rung so a balance row is
-    /// NEVER written "Price unavailable" when we hold a usable close:
-    /// the user reported BTC/ETH showing "Price unavailable" on the
-    /// asset screen while the chart (which reads this table) clearly
-    /// had the price. Returns at most one entry per symbol (highest
-    /// `dayKey`).
+    func priceSeries(symbol: String, fiat: String, fromDay: Int, toDay: Int) throws -> [Int: Decimal] {
+        let symbol = symbol.uppercased()
+        let fiat = fiat.uppercased()
+        return try database.read { db in
+            let rows = try Row.fetchAll(
+                db,
+                sql: """
+                SELECT day_key, price FROM historical_prices
+                WHERE symbol = ? AND fiat = ? AND day_key >= ? AND day_key <= ?
+                """,
+                arguments: [symbol, fiat, fromDay, toDay]
+            )
+            var out: [Int: Decimal] = [:]
+            for row in rows {
+                out[row["day_key"]] = Decimal(string: row["price"] as String) ?? 0
+            }
+            return out
+        }
+    }
+
     func latestClose(symbols: [String], fiat: String) throws -> [String: Decimal] {
-        let upperSymbols = Set(symbols.map { $0.uppercased() })
-        let upperFiat = fiat.uppercased()
-        guard !upperSymbols.isEmpty else { return [:] }
-        var descriptor = FetchDescriptor<HistoricalPriceRecord>(
-            predicate: #Predicate { upperSymbols.contains($0.symbol) && $0.fiat == upperFiat },
-            sortBy: [SortDescriptor(\.dayKey, order: .reverse)]
-        )
-        descriptor.fetchLimit = upperSymbols.count * 8  // newest few per symbol; first-seen wins
-        let rows = try modelContext.fetch(descriptor)
-        var out: [String: Decimal] = [:]
-        for r in rows where out[r.symbol] == nil && r.price > 0 {
-            out[r.symbol] = r.price
+        let wanted = Set(symbols.map { $0.uppercased() })
+        guard !wanted.isEmpty else { return [:] }
+        let fiat = fiat.uppercased()
+        return try database.read { db in
+            let rows = try Row.fetchAll(
+                db,
+                sql: "SELECT symbol, price FROM historical_prices WHERE fiat = ? ORDER BY day_key DESC",
+                arguments: [fiat]
+            )
+            var out: [String: Decimal] = [:]
+            for row in rows {
+                let symbol: String = row["symbol"]
+                guard wanted.contains(symbol), out[symbol] == nil else { continue }
+                let price = Decimal(string: row["price"] as String) ?? 0
+                if price > 0 { out[symbol] = price }
+            }
+            return out
         }
-        return out
     }
 
-    /// Cross-currency variant of `latestClose` — the most recent close
-    /// per symbol in ANY currency, with that close's own `fiat` so the
-    /// caller can FX-convert. The final safety net behind
-    /// `latestClose(symbols:fiat:)` for a user who only ever had
-    /// historical coverage in a different currency.
-    func latestCloseAnyCurrency(
-        symbols: [String]
-    ) throws -> [String: (price: Decimal, fiat: String)] {
-        let upperSymbols = Set(symbols.map { $0.uppercased() })
-        guard !upperSymbols.isEmpty else { return [:] }
-        var descriptor = FetchDescriptor<HistoricalPriceRecord>(
-            predicate: #Predicate { upperSymbols.contains($0.symbol) },
-            sortBy: [SortDescriptor(\.dayKey, order: .reverse)]
-        )
-        descriptor.fetchLimit = upperSymbols.count * 16
-        let rows = try modelContext.fetch(descriptor)
-        var out: [String: (Decimal, String)] = [:]
-        for r in rows where out[r.symbol] == nil && r.price > 0 {
-            out[r.symbol] = (r.price, r.fiat)
+    func latestCloseAnyCurrency(symbols: [String]) throws -> [String: (price: Decimal, fiat: String)] {
+        let wanted = Set(symbols.map { $0.uppercased() })
+        guard !wanted.isEmpty else { return [:] }
+        return try database.read { db in
+            let rows = try Row.fetchAll(db, sql: "SELECT symbol, fiat, price FROM historical_prices ORDER BY day_key DESC")
+            var out: [String: (Decimal, String)] = [:]
+            for row in rows {
+                let symbol: String = row["symbol"]
+                guard wanted.contains(symbol), out[symbol] == nil else { continue }
+                let price = Decimal(string: row["price"] as String) ?? 0
+                if price > 0 { out[symbol] = (price, row["fiat"]) }
+            }
+            return out
         }
-        return out
     }
 
-    /// Wipe every row. Settings → Advanced → Clear price cache
-    /// extends to historical too — the next chart render kicks off
-    /// re-fetches from Coinbase as needed.
     func clearAll() throws {
-        let descriptor = FetchDescriptor<HistoricalPriceRecord>()
-        for row in try modelContext.fetch(descriptor) {
-            modelContext.delete(row)
-        }
-        try modelContext.save()
+        try database.write { db in try db.execute(sql: "DELETE FROM historical_prices") }
     }
 }
 
-// MARK: - Day key helpers
-
-/// Shared `yyyy * 10000 + mm * 100 + dd` integer encoder. Used by
-/// `HistoricalPriceRecord` callers AND by
-/// `BalanceHistoryReconstructor` so both sides agree on the day-key
-/// representation. Reads `Calendar.current.dateComponents([.year,
-/// .month, .day], from: date)` once per call.
 enum DayKey {
-
-    /// Fixed UTC calendar. Daily closes are UTC-day candles, so the stored
-    /// candle key AND the reconstructor's tx-day lookup must BOTH compute the
-    /// key in UTC. Defaulting to `Calendar.current` (device-local) mis-bucketed
-    /// every history row by ±1 day in non-UTC zones — in all of the Americas the
-    /// candle for day D was stored under D−1, so the reconstructor's
-    /// `priceHistory[symbol][dayKey(tx)]` lookup missed, fell through to today's
-    /// spot, and valued history at the CURRENT price — flattening the curve. The
-    /// chart's correctness must not depend on the device timezone (root cause
-    /// #3, 2026-06-18 fix).
     static let utc: Calendar = {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(identifier: "UTC") ?? .gmt
         return calendar
     }()
 
-    /// `2026-04-30` (interpreted in UTC) → `20260430`.
     static func from(date: Date, calendar: Calendar = DayKey.utc) -> Int {
         let comps = calendar.dateComponents([.year, .month, .day], from: date)
         return (comps.year ?? 0) * 10_000 + (comps.month ?? 0) * 100 + (comps.day ?? 0)
     }
 
-    /// Parse the price server's authoritative `"yyyy-mm-dd"` day string into the
-    /// same `yyyymmdd` Int — pure string math, no timezone, so it can never
-    /// drift. Returns `nil` when the string isn't the expected shape (the caller
-    /// falls back to the UTC epoch→day computation above).
     static func from(dayString: String) -> Int? {
         let parts = dayString.split(separator: "-")
         guard parts.count == 3,

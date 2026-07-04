@@ -9,7 +9,7 @@ import OSLog
 /// `SendDraftValidator`, and produces the validated `SendDraft` the next
 /// (sign) step will consume.
 ///
-/// **Local-first (Rule #27).** Balances are read from the SwiftData store
+/// **Local-first (Rule #27).** Balances are read from the GRDB store
 /// by the view and handed in via `setBalances(...)` — the model never
 /// imports a network type for balances. The ONE network read it owns is
 /// the live fee quote (`ComposeFeeService`) and, for the Bitcoin family,

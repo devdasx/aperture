@@ -1,7 +1,7 @@
 import Foundation
+import GRDB
 import Network
 import OSLog
-import SwiftData
 import WalletCore
 
 actor BitcoinCashElectrumBalanceScanner {
@@ -10,10 +10,10 @@ actor BitcoinCashElectrumBalanceScanner {
     func scanAndPersist(
         walletId: UUID,
         currencyCode: String,
-        modelContainer: ModelContainer,
+        database: AppDatabase,
         includePrices: Bool = true
     ) async throws {
-        let targetRepository = BitcoinCashWalletScanTargetRepository(modelContainer: modelContainer)
+        let targetRepository = BitcoinCashWalletScanTargetRepository(database: database)
         let plan = try await targetRepository.scanPlan(walletId: walletId)
         guard let plan, !plan.targets.isEmpty else { return }
 
@@ -37,7 +37,7 @@ actor BitcoinCashElectrumBalanceScanner {
         let isUsed = totalSats > 0 || scans.contains { $0.historyCount > 0 }
         let fiat = fiatValue(sats: totalSats, prices: priceMap)
 
-        let txRepo = TransactionRepository(modelContainer: modelContainer)
+        let txRepo = TransactionRepository(database: database)
         try await txRepo.upsertBalance(
             addressId: plan.primaryAddressId,
             tokenSymbol: SupportedChain.bitcoinCash.ticker,
@@ -67,13 +67,13 @@ actor BitcoinCashElectrumBalanceScanner {
                 )
             }
         }
-        _ = try await ChainStateRepository(modelContainer: modelContainer)
+        _ = try await ChainStateRepository(database: database)
             .replaceAddressedUTXOs(
                 walletId: walletId,
                 chain: .bitcoinCash,
                 utxos: utxos
             )
-        _ = try await ChainStateRepository(modelContainer: modelContainer).rebuild(
+        _ = try await ChainStateRepository(database: database).rebuild(
             walletId: walletId,
             fiatCurrencyCode: currencyCode,
             onlyChains: [.bitcoinCash],
@@ -99,26 +99,25 @@ actor BitcoinCashElectrumBalanceScanner {
     }
 }
 
-@ModelActor
 private actor BitcoinCashWalletScanTargetRepository {
     private let gapLimit = 20
+    private let database: AppDatabase
+
+    init(database: AppDatabase) {
+        self.database = database
+    }
 
     func scanPlan(walletId: UUID) throws -> BitcoinCashElectrumScanPlan? {
-        var walletDescriptor = FetchDescriptor<WalletRecord>(
-            predicate: #Predicate { $0.id == walletId }
-        )
-        walletDescriptor.fetchLimit = 1
-        guard let wallet = try modelContext.fetch(walletDescriptor).first else { return nil }
-
         let chainRaw = SupportedChain.bitcoinCash.rawValue
-        let ownerId = Optional(walletId)
-        let descriptor = FetchDescriptor<WalletAddressRecord>(
-            predicate: #Predicate { $0.walletId == ownerId && $0.chainRaw == chainRaw }
-        )
-        let directAddresses = try modelContext.fetch(descriptor)
-        let addresses = directAddresses.isEmpty
-            ? wallet.addresses.filter { $0.chainRaw == chainRaw }
-            : directAddresses
+        let snapshot = try database.read { db -> BitcoinCashWalletScanSnapshot? in
+            guard let wallet = try BitcoinCashWalletRow.fetchOne(db, walletId: walletId) else { return nil }
+            let addresses = try BitcoinCashWalletAddressRow.fetchAll(db, walletId: walletId, chainRaw: chainRaw)
+            guard !addresses.isEmpty else { return nil }
+            return BitcoinCashWalletScanSnapshot(wallet: wallet, addresses: addresses)
+        }
+        guard let snapshot else { return nil }
+        let wallet = snapshot.wallet
+        let addresses = snapshot.addresses
         guard let primary = addresses.first else { return nil }
 
         var targets: [BitcoinCashElectrumScanTarget] = []
@@ -162,7 +161,7 @@ private actor BitcoinCashWalletScanTargetRepository {
     }
 
     private func loadMnemonic(walletId: UUID) -> [String]? {
-        if let words = try? WalletSecretPersistence.loadMnemonic(for: walletId, in: modelContext),
+        if let words = try? WalletSecretPersistence.loadMnemonic(for: walletId, database: database),
            !words.isEmpty {
             return words
         }
@@ -170,7 +169,7 @@ private actor BitcoinCashWalletScanTargetRepository {
     }
 
     private func loadPrivateKey(walletId: UUID) -> String? {
-        if let key = try? WalletSecretPersistence.loadPrivateKey(for: walletId, in: modelContext),
+        if let key = try? WalletSecretPersistence.loadPrivateKey(for: walletId, database: database),
            !key.isEmpty {
             return key
         }
@@ -181,6 +180,63 @@ private actor BitcoinCashWalletScanTargetRepository {
 private struct BitcoinCashElectrumScanPlan: Sendable {
     let primaryAddressId: UUID
     let targets: [BitcoinCashElectrumScanTarget]
+}
+
+private struct BitcoinCashWalletScanSnapshot: Sendable {
+    let wallet: BitcoinCashWalletRow
+    let addresses: [BitcoinCashWalletAddressRow]
+}
+
+private struct BitcoinCashWalletRow: Sendable {
+    let id: UUID
+    let kind: WalletKind
+    let hasPassphrase: Bool
+
+    static func fetchOne(_ db: Database, walletId: UUID) throws -> BitcoinCashWalletRow? {
+        guard let row = try Row.fetchOne(
+            db,
+            sql: """
+            SELECT id, kind_raw, has_passphrase
+            FROM wallets
+            WHERE id = ?
+            LIMIT 1
+            """,
+            arguments: [walletId.uuidString]
+        ), let id = UUID(uuidString: row["id"]) else {
+            return nil
+        }
+        return BitcoinCashWalletRow(
+            id: id,
+            kind: WalletKind(rawValue: row["kind_raw"]) ?? .watchOnly,
+            hasPassphrase: (row["has_passphrase"] as Int) != 0
+        )
+    }
+}
+
+private struct BitcoinCashWalletAddressRow: Sendable {
+    let id: UUID
+    let address: String
+    let derivationPath: String
+
+    static func fetchAll(_ db: Database, walletId: UUID, chainRaw: String) throws -> [BitcoinCashWalletAddressRow] {
+        try Row.fetchAll(
+            db,
+            sql: """
+            SELECT id, address, derivation_path
+            FROM wallet_addresses
+            WHERE wallet_id = ? AND chain_raw = ?
+            ORDER BY is_receive_preferred DESC, last_scanned_at_ms ASC, address ASC
+            """,
+            arguments: [walletId.uuidString, chainRaw]
+        ).compactMap { row in
+            guard let id = UUID(uuidString: row["id"]) else { return nil }
+            return BitcoinCashWalletAddressRow(
+                id: id,
+                address: row["address"],
+                derivationPath: row["derivation_path"]
+            )
+        }
+    }
 }
 
 private struct BitcoinCashElectrumScanTarget: Sendable {

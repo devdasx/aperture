@@ -47,7 +47,7 @@ struct RecentRecipientsIndex: Sendable, Equatable {
 
 extension RecentRecipientsIndex {
     /// Build from the active wallet's outgoing transactions. `@MainActor`
-    /// because it reads the SwiftData graph; called from a `.task(id:)`
+    /// because it reads the GRDB graph; called from a `.task(id:)`
     /// so it's off the synchronous render path (Rule #28).
     @MainActor
     init(wallet: WalletRecord?) {

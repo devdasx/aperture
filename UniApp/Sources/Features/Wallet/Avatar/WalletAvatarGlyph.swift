@@ -65,7 +65,7 @@ enum WalletAvatarGlyph: String, Hashable, Sendable, Codable, CaseIterable {
     //
     // The kebab-case Lucide name is mapped to camelCase for Swift
     // (e.g. `wallet-minimal` → `walletMinimal`). The raw values match
-    // the camelCase names so the SwiftData column stores
+    // the camelCase names so the GRDB column stores
     // `"walletMinimal"` and the JS engine's kebab-case keys can be
     // round-tripped by the picker if needed.
 

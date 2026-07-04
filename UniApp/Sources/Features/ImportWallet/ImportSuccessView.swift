@@ -1,5 +1,4 @@
 import SwiftUI
-import SwiftData
 
 /// **Import success — the terminal step of every import flow.** Replaces
 /// the post-commit "scanning" wait (the wallet's first refresh now runs
@@ -36,8 +35,7 @@ struct ImportSuccessView: View {
     /// Imports are persisted before this screen, so they leave it `true`.
     var isContinueEnabled: Bool = true
 
-    @Query private var wallets: [WalletRecord]
-    @Environment(\.modelContext) private var modelContext
+    @StateObject private var databaseSnapshot = DatabaseSnapshotObservation()
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -46,6 +44,10 @@ struct ImportSuccessView: View {
     @State private var glyphProgress: CGFloat = 0
     @State private var isShowingRename = false
     @State private var renameDraft = ""
+
+    private var wallets: [WalletRecord] {
+        databaseSnapshot.wallets
+    }
 
     private var wallet: WalletRecord? { wallets.first { $0.id == walletId } }
 
@@ -285,9 +287,7 @@ struct ImportSuccessView: View {
     private func commitRename() {
         let trimmed = renameDraft.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, let wallet else { return }
-        wallet.name = trimmed
-        wallet.updatedAt = Date()
-        try? modelContext.save()
+        try? WalletRepository(database: AppDatabase.shared).renameWallet(id: wallet.id, to: trimmed)
     }
 
     // MARK: - Variant copy / scoping

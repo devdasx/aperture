@@ -1,5 +1,4 @@
 import SwiftUI
-import SwiftData
 
 /// "All supported assets" destination — the screen behind the
 /// "Show all" rows in the wallet home's Coins and Tokens sections.
@@ -40,9 +39,13 @@ import SwiftData
 /// and `network_*` assets first, then a cached Trust Wallet URL, then
 /// an honest initials chip. Never a fabricated brand mark.
 struct AllSupportedAssetsView: View {
-    @Query(sort: \WalletRecord.sortOrder) private var allWallets: [WalletRecord]
+    @StateObject private var databaseSnapshot = DatabaseSnapshotObservation()
     @AppStorage("activeWalletId") private var activeWalletIdRaw: String = ""
     @AppStorage(CurrencyPreference.storageKey) private var currencyCode: String = CurrencyPreference.defaultCode
+
+    private var allWallets: [WalletRecord] {
+        databaseSnapshot.wallets
+    }
 
     @State private var searchText: String = ""
     @State private var isShowingFilter: Bool = false

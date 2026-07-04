@@ -1,5 +1,4 @@
 import SwiftUI
-import SwiftData
 
 /// **Receive screen v2 — asset-first bottom sheet.**
 ///
@@ -33,10 +32,7 @@ import SwiftData
 /// `NavigationPath` can be persisted across Rule #12 §G direction
 /// rebuilds.
 struct ReceiveView: View {
-    @Query(sort: \WalletRecord.sortOrder) private var allWallets: [WalletRecord]
-    @Query(sort: [SortDescriptor(\CustomTokenRecord.symbol, order: .forward)])
-    private var customTokenRecords: [CustomTokenRecord]
-    @Query private var assetRecords: [AssetRecord]
+    @StateObject private var databaseSnapshot = DatabaseSnapshotObservation()
     @AppStorage("activeWalletId") private var activeWalletIdRaw: String = ""
 
     /// The sheet's own NavigationPath. Lives on the sheet root so the
@@ -72,6 +68,20 @@ struct ReceiveView: View {
 
     private var currencyCode: String {
         UserDefaults.standard.string(forKey: CurrencyPreference.storageKey) ?? CurrencyPreference.defaultCode
+    }
+
+    private var allWallets: [WalletRecord] {
+        databaseSnapshot.wallets
+    }
+
+    private var customTokenRecords: [CustomTokenRecord] {
+        databaseSnapshot.customTokenRecords.sorted {
+            $0.symbol.localizedStandardCompare($1.symbol) == .orderedAscending
+        }
+    }
+
+    private var assetRecords: [AssetRecord] {
+        databaseSnapshot.assetRecords
     }
 
     private var holdingsKey: String {

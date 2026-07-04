@@ -1,5 +1,4 @@
 import SwiftUI
-import SwiftData
 
 /// Full-screen lock surface shown over the app when
 /// `AutoLockController.isLocked` is `true`. Wraps the canonical
@@ -28,7 +27,6 @@ import SwiftData
 /// PIN with email" path — Aperture has no email.
 struct AppLockView: View {
     @Environment(\.autoLockController) private var lockController
-    @Environment(\.modelContext) private var modelContext
     @AppStorage("biometricEnabled") private var biometricEnabled: Bool = false
     /// Optional iOS-style "Erase Data": wipe the app after
     /// `PinCodeStorage.eraseDataThreshold` failed LOCK-SCREEN attempts.
@@ -59,7 +57,7 @@ struct AppLockView: View {
                     // (Rule #17 mechanism + the BiometricEnrollmentTracker
                     // shipped 2026-06-06).
                     if biometricEnabled {
-                        BiometricEnrollmentTracker.captureSnapshot(in: modelContext.container)
+                        BiometricEnrollmentTracker.captureSnapshot(database: AppDatabase.shared)
                     }
                     // A successful unlock clears the Erase-Data counter — the
                     // threshold counts only CONSECUTIVE lock-screen failures.
@@ -124,7 +122,7 @@ struct AppLockView: View {
     /// keypad for an app that no longer has anything to unlock.
     @MainActor
     private func eraseEverything() async {
-        try? await FactoryReset.performFullWipe(modelContext: modelContext)
+        try? await FactoryReset.performFullWipe(database: AppDatabase.shared)
         PinCodeStorage.clearUnlockFailures()
         withAnimation(.smooth(duration: 0.4)) {
             lockController.unlock()

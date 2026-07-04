@@ -1,5 +1,4 @@
 import SwiftUI
-import SwiftData
 
 /// Receive flow for callers that already know the asset.
 ///
@@ -7,10 +6,7 @@ import SwiftData
 /// asset-first Receive sheet's prefill task, which otherwise renders the
 /// token list for a frame and then pushes the network picker.
 struct ReceiveNetworkFirstView: View {
-    @Query(sort: \WalletRecord.sortOrder) private var allWallets: [WalletRecord]
-    @Query(sort: [SortDescriptor(\CustomTokenRecord.symbol, order: .forward)])
-    private var customTokenRecords: [CustomTokenRecord]
-    @Query private var assetRecords: [AssetRecord]
+    @StateObject private var databaseSnapshot = DatabaseSnapshotObservation()
     @AppStorage("activeWalletId") private var activeWalletIdRaw: String = ""
 
     @Binding var navigationPath: NavigationPath
@@ -25,6 +21,20 @@ struct ReceiveNetworkFirstView: View {
 
     private var currencyCode: String {
         UserDefaults.standard.string(forKey: CurrencyPreference.storageKey) ?? CurrencyPreference.defaultCode
+    }
+
+    private var allWallets: [WalletRecord] {
+        databaseSnapshot.wallets
+    }
+
+    private var customTokenRecords: [CustomTokenRecord] {
+        databaseSnapshot.customTokenRecords.sorted {
+            $0.symbol.localizedStandardCompare($1.symbol) == .orderedAscending
+        }
+    }
+
+    private var assetRecords: [AssetRecord] {
+        databaseSnapshot.assetRecords
     }
 
     private var holdingsKey: String {

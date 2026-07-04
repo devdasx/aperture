@@ -38,7 +38,7 @@ struct ImportWalletFlow: View {
     ///
     /// **Persistence happens before this fires.** The active commit
     /// path calls `state.persist(result:into:)` inside the commit
-    /// handler; the wallet is in SwiftData (and its seed, if any, in
+    /// handler; the wallet is in SQLite (and its seed, if any, in
     /// Keychain) by the time the parent sees the
     /// `onCompleted` callback.
     let onCompleted: (ImportResult) -> Void
@@ -49,15 +49,13 @@ struct ImportWalletFlow: View {
     /// retry from the same commit screen after reading or emailing details.
     @State private var persistErrorReport: ApertureErrorReport?
 
-    /// True while `persistThen` is running (derive + write to SwiftData +
+    /// True while `persistThen` is running (derive + write to SQLite +
     /// Keychain + fire first refresh). Passed down to the active commit
     /// screen so its `UniButton` shows the native loading spinner while
     /// the wallet is being saved — the work takes a real beat, and a
     /// silent button reads as a frozen app (Rule #28: the work stays
     /// off-main; the view just reflects the state).
     @State private var isCommitting = false
-
-    @Environment(\.modelContext) private var modelContext
 
     private static let log = Logger(
         subsystem: "com.thuglife.aperture",
@@ -156,7 +154,7 @@ struct ImportWalletFlow: View {
         }
     }
 
-    /// Persist the imported wallet via `WalletRepository`, then fire
+    /// Persist the imported wallet via `WalletCommandRepository`, then fire
     /// `onCompleted` so the parent can dismiss. On failure the flow
     /// does NOT complete — completing without a persisted seed would
     /// hand the parent a zombie wallet with no key material in the
@@ -168,7 +166,7 @@ struct ImportWalletFlow: View {
         // loading spinner + disabled, but guard the async path too.
         guard !isCommitting else { return }
         isCommitting = true
-        let repository = WalletRepository(modelContainer: modelContext.container)
+        let repository = WalletCommandRepository()
         Task { @MainActor in
             defer { isCommitting = false }
             do {

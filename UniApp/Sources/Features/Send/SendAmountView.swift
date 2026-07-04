@@ -1,5 +1,4 @@
 import SwiftUI
-import SwiftData
 
 /// Send · Step 4 — the amount / compose screen. A calm, large amount entry
 /// with a crypto⇄fiat toggle and a MAX button; the live network fee row;
@@ -17,7 +16,7 @@ import SwiftData
 /// CTA.
 ///
 /// **Local-first (Rule #27).** Balances + the reserve account-state come
-/// from the SwiftData store via `@Query`, resolved off the render path in
+/// from the GRDB store via GRDB observation, resolved off the render path in
 /// `.task` (Rule #28). The live fee + UTXO set are the action-time network
 /// reads the model owns (the Send carve-out). Prices flow through the same
 /// `TokenPricingEngine` ladder the wallet home uses, cache-first.
@@ -32,7 +31,7 @@ struct SendAmountView: View {
     /// Proceed to Review with the assembled draft.
     let onReview: (SendDraft) -> Void
 
-    @Query(sort: \WalletRecord.sortOrder) private var allWallets: [WalletRecord]
+    @StateObject private var databaseSnapshot = DatabaseSnapshotObservation()
     @AppStorage("activeWalletId") private var activeWalletIdRaw: String = ""
 
     @State private var model: SendComposeModel
@@ -62,6 +61,10 @@ struct SendAmountView: View {
 
     private var currencyCode: String {
         UserDefaults.standard.string(forKey: CurrencyPreference.storageKey) ?? CurrencyPreference.defaultCode
+    }
+
+    private var allWallets: [WalletRecord] {
+        databaseSnapshot.wallets
     }
 
     init(

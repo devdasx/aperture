@@ -1,5 +1,5 @@
 import SwiftUI
-import SwiftData
+import GRDB
 import WalletCore
 
 struct ReceiveEVMAccountSearchSheet: View {
@@ -10,7 +10,6 @@ struct ReceiveEVMAccountSearchSheet: View {
     let onUseAddress: (String) -> Void
 
     @Environment(\.dismiss) private var dismiss
-    @Environment(\.modelContext) private var modelContext
     @AppStorage(CurrencyPreference.storageKey) private var currencyCode: String = CurrencyPreference.defaultCode
 
     @State private var fromIndex: String = "0"
@@ -397,7 +396,7 @@ struct ReceiveEVMAccountSearchSheet: View {
         switch wallet.kind {
         case .created, .importedMnemonic:
             guard !wallet.hasPassphrase else { throw EVMReceiveAccountSearchError.passphraseWallet }
-            guard let words = try WalletSecretPersistence.loadMnemonic(for: wallet.id, in: modelContext),
+            guard let words = try WalletSecretPersistence.loadMnemonic(for: wallet.id, database: AppDatabase.shared),
                   !words.isEmpty else {
                 throw EVMReceiveAccountSearchError.missingMnemonic
             }
@@ -447,14 +446,14 @@ struct ReceiveEVMAccountSearchSheet: View {
         let targets = try addressTargets(wallet: wallet, result: result, scope: scope)
         var currentChainAddressId: UUID?
 
-        for target in targets {
-            let addressId = try upsertAddressRow(wallet: wallet, target: target)
-            if target.chain == chain {
-                currentChainAddressId = addressId
+        try AppDatabase.shared.write { db in
+            for target in targets {
+                let addressId = try upsertAddressRow(db: db, wallet: wallet, target: target)
+                if target.chain == chain {
+                    currentChainAddressId = addressId
+                }
             }
         }
-
-        try modelContext.save()
 
         guard let currentChainAddressId else {
             throw EVMReceiveAccountSearchError.unsupportedChain
@@ -484,7 +483,7 @@ struct ReceiveEVMAccountSearchSheet: View {
             switch wallet.kind {
             case .created, .importedMnemonic:
                 guard !wallet.hasPassphrase else { throw EVMReceiveAccountSearchError.passphraseWallet }
-                guard let words = try WalletSecretPersistence.loadMnemonic(for: wallet.id, in: modelContext),
+                guard let words = try WalletSecretPersistence.loadMnemonic(for: wallet.id, database: AppDatabase.shared),
                       !words.isEmpty else {
                     throw EVMReceiveAccountSearchError.missingMnemonic
                 }
@@ -530,46 +529,72 @@ struct ReceiveEVMAccountSearchSheet: View {
 
     @MainActor
     private func upsertAddressRow(
+        db: Database,
         wallet: WalletRecord,
         target: EVMReceiveAddressTarget
     ) throws -> UUID {
-        let walletId = Optional(wallet.id)
         let chainRaw = target.chain.rawValue
-        let descriptor = FetchDescriptor<WalletAddressRecord>(
-            predicate: #Predicate { $0.walletId == walletId && $0.chainRaw == chainRaw }
+        let existingIdRaw = try String.fetchOne(
+            db,
+            sql: """
+            SELECT id FROM wallet_addresses
+            WHERE wallet_id = ? AND chain_raw = ? AND lower(address) = lower(?)
+            LIMIT 1
+            """,
+            arguments: [wallet.id.uuidString, chainRaw, target.address]
         )
-        var rows = try modelContext.fetch(descriptor)
+        let addressId = existingIdRaw.flatMap(UUID.init(uuidString:)) ?? UUID()
+        let now = Date.databaseMilliseconds
 
-        let row: WalletAddressRecord
-        if let existing = rows.first(where: { $0.address.caseInsensitiveCompare(target.address) == .orderedSame }) {
-            row = existing
-        } else {
-            row = WalletAddressRecord(
-                walletId: wallet.id,
-                chainRaw: target.chain.rawValue,
-                address: target.address,
-                derivationPath: target.derivationPath,
-                isUsed: target.isUsed,
-                isReceivePreferred: true
+        try db.execute(
+            sql: """
+            UPDATE wallet_addresses
+            SET is_receive_preferred = 0
+            WHERE wallet_id = ? AND chain_raw = ?
+            """,
+            arguments: [wallet.id.uuidString, chainRaw]
+        )
+
+        if existingIdRaw != nil {
+            try db.execute(
+                sql: """
+                UPDATE wallet_addresses
+                SET derivation_path = CASE WHEN ? = '' THEN derivation_path ELSE ? END,
+                    is_used = CASE WHEN is_used = 1 OR ? = 1 THEN 1 ELSE 0 END,
+                    is_receive_preferred = 1,
+                    last_scanned_at_ms = CASE WHEN ? = 1 THEN ? ELSE last_scanned_at_ms END
+                WHERE id = ?
+                """,
+                arguments: [
+                    target.derivationPath,
+                    target.derivationPath,
+                    target.isUsed ? 1 : 0,
+                    target.chain == chain ? 1 : 0,
+                    now,
+                    addressId.uuidString
+                ]
             )
-            row.wallet = wallet
-            modelContext.insert(row)
-            rows.append(row)
+        } else {
+            try db.execute(
+                sql: """
+                INSERT INTO wallet_addresses
+                (id, wallet_id, chain_raw, address, derivation_path,
+                 is_used, is_receive_preferred, last_scanned_at_ms)
+                VALUES (?, ?, ?, ?, ?, ?, 1, ?)
+                """,
+                arguments: [
+                    addressId.uuidString,
+                    wallet.id.uuidString,
+                    chainRaw,
+                    target.address,
+                    target.derivationPath,
+                    target.isUsed ? 1 : 0,
+                    target.chain == chain ? now : nil
+                ]
+            )
         }
 
-        for existing in rows where existing.id != row.id {
-            existing.isReceivePreferred = false
-        }
-        row.isReceivePreferred = true
-        row.isUsed = row.isUsed || target.isUsed
-        if target.chain == chain {
-            row.lastScannedAt = Date()
-        }
-        if !target.derivationPath.isEmpty {
-            row.derivationPath = target.derivationPath
-        }
-
-        return row.id
+        return addressId
     }
 
     private func persistBalances(
@@ -577,7 +602,7 @@ struct ReceiveEVMAccountSearchSheet: View {
         walletId: UUID,
         result: EVMReceiveAccountSearchResult
     ) async throws {
-        let txRepo = TransactionRepository(modelContainer: modelContext.container)
+        let txRepo = TransactionRepository(database: AppDatabase.shared)
         try await txRepo.upsertBalance(
             addressId: addressId,
             tokenSymbol: chain.ticker,
@@ -603,7 +628,7 @@ struct ReceiveEVMAccountSearchSheet: View {
         try await txRepo.markScanComplete(addressId: addressId, isUsed: result.isUsed, save: false)
         try await txRepo.flush()
 
-        let chainStateRepo = ChainStateRepository(modelContainer: modelContext.container)
+        let chainStateRepo = ChainStateRepository(database: AppDatabase.shared)
         _ = try await chainStateRepo.rebuild(
             walletId: walletId,
             fiatCurrencyCode: currencyCode,

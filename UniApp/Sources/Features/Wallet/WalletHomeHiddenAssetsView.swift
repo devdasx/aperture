@@ -1,5 +1,4 @@
 import SwiftUI
-import SwiftData
 
 /// **Hidden assets sub-screen** — the per-asset visibility editor
 /// pushed onto the filter sheet's `NavigationStack`. Lists every
@@ -57,7 +56,7 @@ import SwiftData
 /// content in a `NavigationStack`. The parent sheet owns the stack
 /// and the sub-screen consumes it. Title via `.navigationTitle`.
 struct WalletHomeHiddenAssetsView: View {
-    @Query(sort: \WalletRecord.sortOrder) private var allWallets: [WalletRecord]
+    @StateObject private var databaseSnapshot = DatabaseSnapshotObservation()
     @AppStorage("activeWalletId") private var activeWalletIdRaw: String = ""
     @AppStorage(CurrencyPreference.storageKey) private var currencyCode: String = CurrencyPreference.defaultCode
     @AppStorage(WalletHomeFilterPreferences.hiddenAssetsKey)
@@ -81,6 +80,10 @@ struct WalletHomeHiddenAssetsView: View {
     // sync with external writes (e.g. the sheet's Reset).
     @State private var hiddenSet: Set<String>
     @State private var pinnedSet: Set<String>
+
+    private var allWallets: [WalletRecord] {
+        databaseSnapshot.wallets
+    }
 
     init() {
         let defaults = UserDefaults.standard

@@ -1,5 +1,4 @@
 import SwiftUI
-import SwiftData
 
 /// Step 1 of the Receive sheet — the asset list. Native coins + tokens,
 /// each row showing the full name (prominent), the ticker (gray), and the
@@ -15,11 +14,19 @@ struct ReceiveAssetListView: View {
     let onSelectNative: (SupportedChain) -> Void
     let onSelectToken: (ReceiveAsset) -> Void
 
-    @Query(sort: [SortDescriptor(\CustomTokenRecord.symbol, order: .forward)])
-    private var customTokenRecords: [CustomTokenRecord]
-    @Query private var assetRecords: [AssetRecord]
+    @StateObject private var databaseSnapshot = DatabaseSnapshotObservation()
 
     @State private var searchText: String = ""
+
+    private var customTokenRecords: [CustomTokenRecord] {
+        databaseSnapshot.customTokenRecords.sorted {
+            $0.symbol.localizedStandardCompare($1.symbol) == .orderedAscending
+        }
+    }
+
+    private var assetRecords: [AssetRecord] {
+        databaseSnapshot.assetRecords
+    }
 
     private var sortedNatives: [SupportedChain] {
         AssetPickerSort.natives(availableChains, holdings: holdings)

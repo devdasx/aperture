@@ -111,7 +111,7 @@ enum BalanceHistoryReconstructor {
 
     /// `Sendable` snapshot of the transaction fields the reconstruction
     /// reads — lets the walk run OFF the main actor. The caller copies the
-    /// few needed fields from the main-context `@Model` then hands these
+    /// few needed fields from the main-context record then hands these
     /// value types to a detached task.
     struct HistoryTx: Sendable {
         let occurredAt: Date
@@ -125,7 +125,7 @@ enum BalanceHistoryReconstructor {
         let counterparty: String
     }
 
-    /// `@Model` convenience overload — maps the SwiftData records to
+    /// record convenience overload — maps the GRDB records to
     /// `Sendable` snapshots and calls the core. Off-main callers use the
     /// snapshot overload directly.
     static func reconstruct(

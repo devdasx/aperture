@@ -1,29 +1,13 @@
 import Foundation
-import SwiftData
-import OSLog
+import GRDB
 
-/// Background-safe mutation + query surface for `ChainStateRecord` and
-/// `ChainUTXORecord` — the per-chain aggregate the balance card reads.
-///
-/// **Source of truth is still the normalized tables.** This repository
-/// never invents data: `rebuild(...)` recomputes each chain's aggregate
-/// row purely from the persisted `TokenBalanceRecord` (balances),
-/// `TransactionRecord` (per-category tx counts) and `ChainUTXORecord`
-/// (UTXO summary) rows that the scanners already wrote. It's the
-/// denormalized read-model the UI consumes so a `@Query` notification
-/// re-renders one indexed row per chain instead of summing dozens on the
-/// main thread.
-///
-/// Per `CLAUDE.md` Rule #2 §C (actor-isolated repositories).
-@ModelActor
-actor ChainStateRepository {
+final class ChainStateRepository {
+    private let database: AppDatabase
 
-    private static let log = Logger(subsystem: "com.thuglife.aperture", category: "chain-state-repo")
+    init(database: AppDatabase = .shared) {
+        self.database = database
+    }
 
-    // MARK: - Sendable snapshot (cross-actor reads)
-
-    /// One chain's aggregate flattened to a `Sendable` value — `@Model`
-    /// instances must not cross the actor boundary.
     struct ChainStateSnapshot: Sendable {
         let chainRaw: String
         let address: String
@@ -54,25 +38,6 @@ actor ChainStateRepository {
         let confirmed: Bool
     }
 
-    // MARK: - Rebuild (recompute every chain's aggregate from the store)
-
-    /// Recompute and upsert the aggregate row for EVERY chain the wallet
-    /// has an address on, from the currently-persisted balance / tx /
-    /// UTXO rows. Called by the refresh coordinator after the balance
-    /// flush (balances land first) and again after the history flush
-    /// (tx counts fill in) — each call updates the `@Query`-backed UI
-    /// live. Returns the number of chains rebuilt.
-    /// - Parameters:
-    ///   - failedChains: chains whose live read failed this refresh — their
-    ///     row keeps its last-known balances (honest) but is stamped
-    ///     `.failed`. Ignored when `interim` is `true`.
-    ///   - interim: a mid-refresh rebuild (balances landed, history still
-    ///     in flight) — every row is stamped `.syncing` so the UI shows a
-    ///     per-chain spinner until the final rebuild stamps the outcome.
-    /// - Parameter onlyChains: when non-nil, recompute ONLY these chains
-    ///   (the live per-domain path — a chain's balance or history just
-    ///   landed, so rebuild that one chain's aggregate and leave the rest
-    ///   untouched). `nil` rebuilds every chain the wallet has.
     @discardableResult
     func rebuild(
         walletId: UUID,
@@ -81,240 +46,195 @@ actor ChainStateRepository {
         failedChains: Set<SupportedChain> = [],
         interim: Bool = false
     ) throws -> Int {
-        var walletDescriptor = FetchDescriptor<WalletRecord>(
-            predicate: #Predicate { $0.id == walletId }
-        )
-        walletDescriptor.fetchLimit = 1
-        guard let wallet = try modelContext.fetch(walletDescriptor).first else { return 0 }
-
-        // **Balance-$0 fix (2026-06-17).** TokenBalanceRecord + TransactionRecord
-        // are written by `TransactionRepository`, a SEPARATE `@ModelActor` with
-        // its OWN context. This actor's long-lived `modelContext` caches those
-        // rows the first time it fetches them (during an early interim/live
-        // rebuild, when the native fiat is still nil/0), and SwiftData does NOT
-        // refresh a cached object's scalars on a later re-fetch — so the final
-        // rebuild kept reading fiat=0 and `ChainStateRecord.totalFiat` was stuck
-        // at 0 (the hero showed $0 even though balances + prices were persisted).
-        // Read the balance + tx rows from a FRESH context per rebuild so we
-        // always see exactly what `txRepo` committed to the store.
-        let readContext = ModelContext(modelContainer)
-
-        let directAddressRows = try addressRows(walletId: walletId)
-        let addressRows = directAddressRows.isEmpty ? wallet.addresses : directAddressRows
-
-        var rebuilt = 0
-        for address in addressRows {
-            guard let chain = SupportedChain(rawValue: address.chainRaw) else { continue }
-            if let onlyChains, !onlyChains.contains(chain) { continue }
-            let state: ChainSyncState = interim
-                ? .syncing
-                : (failedChains.contains(chain) ? .failed : .synced)
-            try recomputeRow(
-                readContext: readContext,
-                walletId: walletId,
-                chain: chain,
-                addressId: address.id,
-                address: address.address,
-                derivationPath: address.derivationPath,
-                isUsed: address.isUsed,
-                fiatCurrencyCode: fiatCurrencyCode,
-                syncState: state,
-                save: false
+        try database.write { db in
+            let rows = try Row.fetchAll(
+                db,
+                sql: """
+                SELECT id, chain_raw, address, derivation_path, is_used
+                FROM wallet_addresses
+                WHERE wallet_id = ?
+                ORDER BY chain_raw ASC, is_receive_preferred DESC
+                """,
+                arguments: [walletId.uuidString]
             )
-            rebuilt += 1
+            var rebuiltChains: Set<SupportedChain> = []
+            for row in rows {
+                guard let chain = SupportedChain(rawValue: row["chain_raw"]) else { continue }
+                if rebuiltChains.contains(chain) { continue }
+                if let onlyChains, !onlyChains.contains(chain) { continue }
+                rebuiltChains.insert(chain)
+                let state: ChainSyncState = interim ? .syncing : (failedChains.contains(chain) ? .failed : .synced)
+                try recomputeRow(
+                    db: db,
+                    walletId: walletId,
+                    chain: chain,
+                    addressId: UUID(uuidString: row["id"]),
+                    address: row["address"],
+                    derivationPath: row["derivation_path"],
+                    isUsed: (row["is_used"] as Int) != 0,
+                    fiatCurrencyCode: fiatCurrencyCode,
+                    syncState: state
+                )
+            }
+            try upsertWalletPortfolioSummary(db: db, walletId: walletId, fiatCurrencyCode: fiatCurrencyCode)
+            return rebuiltChains.count
         }
-        try upsertWalletPortfolioSummary(walletId: walletId, fiatCurrencyCode: fiatCurrencyCode)
-        if modelContext.hasChanges { try modelContext.save() }
-        return rebuilt
     }
 
-    private func addressRows(walletId: UUID) throws -> [WalletAddressRecord] {
-        let ownerId = Optional(walletId)
-        let descriptor = FetchDescriptor<WalletAddressRecord>(
-            predicate: #Predicate { $0.walletId == ownerId }
-        )
-        return try modelContext.fetch(descriptor)
-    }
-
-    /// Recompute one chain's aggregate from its persisted rows and upsert
-    /// the `ChainStateRecord`. Preserves the encrypted-key blob (only
-    /// `storeEncryptedKeys` writes that).
     private func recomputeRow(
-        readContext: ModelContext,
+        db: Database,
         walletId: UUID,
         chain: SupportedChain,
-        addressId: UUID,
+        addressId: UUID?,
         address: String,
         derivationPath: String,
         isUsed: Bool,
         fiatCurrencyCode: String,
-        syncState: ChainSyncState,
-        save: Bool
+        syncState: ChainSyncState
     ) throws {
-        // --- Balances (native + tokens) --- read from the fresh `readContext`
-        // (see the rebuild() comment): the priced fiat `txRepo` committed is
-        // only visible to a context that hasn't already cached these rows at 0.
-        let balanceDescriptor = FetchDescriptor<TokenBalanceRecord>(
-            predicate: #Predicate { $0.addressId == addressId }
+        let chainRaw = chain.rawValue
+        let addressRows = try Row.fetchAll(
+            db,
+            sql: "SELECT id FROM wallet_addresses WHERE wallet_id = ? AND chain_raw = ?",
+            arguments: [walletId.uuidString, chainRaw]
         )
-        let balances = try readContext.fetch(balanceDescriptor)
-        let nativeTicker = chain.ticker
-        var nativeBalanceRaw = "0"
-        var nativeDecimals = 0
+        let addressIds = addressRows.compactMap { UUID(uuidString: $0["id"] as String) }
+        let idStrings = addressIds.map(\.uuidString)
+
+        let balanceRows = try Row.fetchAll(
+            db,
+            sql: """
+            SELECT b.token_symbol, b.token_contract, b.raw_balance, b.decimals,
+                   b.fiat_value_cached, b.fiat_currency_code
+            FROM token_balances b
+            JOIN wallet_addresses a ON a.id = b.address_id
+            WHERE a.wallet_id = ? AND a.chain_raw = ?
+            """,
+            arguments: [walletId.uuidString, chainRaw]
+        )
+
+        var nativeAmount: Decimal = 0
         var nativeFiat: Decimal = 0
         var totalFiat: Decimal = 0
         var tokenCount = 0
-        for row in balances {
-            // Only fiat denominated in the active currency counts toward the
-            // totals — a row still carrying the previous currency's value
-            // (the brief window before `repriceWallet` re-denominates it)
-            // would otherwise render e.g. 35 JOD as "$35". This mirrors
-            // `WalletHomeView.totalFiat`'s currency filter so the per-chain
-            // aggregate and the hero agree exactly. Holdings COUNT regardless
-            // of currency (a held token is held whatever its cached fiat).
-            let inCurrency = row.fiatCurrencyCode.caseInsensitiveCompare(fiatCurrencyCode) == .orderedSame
-            if inCurrency { totalFiat += row.fiatValueCached }
-            if row.tokenContract == nil && row.tokenSymbol == nativeTicker {
-                let nativeAmount = Self.decimalAmount(
-                    rawBalance: row.rawBalance,
-                    decimals: row.decimals
-                ) ?? 0
-                nativeBalanceRaw = Self.decimalString(nativeAmount)
-                nativeDecimals = 0
-                nativeFiat = inCurrency ? row.fiatValueCached : 0
-            } else {
-                let rawAmount = Decimal(string: row.rawBalance) ?? 0
-                if rawAmount > 0 { tokenCount += 1 }
+        for balance in balanceRows {
+            let symbol: String = balance["token_symbol"]
+            let contract: String? = balance["token_contract"]
+            let rawBalance: String = balance["raw_balance"]
+            let decimals: Int = balance["decimals"]
+            let fiat = Decimal(string: balance["fiat_value_cached"] as String) ?? 0
+            totalFiat += fiat
+            let amount = Self.decimalAmount(rawBalance: rawBalance, decimals: decimals) ?? 0
+            if symbol.caseInsensitiveCompare(chain.ticker) == .orderedSame && contract == nil {
+                nativeAmount += amount
+                nativeFiat += fiat
+            } else if amount > 0 {
+                tokenCount += 1
             }
         }
 
-        // --- Transactions (per-category counts) ---
-        let txDescriptor = FetchDescriptor<TransactionRecord>(
-            predicate: #Predicate { $0.addressId == addressId }
+        let txRows = try Row.fetchAll(
+            db,
+            sql: """
+            SELECT t.direction_raw, t.status_raw, t.kind_raw
+            FROM transactions t
+            JOIN wallet_addresses a ON a.id = t.address_id
+            WHERE a.wallet_id = ? AND a.chain_raw = ?
+            """,
+            arguments: [walletId.uuidString, chainRaw]
         )
-        let txs = try readContext.fetch(txDescriptor)
-        var sent = 0, received = 0, selfT = 0, bridge = 0, failed = 0, pending = 0
-        for tx in txs {
-            let status = TransactionStatus(rawValue: tx.statusRaw) ?? .confirmed
-            if status == .failed { failed += 1 }
-            if status == .pending { pending += 1 }
-            let kind = TransactionKind.effectiveKind(kindRaw: tx.kindRaw, directionRaw: tx.directionRaw)
-            let direction = TransactionDirection(rawValue: tx.directionRaw) ?? .incoming
-            switch kind {
-            case .bridge: bridge += 1
-            case .selfTransfer: selfT += 1
-            case .transfer:
-                if direction == .outgoing { sent += 1 }
-                else if direction == .incoming { received += 1 }
-                else { selfT += 1 } // .internal transfer with no explicit kind
-            }
+        var sent = 0
+        var received = 0
+        var selfTransfers = 0
+        var bridges = 0
+        var failed = 0
+        var pending = 0
+        for tx in txRows {
+            let directionRaw: String = tx["direction_raw"]
+            let statusRaw: String = tx["status_raw"]
+            let kind = TransactionKind.effectiveKind(kindRaw: tx["kind_raw"], directionRaw: directionRaw)
+            if directionRaw == TransactionDirection.outgoing.rawValue { sent += 1 }
+            if directionRaw == TransactionDirection.incoming.rawValue { received += 1 }
+            if kind == .selfTransfer { selfTransfers += 1 }
+            if kind == .bridge { bridges += 1 }
+            if statusRaw == TransactionStatus.failed.rawValue { failed += 1 }
+            if statusRaw == TransactionStatus.pending.rawValue { pending += 1 }
         }
 
-        // --- UTXOs (UTXO chains) ---
-        let chainRaw = chain.rawValue
-        let utxoDescriptor = FetchDescriptor<ChainUTXORecord>(
-            predicate: #Predicate { $0.walletId == walletId && $0.chainRaw == chainRaw }
+        let utxoRows = try Row.fetchAll(
+            db,
+            sql: "SELECT value_sats_raw FROM chain_utxos WHERE wallet_id = ? AND chain_raw = ?",
+            arguments: [walletId.uuidString, chainRaw]
         )
-        let utxos = try readContext.fetch(utxoDescriptor)
-        // Saturating sum — a hostile / corrupted UTXO provider could return
-        // values whose total overflows Int64 and traps. Honest data can never
-        // approach Int64.max sats (total BTC supply is ~2.1e15 sats vs Int64
-        // max ~9.2e18), so saturation never affects real wallets; it's a crash
-        // guard against malformed provider responses.
-        let utxoTotal = utxos.reduce(Int64(0)) { acc, utxo in
-            let (sum, overflow) = acc.addingReportingOverflow(utxo.valueSats)
+        let utxoTotal = utxoRows.reduce(Int64(0)) { partial, row in
+            let value = Int64(row["value_sats_raw"] as String) ?? 0
+            let (sum, overflow) = partial.addingReportingOverflow(value)
             return overflow ? Int64.max : sum
         }
-
-        // --- Upsert the aggregate row ---
-        let (record, isNew) = try fetchOrCreateRow(walletId: walletId, chainRaw: chainRaw, address: address)
-        let resolvedIsUsed = isUsed || totalFiat > 0 || !txs.isEmpty
-        let utxoTotalRaw = String(utxoTotal)
-        let txTotalCount = txs.count
-        let utxoCount = utxos.count
-
-        // **2026-06-18 — skip no-op rebuilds (idle-lag fix).** The live
-        // committer rebuilds dirty chains on a ~300ms cadence and the app
-        // re-scans every chain every ~10s. Re-assigning identical aggregates
-        // (and bumping `lastSyncedAt = Date()`) still dirties the SwiftData row
-        // → fires the `chainStateRecords` @Query → re-renders the balance card
-        // on every commit/poll even when nothing moved. This is the same
-        // idle-churn class `TransactionRepository.upsertBalance` already guards.
-        // Only write when an aggregate actually changed; a freshly inserted row
-        // always writes. `lastSyncedAt` therefore advances only on a real
-        // change — so a steady-state poll writes nothing and the UI does zero
-        // work (the freshness ledger lives in `SyncStatusRecord`, stamped once
-        // per refresh, not here).
-        let unchanged = !isNew
-            && record.address == address
-            && record.derivationPath == derivationPath
-            && record.nativeBalanceRaw == nativeBalanceRaw
-            && record.nativeDecimals == nativeDecimals
-            && record.nativeFiat == nativeFiat
-            && record.totalFiat == totalFiat
-            && record.tokenCount == tokenCount
-            && record.fiatCurrencyCode == fiatCurrencyCode
-            && record.txSentCount == sent
-            && record.txReceivedCount == received
-            && record.txSelfTransferCount == selfT
-            && record.txBridgeCount == bridge
-            && record.txFailedCount == failed
-            && record.txPendingCount == pending
-            && record.txTotalCount == txTotalCount
-            && record.utxoCount == utxoCount
-            && record.utxoTotalRaw == utxoTotalRaw
-            && record.isUsed == resolvedIsUsed
-            && record.syncStateRaw == syncState.rawValue
-        if unchanged { return }
-
-        record.address = address
-        record.derivationPath = derivationPath
-        record.nativeBalanceRaw = nativeBalanceRaw
-        record.nativeDecimals = nativeDecimals
-        record.nativeFiat = nativeFiat
-        record.totalFiat = totalFiat
-        record.tokenCount = tokenCount
-        record.fiatCurrencyCode = fiatCurrencyCode
-        record.txSentCount = sent
-        record.txReceivedCount = received
-        record.txSelfTransferCount = selfT
-        record.txBridgeCount = bridge
-        record.txFailedCount = failed
-        record.txPendingCount = pending
-        record.txTotalCount = txTotalCount
-        record.utxoCount = utxoCount
-        record.utxoTotalRaw = utxoTotalRaw
-        record.isUsed = resolvedIsUsed
-        record.lastSyncedAt = Date()
-        record.syncStateRaw = syncState.rawValue
-
-        if save, modelContext.hasChanges { try modelContext.save() }
+        let now = Date.databaseMilliseconds
+        try db.execute(
+            sql: """
+            INSERT INTO chain_states
+            (id, wallet_id, chain_raw, address, derivation_path,
+             native_balance_raw, native_decimals, native_fiat, native_fiat_numeric,
+             total_fiat, total_fiat_numeric, token_count, fiat_currency_code,
+             tx_sent_count, tx_received_count, tx_self_transfer_count, tx_bridge_count,
+             tx_failed_count, tx_pending_count, tx_total_count, utxo_count, utxo_total_raw,
+             is_used, last_synced_at_ms, sync_state_raw)
+            VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(wallet_id, chain_raw) DO UPDATE SET
+                address = excluded.address,
+                derivation_path = excluded.derivation_path,
+                native_balance_raw = excluded.native_balance_raw,
+                native_fiat = excluded.native_fiat,
+                native_fiat_numeric = excluded.native_fiat_numeric,
+                total_fiat = excluded.total_fiat,
+                total_fiat_numeric = excluded.total_fiat_numeric,
+                token_count = excluded.token_count,
+                fiat_currency_code = excluded.fiat_currency_code,
+                tx_sent_count = excluded.tx_sent_count,
+                tx_received_count = excluded.tx_received_count,
+                tx_self_transfer_count = excluded.tx_self_transfer_count,
+                tx_bridge_count = excluded.tx_bridge_count,
+                tx_failed_count = excluded.tx_failed_count,
+                tx_pending_count = excluded.tx_pending_count,
+                tx_total_count = excluded.tx_total_count,
+                utxo_count = excluded.utxo_count,
+                utxo_total_raw = excluded.utxo_total_raw,
+                is_used = excluded.is_used,
+                last_synced_at_ms = excluded.last_synced_at_ms,
+                sync_state_raw = excluded.sync_state_raw
+            """,
+            arguments: [
+                UUID().uuidString,
+                walletId.uuidString,
+                chainRaw,
+                address,
+                derivationPath,
+                Self.decimalString(nativeAmount),
+                nativeFiat.databaseText,
+                nativeFiat.databaseDouble,
+                totalFiat.databaseText,
+                totalFiat.databaseDouble,
+                tokenCount,
+                fiatCurrencyCode.uppercased(),
+                sent,
+                received,
+                selfTransfers,
+                bridges,
+                failed,
+                pending,
+                txRows.count,
+                utxoRows.count,
+                String(utxoTotal),
+                isUsed || !idStrings.isEmpty,
+                now,
+                syncState.rawValue
+            ]
+        )
+        _ = addressId
     }
 
-    private static func decimalAmount(rawBalance: String, decimals: Int) -> Decimal? {
-        guard let raw = Decimal(string: rawBalance) else { return nil }
-        guard decimals > 0 else { return raw }
-        var divisor = Decimal(1)
-        var multiplier = Decimal(10)
-        var power = decimals
-        while power > 0 {
-            if power & 1 == 1 { divisor *= multiplier }
-            power >>= 1
-            if power > 0 { multiplier *= multiplier }
-        }
-        return raw / divisor
-    }
-
-    private static func decimalString(_ value: Decimal) -> String {
-        NSDecimalNumber(decimal: value).stringValue
-    }
-
-    // MARK: - UTXO persistence
-
-    /// Replace the persisted UTXO set for `(walletId, chain)` with
-    /// `utxos`. UTXOs are a snapshot — spent ones must disappear — so this
-    /// deletes the chain's existing rows and inserts the fresh set.
-    /// Returns the new count + total value (sats) for convenience.
     @discardableResult
     func replaceUTXOs(
         walletId: UUID,
@@ -322,35 +242,19 @@ actor ChainStateRepository {
         address: String,
         utxos: [SelectedUTXO]
     ) throws -> (count: Int, totalSats: Int64) {
-        let chainRaw = chain.rawValue
-        let existingDescriptor = FetchDescriptor<ChainUTXORecord>(
-            predicate: #Predicate { $0.walletId == walletId && $0.chainRaw == chainRaw }
-        )
-        for stale in try modelContext.fetch(existingDescriptor) {
-            modelContext.delete(stale)
-        }
-        var total: Int64 = 0
-        for utxo in utxos {
-            total += utxo.valueSats
-            modelContext.insert(ChainUTXORecord(
-                walletId: walletId,
-                chainRaw: chainRaw,
+        let addressed = utxos.map {
+            AddressedUTXO(
                 address: address,
-                txid: utxo.txid,
-                vout: utxo.vout,
-                valueSatsRaw: String(utxo.valueSats),
-                scriptHex: utxo.scriptHex,
-                confirmed: utxo.confirmed
-            ))
+                txid: $0.txid,
+                vout: $0.vout,
+                valueSats: $0.valueSats,
+                scriptHex: $0.scriptHex,
+                confirmed: $0.confirmed
+            )
         }
-        try modelContext.save()
-        return (utxos.count, total)
+        return try replaceAddressedUTXOs(walletId: walletId, chain: chain, utxos: addressed)
     }
 
-    /// Replace the persisted UTXO set while preserving the owning address
-    /// for every output. HD Bitcoin scans cover receive/change addresses,
-    /// so flattening all UTXOs onto the wallet's first address would lose
-    /// the input-address mapping needed by Bitcoin-family signing.
     @discardableResult
     func replaceAddressedUTXOs(
         walletId: UUID,
@@ -358,199 +262,202 @@ actor ChainStateRepository {
         utxos: [AddressedUTXO]
     ) throws -> (count: Int, totalSats: Int64) {
         let chainRaw = chain.rawValue
-        let existingDescriptor = FetchDescriptor<ChainUTXORecord>(
-            predicate: #Predicate { $0.walletId == walletId && $0.chainRaw == chainRaw }
-        )
-        for stale in try modelContext.fetch(existingDescriptor) {
-            modelContext.delete(stale)
+        return try database.write { db in
+            try db.execute(
+                sql: "DELETE FROM chain_utxos WHERE wallet_id = ? AND chain_raw = ?",
+                arguments: [walletId.uuidString, chainRaw]
+            )
+            var total: Int64 = 0
+            for utxo in utxos {
+                let addressId = try String.fetchOne(
+                    db,
+                    sql: """
+                    SELECT id FROM wallet_addresses
+                    WHERE wallet_id = ? AND chain_raw = ? AND address = ?
+                    LIMIT 1
+                    """,
+                    arguments: [walletId.uuidString, chainRaw, utxo.address]
+                )
+                let (sum, overflow) = total.addingReportingOverflow(utxo.valueSats)
+                total = overflow ? Int64.max : sum
+                try db.execute(
+                    sql: """
+                    INSERT INTO chain_utxos
+                    (id, wallet_id, address_id, chain_raw, address, txid, vout,
+                     value_sats_raw, script_hex, confirmed, updated_at_ms)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(wallet_id, chain_raw, txid, vout) DO UPDATE SET
+                        address_id = excluded.address_id,
+                        address = excluded.address,
+                        value_sats_raw = excluded.value_sats_raw,
+                        script_hex = excluded.script_hex,
+                        confirmed = excluded.confirmed,
+                        updated_at_ms = excluded.updated_at_ms
+                    """,
+                    arguments: [
+                        UUID().uuidString,
+                        walletId.uuidString,
+                        addressId,
+                        chainRaw,
+                        utxo.address,
+                        utxo.txid,
+                        utxo.vout,
+                        String(utxo.valueSats),
+                        utxo.scriptHex,
+                        utxo.confirmed,
+                        Date.databaseMilliseconds
+                    ]
+                )
+            }
+            return (utxos.count, total)
         }
-
-        var total: Int64 = 0
-        for utxo in utxos {
-            let (sum, overflow) = total.addingReportingOverflow(utxo.valueSats)
-            total = overflow ? Int64.max : sum
-            modelContext.insert(ChainUTXORecord(
-                walletId: walletId,
-                chainRaw: chainRaw,
-                address: utxo.address,
-                txid: utxo.txid,
-                vout: utxo.vout,
-                valueSatsRaw: String(utxo.valueSats),
-                scriptHex: utxo.scriptHex,
-                confirmed: utxo.confirmed
-            ))
-        }
-        try modelContext.save()
-        return (utxos.count, total)
     }
 
-    // MARK: - Encrypted key blobs
-
-    /// Persist the AES-GCM-sealed private-key blob for each chain into its
-    /// aggregate row (creating a minimal row if the rebuild hasn't run
-    /// yet). Only overwrites a stored blob when a fresh one is supplied.
     func storeEncryptedKeys(walletId: UUID, blobs: [SupportedChain: Data]) throws {
         guard !blobs.isEmpty else { return }
-        for (chain, blob) in blobs {
-            let (record, _) = try fetchOrCreateRow(walletId: walletId, chainRaw: chain.rawValue, address: "")
-            record.encryptedPrivateKey = blob
-            record.keyEncryptionScheme = ChainKeyVault.scheme
+        try database.write { db in
+            for (chain, blob) in blobs {
+                try db.execute(
+                    sql: """
+                    INSERT INTO chain_states
+                    (id, wallet_id, chain_raw, address, encrypted_private_key, key_encryption_scheme)
+                    VALUES (?, ?, ?, '', ?, ?)
+                    ON CONFLICT(wallet_id, chain_raw) DO UPDATE SET
+                        encrypted_private_key = excluded.encrypted_private_key,
+                        key_encryption_scheme = excluded.key_encryption_scheme
+                    """,
+                    arguments: [UUID().uuidString, walletId.uuidString, chain.rawValue, blob, ChainKeyVault.scheme]
+                )
+            }
         }
-        if modelContext.hasChanges { try modelContext.save() }
     }
 
-    /// Chains for this wallet that still lack a stored encrypted key — the
-    /// coordinator derives only these (one-time population; watch-only
-    /// wallets never get one).
     func chainsMissingKey(walletId: UUID, candidates: Set<SupportedChain>) throws -> Set<SupportedChain> {
-        let descriptor = FetchDescriptor<ChainStateRecord>(
-            predicate: #Predicate { $0.walletId == walletId }
-        )
-        let rows = try modelContext.fetch(descriptor)
-        let haveKey = Set(rows.compactMap { $0.encryptedPrivateKey != nil ? $0.chain : nil })
-        return candidates.subtracting(haveKey)
+        try database.read { db in
+            let rows = try Row.fetchAll(
+                db,
+                sql: "SELECT chain_raw FROM chain_states WHERE wallet_id = ? AND encrypted_private_key IS NOT NULL",
+                arguments: [walletId.uuidString]
+            )
+            let haveKey = Set(rows.compactMap { SupportedChain(rawValue: $0["chain_raw"] as String) })
+            return candidates.subtracting(haveKey)
+        }
     }
 
-    // MARK: - Sync state
-
-    /// Stamp every existing chain row for the wallet as `.syncing` at the
-    /// start of a refresh so the UI can show a per-chain spinner.
     func markSyncing(walletId: UUID) throws {
-        let descriptor = FetchDescriptor<ChainStateRecord>(
-            predicate: #Predicate { $0.walletId == walletId }
-        )
-        let rows = try modelContext.fetch(descriptor)
-        for row in rows { row.syncStateRaw = ChainSyncState.syncing.rawValue }
-        if modelContext.hasChanges { try modelContext.save() }
+        try database.write { db in
+            try db.execute(
+                sql: "UPDATE chain_states SET sync_state_raw = ? WHERE wallet_id = ?",
+                arguments: [ChainSyncState.syncing.rawValue, walletId.uuidString]
+            )
+        }
     }
-
-    // MARK: - Queries (Sendable snapshots)
 
     func chainStates(walletId: UUID) throws -> [ChainStateSnapshot] {
-        let descriptor = FetchDescriptor<ChainStateRecord>(
-            predicate: #Predicate { $0.walletId == walletId }
-        )
-        return try modelContext.fetch(descriptor).map(snapshot(from:))
+        try database.read { db in
+            try Row.fetchAll(
+                db,
+                sql: "SELECT * FROM chain_states WHERE wallet_id = ? ORDER BY chain_raw ASC",
+                arguments: [walletId.uuidString]
+            ).map(Self.snapshot)
+        }
     }
 
     func chainState(walletId: UUID, chain: SupportedChain) throws -> ChainStateSnapshot? {
-        let chainRaw = chain.rawValue
-        var descriptor = FetchDescriptor<ChainStateRecord>(
-            predicate: #Predicate { $0.walletId == walletId && $0.chainRaw == chainRaw }
-        )
-        descriptor.fetchLimit = 1
-        return try modelContext.fetch(descriptor).first.map(snapshot(from:))
-    }
-
-    // MARK: - Helpers
-
-    /// Find the `(walletId, chainRaw)` row or create a fresh one. Does NOT
-    /// save — the caller batches the save. Returns `isNew` so `recomputeRow`
-    /// can force the first write on a freshly inserted row while skipping
-    /// no-op rewrites of an existing one.
-    private func fetchOrCreateRow(walletId: UUID, chainRaw: String, address: String) throws -> (record: ChainStateRecord, isNew: Bool) {
-        var descriptor = FetchDescriptor<ChainStateRecord>(
-            predicate: #Predicate { $0.walletId == walletId && $0.chainRaw == chainRaw }
-        )
-        descriptor.fetchLimit = 1
-        if let existing = try modelContext.fetch(descriptor).first {
-            return (existing, false)
+        try database.read { db in
+            try Row.fetchOne(
+                db,
+                sql: "SELECT * FROM chain_states WHERE wallet_id = ? AND chain_raw = ? LIMIT 1",
+                arguments: [walletId.uuidString, chain.rawValue]
+            ).map(Self.snapshot)
         }
-        let record = ChainStateRecord(walletId: walletId, chainRaw: chainRaw, address: address)
-        modelContext.insert(record)
-        return (record, true)
     }
 
-    /// Rebuild the wallet-level read model the balance card can load on
-    /// launch. This is derived from `ChainStateRecord` only, so the hero
-    /// total and the coin/token rows stay anchored to the same persisted data.
-    private func upsertWalletPortfolioSummary(walletId: UUID, fiatCurrencyCode: String) throws {
+    private func upsertWalletPortfolioSummary(db: Database, walletId: UUID, fiatCurrencyCode: String) throws {
         let code = fiatCurrencyCode.uppercased()
-        let descriptor = FetchDescriptor<ChainStateRecord>(
-            predicate: #Predicate { $0.walletId == walletId }
+        let rows = try Row.fetchAll(
+            db,
+            sql: "SELECT native_balance_raw, total_fiat, token_count FROM chain_states WHERE wallet_id = ? AND fiat_currency_code = ?",
+            arguments: [walletId.uuidString, code]
         )
-        let rows = try modelContext.fetch(descriptor).filter {
-            $0.fiatCurrencyCode.caseInsensitiveCompare(code) == .orderedSame
+        var totalFiat: Decimal = 0
+        var positiveChainCount = 0
+        var positiveTokenCount = 0
+        var positiveAssetCount = 0
+        for row in rows {
+            let fiat = Decimal(string: row["total_fiat"] as String) ?? 0
+            let tokenCount: Int = row["token_count"]
+            totalFiat += fiat
+            if fiat > 0 { positiveChainCount += 1 }
+            positiveTokenCount += tokenCount
+            if (Decimal(string: row["native_balance_raw"] as String) ?? 0) > 0 { positiveAssetCount += 1 }
+            positiveAssetCount += tokenCount
         }
-
-        let totalFiat = rows.reduce(Decimal.zero) { $0 + $1.totalFiat }
-        let positiveChainCount = rows.filter { $0.totalFiat > 0 }.count
-        let positiveTokenCount = rows.reduce(0) { $0 + $1.tokenCount }
-        let positiveAssetCount = rows.reduce(0) { count, row in
-            let nativeAmount = Decimal(string: row.nativeBalanceRaw) ?? 0
-            return count + (nativeAmount > 0 ? 1 : 0) + row.tokenCount
-        }
-        let sourceChainCount = rows.count
+        let now = Date.databaseMilliseconds
         let lookupKey = WalletPortfolioSummaryRecord.makeLookupKey(walletId: walletId, currencyCode: code)
-        let (summary, isNew) = try fetchOrCreatePortfolioSummary(
-            walletId: walletId,
-            currencyCode: code,
-            lookupKey: lookupKey
+        try db.execute(
+            sql: """
+            INSERT INTO wallet_portfolio_summaries
+            (id, lookup_key, wallet_id, currency_code, total_fiat, total_fiat_numeric,
+             positive_chain_count, positive_asset_count, positive_token_count, source_chain_count, updated_at_ms)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(lookup_key) DO UPDATE SET
+                total_fiat = excluded.total_fiat,
+                total_fiat_numeric = excluded.total_fiat_numeric,
+                positive_chain_count = excluded.positive_chain_count,
+                positive_asset_count = excluded.positive_asset_count,
+                positive_token_count = excluded.positive_token_count,
+                source_chain_count = excluded.source_chain_count,
+                updated_at_ms = excluded.updated_at_ms
+            """,
+            arguments: [
+                UUID().uuidString,
+                lookupKey,
+                walletId.uuidString,
+                code,
+                totalFiat.databaseText,
+                totalFiat.databaseDouble,
+                positiveChainCount,
+                positiveAssetCount,
+                positiveTokenCount,
+                rows.count,
+                now
+            ]
         )
-
-        let unchanged = !isNew
-            && summary.lookupKey == lookupKey
-            && summary.walletId == walletId
-            && summary.currencyCode == code
-            && summary.totalFiat == totalFiat
-            && summary.positiveChainCount == positiveChainCount
-            && summary.positiveAssetCount == positiveAssetCount
-            && summary.positiveTokenCount == positiveTokenCount
-            && summary.sourceChainCount == sourceChainCount
-        if unchanged { return }
-
-        summary.lookupKey = lookupKey
-        summary.walletId = walletId
-        summary.currencyCode = code
-        summary.totalFiat = totalFiat
-        summary.positiveChainCount = positiveChainCount
-        summary.positiveAssetCount = positiveAssetCount
-        summary.positiveTokenCount = positiveTokenCount
-        summary.sourceChainCount = sourceChainCount
-        summary.updatedAt = Date()
     }
 
-    private func fetchOrCreatePortfolioSummary(
-        walletId: UUID,
-        currencyCode: String,
-        lookupKey: String
-    ) throws -> (record: WalletPortfolioSummaryRecord, isNew: Bool) {
-        var descriptor = FetchDescriptor<WalletPortfolioSummaryRecord>(
-            predicate: #Predicate { $0.lookupKey == lookupKey }
-        )
-        descriptor.fetchLimit = 1
-        if let existing = try modelContext.fetch(descriptor).first {
-            return (existing, false)
-        }
-
-        let record = WalletPortfolioSummaryRecord(
-            walletId: walletId,
-            currencyCode: currencyCode
-        )
-        modelContext.insert(record)
-        return (record, true)
+    private static func decimalAmount(rawBalance: String, decimals: Int) -> Decimal? {
+        guard let raw = Decimal(string: rawBalance), decimals >= 0 else { return nil }
+        guard decimals > 0 else { return raw }
+        var divisor: Decimal = 1
+        for _ in 0..<decimals { divisor *= 10 }
+        return raw / divisor
     }
 
-    private func snapshot(from record: ChainStateRecord) -> ChainStateSnapshot {
+    private static func decimalString(_ value: Decimal) -> String {
+        NSDecimalNumber(decimal: value).stringValue
+    }
+
+    private static func snapshot(from row: Row) -> ChainStateSnapshot {
         ChainStateSnapshot(
-            chainRaw: record.chainRaw,
-            address: record.address,
-            nativeBalanceRaw: record.nativeBalanceRaw,
-            nativeFiat: record.nativeFiat,
-            totalFiat: record.totalFiat,
-            tokenCount: record.tokenCount,
-            txSentCount: record.txSentCount,
-            txReceivedCount: record.txReceivedCount,
-            txSelfTransferCount: record.txSelfTransferCount,
-            txBridgeCount: record.txBridgeCount,
-            txFailedCount: record.txFailedCount,
-            txPendingCount: record.txPendingCount,
-            txTotalCount: record.txTotalCount,
-            utxoCount: record.utxoCount,
-            utxoTotalSats: Int64(record.utxoTotalRaw) ?? 0,
-            isUsed: record.isUsed,
-            hasEncryptedKey: record.encryptedPrivateKey != nil,
-            syncStateRaw: record.syncStateRaw
+            chainRaw: row["chain_raw"],
+            address: row["address"],
+            nativeBalanceRaw: row["native_balance_raw"],
+            nativeFiat: Decimal(string: row["native_fiat"] as String) ?? 0,
+            totalFiat: Decimal(string: row["total_fiat"] as String) ?? 0,
+            tokenCount: row["token_count"],
+            txSentCount: row["tx_sent_count"],
+            txReceivedCount: row["tx_received_count"],
+            txSelfTransferCount: row["tx_self_transfer_count"],
+            txBridgeCount: row["tx_bridge_count"],
+            txFailedCount: row["tx_failed_count"],
+            txPendingCount: row["tx_pending_count"],
+            txTotalCount: row["tx_total_count"],
+            utxoCount: row["utxo_count"],
+            utxoTotalSats: Int64(row["utxo_total_raw"] as String) ?? 0,
+            isUsed: (row["is_used"] as Int) != 0,
+            hasEncryptedKey: (row["encrypted_private_key"] as Data?) != nil,
+            syncStateRaw: row["sync_state_raw"]
         )
     }
 }

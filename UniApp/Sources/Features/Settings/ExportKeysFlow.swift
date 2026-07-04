@@ -106,8 +106,6 @@ private struct RecoveryPhraseRevealScreen: View {
     let walletName: String
     let onDone: () -> Void
 
-    @Environment(\.modelContext) private var modelContext
-
     @State private var words: [String] = []
     @State private var loadError: String?
     @State private var copied = false
@@ -295,8 +293,7 @@ private struct RecoveryPhraseRevealScreen: View {
     private func load() async {
         let id = walletId
         do {
-            let container = modelContext.container
-            let loaded = try await WalletSecretRepository(modelContainer: container)
+            let loaded = try await WalletSecretRepository(database: AppDatabase.shared)
                 .loadMnemonic(for: id) ?? []
             words = loaded
             if words.isEmpty {

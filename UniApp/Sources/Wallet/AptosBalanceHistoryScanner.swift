@@ -1,6 +1,5 @@
 import Foundation
 import OSLog
-import SwiftData
 
 actor AptosBalanceHistoryScanner {
     private let fullnode = AptosFullnodeBalanceClient()
@@ -11,7 +10,7 @@ actor AptosBalanceHistoryScanner {
         walletId: UUID,
         address: WalletRepository.AddressSnapshot,
         currencyCode: String,
-        modelContainer: ModelContainer,
+        database: AppDatabase,
         includePrices: Bool = true,
         includeHistory: Bool = true
     ) async throws {
@@ -37,7 +36,7 @@ actor AptosBalanceHistoryScanner {
         let priceMap = await pricesTask
         let events = await historyTask
 
-        let txRepo = TransactionRepository(modelContainer: modelContainer)
+        let txRepo = TransactionRepository(database: database)
         try await txRepo.upsertBalance(
             addressId: address.id,
             tokenSymbol: SupportedChain.aptos.ticker,
@@ -99,7 +98,7 @@ actor AptosBalanceHistoryScanner {
         try await txRepo.markScanComplete(addressId: address.id, isUsed: isUsed, save: false)
         try await txRepo.flush()
 
-        _ = try await ChainStateRepository(modelContainer: modelContainer).rebuild(
+        _ = try await ChainStateRepository(database: database).rebuild(
             walletId: walletId,
             fiatCurrencyCode: currencyCode,
             onlyChains: [.aptos],

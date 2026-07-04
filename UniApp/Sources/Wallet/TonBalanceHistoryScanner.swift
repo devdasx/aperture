@@ -1,6 +1,5 @@
 import Foundation
 import OSLog
-import SwiftData
 
 actor TonBalanceHistoryScanner {
     private let client = TonBalanceHistoryClient()
@@ -10,7 +9,7 @@ actor TonBalanceHistoryScanner {
         walletId: UUID,
         address: WalletRepository.AddressSnapshot,
         currencyCode: String,
-        modelContainer: ModelContainer,
+        database: AppDatabase,
         includePrices: Bool = true,
         includeHistory: Bool = true
     ) async throws {
@@ -34,7 +33,7 @@ actor TonBalanceHistoryScanner {
         let priceMap = await pricesTask
         let events = await historyTask
 
-        let txRepo = TransactionRepository(modelContainer: modelContainer)
+        let txRepo = TransactionRepository(database: database)
         try await txRepo.upsertBalance(
             addressId: address.id,
             tokenSymbol: SupportedChain.ton.ticker,
@@ -96,7 +95,7 @@ actor TonBalanceHistoryScanner {
         try await txRepo.markScanComplete(addressId: address.id, isUsed: isUsed, save: false)
         try await txRepo.flush()
 
-        _ = try await ChainStateRepository(modelContainer: modelContainer).rebuild(
+        _ = try await ChainStateRepository(database: database).rebuild(
             walletId: walletId,
             fiatCurrencyCode: currencyCode,
             onlyChains: [.ton],

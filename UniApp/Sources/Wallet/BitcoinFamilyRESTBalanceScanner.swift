@@ -1,6 +1,5 @@
 import Foundation
 import OSLog
-import SwiftData
 
 actor BitcoinFamilyRESTBalanceScanner {
     private let client = RPCClient.shared
@@ -11,7 +10,7 @@ actor BitcoinFamilyRESTBalanceScanner {
         walletId: UUID,
         address: WalletRepository.AddressSnapshot,
         currencyCode: String,
-        modelContainer: ModelContainer,
+        database: AppDatabase,
         includePrices: Bool = true,
         includeHistory: Bool = true
     ) async throws {
@@ -34,7 +33,7 @@ actor BitcoinFamilyRESTBalanceScanner {
         let utxos = await utxosTask
         let history = await historyTask
 
-        let txRepo = TransactionRepository(modelContainer: modelContainer)
+        let txRepo = TransactionRepository(database: database)
         try await txRepo.upsertBalance(
             addressId: address.id,
             tokenSymbol: address.chain.ticker,
@@ -82,13 +81,13 @@ actor BitcoinFamilyRESTBalanceScanner {
                 confirmed: $0.confirmed
             )
         }
-        _ = try await ChainStateRepository(modelContainer: modelContainer)
+        _ = try await ChainStateRepository(database: database)
             .replaceAddressedUTXOs(
                 walletId: walletId,
                 chain: address.chain,
                 utxos: addressedUTXOs
             )
-        _ = try await ChainStateRepository(modelContainer: modelContainer).rebuild(
+        _ = try await ChainStateRepository(database: database).rebuild(
             walletId: walletId,
             fiatCurrencyCode: currencyCode,
             onlyChains: Set([address.chain]),

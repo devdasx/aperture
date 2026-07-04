@@ -1,5 +1,4 @@
 import SwiftUI
-import SwiftData
 
 /// **"View all" destination** behind `AssetDetailView`'s activity
 /// section's `View all` row. Lists every transaction for the asset
@@ -17,20 +16,25 @@ import SwiftData
 struct AssetActivityView: View {
     let identity: AssetIdentity
 
-    @Query(sort: \WalletRecord.sortOrder) private var allWallets: [WalletRecord]
-    /// Top-level transaction feed (store-sorted newest-first). Filtered
-    /// in-memory by the active wallet's address ids — no relationship
-    /// faulting, and a cheap `.count` replaces the O(all-tx)
-    /// `WalletDataFingerprint` in `derivedKey` (2026-06-14 Activity-lag fix).
-    @Query(sort: \TransactionRecord.occurredAt, order: .reverse)
-    private var allTransactionRecords: [TransactionRecord]
+    @StateObject private var databaseSnapshot = DatabaseSnapshotObservation()
     @AppStorage("activeWalletId") private var activeWalletIdRaw: String = ""
     @AppStorage(CurrencyPreference.storageKey) private var currencyCode: String = CurrencyPreference.defaultCode
-    // Local-currency activity amounts (2026-06-18).
-    @Query private var cachedPrices: [CachedPriceRecord]
-    // User-added custom tokens — so the network filter lists every
-    // network the user added this asset on (2026-06-19).
-    @Query private var customTokenRecords: [CustomTokenRecord]
+
+    private var allWallets: [WalletRecord] {
+        databaseSnapshot.wallets
+    }
+
+    private var allTransactionRecords: [TransactionRecord] {
+        databaseSnapshot.transactions.sorted { $0.occurredAt > $1.occurredAt }
+    }
+
+    private var cachedPrices: [CachedPriceRecord] {
+        databaseSnapshot.cachedPrices
+    }
+
+    private var customTokenRecords: [CustomTokenRecord] {
+        databaseSnapshot.customTokenRecords
+    }
 
     private var priceMap: [String: Decimal] {
         ActivityFiat.priceMap(cachedPrices, currency: currencyCode)

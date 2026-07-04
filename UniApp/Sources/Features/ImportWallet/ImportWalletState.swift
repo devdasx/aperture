@@ -69,7 +69,7 @@ final class ImportWalletState {
     let pendingWalletId: UUID = UUID()
 
     /// Persist this import end-to-end via the appropriate
-    /// `WalletRepository` shape. Mirrors `CreateWalletState.persist(...)`'s
+    /// `WalletCommandRepository` shape. Mirrors `CreateWalletState.persist(...)`'s
     /// Keychain-then-database transactional pattern: seed (if any) goes
     /// to Keychain first; on database failure the seed is rolled back.
     ///
@@ -80,7 +80,7 @@ final class ImportWalletState {
     @discardableResult
     func persist(
         result: ImportResult,
-        into repository: WalletRepository,
+        into repository: WalletCommandRepository,
         defaultName: String? = nil
     ) async throws -> UUID {
         let walletId = pendingWalletId

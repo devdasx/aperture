@@ -1,5 +1,4 @@
 import SwiftUI
-import SwiftData
 
 /// Settings → Wallets → <wallet> → Custom tokens. Lists every token
 /// the user has added via `AddCustomTokenSheet`, sectioned by chain
@@ -19,18 +18,22 @@ import SwiftData
 /// `UniColors.Background.primary`. Functional layer — system nav bar
 /// + toolbar `+` button.
 struct CustomTokensListView: View {
-    @Query(sort: [SortDescriptor(\CustomTokenRecord.symbol, order: .forward)])
-    private var allTokens: [CustomTokenRecord]
-    /// The active wallet's held balances — so each custom token shows its
-    /// real balance (native amount + fiat), like the main screen
-    /// (2026-06-19 user direction).
-    @Query(sort: \WalletRecord.sortOrder) private var allWallets: [WalletRecord]
+    @StateObject private var databaseSnapshot = DatabaseSnapshotObservation()
     @AppStorage("activeWalletId") private var activeWalletIdRaw: String = ""
     @AppStorage(CurrencyPreference.storageKey) private var currencyCode: String = CurrencyPreference.defaultCode
 
-    @Environment(\.modelContext) private var modelContext
     @State private var isShowingAddSheet: Bool = false
     @State private var isShowingDeleteError: Bool = false
+
+    private var allTokens: [CustomTokenRecord] {
+        databaseSnapshot.customTokenRecords.sorted {
+            $0.symbol.localizedStandardCompare($1.symbol) == .orderedAscending
+        }
+    }
+
+    private var allWallets: [WalletRecord] {
+        databaseSnapshot.wallets
+    }
 
     /// Active wallet — the source of the held balances shown per token.
     private var activeWallet: WalletRecord? {
@@ -194,10 +197,9 @@ struct CustomTokensListView: View {
 
     private func delete(_ token: CustomTokenRecord) {
         let id = token.id
-        let container = modelContext.container
         UniHapticEngine.shared.fire(.warning)
         Task { @MainActor in
-            let repo = CustomTokenRepository(modelContainer: container)
+            let repo = CustomTokenRepository(database: AppDatabase.shared)
             do {
                 try await repo.remove(id: id)
             } catch {

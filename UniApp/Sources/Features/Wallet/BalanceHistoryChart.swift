@@ -8,7 +8,7 @@ import SwiftUI
 /// previous design pushed that value into a `@State Decimal?` on
 /// `WalletHomeView`, so each drag frame invalidated the ENTIRE
 /// `WalletHomeView.body` — which rebuilt the price-history /
-/// price-cache dictionaries from the full SwiftData `@Query` and
+/// price-cache dictionaries from the full GRDB GRDB observation and
 /// re-sorted every balance, 60×/sec. Routing the value through an
 /// `@Observable` object instead means SwiftUI's Observation only
 /// invalidates the views that READ `fiat` (the hero balance label) —
@@ -327,7 +327,7 @@ struct BalanceHistoryChart: View {
     /// actor. The chart paints a frame later, but the screen never
     /// freezes.
     private func rebuildPoints() async {
-        // Snapshot on the main actor (these are main-context @Models), then
+        // Snapshot on the main actor (these are main-context records), then
         // run the transaction-only reconstruction OFF the main actor. Prices
         // are used only to convert each transaction amount into local currency;
         // they never create chart points.

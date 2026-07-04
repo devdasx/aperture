@@ -1,5 +1,4 @@
 import SwiftUI
-import SwiftData
 
 /// Settings → Wallets → <wallet>. Single-wallet management surface:
 /// rename, view recovery phrase (honest about post-backup
@@ -7,22 +6,21 @@ import SwiftData
 ///
 /// **Secret-reveal honesty (Rule #16 + Rule #2 §A.7), per kind:**
 /// - Created / Imported (phrase): "View recovery phrase", enabled iff
-///   the encrypted SwiftData secret can decrypt, or the legacy mnemonic
+///   the encrypted GRDB secret can decrypt, or the legacy mnemonic
 ///   vault still holds the phrase. Disabled only when neither usable copy
 ///   exists.
 /// - Imported (key): "View private key", enabled iff the encrypted key
-///   can decrypt from either the SwiftData secret row or the legacy vault.
+///   can decrypt from either the GRDB secret row or the legacy vault.
 /// - Watch-only: no reveal row — the Details footer states that no
 ///   secret exists on this device.
 struct WalletDetailView: View {
     let walletId: UUID
 
-    @Query private var matches: [WalletRecord]
+    @StateObject private var databaseSnapshot = DatabaseSnapshotObservation()
     // `activeWalletId` is no longer read or written here — the repository's
     // `deleteWalletAndActivateNext` owns the post-delete pointer move
     // (2026-06-13). The old `@AppStorage("activeWalletId")` clobber is gone
     // (see `deleteWallet`).
-    @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
 
     @State private var editedName: String = ""
@@ -82,19 +80,15 @@ struct WalletDetailView: View {
     @State private var errorAlertMessage: String?
     @State private var walletErrorReport: ApertureErrorReport?
 
-    init(walletId: UUID) {
-        self.walletId = walletId
-        _matches = Query(
-            filter: #Predicate<WalletRecord> { $0.id == walletId }
-        )
+    private var wallet: WalletRecord? {
+        databaseSnapshot.wallets.first { $0.id == walletId }
     }
 
-    private var wallet: WalletRecord? { matches.first }
     private var hasStoredMnemonic: Bool {
         if let mnemonicAvailability {
             return mnemonicAvailability.canReveal
         }
-        if let words = try? WalletSecretPersistence.loadMnemonic(for: walletId, in: modelContext),
+        if let words = try? WalletSecretPersistence.loadMnemonic(for: walletId, database: AppDatabase.shared),
            !words.isEmpty {
             return true
         }
@@ -104,7 +98,7 @@ struct WalletDetailView: View {
         if let privateKeyAvailability {
             return privateKeyAvailability.canReveal
         }
-        if let key = try? WalletSecretPersistence.loadPrivateKey(for: walletId, in: modelContext),
+        if let key = try? WalletSecretPersistence.loadPrivateKey(for: walletId, database: AppDatabase.shared),
            !key.isEmpty {
             return true
         }
@@ -113,12 +107,12 @@ struct WalletDetailView: View {
     private var currentMnemonicAvailability: WalletSecretPersistence.Availability {
         if let mnemonicAvailability { return mnemonicAvailability }
         if hasStoredMnemonic { return .available }
-        return WalletSecretPersistence.availability(kind: .mnemonic, for: walletId, in: modelContext)
+        return WalletSecretPersistence.availability(kind: .mnemonic, for: walletId, database: AppDatabase.shared)
     }
     private var currentPrivateKeyAvailability: WalletSecretPersistence.Availability {
         if let privateKeyAvailability { return privateKeyAvailability }
         if hasStoredPrivateKey { return .available }
-        return WalletSecretPersistence.availability(kind: .privateKey, for: walletId, in: modelContext)
+        return WalletSecretPersistence.availability(kind: .privateKey, for: walletId, database: AppDatabase.shared)
     }
 
     var body: some View {
@@ -176,7 +170,7 @@ struct WalletDetailView: View {
             //   the absence of work to do IS the moment.
             //
             // The transition between A and B is the screen's most
-            // important visual moment. SwiftUI's `@Query` reactivity
+            // important visual moment. SwiftUI's GRDB observation reactivity
             // on `WalletRecord` flips `requiresBackup` the moment
             // `WalletRepository.markBackupComplete(id:)` lands; the
             // `.animation(.smooth, value:)` on the section makes the
@@ -210,7 +204,7 @@ struct WalletDetailView: View {
             // or from this detail screen; the chip's verb + symbol
             // (`paintpalette`) match that menu's "Customise wallet"
             // row so the vocabulary is consistent across both entry
-            // points. The avatar updates live via `@Query` when the
+            // points. The avatar updates live via GRDB observation when the
             // picker writes through `WalletRepository`.
             //
             // **The chip — `.secondary`, not `.tertiary` (Rule #19).**
@@ -233,7 +227,7 @@ struct WalletDetailView: View {
             // (2026-06-19 user direction): the wallet's avatar on the
             // leading edge, "Customize" + chevron trailing, opening
             // `WalletIconPickerSheet`. The avatar updates live via
-            // `@Query` the moment the picker writes through the repo.
+            // GRDB observation the moment the picker writes through the repo.
             Section {
                 customizeRow(wallet)
             }
@@ -448,7 +442,7 @@ struct WalletDetailView: View {
             // via `WalletSecretRepository.loadMnemonic`, presents the canonical
             // `BackupVerifyView` against it, and on success calls
             // `WalletRepository.markBackupComplete(id:)`. That flip
-            // propagates through `@Query` reactivity to this view; the
+            // propagates through GRDB observation reactivity to this view; the
             // backup card animates A → B in front of the user, the
             // sheet dismisses, and the moment is felt.
             BackupExistingWalletFlow(
@@ -561,7 +555,7 @@ struct WalletDetailView: View {
     }
 
     /// Custom Tokens row — pushes `CustomTokensListView`. Reactive to
-    /// the live count of user-added tokens via `@Query` inside that
+    /// the live count of user-added tokens via GRDB observation inside that
     /// view; this row just opens it.
     private var customTokensRow: some View {
         // NavigationLink supplies its OWN trailing disclosure chevron in
@@ -822,7 +816,7 @@ struct WalletDetailView: View {
         let newName = trimmed
         let persistedName = wallet.name
         Task { @MainActor in
-            let repo = WalletRepository(modelContainer: modelContext.container)
+            let repo = WalletRepository(database: AppDatabase.shared)
             do {
                 try await repo.renameWallet(id: id, to: newName)
             } catch {
@@ -856,7 +850,7 @@ struct WalletDetailView: View {
         // live record), and no `activeWalletIdRaw = ""` clobber (the repo
         // names a real successor; the old clear was the source of the
         // "$50 wallet selected, $700 wallet's data" report).
-        let repo = WalletRepository(modelContainer: modelContext.container)
+        let repo = WalletRepository(database: AppDatabase.shared)
         do {
             try await repo.deleteWallet(id: id)
         } catch {
@@ -1002,8 +996,7 @@ struct WalletDetailView: View {
             return
         }
         let id = walletId
-        let container = modelContext.container
-        let loaded = try? await WalletSecretRepository(modelContainer: container)
+        let loaded = try? await WalletSecretRepository(database: AppDatabase.shared)
             .loadMnemonic(for: id)
         guard let words = loaded, !words.isEmpty else {
             pendingBackupMethod = nil
@@ -1041,7 +1034,7 @@ struct WalletDetailView: View {
 
     @MainActor
     private func refreshSecretAvailability() async {
-        let repository = WalletSecretRepository(modelContainer: modelContext.container)
+        let repository = WalletSecretRepository(database: AppDatabase.shared)
         async let mnemonic = repository.mnemonicAvailability(for: walletId)
         async let privateKey = repository.privateKeyAvailability(for: walletId)
         mnemonicAvailability = await mnemonic
@@ -1111,8 +1104,8 @@ private struct BackupStateCard: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             // Animation is keyed on the requiresBackup flag so SwiftUI
-            // crossfades the two content variants when SwiftData's
-            // `@Query` reactivity flips the value. Smooth (not spring)
+            // crossfades the two content variants when GRDB's
+            // GRDB observation reactivity flips the value. Smooth (not spring)
             // so the moment lands as quiet confirmation rather than
             // celebration. Reduce Motion is honored automatically —
             // SwiftUI shortens / suppresses the animation under that

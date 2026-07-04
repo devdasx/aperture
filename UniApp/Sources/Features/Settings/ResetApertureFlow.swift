@@ -1,5 +1,4 @@
 import SwiftUI
-import SwiftData
 import Observation
 import UIKit
 
@@ -35,10 +34,16 @@ final class ResetFlowGate {
 struct ResetApertureFlow: View {
     let onClose: () -> Void
 
-    @Environment(\.modelContext) private var modelContext
+    @StateObject private var databaseSnapshot = DatabaseSnapshotObservation()
     @Environment(\.openURL) private var openURL
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @Query(sort: \WalletRecord.sortOrder) private var wallets: [WalletRecord]
+
+    private var wallets: [WalletRecord] {
+        databaseSnapshot.wallets.sorted {
+            if $0.sortOrder == $1.sortOrder { return $0.createdAt < $1.createdAt }
+            return $0.sortOrder < $1.sortOrder
+        }
+    }
 
     private enum Route: Hashable {
         case backup
@@ -352,9 +357,8 @@ struct ResetApertureFlow: View {
             let id = wallet.id
             let name = wallet.name
             let avatar = wallet.avatarSpec
-            let container = modelContext.container
             Task { @MainActor in
-                let words = try? await WalletSecretRepository(modelContainer: container)
+                let words = try? await WalletSecretRepository(database: AppDatabase.shared)
                     .loadMnemonic(for: id)
                 guard let words, !words.isEmpty else { return }
                 backupTarget = BackupTarget(id: id, name: name, words: words, avatar: avatar)
@@ -821,7 +825,7 @@ struct ResetApertureFlow: View {
         let animate = !reduceMotion
 
         do {
-            try await FactoryReset.performStagedWipe(modelContext: modelContext) { stage in
+            try await FactoryReset.performStagedWipe(database: AppDatabase.shared) { stage in
                 await completeVisibleProcessStage(stage, animate: animate)
             }
         } catch {

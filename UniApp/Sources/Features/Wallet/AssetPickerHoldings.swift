@@ -3,7 +3,7 @@ import Foundation
 /// A `Sendable` snapshot of the active wallet's holdings, used by the
 /// Receive & Send asset / network pickers to (a) show real balances and
 /// (b) drive the real sort — balance high→low, then transaction-count
-/// high→low. Built once per balance change from the SwiftData graph
+/// high→low. Built once per balance change from the GRDB graph
 /// (`WalletAddressRecord` → `TokenBalanceRecord` + `TransactionRecord`),
 /// then read cheaply by the rows so scrolling never touches the store.
 ///
@@ -14,7 +14,7 @@ import Foundation
 /// bucketed by `(chain, SYMBOL)`.
 struct AssetPickerHoldings: Sendable, Equatable {
 
-    /// One held balance, flattened out of the SwiftData graph.
+    /// One held balance, flattened out of the GRDB graph.
     struct Held: Sendable, Equatable {
         let chain: SupportedChain
         let symbolUpper: String
@@ -84,7 +84,7 @@ struct AssetPickerHoldings: Sendable, Equatable {
 
 extension AssetPickerHoldings {
     /// Build the snapshot from the active wallet. Runs on the main actor
-    /// (SwiftData models are main-context bound); the caller invokes it
+    /// (GRDB models are main-context bound); the caller invokes it
     /// from a `.task(id:)` so it's off the synchronous render path
     /// (Rule #28), keyed on a fingerprint so it only rebuilds when
     /// balances actually change.

@@ -13,7 +13,7 @@ import SwiftUI
 /// suppress an entire network from their daily view without losing
 /// the wallet itself. The chain stays a real chain in the wallet
 /// (addresses still derive, scanner still scans, balances still
-/// land in SwiftData); the home view simply omits it.
+/// land in GRDB); the home view simply omits it.
 ///
 /// **Layout.** Single section listing every `SupportedChain.allCases`
 /// in canonical order. Each row carries the chain's logo, display

@@ -32,7 +32,7 @@ import CryptoKit
 ///
 /// **Re-render cadence.** `body` re-evaluates every time the caller's
 /// view body recomputes — which for `MainTabView.walletTabLabel` is
-/// when the `@Query` snapshot changes (a wallet rename, an avatar
+/// when the GRDB observation snapshot changes (a wallet rename, an avatar
 /// edit, a change of the active wallet) AND on every unrelated parent
 /// body pass. The `ImageRenderer` call is synchronous and runs on
 /// `@MainActor` (SwiftUI views are main-actor-isolated).

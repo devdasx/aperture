@@ -1,37 +1,17 @@
 import Foundation
-import SwiftData
+import GRDB
 
-/// Keeps the authoritative `AppSettingsRecord` (the settings row in the
-/// database) continuously in sync with the legacy `@AppStorage` keys
-/// (Rule #27 §D — settings live in the store).
-///
-/// **Design for safety.** Several preferences (`languagePreference`,
-/// `activeWalletId`, `themePreference`, the lock keys) are read by the
-/// deeply-woven env / navigation / RTL / lock plumbing through
-/// `@AppStorage`'s zero-cost reactivity (Rules #11/#12/#17) — across
-/// ~30 files. Rewiring those to read SwiftData would be a launch- and
-/// security-critical change. So instead: the DB row is the authoritative
-/// settings copy, and `@AppStorage` stays as the synchronized reactive
-/// mirror those readers consume — UNTOUCHED, zero blast radius. One
-/// `UserDefaults.didChange` observer keeps the DB row equal to
-/// `@AppStorage` live (any toggle the user flips reflects into the DB
-/// immediately), so a surface reading the DB record (e.g. the
-/// background-refresh gate) sees current values. No-op-skip on save, so
-/// the frequent `didChange` notification never churns `@Query`.
 @MainActor
 final class SettingsStore {
     static let shared = SettingsStore()
 
-    private var container: ModelContainer?
+    private var database: AppDatabase?
     private var observer: NSObjectProtocol?
 
     private init() {}
 
-    /// Begin syncing. Seeds the record from current `@AppStorage` and
-    /// installs the live observer. Idempotent — safe to call once at
-    /// launch from `ApertureDatabase.bootstrap()`.
-    func start(container: ModelContainer) {
-        self.container = container
+    func start(database: AppDatabase) {
+        self.database = database
         syncFromAppStorage()
         guard observer == nil else { return }
         observer = NotificationCenter.default.addObserver(
@@ -43,84 +23,75 @@ final class SettingsStore {
         }
     }
 
-    /// Fetch-or-create the singleton settings row.
-    static func fetchOrCreate(in context: ModelContext) -> AppSettingsRecord {
-        // Capture the id in a local — `#Predicate` can't resolve a static
-        // member reference (it mis-parses it as a key path on the type).
-        let targetId = AppSettingsRecord.singletonId
-        var descriptor = FetchDescriptor<AppSettingsRecord>(
-            predicate: #Predicate { $0.id == targetId }
-        )
-        descriptor.fetchLimit = 1
-        if let existing = try? context.fetch(descriptor).first { return existing }
-        let record = AppSettingsRecord()
-        context.insert(record)
-        return record
-    }
-
-    /// Copy current `@AppStorage` values into the singleton record, using
-    /// each key's true default for an absent key (the `@AppStorage`
-    /// default-not-in-UserDefaults gotcha). Only saves when something
-    /// changed.
     func syncFromAppStorage() {
-        guard let container else { return }
-        let d = UserDefaults.standard
-        func str(_ k: String, _ def: String) -> String { d.string(forKey: k) ?? def }
-        func bool(_ k: String, _ def: Bool) -> Bool { d.object(forKey: k) == nil ? def : d.bool(forKey: k) }
-        func int(_ k: String, _ def: Int) -> Int { d.object(forKey: k) == nil ? def : d.integer(forKey: k) }
+        guard let database else { return }
+        let defaults = UserDefaults.standard
+        func str(_ key: String, _ fallback: String) -> String { defaults.string(forKey: key) ?? fallback }
+        func bool(_ key: String, _ fallback: Bool) -> Bool {
+            defaults.object(forKey: key) == nil ? fallback : defaults.bool(forKey: key)
+        }
+        func int(_ key: String, _ fallback: Int) -> Int {
+            defaults.object(forKey: key) == nil ? fallback : defaults.integer(forKey: key)
+        }
 
-        let theme = str("themePreference", ThemePreference.defaultRaw)
-        let lang = str("languagePreference", LanguagePreference.systemCode)
-        let pin = bool("pinEnabled", false)
-        let bio = bool("biometricEnabled", false)
-        let autoLock = int("autoLockSeconds", 0)
-        let currency = str("currencyPreference", CurrencyPreference.defaultCode)
-        let haptics = bool("hapticFeedbackEnabled", true)
-        let bgRefresh = bool("backgroundBalanceRefresh", true)
-        let chartRange = str("walletHomeBalanceHistoryRange", BalanceHistoryRange.all.rawValue)
-        let tab = int("selectedTab", 0)
-        let activeWallet = str("activeWalletId", "")
-        let deepLink = str("settingsDeepLink", "")
-        let unbacked = bool("hasUnbackedupWallet", false)
-        let hideImport = bool("hideImportKeyWarning", false)
-
-        let context = ModelContext(container)
-        let r = Self.fetchOrCreate(in: context)
-        let activeRecord = ActiveWalletStore.fetchOrCreate(in: context)
-        let changed = r.themePreference != theme
-            || r.languagePreference != lang
-            || r.pinEnabled != pin
-            || r.biometricEnabled != bio
-            || r.autoLockSeconds != autoLock
-            || r.currencyPreference != currency
-            || r.hapticFeedbackEnabled != haptics
-            || r.backgroundBalanceRefresh != bgRefresh
-            || r.walletHomeBalanceHistoryRange != chartRange
-            || r.selectedTab != tab
-            || r.activeWalletId != activeWallet
-            || activeRecord.walletID != UUID(uuidString: activeWallet.trimmingCharacters(in: .whitespacesAndNewlines))
-            || r.settingsDeepLink != deepLink
-            || r.hasUnbackedupWallet != unbacked
-            || r.hideImportKeyWarning != hideImport
-        guard changed else { return }
-
-        r.themePreference = theme
-        r.languagePreference = lang
-        r.pinEnabled = pin
-        r.biometricEnabled = bio
-        r.autoLockSeconds = autoLock
-        r.currencyPreference = currency
-        r.hapticFeedbackEnabled = haptics
-        r.backgroundBalanceRefresh = bgRefresh
-        r.walletHomeBalanceHistoryRange = chartRange
-        r.selectedTab = tab
-        r.activeWalletId = activeWallet
-        activeRecord.walletID = UUID(uuidString: activeWallet.trimmingCharacters(in: .whitespacesAndNewlines))
-        activeRecord.updatedAt = Date()
-        r.settingsDeepLink = deepLink
-        r.hasUnbackedupWallet = unbacked
-        r.hideImportKeyWarning = hideImport
-        r.updatedAt = Date()
-        try? context.save()
+        let activeWalletRaw = str("activeWalletId", "")
+        let canonicalActive = UUID(uuidString: activeWalletRaw.trimmingCharacters(in: .whitespacesAndNewlines))?.uuidString ?? ""
+        let now = Date.databaseMilliseconds
+        try? database.write { db in
+            try db.execute(
+                sql: """
+                INSERT INTO app_settings
+                (id, theme_preference, language_preference, pin_enabled, biometric_enabled,
+                 auto_lock_seconds, currency_preference, haptic_feedback_enabled,
+                 background_balance_refresh, wallet_home_balance_history_range,
+                 selected_tab, active_wallet_id, settings_deep_link,
+                 has_unbackedup_wallet, hide_import_key_warning, updated_at_ms)
+                VALUES ('app-settings-singleton', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(id) DO UPDATE SET
+                    theme_preference = excluded.theme_preference,
+                    language_preference = excluded.language_preference,
+                    pin_enabled = excluded.pin_enabled,
+                    biometric_enabled = excluded.biometric_enabled,
+                    auto_lock_seconds = excluded.auto_lock_seconds,
+                    currency_preference = excluded.currency_preference,
+                    haptic_feedback_enabled = excluded.haptic_feedback_enabled,
+                    background_balance_refresh = excluded.background_balance_refresh,
+                    wallet_home_balance_history_range = excluded.wallet_home_balance_history_range,
+                    selected_tab = excluded.selected_tab,
+                    active_wallet_id = excluded.active_wallet_id,
+                    settings_deep_link = excluded.settings_deep_link,
+                    has_unbackedup_wallet = excluded.has_unbackedup_wallet,
+                    hide_import_key_warning = excluded.hide_import_key_warning,
+                    updated_at_ms = excluded.updated_at_ms
+                """,
+                arguments: [
+                    str("themePreference", ThemePreference.defaultRaw),
+                    str("languagePreference", LanguagePreference.systemCode),
+                    bool("pinEnabled", false),
+                    bool("biometricEnabled", false),
+                    int("autoLockSeconds", 0),
+                    str(CurrencyPreference.storageKey, CurrencyPreference.defaultCode),
+                    bool(HapticPreference.storageKey, true),
+                    bool("backgroundBalanceRefresh", true),
+                    str("walletHomeBalanceHistoryRange", BalanceHistoryRange.all.rawValue),
+                    int("selectedTab", 0),
+                    canonicalActive,
+                    str("settingsDeepLink", ""),
+                    bool("hasUnbackedupWallet", false),
+                    bool("hideImportKeyWarning", false),
+                    now
+                ]
+            )
+            try db.execute(
+                sql: """
+                INSERT INTO active_wallet (id, wallet_id, updated_at_ms)
+                VALUES ('active-wallet-singleton', ?, ?)
+                ON CONFLICT(id) DO UPDATE SET
+                    wallet_id = excluded.wallet_id,
+                    updated_at_ms = excluded.updated_at_ms
+                """,
+                arguments: [canonicalActive.isEmpty ? nil : canonicalActive, now]
+            )
+        }
     }
 }

@@ -1,5 +1,4 @@
 import SwiftUI
-import SwiftData
 
 /// **Per-(asset, network) detail.** Pushed when the user taps a row
 /// in `AssetDetailView`'s Networks section.
@@ -18,14 +17,21 @@ struct AssetNetworkDetailView: View {
     let identity: AssetIdentity
     let chain: SupportedChain
 
-    @Query(sort: \WalletRecord.sortOrder) private var allWallets: [WalletRecord]
+    @StateObject private var databaseSnapshot = DatabaseSnapshotObservation()
     @AppStorage("activeWalletId") private var activeWalletIdRaw: String = ""
     @AppStorage(CurrencyPreference.storageKey) private var currencyCode: String = CurrencyPreference.defaultCode
-    // Local-currency activity amounts (2026-06-18).
-    @Query private var cachedPrices: [CachedPriceRecord]
-    /// On-disk historical closes — drives the chart's then-price valuation
-    /// (same source the symbol-level screen + wallet home use).
-    @Query private var historicalPrices: [HistoricalPriceRecord]
+
+    private var allWallets: [WalletRecord] {
+        databaseSnapshot.wallets
+    }
+
+    private var cachedPrices: [CachedPriceRecord] {
+        databaseSnapshot.cachedPrices
+    }
+
+    private var historicalPrices: [HistoricalPriceRecord] {
+        databaseSnapshot.historicalPrices
+    }
 
     private var priceMap: [String: Decimal] {
         ActivityFiat.priceMap(cachedPrices, currency: currencyCode)

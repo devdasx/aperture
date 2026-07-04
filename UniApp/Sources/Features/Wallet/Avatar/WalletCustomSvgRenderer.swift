@@ -39,7 +39,7 @@ import OSLog
 /// **Cache directory.** `Library/Caches/ApertureCustomAvatars/` — iOS
 /// is allowed to evict this directory under storage pressure. If
 /// eviction happens, the next render re-creates the PNG from the
-/// sanitized SVG (which lives in SwiftData + Keychain as the source
+/// sanitized SVG (which lives in GRDB + Keychain as the source
 /// of truth). No data loss; just a one-time re-render.
 ///
 /// **Render resolution.** 192×192 pixels = 96pt × 2x (Retina). The
@@ -84,7 +84,7 @@ enum WalletCustomSvgRenderer {
 
     /// Lazy-created cache directory under `Library/Caches/`. iOS evicts
     /// `Caches/` under pressure; that's a feature, not a bug — the
-    /// SwiftData spec is the source of truth and re-rendering is cheap.
+    /// GRDB spec is the source of truth and re-rendering is cheap.
     ///
     /// `static let` so the URL resolution + ensure-exists check runs
     /// once per process (Swift's lazy static initialization), not on

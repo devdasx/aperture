@@ -1,4 +1,3 @@
-import SwiftData
 import SwiftUI
 
 /// Settings -> Wallets -> Wallet -> Bitcoin path search.
@@ -11,8 +10,7 @@ import SwiftUI
 struct BitcoinPathSearchView: View {
     let walletId: UUID
 
-    @Environment(\.modelContext) private var modelContext
-    @Query private var wallets: [WalletRecord]
+    @StateObject private var databaseSnapshot = DatabaseSnapshotObservation()
 
     @State private var purpose: BitcoinPathSearchPurpose = .bip84
     @State private var accountFrom: String = "0"
@@ -30,15 +28,12 @@ struct BitcoinPathSearchView: View {
     @State private var errorMessage: String?
     @State private var searchTask: Task<Void, Never>?
 
-    init(walletId: UUID) {
-        self.walletId = walletId
-        _wallets = Query(
-            filter: #Predicate<WalletRecord> { $0.id == walletId }
-        )
+    private var wallet: WalletRecord? {
+        databaseSnapshot.wallets.first { $0.id == walletId }
     }
 
     private var walletName: String {
-        wallets.first?.name ?? String.apertureLocalized("Wallet")
+        wallet?.name ?? String.apertureLocalized("Wallet")
     }
 
     private var requestPreview: BitcoinPathSearchRequest? {
@@ -315,7 +310,6 @@ struct BitcoinPathSearchView: View {
         guard let request = try? makeRequest(validate: true) else { return }
         searchTask?.cancel()
 
-        let container = modelContext.container
         let walletId = walletId
         let shouldSave = saveFoundAddresses
 
@@ -330,10 +324,10 @@ struct BitcoinPathSearchView: View {
                 let found = try await BitcoinPathSearchEngine.search(
                     walletId: walletId,
                     request: request,
-                    modelContainer: container
+                    database: AppDatabase.shared
                 )
                 let saved = shouldSave && !found.isEmpty
-                    ? try await BitcoinPathSearchAddressStore(modelContainer: container)
+                    ? try await BitcoinPathSearchAddressStore(database: AppDatabase.shared)
                         .save(walletId: walletId, results: found)
                     : nil
 

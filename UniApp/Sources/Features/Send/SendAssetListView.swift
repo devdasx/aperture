@@ -1,5 +1,4 @@
 import SwiftUI
-import SwiftData
 
 /// Step 1 of the Send sheet — the asset list (twin of
 /// `ReceiveAssetListView`). Native coins + tokens, each row showing the
@@ -15,9 +14,7 @@ struct SendAssetListView: View {
     let onSelectNative: (SupportedChain) -> Void
     let onSelectToken: (SendAsset) -> Void
 
-    @Query(sort: [SortDescriptor(\CustomTokenRecord.symbol, order: .forward)])
-    private var customTokenRecords: [CustomTokenRecord]
-    @Query private var assetRecords: [AssetRecord]
+    @StateObject private var databaseSnapshot = DatabaseSnapshotObservation()
 
     /// Memoized, balance-sorted rows — rebuilt only when the chains, the
     /// custom-token set, the seeded catalog, or the holdings change.
@@ -27,6 +24,16 @@ struct SendAssetListView: View {
 
     private var rowsKey: String {
         "\(availableChains.map(\.rawValue).joined(separator: ","))|\(customTokenRecords.count)|\(assetRecords.count)|\(holdings.fingerprint)"
+    }
+
+    private var customTokenRecords: [CustomTokenRecord] {
+        databaseSnapshot.customTokenRecords.sorted {
+            $0.symbol.localizedStandardCompare($1.symbol) == .orderedAscending
+        }
+    }
+
+    private var assetRecords: [AssetRecord] {
+        databaseSnapshot.assetRecords
     }
 
     var body: some View {

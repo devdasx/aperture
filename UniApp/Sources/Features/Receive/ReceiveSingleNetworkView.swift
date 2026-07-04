@@ -1,5 +1,4 @@
 import SwiftUI
-import SwiftData
 
 /// Receive flow for callers that already know the asset has one network.
 ///
@@ -7,13 +6,17 @@ import SwiftData
 /// QR/address screen as the sheet root, so single-network coins and tokens
 /// do not ask the user to choose a network they cannot actually vary.
 struct ReceiveSingleNetworkView: View {
-    @Query(sort: \WalletRecord.sortOrder) private var allWallets: [WalletRecord]
+    @StateObject private var databaseSnapshot = DatabaseSnapshotObservation()
     @AppStorage("activeWalletId") private var activeWalletIdRaw: String = ""
 
     @Binding var navigationPath: NavigationPath
 
     let assetPrefill: ReceiveView.AssetPrefill
     let chain: SupportedChain
+
+    private var allWallets: [WalletRecord] {
+        databaseSnapshot.wallets
+    }
 
     var body: some View {
         NavigationStack(path: $navigationPath) {
