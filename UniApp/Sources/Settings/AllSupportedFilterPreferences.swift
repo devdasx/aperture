@@ -107,10 +107,10 @@ enum AllSupportedFilterPreferences {
     /// Wipe every preference key this feature owns. Called by the
     /// "Reset to defaults" CTA after the user confirms.
     static func resetAll() {
-        let defaults = UserDefaults.standard
-        defaults.set(defaultSortKey.rawValue, forKey: sortKeyKey)
-        defaults.set(defaultAssetType.rawValue, forKey: assetTypeKey)
-        defaults.set(defaultSelectedNetworksJSON, forKey: selectedNetworksKey)
-        defaults.set(defaultOnlyWithBalance, forKey: onlyWithBalanceKey)
+        let store = AppPreferenceStore.shared
+        store.set(defaultSortKey.rawValue, forKey: sortKeyKey)
+        store.set(defaultAssetType.rawValue, forKey: assetTypeKey)
+        store.set(defaultSelectedNetworksJSON, forKey: selectedNetworksKey)
+        store.set(defaultOnlyWithBalance, forKey: onlyWithBalanceKey)
     }
 }

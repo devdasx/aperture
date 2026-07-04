@@ -11,8 +11,8 @@ import SwiftUI
 /// and the banner disappears (the GRDB observation of `AppMetadataRecord` is
 /// reactive — flipping the flag re-renders the wallet home without it).
 struct BiometricReenrollmentBanner: View {
-    @AppStorage("biometricEnabled") private var biometricEnabled: Bool = false
-    @AppStorage(PinCodePreference.requireBiometricForSendKey) private var requireForSend: Bool = true
+    @GRDBStorage("biometricEnabled") private var biometricEnabled: Bool = false
+    @GRDBStorage(PinCodePreference.requireBiometricForSendKey) private var requireForSend: Bool = true
 
     var body: some View {
         HStack(alignment: .top, spacing: UniSpacing.s) {

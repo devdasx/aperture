@@ -1,7 +1,7 @@
 import SwiftUI
 
 /// User-selectable appearance preference. Stored under `themePreference`
-/// in `@AppStorage`. Resolves to a `ColorScheme?` for `.preferredColorScheme`
+/// in `@GRDBStorage`. Resolves to a `ColorScheme?` for `.preferredColorScheme`
 /// (`nil` means "follow the system").
 ///
 /// Implements `TODO` T-006.
@@ -12,7 +12,7 @@ enum ThemePreference: String, CaseIterable, Identifiable, Sendable {
 
     var id: String { rawValue }
 
-    /// Default raw value for fresh installs and any `@AppStorage` reader
+    /// Default raw value for fresh installs and any `@GRDBStorage` reader
     /// whose key hasn't been written yet. Per the 2026-06-05 user
     /// direction, fresh installs follow the device's appearance — same
     /// shape as the Language and Currency defaults.

@@ -36,9 +36,9 @@ import SwiftUI
 ///    selection (and presets show no checkmark). When the value
 ///    matches a preset, the Custom field is empty.
 struct WalletHomeMinValueView: View {
-    @AppStorage(WalletHomeFilterPreferences.minFiatThresholdKey)
+    @GRDBStorage(WalletHomeFilterPreferences.minFiatThresholdKey)
     private var thresholdRaw: Double = WalletHomeFilterPreferences.defaultMinFiatThreshold
-    @AppStorage(CurrencyPreference.storageKey)
+    @GRDBStorage(CurrencyPreference.storageKey)
     private var currencyCode: String = CurrencyPreference.defaultCode
 
     /// Mirror of the persisted threshold used by the Custom-row

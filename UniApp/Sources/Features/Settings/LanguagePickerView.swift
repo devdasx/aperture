@@ -2,12 +2,12 @@ import SwiftUI
 
 /// Picker for the supported languages plus the "System" sentinel.
 ///
-/// Selection writes through `@AppStorage("languagePreference")`. The
+/// Selection writes through `@GRDBStorage("languagePreference")`. The
 /// secondary row line is rendered in the user's currently-selected
 /// locale via `Locale.localizedString(forLanguageCode:)`. Filtering via
 /// native `.searchable`.
 struct LanguagePickerView: View {
-    @AppStorage("languagePreference") private var languageCode: String = LanguagePreference.systemCode
+    @GRDBStorage("languagePreference") private var languageCode: String = LanguagePreference.systemCode
     @Environment(\.locale) private var currentLocale
     @State private var searchText: String = ""
 
@@ -90,7 +90,7 @@ struct LanguagePickerView: View {
             // does NOT honor SwiftUI's `\.environment(\.locale)`.
             // Aperture changes the in-app language via the
             // environment binding only (no `AppleLanguages`
-            // UserDefaults rewrite, which would require an
+            // process-global rewrite, which would require an
             // app restart). Passing `locale: currentLocale`
             // routes the lookup through the user-selected
             // language. Same fix pattern needed at every

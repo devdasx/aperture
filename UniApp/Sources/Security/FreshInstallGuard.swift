@@ -16,12 +16,11 @@ import os.log
 /// accounts, your wallet only lives on this iPhone"* — is broken when
 /// "delete and re-install" doesn't actually reset the wallet.
 ///
-/// **The fix.** A marker bit in `UserDefaults` (which IS wiped on
-/// app delete) records that this install has run before. On the
-/// very first launch of a fresh install, the marker is missing —
-/// we delete every Keychain item under our known service identifiers,
-/// then set the marker. Subsequent launches see the marker and
-/// no-op.
+/// **The fix.** The local GRDB store lives in the app sandbox and is
+/// deleted with the app. On launch, a missing local SQLite store means
+/// this process is the first launch of a fresh install, so we delete
+/// every Keychain item under our known service identifiers before any
+/// vault opens. Subsequent launches see the GRDB store and no-op.
 ///
 /// **Why this is safe.** The Keychain items we delete are all
 /// owned by Aperture (`com.thuglife.aperture.*` services). We do NOT
@@ -40,12 +39,6 @@ import os.log
 /// This guarantees a fresh install starts from a known-empty
 /// state across every storage tier.
 enum FreshInstallGuard {
-
-    /// `UserDefaults` key that records "this install has run at
-    /// least once." Deleted automatically by iOS when the user
-    /// removes the app. We don't put any user data behind this key
-    /// — just a Bool that flips to `true` on first run.
-    private static let installedMarkerKey = "aperture.freshInstall.completed"
 
     #if DEBUG
     nonisolated(unsafe) private static var ignoresExistingStoreForTesting = false
@@ -126,23 +119,15 @@ enum FreshInstallGuard {
     /// callers can log + smoke-test if needed.
     @discardableResult
     static func purgeKeychainIfFreshInstall() -> Bool {
-        if UserDefaults.standard.bool(forKey: installedMarkerKey) {
-            // Marker present → not a fresh install. No-op.
-            return false
-        }
-
         #if DEBUG
         let shouldRespectExistingStore = !ignoresExistingStoreForTesting
         #else
         let shouldRespectExistingStore = true
         #endif
         if shouldRespectExistingStore, hasExistingLocalStore() {
-            // A missing marker with an existing GRDB store is not a fresh
-            // install; it is an interrupted/debug reinstall or settings restore.
+            // An existing GRDB store means this is not a fresh install.
             // Purging Keychain here would orphan encrypted WalletSecretRecord
             // rows from the master key that opens them.
-            UserDefaults.standard.set(true, forKey: installedMarkerKey)
-            log.warning("Fresh-install marker missing but local GRDB store exists — preserving Keychain and setting marker")
             return false
         }
 
@@ -173,14 +158,10 @@ enum FreshInstallGuard {
             }
         }
 
-        // Set the marker LAST. If iOS crashes between wipe and marker
-        // (extremely unlikely on a sync call from init), next launch
-        // will re-wipe — which is idempotent on an empty Keychain.
-        UserDefaults.standard.set(true, forKey: installedMarkerKey)
         #if DEBUG
         ignoresExistingStoreForTesting = false
         #endif
-        log.log("Fresh-install Keychain purge complete — \(deletedCount, privacy: .public) entries cleared, marker set")
+        log.log("Fresh-install Keychain purge complete — \(deletedCount, privacy: .public) entries cleared")
         return true
     }
 
@@ -211,7 +192,6 @@ enum FreshInstallGuard {
     /// by the smoke test below in DEBUG builds.
     #if DEBUG
     static func _resetMarkerForTesting() {
-        UserDefaults.standard.removeObject(forKey: installedMarkerKey)
         ignoresExistingStoreForTesting = true
     }
     #endif

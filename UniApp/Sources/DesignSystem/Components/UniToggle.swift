@@ -10,7 +10,7 @@ import SwiftUI
 /// after each `Toggle`, we ship the wrapper once. The haptic is
 /// automatically gated by the `hapticFeedbackEnabled` preference,
 /// read at fire time inside `UniHapticModifier` (never via
-/// `@AppStorage` — see that modifier's doc for the 2026-06-13
+/// `@GRDBStorage` — see that modifier's doc for the 2026-06-13
 /// navigation-pop rationale).
 ///
 /// **Usage.**

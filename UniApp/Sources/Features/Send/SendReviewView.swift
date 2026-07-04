@@ -42,8 +42,8 @@ struct SendReviewView: View {
     /// Close the whole Send flow (the sheet).
     let onClose: () -> Void
 
-    @AppStorage("biometricEnabled") private var biometricEnabled: Bool = false
-    @AppStorage(PinCodePreference.requireBiometricForSendKey) private var requireForSend: Bool = true
+    @GRDBStorage("biometricEnabled") private var biometricEnabled: Bool = false
+    @GRDBStorage(PinCodePreference.requireBiometricForSendKey) private var requireForSend: Bool = true
 
     /// The send state machine. `.review` is the resting state.
     @State private var phase: Phase = .review

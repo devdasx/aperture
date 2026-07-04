@@ -27,7 +27,7 @@ struct UniAppApp: App {
     /// renders its first frame — the wallet screen's database reads
     /// resolve against an already-open SQLite store, biometric drift
     /// has already been checked, and the device's natural currency is
-    /// already seeded into `UserDefaults`. This is what makes "zero
+    /// already seeded into GRDB. This is what makes "zero
     /// latency on open" honest rather than aspirational.
     ///
     /// **Order matters:**
@@ -49,9 +49,8 @@ struct UniAppApp: App {
         //    deletes Aperture and re-installs would see their old
         //    wallets, PIN hash, and seed manifest come back — which
         //    breaks the Rule #16 §A.5 contract ("your wallet only
-        //    lives on this iPhone"). The guard checks a
-        //    `UserDefaults` marker (which IS wiped on uninstall);
-        //    if it's missing we delete every Keychain item under
+        //    lives on this iPhone"). The guard checks for a local
+        //    GRDB store file; if it's missing we delete every Keychain item under
         //    our known service identifiers. Runs BEFORE every other
         //    bootstrap call so vaults read against a known-empty
         //    Keychain on first launch after install.
@@ -94,16 +93,6 @@ struct UniAppApp: App {
         //    `.applicationDefault` data store lives in the app
         //    sandbox alongside app data. Tip dismissals persist
         //    across launches — the *"only for first time"* contract.
-        // A prior factory reset can't reset TipKit's "seen" datastore itself
-        // (TipKit was already configured for that session, so resetting it
-        // mid-session throws). It leaves a marker; consume it HERE — the only
-        // valid moment, immediately BEFORE `Tips.configure()` — so a reset
-        // wallet truly sees first-time tips again. One-shot: clear the marker.
-        if UserDefaults.standard.bool(forKey: FactoryReset.tipKitResetFlagKey) {
-            Self.diagnostic(.info, "TipKit datastore reset requested by factory-reset marker")
-            try? Tips.resetDatastore()
-            UserDefaults.standard.removeObject(forKey: FactoryReset.tipKitResetFlagKey)
-        }
         let tipsStart = Date()
         try? Tips.configure([
             .displayFrequency(.immediate),
@@ -278,7 +267,7 @@ private struct AppRoot: View {
     /// Language code feeding the Rule #12 §G direction-only rebuild
     /// key — extended on 2026-06-13 from sheet contents to the WHOLE
     /// content tree. See `rootDirectionKey`.
-    @AppStorage("languagePreference") private var languageCode: String = LanguagePreference.systemCode
+    @GRDBStorage("languagePreference") private var languageCode: String = LanguagePreference.systemCode
 
     @Environment(\.autoLockController) private var lockController
 
@@ -326,7 +315,7 @@ private struct AppRoot: View {
     /// app IS `RootGate`'s subtree; that is what rebuilds.
     ///
     /// **Where the user lands after the flip.** The selected tab
-    /// survives (`@AppStorage`), and the wallet-home / Settings
+    /// survives (`@GRDBStorage`), and the wallet-home / Settings
     /// navigation paths are re-consumed from `ScreenRestoration`'s
     /// continuous mirror — so the Choose-language screen survives its
     /// own direction flip and re-renders correctly, instantly, in the
@@ -508,14 +497,14 @@ private struct LockOverlayRoot: View {
     /// Rule #12 §G direction key for the overlay window's content.
     /// The detached `UIHostingController` receives locale + direction
     /// reactively through the `.uniAppEnvironment()` applied at mount
-    /// (its `@AppStorage` reads invalidate inside the host like
+    /// (its `@GRDBStorage` reads invalidate inside the host like
     /// anywhere else), and the lock surfaces are pure SwiftUI — but
     /// the host's own `semanticContentAttribute` latches at creation
     /// like every UIKit host, so the content is re-keyed on an LTR ↔
     /// RTL flip for the same reason the main tree is (see
     /// `AppRoot.rootDirectionKey`). Zero UX cost: language can only
     /// change while unlocked, when this renders nothing.
-    @AppStorage("languagePreference") private var languageCode: String = LanguagePreference.systemCode
+    @GRDBStorage("languagePreference") private var languageCode: String = LanguagePreference.systemCode
 
     var body: some View {
         ZStack {

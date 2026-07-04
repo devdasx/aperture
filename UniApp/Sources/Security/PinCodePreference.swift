@@ -23,17 +23,17 @@ import Foundation
 /// only as the enabled-Face-ID default and is forced off whenever biometrics
 /// are off.
 enum PinCodePreference {
-    /// `@AppStorage` key for the PIN-enabled flag. Mirrors `PinCodeStorage.hasPin`
-    /// at the moment of setup; the AppStorage value is the user-intent flag
+    /// `@GRDBStorage` key for the PIN-enabled flag. Mirrors `PinCodeStorage.hasPin`
+    /// at the moment of setup; the GRDB preference is the user-intent flag
     /// while Keychain holds the actual material.
     static let pinEnabledKey: String = "pinEnabled"
 
-    /// `@AppStorage` key for the biometric-enabled flag. Set to `true` only
+    /// `@GRDBStorage` key for the biometric-enabled flag. Set to `true` only
     /// after a real `BiometricService.authenticate(...)` returns
     /// `.success(())` — never auto-enabled.
     static let biometricEnabledKey: String = "biometricEnabled"
 
-    /// `@AppStorage` key for the "Use Face ID For → Sending transactions"
+    /// `@GRDBStorage` key for the "Use Face ID For → Sending transactions"
     /// row. It is only meaningful while `biometricEnabled == true`.
     static let requireBiometricForSendKey: String = "requireBiometricForSend"
 
@@ -41,18 +41,14 @@ enum PinCodePreference {
     /// either protection.
     static let defaultValue: Bool = false
 
-    /// Read `pinEnabled` without a SwiftUI view. Matches `@AppStorage`'s
+    /// Read `pinEnabled` without a SwiftUI view. Matches `@GRDBStorage`'s
     /// "absent key → default" semantics.
     static func isPinEnabled() -> Bool {
-        let defaults = UserDefaults.standard
-        guard defaults.object(forKey: pinEnabledKey) != nil else { return defaultValue }
-        return defaults.bool(forKey: pinEnabledKey)
+        AppPreferenceStore.shared.bool(pinEnabledKey, default: defaultValue)
     }
 
     /// Read `biometricEnabled` without a SwiftUI view.
     static func isBiometricEnabled() -> Bool {
-        let defaults = UserDefaults.standard
-        guard defaults.object(forKey: biometricEnabledKey) != nil else { return defaultValue }
-        return defaults.bool(forKey: biometricEnabledKey)
+        AppPreferenceStore.shared.bool(biometricEnabledKey, default: defaultValue)
     }
 }

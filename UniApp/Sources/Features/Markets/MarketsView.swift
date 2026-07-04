@@ -727,7 +727,7 @@ final class MarketsViewModel: ObservableObject {
 
 struct MarketsView: View {
     @Environment(\.layoutDirection) private var layoutDirection
-    @AppStorage(CurrencyPreference.storageKey) private var currencyCode: String = CurrencyPreference.defaultCode
+    @GRDBStorage(CurrencyPreference.storageKey) private var currencyCode: String = CurrencyPreference.defaultCode
     @StateObject private var model = MarketsViewModel()
     @State private var segment: MarketsSegment = .top
     @State private var searchText: String = ""
@@ -910,7 +910,7 @@ private struct MarketWatchlistSwipeTip: Tip {
 
 struct MarketDetailView: View {
     let model: MarketsViewModel
-    @AppStorage(CurrencyPreference.storageKey) private var currencyCode: String = CurrencyPreference.defaultCode
+    @GRDBStorage(CurrencyPreference.storageKey) private var currencyCode: String = CurrencyPreference.defaultCode
 
     @State private var asset: MarketAsset
     @State private var range: MarketChartRange = .oneDay
@@ -2073,9 +2073,9 @@ private actor MarketFXService {
 
 private extension MarketDataService {
     var coinMarketCapAPIKey: String? {
-        let defaults = UserDefaults.standard.string(forKey: "CoinMarketCapAPIKey")
+        let defaults = AppPreferenceStore.shared.string("CoinMarketCapAPIKey", default: "")
         let plist = Bundle.main.object(forInfoDictionaryKey: "CoinMarketCapAPIKey") as? String
-        let key = (defaults?.isEmpty == false ? defaults : plist)?
+        let key = (defaults.isEmpty == false ? defaults : plist)?
             .trimmingCharacters(in: .whitespacesAndNewlines)
         return key?.isEmpty == false ? key : nil
     }

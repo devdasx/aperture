@@ -27,11 +27,11 @@ import SwiftUI
 /// PIN with email" path — Aperture has no email.
 struct AppLockView: View {
     @Environment(\.autoLockController) private var lockController
-    @AppStorage("biometricEnabled") private var biometricEnabled: Bool = false
+    @GRDBStorage("biometricEnabled") private var biometricEnabled: Bool = false
     /// Optional iOS-style "Erase Data": wipe the app after
     /// `PinCodeStorage.eraseDataThreshold` failed LOCK-SCREEN attempts.
     /// Off by default; the user arms it in Settings → Security.
-    @AppStorage("eraseDataAfterFailedAttempts") private var eraseDataEnabled: Bool = false
+    @GRDBStorage("eraseDataAfterFailedAttempts") private var eraseDataEnabled: Bool = false
 
     @State private var isShowingForgotSheet: Bool = false
     /// Guards the wipe so it runs at most once even if a queued attempt

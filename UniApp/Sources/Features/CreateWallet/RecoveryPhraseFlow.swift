@@ -265,7 +265,7 @@ struct RecoveryPhraseFlow: View {
     /// one of them sufficient:
     /// 1. A passcode is already stored in Keychain (`PinCodeStorage.hasPin`).
     ///    The new wallet is automatically protected by it; no setup needed.
-    /// 2. At least one wallet already exists (`activeWalletId` UserDefaults
+    /// 2. At least one wallet already exists (`activeWalletId` GRDB preference
     ///    value non-empty). The user passed through PinSetupFlow on that
     ///    first wallet and made their choice — even if they tapped Skip
     ///    there, we honor that decision. Settings → Security is the

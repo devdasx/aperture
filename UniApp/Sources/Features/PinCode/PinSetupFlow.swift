@@ -75,12 +75,12 @@ struct PinSetupFlow: View {
     /// See `revertToSet()` and `commitPin()` for the two callers.
     @State private var isReversing: Bool = false
 
-    @AppStorage(PinCodePreference.pinEnabledKey)
+    @GRDBStorage(PinCodePreference.pinEnabledKey)
     private var pinEnabled: Bool = PinCodePreference.defaultValue
 
-    @AppStorage(PinCodePreference.biometricEnabledKey)
+    @GRDBStorage(PinCodePreference.biometricEnabledKey)
     private var biometricEnabled: Bool = PinCodePreference.defaultValue
-    @AppStorage(PinCodePreference.requireBiometricForSendKey)
+    @GRDBStorage(PinCodePreference.requireBiometricForSendKey)
     private var requireForSend: Bool = true
 
     @State private var biometricService = BiometricService()

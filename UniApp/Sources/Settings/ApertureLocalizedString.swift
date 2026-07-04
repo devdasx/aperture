@@ -2,7 +2,7 @@ import Foundation
 
 /// Aperture-wide localized-string helper. Routes every
 /// `String(localized:)`-equivalent lookup through the user's selected
-/// in-app language (`@AppStorage("languagePreference")`), not through
+/// in-app language (`@GRDBStorage("languagePreference")`), not through
 /// `Bundle.main`'s launch-time `preferredLocalizations`.
 ///
 /// **Why this exists.** Apple's stock `String(localized: "...")` resolves
@@ -15,18 +15,17 @@ import Foundation
 /// when the user has selected Arabic in Settings → Language. The
 /// catalog has the Arabic translation; it's just unreachable.
 ///
-/// Fix: read the user's `languagePreference` from `UserDefaults`,
+/// Fix: read the user's `languagePreference` from the GRDB preference store,
 /// derive a `Locale`, and pass it to `String(localized:locale:)`
 /// every time. This file is the single helper every site uses.
 enum ApertureLocalization {
 
     /// The user's currently-selected `Locale`, derived from
-    /// `@AppStorage("languagePreference")`. Falls back to the
+    /// `@GRDBStorage("languagePreference")`. Falls back to the
     /// system locale when the user has selected "System" or hasn't
     /// chosen a language yet.
     static var currentLocale: Locale {
-        let stored = UserDefaults.standard.string(forKey: "languagePreference")
-            ?? LanguagePreference.systemCode
+        let stored = AppPreferenceStore.shared.string("languagePreference", default: LanguagePreference.systemCode)
         return LanguagePreference.locale(for: stored) ?? .current
     }
 }

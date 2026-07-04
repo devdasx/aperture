@@ -32,7 +32,7 @@ struct SendAmountView: View {
     let onReview: (SendDraft) -> Void
 
     @StateObject private var databaseSnapshot = DatabaseSnapshotObservation()
-    @AppStorage("activeWalletId") private var activeWalletIdRaw: String = ""
+    @GRDBStorage("activeWalletId") private var activeWalletIdRaw: String = ""
 
     @State private var model: SendComposeModel
     @State private var isShowingFeeSheet = false
@@ -54,13 +54,13 @@ struct SendAmountView: View {
     /// Direction key for the compose sheets (Rule #12 §G / #15): rebuild
     /// the sheet content only when crossing the LTR ↔ RTL boundary, the one
     /// case iOS's locked `semanticContentAttribute` requires it.
-    @AppStorage("languagePreference") private var sheetLanguageCode: String = LanguagePreference.systemCode
+    @GRDBStorage("languagePreference") private var sheetLanguageCode: String = LanguagePreference.systemCode
     private var sheetDirectionKey: String {
         LanguagePreference.layoutDirection(for: sheetLanguageCode) == .rightToLeft ? "rtl" : "ltr"
     }
 
     private var currencyCode: String {
-        UserDefaults.standard.string(forKey: CurrencyPreference.storageKey) ?? CurrencyPreference.defaultCode
+        AppPreferenceStore.shared.string(CurrencyPreference.storageKey, default: CurrencyPreference.defaultCode)
     }
 
     private var allWallets: [WalletRecord] {
@@ -79,7 +79,7 @@ struct SendAmountView: View {
         self.fromAddress = fromAddress
         self.recipients = recipients
         self.onReview = onReview
-        let code = UserDefaults.standard.string(forKey: CurrencyPreference.storageKey) ?? CurrencyPreference.defaultCode
+        let code = AppPreferenceStore.shared.string(CurrencyPreference.storageKey, default: CurrencyPreference.defaultCode)
         _model = State(initialValue: SendComposeModel(
             chain: chain, tokenSymbol: token?.symbol,
             tokenContract: token?.contract,

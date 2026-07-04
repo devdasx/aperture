@@ -13,8 +13,7 @@ struct GRDBWalletFlowPersistenceTests {
     @Test("create-wallet state persists and selects the wallet without nested transactions")
     func createWalletStatePersistsAndSelectsActiveWallet() async throws {
         let database = try TestAppDatabaseFactory.makeDatabase()
-        let oldActive = UserDefaults.standard.string(forKey: ActiveWalletPointer.storageKey)
-        defer { cleanup(database: database, previousActiveWalletRaw: oldActive) }
+        defer { cleanup(database: database) }
         ActiveWalletPointer.configure(database: database)
 
         let state = CreateWalletState(words: mnemonic)
@@ -42,8 +41,7 @@ struct GRDBWalletFlowPersistenceTests {
     @Test("mnemonic import state persists with the iCloud restore naming path")
     func mnemonicImportStatePersistsWithDefaultName() async throws {
         let database = try TestAppDatabaseFactory.makeDatabase()
-        let oldActive = UserDefaults.standard.string(forKey: ActiveWalletPointer.storageKey)
-        defer { cleanup(database: database, previousActiveWalletRaw: oldActive) }
+        defer { cleanup(database: database) }
         ActiveWalletPointer.configure(database: database)
 
         let state = ImportWalletState()
@@ -79,8 +77,7 @@ struct GRDBWalletFlowPersistenceTests {
     @Test("private-key import state persists EVM wallet and encrypted secret rows")
     func privateKeyImportStatePersists() async throws {
         let database = try TestAppDatabaseFactory.makeDatabase()
-        let oldActive = UserDefaults.standard.string(forKey: ActiveWalletPointer.storageKey)
-        defer { cleanup(database: database, previousActiveWalletRaw: oldActive) }
+        defer { cleanup(database: database) }
         ActiveWalletPointer.configure(database: database)
 
         let privateKey = "0x59c6995e998f97a5a0044966f094538f5dae440fdf24c8063c61fbb1c5ab7d7a"
@@ -111,8 +108,7 @@ struct GRDBWalletFlowPersistenceTests {
     @Test("watch-only import state persists address-only wallet without key material")
     func watchOnlyImportStatePersists() async throws {
         let database = try TestAppDatabaseFactory.makeDatabase()
-        let oldActive = UserDefaults.standard.string(forKey: ActiveWalletPointer.storageKey)
-        defer { cleanup(database: database, previousActiveWalletRaw: oldActive) }
+        defer { cleanup(database: database) }
         ActiveWalletPointer.configure(database: database)
 
         let state = ImportWalletState()
@@ -188,7 +184,7 @@ struct GRDBWalletFlowPersistenceTests {
         return observation.wallets
     }
 
-    private func cleanup(database: AppDatabase, previousActiveWalletRaw: String?) {
+    private func cleanup(database: AppDatabase) {
         if let ids = try? WalletRepository(database: database).allWalletIds() {
             for id in ids {
                 try? SeedVault.deleteSeed(for: id)
@@ -197,10 +193,5 @@ struct GRDBWalletFlowPersistenceTests {
             }
         }
         TestAppDatabaseFactory.cleanup(database)
-        if let previousActiveWalletRaw {
-            UserDefaults.standard.set(previousActiveWalletRaw, forKey: ActiveWalletPointer.storageKey)
-        } else {
-            UserDefaults.standard.removeObject(forKey: ActiveWalletPointer.storageKey)
-        }
     }
 }

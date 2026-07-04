@@ -13,10 +13,10 @@ import SwiftUI
 /// `List(.insetGrouped)` so iOS owns the title chrome and toolbar.
 /// `.navigationTitle("Filter & Sort")`, `.inline` mode. A leading
 /// `Cancel` lives in `.topBarLeading`; there is no `Done` because every
-/// control writes through `@AppStorage` in place.
+/// control writes through `@GRDBStorage` in place.
 ///
-/// **Live propagation.** Each `@AppStorage` write here is read by
-/// `AllSupportedAssetsView`'s body (also bound via `@AppStorage`), so the
+/// **Live propagation.** Each `@GRDBStorage` write here is read by
+/// `AllSupportedAssetsView`'s body (also bound via `@GRDBStorage`), so the
 /// list re-sorts / re-filters the moment the user toggles a preference.
 struct AllSupportedAssetsFilterSheet: View {
     @Environment(\.dismiss) private var dismiss
@@ -27,13 +27,13 @@ struct AllSupportedAssetsFilterSheet: View {
     /// Post-filter count for the live preview header.
     let visibleAssets: Int
 
-    @AppStorage(AllSupportedFilterPreferences.sortKeyKey)
+    @GRDBStorage(AllSupportedFilterPreferences.sortKeyKey)
     private var sortKeyRaw: String = AllSupportedFilterPreferences.defaultSortKey.rawValue
-    @AppStorage(AllSupportedFilterPreferences.assetTypeKey)
+    @GRDBStorage(AllSupportedFilterPreferences.assetTypeKey)
     private var assetTypeRaw: String = AllSupportedFilterPreferences.defaultAssetType.rawValue
-    @AppStorage(AllSupportedFilterPreferences.selectedNetworksKey)
+    @GRDBStorage(AllSupportedFilterPreferences.selectedNetworksKey)
     private var selectedNetworksJSON: String = AllSupportedFilterPreferences.defaultSelectedNetworksJSON
-    @AppStorage(AllSupportedFilterPreferences.onlyWithBalanceKey)
+    @GRDBStorage(AllSupportedFilterPreferences.onlyWithBalanceKey)
     private var onlyWithBalance: Bool = AllSupportedFilterPreferences.defaultOnlyWithBalance
 
     @State private var isShowingResetConfirmation: Bool = false
@@ -47,8 +47,10 @@ struct AllSupportedAssetsFilterSheet: View {
         self.totalAssets = totalAssets
         self.visibleAssets = visibleAssets
         _selectedNetworks = State(initialValue: AllSupportedFilterPreferences.decode(
-            UserDefaults.standard.string(forKey: AllSupportedFilterPreferences.selectedNetworksKey)
-                ?? AllSupportedFilterPreferences.defaultSelectedNetworksJSON
+            AppPreferenceStore.shared.string(
+                AllSupportedFilterPreferences.selectedNetworksKey,
+                default: AllSupportedFilterPreferences.defaultSelectedNetworksJSON
+            )
         ))
     }
 
@@ -303,15 +305,17 @@ struct AllSupportedAssetsFilterSheet: View {
 /// on/off. Empty set = "all networks" (the default sentinel — the user
 /// clears their selection to see everything).
 private struct AllSupportedNetworksPicker: View {
-    @AppStorage(AllSupportedFilterPreferences.selectedNetworksKey)
+    @GRDBStorage(AllSupportedFilterPreferences.selectedNetworksKey)
     private var selectedNetworksJSON: String = AllSupportedFilterPreferences.defaultSelectedNetworksJSON
 
     @State private var selectedNetworks: Set<String>
 
     init() {
         _selectedNetworks = State(initialValue: AllSupportedFilterPreferences.decode(
-            UserDefaults.standard.string(forKey: AllSupportedFilterPreferences.selectedNetworksKey)
-                ?? AllSupportedFilterPreferences.defaultSelectedNetworksJSON
+            AppPreferenceStore.shared.string(
+                AllSupportedFilterPreferences.selectedNetworksKey,
+                default: AllSupportedFilterPreferences.defaultSelectedNetworksJSON
+            )
         ))
     }
 

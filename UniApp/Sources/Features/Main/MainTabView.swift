@@ -55,7 +55,7 @@ import TipKit
 /// §B.1) is delivered by the system when feature code uses the native
 /// `TabView { Tab { … } label: { … } }` shape with no manual chrome.
 ///
-/// **Selection persistence (`@AppStorage("selectedTab")`).** The
+/// **Selection persistence (`@GRDBStorage("selectedTab")`).** The
 /// selected tab is persisted across launches.
 ///
 /// **RTL (Rule #11).** Native TabView automatically mirrors tab
@@ -85,13 +85,13 @@ struct MainTabView: View {
     /// key to `.wallet` during `UniAppApp.init()` when the user was
     /// away ≥ 2 minutes — so "lands on the last tab" only holds within
     /// the 2-minute restoration window.
-    @AppStorage(MainTab.storageKey) private var selectedTabRaw: String = MainTab.wallet.rawValue
+    @GRDBStorage(MainTab.storageKey) private var selectedTabRaw: String = MainTab.wallet.rawValue
 
     /// The active wallet's UUID string. Drives the Wallet tab's
     /// avatar AND the wallet-home `WalletHomeView`. The two surfaces
     /// share the same source so switching wallets via long-press
     /// updates both atomically.
-    @AppStorage("activeWalletId") private var activeWalletIdRaw: String = ""
+    @GRDBStorage("activeWalletId") private var activeWalletIdRaw: String = ""
 
     @StateObject private var walletList = WalletListObservation()
 
@@ -118,7 +118,7 @@ struct MainTabView: View {
     @State private var importPath: NavigationPath = NavigationPath()
 
     /// Computed binding that round-trips the persisted raw through
-    /// the `MainTab` enum. Unknown rawValues (manual UserDefaults
+    /// the `MainTab` enum. Unknown rawValues (manual GRDB edits or
     /// fiddling, future tab renames) fall back to `.wallet`.
     private var selectedTab: Binding<MainTab> {
         Binding(
@@ -511,7 +511,7 @@ struct MainTabView: View {
 
 /// Stable, persistable identity for each top-level destination in
 /// the post-onboarding shell. RawValue is the persistence key
-/// stored in `@AppStorage("selectedTab")`. RawValues are stable
+/// stored in `@GRDBStorage("selectedTab")`. RawValues are stable
 /// forever — renaming a tab in the future never changes the
 /// persistence key.
 ///
@@ -524,7 +524,7 @@ enum MainTab: String, Hashable, CaseIterable {
     case markets
     case settings
 
-    /// The `@AppStorage` / `UserDefaults` key the selected tab persists
+    /// The `@GRDBStorage` key the selected tab persists
     /// under. Single source of truth shared by `MainTabView`,
     /// `WalletHomeView`'s long-press deep link, and
     /// `ScreenRestoration.resolveOnLaunch()` (which resets the value to

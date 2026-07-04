@@ -95,7 +95,7 @@ final class UniHapticEngine {
     /// (`Core Haptics`) and the double-beat `.consequential` impact.
     /// No-op for any other case.
     ///
-    /// Gated by the AppStorage preference (read fresh each call) and,
+    /// Gated by the GRDB preference (read fresh each call) and,
     /// for signatures, by `UIAccessibility.isReduceMotionEnabled`.
     func play(_ haptic: UniHaptic) {
         guard isHapticsEnabled else { return }
@@ -169,7 +169,7 @@ final class UniHapticEngine {
 
     /// Fire-time preference gate — delegates to the canonical
     /// `HapticPreference.isEnabled()` (same default-for-absent-key
-    /// semantics as `@AppStorage`) so the engine's read can never
+    /// semantics as `@GRDBStorage`) so the engine's read can never
     /// drift from the view-layer modifiers, which read the same
     /// function at fire time (2026-06-13 navigation-pop fix).
     private var isHapticsEnabled: Bool {

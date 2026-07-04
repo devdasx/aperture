@@ -19,7 +19,7 @@ import SwiftUI
 ///   on their owning views — cheap (a handful of enum cases encoded as
 ///   JSON) and it means a force-quit needs no last-moment save.
 /// - The selected tab needs no mirroring: `MainTabView` already
-///   persists it via `@AppStorage(MainTab.storageKey)`.
+///   persists it via `@GRDBStorage(MainTab.storageKey)`.
 /// - On cold launch, `UniAppApp.init()` calls `resolveOnLaunch()`
 ///   exactly once, before the first view is constructed:
 ///   - elapsed `< 120s` → keep everything; the views consume the
@@ -30,7 +30,7 @@ import SwiftUI
 ///     foregrounded) → clear both paths AND reset the selected tab to
 ///     the wallet tab, so the user starts at the main screen.
 ///
-/// **Why `UserDefaults`, not Keychain.** This is small, non-secret UI
+/// **Why GRDB app preferences, not Keychain.** This is small, non-secret UI
 /// state. The destination enums carry only routing identity —
 /// `SettingsDestination` (static cases + a wallet `UUID`) and
 /// `WalletHomeDestination` (`AssetIdentity` = ticker symbol + chain,
@@ -52,7 +52,7 @@ enum ScreenRestoration {
     /// The user's 2-minute window, verbatim from the direction above.
     static let maxRestorationAge: TimeInterval = 120
 
-    private enum Key {
+    enum PreferenceKey {
         /// `Double` (`timeIntervalSince1970`) of the most recent real
         /// `.background` entry. Absent until the first backgrounding
         /// after install.
@@ -73,10 +73,7 @@ enum ScreenRestoration {
     /// hasn't left. Force-quit from the switcher delivers `.background`
     /// before termination, so the stamp covers that path too.
     static func stampBackground(now: Date = Date()) {
-        UserDefaults.standard.set(
-            now.timeIntervalSince1970,
-            forKey: Key.leftAppAt
-        )
+        AppPreferenceStore.shared.set(now.timeIntervalSince1970, forKey: PreferenceKey.leftAppAt)
     }
 
     // MARK: - Cold-launch resolution (called once, from `UniAppApp.init()`)
@@ -85,8 +82,8 @@ enum ScreenRestoration {
     /// view is constructed — the restorable views read the persisted
     /// paths in their `init`s.
     static func resolveOnLaunch(now: Date = Date()) {
-        let defaults = UserDefaults.standard
-        guard let stamp = defaults.object(forKey: Key.leftAppAt) as? Double else {
+        let stamp = AppPreferenceStore.shared.double(PreferenceKey.leftAppAt, default: 0)
+        guard stamp > 0 else {
             // Never backgrounded (fresh install) or the marker was
             // wiped — nothing trustworthy to restore.
             resetToMainScreen()
@@ -100,17 +97,16 @@ enum ScreenRestoration {
             return
         }
         // < 2 minutes: leave the persisted tab + paths untouched.
-        // `MainTabView` restores the tab via `@AppStorage`;
+        // `MainTabView` restores the tab via `@GRDBStorage`;
         // `WalletHomeView` / `SettingsView` consume their paths at init.
     }
 
     /// The ≥-2-minutes (or no-stamp) outcome: forget both stacks and
     /// land the user on the wallet tab — "the main screen".
     private static func resetToMainScreen() {
-        let defaults = UserDefaults.standard
-        defaults.removeObject(forKey: Key.settingsPath)
-        defaults.removeObject(forKey: Key.walletHomePath)
-        defaults.set(MainTab.wallet.rawValue, forKey: MainTab.storageKey)
+        AppPreferenceStore.shared.remove(PreferenceKey.settingsPath)
+        AppPreferenceStore.shared.remove(PreferenceKey.walletHomePath)
+        AppPreferenceStore.shared.set(MainTab.wallet.rawValue, forKey: MainTab.storageKey)
     }
 
     /// Immediate in-session version of `resetToMainScreen()`. Use this
@@ -130,10 +126,10 @@ enum ScreenRestoration {
     /// cold launch — same pattern as `saveWalletHomeStack`.
     static func saveSettingsStack(_ stack: [SettingsDestination]) {
         guard let data = try? JSONEncoder().encode(stack) else {
-            UserDefaults.standard.removeObject(forKey: Key.settingsPath)
+            AppPreferenceStore.shared.remove(PreferenceKey.settingsPath)
             return
         }
-        UserDefaults.standard.set(data, forKey: Key.settingsPath)
+        AppPreferenceStore.shared.set(data, forKey: PreferenceKey.settingsPath)
     }
 
     /// Mirror the wallet-home stack. Stored as a typed
@@ -145,10 +141,10 @@ enum ScreenRestoration {
         guard let data = try? JSONEncoder().encode(stack) else {
             // Shouldn't happen (every case is Codable), but if it does,
             // clear rather than restore a stale snapshot.
-            UserDefaults.standard.removeObject(forKey: Key.walletHomePath)
+            AppPreferenceStore.shared.remove(PreferenceKey.walletHomePath)
             return
         }
-        UserDefaults.standard.set(data, forKey: Key.walletHomePath)
+        AppPreferenceStore.shared.set(data, forKey: PreferenceKey.walletHomePath)
     }
 
     // MARK: - Path consumption (called from the owning views' `init`s)
@@ -159,10 +155,11 @@ enum ScreenRestoration {
     /// into it would skip the auth challenge (the bug the user reported);
     /// truncating means the user lands on the Settings root and re-enters
     /// Security with a fresh prompt. A decode failure (e.g. a
-    /// pre-2026-06-17 `NavigationPath`-format blob still in `UserDefaults`
+    /// pre-2026-06-17 `NavigationPath`-format blob still in the preference store
     /// on the first launch after the update) degrades safely to root.
     static func restoredSettingsStack() -> [SettingsDestination] {
-        guard let data = UserDefaults.standard.data(forKey: Key.settingsPath),
+        guard let data = AppPreferenceStore.shared.data(PreferenceKey.settingsPath),
+              !data.isEmpty,
               let stack = try? JSONDecoder().decode([SettingsDestination].self, from: data)
         else { return [] }
         return Array(stack.prefix(while: { $0.isColdLaunchRestorable }))
@@ -174,10 +171,11 @@ enum ScreenRestoration {
     /// Activity list or a Send flow that lingered in the mirror —
     /// it lands on home, or on the asset the user was actually reading.
     /// A decode failure (e.g. the pre-2026-06-14 `NavigationPath`-format
-    /// blob still in `UserDefaults` on the first launch after the
+    /// blob still in the preference store on the first launch after the
     /// update) degrades safely to "start at root".
     static func restoredWalletHomeStack() -> [WalletHomeDestination] {
-        guard let data = UserDefaults.standard.data(forKey: Key.walletHomePath),
+        guard let data = AppPreferenceStore.shared.data(PreferenceKey.walletHomePath),
+              !data.isEmpty,
               let stack = try? JSONDecoder().decode([WalletHomeDestination].self, from: data)
         else { return [] }
         return Array(stack.prefix(while: { $0.isColdLaunchRestorable }))

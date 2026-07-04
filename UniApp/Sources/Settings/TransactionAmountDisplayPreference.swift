@@ -12,8 +12,6 @@ enum TransactionAmountDisplayPreference {
     static let defaultValue = true
 
     static func showsLocalCurrency() -> Bool {
-        let defaults = UserDefaults.standard
-        guard defaults.object(forKey: storageKey) != nil else { return defaultValue }
-        return defaults.bool(forKey: storageKey)
+        AppPreferenceStore.shared.bool(storageKey, default: defaultValue)
     }
 }

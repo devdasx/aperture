@@ -25,9 +25,9 @@ struct OnboardingSettingsView: View {
     /// (Rule #12 §G).
     @Binding var navigationPath: NavigationPath
 
-    @AppStorage("themePreference") private var themeRaw: String = ThemePreference.defaultRaw
-    @AppStorage("languagePreference") private var languageCode: String = LanguagePreference.systemCode
-    @AppStorage(HapticPreference.storageKey) private var hapticEnabled: Bool = HapticPreference.defaultValue
+    @GRDBStorage("themePreference") private var themeRaw: String = ThemePreference.defaultRaw
+    @GRDBStorage("languagePreference") private var languageCode: String = LanguagePreference.systemCode
+    @GRDBStorage(HapticPreference.storageKey) private var hapticEnabled: Bool = HapticPreference.defaultValue
 
     @State private var isShowingTerms: Bool = false
     @State private var isShowingPrivacyPolicy: Bool = false

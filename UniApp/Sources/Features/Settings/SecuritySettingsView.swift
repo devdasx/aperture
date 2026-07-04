@@ -5,16 +5,16 @@ import SwiftUI
 /// auto-lock duration, backup-pending shortcut, and reset-import-
 /// warnings hatch.
 struct SecuritySettingsView: View {
-    @AppStorage("pinEnabled") private var pinEnabled: Bool = false
-    @AppStorage("biometricEnabled") private var biometricEnabled: Bool = false
+    @GRDBStorage("pinEnabled") private var pinEnabled: Bool = false
+    @GRDBStorage("biometricEnabled") private var biometricEnabled: Bool = false
     // Per-action Face ID gate (2026-06-20). Secure default ON; only takes
     // effect when Face ID is enabled. Enforced in SendReviewView.
-    @AppStorage(PinCodePreference.requireBiometricForSendKey) private var requireForSend: Bool = true
+    @GRDBStorage(PinCodePreference.requireBiometricForSendKey) private var requireForSend: Bool = true
     // iOS-style "Erase Data": wipe the app after N failed lock-screen passcode
     // attempts. OFF by default; arming it shows a confirmation first. Enforced
     // in `AppLockView` against `PinCodeStorage`'s dedicated unlock counter.
-    @AppStorage("eraseDataAfterFailedAttempts") private var eraseDataEnabled: Bool = false
-    @AppStorage(AutoLockPreference.storageKey) private var autoLockRaw: Int = AutoLockPreference.defaultValue
+    @GRDBStorage("eraseDataAfterFailedAttempts") private var eraseDataEnabled: Bool = false
+    @GRDBStorage(AutoLockPreference.storageKey) private var autoLockRaw: Int = AutoLockPreference.defaultValue
     @Environment(\.dismiss) private var dismiss
 
     @State private var isShowingPinSetup: Bool = false
@@ -469,7 +469,7 @@ struct SettingsRowShared: View {
 // MARK: - Auto-lock picker
 
 struct AutoLockPickerView: View {
-    @AppStorage(AutoLockPreference.storageKey) private var raw: Int = AutoLockPreference.defaultValue
+    @GRDBStorage(AutoLockPreference.storageKey) private var raw: Int = AutoLockPreference.defaultValue
 
     var body: some View {
         List {

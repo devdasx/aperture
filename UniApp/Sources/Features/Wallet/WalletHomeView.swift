@@ -129,11 +129,11 @@ struct WalletHomeView: View {
     // no longer re-evaluates on balance commits. A local reconciliation task
     // rebuilds those rows from persisted TokenBalanceRecord rows, so the card
     // stays database-backed without summing live rows in this parent.
-    @AppStorage("activeWalletId") private var activeWalletIdRaw: String = ""
-    @AppStorage(CurrencyPreference.storageKey) private var currencyCode: String = CurrencyPreference.defaultCode
-    @AppStorage(HideBalancesPreference.hideBalanceOnHomeKey) private var hideBalanceOnHome: Bool = false
+    @GRDBStorage("activeWalletId") private var activeWalletIdRaw: String = ""
+    @GRDBStorage(CurrencyPreference.storageKey) private var currencyCode: String = CurrencyPreference.defaultCode
+    @GRDBStorage(HideBalancesPreference.hideBalanceOnHomeKey) private var hideBalanceOnHome: Bool = false
 
-    @AppStorage(HideBalancesPreference.thresholdKey) private var hideSmallThreshold: Double = HideBalancesPreference.defaultThreshold
+    @GRDBStorage(HideBalancesPreference.thresholdKey) private var hideSmallThreshold: Double = HideBalancesPreference.defaultThreshold
 
     /// **iPad / Mac adaptation (2026-06-16).** Two regular-width-only
     /// changes hang off this: (1) the content column is capped to a
@@ -155,42 +155,42 @@ struct WalletHomeView: View {
     // MARK: - Filter & Sort preferences (Rule #14-class declarative reads)
     //
     // The wallet home reads every Filter & Sort preference reactively
-    // via `@AppStorage`. The filter sheet (`WalletHomeFilterSheet`)
+    // via `@GRDBStorage`. The filter sheet (`WalletHomeFilterSheet`)
     // writes through the same keys; SwiftUI's environment propagation
     // pushes new values into this view's body within the next
     // evaluation. No imperative "apply" call needed — every value is
     // a published source.
     //
     // **Why declare them here at all** when `WalletHomeFilterApply.Inputs.current()`
-    // could read them on the fly? Because `@AppStorage` participates in
+    // could read them on the fly? Because `@GRDBStorage` participates in
     // SwiftUI's invalidation graph; reading the keys outside the
-    // graph (via a one-shot `UserDefaults.standard.string(forKey:)`)
+    // graph (via a one-shot direct preference read)
     // does NOT cause the view to recompute when the keys change. The
-    // sheet's writes would land in `UserDefaults` but the home would
+    // sheet's writes would land in GRDB but the home would
     // keep rendering the stale layout until the next unrelated body
-    // evaluation. Declaring them as `@AppStorage` here closes the loop.
-    @AppStorage(WalletHomeFilterPreferences.viewModeKey)
+    // evaluation. Declaring them as `@GRDBStorage` here closes the loop.
+    @GRDBStorage(WalletHomeFilterPreferences.viewModeKey)
     private var filterViewModeRaw: String = WalletHomeFilterPreferences.defaultViewMode.rawValue
-    @AppStorage(WalletHomeFilterPreferences.sortKeyKey)
+    @GRDBStorage(WalletHomeFilterPreferences.sortKeyKey)
     private var filterSortKeyRaw: String = WalletHomeFilterPreferences.defaultSortKey.rawValue
-    @AppStorage(WalletHomeFilterPreferences.sortDirectionKey)
+    @GRDBStorage(WalletHomeFilterPreferences.sortDirectionKey)
     private var filterSortDirectionRaw: String = WalletHomeFilterPreferences.defaultSortDirection.rawValue
-    @AppStorage(WalletHomeFilterPreferences.onlyWithBalanceKey)
+    @GRDBStorage(WalletHomeFilterPreferences.onlyWithBalanceKey)
     private var filterOnlyWithBalance: Bool = WalletHomeFilterPreferences.defaultOnlyWithBalance
-    @AppStorage(WalletHomeFilterPreferences.hiddenAssetsKey)
+    @GRDBStorage(WalletHomeFilterPreferences.hiddenAssetsKey)
     private var filterHiddenAssetsJSON: String = WalletHomeFilterPreferences.defaultHiddenJSON
-    @AppStorage(WalletHomeFilterPreferences.hiddenChainsKey)
+    @GRDBStorage(WalletHomeFilterPreferences.hiddenChainsKey)
     private var filterHiddenChainsJSON: String = WalletHomeFilterPreferences.defaultHiddenJSON
     // v2 filter preferences (2026-06-09)
-    @AppStorage(WalletHomeFilterPreferences.assetTypeKey)
+    @GRDBStorage(WalletHomeFilterPreferences.assetTypeKey)
     private var filterAssetTypeRaw: String = WalletHomeFilterPreferences.defaultAssetType.rawValue
-    @AppStorage(WalletHomeFilterPreferences.groupByKey)
+    @GRDBStorage(WalletHomeFilterPreferences.groupByKey)
     private var filterGroupByRaw: String = WalletHomeFilterPreferences.defaultGroupBy.rawValue
-    @AppStorage(WalletHomeFilterPreferences.minFiatThresholdKey)
+    @GRDBStorage(WalletHomeFilterPreferences.minFiatThresholdKey)
     private var filterMinFiatThreshold: Double = WalletHomeFilterPreferences.defaultMinFiatThreshold
-    @AppStorage(WalletHomeFilterPreferences.selectedNetworksKey)
+    @GRDBStorage(WalletHomeFilterPreferences.selectedNetworksKey)
     private var filterSelectedNetworksJSON: String = WalletHomeFilterPreferences.defaultHiddenJSON
-    @AppStorage(WalletHomeFilterPreferences.pinnedAssetsKey)
+    @GRDBStorage(WalletHomeFilterPreferences.pinnedAssetsKey)
     private var filterPinnedAssetsJSON: String = WalletHomeFilterPreferences.defaultHiddenJSON
     /// Transient search query — per the v2 prompt, NOT a persisted
     /// preference. The user types per session; clearing the search
@@ -203,7 +203,7 @@ struct WalletHomeView: View {
     /// same-direction language changes propagate via SwiftUI's
     /// environment without rebuilding the sheet content, preserving
     /// the user's nav-stack position inside Settings.
-    @AppStorage("languagePreference") private var sheetLanguageCode: String = LanguagePreference.systemCode
+    @GRDBStorage("languagePreference") private var sheetLanguageCode: String = LanguagePreference.systemCode
     // The auto-lock surface (`AppLockView`) is presented by
     // `AppRoot` at the window root — not from this view. See
     // `UniAppApp.swift` for the gating logic and the privacy
@@ -234,7 +234,7 @@ struct WalletHomeView: View {
     @State private var scanPrefill: SendView.ScanPrefill?
     /// **Filter & Sort sheet (2026-06-09).** Drives the
     /// `.sheet(isPresented: $isShowingFilter)` block below. The sheet
-    /// reads + writes preferences through `@AppStorage` against
+    /// reads + writes preferences through `@GRDBStorage` against
     /// `WalletHomeFilterPreferences`'s keys; changes propagate to
     /// this view's body the moment the sheet writes them.
     @State private var isShowingFilter: Bool = false
@@ -262,7 +262,7 @@ struct WalletHomeView: View {
     @State private var navigationPath: [WalletHomeDestination]
     @State private var createPath: NavigationPath = NavigationPath()
     @State private var importPath: NavigationPath = NavigationPath()
-    @AppStorage(MainTab.storageKey) private var selectedTabRaw: String = MainTab.wallet.rawValue
+    @GRDBStorage(MainTab.storageKey) private var selectedTabRaw: String = MainTab.wallet.rawValue
     @State private var isRefreshing: Bool = false
 
     /// `true` while a refresh this view started is in flight. Refresh now
@@ -301,7 +301,7 @@ struct WalletHomeView: View {
     /// Deep-link token consumed by `SettingsView` on appear. The
     /// long-press menu's "Manage wallets" row stamps `"wallets"`;
     /// Settings pushes onto its NavigationPath and clears the token.
-    @AppStorage("settingsDeepLink") private var settingsDeepLink: String = ""
+    @GRDBStorage("settingsDeepLink") private var settingsDeepLink: String = ""
 
     /// Active tab for the holdings region. Per the 2026-06-09 user
     /// direction, the home no longer shows Coins AND Tokens as
@@ -628,7 +628,7 @@ struct WalletHomeView: View {
                 }
                 // Last-screen restoration mirror (2026-06-13). Every
                 // push / pop lands in `ScreenRestoration`'s
-                // UserDefaults mirror so a force-quit needs no
+                // GRDB mirror so a force-quit needs no
                 // last-moment save. Consumed by `init` on the next
                 // fresh identity.
                 .onChange(of: navigationPath) { _, newPath in
@@ -664,7 +664,7 @@ struct WalletHomeView: View {
                     scheduleChainStateReconcile()
                 }
                 // "Hide small balances" threshold (a Settings preference,
-                // a DIFFERENT @AppStorage key than the filter sheet's
+                // a DIFFERENT @GRDBStorage key than the filter sheet's
                 // `filterMinFiatThreshold`) is read inside `computeBalances()`.
                 // The pre-memo `balances` re-read it every body pass, so
                 // changing it updated the home live; the cache must rebuild
@@ -1019,7 +1019,7 @@ struct WalletHomeView: View {
                 onAddFunds: { isShowingReceive = true }
             )
             // Re-key on the active wallet so the per-wallet hidden
-            // flag's `@AppStorage` key (which embeds the id) is
+            // flag's `@GRDBStorage` key (which embeds the id) is
             // re-resolved when the user switches wallets — the new
             // wallet shows its own remembered hidden state.
             .id(activeWallet?.id)
@@ -1844,7 +1844,7 @@ struct WalletHomeView: View {
         return "\(count)|\(newest.timeIntervalSince1970)|\(fiatSum)"
     }
 
-    /// Decode the `@AppStorage`-bound preference values into the
+    /// Decode the `@GRDBStorage`-bound preference values into the
     /// memoized `filterInputs` snapshot. Same construction the old
     /// per-body computed property performed — now run only when the
     /// preference fingerprint changes (plus once from `.task`).

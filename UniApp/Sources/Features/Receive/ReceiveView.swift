@@ -33,7 +33,7 @@ import SwiftUI
 /// rebuilds.
 struct ReceiveView: View {
     @StateObject private var databaseSnapshot = DatabaseSnapshotObservation()
-    @AppStorage("activeWalletId") private var activeWalletIdRaw: String = ""
+    @GRDBStorage("activeWalletId") private var activeWalletIdRaw: String = ""
 
     /// The sheet's own NavigationPath. Lives on the sheet root so the
     /// sheet can rebuild via `.id(sheetDirectionKey)` without losing
@@ -67,7 +67,7 @@ struct ReceiveView: View {
     @State private var holdings: AssetPickerHoldings = .empty
 
     private var currencyCode: String {
-        UserDefaults.standard.string(forKey: CurrencyPreference.storageKey) ?? CurrencyPreference.defaultCode
+        AppPreferenceStore.shared.string(CurrencyPreference.storageKey, default: CurrencyPreference.defaultCode)
     }
 
     private var allWallets: [WalletRecord] {

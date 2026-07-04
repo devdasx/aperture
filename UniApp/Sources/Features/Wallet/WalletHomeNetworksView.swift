@@ -26,7 +26,7 @@ import SwiftUI
 /// **Empty-set sentinel.** When the user selects every chain, the
 /// stored set is also written as empty (the sentinel) so the home
 /// reads "all networks visible" without enumerating every chain in
-/// `@AppStorage`. The "Select all" toolbar action does this
+/// `@GRDBStorage`. The "Select all" toolbar action does this
 /// explicitly — see `selectAll()`.
 ///
 /// **Toolbar quick-actions (Rule #2 §A.5 — restraint).** One
@@ -45,7 +45,7 @@ import SwiftUI
 /// content in a `NavigationStack`. The parent sheet owns the stack
 /// and the sub-screen consumes it.
 struct WalletHomeNetworksView: View {
-    @AppStorage(WalletHomeFilterPreferences.selectedNetworksKey)
+    @GRDBStorage(WalletHomeFilterPreferences.selectedNetworksKey)
     private var selectedJSON: String = WalletHomeFilterPreferences.defaultHiddenJSON
 
     @State private var searchText: String = ""
@@ -60,8 +60,10 @@ struct WalletHomeNetworksView: View {
     @State private var selectedSet: Set<String>
 
     init() {
-        let json = UserDefaults.standard.string(forKey: WalletHomeFilterPreferences.selectedNetworksKey)
-            ?? WalletHomeFilterPreferences.defaultHiddenJSON
+        let json = AppPreferenceStore.shared.string(
+            WalletHomeFilterPreferences.selectedNetworksKey,
+            default: WalletHomeFilterPreferences.defaultHiddenJSON
+        )
         _selectedSet = State(initialValue: WalletHomeFilterPreferences.decode(json))
     }
 

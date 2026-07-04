@@ -3,7 +3,7 @@ import Foundation
 /// A fiat currency the user can pick to display token prices in.
 ///
 /// Single source of truth for the supported fiats. Stored under
-/// `@AppStorage("currencyPreference")` (ISO-4217 code, e.g. `USD`).
+/// `@GRDBStorage("currencyPreference")` (ISO-4217 code, e.g. `USD`).
 /// Default is `USD`. The price service uses this when fetching from Coinbase.
 ///
 /// Coverage: every actively-traded national fiat currency Coinbase supports
@@ -24,7 +24,7 @@ struct SupportedCurrency: Identifiable, Hashable, Sendable {
 }
 
 enum CurrencyPreference {
-    /// `@AppStorage` key.
+    /// `@GRDBStorage` key.
     static let storageKey = "currencyPreference"
     /// Hard fallback fiat when the device's region can't be resolved to a
     /// supported currency (or `bootstrapIfNeeded()` hasn't run yet). Fresh
@@ -47,16 +47,15 @@ enum CurrencyPreference {
         return defaultCode
     }
 
-    /// On first launch, seed `UserDefaults[storageKey]` with the device's
-    /// natural fiat so the `@AppStorage("currencyPreference")` readers in
+    /// On first launch, seed the GRDB preference with the device's
+    /// natural fiat so the `@GRDBStorage("currencyPreference")` readers in
     /// `SettingsView` / `CurrencyPickerView` / `MnemonicImport` resolve to
     /// the right currency immediately. Idempotent — subsequent launches
     /// (or anything after the user picks a currency) skip the write.
     /// Call once from `UniAppApp.init()` before the WindowGroup renders.
     static func bootstrapIfNeeded() {
-        let defaults = UserDefaults.standard
-        guard defaults.string(forKey: storageKey) == nil else { return }
-        defaults.set(defaultForCurrentRegion(), forKey: storageKey)
+        guard AppPreferenceStore.shared.contains(storageKey) == false else { return }
+        AppPreferenceStore.shared.set(defaultForCurrentRegion(), forKey: storageKey)
     }
 
     /// ISO-4217 fiats Coinbase exposes via its public fiat-rate endpoint. Order

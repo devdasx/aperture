@@ -160,12 +160,12 @@ enum AssetDetailFilterPreferences {
     /// "Reset to defaults" CTA in `AssetDetailFilterSheet` after the
     /// user confirms.
     static func resetAll() {
-        let defaults = UserDefaults.standard
-        defaults.set(defaultSortKey.rawValue, forKey: sortKeyKey)
-        defaults.set(defaultDirection.rawValue, forKey: directionKey)
-        defaults.set(defaultSelectedNetworksJSON, forKey: selectedNetworksKey)
-        defaults.set(defaultTimeRange.rawValue, forKey: timeRangeKey)
-        defaults.set(defaultHideZeroNetworks, forKey: hideZeroNetworksKey)
+        let store = AppPreferenceStore.shared
+        store.set(defaultSortKey.rawValue, forKey: sortKeyKey)
+        store.set(defaultDirection.rawValue, forKey: directionKey)
+        store.set(defaultSelectedNetworksJSON, forKey: selectedNetworksKey)
+        store.set(defaultTimeRange.rawValue, forKey: timeRangeKey)
+        store.set(defaultHideZeroNetworks, forKey: hideZeroNetworksKey)
     }
 }
 

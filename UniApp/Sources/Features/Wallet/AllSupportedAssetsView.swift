@@ -40,8 +40,8 @@ import SwiftUI
 /// an honest initials chip. Never a fabricated brand mark.
 struct AllSupportedAssetsView: View {
     @StateObject private var databaseSnapshot = DatabaseSnapshotObservation()
-    @AppStorage("activeWalletId") private var activeWalletIdRaw: String = ""
-    @AppStorage(CurrencyPreference.storageKey) private var currencyCode: String = CurrencyPreference.defaultCode
+    @GRDBStorage("activeWalletId") private var activeWalletIdRaw: String = ""
+    @GRDBStorage(CurrencyPreference.storageKey) private var currencyCode: String = CurrencyPreference.defaultCode
 
     private var allWallets: [WalletRecord] {
         databaseSnapshot.wallets
@@ -52,13 +52,13 @@ struct AllSupportedAssetsView: View {
 
     // Filter & Sort preferences (Rule shared with the home / asset-detail
     // filters): the user picks once, the list honors it every visit.
-    @AppStorage(AllSupportedFilterPreferences.sortKeyKey)
+    @GRDBStorage(AllSupportedFilterPreferences.sortKeyKey)
     private var sortKeyRaw: String = AllSupportedFilterPreferences.defaultSortKey.rawValue
-    @AppStorage(AllSupportedFilterPreferences.assetTypeKey)
+    @GRDBStorage(AllSupportedFilterPreferences.assetTypeKey)
     private var assetTypeRaw: String = AllSupportedFilterPreferences.defaultAssetType.rawValue
-    @AppStorage(AllSupportedFilterPreferences.selectedNetworksKey)
+    @GRDBStorage(AllSupportedFilterPreferences.selectedNetworksKey)
     private var selectedNetworksJSON: String = AllSupportedFilterPreferences.defaultSelectedNetworksJSON
-    @AppStorage(AllSupportedFilterPreferences.onlyWithBalanceKey)
+    @GRDBStorage(AllSupportedFilterPreferences.onlyWithBalanceKey)
     private var onlyWithBalance: Bool = AllSupportedFilterPreferences.defaultOnlyWithBalance
 
     private var sortKey: AllSupportedFilterPreferences.SortKey {

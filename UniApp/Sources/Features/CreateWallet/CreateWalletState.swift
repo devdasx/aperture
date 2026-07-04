@@ -17,7 +17,7 @@ import SwiftUI
 /// `ObservableObject`-is-banned-in-this-project list.
 ///
 /// **Passphrase storage.** The `passphrase` field lives **in memory only**
-/// — never persisted to `@AppStorage`, never written to Keychain in this
+/// — never persisted to `@GRDBStorage`, never written to Keychain in this
 /// pass (`T-019`). When the cover dismisses, the entire state instance is
 /// released and the passphrase is gone. The future seed-derivation step
 /// (`T-012`) is what consumes mnemonic + passphrase together via
@@ -263,9 +263,9 @@ final class CreateWalletState {
         // Make it the active wallet immediately so the user lands
         // on it after WalletReadyView and so the refresh coordinator
         // starts pulling balances/history/tokens for it. Persisted
-        // via the same `"activeWalletId"` UserDefaults key the
+        // via the same `"activeWalletId"` GRDB preference key the
         // wallet-home + settings + receive views read via
-        // `@AppStorage`. Writing here keeps the contract centralized:
+        // `@GRDBStorage`. Writing here keeps the contract centralized:
         // anything that successfully runs `persist(...)` becomes
         // active, without each caller needing to remember.
         ActiveWalletPointer.set(walletId)

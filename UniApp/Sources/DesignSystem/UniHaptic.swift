@@ -24,7 +24,7 @@ import SwiftUI
 ///   justification per Rule #10 §I.
 ///
 /// User preference: the `hapticFeedbackEnabled` key, read at fire time
-/// via `HapticPreference.isEnabled()` (never via `@AppStorage` inside
+/// via `HapticPreference.isEnabled()` (never via `@GRDBStorage` inside
 /// the modifiers — see `UniHapticModifier`'s doc for why). When `false`
 /// every path through this enum short-circuits to no-op — `SensoryFeedback`,
 /// `CHHapticEngine`, sequences, signatures, frustration-window state,
@@ -131,7 +131,7 @@ enum UniHaptic: Hashable, Sendable {
     // MARK: - Family F: signature (Core Haptics AHAP)
 
     /// Aperture's six signature patterns. Fired via `UniHapticEngine`
-    /// — gated by both the AppStorage preference AND
+    /// — gated by both the GRDB preference AND
     /// `UIAccessibility.isReduceMotionEnabled` (signatures respect the
     /// user's accessibility choice; atomic `SensoryFeedback` cases do
     /// not because they're platform-blessed).
@@ -331,7 +331,7 @@ extension View {
 ///
 /// **No view-graph subscription on the preference either (2026-06-13).**
 /// The follow-on bug to the structural branch above: this modifier used
-/// to host `@AppStorage(HapticPreference.storageKey)`, which made every
+/// to host `@GRDBStorage(HapticPreference.storageKey)`, which made every
 /// `.uniHaptic`-wrapped node re-evaluate whenever the Settings toggle
 /// flipped. One of those nodes wraps `MainTabView`'s `TabView` — the
 /// ancestor of the Settings tab's `NavigationStack` — and on iOS 26's
@@ -340,7 +340,7 @@ extension View {
 /// the user out of Settings → Preferences on every haptic-toggle flip
 /// (observed on Thuglife 2026-06-13). The preference is now read
 /// **imperatively at fire time** via `HapticPreference.isEnabled()` —
-/// a plain `UserDefaults` read, not a `DynamicProperty` — so flipping
+/// a plain GRDB preference read, not a `DynamicProperty` — so flipping
 /// the toggle invalidates *zero* `.uniHaptic`-wrapped nodes. Gating is
 /// exactly as fresh (the closure evaluates when the trigger fires),
 /// and the view graph is fully inert to the preference.
@@ -386,7 +386,7 @@ private struct UniHapticModifier<T: Equatable>: ViewModifier {
 /// silencing keeps counting and muting repeated error buzzes.
 ///
 /// Same preference discipline as `UniHapticModifier` above: **no
-/// `@AppStorage` subscription** — `HapticPreference.isEnabled()` is
+/// `@GRDBStorage` subscription** — `HapticPreference.isEnabled()` is
 /// read at fire time so flipping the Settings haptics toggle never
 /// invalidates a wrapped node (2026-06-13 navigation-pop fix).
 private struct UniHapticDirectionalModifier<T: Equatable>: ViewModifier {

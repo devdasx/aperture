@@ -55,7 +55,7 @@ import Foundation
 enum WalletHomeFilterApply {
 
     /// One decoded snapshot of the user's filter preferences. The
-    /// sheet's `@AppStorage` reads write through `WalletHomeFilterPreferences`'s
+    /// sheet's `@GRDBStorage` reads write through `WalletHomeFilterPreferences`'s
     /// JSON helpers to produce this shape; the wallet home creates it
     /// once per body evaluation and passes it down.
     struct Inputs {
@@ -76,35 +76,57 @@ enum WalletHomeFilterApply {
         /// `WalletHomeView`'s `@State` value.
         let searchText: String
 
-        /// Read every persisted key off `UserDefaults.standard` and
+        /// Read every persisted key off GRDB and
         /// decode the JSON-backed sets to `Set<String>`. The view-
         /// transient `searchText` defaults to empty since this
         /// helper has no view scope; the wallet-home wraps the
         /// produced inputs with its own search-text override.
         static func current() -> Inputs {
-            let defaults = UserDefaults.standard
-            let viewModeRaw = defaults.string(forKey: WalletHomeFilterPreferences.viewModeKey)
-                ?? WalletHomeFilterPreferences.defaultViewMode.rawValue
-            let sortKeyRaw = defaults.string(forKey: WalletHomeFilterPreferences.sortKeyKey)
-                ?? WalletHomeFilterPreferences.defaultSortKey.rawValue
-            let directionRaw = defaults.string(forKey: WalletHomeFilterPreferences.sortDirectionKey)
-                ?? WalletHomeFilterPreferences.defaultSortDirection.rawValue
-            let onlyWithBalance = defaults.object(forKey: WalletHomeFilterPreferences.onlyWithBalanceKey) as? Bool
-                ?? WalletHomeFilterPreferences.defaultOnlyWithBalance
-            let hiddenAssetsJSON = defaults.string(forKey: WalletHomeFilterPreferences.hiddenAssetsKey)
-                ?? WalletHomeFilterPreferences.defaultHiddenJSON
-            let hiddenChainsJSON = defaults.string(forKey: WalletHomeFilterPreferences.hiddenChainsKey)
-                ?? WalletHomeFilterPreferences.defaultHiddenJSON
-            let assetTypeRaw = defaults.string(forKey: WalletHomeFilterPreferences.assetTypeKey)
-                ?? WalletHomeFilterPreferences.defaultAssetType.rawValue
-            let groupByRaw = defaults.string(forKey: WalletHomeFilterPreferences.groupByKey)
-                ?? WalletHomeFilterPreferences.defaultGroupBy.rawValue
-            let minFiatThresholdDouble = defaults.object(forKey: WalletHomeFilterPreferences.minFiatThresholdKey) as? Double
-                ?? WalletHomeFilterPreferences.defaultMinFiatThreshold
-            let selectedNetworksJSON = defaults.string(forKey: WalletHomeFilterPreferences.selectedNetworksKey)
-                ?? WalletHomeFilterPreferences.defaultHiddenJSON
-            let pinnedAssetsJSON = defaults.string(forKey: WalletHomeFilterPreferences.pinnedAssetsKey)
-                ?? WalletHomeFilterPreferences.defaultHiddenJSON
+            let store = AppPreferenceStore.shared
+            let viewModeRaw = store.string(
+                WalletHomeFilterPreferences.viewModeKey,
+                default: WalletHomeFilterPreferences.defaultViewMode.rawValue
+            )
+            let sortKeyRaw = store.string(
+                WalletHomeFilterPreferences.sortKeyKey,
+                default: WalletHomeFilterPreferences.defaultSortKey.rawValue
+            )
+            let directionRaw = store.string(
+                WalletHomeFilterPreferences.sortDirectionKey,
+                default: WalletHomeFilterPreferences.defaultSortDirection.rawValue
+            )
+            let onlyWithBalance = store.bool(
+                WalletHomeFilterPreferences.onlyWithBalanceKey,
+                default: WalletHomeFilterPreferences.defaultOnlyWithBalance
+            )
+            let hiddenAssetsJSON = store.string(
+                WalletHomeFilterPreferences.hiddenAssetsKey,
+                default: WalletHomeFilterPreferences.defaultHiddenJSON
+            )
+            let hiddenChainsJSON = store.string(
+                WalletHomeFilterPreferences.hiddenChainsKey,
+                default: WalletHomeFilterPreferences.defaultHiddenJSON
+            )
+            let assetTypeRaw = store.string(
+                WalletHomeFilterPreferences.assetTypeKey,
+                default: WalletHomeFilterPreferences.defaultAssetType.rawValue
+            )
+            let groupByRaw = store.string(
+                WalletHomeFilterPreferences.groupByKey,
+                default: WalletHomeFilterPreferences.defaultGroupBy.rawValue
+            )
+            let minFiatThresholdDouble = store.double(
+                WalletHomeFilterPreferences.minFiatThresholdKey,
+                default: WalletHomeFilterPreferences.defaultMinFiatThreshold
+            )
+            let selectedNetworksJSON = store.string(
+                WalletHomeFilterPreferences.selectedNetworksKey,
+                default: WalletHomeFilterPreferences.defaultHiddenJSON
+            )
+            let pinnedAssetsJSON = store.string(
+                WalletHomeFilterPreferences.pinnedAssetsKey,
+                default: WalletHomeFilterPreferences.defaultHiddenJSON
+            )
 
             return Inputs(
                 viewMode: WalletHomeFilterPreferences.ViewMode(rawValue: viewModeRaw)

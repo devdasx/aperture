@@ -46,7 +46,7 @@ import UIKit
 /// | `.actionCircle` | `.contextualImpact(.commit)`    |
 ///
 /// The haptic is fired declaratively via `.uniHaptic(_:trigger:)`, which
-/// honors the user's `@AppStorage("hapticFeedbackEnabled")` preference and
+/// honors the user's `@GRDBStorage("hapticFeedbackEnabled")` preference and
 /// the system-level "System Haptics" + "Reduce Motion" settings.
 struct UniButton: View {
     enum Variant {

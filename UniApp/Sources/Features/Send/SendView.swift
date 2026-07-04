@@ -17,7 +17,7 @@ import SwiftUI
 /// the seam where the next increment — amount entry + recipient — lands.
 struct SendView: View {
     @StateObject private var databaseSnapshot = DatabaseSnapshotObservation()
-    @AppStorage("activeWalletId") private var activeWalletIdRaw: String = ""
+    @GRDBStorage("activeWalletId") private var activeWalletIdRaw: String = ""
 
     /// The sheet's own NavigationPath — lives on the sheet root so it can
     /// rebuild via `.id(sheetDirectionKey)` (Rule #12 §G) without losing
@@ -61,7 +61,7 @@ struct SendView: View {
     @State private var recents: RecentRecipientsIndex = .empty
 
     private var currencyCode: String {
-        UserDefaults.standard.string(forKey: CurrencyPreference.storageKey) ?? CurrencyPreference.defaultCode
+        AppPreferenceStore.shared.string(CurrencyPreference.storageKey, default: CurrencyPreference.defaultCode)
     }
 
     private var allWallets: [WalletRecord] {
@@ -370,7 +370,7 @@ struct SendReviewLoader: View {
     @State private var nativePrice: Decimal?
 
     private var currencyCode: String {
-        UserDefaults.standard.string(forKey: CurrencyPreference.storageKey) ?? CurrencyPreference.defaultCode
+        AppPreferenceStore.shared.string(CurrencyPreference.storageKey, default: CurrencyPreference.defaultCode)
     }
 
     var body: some View {

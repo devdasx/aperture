@@ -11,8 +11,7 @@ struct GRDBAppActionSurfaceTests {
     @Test("wallet management mutations persist and drive GRDB observations")
     func walletManagementMutationsPersistAndDriveObservations() async throws {
         let database = try TestAppDatabaseFactory.makeDatabase()
-        let oldActive = UserDefaults.standard.string(forKey: ActiveWalletPointer.storageKey)
-        defer { cleanup(database: database, previousActiveWalletRaw: oldActive) }
+        defer { cleanup(database: database) }
 
         let createdID = UUID()
         let hiddenID = UUID()
@@ -125,8 +124,6 @@ struct GRDBAppActionSurfaceTests {
     func settingsCustomTokensBiometricsAndMarketsPersist() async throws {
         let database = try TestAppDatabaseFactory.makeDatabase()
         defer { TestAppDatabaseFactory.cleanup(database) }
-        let defaultsSnapshot = UserDefaults.standard.dictionaryRepresentation()
-        defer { restoreStandardDefaults(defaultsSnapshot) }
 
         let walletID = UUID()
         try await WalletCommandRepository(database: database).insertWatchOnlyWallet(
@@ -136,21 +133,21 @@ struct GRDBAppActionSurfaceTests {
             addresses: [(SupportedChain.ethereum.rawValue, "0xsettings")]
         )
 
-        UserDefaults.standard.set("dark", forKey: "themePreference")
-        UserDefaults.standard.set("ar", forKey: "languagePreference")
-        UserDefaults.standard.set(true, forKey: "pinEnabled")
-        UserDefaults.standard.set(true, forKey: "biometricEnabled")
-        UserDefaults.standard.set(30, forKey: "autoLockSeconds")
-        UserDefaults.standard.set("EUR", forKey: CurrencyPreference.storageKey)
-        UserDefaults.standard.set(false, forKey: HapticPreference.storageKey)
-        UserDefaults.standard.set(false, forKey: "backgroundBalanceRefresh")
-        UserDefaults.standard.set(BalanceHistoryRange.week.rawValue, forKey: "walletHomeBalanceHistoryRange")
-        UserDefaults.standard.set(2, forKey: "selectedTab")
-        UserDefaults.standard.set(walletID.uuidString, forKey: ActiveWalletPointer.storageKey)
-        UserDefaults.standard.set("security", forKey: "settingsDeepLink")
-        UserDefaults.standard.set(true, forKey: "hasUnbackedupWallet")
-        UserDefaults.standard.set(true, forKey: "hideImportKeyWarning")
-        SettingsStore.shared.start(database: database)
+        let store = AppPreferenceStore.shared
+        store.set("dark", forKey: "themePreference")
+        store.set("ar", forKey: "languagePreference")
+        store.set(true, forKey: PinCodePreference.pinEnabledKey)
+        store.set(true, forKey: PinCodePreference.biometricEnabledKey)
+        store.set(30, forKey: AutoLockPreference.storageKey)
+        store.set("EUR", forKey: CurrencyPreference.storageKey)
+        store.set(false, forKey: HapticPreference.storageKey)
+        store.set(false, forKey: "backgroundBalanceRefresh")
+        store.set(BalanceHistoryRange.week.rawValue, forKey: "walletHomeBalanceHistoryRange")
+        store.set(MainTab.markets.rawValue, forKey: MainTab.storageKey)
+        store.set(walletID.uuidString, forKey: ActiveWalletPointer.storageKey)
+        store.set("security", forKey: "settingsDeepLink")
+        store.set(true, forKey: "hasUnbackedupWallet")
+        store.set(true, forKey: "hideImportKeyWarning")
 
         let settings = try database.read { db in
             try Row.fetchOne(db, sql: "SELECT * FROM app_settings WHERE id = 'app-settings-singleton'")
@@ -305,7 +302,7 @@ struct GRDBAppActionSurfaceTests {
         }
     }
 
-    private func cleanup(database: AppDatabase, previousActiveWalletRaw: String?) {
+    private func cleanup(database: AppDatabase) {
         if let ids = try? WalletRepository(database: database).allWalletIds() {
             for id in ids {
                 try? SeedVault.deleteSeed(for: id)
@@ -314,19 +311,5 @@ struct GRDBAppActionSurfaceTests {
             }
         }
         TestAppDatabaseFactory.cleanup(database)
-        if let previousActiveWalletRaw {
-            UserDefaults.standard.set(previousActiveWalletRaw, forKey: ActiveWalletPointer.storageKey)
-        } else {
-            UserDefaults.standard.removeObject(forKey: ActiveWalletPointer.storageKey)
-        }
-    }
-
-    private func restoreStandardDefaults(_ snapshot: [String: Any]) {
-        if let bundleId = Bundle.main.bundleIdentifier {
-            UserDefaults.standard.removePersistentDomain(forName: bundleId)
-        }
-        for (key, value) in snapshot {
-            UserDefaults.standard.set(value, forKey: key)
-        }
     }
 }

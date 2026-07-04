@@ -78,7 +78,7 @@ struct OnboardingView: View {
     /// backing up the recovery phrase. Surfaced later as a Settings row
     /// ("Back up your recovery phrase") — tracked as `T-016`. Default
     /// `false` for fresh installs.
-    @AppStorage("hasUnbackedupWallet") private var hasUnbackedupWallet: Bool = false
+    @GRDBStorage("hasUnbackedupWallet") private var hasUnbackedupWallet: Bool = false
 
     // Rule #12 Part G: presented/pushed flow content is `.id`-keyed to
     // **only the layout direction**, not the full preferences. iOS locks
@@ -88,7 +88,7 @@ struct OnboardingView: View {
     // they propagate cleanly through `.uniAppEnvironment()` and preserve any
     // pushed-picker navigation state. Using a full-preferences key here would
     // otherwise pop the user out of sub-pickers on every preference change.
-    @AppStorage("languagePreference") private var languageCode: String = LanguagePreference.systemCode
+    @GRDBStorage("languagePreference") private var languageCode: String = LanguagePreference.systemCode
 
     private var sheetDirectionKey: String {
         LanguagePreference.layoutDirection(for: languageCode) == .rightToLeft ? "rtl" : "ltr"

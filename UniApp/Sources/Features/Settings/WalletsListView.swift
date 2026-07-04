@@ -10,9 +10,9 @@ import SwiftUI
 /// list doesn't carry chrome it doesn't need.
 struct WalletsListView: View {
     @StateObject private var databaseSnapshot = DatabaseSnapshotObservation()
-    @AppStorage("activeWalletId") private var activeWalletIdRaw: String = ""
-    @AppStorage(CurrencyPreference.storageKey) private var currencyCode: String = CurrencyPreference.defaultCode
-    @AppStorage("languagePreference") private var languageCode: String = LanguagePreference.systemCode
+    @GRDBStorage("activeWalletId") private var activeWalletIdRaw: String = ""
+    @GRDBStorage(CurrencyPreference.storageKey) private var currencyCode: String = CurrencyPreference.defaultCode
+    @GRDBStorage("languagePreference") private var languageCode: String = LanguagePreference.systemCode
 
     private var wallets: [WalletRecord] {
         databaseSnapshot.wallets.sorted {
@@ -26,24 +26,24 @@ struct WalletsListView: View {
     }
 
     // MARK: - Filter & Sort (2026-06-20 — replaced the Edit button)
-    @AppStorage("walletsListSortKey") private var sortKeyRaw: String = WalletsListSortKey.custom.rawValue
-    @AppStorage("walletsListSortAscending") private var sortAscending: Bool = true
-    @AppStorage("walletsListShowCreated") private var showCreated: Bool = true
-    @AppStorage("walletsListShowImportedMnemonic") private var showImportedMnemonic: Bool = true
-    @AppStorage("walletsListShowImportedKey") private var showImportedKey: Bool = true
-    @AppStorage("walletsListShowWatchOnly") private var showWatchOnly: Bool = true
-    @AppStorage("walletsListActiveScope") private var activeScopeRaw: String = WalletsListActiveScope.all.rawValue
-    @AppStorage("walletsListVisibilityScope") private var visibilityScopeRaw: String = WalletsListVisibilityScope.all.rawValue
-    @AppStorage("walletsListBackupScope") private var backupScopeRaw: String = WalletsListBackupScope.all.rawValue
-    @AppStorage("walletsListOnlyUnbackedUp") private var legacyOnlyUnbackedUp: Bool = false
-    @AppStorage("walletsListBalanceScope") private var balanceScopeRaw: String = WalletsListBalanceScope.all.rawValue
-    @AppStorage("walletsListMinFiat") private var minFiatRaw: String = ""
-    @AppStorage("walletsListMaxFiat") private var maxFiatRaw: String = ""
-    @AppStorage("walletsListNetworkScope") private var networkScopeRaw: String = WalletsListNetworkScope.all.rawValue
-    @AppStorage("walletsListSelectedNetworks") private var selectedNetworksJSON: String = WalletsListFilterSupport.defaultSelectedJSON
-    @AppStorage("walletsListSecretScope") private var secretScopeRaw: String = WalletsListSecretScope.all.rawValue
-    @AppStorage("walletsListOnlyPassphrase") private var onlyPassphrase: Bool = false
-    @AppStorage("walletsListDateRange") private var dateRangeRaw: String = WalletsListDateRange.all.rawValue
+    @GRDBStorage("walletsListSortKey") private var sortKeyRaw: String = WalletsListSortKey.custom.rawValue
+    @GRDBStorage("walletsListSortAscending") private var sortAscending: Bool = true
+    @GRDBStorage("walletsListShowCreated") private var showCreated: Bool = true
+    @GRDBStorage("walletsListShowImportedMnemonic") private var showImportedMnemonic: Bool = true
+    @GRDBStorage("walletsListShowImportedKey") private var showImportedKey: Bool = true
+    @GRDBStorage("walletsListShowWatchOnly") private var showWatchOnly: Bool = true
+    @GRDBStorage("walletsListActiveScope") private var activeScopeRaw: String = WalletsListActiveScope.all.rawValue
+    @GRDBStorage("walletsListVisibilityScope") private var visibilityScopeRaw: String = WalletsListVisibilityScope.all.rawValue
+    @GRDBStorage("walletsListBackupScope") private var backupScopeRaw: String = WalletsListBackupScope.all.rawValue
+    @GRDBStorage("walletsListOnlyUnbackedUp") private var legacyOnlyUnbackedUp: Bool = false
+    @GRDBStorage("walletsListBalanceScope") private var balanceScopeRaw: String = WalletsListBalanceScope.all.rawValue
+    @GRDBStorage("walletsListMinFiat") private var minFiatRaw: String = ""
+    @GRDBStorage("walletsListMaxFiat") private var maxFiatRaw: String = ""
+    @GRDBStorage("walletsListNetworkScope") private var networkScopeRaw: String = WalletsListNetworkScope.all.rawValue
+    @GRDBStorage("walletsListSelectedNetworks") private var selectedNetworksJSON: String = WalletsListFilterSupport.defaultSelectedJSON
+    @GRDBStorage("walletsListSecretScope") private var secretScopeRaw: String = WalletsListSecretScope.all.rawValue
+    @GRDBStorage("walletsListOnlyPassphrase") private var onlyPassphrase: Bool = false
+    @GRDBStorage("walletsListDateRange") private var dateRangeRaw: String = WalletsListDateRange.all.rawValue
     @State private var isShowingFilter: Bool = false
 
     /// `true` when any non-default filter/sort is active — surfaces a dot on
@@ -892,30 +892,30 @@ enum WalletsListFilterSupport {
 
 /// The Wallets list **Filter & Sort** sheet (2026-06-20 — replaces the Edit
 /// button). Mirrors the wallet-home filter pattern: every control is an
-/// `@AppStorage` write that `WalletsListView` reads live, so "Done" is just
+/// `@GRDBStorage` write that `WalletsListView` reads live, so "Done" is just
 /// "close" — the list is already updated.
 struct WalletsListFilterSheet: View {
     @Environment(\.dismiss) private var dismiss
 
-    @AppStorage("walletsListSortKey") private var sortKeyRaw: String = WalletsListSortKey.custom.rawValue
-    @AppStorage("walletsListSortAscending") private var sortAscending: Bool = true
-    @AppStorage("walletsListShowCreated") private var showCreated: Bool = true
-    @AppStorage("walletsListShowImportedMnemonic") private var showImportedMnemonic: Bool = true
-    @AppStorage("walletsListShowImportedKey") private var showImportedKey: Bool = true
-    @AppStorage("walletsListShowWatchOnly") private var showWatchOnly: Bool = true
-    @AppStorage("walletsListActiveScope") private var activeScopeRaw: String = WalletsListActiveScope.all.rawValue
-    @AppStorage("walletsListVisibilityScope") private var visibilityScopeRaw: String = WalletsListVisibilityScope.all.rawValue
-    @AppStorage("walletsListBackupScope") private var backupScopeRaw: String = WalletsListBackupScope.all.rawValue
-    @AppStorage("walletsListOnlyUnbackedUp") private var legacyOnlyUnbackedUp: Bool = false
-    @AppStorage("walletsListBalanceScope") private var balanceScopeRaw: String = WalletsListBalanceScope.all.rawValue
-    @AppStorage("walletsListMinFiat") private var minFiatRaw: String = ""
-    @AppStorage("walletsListMaxFiat") private var maxFiatRaw: String = ""
-    @AppStorage("walletsListNetworkScope") private var networkScopeRaw: String = WalletsListNetworkScope.all.rawValue
-    @AppStorage("walletsListSelectedNetworks") private var selectedNetworksJSON: String = WalletsListFilterSupport.defaultSelectedJSON
-    @AppStorage("walletsListSecretScope") private var secretScopeRaw: String = WalletsListSecretScope.all.rawValue
-    @AppStorage("walletsListOnlyPassphrase") private var onlyPassphrase: Bool = false
-    @AppStorage("walletsListDateRange") private var dateRangeRaw: String = WalletsListDateRange.all.rawValue
-    @AppStorage(CurrencyPreference.storageKey) private var currencyCode: String = CurrencyPreference.defaultCode
+    @GRDBStorage("walletsListSortKey") private var sortKeyRaw: String = WalletsListSortKey.custom.rawValue
+    @GRDBStorage("walletsListSortAscending") private var sortAscending: Bool = true
+    @GRDBStorage("walletsListShowCreated") private var showCreated: Bool = true
+    @GRDBStorage("walletsListShowImportedMnemonic") private var showImportedMnemonic: Bool = true
+    @GRDBStorage("walletsListShowImportedKey") private var showImportedKey: Bool = true
+    @GRDBStorage("walletsListShowWatchOnly") private var showWatchOnly: Bool = true
+    @GRDBStorage("walletsListActiveScope") private var activeScopeRaw: String = WalletsListActiveScope.all.rawValue
+    @GRDBStorage("walletsListVisibilityScope") private var visibilityScopeRaw: String = WalletsListVisibilityScope.all.rawValue
+    @GRDBStorage("walletsListBackupScope") private var backupScopeRaw: String = WalletsListBackupScope.all.rawValue
+    @GRDBStorage("walletsListOnlyUnbackedUp") private var legacyOnlyUnbackedUp: Bool = false
+    @GRDBStorage("walletsListBalanceScope") private var balanceScopeRaw: String = WalletsListBalanceScope.all.rawValue
+    @GRDBStorage("walletsListMinFiat") private var minFiatRaw: String = ""
+    @GRDBStorage("walletsListMaxFiat") private var maxFiatRaw: String = ""
+    @GRDBStorage("walletsListNetworkScope") private var networkScopeRaw: String = WalletsListNetworkScope.all.rawValue
+    @GRDBStorage("walletsListSelectedNetworks") private var selectedNetworksJSON: String = WalletsListFilterSupport.defaultSelectedJSON
+    @GRDBStorage("walletsListSecretScope") private var secretScopeRaw: String = WalletsListSecretScope.all.rawValue
+    @GRDBStorage("walletsListOnlyPassphrase") private var onlyPassphrase: Bool = false
+    @GRDBStorage("walletsListDateRange") private var dateRangeRaw: String = WalletsListDateRange.all.rawValue
+    @GRDBStorage(CurrencyPreference.storageKey) private var currencyCode: String = CurrencyPreference.defaultCode
 
     @State private var isShowingResetConfirm: Bool = false
 

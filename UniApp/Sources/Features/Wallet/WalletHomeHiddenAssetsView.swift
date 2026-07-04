@@ -6,7 +6,7 @@ import SwiftUI
 /// each row carries a `Toggle` for "hidden". Toggling a row hidden
 /// removes that asset from the wallet-home holdings list; toggling
 /// it visible brings it back. The persisted set survives across
-/// launches via `@AppStorage`-backed JSON (see
+/// launches via `@GRDBStorage`-backed JSON (see
 /// `WalletHomeFilterPreferences`).
 ///
 /// **Pin swipe action (2026-06-09).** A leading-edge swipe on any
@@ -57,11 +57,11 @@ import SwiftUI
 /// and the sub-screen consumes it. Title via `.navigationTitle`.
 struct WalletHomeHiddenAssetsView: View {
     @StateObject private var databaseSnapshot = DatabaseSnapshotObservation()
-    @AppStorage("activeWalletId") private var activeWalletIdRaw: String = ""
-    @AppStorage(CurrencyPreference.storageKey) private var currencyCode: String = CurrencyPreference.defaultCode
-    @AppStorage(WalletHomeFilterPreferences.hiddenAssetsKey)
+    @GRDBStorage("activeWalletId") private var activeWalletIdRaw: String = ""
+    @GRDBStorage(CurrencyPreference.storageKey) private var currencyCode: String = CurrencyPreference.defaultCode
+    @GRDBStorage(WalletHomeFilterPreferences.hiddenAssetsKey)
     private var hiddenJSON: String = WalletHomeFilterPreferences.defaultHiddenJSON
-    @AppStorage(WalletHomeFilterPreferences.pinnedAssetsKey)
+    @GRDBStorage(WalletHomeFilterPreferences.pinnedAssetsKey)
     private var pinnedJSON: String = WalletHomeFilterPreferences.defaultHiddenJSON
 
     @State private var searchText: String = ""
@@ -70,7 +70,7 @@ struct WalletHomeHiddenAssetsView: View {
     //
     // The hidden / pinned sets are decoded ONCE into `@State` and
     // every row binding reads + mutates the in-memory set, encoding
-    // back to the JSON `@AppStorage` after each mutation. The prior
+    // back to the JSON `@GRDBStorage` after each mutation. The prior
     // per-binding read-decode-mutate-encode-write round-trip decoded
     // the JSON per row per render (O(N) decodes) and raced itself —
     // two toggles landing in the same pass each re-decoded the
@@ -86,11 +86,15 @@ struct WalletHomeHiddenAssetsView: View {
     }
 
     init() {
-        let defaults = UserDefaults.standard
-        let hidden = defaults.string(forKey: WalletHomeFilterPreferences.hiddenAssetsKey)
-            ?? WalletHomeFilterPreferences.defaultHiddenJSON
-        let pinned = defaults.string(forKey: WalletHomeFilterPreferences.pinnedAssetsKey)
-            ?? WalletHomeFilterPreferences.defaultHiddenJSON
+        let store = AppPreferenceStore.shared
+        let hidden = store.string(
+            WalletHomeFilterPreferences.hiddenAssetsKey,
+            default: WalletHomeFilterPreferences.defaultHiddenJSON
+        )
+        let pinned = store.string(
+            WalletHomeFilterPreferences.pinnedAssetsKey,
+            default: WalletHomeFilterPreferences.defaultHiddenJSON
+        )
         _hiddenSet = State(initialValue: WalletHomeFilterPreferences.decode(hidden))
         _pinnedSet = State(initialValue: WalletHomeFilterPreferences.decode(pinned))
     }
@@ -299,7 +303,7 @@ struct WalletHomeHiddenAssetsView: View {
 
     /// `Binding<Bool>` for a coin row's "hidden" toggle. Reads and
     /// mutates the in-memory `hiddenSet` (the single source), then
-    /// encodes the updated set back through `@AppStorage` — no
+    /// encodes the updated set back through `@GRDBStorage` — no
     /// per-row decode, no read-modify-write race between toggles.
     private func bindingForCoinHidden(_ row: WalletCoinSupportedRow) -> Binding<Bool> {
         bindingForHidden(id: WalletHomeFilterPreferences.assetID(coin: row))

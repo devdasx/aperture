@@ -3,7 +3,7 @@ import SwiftUI
 
 /// **Wallet-home Filter & Sort preferences.** The single canonical
 /// namespace for the storage keys, enum vocabulary, and defaults the
-/// `WalletHomeFilterSheet` writes through `@AppStorage`. Mirrors the
+/// `WalletHomeFilterSheet` writes through `@GRDBStorage`. Mirrors the
 /// shape of `HapticPreference` and `HideBalancesPreference`: one
 /// `enum` namespace, one storage key per preference, one default per
 /// preference.
@@ -15,7 +15,7 @@ import SwiftUI
 /// the pure-function filter applier, and the wallet home itself.
 /// Lifting them out of any one consumer keeps the contract auditable
 /// in one place and removes the temptation to re-declare the same
-/// `@AppStorage` key with a typo in the next consumer.
+/// `@GRDBStorage` key with a typo in the next consumer.
 ///
 /// **Persisted state shape (eleven keys total — six v1, five v2):**
 ///
@@ -34,7 +34,7 @@ import SwiftUI
 /// 5. `walletHomeHiddenAssets` — JSON-encoded `[String]` of asset
 ///    IDs the user has chosen to hide. Empty default. Asset IDs use
 ///    the schema `"{chainRaw}|{contract or empty}|{symbol}"` so each
-///    string round-trips through `@AppStorage`-stored JSON without
+///    string round-trips through `@GRDBStorage`-stored JSON without
 ///    losing information.
 /// 6. `walletHomeHiddenChains` — JSON-encoded `[String]` of
 ///    `SupportedChain.rawValue` strings the user has chosen to mute
@@ -71,7 +71,7 @@ import SwiftUI
 ///    regardless of the sort direction.
 ///
 /// **Why JSON-encoded `[String]` for the sets instead of `Set<String>`
-/// directly.** `@AppStorage` natively supports `Bool` / `Int` /
+/// directly.** `@GRDBStorage` natively supports `Bool` / `Int` /
 /// `Double` / `String` / `URL` / `Data` and `RawRepresentable` over
 /// those primitives. A `Set<String>` isn't directly storable; the
 /// canonical Apple pattern is to encode/decode through `String`
@@ -376,21 +376,18 @@ enum WalletHomeFilterPreferences {
 
     /// Wipe every preference key this feature owns. Called by the
     /// "Reset to defaults" CTA in the sheet after the user confirms.
-    /// Writes go through `UserDefaults.standard` directly so the
-    /// reset is one transaction; SwiftUI's `@AppStorage` observers
-    /// pick the new values up on the next body evaluation.
     static func resetAll() {
-        let defaults = UserDefaults.standard
-        defaults.set(defaultViewMode.rawValue, forKey: viewModeKey)
-        defaults.set(defaultSortKey.rawValue, forKey: sortKeyKey)
-        defaults.set(defaultSortDirection.rawValue, forKey: sortDirectionKey)
-        defaults.set(defaultOnlyWithBalance, forKey: onlyWithBalanceKey)
-        defaults.set(defaultHiddenJSON, forKey: hiddenAssetsKey)
-        defaults.set(defaultHiddenJSON, forKey: hiddenChainsKey)
-        defaults.set(defaultAssetType.rawValue, forKey: assetTypeKey)
-        defaults.set(defaultGroupBy.rawValue, forKey: groupByKey)
-        defaults.set(defaultMinFiatThreshold, forKey: minFiatThresholdKey)
-        defaults.set(defaultHiddenJSON, forKey: selectedNetworksKey)
-        defaults.set(defaultHiddenJSON, forKey: pinnedAssetsKey)
+        let store = AppPreferenceStore.shared
+        store.set(defaultViewMode.rawValue, forKey: viewModeKey)
+        store.set(defaultSortKey.rawValue, forKey: sortKeyKey)
+        store.set(defaultSortDirection.rawValue, forKey: sortDirectionKey)
+        store.set(defaultOnlyWithBalance, forKey: onlyWithBalanceKey)
+        store.set(defaultHiddenJSON, forKey: hiddenAssetsKey)
+        store.set(defaultHiddenJSON, forKey: hiddenChainsKey)
+        store.set(defaultAssetType.rawValue, forKey: assetTypeKey)
+        store.set(defaultGroupBy.rawValue, forKey: groupByKey)
+        store.set(defaultMinFiatThreshold, forKey: minFiatThresholdKey)
+        store.set(defaultHiddenJSON, forKey: selectedNetworksKey)
+        store.set(defaultHiddenJSON, forKey: pinnedAssetsKey)
     }
 }

@@ -281,16 +281,21 @@ enum ActiveWalletPointer {
                 db,
                 sql: "SELECT active_wallet_id FROM app_settings WHERE id = 'app-settings-singleton'"
             ) ?? ""
+            let preferenceRaw = try String.fetchOne(
+                db,
+                sql: "SELECT string_value FROM app_preferences WHERE key = ?",
+                arguments: [storageKey]
+            ) ?? ""
             let selected = try preferredWalletID(
                 activeRecordID: UUID(uuidString: activeRaw.trimmingCharacters(in: .whitespacesAndNewlines)),
                 settingsRaw: settingsRaw,
-                userDefaultsRaw: rawValue,
+                preferenceRaw: preferenceRaw,
                 db: db
             )
             try mirrorSelection(selected, db: db)
             return selected
         }
-        UserDefaults.standard.set(selectedID?.uuidString ?? "", forKey: storageKey)
+        AppPreferenceStore.shared.set(selectedID?.uuidString ?? "", forKey: storageKey)
     }
 
     static var currentId: UUID? {
@@ -298,7 +303,7 @@ enum ActiveWalletPointer {
     }
 
     static var rawValue: String {
-        UserDefaults.standard.string(forKey: storageKey) ?? ""
+        AppPreferenceStore.shared.string(storageKey, default: "")
     }
 
     static func set(_ id: UUID?) {
@@ -307,11 +312,11 @@ enum ActiveWalletPointer {
 
     static func setRaw(_ raw: String) {
         let canonicalRaw = UUID(uuidString: raw.trimmingCharacters(in: .whitespacesAndNewlines))?.uuidString ?? ""
-        UserDefaults.standard.set(canonicalRaw, forKey: storageKey)
         guard let database else { return }
         try? database.write { db in
             try mirrorSelection(UUID(uuidString: canonicalRaw), db: db)
         }
+        AppPreferenceStore.shared.set(canonicalRaw, forKey: storageKey)
     }
 
     static func mirrorSelection(_ walletID: UUID?, db: Database) throws {
@@ -342,18 +347,19 @@ enum ActiveWalletPointer {
             """,
             arguments: [raw, now]
         )
+        try AppPreferenceStore.upsert(.string(raw), forKey: storageKey, db: db)
     }
 
     private static func preferredWalletID(
         activeRecordID: UUID?,
         settingsRaw: String,
-        userDefaultsRaw: String,
+        preferenceRaw: String,
         db: Database
     ) throws -> UUID? {
         let candidates = [
             activeRecordID,
             UUID(uuidString: settingsRaw.trimmingCharacters(in: .whitespacesAndNewlines)),
-            UUID(uuidString: userDefaultsRaw.trimmingCharacters(in: .whitespacesAndNewlines))
+            UUID(uuidString: preferenceRaw.trimmingCharacters(in: .whitespacesAndNewlines))
         ]
         for candidate in candidates.compactMap({ $0 }) where try walletExists(candidate, db: db) {
             return candidate

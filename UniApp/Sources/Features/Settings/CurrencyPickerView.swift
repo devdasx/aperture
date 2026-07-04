@@ -1,12 +1,12 @@
 import SwiftUI
 
 /// Picker for the supported fiat currencies. Selection writes through
-/// `@AppStorage(CurrencyPreference.storageKey)`. The row's primary
+/// `@GRDBStorage(CurrencyPreference.storageKey)`. The row's primary
 /// label is rendered in the user's currently-selected locale via
 /// `Locale.localizedString(forCurrencyCode:)`. Filtering via native
 /// `.searchable`.
 struct CurrencyPickerView: View {
-    @AppStorage(CurrencyPreference.storageKey)
+    @GRDBStorage(CurrencyPreference.storageKey)
     private var currencyCode: String = CurrencyPreference.defaultCode
 
     @Environment(\.locale) private var currentLocale
