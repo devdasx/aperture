@@ -130,17 +130,21 @@ struct ApertureErrorSupportSection: View {
                 }
 
                 DisclosureGroup(isExpanded: $isExpanded) {
-                    Text(verbatim: report.supportBody)
-                        .font(.system(.caption, design: .monospaced))
-                        .foregroundStyle(UniColors.Text.secondary)
-                        .textSelection(.enabled)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(UniSpacing.s)
-                        .background(
-                            RoundedRectangle(cornerRadius: UniRadius.row, style: .continuous)
-                                .fill(UniColors.Fill.quaternary)
-                        )
-                        .padding(.top, UniSpacing.xs)
+                    ScrollView(.vertical) {
+                        Text(verbatim: report.supportBody)
+                            .font(.system(.caption, design: .monospaced))
+                            .foregroundStyle(UniColors.Text.secondary)
+                            .textSelection(.enabled)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(UniSpacing.s)
+                    }
+                    .frame(maxHeight: 360)
+                    .scrollIndicators(.visible)
+                    .background(
+                        RoundedRectangle(cornerRadius: UniRadius.row, style: .continuous)
+                            .fill(UniColors.Fill.quaternary)
+                    )
+                    .padding(.top, UniSpacing.xs)
                 } label: {
                     Text("Show details")
                         .font(UniTypography.callout)

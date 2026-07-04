@@ -106,12 +106,14 @@ enum FreshInstallGuard {
         }
     }
 
-    /// Password classes Aperture writes today. Future key/cert-class vaults
-    /// must add their own explicit service/account purge path; this guard does
-    /// not perform class-wide deletes.
+    /// Password classes Aperture writes today. All current vaults use
+    /// `kSecClassGenericPassword` with `kSecAttrService`; internet-password
+    /// items key service-like identity through different attributes, so adding
+    /// that class here produces invalid Keychain queries on simulator/device.
+    /// Future key/cert/internet-password vaults must add their own explicit
+    /// purge path; this guard does not perform class-wide deletes.
     private static var serviceScopedClasses: [CFString] {
-        // Password classes carry a `kSecAttrService` attribute → delete by service.
-        [kSecClassGenericPassword, kSecClassInternetPassword]
+        [kSecClassGenericPassword]
     }
 
     private static let log = Logger(
