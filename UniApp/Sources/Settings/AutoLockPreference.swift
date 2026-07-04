@@ -2,7 +2,7 @@ import Foundation
 
 /// Auto-lock duration preference. Decides how long after a wallet
 /// scene becomes inactive (backgrounded, screen-off) before the lock
-/// screen is required to return. `@AppStorage("autoLockSeconds")`
+/// screen is required to return. `@GRDBStorage("autoLockSeconds")`
 /// integer, default `30` (the iOS-banking-app convention).
 ///
 /// `0` means "lock immediately" — the lock screen presents the
@@ -10,7 +10,7 @@ import Foundation
 /// `Int.max` (`-1` in storage to avoid the `Int.max` literal) means
 /// "never" — the wallet stays unlocked across foregrounds until the
 /// user explicitly locks (future hatch). For v1 we ship the four
-/// natural options below; the `Int` `@AppStorage` accepts arbitrary
+/// natural options below; the `Int` `@GRDBStorage` accepts arbitrary
 /// values so a future hatch can extend without migration.
 enum AutoLockPreference {
     static let storageKey = "autoLockSeconds"

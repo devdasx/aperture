@@ -24,7 +24,7 @@ import SwiftUI
 /// reads as the same chrome the rest of the Settings family
 /// presents. A leading `Cancel` lives in `.topBarLeading` —
 /// **there is no `Done`** because every control writes through
-/// `@AppStorage` in place, so "done" is "now." That's the honest
+/// `@GRDBStorage` in place, so "done" is "now." That's the honest
 /// shape (Rule #2 §A.7) and the iOS-native pattern for "live
 /// preferences" sheets.
 ///
@@ -36,8 +36,8 @@ import SwiftUI
 /// the post-filter count. Recomputes on every preference change
 /// because every dependency is read by the view body.
 ///
-/// **Live propagation.** Every `@AppStorage` write here is read by
-/// `WalletHomeView`'s body (also bound via `@AppStorage`), so the
+/// **Live propagation.** Every `@GRDBStorage` write here is read by
+/// `WalletHomeView`'s body (also bound via `@GRDBStorage`), so the
 /// home's holdings list updates the moment the user toggles a
 /// preference here — even though this sheet is presented over the
 /// home. No "save and close" round-trip.
@@ -68,33 +68,33 @@ struct WalletHomeFilterSheet: View {
         self.searchPreview = searchPreview
     }
 
-    @AppStorage(WalletHomeFilterPreferences.viewModeKey)
+    @GRDBStorage(WalletHomeFilterPreferences.viewModeKey)
     private var viewModeRaw: String = WalletHomeFilterPreferences.defaultViewMode.rawValue
-    @AppStorage(WalletHomeFilterPreferences.sortKeyKey)
+    @GRDBStorage(WalletHomeFilterPreferences.sortKeyKey)
     private var sortKeyRaw: String = WalletHomeFilterPreferences.defaultSortKey.rawValue
-    @AppStorage(WalletHomeFilterPreferences.sortDirectionKey)
+    @GRDBStorage(WalletHomeFilterPreferences.sortDirectionKey)
     private var sortDirectionRaw: String = WalletHomeFilterPreferences.defaultSortDirection.rawValue
-    @AppStorage(WalletHomeFilterPreferences.onlyWithBalanceKey)
+    @GRDBStorage(WalletHomeFilterPreferences.onlyWithBalanceKey)
     private var onlyWithBalance: Bool = WalletHomeFilterPreferences.defaultOnlyWithBalance
-    @AppStorage(WalletHomeFilterPreferences.hiddenAssetsKey)
+    @GRDBStorage(WalletHomeFilterPreferences.hiddenAssetsKey)
     private var hiddenAssetsJSON: String = WalletHomeFilterPreferences.defaultHiddenJSON
-    @AppStorage(WalletHomeFilterPreferences.hiddenChainsKey)
+    @GRDBStorage(WalletHomeFilterPreferences.hiddenChainsKey)
     private var hiddenChainsJSON: String = WalletHomeFilterPreferences.defaultHiddenJSON
     // v2 storage
-    @AppStorage(WalletHomeFilterPreferences.assetTypeKey)
+    @GRDBStorage(WalletHomeFilterPreferences.assetTypeKey)
     private var assetTypeRaw: String = WalletHomeFilterPreferences.defaultAssetType.rawValue
-    @AppStorage(WalletHomeFilterPreferences.groupByKey)
+    @GRDBStorage(WalletHomeFilterPreferences.groupByKey)
     private var groupByRaw: String = WalletHomeFilterPreferences.defaultGroupBy.rawValue
-    @AppStorage(WalletHomeFilterPreferences.minFiatThresholdKey)
+    @GRDBStorage(WalletHomeFilterPreferences.minFiatThresholdKey)
     private var minFiatThresholdRaw: Double = WalletHomeFilterPreferences.defaultMinFiatThreshold
-    @AppStorage(WalletHomeFilterPreferences.selectedNetworksKey)
+    @GRDBStorage(WalletHomeFilterPreferences.selectedNetworksKey)
     private var selectedNetworksJSON: String = WalletHomeFilterPreferences.defaultHiddenJSON
-    @AppStorage(WalletHomeFilterPreferences.pinnedAssetsKey)
+    @GRDBStorage(WalletHomeFilterPreferences.pinnedAssetsKey)
     private var pinnedAssetsJSON: String = WalletHomeFilterPreferences.defaultHiddenJSON
 
-    @AppStorage(CurrencyPreference.storageKey)
+    @GRDBStorage(CurrencyPreference.storageKey)
     private var currencyCode: String = CurrencyPreference.defaultCode
-    @AppStorage("activeWalletId") private var activeWalletIdRaw: String = ""
+    @GRDBStorage("activeWalletId") private var activeWalletIdRaw: String = ""
 
     @StateObject private var databaseSnapshot = DatabaseSnapshotObservation()
 
@@ -666,7 +666,7 @@ struct WalletHomeFilterSheet: View {
 
     // MARK: - Bindings
 
-    /// Bridge `String` `@AppStorage` to the typed enum picker.
+    /// Bridge `String` `@GRDBStorage` to the typed enum picker.
     private var viewModeBinding: Binding<WalletHomeFilterPreferences.ViewMode> {
         Binding(
             get: {

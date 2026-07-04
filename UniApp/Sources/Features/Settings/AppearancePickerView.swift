@@ -2,10 +2,10 @@ import SwiftUI
 
 /// Picker for the three `ThemePreference` options — System, Light, Dark.
 ///
-/// Selection writes through `@AppStorage("themePreference")`, which
+/// Selection writes through `@GRDBStorage("themePreference")`, which
 /// `UniAppApp` reads and binds to `.preferredColorScheme(_:)`. Implements T-006.
 struct AppearancePickerView: View {
-    @AppStorage("themePreference") private var themeRaw: String = ThemePreference.defaultRaw
+    @GRDBStorage("themePreference") private var themeRaw: String = ThemePreference.defaultRaw
 
     private var current: ThemePreference {
         ThemePreference(rawValue: themeRaw) ?? .system

@@ -120,14 +120,14 @@ struct SettingsView: View {
         _splitDetailPath = State(initialValue: splitState.detailPath)
     }
 
-    @AppStorage("themePreference") private var themeRaw: String = ThemePreference.defaultRaw
-    @AppStorage("languagePreference") private var languageCode: String = LanguagePreference.systemCode
-    @AppStorage(CurrencyPreference.storageKey) private var currencyCode: String = CurrencyPreference.defaultCode
+    @GRDBStorage("themePreference") private var themeRaw: String = ThemePreference.defaultRaw
+    @GRDBStorage("languagePreference") private var languageCode: String = LanguagePreference.systemCode
+    @GRDBStorage(CurrencyPreference.storageKey) private var currencyCode: String = CurrencyPreference.defaultCode
     // NOTE (2026-06-13): the haptic / privacy-mask / hide-balance /
-    // hide-small-threshold `@AppStorage` declarations that used to sit
+    // hide-small-threshold `@GRDBStorage` declarations that used to sit
     // here were vestigial — the rows moved into `PreferencesView` on
     // 2026-06-09 and this view's body never read them again. They were
-    // not inert, though: an `@AppStorage` subscribes to its key even
+    // not inert, though: an `@GRDBStorage` subscribes to its key even
     // when body never reads it, so every toggle flip on the pushed
     // Preferences screen invalidated THIS view — the owner of the
     // `NavigationStack` path. Removed so toggling a preference can
@@ -138,7 +138,7 @@ struct SettingsView: View {
     /// ("Manage wallets" → Settings tab + push `.wallets`). The
     /// token is consumed on appear and cleared so the push fires
     /// exactly once. Empty string = no deep link.
-    @AppStorage("settingsDeepLink") private var settingsDeepLink: String = ""
+    @GRDBStorage("settingsDeepLink") private var settingsDeepLink: String = ""
 
     private var theme: ThemePreference {
         ThemePreference(rawValue: themeRaw) ?? .system
@@ -193,7 +193,7 @@ struct SettingsView: View {
             .onAppear { consumeDeepLink() }
             .onChange(of: settingsDeepLink) { _, _ in consumeDeepLink() }
             // Last-screen restoration mirror (2026-06-13). Every push
-            // / pop lands in `ScreenRestoration`'s UserDefaults mirror
+            // / pop lands in `ScreenRestoration`'s GRDB mirror
             // so a force-quit needs no last-moment save. Consumed by
             // `init` above on the next fresh identity.
             .onChange(of: navigationPath) { _, newPath in
@@ -636,16 +636,16 @@ enum AboutInfo {
 // `List` with `.insetGrouped` style + `UniColors.Background.primary`
 // — visually consistent with the rest of Settings.
 struct PreferencesView: View {
-    @AppStorage(HapticPreference.storageKey) private var hapticEnabled: Bool = HapticPreference.defaultValue
+    @GRDBStorage(HapticPreference.storageKey) private var hapticEnabled: Bool = HapticPreference.defaultValue
     /// Show transaction-detail headline amounts in the user's local currency
     /// (default) vs. the native coin amount. Activity rows now show both
     /// native and local values at once.
-    @AppStorage(TransactionAmountDisplayPreference.storageKey)
+    @GRDBStorage(TransactionAmountDisplayPreference.storageKey)
     private var txAmountsInLocalCurrency: Bool = TransactionAmountDisplayPreference.defaultValue
     // Privacy-mask / hide-balance-on-home / hide-small-balances rows were
     // removed from this screen per user direction (2026-06-18). The
     // underlying preferences still exist (the wallet-home reads its own
-    // @AppStorage for each, keeping whatever the user last set); they're
+    // @GRDBStorage for each, keeping whatever the user last set); they're
     // simply no longer surfaced here.
 
     var body: some View {
@@ -732,8 +732,8 @@ private struct HideBalanceToggleRow: View {
 }
 
 struct HideSmallBalancesPicker: View {
-    @AppStorage(HideBalancesPreference.thresholdKey) private var raw: Double = HideBalancesPreference.defaultThreshold
-    @AppStorage(CurrencyPreference.storageKey) private var currencyCode: String = CurrencyPreference.defaultCode
+    @GRDBStorage(HideBalancesPreference.thresholdKey) private var raw: Double = HideBalancesPreference.defaultThreshold
+    @GRDBStorage(CurrencyPreference.storageKey) private var currencyCode: String = CurrencyPreference.defaultCode
 
     var body: some View {
         List {

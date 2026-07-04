@@ -6,7 +6,7 @@ import Security
 /// plus a 16-byte random salt — **never plaintext**. iterations = 100,000
 /// (OWASP 2023 PBKDF2-SHA256 minimum recommendation).
 ///
-/// Why Keychain, not `UserDefaults` / `@AppStorage`: Keychain items are
+/// Why Keychain, not `UserDefaults` / `@GRDBStorage`: Keychain items are
 /// protected by iOS data protection; `UserDefaults` is a plain plist on disk.
 /// PIN material — even hashed — belongs in Keychain
 /// (`kSecAttrAccessibleWhenUnlockedThisDeviceOnly`).

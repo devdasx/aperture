@@ -10,7 +10,7 @@ final class AppDatabase: @unchecked Sendable {
     let isInMemoryFallback = false
 
     private let log = Logger(subsystem: "com.thuglife.aperture", category: "database")
-    private static let transitionWipeKey = "aperture.grdb.v1.freshWipeCompleted"
+    private static let transitionWipeMarkerFileName = ".aperture-grdb-transition-v1"
 
     private init() {
         do {
@@ -54,11 +54,11 @@ final class AppDatabase: @unchecked Sendable {
             try pool.write { db in
                 try AppDatabase.ensureSingletonRows(db)
             }
+            AppPreferenceStore.shared.configure(database: self)
+            ActiveWalletPointer.configure(database: self)
             Task(priority: .utility) {
                 do {
                     try AssetCatalogSeeder.seed(database: self)
-                    SettingsStore.shared.start(database: self)
-                    ActiveWalletPointer.configure(database: self)
                     SigningKeyProvider.configure(database: self)
                     DiagnosticsLogStore.shared.record(.debug, category: "database", message: "GRDB bootstrap finished")
                 } catch {
@@ -149,38 +149,35 @@ final class AppDatabase: @unchecked Sendable {
     private static func runFreshGRDBTransitionWipeIfNeeded(storeURL: URL) throws {
         try runFreshGRDBTransitionWipeIfNeeded(
             storeURL: storeURL,
-            defaults: .standard,
-            transitionWipeKey: transitionWipeKey,
+            markerURL: transitionWipeMarkerURL(for: storeURL),
             purgeKeychain: true
         )
     }
 
     static func runFreshGRDBTransitionWipeForTesting(
         storeURL: URL,
-        defaults: UserDefaults,
-        transitionWipeKey: String
+        markerURL: URL? = nil
     ) throws {
         try runFreshGRDBTransitionWipeIfNeeded(
             storeURL: storeURL,
-            defaults: defaults,
-            transitionWipeKey: transitionWipeKey,
+            markerURL: markerURL ?? transitionWipeMarkerURL(for: storeURL),
             purgeKeychain: false
         )
     }
 
     private static func runFreshGRDBTransitionWipeIfNeeded(
         storeURL: URL,
-        defaults: UserDefaults,
-        transitionWipeKey: String,
+        markerURL: URL,
         purgeKeychain: Bool
     ) throws {
-        guard !defaults.bool(forKey: transitionWipeKey) else { return }
+        let fm = FileManager.default
+        guard !fm.fileExists(atPath: markerURL.path) else { return }
         try deleteSQLiteFiles(at: storeURL)
         if purgeKeychain {
             FreshInstallGuard.purgeAllKnownKeychainServicesForDatabaseReplacement()
         }
-        clearWalletSessionDefaultsPreservingDisplayPreferences(defaults: defaults)
-        defaults.set(true, forKey: transitionWipeKey)
+        try fm.createDirectory(at: markerURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        fm.createFile(atPath: markerURL.path, contents: Data(), attributes: nil)
     }
 
     private static func deleteSQLiteFiles(at url: URL) throws {
@@ -203,31 +200,10 @@ final class AppDatabase: @unchecked Sendable {
         }
     }
 
-    private static func clearWalletSessionDefaultsPreservingDisplayPreferences(defaults: UserDefaults) {
-        let preservedKeys: Set<String> = [
-            "themePreference",
-            "languagePreference",
-            CurrencyPreference.storageKey,
-            HapticPreference.storageKey,
-            "backgroundBalanceRefresh",
-            "walletHomeBalanceHistoryRange"
-        ]
-        var preserved: [String: Any] = [:]
-        for key in preservedKeys {
-            if let value = defaults.object(forKey: key) {
-                preserved[key] = value
-            }
-        }
-        if defaults === UserDefaults.standard, let bundleId = Bundle.main.bundleIdentifier {
-            defaults.removePersistentDomain(forName: bundleId)
-        } else {
-            for key in defaults.dictionaryRepresentation().keys {
-                defaults.removeObject(forKey: key)
-            }
-        }
-        for (key, value) in preserved {
-            defaults.set(value, forKey: key)
-        }
+    private static func transitionWipeMarkerURL(for storeURL: URL) -> URL {
+        storeURL
+            .deletingLastPathComponent()
+            .appendingPathComponent(transitionWipeMarkerFileName, isDirectory: false)
     }
 
     private static func markExcludedFromBackup(_ url: URL) throws {
@@ -287,8 +263,54 @@ private extension AppDatabase {
         migrator.registerMigration("v2_wallet_manual_backup_defaults") { db in
             try db.execute(sql: "UPDATE wallets SET manual_backup_completed = 0 WHERE manual_backup_completed IS NULL")
         }
+        migrator.registerMigration("v3_grdb_preferences") { db in
+            try db.execute(sql: preferenceTablesSQL)
+            let appSettingsColumns = Set(try db.columns(in: "app_settings").map(\.name))
+            for column in appSettingsPreferenceColumns where !appSettingsColumns.contains(column.name) {
+                try db.execute(sql: "ALTER TABLE app_settings ADD COLUMN \(column.sql)")
+            }
+        }
         return migrator
     }
+
+    nonisolated static let appSettingsPreferenceColumns: [(name: String, sql: String)] = [
+        ("require_biometric_for_send", "require_biometric_for_send INTEGER NOT NULL DEFAULT 1"),
+        ("erase_data_after_failed_attempts", "erase_data_after_failed_attempts INTEGER NOT NULL DEFAULT 0"),
+        ("hide_balance_on_home", "hide_balance_on_home INTEGER NOT NULL DEFAULT 0"),
+        ("hide_small_balances_threshold", "hide_small_balances_threshold REAL NOT NULL DEFAULT 0"),
+        ("transaction_amount_display", "transaction_amount_display INTEGER NOT NULL DEFAULT 1"),
+        ("coin_market_cap_api_key", "coin_market_cap_api_key TEXT NOT NULL DEFAULT ''"),
+        ("restoration_left_app_at", "restoration_left_app_at REAL"),
+        ("restoration_settings_path", "restoration_settings_path BLOB"),
+        ("restoration_wallet_home_path", "restoration_wallet_home_path BLOB")
+    ]
+
+    nonisolated static let preferenceTablesSQL = """
+    CREATE TABLE IF NOT EXISTS app_preferences (
+        key TEXT PRIMARY KEY,
+        value_type TEXT NOT NULL,
+        string_value TEXT,
+        int_value INTEGER,
+        double_value REAL,
+        bool_value INTEGER,
+        data_value BLOB,
+        updated_at_ms INTEGER NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS wallet_preferences (
+        wallet_id TEXT NOT NULL REFERENCES wallets(id) ON DELETE CASCADE,
+        key TEXT NOT NULL,
+        value_type TEXT NOT NULL,
+        string_value TEXT,
+        int_value INTEGER,
+        double_value REAL,
+        bool_value INTEGER,
+        data_value BLOB,
+        updated_at_ms INTEGER NOT NULL,
+        PRIMARY KEY(wallet_id, key)
+    );
+    CREATE INDEX IF NOT EXISTS idx_wallet_preferences_wallet ON wallet_preferences(wallet_id);
+    """
 
     nonisolated static let schemaSQL = """
     CREATE TABLE wallets (
@@ -512,8 +534,19 @@ private extension AppDatabase {
         settings_deep_link TEXT NOT NULL DEFAULT '',
         has_unbackedup_wallet INTEGER NOT NULL DEFAULT 0,
         hide_import_key_warning INTEGER NOT NULL DEFAULT 0,
+        require_biometric_for_send INTEGER NOT NULL DEFAULT 1,
+        erase_data_after_failed_attempts INTEGER NOT NULL DEFAULT 0,
+        hide_balance_on_home INTEGER NOT NULL DEFAULT 0,
+        hide_small_balances_threshold REAL NOT NULL DEFAULT 0,
+        transaction_amount_display INTEGER NOT NULL DEFAULT 1,
+        coin_market_cap_api_key TEXT NOT NULL DEFAULT '',
+        restoration_left_app_at REAL,
+        restoration_settings_path BLOB,
+        restoration_wallet_home_path BLOB,
         updated_at_ms INTEGER NOT NULL
     );
+
+    \(preferenceTablesSQL)
 
     CREATE TABLE active_wallet (
         id TEXT PRIMARY KEY,

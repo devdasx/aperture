@@ -44,12 +44,12 @@ struct TransactionDetailView: View {
     @State private var lastCopiedAt: Date?
 
     /// The user's display currency — drives the hero's fiat conversion.
-    @AppStorage(CurrencyPreference.storageKey)
+    @GRDBStorage(CurrencyPreference.storageKey)
     private var currencyCode: String = CurrencyPreference.defaultCode
 
     /// Settings -> Preferences toggle. On: transaction heroes prefer local
     /// currency with native amount underneath. Off: native amount only.
-    @AppStorage(TransactionAmountDisplayPreference.storageKey)
+    @GRDBStorage(TransactionAmountDisplayPreference.storageKey)
     private var showAmountsInFiat: Bool = TransactionAmountDisplayPreference.defaultValue
 
     /// The fetched fiat value of this transaction's amount, resolved

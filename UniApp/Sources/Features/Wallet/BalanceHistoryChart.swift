@@ -74,7 +74,7 @@ final class ChartScrubModel {
 /// and exits horizontally rather than overshooting at the boundaries.
 ///
 /// **Range persistence (2026-06-09).** The selected period now
-/// persists across launches via `@AppStorage` with the storage key
+/// persists across launches via `@GRDBStorage` with the storage key
 /// `"walletHomeBalanceHistoryRange"`. Default on first launch is
 /// `.all` (show the user the whole shape of their wallet's history,
 /// not just this week).
@@ -156,10 +156,10 @@ struct BalanceHistoryChart: View {
     /// storage key is namespaced under `walletHome*` so future chart
     /// surfaces (asset detail, network detail) can have their own
     /// independent persistence without collision.
-    @AppStorage("walletHomeBalanceHistoryRange")
+    @GRDBStorage("walletHomeBalanceHistoryRange")
     private var selectedRangeRaw: String = BalanceHistoryRange.all.rawValue
 
-    /// Computed binding over the raw `@AppStorage` string. Falls back
+    /// Computed binding over the raw `@GRDBStorage` string. Falls back
     /// to `.all` if the persisted raw value can't be decoded — covers
     /// the forward-compat case where we ever rename or remove a case.
     private var selectedRange: Binding<BalanceHistoryRange> {

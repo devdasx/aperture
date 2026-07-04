@@ -15,10 +15,10 @@ import SwiftUI
 /// the `.large` detent (which is what nav-shaped sheets use per
 /// M-008). The body is a `List(.insetGrouped)`. A leading `Cancel`
 /// lives in `.topBarLeading` — there is no `Done` because every
-/// control writes through `@AppStorage` in place; "done" is "now".
+/// control writes through `@GRDBStorage` in place; "done" is "now".
 ///
-/// **Live propagation.** Every `@AppStorage` write here is read by
-/// `AssetDetailView`'s body (also bound via `@AppStorage`), so the
+/// **Live propagation.** Every `@GRDBStorage` write here is read by
+/// `AssetDetailView`'s body (also bound via `@GRDBStorage`), so the
 /// detail's transaction list and network breakdown update the moment
 /// the user toggles a preference here.
 ///
@@ -43,15 +43,15 @@ struct AssetDetailFilterSheet: View {
     /// the parent and passed in.
     let visibleTransactions: Int
 
-    @AppStorage(AssetDetailFilterPreferences.sortKeyKey)
+    @GRDBStorage(AssetDetailFilterPreferences.sortKeyKey)
     private var sortKeyRaw: String = AssetDetailFilterPreferences.defaultSortKey.rawValue
-    @AppStorage(AssetDetailFilterPreferences.directionKey)
+    @GRDBStorage(AssetDetailFilterPreferences.directionKey)
     private var directionRaw: String = AssetDetailFilterPreferences.defaultDirection.rawValue
-    @AppStorage(AssetDetailFilterPreferences.selectedNetworksKey)
+    @GRDBStorage(AssetDetailFilterPreferences.selectedNetworksKey)
     private var selectedNetworksJSON: String = AssetDetailFilterPreferences.defaultSelectedNetworksJSON
-    @AppStorage(AssetDetailFilterPreferences.timeRangeKey)
+    @GRDBStorage(AssetDetailFilterPreferences.timeRangeKey)
     private var timeRangeRaw: String = AssetDetailFilterPreferences.defaultTimeRange.rawValue
-    @AppStorage(AssetDetailFilterPreferences.hideZeroNetworksKey)
+    @GRDBStorage(AssetDetailFilterPreferences.hideZeroNetworksKey)
     private var hideZeroNetworks: Bool = AssetDetailFilterPreferences.defaultHideZeroNetworks
 
     @State private var isShowingResetConfirmation: Bool = false
@@ -73,12 +73,14 @@ struct AssetDetailFilterSheet: View {
         self.availableNetworks = availableNetworks
         self.totalTransactions = totalTransactions
         self.visibleTransactions = visibleTransactions
-        // Seed from the same UserDefaults key the @AppStorage wraps —
+        // Seed from the same GRDB key the @GRDBStorage wraps —
         // readable here because the wrapper itself isn't available
         // until after initialization.
         _selectedNetworks = State(initialValue: AssetDetailFilterPreferences.decode(
-            UserDefaults.standard.string(forKey: AssetDetailFilterPreferences.selectedNetworksKey)
-                ?? AssetDetailFilterPreferences.defaultSelectedNetworksJSON
+            AppPreferenceStore.shared.string(
+                AssetDetailFilterPreferences.selectedNetworksKey,
+                default: AssetDetailFilterPreferences.defaultSelectedNetworksJSON
+            )
         ))
     }
 
@@ -368,7 +370,7 @@ struct AssetDetailFilterSheet: View {
 /// everything).
 private struct AssetDetailNetworksPicker: View {
     let availableNetworks: [AssetNetworkRow]
-    @AppStorage(AssetDetailFilterPreferences.selectedNetworksKey)
+    @GRDBStorage(AssetDetailFilterPreferences.selectedNetworksKey)
     private var selectedNetworksJSON: String = AssetDetailFilterPreferences.defaultSelectedNetworksJSON
 
     /// Decoded selection — the per-row JSON decode (one full decode
@@ -379,8 +381,10 @@ private struct AssetDetailNetworksPicker: View {
     init(availableNetworks: [AssetNetworkRow]) {
         self.availableNetworks = availableNetworks
         _selectedNetworks = State(initialValue: AssetDetailFilterPreferences.decode(
-            UserDefaults.standard.string(forKey: AssetDetailFilterPreferences.selectedNetworksKey)
-                ?? AssetDetailFilterPreferences.defaultSelectedNetworksJSON
+            AppPreferenceStore.shared.string(
+                AssetDetailFilterPreferences.selectedNetworksKey,
+                default: AssetDetailFilterPreferences.defaultSelectedNetworksJSON
+            )
         ))
     }
 

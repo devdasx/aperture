@@ -12,9 +12,7 @@ enum FactoryReset {
         case settings
     }
 
-    static let tipKitResetFlagKey = "apertureNeedsTipKitReset"
-
-    private static let preservedUserDefaultsKeys: Set<String> = [
+    private static let preservedPreferenceKeys: Set<String> = [
         "themePreference",
         "languagePreference",
         CurrencyPreference.storageKey,
@@ -38,6 +36,7 @@ enum FactoryReset {
         let walletIds = try WalletRepository(database: database).allWalletIds()
 
         try database.write { db in
+            let preservedPreferences = try snapshotPreservedPreferences(db: db)
             try db.execute(sql: "DELETE FROM wallets")
             try db.execute(sql: "DELETE FROM wallet_secrets")
             try db.execute(sql: "DELETE FROM biometric_enrollment")
@@ -46,7 +45,16 @@ enum FactoryReset {
             try db.execute(sql: "DELETE FROM wallet_portfolio_summaries")
             try db.execute(sql: "DELETE FROM chain_states")
             try db.execute(sql: "DELETE FROM chain_utxos")
+            try db.execute(sql: "DELETE FROM wallet_preferences")
+            try db.execute(sql: "DELETE FROM app_preferences")
             try db.execute(sql: "DELETE FROM sync_statuses WHERE scope_id != ?", arguments: [SyncDomain.globalScope])
+            try restorePreservedPreferences(preservedPreferences, db: db)
+            try AppPreferenceStore.upsert(.bool(false), forKey: PinCodePreference.pinEnabledKey, db: db)
+            try AppPreferenceStore.upsert(.bool(false), forKey: PinCodePreference.biometricEnabledKey, db: db)
+            try AppPreferenceStore.upsert(.bool(true), forKey: PinCodePreference.requireBiometricForSendKey, db: db)
+            try AppPreferenceStore.upsert(.bool(false), forKey: "eraseDataAfterFailedAttempts", db: db)
+            try AppPreferenceStore.upsert(.bool(false), forKey: "hasUnbackedupWallet", db: db)
+            try AppPreferenceStore.upsert(.string(""), forKey: "settingsDeepLink", db: db)
             try ActiveWalletPointer.mirrorSelection(nil, db: db)
             try db.execute(
                 sql: """
@@ -76,12 +84,10 @@ enum FactoryReset {
         URLCache.shared.removeAllCachedResponses()
         HTTPCookieStorage.shared.removeCookies(since: .distantPast)
 
-        let preservedDefaults = snapshotPreservedUserDefaults()
         if let bundleId = Bundle.main.bundleIdentifier {
             UserDefaults.standard.removePersistentDomain(forName: bundleId)
         }
-        restorePreservedUserDefaults(preservedDefaults)
-        SettingsStore.shared.syncFromAppStorage()
+        SettingsStore.shared.start(database: database)
         ActiveWalletPointer.set(nil)
         await onStageComplete(.settings)
         log.notice("Full wipe completed: \(walletIds.count, privacy: .public) wallets purged.")
@@ -97,25 +103,38 @@ enum FactoryReset {
             try db.execute(sql: "DELETE FROM wallet_portfolio_summaries")
             try db.execute(sql: "DELETE FROM chain_states")
             try db.execute(sql: "DELETE FROM chain_utxos")
+            try db.execute(sql: "DELETE FROM wallet_preferences")
             try db.execute(sql: "DELETE FROM sync_statuses WHERE scope_id != ?", arguments: [SyncDomain.globalScope])
         }
     }
 
-    private static func snapshotPreservedUserDefaults() -> [String: Any] {
-        let defaults = UserDefaults.standard
-        var snapshot: [String: Any] = [:]
-        for key in preservedUserDefaultsKeys {
-            if let value = defaults.object(forKey: key) {
-                snapshot[key] = value
-            }
+    private static func snapshotPreservedPreferences(db: Database) throws -> [String: StoredPreferenceValue] {
+        var snapshot: [String: StoredPreferenceValue] = [:]
+        for key in preservedPreferenceKeys {
+            guard let row = try Row.fetchOne(
+                db,
+                sql: """
+                SELECT value_type, string_value, int_value, double_value, bool_value, data_value
+                FROM app_preferences
+                WHERE key = ?
+                """,
+                arguments: [key]
+            ) else { continue }
+            snapshot[key] = StoredPreferenceValue(
+                valueType: row["value_type"] as String? ?? "",
+                stringValue: row["string_value"],
+                intValue: row["int_value"] as Int64?,
+                doubleValue: row["double_value"] as Double?,
+                boolValue: row["bool_value"] as Int?,
+                dataValue: row["data_value"] as Data?
+            )
         }
         return snapshot
     }
 
-    private static func restorePreservedUserDefaults(_ snapshot: [String: Any]) {
-        let defaults = UserDefaults.standard
+    private static func restorePreservedPreferences(_ snapshot: [String: StoredPreferenceValue], db: Database) throws {
         for (key, value) in snapshot {
-            defaults.set(value, forKey: key)
+            try AppPreferenceStore.upsert(value, forKey: key, db: db)
         }
     }
 }

@@ -60,9 +60,9 @@ struct AssetDetailView: View {
     let identity: AssetIdentity
 
     @StateObject private var databaseSnapshot = DatabaseSnapshotObservation()
-    @AppStorage("activeWalletId") private var activeWalletIdRaw: String = ""
-    @AppStorage(CurrencyPreference.storageKey) private var currencyCode: String = CurrencyPreference.defaultCode
-    @AppStorage(HideBalancesPreference.hideBalanceOnHomeKey) private var hideBalance: Bool = false
+    @GRDBStorage("activeWalletId") private var activeWalletIdRaw: String = ""
+    @GRDBStorage(CurrencyPreference.storageKey) private var currencyCode: String = CurrencyPreference.defaultCode
+    @GRDBStorage(HideBalancesPreference.hideBalanceOnHomeKey) private var hideBalance: Bool = false
 
     private var allWallets: [WalletRecord] {
         databaseSnapshot.wallets
@@ -86,25 +86,25 @@ struct AssetDetailView: View {
 
     // MARK: - Filter preferences (Rule #14-class declarative reads)
     //
-    // Same pattern as `WalletHomeView`: read every @AppStorage key
+    // Same pattern as `WalletHomeView`: read every @GRDBStorage key
     // here so the body invalidates the moment the filter sheet writes
     // a new value. The pure-function applier consumes the snapshot
     // computed once per body via `filterInputs`.
 
-    @AppStorage(AssetDetailFilterPreferences.sortKeyKey)
+    @GRDBStorage(AssetDetailFilterPreferences.sortKeyKey)
     private var filterSortKeyRaw: String = AssetDetailFilterPreferences.defaultSortKey.rawValue
-    @AppStorage(AssetDetailFilterPreferences.directionKey)
+    @GRDBStorage(AssetDetailFilterPreferences.directionKey)
     private var filterDirectionRaw: String = AssetDetailFilterPreferences.defaultDirection.rawValue
-    @AppStorage(AssetDetailFilterPreferences.selectedNetworksKey)
+    @GRDBStorage(AssetDetailFilterPreferences.selectedNetworksKey)
     private var filterSelectedNetworksJSON: String = AssetDetailFilterPreferences.defaultSelectedNetworksJSON
-    @AppStorage(AssetDetailFilterPreferences.timeRangeKey)
+    @GRDBStorage(AssetDetailFilterPreferences.timeRangeKey)
     private var filterTimeRangeRaw: String = AssetDetailFilterPreferences.defaultTimeRange.rawValue
-    @AppStorage(AssetDetailFilterPreferences.hideZeroNetworksKey)
+    @GRDBStorage(AssetDetailFilterPreferences.hideZeroNetworksKey)
     private var filterHideZeroNetworks: Bool = AssetDetailFilterPreferences.defaultHideZeroNetworks
 
     /// Language code drives the Rule #12 §G direction-only rebuild key
     /// for the filter sheet.
-    @AppStorage("languagePreference") private var sheetLanguageCode: String = LanguagePreference.systemCode
+    @GRDBStorage("languagePreference") private var sheetLanguageCode: String = LanguagePreference.systemCode
     private var sheetDirectionKey: String {
         LanguagePreference.layoutDirection(for: sheetLanguageCode) == .rightToLeft ? "rtl" : "ltr"
     }

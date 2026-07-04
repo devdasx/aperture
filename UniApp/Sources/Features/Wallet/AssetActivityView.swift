@@ -17,8 +17,8 @@ struct AssetActivityView: View {
     let identity: AssetIdentity
 
     @StateObject private var databaseSnapshot = DatabaseSnapshotObservation()
-    @AppStorage("activeWalletId") private var activeWalletIdRaw: String = ""
-    @AppStorage(CurrencyPreference.storageKey) private var currencyCode: String = CurrencyPreference.defaultCode
+    @GRDBStorage("activeWalletId") private var activeWalletIdRaw: String = ""
+    @GRDBStorage(CurrencyPreference.storageKey) private var currencyCode: String = CurrencyPreference.defaultCode
 
     private var allWallets: [WalletRecord] {
         databaseSnapshot.wallets
@@ -40,18 +40,18 @@ struct AssetActivityView: View {
         ActivityFiat.priceMap(cachedPrices, currency: currencyCode)
     }
 
-    @AppStorage(AssetDetailFilterPreferences.sortKeyKey)
+    @GRDBStorage(AssetDetailFilterPreferences.sortKeyKey)
     private var filterSortKeyRaw: String = AssetDetailFilterPreferences.defaultSortKey.rawValue
-    @AppStorage(AssetDetailFilterPreferences.directionKey)
+    @GRDBStorage(AssetDetailFilterPreferences.directionKey)
     private var filterDirectionRaw: String = AssetDetailFilterPreferences.defaultDirection.rawValue
-    @AppStorage(AssetDetailFilterPreferences.selectedNetworksKey)
+    @GRDBStorage(AssetDetailFilterPreferences.selectedNetworksKey)
     private var filterSelectedNetworksJSON: String = AssetDetailFilterPreferences.defaultSelectedNetworksJSON
-    @AppStorage(AssetDetailFilterPreferences.timeRangeKey)
+    @GRDBStorage(AssetDetailFilterPreferences.timeRangeKey)
     private var filterTimeRangeRaw: String = AssetDetailFilterPreferences.defaultTimeRange.rawValue
-    @AppStorage(AssetDetailFilterPreferences.hideZeroNetworksKey)
+    @GRDBStorage(AssetDetailFilterPreferences.hideZeroNetworksKey)
     private var filterHideZeroNetworks: Bool = AssetDetailFilterPreferences.defaultHideZeroNetworks
 
-    @AppStorage("languagePreference") private var sheetLanguageCode: String = LanguagePreference.systemCode
+    @GRDBStorage("languagePreference") private var sheetLanguageCode: String = LanguagePreference.systemCode
     private var sheetDirectionKey: String {
         LanguagePreference.layoutDirection(for: sheetLanguageCode) == .rightToLeft ? "rtl" : "ltr"
     }

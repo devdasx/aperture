@@ -12,8 +12,8 @@ import SwiftUI
 ///
 /// See `CLAUDE.md` Rule #12 for the full contract.
 struct UniAppEnvironmentModifier: ViewModifier {
-    @AppStorage("themePreference") private var themeRaw: String = ThemePreference.defaultRaw
-    @AppStorage("languagePreference") private var languageCode: String = LanguagePreference.systemCode
+    @GRDBStorage("themePreference") private var themeRaw: String = ThemePreference.defaultRaw
+    @GRDBStorage("languagePreference") private var languageCode: String = LanguagePreference.systemCode
 
     private var theme: ThemePreference {
         ThemePreference(rawValue: themeRaw) ?? .system

@@ -55,8 +55,8 @@ enum BiometricEnrollmentTracker {
                         """
                     )
                 }
-                UserDefaults.standard.set(false, forKey: PinCodePreference.biometricEnabledKey)
-                UserDefaults.standard.set(false, forKey: PinCodePreference.requireBiometricForSendKey)
+                AppPreferenceStore.shared.set(false, forKey: PinCodePreference.biometricEnabledKey)
+                AppPreferenceStore.shared.set(false, forKey: PinCodePreference.requireBiometricForSendKey)
             }
             return mismatch
         } catch {

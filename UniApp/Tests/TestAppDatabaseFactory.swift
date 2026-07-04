@@ -13,7 +13,9 @@ enum TestAppDatabaseFactory {
             .appendingPathComponent("aperture-grdb-\(safeName)-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let url = directory.appendingPathComponent("aperture.sqlite", isDirectory: false)
-        return try AppDatabase(testStoreURL: url, seedSingletonRows: seedSingletonRows)
+        let database = try AppDatabase(testStoreURL: url, seedSingletonRows: seedSingletonRows)
+        AppPreferenceStore.shared.configure(database: database)
+        return database
     }
 
     static func cleanup(_ database: AppDatabase) {

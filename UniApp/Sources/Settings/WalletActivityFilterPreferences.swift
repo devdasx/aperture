@@ -270,19 +270,19 @@ enum WalletActivityFilterPreferences {
     /// Wipe every preference key this feature owns. Called by the
     /// "Reset to defaults" CTA after the user confirms.
     static func resetAll() {
-        let defaults = UserDefaults.standard
-        defaults.set(defaultSortKey.rawValue, forKey: sortKeyKey)
-        defaults.set(defaultDirection.rawValue, forKey: directionKey)
-        defaults.set(defaultStatus.rawValue, forKey: statusKey)
-        defaults.set(defaultKind.rawValue, forKey: kindKey)
-        defaults.set(defaultAssetClass.rawValue, forKey: assetClassKey)
-        defaults.set(defaultSelectedJSON, forKey: selectedNetworksKey)
-        defaults.set(defaultSelectedJSON, forKey: selectedSymbolsKey)
-        defaults.set(defaultTimeRange.rawValue, forKey: timeRangeKey)
-        defaults.set(defaultCustomDate, forKey: customStartKey)
-        defaults.set(defaultCustomDate, forKey: customEndKey)
-        defaults.set(defaultAmount, forKey: minFiatKey)
-        defaults.set(defaultAmount, forKey: maxFiatKey)
+        let store = AppPreferenceStore.shared
+        store.set(defaultSortKey.rawValue, forKey: sortKeyKey)
+        store.set(defaultDirection.rawValue, forKey: directionKey)
+        store.set(defaultStatus.rawValue, forKey: statusKey)
+        store.set(defaultKind.rawValue, forKey: kindKey)
+        store.set(defaultAssetClass.rawValue, forKey: assetClassKey)
+        store.set(defaultSelectedJSON, forKey: selectedNetworksKey)
+        store.set(defaultSelectedJSON, forKey: selectedSymbolsKey)
+        store.set(defaultTimeRange.rawValue, forKey: timeRangeKey)
+        store.set(defaultCustomDate, forKey: customStartKey)
+        store.set(defaultCustomDate, forKey: customEndKey)
+        store.set(defaultAmount, forKey: minFiatKey)
+        store.set(defaultAmount, forKey: maxFiatKey)
     }
 }
 
@@ -311,7 +311,7 @@ struct WalletActivityFilterInputs: Sendable {
     let maxFiat: Decimal?
     /// Free-text search (counterparty / symbol / tx hash), lowercased;
     /// empty = no search. Lives in transient view state, not
-    /// `@AppStorage`, but rides along here so `apply` is the single code
+    /// `@GRDBStorage`, but rides along here so `apply` is the single code
     /// path that shapes the list.
     let searchText: String
 

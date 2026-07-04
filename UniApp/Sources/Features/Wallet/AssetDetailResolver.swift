@@ -104,7 +104,7 @@ struct AssetResolution: Sendable {
 /// reads it and renders.
 ///
 /// Why a pure function (not an `@Observable`). The wallet home's
-/// performance hardening proved that `@AppStorage` + GRDB observation
+/// performance hardening proved that `@GRDBStorage` + GRDB observation
 /// invalidations re-evaluate the body frequently — anything not
 /// memoized in `@State` runs every render. A small pure helper is
 /// cheaper than an observable wrapper and easier to test.

@@ -28,7 +28,7 @@ struct ReceiveQRDetailView: View {
 
     @Environment(\.displayScale) private var displayScale
     @StateObject private var databaseSnapshot = DatabaseSnapshotObservation()
-    @AppStorage("activeWalletId") private var activeWalletIdRaw: String = ""
+    @GRDBStorage("activeWalletId") private var activeWalletIdRaw: String = ""
 
     @State private var justCopiedAt: Date?
     @State private var isCopyButtonCopied: Bool = false
@@ -176,7 +176,7 @@ struct ReceiveQRDetailView: View {
         .onChange(of: selectedBitcoinTypeRaw) { _, newValue in
             guard let key = bitcoinSelectionStorageKey,
                   BitcoinReceiveAddressType(rawValue: newValue) != nil else { return }
-            UserDefaults.standard.set(newValue, forKey: key)
+            AppPreferenceStore.shared.set(newValue, forKey: key)
         }
         .onChange(of: justCopiedAt) { _, newValue in
             guard newValue != nil else { return }
@@ -289,7 +289,7 @@ struct ReceiveQRDetailView: View {
         )
         bitcoinChoices = resolution.choices
 
-        let savedRaw = bitcoinSelectionStorageKey.flatMap { UserDefaults.standard.string(forKey: $0) }
+        let savedRaw = bitcoinSelectionStorageKey.map { AppPreferenceStore.shared.string($0, default: "") }
         let savedType = savedRaw.flatMap(BitcoinReceiveAddressType.init(rawValue:))
         let preferredType = savedType.flatMap { saved in
             resolution.choices.contains(where: { $0.type == saved }) ? saved : nil

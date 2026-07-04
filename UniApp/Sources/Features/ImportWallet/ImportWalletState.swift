@@ -268,7 +268,7 @@ final class ImportWalletState {
         // active wallet so the user lands on it after the import
         // success screen and the refresh coordinator starts pulling
         // its balances. Read by every screen via the
-        // `"activeWalletId"` `@AppStorage` key.
+        // `"activeWalletId"` `@GRDBStorage` key.
         ActiveWalletPointer.set(walletId)
         return walletId
     }

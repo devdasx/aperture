@@ -23,12 +23,48 @@ import Testing
         #expect(try TestAppDatabaseFactory.count("assets", database: database) == AssetCatalog.allAssets.count)
     }
 
+    @Test("legacy defaults migrate only safe display preferences into GRDB")
+    func legacyDefaultsMigrationDropsWalletSessionAndSecurityState() throws {
+        let defaultsSnapshot = UserDefaults.standard.dictionaryRepresentation()
+        defer { restoreStandardDefaults(defaultsSnapshot) }
+        if let bundleId = Bundle.main.bundleIdentifier {
+            UserDefaults.standard.removePersistentDomain(forName: bundleId)
+        }
+        UserDefaults.standard.set("dark", forKey: "themePreference")
+        UserDefaults.standard.set("vi", forKey: "languagePreference")
+        UserDefaults.standard.set("EUR", forKey: CurrencyPreference.storageKey)
+        UserDefaults.standard.set(false, forKey: HapticPreference.storageKey)
+        UserDefaults.standard.set(false, forKey: "backgroundBalanceRefresh")
+        UserDefaults.standard.set(BalanceHistoryRange.month.rawValue, forKey: "walletHomeBalanceHistoryRange")
+        UserDefaults.standard.set(UUID().uuidString, forKey: ActiveWalletPointer.storageKey)
+        UserDefaults.standard.set(true, forKey: PinCodePreference.pinEnabledKey)
+        UserDefaults.standard.set(true, forKey: PinCodePreference.biometricEnabledKey)
+        UserDefaults.standard.set("wallets", forKey: "settingsDeepLink")
+        UserDefaults.standard.set("session-token", forKey: "onboardingSession")
+
+        let database = try TestAppDatabaseFactory.makeDatabase()
+        defer { TestAppDatabaseFactory.cleanup(database) }
+        let store = AppPreferenceStore.shared
+
+        #expect(store.string("themePreference") == "dark")
+        #expect(store.string("languagePreference") == "vi")
+        #expect(store.string(CurrencyPreference.storageKey) == "EUR")
+        #expect(store.bool(HapticPreference.storageKey, default: true) == false)
+        #expect(store.bool("backgroundBalanceRefresh", default: true) == false)
+        #expect(store.string("walletHomeBalanceHistoryRange") == BalanceHistoryRange.month.rawValue)
+        #expect(store.string(ActiveWalletPointer.storageKey) == "")
+        #expect(store.bool(PinCodePreference.pinEnabledKey) == false)
+        #expect(store.bool(PinCodePreference.biometricEnabledKey) == false)
+        #expect(store.string("settingsDeepLink") == "")
+        #expect(UserDefaults.standard.object(forKey: "themePreference") == nil)
+        #expect(UserDefaults.standard.object(forKey: ActiveWalletPointer.storageKey) == nil)
+        #expect(UserDefaults.standard.object(forKey: "onboardingSession") == nil)
+    }
+
     @Test("wallet create, import, active selection, delete, and encrypted secrets are database-backed")
     func walletLifecycleActiveWalletAndSecrets() async throws {
         let database = try TestAppDatabaseFactory.makeDatabase()
         defer { TestAppDatabaseFactory.cleanup(database) }
-        let oldActive = UserDefaults.standard.string(forKey: ActiveWalletPointer.storageKey)
-        defer { restoreActiveWalletDefault(oldActive) }
 
         let createdID = UUID()
         let importedID = UUID()
@@ -497,14 +533,6 @@ import Testing
                 """,
                 arguments: [walletID.uuidString, chain.rawValue]
             ).compactMap(UUID.init(uuidString:))
-        }
-    }
-
-    private func restoreActiveWalletDefault(_ value: String?) {
-        if let value {
-            UserDefaults.standard.set(value, forKey: ActiveWalletPointer.storageKey)
-        } else {
-            UserDefaults.standard.removeObject(forKey: ActiveWalletPointer.storageKey)
         }
     }
 

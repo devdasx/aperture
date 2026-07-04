@@ -19,7 +19,7 @@ struct WalletDetailView: View {
     @StateObject private var databaseSnapshot = DatabaseSnapshotObservation()
     // `activeWalletId` is no longer read or written here — the repository's
     // `deleteWalletAndActivateNext` owns the post-delete pointer move
-    // (2026-06-13). The old `@AppStorage("activeWalletId")` clobber is gone
+    // (2026-06-13). The old `@GRDBStorage("activeWalletId")` clobber is gone
     // (see `deleteWallet`).
     @Environment(\.dismiss) private var dismiss
 

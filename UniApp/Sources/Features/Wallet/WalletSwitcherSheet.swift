@@ -11,8 +11,8 @@ import SwiftUI
 /// push to a wallet-detail screen later, T-042).
 struct WalletSwitcherSheet: View {
     @StateObject private var databaseSnapshot = DatabaseSnapshotObservation()
-    @AppStorage("activeWalletId") private var activeWalletIdRaw: String = ""
-    @AppStorage(CurrencyPreference.storageKey) private var currencyCode: String = CurrencyPreference.defaultCode
+    @GRDBStorage("activeWalletId") private var activeWalletIdRaw: String = ""
+    @GRDBStorage(CurrencyPreference.storageKey) private var currencyCode: String = CurrencyPreference.defaultCode
     @Environment(\.dismiss) private var dismiss
 
     private var wallets: [WalletRecord] {
@@ -40,7 +40,7 @@ struct WalletSwitcherSheet: View {
     }
 
     /// Fired when the user picks an existing wallet (after writing the
-    /// id to `@AppStorage`). The wallet-home reads `activeWalletIdRaw`
+    /// id to `@GRDBStorage`). The wallet-home reads `activeWalletIdRaw`
     /// reactively so this is mostly for haptic feedback at the call site.
     let onSelect: () -> Void
 

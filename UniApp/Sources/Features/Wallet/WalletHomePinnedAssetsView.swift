@@ -28,10 +28,10 @@ import SwiftUI
 /// and the sub-screen consumes it.
 struct WalletHomePinnedAssetsView: View {
     @StateObject private var databaseSnapshot = DatabaseSnapshotObservation()
-    @AppStorage("activeWalletId") private var activeWalletIdRaw: String = ""
-    @AppStorage(CurrencyPreference.storageKey)
+    @GRDBStorage("activeWalletId") private var activeWalletIdRaw: String = ""
+    @GRDBStorage(CurrencyPreference.storageKey)
     private var currencyCode: String = CurrencyPreference.defaultCode
-    @AppStorage(WalletHomeFilterPreferences.pinnedAssetsKey)
+    @GRDBStorage(WalletHomeFilterPreferences.pinnedAssetsKey)
     private var pinnedJSON: String = WalletHomeFilterPreferences.defaultHiddenJSON
 
     // MARK: - Memoized pinned rows (computed off-body)

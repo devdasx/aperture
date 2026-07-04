@@ -9,7 +9,7 @@ import SwiftUI
 /// **Design intent (Rule #2 §D.1):** one screen between the user and
 /// every shape decision the Activity list can take. They pick once; the
 /// list reflects the choice the moment they tap — every control writes
-/// through `@AppStorage`, which the Activity view also reads, so there
+/// through `@GRDBStorage`, which the Activity view also reads, so there
 /// is no "Apply" button. "Done" is "now."
 ///
 /// **Layout (Rule #15).** Sheet-as-screen — a `NavigationStack` hosts a
@@ -38,29 +38,29 @@ struct WalletActivityFilterSheet: View {
     /// Post-filter count — the "N". Recomputed by the parent.
     let visibleTransactions: Int
 
-    @AppStorage(WalletActivityFilterPreferences.sortKeyKey)
+    @GRDBStorage(WalletActivityFilterPreferences.sortKeyKey)
     private var sortKeyRaw: String = WalletActivityFilterPreferences.defaultSortKey.rawValue
-    @AppStorage(WalletActivityFilterPreferences.directionKey)
+    @GRDBStorage(WalletActivityFilterPreferences.directionKey)
     private var directionRaw: String = WalletActivityFilterPreferences.defaultDirection.rawValue
-    @AppStorage(WalletActivityFilterPreferences.statusKey)
+    @GRDBStorage(WalletActivityFilterPreferences.statusKey)
     private var statusRaw: String = WalletActivityFilterPreferences.defaultStatus.rawValue
-    @AppStorage(WalletActivityFilterPreferences.kindKey)
+    @GRDBStorage(WalletActivityFilterPreferences.kindKey)
     private var kindRaw: String = WalletActivityFilterPreferences.defaultKind.rawValue
-    @AppStorage(WalletActivityFilterPreferences.assetClassKey)
+    @GRDBStorage(WalletActivityFilterPreferences.assetClassKey)
     private var assetClassRaw: String = WalletActivityFilterPreferences.defaultAssetClass.rawValue
-    @AppStorage(WalletActivityFilterPreferences.timeRangeKey)
+    @GRDBStorage(WalletActivityFilterPreferences.timeRangeKey)
     private var timeRangeRaw: String = WalletActivityFilterPreferences.defaultTimeRange.rawValue
-    @AppStorage(WalletActivityFilterPreferences.customStartKey)
+    @GRDBStorage(WalletActivityFilterPreferences.customStartKey)
     private var customStart: Double = WalletActivityFilterPreferences.defaultCustomDate
-    @AppStorage(WalletActivityFilterPreferences.customEndKey)
+    @GRDBStorage(WalletActivityFilterPreferences.customEndKey)
     private var customEnd: Double = WalletActivityFilterPreferences.defaultCustomDate
-    @AppStorage(WalletActivityFilterPreferences.selectedNetworksKey)
+    @GRDBStorage(WalletActivityFilterPreferences.selectedNetworksKey)
     private var selectedNetworksJSON: String = WalletActivityFilterPreferences.defaultSelectedJSON
-    @AppStorage(WalletActivityFilterPreferences.selectedSymbolsKey)
+    @GRDBStorage(WalletActivityFilterPreferences.selectedSymbolsKey)
     private var selectedSymbolsJSON: String = WalletActivityFilterPreferences.defaultSelectedJSON
-    @AppStorage(WalletActivityFilterPreferences.minFiatKey)
+    @GRDBStorage(WalletActivityFilterPreferences.minFiatKey)
     private var minFiat: String = WalletActivityFilterPreferences.defaultAmount
-    @AppStorage(WalletActivityFilterPreferences.maxFiatKey)
+    @GRDBStorage(WalletActivityFilterPreferences.maxFiatKey)
     private var maxFiat: String = WalletActivityFilterPreferences.defaultAmount
 
     @State private var isShowingResetConfirmation: Bool = false
@@ -84,12 +84,16 @@ struct WalletActivityFilterSheet: View {
         self.totalTransactions = totalTransactions
         self.visibleTransactions = visibleTransactions
         _selectedNetworks = State(initialValue: WalletActivityFilterPreferences.decode(
-            UserDefaults.standard.string(forKey: WalletActivityFilterPreferences.selectedNetworksKey)
-                ?? WalletActivityFilterPreferences.defaultSelectedJSON
+            AppPreferenceStore.shared.string(
+                WalletActivityFilterPreferences.selectedNetworksKey,
+                default: WalletActivityFilterPreferences.defaultSelectedJSON
+            )
         ))
         _selectedSymbols = State(initialValue: WalletActivityFilterPreferences.decode(
-            UserDefaults.standard.string(forKey: WalletActivityFilterPreferences.selectedSymbolsKey)
-                ?? WalletActivityFilterPreferences.defaultSelectedJSON
+            AppPreferenceStore.shared.string(
+                WalletActivityFilterPreferences.selectedSymbolsKey,
+                default: WalletActivityFilterPreferences.defaultSelectedJSON
+            )
         ))
     }
 
@@ -573,7 +577,7 @@ struct WalletActivityFilterSheet: View {
 /// empty selection = "all networks" (the default sentinel).
 private struct WalletActivityNetworksPicker: View {
     let availableNetworks: [SupportedChain]
-    @AppStorage(WalletActivityFilterPreferences.selectedNetworksKey)
+    @GRDBStorage(WalletActivityFilterPreferences.selectedNetworksKey)
     private var selectedNetworksJSON: String = WalletActivityFilterPreferences.defaultSelectedJSON
 
     @State private var selectedNetworks: Set<String>
@@ -581,8 +585,10 @@ private struct WalletActivityNetworksPicker: View {
     init(availableNetworks: [SupportedChain]) {
         self.availableNetworks = availableNetworks
         _selectedNetworks = State(initialValue: WalletActivityFilterPreferences.decode(
-            UserDefaults.standard.string(forKey: WalletActivityFilterPreferences.selectedNetworksKey)
-                ?? WalletActivityFilterPreferences.defaultSelectedJSON
+            AppPreferenceStore.shared.string(
+                WalletActivityFilterPreferences.selectedNetworksKey,
+                default: WalletActivityFilterPreferences.defaultSelectedJSON
+            )
         ))
     }
 
@@ -670,7 +676,7 @@ private struct WalletActivityNetworksPicker: View {
 /// display casing.
 private struct WalletActivityAssetsPicker: View {
     let availableSymbols: [String]
-    @AppStorage(WalletActivityFilterPreferences.selectedSymbolsKey)
+    @GRDBStorage(WalletActivityFilterPreferences.selectedSymbolsKey)
     private var selectedSymbolsJSON: String = WalletActivityFilterPreferences.defaultSelectedJSON
 
     @State private var selectedSymbols: Set<String>
@@ -678,8 +684,10 @@ private struct WalletActivityAssetsPicker: View {
     init(availableSymbols: [String]) {
         self.availableSymbols = availableSymbols
         _selectedSymbols = State(initialValue: WalletActivityFilterPreferences.decode(
-            UserDefaults.standard.string(forKey: WalletActivityFilterPreferences.selectedSymbolsKey)
-                ?? WalletActivityFilterPreferences.defaultSelectedJSON
+            AppPreferenceStore.shared.string(
+                WalletActivityFilterPreferences.selectedSymbolsKey,
+                default: WalletActivityFilterPreferences.defaultSelectedJSON
+            )
         ))
     }
 

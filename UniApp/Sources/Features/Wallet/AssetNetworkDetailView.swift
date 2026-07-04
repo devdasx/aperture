@@ -18,8 +18,8 @@ struct AssetNetworkDetailView: View {
     let chain: SupportedChain
 
     @StateObject private var databaseSnapshot = DatabaseSnapshotObservation()
-    @AppStorage("activeWalletId") private var activeWalletIdRaw: String = ""
-    @AppStorage(CurrencyPreference.storageKey) private var currencyCode: String = CurrencyPreference.defaultCode
+    @GRDBStorage("activeWalletId") private var activeWalletIdRaw: String = ""
+    @GRDBStorage(CurrencyPreference.storageKey) private var currencyCode: String = CurrencyPreference.defaultCode
 
     private var allWallets: [WalletRecord] {
         databaseSnapshot.wallets
@@ -39,14 +39,14 @@ struct AssetNetworkDetailView: View {
 
     // Filter — same global preferences. The network filter is
     // overridden to this view's chain only, via `intersected`.
-    @AppStorage(AssetDetailFilterPreferences.sortKeyKey)
+    @GRDBStorage(AssetDetailFilterPreferences.sortKeyKey)
     private var filterSortKeyRaw: String = AssetDetailFilterPreferences.defaultSortKey.rawValue
-    @AppStorage(AssetDetailFilterPreferences.directionKey)
+    @GRDBStorage(AssetDetailFilterPreferences.directionKey)
     private var filterDirectionRaw: String = AssetDetailFilterPreferences.defaultDirection.rawValue
-    @AppStorage(AssetDetailFilterPreferences.timeRangeKey)
+    @GRDBStorage(AssetDetailFilterPreferences.timeRangeKey)
     private var filterTimeRangeRaw: String = AssetDetailFilterPreferences.defaultTimeRange.rawValue
 
-    @AppStorage("languagePreference") private var sheetLanguageCode: String = LanguagePreference.systemCode
+    @GRDBStorage("languagePreference") private var sheetLanguageCode: String = LanguagePreference.systemCode
     private var sheetDirectionKey: String {
         LanguagePreference.layoutDirection(for: sheetLanguageCode) == .rightToLeft ? "rtl" : "ltr"
     }

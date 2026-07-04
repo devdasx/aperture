@@ -17,6 +17,8 @@ import Testing
             "ModelContainer",
             "FetchDescriptor",
             "#Predicate",
+            "@AppStorage",
+            "AppStorage(",
             "PersistentIdentifier",
             "PersistentModel",
             ".modelContainer",

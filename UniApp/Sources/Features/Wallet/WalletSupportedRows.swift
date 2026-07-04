@@ -240,7 +240,7 @@ enum WalletSupportedRowBuilders {
     /// linear `heldRows.first { ... }` scan for EVERY one of ~400
     /// registry tokens × ~50 held rows = ~20k operations per body
     /// re-render. The main screen body re-renders on every
-    /// `@AppStorage` write (the filter sheet writes ~12 keys) and on
+    /// `@GRDBStorage` write (the filter sheet writes ~12 keys) and on
     /// every GRDB observation snapshot; the linear scan was the dominant
     /// per-frame cost. Index build is O(N) once; lookup is O(1).
     fileprivate struct HeldRowIndex {

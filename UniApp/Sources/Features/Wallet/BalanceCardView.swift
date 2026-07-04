@@ -88,14 +88,14 @@ struct BalanceCardView: View {
 
     /// Per-wallet balance-visibility flag. Keyed by wallet id so each
     /// wallet remembers its own hidden state (handoff: "persists per
-    /// wallet"). A fresh `@AppStorage` whose key embeds the id; recomputed
+    /// wallet"). A fresh `@GRDBStorage` whose key embeds the id; recomputed
     /// when the active wallet changes via `.id(walletId)` on the card.
-    @AppStorage private var isHidden: Bool
+    @GRDBStorage private var isHidden: Bool
 
     /// Selected range — persisted across launches (shared key with the
     /// prior chart so the user's pick survives this redesign). Default
     /// `.all`.
-    @AppStorage("walletHomeBalanceHistoryRange")
+    @GRDBStorage("walletHomeBalanceHistoryRange")
     private var selectedRangeRaw: String = BalanceHistoryRange.all.rawValue
 
     // MARK: - Reconstructed curve (memoized off-body)
@@ -140,7 +140,7 @@ struct BalanceCardView: View {
         // Per-wallet visibility key; a nil id (no active wallet) shares a
         // single fallback key — harmless because there's nothing to mask.
         let key = "balanceCardHidden." + (walletId?.uuidString ?? "none")
-        self._isHidden = AppStorage(wrappedValue: false, key)
+        self._isHidden = GRDBStorage(wrappedValue: false, key)
     }
 
     // MARK: - Derived state
@@ -903,7 +903,7 @@ struct BalanceCardView: View {
 /// `BalanceHistoryRange` case 1:1 — `.hour` reconstructs a true trailing
 /// 3600 s window (no longer folded to `.day`). The selected case persists
 /// across launches via the shared `walletHomeBalanceHistoryRange`
-/// `@AppStorage` key, so 1H survives relaunch like every other range. The
+/// `@GRDBStorage` key, so 1H survives relaunch like every other range. The
 /// common 1H case (no transactions in the last hour) draws an honest flat
 /// line at the current balance with 0% change — see the reconstructor's
 /// "zero in-window transactions" branch.

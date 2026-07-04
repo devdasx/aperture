@@ -19,8 +19,8 @@ import SwiftUI
 /// + toolbar `+` button.
 struct CustomTokensListView: View {
     @StateObject private var databaseSnapshot = DatabaseSnapshotObservation()
-    @AppStorage("activeWalletId") private var activeWalletIdRaw: String = ""
-    @AppStorage(CurrencyPreference.storageKey) private var currencyCode: String = CurrencyPreference.defaultCode
+    @GRDBStorage("activeWalletId") private var activeWalletIdRaw: String = ""
+    @GRDBStorage(CurrencyPreference.storageKey) private var currencyCode: String = CurrencyPreference.defaultCode
 
     @State private var isShowingAddSheet: Bool = false
     @State private var isShowingDeleteError: Bool = false

@@ -7,7 +7,7 @@ import SwiftUI
 /// do not ask the user to choose a network they cannot actually vary.
 struct ReceiveSingleNetworkView: View {
     @StateObject private var databaseSnapshot = DatabaseSnapshotObservation()
-    @AppStorage("activeWalletId") private var activeWalletIdRaw: String = ""
+    @GRDBStorage("activeWalletId") private var activeWalletIdRaw: String = ""
 
     @Binding var navigationPath: NavigationPath
 

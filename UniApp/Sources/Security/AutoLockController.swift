@@ -64,16 +64,14 @@ final class AutoLockController {
     private let log = Logger(subsystem: "com.thuglife.aperture", category: "auto-lock")
 
     init() {
-        // Cold launch: locked iff PIN is set. Reads from UserDefaults
-        // directly because @AppStorage requires a View context.
-        let pinEnabled = UserDefaults.standard.bool(forKey: "pinEnabled")
+        // Cold launch: locked iff PIN is set.
+        let pinEnabled = PinCodePreference.isPinEnabled()
         self.isLocked = pinEnabled
     }
 
     /// Called from `UniAppApp`'s `.onChange(of: scenePhase)` with the
     /// new phase. Reads the auto-lock duration + pinEnabled flag from
-    /// `UserDefaults` at call time so the controller doesn't need a
-    /// View context for storage.
+    /// GRDB at call time so the controller doesn't need a View context.
     func handleScenePhaseChange(_ phase: ScenePhase) {
         isSceneActive = (phase == .active)
 
@@ -90,7 +88,7 @@ final class AutoLockController {
             ScreenRestoration.stampBackground()
         }
 
-        let pinEnabled = UserDefaults.standard.bool(forKey: "pinEnabled")
+        let pinEnabled = PinCodePreference.isPinEnabled()
         guard pinEnabled else {
             // No PIN configured: never lock.
             isLocked = false
@@ -117,15 +115,14 @@ final class AutoLockController {
         case .active:
             if let stamp = backgroundedAt {
                 let elapsed = Date().timeIntervalSince(stamp)
-                let raw = UserDefaults.standard.integer(forKey: AutoLockPreference.storageKey)
-                // `UserDefaults.integer(forKey:)` returns 0 for missing
-                // keys — which is "lock immediately" semantically. To
-                // honor the documented default of 30s when no value
-                // has been written, check existence explicitly.
+                let raw = AppPreferenceStore.shared.int(
+                    AutoLockPreference.storageKey,
+                    default: AutoLockPreference.defaultValue
+                )
+                // The preference store returns the documented default
+                // when no row has been written.
                 let threshold: TimeInterval
-                if UserDefaults.standard.object(forKey: AutoLockPreference.storageKey) == nil {
-                    threshold = TimeInterval(AutoLockPreference.defaultValue)
-                } else if let resolved = AutoLockPreference.resolvedDuration(raw) {
+                if let resolved = AutoLockPreference.resolvedDuration(raw) {
                     threshold = resolved
                 } else {
                     // "Never" sentinel — don't lock on phase change.
@@ -153,7 +150,7 @@ final class AutoLockController {
     /// Manually re-lock the wallet (e.g. a future "Lock now" button in
     /// Settings → Security). Idempotent.
     func lockNow() {
-        guard UserDefaults.standard.bool(forKey: "pinEnabled") else { return }
+        guard PinCodePreference.isPinEnabled() else { return }
         isLocked = true
     }
 }

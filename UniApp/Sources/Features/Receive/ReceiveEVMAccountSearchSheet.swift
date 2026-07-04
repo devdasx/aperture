@@ -10,7 +10,7 @@ struct ReceiveEVMAccountSearchSheet: View {
     let onUseAddress: (String) -> Void
 
     @Environment(\.dismiss) private var dismiss
-    @AppStorage(CurrencyPreference.storageKey) private var currencyCode: String = CurrencyPreference.defaultCode
+    @GRDBStorage(CurrencyPreference.storageKey) private var currencyCode: String = CurrencyPreference.defaultCode
 
     @State private var fromIndex: String = "0"
     @State private var toIndex: String = "20"

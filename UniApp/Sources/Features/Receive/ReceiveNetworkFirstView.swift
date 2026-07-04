@@ -7,7 +7,7 @@ import SwiftUI
 /// token list for a frame and then pushes the network picker.
 struct ReceiveNetworkFirstView: View {
     @StateObject private var databaseSnapshot = DatabaseSnapshotObservation()
-    @AppStorage("activeWalletId") private var activeWalletIdRaw: String = ""
+    @GRDBStorage("activeWalletId") private var activeWalletIdRaw: String = ""
 
     @Binding var navigationPath: NavigationPath
 
@@ -20,7 +20,7 @@ struct ReceiveNetworkFirstView: View {
     @State private var isShowingMissingAddressAlert: Bool = false
 
     private var currencyCode: String {
-        UserDefaults.standard.string(forKey: CurrencyPreference.storageKey) ?? CurrencyPreference.defaultCode
+        AppPreferenceStore.shared.string(CurrencyPreference.storageKey, default: CurrencyPreference.defaultCode)
     }
 
     private var allWallets: [WalletRecord] {

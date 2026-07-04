@@ -37,10 +37,10 @@ import SwiftUI
 struct WalletActivityView: View {
     @StateObject private var databaseSnapshot = DatabaseSnapshotObservation()
 
-    @AppStorage("activeWalletId") private var activeWalletIdRaw: String = ""
+    @GRDBStorage("activeWalletId") private var activeWalletIdRaw: String = ""
     // Local-currency activity amounts (2026-06-18): spot prices feed
     // `priceMap` (symbol → unit price in `currencyCode`).
-    @AppStorage(CurrencyPreference.storageKey) private var currencyCode: String = CurrencyPreference.defaultCode
+    @GRDBStorage(CurrencyPreference.storageKey) private var currencyCode: String = CurrencyPreference.defaultCode
     private var allWallets: [WalletRecord] {
         databaseSnapshot.wallets
     }
@@ -59,32 +59,32 @@ struct WalletActivityView: View {
 
     // MARK: - Filter & search preferences (Part 2, 2026-06-19)
 
-    @AppStorage(WalletActivityFilterPreferences.sortKeyKey)
+    @GRDBStorage(WalletActivityFilterPreferences.sortKeyKey)
     private var sortKeyRaw: String = WalletActivityFilterPreferences.defaultSortKey.rawValue
-    @AppStorage(WalletActivityFilterPreferences.directionKey)
+    @GRDBStorage(WalletActivityFilterPreferences.directionKey)
     private var directionRaw: String = WalletActivityFilterPreferences.defaultDirection.rawValue
-    @AppStorage(WalletActivityFilterPreferences.statusKey)
+    @GRDBStorage(WalletActivityFilterPreferences.statusKey)
     private var statusRaw: String = WalletActivityFilterPreferences.defaultStatus.rawValue
-    @AppStorage(WalletActivityFilterPreferences.kindKey)
+    @GRDBStorage(WalletActivityFilterPreferences.kindKey)
     private var kindRaw: String = WalletActivityFilterPreferences.defaultKind.rawValue
-    @AppStorage(WalletActivityFilterPreferences.assetClassKey)
+    @GRDBStorage(WalletActivityFilterPreferences.assetClassKey)
     private var assetClassRaw: String = WalletActivityFilterPreferences.defaultAssetClass.rawValue
-    @AppStorage(WalletActivityFilterPreferences.selectedNetworksKey)
+    @GRDBStorage(WalletActivityFilterPreferences.selectedNetworksKey)
     private var selectedNetworksJSON: String = WalletActivityFilterPreferences.defaultSelectedJSON
-    @AppStorage(WalletActivityFilterPreferences.selectedSymbolsKey)
+    @GRDBStorage(WalletActivityFilterPreferences.selectedSymbolsKey)
     private var selectedSymbolsJSON: String = WalletActivityFilterPreferences.defaultSelectedJSON
-    @AppStorage(WalletActivityFilterPreferences.timeRangeKey)
+    @GRDBStorage(WalletActivityFilterPreferences.timeRangeKey)
     private var timeRangeRaw: String = WalletActivityFilterPreferences.defaultTimeRange.rawValue
-    @AppStorage(WalletActivityFilterPreferences.customStartKey)
+    @GRDBStorage(WalletActivityFilterPreferences.customStartKey)
     private var customStart: Double = WalletActivityFilterPreferences.defaultCustomDate
-    @AppStorage(WalletActivityFilterPreferences.customEndKey)
+    @GRDBStorage(WalletActivityFilterPreferences.customEndKey)
     private var customEnd: Double = WalletActivityFilterPreferences.defaultCustomDate
-    @AppStorage(WalletActivityFilterPreferences.minFiatKey)
+    @GRDBStorage(WalletActivityFilterPreferences.minFiatKey)
     private var minFiat: String = WalletActivityFilterPreferences.defaultAmount
-    @AppStorage(WalletActivityFilterPreferences.maxFiatKey)
+    @GRDBStorage(WalletActivityFilterPreferences.maxFiatKey)
     private var maxFiat: String = WalletActivityFilterPreferences.defaultAmount
 
-    @AppStorage("languagePreference") private var sheetLanguageCode: String = LanguagePreference.systemCode
+    @GRDBStorage("languagePreference") private var sheetLanguageCode: String = LanguagePreference.systemCode
     private var sheetDirectionKey: String {
         LanguagePreference.layoutDirection(for: sheetLanguageCode) == .rightToLeft ? "rtl" : "ltr"
     }

@@ -19,7 +19,7 @@ import Foundation
     private let walletHomeKey = "restoration.walletHomePath"
 
     private func clearMirror() {
-        UserDefaults.standard.removeObject(forKey: walletHomeKey)
+        AppPreferenceStore.shared.remove(walletHomeKey)
     }
 
     @Test("Transient screens are not cold-launch restorable; reading screens are")
@@ -32,7 +32,9 @@ import Foundation
     }
 
     @Test("A saved stack ending in Activity restores WITHOUT Activity")
-    func dropsTrailingActivity() {
+    func dropsTrailingActivity() throws {
+        let database = try TestAppDatabaseFactory.makeDatabase()
+        defer { TestAppDatabaseFactory.cleanup(database) }
         clearMirror()
         ScreenRestoration.saveWalletHomeStack([.allSupported, .allActivity])
         #expect(ScreenRestoration.restoredWalletHomeStack() == [.allSupported])
@@ -40,7 +42,9 @@ import Foundation
     }
 
     @Test("A saved stack of only Activity restores to root (the home screen)")
-    func activityOnlyRestoresToRoot() {
+    func activityOnlyRestoresToRoot() throws {
+        let database = try TestAppDatabaseFactory.makeDatabase()
+        defer { TestAppDatabaseFactory.cleanup(database) }
         clearMirror()
         ScreenRestoration.saveWalletHomeStack([.allActivity])
         #expect(ScreenRestoration.restoredWalletHomeStack().isEmpty)
@@ -48,7 +52,9 @@ import Foundation
     }
 
     @Test("A reading-screen stack round-trips intact")
-    func readingScreensRestore() {
+    func readingScreensRestore() throws {
+        let database = try TestAppDatabaseFactory.makeDatabase()
+        defer { TestAppDatabaseFactory.cleanup(database) }
         clearMirror()
         ScreenRestoration.saveWalletHomeStack([.allSupported])
         #expect(ScreenRestoration.restoredWalletHomeStack() == [.allSupported])
@@ -56,7 +62,9 @@ import Foundation
     }
 
     @Test("No mirror present restores to root")
-    func emptyMirrorRestoresToRoot() {
+    func emptyMirrorRestoresToRoot() throws {
+        let database = try TestAppDatabaseFactory.makeDatabase()
+        defer { TestAppDatabaseFactory.cleanup(database) }
         clearMirror()
         #expect(ScreenRestoration.restoredWalletHomeStack().isEmpty)
     }

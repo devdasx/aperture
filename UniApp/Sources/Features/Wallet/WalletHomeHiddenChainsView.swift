@@ -21,7 +21,7 @@ import SwiftUI
 /// 27 chains is small enough to scan visually, and a search field on
 /// such a short list reads as noise.
 ///
-/// **Persistence.** Writes through the same `@AppStorage`-backed
+/// **Persistence.** Writes through the same `@GRDBStorage`-backed
 /// JSON helper as `WalletHomeHiddenAssetsView` but against the
 /// separate `hiddenChainsKey` storage key so the two registers stay
 /// independent — a user can mute the BSC chain wholesale without
@@ -37,7 +37,7 @@ import SwiftUI
 /// content in a `NavigationStack`. The parent sheet owns the stack
 /// and the sub-screen consumes it.
 struct WalletHomeHiddenChainsView: View {
-    @AppStorage(WalletHomeFilterPreferences.hiddenChainsKey)
+    @GRDBStorage(WalletHomeFilterPreferences.hiddenChainsKey)
     private var hiddenJSON: String = WalletHomeFilterPreferences.defaultHiddenJSON
 
     /// Decoded hidden-chains set — the single source the row
@@ -49,8 +49,10 @@ struct WalletHomeHiddenChainsView: View {
     @State private var hiddenSet: Set<String>
 
     init() {
-        let json = UserDefaults.standard.string(forKey: WalletHomeFilterPreferences.hiddenChainsKey)
-            ?? WalletHomeFilterPreferences.defaultHiddenJSON
+        let json = AppPreferenceStore.shared.string(
+            WalletHomeFilterPreferences.hiddenChainsKey,
+            default: WalletHomeFilterPreferences.defaultHiddenJSON
+        )
         _hiddenSet = State(initialValue: WalletHomeFilterPreferences.decode(json))
     }
 
@@ -95,7 +97,7 @@ struct WalletHomeHiddenChainsView: View {
     /// as the asset bindings in `WalletHomeHiddenAssetsView` but
     /// keyed by `SupportedChain.rawValue`. Reads + mutates the
     /// in-memory `hiddenSet` and encodes the updated set back to
-    /// `@AppStorage` — single source, no per-row decode, no lost
+    /// `@GRDBStorage` — single source, no per-row decode, no lost
     /// updates.
     private func bindingFor(_ chain: SupportedChain) -> Binding<Bool> {
         let key = chain.rawValue
