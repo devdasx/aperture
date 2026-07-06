@@ -157,8 +157,10 @@ enum ActivityPDFRenderer {
     private static let topPadding: CGFloat = 60
     private static let sidePadding: CGFloat = 58
     private static let bottomPadding: CGFloat = 56
-    private static let firstPageRows = 9
-    private static let continuationRows = 16
+    private static let firstPageRows = 8
+    private static let continuationRows = 14
+    private static let tableHeaderHeight: CGFloat = 22
+    private static let tableRowHeight: CGFloat = 54
 
     private static var contentWidth: CGFloat { pageSize.width - sidePadding * 2 }
     private static var contentRight: CGFloat { pageSize.width - sidePadding }
@@ -191,12 +193,12 @@ enum ActivityPDFRenderer {
             return column
         }
         return [
+            next(88),
+            next(196),
             next(96),
-            next(182),
-            next(92),
-            next(128, trailing: true),
-            next(76, trailing: true),
-            next(104, trailing: true)
+            next(136, trailing: true),
+            next(78, trailing: true),
+            next(84, trailing: true)
         ]
     }()
 
@@ -685,8 +687,6 @@ enum ActivityPDFRenderer {
         document: ActivityPDFDocument,
         assets: ActivityPDFRenderAssets
     ) {
-        let headerHeight: CGFloat = 21
-        let rowHeight: CGFloat = 49
         let labels = ["DATE", "ASSET", "TYPE", "AMOUNT", "VALUE", "STATUS"]
 
         for (index, column) in columns.enumerated() {
@@ -699,7 +699,7 @@ enum ActivityPDFRenderer {
                 kern: 0.8
             )
         }
-        fill(CGRect(x: sidePadding, y: top + headerHeight - 1, width: contentWidth, height: 1), color: ink)
+        fill(CGRect(x: sidePadding, y: top + tableHeaderHeight - 1, width: contentWidth, height: 1), color: ink)
 
         if rows.isEmpty {
             drawText(
@@ -713,10 +713,10 @@ enum ActivityPDFRenderer {
         }
 
         for (index, row) in rows.enumerated() {
-            let y = top + headerHeight + CGFloat(index) * rowHeight
-            drawRow(row, at: y, height: rowHeight, assets: assets)
+            let y = top + tableHeaderHeight + CGFloat(index) * tableRowHeight
+            drawRow(row, at: y, height: tableRowHeight, assets: assets)
             if index < rows.count - 1 {
-                fill(CGRect(x: sidePadding, y: y + rowHeight - 1, width: contentWidth, height: 1), color: hair2)
+                fill(CGRect(x: sidePadding, y: y + tableRowHeight - 1, width: contentWidth, height: 1), color: hair2)
             }
         }
     }
@@ -729,64 +729,66 @@ enum ActivityPDFRenderer {
     ) {
         drawText(
             row.dateText,
-            in: CGRect(x: columns[0].x, y: y + 9, width: columns[0].width, height: 15),
+            in: CGRect(x: columns[0].x, y: y + 10, width: columns[0].width, height: 15),
             font: .monospacedDigitSystemFont(ofSize: 12.5, weight: .semibold),
             color: ink,
             alignment: .center
         )
         drawText(
             row.timeText,
-            in: CGRect(x: columns[0].x, y: y + 25, width: columns[0].width, height: 13),
+            in: CGRect(x: columns[0].x, y: y + 27, width: columns[0].width, height: 13),
             font: .monospacedDigitSystemFont(ofSize: 11, weight: .regular),
             color: faint,
             alignment: .center
         )
 
         let assetColumn = columns[1]
-        let assetTextWidth = min(
-            max(
-                textWidth(row.assetSymbol, font: .systemFont(ofSize: 12.5, weight: .semibold)),
-                textWidth(row.networkName, font: .systemFont(ofSize: 11, weight: .regular))
-            ),
-            assetColumn.width - 41
-        )
-        let assetGroupWidth = min(41 + assetTextWidth, assetColumn.width)
-        let assetX = centeredX(width: assetGroupWidth, in: assetColumn)
-        let coinRect = CGRect(x: assetX, y: y + 9, width: 30, height: 30)
+        let assetX = assetColumn.x + 10
+        let coinRect = CGRect(x: assetX, y: y + 11, width: 31, height: 31)
         let key = ActivityPDFIconKey(chain: row.chain, symbol: row.assetSymbol, contract: row.tokenContract)
         if let image = assets.coinImages[key] {
             drawCircleImage(image, in: coinRect)
         } else {
             drawMonogram(row.assetSymbol, in: coinRect)
         }
-        if let badge = assets.networkImages[row.chain] {
-            let ringRect = CGRect(x: coinRect.maxX - 4, y: coinRect.maxY - 10, width: 17, height: 17)
+        if !isNativeAsset(row), let badge = assets.networkImages[row.chain] {
+            let ringRect = CGRect(x: coinRect.maxX - 6, y: coinRect.maxY - 10, width: 15, height: 15)
             fillOval(ringRect, color: .white)
-            drawCircleImage(badge, in: ringRect.insetBy(dx: 1.5, dy: 1.5))
+            drawCircleImage(badge, in: ringRect.insetBy(dx: 1.3, dy: 1.3))
         }
 
+        let textX = coinRect.maxX + 13
+        let textWidth = assetColumn.x + assetColumn.width - textX - 10
         drawText(
             row.assetSymbol,
-            in: CGRect(x: assetX + 41, y: y + 8, width: assetGroupWidth - 41, height: 16),
-            font: .systemFont(ofSize: 12.5, weight: .semibold),
+            in: CGRect(x: textX, y: y + 10, width: textWidth, height: 16),
+            font: .systemFont(ofSize: 13, weight: .semibold),
             color: ink,
-            kern: -0.125
+            kern: -0.13
         )
         drawText(
             row.networkName,
-            in: CGRect(x: assetX + 41, y: y + 25, width: assetGroupWidth - 41, height: 13),
-            font: .systemFont(ofSize: 11, weight: .regular),
+            in: CGRect(x: textX, y: y + 28, width: textWidth, height: 13),
+            font: .systemFont(ofSize: 10.8, weight: .regular),
             color: sub
         )
 
         drawType(row, at: y, height: height)
         drawAmount(row, at: y)
+        let valueFontSize = fittedFontSize(
+            row.fiatText,
+            width: columns[4].width - 6,
+            preferred: 11.8,
+            minimum: 9.4,
+            weight: .medium,
+            monospaced: true
+        )
         drawText(
             row.fiatText,
-            in: CGRect(x: columns[4].x, y: y + 17, width: columns[4].width, height: 15),
-            font: .monospacedDigitSystemFont(ofSize: 12.5, weight: .medium),
+            in: CGRect(x: columns[4].x + 3, y: y + 19, width: columns[4].width - 6, height: 15),
+            font: .monospacedDigitSystemFont(ofSize: valueFontSize, weight: .medium),
             color: inkSoft,
-            alignment: .center
+            alignment: .right
         )
         drawStatus(row, at: y, height: height)
     }
@@ -799,16 +801,24 @@ enum ActivityPDFRenderer {
         case .internalTransfer: color = sub
         }
         let column = columns[2]
-        let typeFont = UIFont.systemFont(ofSize: 12.5, weight: .medium)
-        let typeLabelWidth = min(textWidth(row.typeText, font: typeFont), column.width - 24)
+        let labelAvailableWidth = column.width - 27
+        let typeFontSize = fittedFontSize(
+            row.typeText,
+            width: labelAvailableWidth,
+            preferred: 12.5,
+            minimum: 10.4,
+            weight: .medium
+        )
+        let typeFont = UIFont.systemFont(ofSize: typeFontSize, weight: .medium)
+        let typeLabelWidth = min(textWidth(row.typeText, font: typeFont) + 8, labelAvailableWidth)
         let groupWidth = min(24 + typeLabelWidth, column.width)
         let groupX = centeredX(width: groupWidth, in: column)
-        let iconRect = CGRect(x: groupX, y: y + 16, width: 17, height: 17)
+        let iconRect = CGRect(x: groupX, y: y + 18, width: 17, height: 17)
         fillOval(iconRect, color: chip)
         drawTransferIcon(row.transferType, in: iconRect.insetBy(dx: 3, dy: 3), color: color)
         drawText(
             row.typeText,
-            in: CGRect(x: groupX + 24, y: y + 17, width: groupWidth - 24, height: 15),
+            in: CGRect(x: groupX + 24, y: y + 19, width: groupWidth - 24, height: 15),
             font: typeFont,
             color: inkSoft
         )
@@ -823,10 +833,19 @@ enum ActivityPDFRenderer {
         case .internalTransfer: color = faint
         }
         let full = "\(row.amountText) \(row.unitText)"
+        let availableWidth = column.width - 8
+        let amountFontSize = fittedFontSize(
+            full,
+            width: availableWidth,
+            preferred: 12.2,
+            minimum: 9.2,
+            weight: .semibold,
+            monospaced: true
+        )
         let attributed = NSMutableAttributedString(
             string: full,
             attributes: [
-                .font: UIFont.monospacedDigitSystemFont(ofSize: 12.5, weight: .semibold),
+                .font: UIFont.monospacedDigitSystemFont(ofSize: amountFontSize, weight: .semibold),
                 .foregroundColor: color,
                 .kern: -0.125
             ]
@@ -834,31 +853,44 @@ enum ActivityPDFRenderer {
         let unitRange = (full as NSString).range(of: row.unitText, options: .backwards)
         if unitRange.location != NSNotFound {
             attributed.addAttributes([
-                .font: UIFont.monospacedDigitSystemFont(ofSize: 11, weight: .semibold),
+                .font: UIFont.monospacedDigitSystemFont(ofSize: max(8.6, amountFontSize - 1.4), weight: .semibold),
                 .foregroundColor: faint
             ], range: unitRange)
         }
         let paragraph = NSMutableParagraphStyle()
-        paragraph.alignment = .center
-        paragraph.lineBreakMode = .byTruncatingMiddle
+        paragraph.alignment = .right
+        paragraph.lineBreakMode = .byClipping
         attributed.addAttribute(.paragraphStyle, value: paragraph, range: NSRange(location: 0, length: attributed.length))
-        attributed.draw(in: CGRect(x: column.x, y: y + 17, width: column.width, height: 15))
+        attributed.draw(in: CGRect(x: column.x + 4, y: y + 19, width: availableWidth, height: 15))
     }
 
     private static func drawStatus(_ row: ActivityPDFRow, at y: CGFloat, height: CGFloat) {
         let color = statusColor(for: row.status)
         let fillColor = color.withAlphaComponent(0.12)
-        let font = UIFont.systemFont(ofSize: 11, weight: .semibold)
-        let width = min(max(textWidth(row.statusText, font: font) + 33, 70), columns[5].width)
-        let rect = CGRect(x: centeredX(width: width, in: columns[5]), y: y + 13.5, width: width, height: 22)
+        let column = columns[5]
+        let fontSize = fittedFontSize(
+            row.statusText,
+            width: column.width - 30,
+            preferred: 10.4,
+            minimum: 8.8,
+            weight: .semibold
+        )
+        let font = UIFont.systemFont(ofSize: fontSize, weight: .semibold)
+        let width = min(max(textWidth(row.statusText, font: font) + 30, 66), column.width - 2)
+        let rect = CGRect(x: centeredX(width: width, in: column), y: y + 16, width: width, height: 22)
         fillRounded(rect, radius: 11, color: fillColor)
-        fillOval(CGRect(x: rect.minX + 9, y: rect.midY - 2.5, width: 5, height: 5), color: color)
+        fillOval(CGRect(x: rect.minX + 8, y: rect.midY - 2.5, width: 5, height: 5), color: color)
         drawText(
             row.statusText,
-            in: CGRect(x: rect.minX + 19, y: rect.minY + 4, width: rect.width - 25, height: 13),
+            in: CGRect(x: rect.minX + 18, y: rect.minY + 4, width: rect.width - 23, height: 13),
             font: font,
             color: color
         )
+    }
+
+    private static func isNativeAsset(_ row: ActivityPDFRow) -> Bool {
+        row.tokenContract?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty != false
+            && row.assetSymbol.caseInsensitiveCompare(row.chain.ticker) == .orderedSame
     }
 
     private static func centeredX(width: CGFloat, in column: Column) -> CGFloat {
@@ -1047,6 +1079,27 @@ enum ActivityPDFRenderer {
 
     private static func textWidth(_ text: String, font: UIFont) -> CGFloat {
         (text as NSString).size(withAttributes: [.font: font]).width
+    }
+
+    private static func fittedFontSize(
+        _ text: String,
+        width: CGFloat,
+        preferred: CGFloat,
+        minimum: CGFloat,
+        weight: UIFont.Weight,
+        monospaced: Bool = false
+    ) -> CGFloat {
+        var size = preferred
+        while size > minimum {
+            let font = monospaced
+                ? UIFont.monospacedDigitSystemFont(ofSize: size, weight: weight)
+                : UIFont.systemFont(ofSize: size, weight: weight)
+            if textWidth(text, font: font) <= width {
+                return size
+            }
+            size -= 0.25
+        }
+        return minimum
     }
 
     private static func fill(_ rect: CGRect, color: UIColor) {
