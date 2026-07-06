@@ -801,6 +801,7 @@ struct MarketsView: View {
             }
         }
         .listStyle(.insetGrouped)
+        .listSectionSpacing(.compact)
         .scrollContentBackground(.hidden)
         .background(UniColors.Background.primary)
         .navigationTitle("Markets")
