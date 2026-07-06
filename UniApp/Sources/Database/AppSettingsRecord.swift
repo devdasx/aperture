@@ -10,7 +10,6 @@ final class AppSettingsRecord: Identifiable {
     var currencyPreference: String
     var hapticFeedbackEnabled: Bool
     var backgroundBalanceRefresh: Bool
-    var walletHomeBalanceHistoryRange: String
     var selectedTab: Int
     var activeWalletId: String
     var settingsDeepLink: String
@@ -30,7 +29,6 @@ final class AppSettingsRecord: Identifiable {
         currencyPreference: String = "",
         hapticFeedbackEnabled: Bool = true,
         backgroundBalanceRefresh: Bool = true,
-        walletHomeBalanceHistoryRange: String = "",
         selectedTab: Int = 0,
         activeWalletId: String = "",
         settingsDeepLink: String = "",
@@ -47,7 +45,6 @@ final class AppSettingsRecord: Identifiable {
         self.currencyPreference = currencyPreference
         self.hapticFeedbackEnabled = hapticFeedbackEnabled
         self.backgroundBalanceRefresh = backgroundBalanceRefresh
-        self.walletHomeBalanceHistoryRange = walletHomeBalanceHistoryRange
         self.selectedTab = selectedTab
         self.activeWalletId = activeWalletId
         self.settingsDeepLink = settingsDeepLink

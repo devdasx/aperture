@@ -21,7 +21,6 @@ struct AssetNetworkDetailView: View {
     @StateObject private var activeBalancesObservation = ActiveWalletBalancesObservation()
     @StateObject private var activeTransactionsObservation = ActiveWalletTransactionsObservation()
     @StateObject private var cachedPricesObservation = CachedPricesObservation()
-    @StateObject private var historicalPricesObservation = HistoricalPricesObservation()
     @GRDBStorage("activeWalletId") private var activeWalletIdRaw: String = ""
     @GRDBStorage(CurrencyPreference.storageKey) private var currencyCode: String = CurrencyPreference.defaultCode
 
@@ -31,10 +30,6 @@ struct AssetNetworkDetailView: View {
 
     private var cachedPrices: [CachedPriceRecord] {
         cachedPricesObservation.prices
-    }
-
-    private var historicalPrices: [HistoricalPriceRecord] {
-        historicalPricesObservation.prices
     }
 
     private var priceMap: [String: Decimal] {
@@ -64,10 +59,6 @@ struct AssetNetworkDetailView: View {
     @State private var isShowingReceive = false
     @State private var sendPath = NavigationPath()
     @State private var receivePath = NavigationPath()
-
-    /// Chart scrub → hero override, same as the symbol-level screen: while the
-    /// user drags the chart, the hero shows the touched point's value.
-    @State private var scrubModel = ChartScrubModel()
 
     /// USD unit prices for this (asset, network)'s symbol, used ONLY for
     /// the $0.01-USD dust gate (2026-06-19 user direction). Loaded async
@@ -223,11 +214,9 @@ struct AssetNetworkDetailView: View {
         "\(identity.symbol) on \(chain.displayName)"
     }
 
-    /// Flagship hero card — identity + scrub-aware balance + the
-    /// network-scoped balance-history chart, matching the symbol-level
+    /// Flagship hero card — identity + balance, matching the symbol-level
     /// `AssetDetailView.heroCardSection` layout (one inset-grouped card).
-    /// Everything here is scoped to THIS network: the balance, the chart's
-    /// transactions, and the held balance it reconstructs from.
+    /// Everything here is scoped to THIS network.
     @ViewBuilder
     private var heroCardSection: some View {
         Section {
@@ -260,57 +249,25 @@ struct AssetNetworkDetailView: View {
             .listRowSeparator(.hidden)
             .listRowInsets(EdgeInsets(top: 24, leading: UniSpacing.m, bottom: 0, trailing: UniSpacing.m))
 
-            // Row 2 — hero fiat (scrub-aware) + native rollup.
+            // Row 2 — hero fiat + native rollup.
             VStack(spacing: 6) {
                 balanceHeroLabel
-                if let timestamp = scrubModel.timestamp {
-                    scrubTimestampLabel(timestamp)
-                } else {
-                    Text(rollupText)
-                        .font(UniTypography.subheadline)
-                        .foregroundStyle(UniColors.Text.secondary)
-                        .monospacedDigit()
-                        .environment(\.layoutDirection, .leftToRight)
-                }
+                Text(rollupText)
+                    .font(UniTypography.subheadline)
+                    .foregroundStyle(UniColors.Text.secondary)
+                    .monospacedDigit()
+                    .environment(\.layoutDirection, .leftToRight)
             }
             .frame(maxWidth: .infinity)
-            .transaction { transaction in
-                if scrubModel.isActive {
-                    transaction.disablesAnimations = true
-                }
-            }
             .listRowSeparator(.hidden)
-            .listRowInsets(EdgeInsets(top: 12, leading: UniSpacing.m, bottom: 0, trailing: UniSpacing.m))
-
-            // Row 3 — the NETWORK-scoped balance history chart (+ period pills).
-            BalanceHistoryChart(
-                transactions: assetScopedTransactions,
-                ownAddresses: Set(walletAddress.map { [$0.address.lowercased()] } ?? []),
-                priceCache: priceCacheBySymbol(for: currencyCode),
-                priceHistory: priceHistoryBySymbol(for: currencyCode),
-                currencyCode: currencyCode,
-                scrubModel: scrubModel
-            )
-            .listRowSeparator(.hidden)
-            .listRowInsets(EdgeInsets(top: 0, leading: UniSpacing.m, bottom: 24, trailing: UniSpacing.m))
+            .listRowInsets(EdgeInsets(top: 12, leading: UniSpacing.m, bottom: 24, trailing: UniSpacing.m))
         }
     }
 
-    /// Hero fiat label — shows the scrubbed point's value while dragging the
-    /// chart, otherwise this network's balance (honest fallbacks: "Price
-    /// unavailable" for a held-but-unpriced row, "Not held on …" otherwise).
+    /// Hero fiat label for this network's balance.
     @ViewBuilder
     private var balanceHeroLabel: some View {
-        if let scrubbed = scrubModel.fiat {
-            Text(WalletFormatting.fiat(scrubbed, currencyCode: currencyCode))
-                .font(UniTypography.heroBalance)
-                .foregroundStyle(UniColors.Text.primary)
-                .lineLimit(1)
-                .minimumScaleFactor(0.5)
-                .monospacedDigit()
-                .contentTransition(.identity)
-                .environment(\.layoutDirection, .leftToRight)
-        } else if let fiat = networkRow?.fiatValue, fiat > 0 {
+        if let fiat = networkRow?.fiatValue, fiat > 0 {
             Text(WalletFormatting.fiat(fiat, currencyCode: networkRow?.fiatCurrencyCode ?? currencyCode))
                 .font(UniTypography.heroBalance)
                 .foregroundStyle(UniColors.Text.primary)
@@ -335,14 +292,6 @@ struct AssetNetworkDetailView: View {
         }
     }
 
-    private func scrubTimestampLabel(_ date: Date) -> some View {
-        Text(verbatim: "\(date.formatted(date: .omitted, time: .shortened)) · \(date.formatted(date: .abbreviated, time: .omitted))")
-            .font(UniTypography.subheadline)
-            .foregroundStyle(UniColors.Text.secondary)
-            .monospacedDigit()
-            .environment(\.layoutDirection, .leftToRight)
-    }
-
     private var assetDisplayName: String {
         switch identity.kind {
         case .nativeCoin(let chain):
@@ -351,26 +300,6 @@ struct AssetNetworkDetailView: View {
             return AssetNameLookup.name(forTokenSymbol: identity.symbol)
                 ?? identity.symbol
         }
-    }
-
-    /// `[symbol-uppercased: price]` for `fiat` — fallback conversion for
-    /// transaction amounts when no historical close exists for that day.
-    private func priceCacheBySymbol(for fiat: String) -> [String: Decimal] {
-        var out: [String: Decimal] = [:]
-        for row in cachedPrices where row.fiat == fiat {
-            out[row.symbol.uppercased()] = row.price
-        }
-        return out
-    }
-
-    /// `[symbol-uppercased: [yyyymmdd: close]]` for `fiat` — then-price
-    /// conversion at transaction timestamps.
-    private func priceHistoryBySymbol(for fiat: String) -> [String: [Int: Decimal]] {
-        var out: [String: [Int: Decimal]] = [:]
-        for row in historicalPrices where row.fiat == fiat {
-            out[row.symbol.uppercased(), default: [:]][row.dayKey] = row.price
-        }
-        return out
     }
 
     private var rollupText: String {
@@ -516,7 +445,6 @@ struct AssetNetworkDetailView: View {
         activeBalancesObservation.setWalletId(scopedWalletId)
         activeTransactionsObservation.setWalletId(scopedWalletId)
         cachedPricesObservation.setCurrencyCode(currencyCode)
-        historicalPricesObservation.setCurrencyCode(currencyCode)
     }
 
     /// First address on the active wallet whose `chainRaw` matches

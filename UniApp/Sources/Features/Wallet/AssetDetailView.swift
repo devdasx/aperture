@@ -5,23 +5,19 @@ import SwiftUI
 ///
 /// **Design intent (one sentence per Rule #2 §D.1):** show the user
 /// the calm, undeniable truth of one asset they own — total holding
-/// summed across networks, the shape of its history, its presence on
-/// every network they could hold it, and every transaction that has
-/// moved it — with one filter affordance that scopes everything below
-/// the chart.
+/// summed across networks, its presence on every network they could hold
+/// it, and every transaction that has moved it — with one filter affordance.
 ///
 /// **Layers (Rule #2 §B.3):** content layer is opaque (identity hero,
-/// hero number, chart, rows); functional layer is the Liquid Glass
-/// toolbar chrome only. One layer of glass — the nav bar.
+/// hero number, rows); functional layer is the Liquid Glass toolbar chrome
+/// only. One layer of glass — the nav bar.
 ///
 /// **Sections (List(.insetGrouped) — same chrome iOS Settings uses).**
 ///
-/// 1. **Identity hero + balance + chart card** — a single Section so
-///    iOS draws ONE unified white card around three rows:
+/// 1. **Identity hero + balance card** — a single Section so
+///    iOS draws ONE unified white card around two rows:
 ///    - 80pt CoinMark + asset name + ticker + "On N networks"
 ///    - hero fiat number (Σ across networks) + native rollup
-///    - `BalanceHistoryChart` (asset-scoped — only this asset's
-///      transactions feed the reconstructor's event timeline)
 ///
 /// 2. **Networks section** — one row per network the asset is on,
 ///    held first (fiat desc), then supported-but-not-held in
@@ -41,8 +37,6 @@ import SwiftUI
 ///   the sections all read. No linear scans inside `ForEach`.
 /// - Stable `ForEach` IDs (`id: \.id` on every row).
 /// - `AssetDetailFilterApply` is pure and called once per section.
-/// - The `BalanceHistoryReconstructor` is fed the pre-filtered tx set
-///   so it doesn't re-walk the whole wallet's history.
 ///
 /// **Honesty (Rule #16).**
 /// - Zero-balance networks render with `0` and `Price unavailable`,
@@ -50,9 +44,6 @@ import SwiftUI
 ///   toggle is opt-in.
 /// - "On N networks" reports the actual count (held + supported), not
 ///   marketing puffery.
-/// - The chart's zero-baseline branch applies when the wallet has no
-///   asset transactions yet (Rule #2 §A.7 — calm flat line, not a
-///   fake curve).
 struct AssetDetailView: View {
     /// The asset to render. Owned by the wallet-home's NavigationPath
     /// — when the user navigates back, the value is discarded and the
@@ -64,7 +55,6 @@ struct AssetDetailView: View {
     @StateObject private var activeTransactionsObservation = ActiveWalletTransactionsObservation()
     @StateObject private var assetCatalogObservation = AssetCatalogObservation()
     @StateObject private var cachedPricesObservation = CachedPricesObservation()
-    @StateObject private var historicalPricesObservation = HistoricalPricesObservation()
     @GRDBStorage("activeWalletId") private var activeWalletIdRaw: String = ""
     @GRDBStorage(CurrencyPreference.storageKey) private var currencyCode: String = CurrencyPreference.defaultCode
     @GRDBStorage(HideBalancesPreference.hideBalanceOnHomeKey) private var hideBalance: Bool = false
@@ -83,10 +73,6 @@ struct AssetDetailView: View {
 
     private var customTokenRecords: [CustomTokenRecord] {
         assetCatalogObservation.customTokenRecords
-    }
-
-    private var historicalPrices: [HistoricalPriceRecord] {
-        historicalPricesObservation.prices
     }
 
     // MARK: - Filter preferences (Rule #14-class declarative reads)
@@ -120,13 +106,6 @@ struct AssetDetailView: View {
     /// $0.01-USD dust gate (2026-06-19 user direction). Loaded async after
     /// each `computeDerived()`; until it arrives every row shows.
     @State private var usdPrices: [String: Decimal] = [:]
-
-    /// 2026-06-09 — `BalanceHistoryChart` writes the scrubbed point's
-    /// fiat here so the hero renders it (animated via
-    /// `.contentTransition(.numericText())`). `@Observable` model
-    /// (2026-06-13 perf fix) so scrubbing re-renders only the hero, not
-    /// the whole detail body. `nil` `fiat` → hero shows `totalFiat`.
-    @State private var scrubModel = ChartScrubModel()
 
     // Action flows. This screen already knows the asset, so Send/Receive are
     // opened with an asset prefill. The flow itself owns the native network
@@ -297,9 +276,8 @@ struct AssetDetailView: View {
 
     // MARK: - Hero card section
     //
-    // Single inset-grouped Section. iOS draws the unified white card
-    // around all three rows. Row separators hidden so the rows read as
-    // one card, not three stacked cells.
+    // Single inset-grouped Section. iOS draws the unified white card around
+    // both rows. Row separators hidden so the rows read as one card.
 
     @ViewBuilder
     private func heroCardSection(_ derived: DerivedState) -> some View {
@@ -321,26 +299,9 @@ struct AssetDetailView: View {
                 .listRowInsets(EdgeInsets(
                     top: 12,
                     leading: UniSpacing.m,
-                    bottom: 0,
+                    bottom: 24,
                     trailing: UniSpacing.m
                 ))
-
-            // Row 3 — the asset-scoped balance history chart.
-            BalanceHistoryChart(
-                transactions: derived.assetScopedTransactions,
-                ownAddresses: Set((activeWallet?.addresses ?? []).map { $0.address.lowercased() }),
-                priceCache: priceCacheBySymbol(for: derived.resolution.fiatCurrencyCode),
-                priceHistory: priceHistoryBySymbol(for: derived.resolution.fiatCurrencyCode),
-                currencyCode: derived.resolution.fiatCurrencyCode,
-                scrubModel: scrubModel
-            )
-            .listRowSeparator(.hidden)
-            .listRowInsets(EdgeInsets(
-                top: 0,
-                leading: UniSpacing.m,
-                bottom: 24,
-                trailing: UniSpacing.m
-            ))
         }
     }
 
@@ -423,41 +384,31 @@ struct AssetDetailView: View {
         }
     }
 
-    /// Hero number — `scrubbedFiat ?? totalFiat`. Tap reveals when
-    /// `hideBalance` is true, same affordance as the wallet home.
+    /// Hero number. Tap reveals when `hideBalance` is true, same affordance as
+    /// the wallet home.
     @ViewBuilder
     private func balanceHeroRow(_ derived: DerivedState) -> some View {
         VStack(alignment: .center, spacing: 6) {
             balanceLabel(derived)
-            if let timestamp = scrubModel.timestamp {
-                scrubTimestampLabel(timestamp)
-            } else {
-                nativeRollup(derived.resolution)
-            }
+            nativeRollup(derived.resolution)
         }
         .frame(maxWidth: .infinity)
-        .transaction { transaction in
-            if scrubModel.isActive {
-                transaction.disablesAnimations = true
-            }
-        }
     }
 
     @ViewBuilder
     private func balanceLabel(_ derived: DerivedState) -> some View {
-        let displayedFiat: Decimal? = scrubModel.fiat ?? derived.resolution.totalFiat
         let display: String = {
             if hideBalance { return "••••••" }
             // Zero/unpriced → "US$0.00", never "Price unavailable"
             // (user direction 2026-06-18).
-            return WalletFormatting.fiat(displayedFiat ?? 0, currencyCode: derived.resolution.fiatCurrencyCode)
+            return WalletFormatting.fiat(derived.resolution.totalFiat ?? 0, currencyCode: derived.resolution.fiatCurrencyCode)
         }()
         Text(display)
             .font(UniTypography.heroBalance)
             .foregroundStyle(UniColors.Text.primary)
             .lineLimit(1)
             .minimumScaleFactor(0.5)
-            .contentTransition(scrubModel.isActive ? .identity : .numericText())
+            .contentTransition(.numericText())
             .accessibilityLabel(
                 hideBalance
                     ? Text("Balance hidden")
@@ -475,14 +426,6 @@ struct AssetDetailView: View {
             .font(UniTypography.subheadline)
             .foregroundStyle(UniColors.Text.secondary)
             .monospacedDigit()
-    }
-
-    private func scrubTimestampLabel(_ date: Date) -> some View {
-        Text(verbatim: "\(date.formatted(date: .omitted, time: .shortened)) · \(date.formatted(date: .abbreviated, time: .omitted))")
-            .font(UniTypography.subheadline)
-            .foregroundStyle(UniColors.Text.secondary)
-            .monospacedDigit()
-            .environment(\.layoutDirection, .leftToRight)
     }
 
     // MARK: - Networks section
@@ -737,28 +680,6 @@ struct AssetDetailView: View {
         )
     }
 
-    /// `[symbol-uppercased: price]` map filtered to `fiat`. Used as the
-    /// fallback for converting transaction amounts when no historical close
-    /// exists for that transaction day.
-    private func priceCacheBySymbol(for fiat: String) -> [String: Decimal] {
-        var out: [String: Decimal] = [:]
-        for row in cachedPrices where row.fiat == fiat {
-            out[row.symbol.uppercased()] = row.price
-        }
-        return out
-    }
-
-    /// `[symbol-uppercased: [yyyymmdd: close]]` map filtered to
-    /// `fiat`. Drives per-transaction then-price conversion.
-    /// Same shape as `WalletHomeView.priceHistoryBySymbol`.
-    private func priceHistoryBySymbol(for fiat: String) -> [String: [Int: Decimal]] {
-        var out: [String: [Int: Decimal]] = [:]
-        for row in historicalPrices where row.fiat == fiat {
-            out[row.symbol.uppercased(), default: [:]][row.dayKey] = row.price
-        }
-        return out
-    }
-
     // MARK: - Wallet plumbing (mirrors WalletHomeView)
 
     private var activeWallet: WalletRecord? {
@@ -774,7 +695,6 @@ struct AssetDetailView: View {
         activeBalancesObservation.setWalletId(scopedWalletId)
         activeTransactionsObservation.setWalletId(scopedWalletId)
         cachedPricesObservation.setCurrencyCode(currencyCode)
-        historicalPricesObservation.setCurrencyCode(currencyCode)
     }
 
     /// All non-zero balance rows on the active wallet. Same shape as

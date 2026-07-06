@@ -468,24 +468,6 @@ actor WalletDataRefreshCoordinator {
                 ]
             )
         }
-        let chartSnapshotStart = Date()
-        let chartSnapshot = try? WalletChartSnapshotRepository(database: database)
-            .captureFromPersistedBalances(
-                walletId: walletId,
-                currencyCode: normalizedCurrency
-            )
-        DiagnosticsLogStore.shared.record(
-            chartSnapshot == nil ? .warning : .debug,
-            category: "scanner",
-            message: "Wallet chart snapshot capture finished",
-            metadata: [
-                "walletId": walletId.uuidString,
-                "currency": normalizedCurrency,
-                "mode": mode.rawValue,
-                "outcome": chartSnapshot == nil ? "failed" : "succeeded",
-                "elapsedMs": DiagnosticsLogStore.elapsedMilliseconds(since: chartSnapshotStart)
-            ]
-        )
         DiagnosticsLogStore.shared.record(
             .info,
             category: "scanner",
@@ -2935,7 +2917,6 @@ actor WalletBackgroundWorkCoordinator {
         case fullRefresh
         case prices
         case markets
-        case chartSnapshot
         case chainKeys
     }
 
@@ -3006,23 +2987,6 @@ actor WalletBackgroundWorkCoordinator {
             ) {
                 await TokenPricingEngine.shared.configure(database: database)
                 _ = await TokenPricingEngine.shared.unitPrices(symbols: symbols, currencyCode: currencyCode)
-            }
-        }
-    }
-
-    func startChartSnapshot(
-        walletId: UUID,
-        currencyCode: String,
-        database: AppDatabase
-    ) {
-        Task {
-            await runReplacing(
-                type: .chartSnapshot,
-                walletId: walletId,
-                waitsForCompletion: false
-            ) {
-                _ = try? WalletChartSnapshotRepository(database: database)
-                    .captureFromPersistedBalances(walletId: walletId, currencyCode: currencyCode)
             }
         }
     }

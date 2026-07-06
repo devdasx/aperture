@@ -83,7 +83,6 @@ struct AssetResolution: Sendable {
     let fiatCurrencyCode: String
 
     /// `true` when at least one network row has a non-zero balance.
-    /// Drives the `BalanceHistoryChart`'s zero-baseline branch.
     var hasAnyBalance: Bool { totalAmount > 0 }
 
     /// Number of networks this asset exists on. For natives = 1; for

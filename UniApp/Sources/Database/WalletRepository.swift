@@ -324,10 +324,9 @@ enum ActiveWalletPointer {
             INSERT INTO app_settings
             (id, theme_preference, language_preference, pin_enabled, biometric_enabled,
              auto_lock_seconds, currency_preference, haptic_feedback_enabled,
-             background_balance_refresh, wallet_home_balance_history_range,
-             selected_tab, active_wallet_id, settings_deep_link,
+             background_balance_refresh, selected_tab, active_wallet_id, settings_deep_link,
              has_unbackedup_wallet, hide_import_key_warning, updated_at_ms)
-            VALUES ('app-settings-singleton', '', '', 0, 0, 0, '', 1, 1, '', 0, ?, '', 0, 0, ?)
+            VALUES ('app-settings-singleton', '', '', 0, 0, 0, '', 1, 1, 0, ?, '', 0, 0, ?)
             ON CONFLICT(id) DO UPDATE SET
                 active_wallet_id = excluded.active_wallet_id,
                 updated_at_ms = excluded.updated_at_ms

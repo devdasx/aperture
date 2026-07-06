@@ -1171,8 +1171,6 @@ final class WalletBalanceCardObservation: ObservableObject {
     @Published private(set) var chainStates: [ChainStateRecord] = []
     @Published private(set) var portfolioSummaries: [WalletPortfolioSummaryRecord] = []
     @Published private(set) var syncStatuses: [SyncStatusRecord] = []
-    @Published private(set) var cachedPrices: [CachedPriceRecord] = []
-    @Published private(set) var priceMap: [String: Decimal] = [:]
     @Published private(set) var revision: String = "none"
     @Published private(set) var lastError: Error?
 
@@ -1195,8 +1193,6 @@ final class WalletBalanceCardObservation: ObservableObject {
             chainStates = []
             portfolioSummaries = []
             syncStatuses = []
-            cachedPrices = []
-            priceMap = [:]
             revision = "none"
             return
         }
@@ -1222,8 +1218,6 @@ final class WalletBalanceCardObservation: ObservableObject {
                 chainStates = snapshot.chainStates
                 portfolioSummaries = snapshot.portfolioSummaries
                 syncStatuses = snapshot.syncStatuses
-                cachedPrices = snapshot.cachedPrices
-                priceMap = snapshot.priceMap
             }
         )
     }
@@ -1237,8 +1231,6 @@ final class WalletBalanceCardObservation: ObservableObject {
         let chainStates: [ChainStateRecord]
         let portfolioSummaries: [WalletPortfolioSummaryRecord]
         let syncStatuses: [SyncStatusRecord]
-        let cachedPrices: [CachedPriceRecord]
-        let priceMap: [String: Decimal]
         let revision: String
 
         static func load(_ db: Database, scope: Scope) throws -> Snapshot {
@@ -1276,12 +1268,6 @@ final class WalletBalanceCardObservation: ObservableObject {
                     SyncDomain.transactions.rawValue
                 ]
             ).map(WalletObservationMapping.syncStatus)
-            let cachedPrices = try Row.fetchAll(
-                db,
-                sql: "SELECT * FROM cached_prices WHERE fiat = ? ORDER BY symbol ASC",
-                arguments: [scope.currencyCode]
-            ).map(WalletObservationMapping.cachedPrice)
-            var priceMap: [String: Decimal] = [:]
             var hasher = Hasher()
             hasher.combine(scope.walletId)
             hasher.combine(scope.currencyCode)
@@ -1311,19 +1297,10 @@ final class WalletBalanceCardObservation: ObservableObject {
                 hasher.combine(row.lastErrorMessage)
                 hasher.combine(row.updatedAt)
             }
-            for row in cachedPrices {
-                let symbol = row.symbol.uppercased()
-                priceMap[symbol] = row.price
-                hasher.combine(symbol)
-                hasher.combine(row.price)
-                hasher.combine(row.fetchedAt)
-            }
             return Snapshot(
                 chainStates: chainStates,
                 portfolioSummaries: summaries,
                 syncStatuses: syncStatuses,
-                cachedPrices: cachedPrices,
-                priceMap: priceMap,
                 revision: String(hasher.finalize())
             )
         }

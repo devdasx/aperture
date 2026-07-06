@@ -46,15 +46,6 @@ struct WalletHomeHeader: View {
     /// surfing protection).
     let hideBalance: Bool
     let onSwitchWallet: () -> Void
-    /// Chart-scrub channel (2026-06-13 perf fix). While the user drags
-    /// the sparkline, the hero shows the touched point's value instead
-    /// of the wallet's resting total. Reading `scrubModel?.fiat` HERE
-    /// (inside this view's body) means a scrub frame invalidates ONLY
-    /// this header, not the whole `WalletHomeView` body — which used to
-    /// rebuild the price dictionaries and re-sort balances 60×/sec.
-    /// `nil` (default) → no scrub wiring (test mode).
-    var scrubModel: ChartScrubModel? = nil
-
     @State private var isRevealingHiddenBalance: Bool = false
 
     var body: some View {
@@ -91,12 +82,8 @@ struct WalletHomeHeader: View {
     @ViewBuilder
     private var balanceLabel: some View {
         let visible = !hideBalance || isRevealingHiddenBalance
-        // Scrubbed value (if dragging) else the resting total. The read
-        // of `scrubModel?.fiat` is what scopes scrub re-renders to this
-        // header alone (2026-06-13 perf fix).
-        let effectiveFiat = scrubModel?.fiat ?? totalFiat
         let display = visible
-            ? WalletFormatting.fiat(effectiveFiat, currencyCode: currencyCode)
+            ? WalletFormatting.fiat(totalFiat, currencyCode: currencyCode)
             : "••••••"
         Button {
             guard hideBalance else { return }

@@ -35,7 +35,6 @@ import Testing
         UserDefaults.standard.set("EUR", forKey: CurrencyPreference.storageKey)
         UserDefaults.standard.set(false, forKey: HapticPreference.storageKey)
         UserDefaults.standard.set(false, forKey: "backgroundBalanceRefresh")
-        UserDefaults.standard.set(BalanceHistoryRange.month.rawValue, forKey: "walletHomeBalanceHistoryRange")
         UserDefaults.standard.set(UUID().uuidString, forKey: ActiveWalletPointer.storageKey)
         UserDefaults.standard.set(true, forKey: PinCodePreference.pinEnabledKey)
         UserDefaults.standard.set(true, forKey: PinCodePreference.biometricEnabledKey)
@@ -51,7 +50,6 @@ import Testing
         #expect(store.string(CurrencyPreference.storageKey) == CurrencyPreference.defaultForCurrentRegion())
         #expect(store.bool(HapticPreference.storageKey, default: true) == HapticPreference.defaultValue)
         #expect(store.bool("backgroundBalanceRefresh", default: true) == true)
-        #expect(store.string("walletHomeBalanceHistoryRange") == BalanceHistoryRange.all.rawValue)
         #expect(store.string(ActiveWalletPointer.storageKey) == "")
         #expect(store.bool(PinCodePreference.pinEnabledKey) == false)
         #expect(store.bool(PinCodePreference.biometricEnabledKey) == false)
@@ -363,12 +361,11 @@ import Testing
         ) == 2)
     }
 
-    @Test("price, chart, and sync repositories persist cache rows with upsert semantics")
-    func priceChartAndSyncCaches() async throws {
+    @Test("price and sync repositories persist cache rows with upsert semantics")
+    func priceAndSyncCaches() async throws {
         let database = try TestAppDatabaseFactory.makeDatabase()
         defer { TestAppDatabaseFactory.cleanup(database) }
         let walletID = try await insertWatchWallet(database, chains: [.ethereum])
-        let addressID = try firstAddressID(walletID: walletID, chain: .ethereum, database: database)
         let priceRepo = PriceSnapshotRepository(database: database)
         let now = Date(timeIntervalSince1970: 10_000)
         try priceRepo.record([(symbol: "btc", currencyCode: "usd", price: 100, source: "test")], at: now.addingTimeInterval(-24 * 3600))
@@ -379,22 +376,6 @@ import Testing
         #expect(latest?.price == 110)
         #expect(change.absolute == 10)
         #expect(change.percent == 10)
-
-        try TransactionRepository(database: database).upsertBalance(
-            addressId: addressID,
-            tokenSymbol: "ETH",
-            tokenContract: nil,
-            decimals: 18,
-            rawBalance: "1000000000000000000",
-            fiatValueCached: 2500,
-            fiatCurrencyCode: "USD"
-        )
-        let chartRepo = WalletChartSnapshotRepository(database: database)
-        #expect(try chartRepo.captureFromPersistedBalances(walletId: walletID, currencyCode: "usd", now: now))
-        #expect(try chartRepo.capture(walletId: walletID, currencyCode: "USD", fiatValue: 2600, now: now.addingTimeInterval(60)) == false)
-        let series = try chartRepo.series(walletId: walletID, currencyCode: "USD")
-        #expect(series.count == 1)
-        #expect(series.first?.fiatValue == 2500)
 
         let syncRepo = SyncStatusRepository(database: database)
         try syncRepo.markSyncing(domain: .balances, scopeId: walletID.uuidString)
@@ -427,7 +408,7 @@ import Testing
         for table in [
             "wallets", "wallet_addresses", "wallet_secrets", "transactions",
             "token_balances", "chain_states", "chain_utxos",
-            "wallet_chart_snapshots", "wallet_portfolio_summaries",
+            "wallet_portfolio_summaries",
             "custom_tokens", "biometric_enrollment", "asset_logo_cache",
             "wallet_avatar_raster_cache", "generated_documents",
             "cloudkit_backup_cache", "diagnostic_log_entries"
@@ -579,12 +560,6 @@ import Testing
             walletId: id,
             chain: .ethereum,
             utxos: [.init(address: "0xreset", txid: "reset-utxo", vout: 0, valueSats: 1, scriptHex: nil, confirmed: true)]
-        )
-        try WalletChartSnapshotRepository(database: database).record(
-            walletId: id,
-            currencyCode: "USD",
-            fiatValue: 1,
-            capturedAt: Date()
         )
         try ChainStateRepository(database: database).rebuild(walletId: id, fiatCurrencyCode: "USD")
         return id

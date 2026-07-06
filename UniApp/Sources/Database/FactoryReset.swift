@@ -18,7 +18,6 @@ enum FactoryReset {
         CurrencyPreference.storageKey,
         HapticPreference.storageKey,
         "backgroundBalanceRefresh",
-        "walletHomeBalanceHistoryRange",
         "aperture.historicalPriceCacheVersion"
     ]
 
@@ -40,7 +39,7 @@ enum FactoryReset {
             try db.execute(sql: "DELETE FROM wallet_secrets")
             try db.execute(sql: "DELETE FROM biometric_enrollment")
             try db.execute(sql: "DELETE FROM custom_tokens")
-            try db.execute(sql: "DELETE FROM wallet_chart_snapshots")
+            try deleteTableIfPresent("wallet_chart_snapshots", db: db)
             try db.execute(sql: "DELETE FROM wallet_portfolio_summaries")
             try db.execute(sql: "DELETE FROM chain_states")
             try db.execute(sql: "DELETE FROM chain_utxos")
@@ -96,7 +95,7 @@ enum FactoryReset {
             try db.execute(sql: "DELETE FROM wallet_secrets")
             try db.execute(sql: "DELETE FROM biometric_enrollment")
             try db.execute(sql: "DELETE FROM custom_tokens")
-            try db.execute(sql: "DELETE FROM wallet_chart_snapshots")
+            try deleteTableIfPresent("wallet_chart_snapshots", db: db)
             try db.execute(sql: "DELETE FROM wallet_portfolio_summaries")
             try db.execute(sql: "DELETE FROM chain_states")
             try db.execute(sql: "DELETE FROM chain_utxos")
@@ -131,6 +130,22 @@ enum FactoryReset {
             )
         }
         return snapshot
+    }
+
+    private static func deleteTableIfPresent(_ table: String, db: Database) throws {
+        let exists = try Bool.fetchOne(
+            db,
+            sql: """
+            SELECT EXISTS(
+                SELECT 1 FROM sqlite_master
+                WHERE type = 'table' AND name = ?
+            )
+            """,
+            arguments: [table]
+        ) ?? false
+        if exists {
+            try db.execute(sql: "DELETE FROM \(table)")
+        }
     }
 
     private static func restorePreservedPreferences(_ snapshot: [String: StoredPreferenceValue], db: Database) throws {

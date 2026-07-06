@@ -308,8 +308,6 @@ final class AppPreferenceStore: @unchecked Sendable {
             try updateSetting("haptic_feedback_enabled", value: stored.boolValue ?? 1, now: now, db: db)
         case "backgroundBalanceRefresh":
             try updateSetting("background_balance_refresh", value: stored.boolValue ?? 1, now: now, db: db)
-        case "walletHomeBalanceHistoryRange":
-            try updateSetting("wallet_home_balance_history_range", value: stored.stringValue ?? BalanceHistoryRange.all.rawValue, now: now, db: db)
         case MainTab.storageKey:
             let raw = stored.stringValue ?? MainTab.wallet.rawValue
             let index = MainTab.allCases.firstIndex { $0.rawValue == raw } ?? 0
@@ -400,7 +398,6 @@ final class AppPreferenceStore: @unchecked Sendable {
         CurrencyPreference.storageKey: .string(CurrencyPreference.defaultForCurrentRegion()),
         HapticPreference.storageKey: .bool(HapticPreference.defaultValue),
         "backgroundBalanceRefresh": .bool(true),
-        "walletHomeBalanceHistoryRange": .string(BalanceHistoryRange.all.rawValue),
         MainTab.storageKey: .string(MainTab.wallet.rawValue),
         ActiveWalletPointer.storageKey: .string(""),
         "settingsDeepLink": .string(""),

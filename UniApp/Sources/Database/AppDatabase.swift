@@ -256,10 +256,9 @@ final class AppDatabase: @unchecked Sendable {
             INSERT OR IGNORE INTO app_settings
             (id, theme_preference, language_preference, pin_enabled, biometric_enabled,
              auto_lock_seconds, currency_preference, haptic_feedback_enabled,
-             background_balance_refresh, wallet_home_balance_history_range,
-             selected_tab, active_wallet_id, settings_deep_link,
+             background_balance_refresh, selected_tab, active_wallet_id, settings_deep_link,
              has_unbackedup_wallet, hide_import_key_warning, updated_at_ms)
-            VALUES ('app-settings-singleton', '', '', 0, 0, 0, '', 1, 1, '', 0, '', '', 0, 0, ?)
+            VALUES ('app-settings-singleton', '', '', 0, 0, 0, '', 1, 1, 0, '', '', 0, 0, ?)
             """,
             arguments: [now]
         )
@@ -532,17 +531,6 @@ private extension AppDatabase {
     CREATE INDEX idx_price_snapshots_currency_time ON price_snapshots(currency_code, fetched_at_ms);
     CREATE INDEX idx_price_snapshots_symbol_currency_time ON price_snapshots(symbol, currency_code, fetched_at_ms);
 
-    CREATE TABLE wallet_chart_snapshots (
-        id TEXT PRIMARY KEY,
-        wallet_id TEXT NOT NULL REFERENCES wallets(id) ON DELETE CASCADE,
-        currency_code TEXT NOT NULL,
-        fiat_value TEXT NOT NULL,
-        fiat_value_numeric REAL NOT NULL DEFAULT 0,
-        captured_at_ms INTEGER NOT NULL,
-        day_key INTEGER NOT NULL
-    );
-    CREATE INDEX idx_wallet_chart_snapshots_series ON wallet_chart_snapshots(wallet_id, currency_code, captured_at_ms);
-
     CREATE TABLE wallet_portfolio_summaries (
         id TEXT PRIMARY KEY,
         lookup_key TEXT NOT NULL UNIQUE,
@@ -596,7 +584,6 @@ private extension AppDatabase {
         currency_preference TEXT NOT NULL,
         haptic_feedback_enabled INTEGER NOT NULL DEFAULT 1,
         background_balance_refresh INTEGER NOT NULL DEFAULT 1,
-        wallet_home_balance_history_range TEXT NOT NULL,
         selected_tab INTEGER NOT NULL DEFAULT 0,
         active_wallet_id TEXT NOT NULL DEFAULT '',
         settings_deep_link TEXT NOT NULL DEFAULT '',

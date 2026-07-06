@@ -84,27 +84,15 @@ struct WalletHomeView: View {
     @StateObject private var assetCatalogObservation = AssetCatalogObservation()
     @StateObject private var activeBalancesObservation = ActiveWalletBalancesObservation()
     @StateObject private var activeTransactionsObservation = ActiveWalletTransactionsObservation()
-    @StateObject private var historicalPricesObservation = HistoricalPricesObservation()
     @StateObject private var cachedPricesObservation = CachedPricesObservation()
 
     private var allWallets: [WalletRecord] { walletRecordsObservation.wallets }
 
     @GRDBStorage("tip.walletSwitcher.dismissed") private var walletSwitcherTipDismissed: Bool = false
     private var metadataRows: [AppMetadataRecord] { metadataObservation.metadataRows }
-    // **2026-06-18 Part 3.1.** The spot-price `cachedPrices` GRDB observation was MOVED
-    // off this parent and into the two leaves that consume it —
-    // `BalanceCardLiveSection` (the chart map) and `RecentActivityRows` (row
-    // fiat). The per-refresh price-batch commit is the most frequent merge, so
-    // owning the query in the leaves means that commit re-renders only those
-    // small leaves, never this whole body.
-    /// On-disk historical-price cache. Each row is one day's close
-    /// for one `(symbol, fiat)` pair. The chart uses this to value
-    /// past holdings at their **then-price** instead of today's
-    /// spot, so a token that crashed 99% renders past peaks at
-    /// honest historical fiat ($4000 then) not today's collapsed
-    /// valuation ($50). Populated by `CoinbaseHistoricalPriceService`
-    /// via the `.task` ensure-loop below.
-    private var historicalPrices: [HistoricalPriceRecord] { historicalPricesObservation.prices }
+    // Cached prices stay here only for the recent-activity preview. The balance
+    // card no longer subscribes to price rows now that charts are removed from
+    // the home screen.
     /// **Local-first asset universe (Rule #27 §D).** The supported
     /// chains + tokens, read from the DB (seeded by `AssetCatalogSeeder`
     /// from the static registries). `catalogChains` / `catalogAssets`
@@ -314,17 +302,6 @@ struct WalletHomeView: View {
     /// broader vocabulary (every chain has one); Tokens is the
     /// deeper dive.
     @State private var selectedHoldingsTab: HoldingsTab = .coins
-
-    /// 2026-06-09 — scrubbed fiat from `BalanceHistoryChart`, now an
-    /// `@Observable` model (2026-06-13 perf fix). The chart WRITES the
-    /// touched point's value to `scrubModel.fiat`; only the hero
-    /// (`WalletHomeHeader`) READS it. Routing the value through an
-    /// observable instead of a `@State Decimal?` means a drag frame no
-    /// longer invalidates the whole `WalletHomeView.body` (which
-    /// rebuilt the price dictionaries + re-sorted balances 60×/sec —
-    /// the scrub-lag the user reported). `nil` `fiat` → hero shows the
-    /// real `totalFiat`.
-    @State private var scrubModel = ChartScrubModel()
 
     // MARK: - Memoized derived state (computed off-body)
     //
@@ -608,12 +585,6 @@ struct WalletHomeView: View {
                     guard !ids.isEmpty else { return }
                     await CloudKitBackupStore().reconcileIndex(walletIds: ids)
                 }
-                .task(id: priceDataFingerprint) {
-                    // Rebuild the chart's price dictionaries off-body
-                    // when the price tables / currency change — never
-                    // per render (2026-06-13 perf fix).
-                    rebuildPriceMemos()
-                }
                 .task(id: dustPriceKey) {
                     // USD unit prices for the $0.01-USD dust gate on the
                     // Recent-activity preview. Off-body, engine-cached;
@@ -843,7 +814,6 @@ struct WalletHomeView: View {
         let scopedWalletId = activeWallet?.id ?? UUID(uuidString: activeWalletIdRaw)
         activeBalancesObservation.setWalletId(scopedWalletId)
         activeTransactionsObservation.setWalletId(scopedWalletId)
-        historicalPricesObservation.setCurrencyCode(currencyCode)
         cachedPricesObservation.setCurrencyCode(currencyCode)
     }
 
@@ -982,33 +952,9 @@ struct WalletHomeView: View {
         }
     }
 
-    /// Unified balance + chart card — the hero fiat number and the
-    /// sparkline chart sit inside ONE rounded white card surface,
-    /// the iOS-canonical inset-grouped row chrome iOS Settings,
-    /// Health, and Apple Stocks use for their hero cards.
-    ///
-    /// **2026-06-09 — the user direction:** *"we'll make the balance
-    /// & chart inside a card and we'll make the chart work on
-    /// 1d, 1w, 1M, 1Y, ALL and make all of them works %100."* The
-    /// hero + chart were two separate `Color.clear`-backed rows that
-    /// floated over the page color; merging them into one Section
-    /// with default `Material.card` row backgrounds lets iOS draw
-    /// the unified white card around both, with native concentric
-    /// corners, native dark-mode tone, and native Smart Invert /
-    /// Increase Contrast — for free.
-    ///
-    /// **Why a separate Section instead of merging with the chrome
-    /// section.** The action region (Send / Receive) and the
-    /// holdings tab picker are Liquid Glass chrome that floats over
-    /// the page color (Rule #2 §B.3); they keep their cleared row
-    /// backgrounds. The hero + chart are content — they earn the
-    /// card. Splitting into two Sections lets iOS render the card
-    /// around the content rows without leaking into the floating
-    /// chrome rows.
-    ///
-    /// **Header row separator.** The `.listRowSeparator(.hidden)` on
-    /// the hero row suppresses the divider between hero and chart —
-    /// they read as one calm surface, not as two adjacent list rows.
+    /// Unified balance summary card. Charts were removed from the wallet home,
+    /// so this leaf renders only the current database-backed total and refresh
+    /// caption.
     @ViewBuilder
     private var balanceCardSection: some View {
         // Production — the flagship `BalanceCardView` as ONE
@@ -1033,17 +979,6 @@ struct WalletHomeView: View {
                 walletId: activeWallet?.id,
                 walletName: activeWallet?.name ?? String.apertureLocalized("Wallet"),
                 currencyCode: currencyCode,
-                transactions: allTransactions,
-                transactionRevision: activeTransactionsObservation.revision,
-                balances: allBalanceRecords,
-                balanceRevision: balanceRowsRevision,
-                activeAddressIds: Set((activeWallet?.addresses ?? []).map(\.id)),
-                // The wallet's own addresses (lowercased) so the chart can
-                // drop self-transfers (counterparty == one of these).
-                ownAddresses: Set((activeWallet?.addresses ?? []).map { $0.address.lowercased() }),
-                priceHistory: priceHistoryMemo,
-                priceHistoryRevision: priceDataFingerprint,
-                scrubModel: scrubModel,
                 onSwitchWallet: { isShowingSwitcher = true },
                 onAddFunds: { isShowingReceive = true }
             )
@@ -1775,35 +1710,6 @@ struct WalletHomeView: View {
         return map
     }
 
-    /// Historical close map filtered to the active fiat, used by
-    /// `BalanceHistoryChart` to convert each transaction amount at its
-    /// transaction-day local price.
-    /// **2026-06-13 perf — memoized price dictionary.** This used to be
-    /// rebuilt inside `body`; iterating the entire `historicalPrices` query
-    /// during navigation caused visible stalls. It now lives in `@State`,
-    /// rebuilt only when the underlying price data changes.
-    @State private var priceHistoryMemo: [String: [Int: Decimal]] = [:]
-
-    /// Cheap (O(1)) fingerprint that flips whenever the price tables or
-    /// the active currency change — gates `rebuildPriceMemos()` via
-    /// `.task(id:)`. Counts only; no per-row iteration here.
-    private var priceDataFingerprint: String {
-        // `cachedPrices` moved to the leaves (Part 3.1); the parent now only
-        // memoizes the historical close series the chart needs.
-        "\(historicalPricesObservation.revision)|\(currencyCode)"
-    }
-
-    /// Rebuild the memoized history dictionary. The only place that pays
-    /// the O(N) iteration over the price GRDB observation results — called from
-    /// `.task(id: priceDataFingerprint)`, not from `body`.
-    private func rebuildPriceMemos() {
-        var history: [String: [Int: Decimal]] = [:]
-        for row in historicalPrices where row.fiat == currencyCode {
-            history[row.symbol.uppercased(), default: [:]][row.dayKey] = row.price
-        }
-        priceHistoryMemo = history
-    }
-
     // MARK: - Filter & Sort derived state (rebuilt off-body)
 
     /// Change fingerprint over every persisted filter preference plus
@@ -1949,7 +1855,6 @@ struct WalletHomeView: View {
         filteredTokenRows = []
         combinedFilteredRows = []
         usdActivityPrices = [:]
-        scrubModel.update(selection: nil)
     }
 
     /// O(1) key for the dust-price load — re-fires on wallet switch or a
@@ -2681,74 +2586,16 @@ struct WalletHomeView: View {
 
 // MARK: - BalanceCardLiveSection (native invalidation-localization leaf)
 
-/// The flagship balance card, wrapped in a leaf that **owns** the high-churn
-/// `chainStateRecords` GRDB observation.
-///
-/// **Why this exists (2026-06-18 native perf fix).** The refresh coordinator
-/// rebuilds each chain's `ChainStateRecord` aggregate on a ~300ms cadence
-/// during every balance scan. When the `chainStateRecords` GRDB observation was
-/// declared on `WalletHomeView`, each of those commits re-evaluated the entire
-/// 2,790-line `WalletHomeView.body` — Apple's documented GRDB observation /
-/// `DynamicProperty` behavior is that a *declared* query invalidates the
-/// owning view's body on ANY change to its results, whether or not the body
-/// reads them. That whole-screen re-evaluation, ~3×/second for the duration of
-/// every 30 s auto-refresh, was the periodic main-screen hitch.
-///
-/// Moving the query into this small leaf (Apple's "extract subviews to localize
-/// invalidation zones" guidance) means a 300ms aggregate commit re-renders ONLY
-/// the card — the parent body stays put. The hero total is now database-only:
-/// it sums persisted per-chain aggregate rows for the active wallet/currency.
+/// Database-backed balance card leaf. It owns only the narrow observations the
+/// card needs: chain state totals, portfolio summaries, and wallet sync status.
 private struct BalanceCardLiveSection: View {
     let walletId: UUID?
     let walletName: String
     let currencyCode: String
-    let transactions: [TransactionRecord]
-    let transactionRevision: String
-    let balances: [TokenBalanceRecord]
-    let balanceRevision: String
-    let activeAddressIds: Set<UUID>
-    let ownAddresses: Set<String>
-    let priceHistory: [String: [Int: Decimal]]
-    let priceHistoryRevision: String
-    let scrubModel: ChartScrubModel
     let onSwitchWallet: () -> Void
     let onAddFunds: () -> Void
 
     @StateObject private var cardObservation = WalletBalanceCardObservation()
-    @State private var recentHourlyPriceSnapshots: [BalanceHourlyPriceSnapshot] = []
-    @State private var hourlySnapshotsRevision: String = "empty"
-
-    init(
-        walletId: UUID?,
-        walletName: String,
-        currencyCode: String,
-        transactions: [TransactionRecord],
-        transactionRevision: String,
-        balances: [TokenBalanceRecord],
-        balanceRevision: String,
-        activeAddressIds: Set<UUID>,
-        ownAddresses: Set<String>,
-        priceHistory: [String: [Int: Decimal]],
-        priceHistoryRevision: String,
-        scrubModel: ChartScrubModel,
-        onSwitchWallet: @escaping () -> Void,
-        onAddFunds: @escaping () -> Void
-    ) {
-        self.walletId = walletId
-        self.walletName = walletName
-        self.currencyCode = currencyCode
-        self.transactions = transactions
-        self.transactionRevision = transactionRevision
-        self.balances = balances
-        self.balanceRevision = balanceRevision
-        self.activeAddressIds = activeAddressIds
-        self.ownAddresses = ownAddresses
-        self.priceHistory = priceHistory
-        self.priceHistoryRevision = priceHistoryRevision
-        self.scrubModel = scrubModel
-        self.onSwitchWallet = onSwitchWallet
-        self.onAddFunds = onAddFunds
-    }
 
     private var chainStateRecords: [ChainStateRecord] {
         cardObservation.chainStates
@@ -2762,121 +2609,8 @@ private struct BalanceCardLiveSection: View {
         cardObservation.syncStatuses
     }
 
-    private var cachedPrices: [CachedPriceRecord] {
-        cardObservation.cachedPrices
-    }
-
-    private var priceCacheMap: [String: Decimal] {
-        cardObservation.priceMap
-    }
-
-    private func hourlyHoldings(
-        addressIds: Set<UUID>,
-        prices: [String: Decimal]
-    ) -> [BalanceHourlyHolding] {
-        guard !addressIds.isEmpty else { return [] }
-
-        var amountsBySymbol: [String: Decimal] = [:]
-        for balance in balances {
-            let balanceAddressId = balance.addressId ?? balance.address?.id
-            guard let balanceAddressId, addressIds.contains(balanceAddressId) else { continue }
-            guard let amount = EVMHexQuantity.decimalAmount(
-                rawBalance: balance.rawBalance,
-                decimals: balance.decimals
-            ), amount > 0 else {
-                continue
-            }
-            let symbol = balance.tokenSymbol.uppercased()
-            amountsBySymbol[symbol, default: 0] += amount
-        }
-
-        return amountsBySymbol
-            .map { symbol, amount in
-                BalanceHourlyHolding(
-                    symbol: symbol,
-                    amount: amount,
-                    currentPrice: prices[symbol]
-                )
-            }
-            .sorted { $0.symbol < $1.symbol }
-    }
-
-    private func hourlySnapshotKey(
-        holdings: [BalanceHourlyHolding],
-        prices: [String: Decimal]
-    ) -> String {
-        var hasher = Hasher()
-        hasher.combine(walletId)
-        hasher.combine(currencyCode.uppercased())
-        for holding in holdings {
-            hasher.combine(holding.symbol)
-            hasher.combine(holding.amount)
-            hasher.combine(holding.currentPrice)
-        }
-        for symbol in holdings.map(\.symbol).sorted() {
-            hasher.combine(prices[symbol])
-        }
-        return String(hasher.finalize())
-    }
-
     private var cardScopeKey: String {
         "\(walletId?.uuidString ?? "none")|\(currencyCode.uppercased())"
-    }
-
-    private func chartRevision(snapshotKey: String) -> String {
-        [
-            cardScopeKey,
-            cardObservation.revision,
-            transactionRevision,
-            balanceRevision,
-            priceHistoryRevision,
-            snapshotKey,
-            hourlySnapshotsRevision
-        ].joined(separator: "|")
-    }
-
-    @MainActor
-    private func reloadHourlyPriceSnapshots(symbols: Set<String>) async {
-        guard !symbols.isEmpty else {
-            recentHourlyPriceSnapshots = []
-            hourlySnapshotsRevision = "empty"
-            return
-        }
-
-        let code = currencyCode.uppercased()
-        let since = Date().addingTimeInterval(-7_200)
-
-        do {
-            let observations = try PriceSnapshotRepository(database: AppDatabase.shared)
-                .recentObservations(symbols: symbols, currency: code, since: since)
-            guard !Task.isCancelled else { return }
-            let snapshots = observations.map {
-                BalanceHourlyPriceSnapshot(
-                    symbol: $0.symbol,
-                    price: $0.price,
-                    fetchedAt: $0.fetchedAt
-                )
-            }
-            withTransaction(Transaction(animation: nil)) {
-                recentHourlyPriceSnapshots = snapshots
-                hourlySnapshotsRevision = hourlySnapshotsRevision(for: snapshots)
-            }
-        } catch {
-            guard !Task.isCancelled else { return }
-            recentHourlyPriceSnapshots = []
-            hourlySnapshotsRevision = "empty"
-        }
-    }
-
-    private func hourlySnapshotsRevision(for snapshots: [BalanceHourlyPriceSnapshot]) -> String {
-        var hasher = Hasher()
-        hasher.combine(snapshots.count)
-        for snapshot in snapshots {
-            hasher.combine(snapshot.symbol)
-            hasher.combine(snapshot.price)
-            hasher.combine(snapshot.fetchedAt)
-        }
-        return String(hasher.finalize())
     }
 
     /// Hero total. The balance card is backed by the database read model only:
@@ -2919,32 +2653,17 @@ private struct BalanceCardLiveSection: View {
     }
 
     var body: some View {
-        let priceMap = priceCacheMap
-        let hourHoldings = hourlyHoldings(addressIds: activeAddressIds, prices: priceMap)
-        let hourlySymbols = Set(hourHoldings.map(\.symbol))
-        let snapshotKey = hourlySnapshotKey(holdings: hourHoldings, prices: priceMap)
         BalanceCardView(
             walletId: walletId,
             walletName: walletName,
             totalFiat: totalFiat,
             currencyCode: currencyCode,
             lastUpdated: lastUpdated,
-            transactions: transactions,
-            ownAddresses: ownAddresses,
-            priceCache: priceMap,
-            priceHistory: priceHistory,
-            hourlyHoldings: hourHoldings,
-            hourlyPriceSnapshots: recentHourlyPriceSnapshots,
-            rebuildToken: chartRevision(snapshotKey: snapshotKey),
-            scrubModel: scrubModel,
             onSwitchWallet: onSwitchWallet,
             onAddFunds: onAddFunds
         )
         .task(id: cardScopeKey) {
             cardObservation.setScope(walletId: walletId, currencyCode: currencyCode)
-        }
-        .task(id: snapshotKey) {
-            await reloadHourlyPriceSnapshots(symbols: hourlySymbols)
         }
     }
 }
