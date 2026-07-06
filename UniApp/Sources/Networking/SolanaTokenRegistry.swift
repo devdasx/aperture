@@ -89,4 +89,17 @@ enum SolanaTokenRegistry {
         }
         return symbol(for: mint)
     }
+
+    static func standard(for mint: String) -> SolanaTokenStandard {
+        mints[mint]?.standard ?? .splToken
+    }
+
+    static func tokenProgramId(for mint: String) -> String {
+        switch standard(for: mint) {
+        case .splToken:
+            return SolanaChainAdapter.splTokenProgramId
+        case .splToken2022:
+            return SolanaChainAdapter.splToken2022ProgramId
+        }
+    }
 }

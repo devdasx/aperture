@@ -38,8 +38,17 @@ extension SendExecutor {
                 return TransactionSigner.JustInTimeData(solanaRecentBlockhash: blockhash)
             }
 
-            let senderATA = SolanaAddress(string: draft.fromAddress)?.defaultTokenAddress(tokenMintAddress: mint)
-            let recipientATA = SolanaAddress(string: recipient.address)?.defaultTokenAddress(tokenMintAddress: mint)
+            let tokenProgramId = SolanaTokenRegistry.tokenProgramId(for: mint)
+            let senderATA = SolanaProgramDerivedAddress.associatedTokenAddress(
+                owner: draft.fromAddress,
+                mint: mint,
+                tokenProgramId: tokenProgramId
+            ) ?? SolanaAddress(string: draft.fromAddress)?.defaultTokenAddress(tokenMintAddress: mint)
+            let recipientATA = SolanaProgramDerivedAddress.associatedTokenAddress(
+                owner: recipient.address,
+                mint: mint,
+                tokenProgramId: tokenProgramId
+            ) ?? SolanaAddress(string: recipient.address)?.defaultTokenAddress(tokenMintAddress: mint)
             // Recipient ATA existence: getAccountInfo → value null ⇒ create.
             var needsCreation = true
             if let recipientATA {

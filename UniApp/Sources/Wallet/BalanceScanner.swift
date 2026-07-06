@@ -1847,6 +1847,81 @@ private actor SolanaBalanceHistoryScanner {
         owner: String,
         tokens: [SolanaSupportedToken]
     ) async -> [SolanaTokenRead] {
+        let groupedByProgram = Dictionary(grouping: tokens) {
+            SolanaTokenRegistry.tokenProgramId(for: $0.mint)
+        }
+
+        return await withTaskGroup(of: [SolanaTokenRead].self) { group in
+            for (programId, programTokens) in groupedByProgram {
+                group.addTask {
+                    do {
+                        return try await self.tokenBalances(
+                            owner: owner,
+                            programId: programId,
+                            tokens: programTokens
+                        )
+                    } catch {
+                        await self.logTokenProgramFailure(programId: programId, error: error)
+                        return await self.tokenBalancesByMintFallback(owner: owner, tokens: programTokens)
+                    }
+                }
+            }
+
+            var rows: [SolanaTokenRead] = []
+            rows.reserveCapacity(tokens.count)
+            for await chunk in group {
+                rows.append(contentsOf: chunk)
+            }
+            return rows.sorted { $0.token.entry.symbol < $1.token.entry.symbol }
+        }
+    }
+
+    private func tokenBalances(
+        owner: String,
+        programId: String,
+        tokens: [SolanaSupportedToken]
+    ) async throws -> [SolanaTokenRead] {
+        let options: [String: Sendable] = [
+            "encoding": "jsonParsed",
+            "commitment": "confirmed"
+        ]
+        let data = try await rpc.callJSONResultData(
+            chain: .solana,
+            method: "getTokenAccountsByOwner",
+            params: [owner, ["programId": programId], options]
+        )
+        let result = try JSONDecoder().decode(SolanaTokenAccountsResult.self, from: data)
+        let supportedByMint = Dictionary(uniqueKeysWithValues: tokens.map { ($0.mint, $0) })
+
+        var rawByMint: [String: String] = [:]
+        var accountsByMint: [String: [String]] = [:]
+        for row in result.value {
+            if let accountOwner = row.account.owner, accountOwner != programId {
+                continue
+            }
+            let info = row.account.data.parsed.info
+            guard info.owner == nil || info.owner == owner else { continue }
+            guard supportedByMint[info.mint] != nil else { continue }
+            rawByMint[info.mint] = SolanaDecimalString.add(
+                rawByMint[info.mint] ?? "0",
+                info.tokenAmount.amount
+            )
+            accountsByMint[info.mint, default: []].append(row.pubkey)
+        }
+
+        return tokens.map { token in
+            SolanaTokenRead(
+                token: token,
+                rawBalance: rawByMint[token.mint] ?? "0",
+                tokenAccounts: accountsByMint[token.mint] ?? []
+            )
+        }
+    }
+
+    private func tokenBalancesByMintFallback(
+        owner: String,
+        tokens: [SolanaSupportedToken]
+    ) async -> [SolanaTokenRead] {
         await withTaskGroup(of: SolanaTokenRead.self) { group in
             for token in tokens {
                 group.addTask {
@@ -1864,7 +1939,7 @@ private actor SolanaBalanceHistoryScanner {
             for await row in group {
                 rows.append(row)
             }
-            return rows.sorted { $0.token.entry.symbol < $1.token.entry.symbol }
+            return rows
         }
     }
 
@@ -1884,6 +1959,13 @@ private actor SolanaBalanceHistoryScanner {
         var accounts: [String] = []
         for row in result.value {
             guard row.account.data.parsed.info.mint == token.mint else { continue }
+            if let accountOwner = row.account.owner,
+               accountOwner != SolanaTokenRegistry.tokenProgramId(for: token.mint) {
+                continue
+            }
+            if let tokenOwner = row.account.data.parsed.info.owner, tokenOwner != owner {
+                continue
+            }
             let amount = row.account.data.parsed.info.tokenAmount.amount
             rawBalance = SolanaDecimalString.add(rawBalance, amount)
             accounts.append(row.pubkey)
@@ -2200,6 +2282,10 @@ private actor SolanaBalanceHistoryScanner {
     private func logTokenFailure(symbol: String, error: Error) {
         log.debug("Solana token balance failed for \(symbol, privacy: .public): \(String(describing: error), privacy: .public)")
     }
+
+    private func logTokenProgramFailure(programId: String, error: Error) {
+        log.debug("Solana token program balance failed for \(programId, privacy: .public): \(String(describing: error), privacy: .public)")
+    }
 }
 
 private struct SolanaNativeBalance: Sendable {
@@ -2250,6 +2336,7 @@ private struct SolanaTokenAccountRow: Decodable {
     let account: AccountBody
 
     struct AccountBody: Decodable {
+        let owner: String?
         let data: DataBody
     }
 

@@ -120,13 +120,25 @@ enum SolanaTransactionSigner {
         // ATA must be checked for existence). Fall back to local
         // derivation via wallet-core's SolanaAddress so the signer never
         // hard-fails when the JIT layer didn't pre-resolve them.
+        let tokenProgramId = SolanaTokenRegistry.tokenProgramId(for: mint)
         let senderATA = jit.solanaSenderTokenAccount
+            ?? SolanaProgramDerivedAddress.associatedTokenAddress(
+                owner: draft.fromAddress,
+                mint: mint,
+                tokenProgramId: tokenProgramId
+            )
             ?? SolanaAddress(string: draft.fromAddress)?.defaultTokenAddress(tokenMintAddress: mint)
         let recipientATA = jit.solanaRecipientTokenAccount
+            ?? SolanaProgramDerivedAddress.associatedTokenAddress(
+                owner: recipient.address,
+                mint: mint,
+                tokenProgramId: tokenProgramId
+            )
             ?? SolanaAddress(string: recipient.address)?.defaultTokenAddress(tokenMintAddress: mint)
         guard let senderATA, !senderATA.isEmpty, let recipientATA, !recipientATA.isEmpty else {
             throw SigningError.malformedDraft("could not derive SPL token accounts")
         }
+        let walletCoreTokenProgram = walletCoreTokenProgramId(for: SolanaTokenRegistry.standard(for: mint))
 
         // `recipientNeedsActivation` (set by compose) OR the JIT
         // existence check selects CreateAndTransfer (idempotent create +
@@ -141,6 +153,7 @@ enum SolanaTransactionSigner {
                 $0.senderTokenAddress = senderATA
                 $0.amount = amount
                 $0.decimals = decimals
+                $0.tokenProgramID = walletCoreTokenProgram
                 if !memo.isEmpty { $0.memo = memo }
             }
         } else {
@@ -150,6 +163,7 @@ enum SolanaTransactionSigner {
                 $0.recipientTokenAddress = recipientATA
                 $0.amount = amount
                 $0.decimals = decimals
+                $0.tokenProgramID = walletCoreTokenProgram
                 if !memo.isEmpty { $0.memo = memo }
             }
         }
@@ -164,6 +178,15 @@ enum SolanaTransactionSigner {
         case .splMemo(let s): return s
         case .text(let s):    return s
         default:              return ""
+        }
+    }
+
+    private static func walletCoreTokenProgramId(for standard: SolanaTokenStandard) -> SolanaTokenProgramId {
+        switch standard {
+        case .splToken:
+            return .tokenProgram
+        case .splToken2022:
+            return .token2022Program
         }
     }
 

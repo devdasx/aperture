@@ -1,6 +1,66 @@
 import Foundation
 import WalletCore
 
+/// Shared Solana Program-Derived Address helpers.
+///
+/// Associated token accounts are PDAs over:
+/// `[wallet, token_program_id, mint]` with the Associated Token Account
+/// program id. Token-2022 mints use a different token program id from legacy
+/// SPL Token, which means their ATA address is different too.
+enum SolanaProgramDerivedAddress {
+    static let associatedTokenProgramId = "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
+
+    private static let pdaMarker = "ProgramDerivedAddress"
+
+    static func associatedTokenAddress(
+        owner: String,
+        mint: String,
+        tokenProgramId: String
+    ) -> String? {
+        guard
+            let ownerBytes = Base58.decodeBytes(owner), ownerBytes.count == 32,
+            let mintBytes = Base58.decodeBytes(mint), mintBytes.count == 32,
+            let tokenProgramBytes = Base58.decodeBytes(tokenProgramId), tokenProgramBytes.count == 32,
+            let ataProgramBytes = Base58.decodeBytes(associatedTokenProgramId), ataProgramBytes.count == 32
+        else {
+            return nil
+        }
+
+        let seeds = [
+            Data(ownerBytes),
+            Data(tokenProgramBytes),
+            Data(mintBytes),
+        ]
+        guard let address = findProgramAddress(seeds: seeds, programId: Data(ataProgramBytes)) else {
+            return nil
+        }
+        return Base58.encode(address)
+    }
+
+    /// Solana `find_program_address`: walk the bump seed from 255 down
+    /// to 0; the first candidate hash that is **off** the ed25519 curve
+    /// is the PDA. Returns `nil` only if every bump produced an on-curve
+    /// hash, which is cryptographically implausible in practice.
+    static func findProgramAddress(seeds: [Data], programId: Data) -> Data? {
+        guard let marker = pdaMarker.data(using: .utf8) else { return nil }
+        var bump = 255
+        while bump >= 0 {
+            var buffer = Data()
+            for seed in seeds { buffer.append(seed) }
+            buffer.append(UInt8(bump))
+            buffer.append(programId)
+            buffer.append(marker)
+
+            let candidate = WalletCore.Hash.sha256(data: buffer)
+            if candidate.count == 32, !Curve25519Point.isOnCurve(compressed: candidate) {
+                return candidate
+            }
+            bump -= 1
+        }
+        return nil
+    }
+}
+
 /// Resolves a Solana Name Service (Bonfida) `.sol` domain — e.g.
 /// "bonfida.sol" — to the owner's base58 address on Solana mainnet.
 ///
@@ -56,10 +116,6 @@ enum SNSResolver {
     /// `getHashedNameSync`: `sha256(HASH_PREFIX + name)`.
     private static let hashPrefix = "SPL Name Service"
 
-    /// Fixed ASCII marker appended last in the PDA-derivation hash,
-    /// per Solana's `Pubkey::find_program_address`.
-    private static let pdaMarker = "ProgramDerivedAddress"
-
     // MARK: - Resolution
 
     /// Resolve a Solana `.sol` domain (already lowercased, ends in
@@ -95,7 +151,7 @@ enum SNSResolver {
         //        programId: SNS program id).
         let nameClass = Data(repeating: 0, count: 32)
         let seeds = [hashedName, nameClass, solRoot]
-        guard let domainKey = findProgramAddress(seeds: seeds, programId: programId) else {
+        guard let domainKey = SolanaProgramDerivedAddress.findProgramAddress(seeds: seeds, programId: programId) else {
             return nil
         }
         let domainKeyBase58 = WalletCore.Base58.encodeNoCheck(data: domainKey)
@@ -153,42 +209,6 @@ enum SNSResolver {
         guard ownerBytes.contains(where: { $0 != 0 }) else { return nil }
 
         return WalletCore.Base58.encodeNoCheck(data: ownerBytes)
-    }
-
-    // MARK: - Program-derived address (PDA)
-
-    /// Solana `find_program_address`: walk the bump seed from 255 down
-    /// to 0; the first candidate hash that is **off** the ed25519 curve
-    /// is the PDA. Returns `nil` only if every bump produced an
-    /// on-curve hash (cryptographically impossible in practice).
-    ///
-    /// candidate = sha256(seed0 ‖ seed1 ‖ … ‖ [bump] ‖ programId ‖
-    ///                    utf8("ProgramDerivedAddress"))
-    private static func findProgramAddress(seeds: [Data], programId: Data) -> Data? {
-        guard let marker = pdaMarker.data(using: .utf8) else { return nil }
-        var bump = 255
-        while bump >= 0 {
-            var buffer = Data()
-            for seed in seeds { buffer.append(seed) }
-            buffer.append(UInt8(bump))
-            buffer.append(programId)
-            buffer.append(marker)
-
-            let candidate = WalletCore.Hash.sha256(data: buffer)
-            if candidate.count == 32, !isOnEd25519Curve(candidate) {
-                return candidate
-            }
-            bump -= 1
-        }
-        return nil
-    }
-
-    /// `true` when the 32 bytes decode to a valid ed25519 curve point.
-    /// A PDA must NOT be on the curve. Native implementation (RFC 8032
-    /// point decompression) because WalletCore exposes no on-curve test
-    /// for ed25519 in Swift — see the type doc above.
-    private static func isOnEd25519Curve(_ candidate: Data) -> Bool {
-        Curve25519Point.isOnCurve(compressed: candidate)
     }
 }
 
