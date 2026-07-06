@@ -338,9 +338,9 @@ struct ICloudPasswordScreen: View {
                     }
 
                     VStack(spacing: UniSpacing.s) {
-                        passwordField(placeholder: "Password", text: $password)
+                        connectedPasswordFields
                         StrengthMeter(strength: strength)
-                        passwordField(placeholder: "Confirm password", text: $confirm)
+                            .padding(.horizontal, UniSpacing.xs)
                         if !confirm.isEmpty && !passwordsMatch {
                             Text("Passwords don't match.")
                                 .font(UniTypography.footnote)
@@ -381,6 +381,17 @@ struct ICloudPasswordScreen: View {
         }
     }
 
+    private var connectedPasswordFields: some View {
+        UniCard(padding: 0, cornerRadius: UniRadius.xl) {
+            VStack(spacing: 0) {
+                passwordField(placeholder: "Password", text: $password)
+                UniDivider()
+                    .padding(.leading, UniSpacing.m)
+                passwordField(placeholder: "Confirm password", text: $confirm)
+            }
+        }
+    }
+
     @ViewBuilder
     private func passwordField(
         placeholder: LocalizedStringKey,
@@ -392,7 +403,11 @@ struct ICloudPasswordScreen: View {
             directionPolicy: .forceLTR,
             isSecure: true,
             showsRevealToggle: true,
-            contentType: .newPassword
+            fill: Color.clear,
+            verticalPadding: UniSpacing.s,
+            showsChrome: false,
+            contentType: .newPassword,
+            minHeight: UniSpacing.xxxl
         )
     }
 }
