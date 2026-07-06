@@ -422,8 +422,8 @@ struct SendRecipientView: View {
     private var actionChips: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: UniSpacing.s) {
-                actionChip("Paste") { pasteFromClipboard() }
-                actionChip("Scan") { isScanning = true }
+                actionChip("Paste", systemImage: "doc.on.clipboard") { pasteFromClipboard() }
+                actionChip("Scan", systemImage: "qrcode.viewfinder") { isScanning = true }
                 if isMulti {
                     actionChip("Add recipient", systemImage: "plus", isEnabled: canAddMore) { addEntry() }
                 }
