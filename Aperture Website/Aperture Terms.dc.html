@@ -8,6 +8,8 @@
 <link rel="icon" type="image/png" href="/assets/icon-192.png">
 <link rel="apple-touch-icon" href="/assets/icon-192.png">
 <link rel="manifest" href="/site.webmanifest">
+<link rel="preload" href="/assets/fonts/inter-latin.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="/assets/fonts.css">
 <script src="./support.js"></script>
 </head>
 <body>
@@ -22,7 +24,7 @@
   </style>
 </helmet>
 
-<div style="position: relative; background: #FFFFFF; color: #0B0D11; font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', 'Helvetica Neue', Helvetica, Arial, sans-serif; -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility;">
+<div style="position: relative; background: #FFFFFF; color: #0B0D11; font-family: var(--font-sans); -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility;">
 
   <sc-if value="{{ showNav }}" hint-placeholder-val="{{ true }}">
     <nav style="position: sticky; top: 0; left: 0; right: 0; height: 52px; z-index: 10; display: flex; align-items: center; background: rgba(255,255,255,0.68); -webkit-backdrop-filter: saturate(180%) blur(20px); backdrop-filter: saturate(180%) blur(20px); border-bottom: 1px solid rgba(11,13,17,0.10);">

@@ -4,5 +4,6 @@ Options -Indexes
 AddType application/manifest+json .webmanifest
 AddType application/xml .xml
 AddType text/plain .txt
+AddType font/woff2 .woff2
 
 ErrorDocument 404 /404.html

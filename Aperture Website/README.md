@@ -74,8 +74,8 @@ fetched from a CDN.
 - **Colors:** Aperture Black `#0B0D11` · Cloud `#F5F5F7` · Pure White `#FFFFFF`.
   Text tints are ink/cloud at reduced opacity. Monochrome by conviction — no
   accent color is used on the site.
-- **Type:** the system SF stack (`-apple-system` / `SF Pro Display` / `SF Pro
-  Text`), semibold headings with negative tracking, regular body.
+- **Type:** self-hosted Inter, loaded from `assets/fonts/inter-latin.woff2`,
+  with semibold headings, negative tracking, and regular body copy.
 - **Motion:** a single bloom on the hero icon, gentle staggered rise for hero
   text, and slow fades — nothing decorative.
 
