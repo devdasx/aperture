@@ -152,6 +152,66 @@ struct SendCustomFeeTests {
         #expect(draft.changeSats ?? 0 > 0)
     }
 
+    @Test("Bitcoin coin selection prefers confirmed UTXOs when they can fund the send")
+    func bitcoinCoinSelectionPrefersConfirmedUTXOs() {
+        let confirmed = SelectedUTXO(
+            ownerAddress: "bc1qreceive",
+            txid: String(repeating: "d", count: 64),
+            vout: 0,
+            valueSats: 100_000,
+            scriptHex: nil,
+            confirmed: true
+        )
+        let largerUnconfirmed = SelectedUTXO(
+            ownerAddress: "bc1qchange",
+            txid: String(repeating: "e", count: 64),
+            vout: 1,
+            valueSats: 200_000,
+            scriptHex: nil,
+            confirmed: false
+        )
+
+        let selection = UTXOService().selectCoins(
+            utxos: [largerUnconfirmed, confirmed],
+            targetSats: 60_000,
+            feeRate: 1,
+            chain: .bitcoin
+        )
+
+        #expect(selection.funded)
+        #expect(selection.inputs.map(\.id) == [confirmed.id])
+    }
+
+    @Test("Bitcoin coin selection includes unconfirmed UTXOs when confirmed funds are insufficient")
+    func bitcoinCoinSelectionIncludesUnconfirmedUTXOsWhenNeeded() {
+        let confirmed = SelectedUTXO(
+            ownerAddress: "bc1qreceive",
+            txid: String(repeating: "f", count: 64),
+            vout: 0,
+            valueSats: 50_000,
+            scriptHex: nil,
+            confirmed: true
+        )
+        let unconfirmed = SelectedUTXO(
+            ownerAddress: "bc1qchange",
+            txid: String(repeating: "0", count: 64),
+            vout: 1,
+            valueSats: 40_000,
+            scriptHex: nil,
+            confirmed: false
+        )
+
+        let selection = UTXOService().selectCoins(
+            utxos: [unconfirmed, confirmed],
+            targetSats: 75_000,
+            feeRate: 1,
+            chain: .bitcoin
+        )
+
+        #expect(selection.funded)
+        #expect(selection.inputs.map(\.id) == [confirmed.id, unconfirmed.id])
+    }
+
     // MARK: - EVM custom fee
 
     @Test("EVM custom maxFee/tip is reflected in resolvedFee and survives a refresh")

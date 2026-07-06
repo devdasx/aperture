@@ -152,7 +152,8 @@ struct UTXOService: Sendable {
     /// re-estimates as inputs are added (each input grows vsize).
     ///
     /// - Parameters:
-    ///   - utxos: candidate set (caller pre-filters confirmed if desired).
+    ///   - utxos: candidate set. Both confirmed and unconfirmed UTXOs are
+    ///     eligible; confirmed inputs are tried first, then unconfirmed.
     ///   - targetSats: amount to send (0 for send-all — pass `sendAll: true`).
     ///   - feeRate: sat/vB (BTC/LTC) or sat/byte (BCH/DOGE).
     ///   - chain: drives per-input/output vsize + dust threshold.
@@ -160,7 +161,7 @@ struct UTXOService: Sendable {
     ///   - recipientValues: per-recipient output values (koinu/sats) for
     ///     the DOGE soft-dust surcharge. When `nil`, the single-recipient
     ///     fallback treats `targetSats` as the one recipient value.
-    ///   - sendAll: when true, spend every confirmed input minus fee.
+    ///   - sendAll: when true, spend every candidate input minus fee.
     func selectCoins(
         utxos: [SelectedUTXO],
         targetSats: Int64,
@@ -180,7 +181,7 @@ struct UTXOService: Sendable {
 
         if sendAll {
             // Spend everything; one output, no change.
-            let inputs = utxos.sorted { $0.valueSats > $1.valueSats }
+            let inputs = SelectedUTXO.spendPrioritySorted(utxos)
             let vsize = model.vsize(inputs: inputs.count, recipientOutputs: recipientCount, hasChange: false)
             let total = inputs.reduce(Int64(0)) { $0 + $1.valueSats }
             // Send-all recipient value = total − fee; iterate once on the
@@ -194,7 +195,7 @@ struct UTXOService: Sendable {
         }
 
         // Accumulative largest-first.
-        let sorted = utxos.sorted { $0.valueSats > $1.valueSats }
+        let sorted = SelectedUTXO.spendPrioritySorted(utxos)
         var selected: [SelectedUTXO] = []
         var accumulated: Int64 = 0
         for utxo in sorted {

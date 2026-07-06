@@ -29,7 +29,9 @@ struct SelectedUTXO: Codable, Hashable, Sendable, Identifiable {
     /// Locking script (pkscript) hex, when provided inline. `nil` means
     /// the signer must derive it from the address (own address).
     let scriptHex: String?
-    /// Whether the UTXO is confirmed (prefer confirmed inputs).
+    /// Whether the UTXO is confirmed. Confirmed inputs are preferred, but
+    /// unconfirmed inputs remain valid spend candidates when they are still
+    /// in the current UTXO set.
     let confirmed: Bool
     var id: String { "\(txid):\(vout)" }
 
@@ -47,6 +49,14 @@ struct SelectedUTXO: Codable, Hashable, Sendable, Identifiable {
         self.valueSats = valueSats
         self.scriptHex = scriptHex
         self.confirmed = confirmed
+    }
+
+    static func spendPrioritySorted(_ utxos: [SelectedUTXO]) -> [SelectedUTXO] {
+        utxos.sorted { lhs, rhs in
+            if lhs.confirmed != rhs.confirmed { return lhs.confirmed && !rhs.confirmed }
+            if lhs.valueSats != rhs.valueSats { return lhs.valueSats > rhs.valueSats }
+            return lhs.id < rhs.id
+        }
     }
 }
 
