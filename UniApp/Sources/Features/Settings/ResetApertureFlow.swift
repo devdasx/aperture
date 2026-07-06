@@ -315,7 +315,7 @@ struct ResetApertureFlow: View {
             beginBackup(for: wallet)
         } label: {
             HStack(spacing: 13) {
-                irisDisc(size: 40, irisFraction: 0.6)
+                WalletAvatar(spec: wallet.avatarSpec, size: .row, walletId: wallet.id)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(verbatim: wallet.name)
                         .font(.system(size: 16, weight: .bold))
