@@ -264,7 +264,39 @@ struct SendRecipientView: View {
                 )
             }
 
-            VStack(spacing: UniSpacing.s) {
+            if showsRecipientMemo {
+                recipientMemoForm
+                recipientMemoGuidance
+                    .padding(.top, UniSpacing.xxs)
+            } else {
+                VStack(spacing: UniSpacing.s) {
+                    ForEach(Array($entries.enumerated()), id: \.element.id) { offset, $entry in
+                        RecipientRow(
+                            entry: $entry,
+                            chain: chain,
+                            index: offset + 1,
+                            showsIndex: isMulti && entries.count > 1,
+                            nameHint: nameHint,
+                            canRemove: entries.count > 1,
+                            isDuplicate: isDuplicateAddress(entry),
+                            usesPlainField: false,
+                            focusBinding: $focusedEntry,
+                            sendCount: { recents.sendCount(to: $0, chain: chain) },
+                            onRemove: { remove(entry.id) }
+                        )
+                    }
+                }
+            }
+
+            actionChips
+                .padding(.top, UniSpacing.xxs)
+        }
+    }
+
+    @ViewBuilder
+    private var recipientMemoForm: some View {
+        UniCard(padding: 0, cornerRadius: UniRadius.xl) {
+            VStack(spacing: 0) {
                 ForEach(Array($entries.enumerated()), id: \.element.id) { offset, $entry in
                     RecipientRow(
                         entry: $entry,
@@ -274,25 +306,23 @@ struct SendRecipientView: View {
                         nameHint: nameHint,
                         canRemove: entries.count > 1,
                         isDuplicate: isDuplicateAddress(entry),
+                        usesPlainField: true,
                         focusBinding: $focusedEntry,
                         sendCount: { recents.sendCount(to: $0, chain: chain) },
                         onRemove: { remove(entry.id) }
                     )
+
+                    UniDivider()
+                        .padding(.leading, UniSpacing.m)
                 }
-            }
 
-            if showsRecipientMemo {
-                recipientMemoBlock
-                    .padding(.top, UniSpacing.xxs)
+                recipientMemoInputRow
             }
-
-            actionChips
-                .padding(.top, UniSpacing.xxs)
         }
     }
 
     @ViewBuilder
-    private var recipientMemoBlock: some View {
+    private var recipientMemoInputRow: some View {
         switch chain {
         case .ripple:
             VStack(alignment: .leading, spacing: UniSpacing.xs) {
@@ -305,19 +335,14 @@ struct SendRecipientView: View {
                     placeholder: "Destination tag (optional)",
                     text: $destinationTagText,
                     directionPolicy: .forceLTR,
-                    keyboardType: .numberPad
+                    fill: Color.clear,
+                    verticalPadding: UniSpacing.xs,
+                    showsChrome: false,
+                    keyboardType: .numberPad,
+                    minHeight: UniSpacing.xxxl
                 )
-
-                RecipientRoutingNote(
-                    text: "Use the exact tag the exchange or recipient gave you. XRP sent to a shared address without the required tag can be lost."
-                )
-                .padding(.horizontal, UniSpacing.m)
-
-                if destinationTagIsInvalid {
-                    memoError("Destination tag must be a number from 0 to 4,294,967,295.")
-                        .padding(.horizontal, UniSpacing.m)
-                }
             }
+            .padding(.vertical, UniSpacing.xs)
         case .stellar:
             VStack(alignment: .leading, spacing: UniSpacing.xs) {
                 Text("Stellar memo")
@@ -331,9 +356,36 @@ struct SendRecipientView: View {
                     directionPolicy: stellarMemoInference.isTextLike ? .automatic : .forceLTR,
                     axis: .vertical,
                     lineLimit: stellarMemoInference.isTextLike ? 2 : 1,
-                    keyboardType: .default
+                    fill: Color.clear,
+                    verticalPadding: UniSpacing.xs,
+                    showsChrome: false,
+                    keyboardType: .default,
+                    minHeight: UniSpacing.xxxl
                 )
+            }
+            .padding(.vertical, UniSpacing.xs)
+        default:
+            EmptyView()
+        }
+    }
 
+    @ViewBuilder
+    private var recipientMemoGuidance: some View {
+        switch chain {
+        case .ripple:
+            VStack(alignment: .leading, spacing: UniSpacing.xs) {
+                RecipientRoutingNote(
+                    text: "Use the exact tag the exchange or recipient gave you. XRP sent to a shared address without the required tag can be lost."
+                )
+                .padding(.horizontal, UniSpacing.m)
+
+                if destinationTagIsInvalid {
+                    memoError("Destination tag must be a number from 0 to 4,294,967,295.")
+                        .padding(.horizontal, UniSpacing.m)
+                }
+            }
+        case .stellar:
+            VStack(alignment: .leading, spacing: UniSpacing.xs) {
                 if let displayName = stellarMemoInference.displayName {
                     memoTypeBadge(displayName)
                         .padding(.horizontal, UniSpacing.m)
@@ -745,6 +797,10 @@ private struct RecipientRow: View {
     /// earlier row — suppresses the first-send warning so it fires once
     /// per distinct address, not once per duplicate field.
     let isDuplicate: Bool
+    /// The XRP/XLM memo screens group the recipient and routing memo inside
+    /// one parent form surface, so the address field must render as a plain
+    /// row there instead of drawing its own rounded input pill.
+    let usesPlainField: Bool
     /// External focus passthrough from the parent — the field reports its
     /// identity (`entry.id`) so the parent can prune an emptied, unfocused
     /// earlier field on focus change.
@@ -771,6 +827,10 @@ private struct RecipientRow: View {
                     directionPolicy: .forceLTR,
                     axis: .vertical,
                     lineLimit: nil,
+                    fill: usesPlainField ? Color.clear : UniColors.Input.background,
+                    verticalPadding: usesPlainField ? UniSpacing.xs : UniSpacing.m,
+                    showsChrome: !usesPlainField,
+                    minHeight: usesPlainField ? UniSpacing.xxxl : nil,
                     autocapitalization: .never,
                     focusBinding: focusBinding,
                     focusValue: entry.id
