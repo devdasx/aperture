@@ -186,14 +186,14 @@ extension ComposeFeeService {
     ///
     /// `estimateFee` requires a built message body BoC (not available at
     /// compose time before the message is assembled), so we surface a
-    /// doc-grounded practical estimate (~0.0055 TON native, ~0.05 TON
-    /// jetton) and mark it non-editable. The exact number is fetched via
-    /// estimateFee on the built BoC just before signing (Rule #27 §C).
+    /// doc-grounded practical estimate (~0.0055 TON native) and the same
+    /// 0.05 TON jetton transfer reserve the signer attaches. Keep this
+    /// non-editable: TON has no user gas-price lever.
     func tonQuote(_ ctx: Context) async throws -> FeeQuote {
         let dec = ctx.chain.nativeDecimals // 9
-        // Native ≈ 0.0055 TON; jetton ≈ 0.05 TON (TON Foundation rec.).
+        // Native ≈ 0.0055 TON; jetton uses the signer attach reserve.
         let estimatedNative: Decimal = ctx.isToken
-            ? Decimal(string: "0.05")! : Decimal(string: "0.0055")!
+            ? TONTransactionSigner.jettonGasAttachTON : Decimal(string: "0.0055")!
         var c = makeChoice(tier: .normal, model: .tonFixed, decimals: dec) { _ in }
         c.setTotals(estimated: estimatedNative, worst: estimatedNative)
         return FeeQuote(chain: ctx.chain, feeModel: .tonFixed, tiers: [.normal: c],

@@ -217,6 +217,43 @@ struct SendTokenDescriptorTests {
         #expect(AptosTransactionSigner.resolveMaxGas(200_000) == 200_000)
     }
 
+    @MainActor
+    @Test("Fiat entry exposes available token balance in fiat")
+    func fiatEntryExposesAvailableTokenBalanceInFiat() {
+        let model = SendComposeModel(
+            chain: .ton,
+            tokenSymbol: "USDT",
+            tokenContract: TONJettonRegistry.tokens[0].masterContract,
+            tokenDecimals: 6,
+            fromAddress: "UQFromAddress",
+            recipients: [SendRecipientEntry(address: "UQRecipientAddress", name: nil)],
+            currencyCode: "USD"
+        )
+
+        model.setBalances(native: 1, token: 15, state: .init())
+        model.setPrices(asset: 1, native: 3)
+        model.toggleEntryUnit()
+
+        #expect(model.entryUnit == .fiat)
+        #expect(model.availableAssetBalance == 15)
+        #expect(model.availableAssetBalanceFiat == 15)
+    }
+
+    @Test("TON jetton quote matches signer attach reserve")
+    func tonJettonQuoteMatchesSignerAttachReserve() async throws {
+        let quote = try await ComposeFeeService().tonQuote(.init(
+            chain: .ton,
+            fromAddress: "UQFromAddress",
+            toAddress: "UQRecipientAddress",
+            tokenContract: TONJettonRegistry.tokens[0].masterContract,
+            tokenDecimals: 6
+        ))
+        let normal = try #require(quote.normal)
+
+        #expect(normal.estimatedTotalNative == TONTransactionSigner.jettonGasAttachTON)
+        #expect(normal.worstCaseTotalNative == TONTransactionSigner.jettonGasAttachTON)
+    }
+
     private func xrpQuote() -> FeeQuote {
         var fee = FeeChoice(
             tier: .normal,

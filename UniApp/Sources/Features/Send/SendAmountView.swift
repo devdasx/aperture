@@ -49,6 +49,8 @@ struct SendAmountView: View {
     /// immediately on appear (the unconditional `.task`) and thereafter
     /// only on material change — no double-fetch on entry (FIX 7).
     @State private var didInitialFeeLoad = false
+    /// The amount field should be ready to type when the amount step opens.
+    @State private var didRequestInitialAmountFocus = false
     @FocusState private var amountFocused: Bool
 
     /// Direction key for the compose sheets (Rule #12 §G / #15): rebuild
@@ -141,6 +143,7 @@ struct SendAmountView: View {
         .task { await resolvePrices() }
         .task { await model.loadFee() }
         .task { await model.loadUTXOs() }
+        .task { await focusInitialAmountField() }
         // Re-fetch the fee when a material input changes (recipient count,
         // or — for UTXO chains — the selected coins / amount that drive the
         // vsize-dependent fee). The unconditional `.task { loadFee() }`
@@ -229,7 +232,7 @@ struct SendAmountView: View {
             Image(systemName: "exclamationmark.triangle.fill")
                 .font(.system(size: 14))
                 .foregroundStyle(UniColors.Feedback.Warning.foreground)
-            Text(verbatim: error.message)
+            Text(verbatim: blockingMessage(for: error))
                 .font(UniTypography.footnote)
                 .foregroundStyle(UniColors.Text.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -240,6 +243,34 @@ struct SendAmountView: View {
             RoundedRectangle(cornerRadius: UniRadius.row, style: .continuous)
                 .fill(UniColors.Feedback.Warning.background)
         )
+    }
+
+    private func blockingMessage(for error: SendValidationError) -> String {
+        switch error {
+        case .insufficientNativeForFee(let feeNeeded, let nativeAvailable):
+            let needed = nativeAmountText(feeNeeded)
+            let available = nativeAmountText(nativeAvailable)
+            return String(localized: "Network fee needs \(needed). Available: \(available).")
+        default:
+            return error.message
+        }
+    }
+
+    private func nativeAmountText(_ amount: Decimal) -> String {
+        var text = "\(WalletFormatting.native(amount, decimals: chain.nativeDecimals)) \(chain.ticker)"
+        if let price = model.nativeUnitPrice, price > 0 {
+            text += " (\(WalletFormatting.fiat(amount * price, currencyCode: model.currencyCode)))"
+        }
+        return text
+    }
+
+    @MainActor
+    private func focusInitialAmountField() async {
+        guard !didRequestInitialAmountFocus else { return }
+        didRequestInitialAmountFocus = true
+        try? await Task.sleep(for: .milliseconds(300))
+        guard !Task.isCancelled, !model.isMultiRecipient else { return }
+        amountFocused = true
     }
 
     // MARK: - Options menu (the dots — gated by capability)

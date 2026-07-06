@@ -178,16 +178,22 @@ struct SendAmountHero: View {
     }
 
     private var availableLine: some View {
-        let available = model.isToken ? (model.tokenBalance ?? 0) : model.spendableNative
         return HStack(spacing: UniSpacing.xxs) {
             Text("Available")
                 .font(UniTypography.footnote)
                 .foregroundStyle(UniColors.Text.tertiary)
-            Text(verbatim: "\(WalletFormatting.native(available, decimals: model.effectiveDecimals)) \(model.assetSymbol)")
+            Text(verbatim: availableBalanceText)
                 .font(UniTypography.footnote.monospacedDigit())
                 .foregroundStyle(UniColors.Text.secondary)
                 .environment(\.layoutDirection, .leftToRight)
         }
+    }
+
+    private var availableBalanceText: String {
+        if model.entryUnit == .fiat, let fiat = model.availableAssetBalanceFiat {
+            return WalletFormatting.fiat(fiat, currencyCode: model.currencyCode)
+        }
+        return "\(WalletFormatting.native(model.availableAssetBalance, decimals: model.effectiveDecimals)) \(model.assetSymbol)"
     }
 
     // MARK: - Quiet pill buttons (selection-class affordances, not CTAs)
@@ -280,7 +286,7 @@ struct SendAmountMultiList: View {
                 Text("Total")
                     .font(UniTypography.footnote)
                     .foregroundStyle(UniColors.Text.tertiary)
-                Text(verbatim: "\(WalletFormatting.native(model.totalCrypto, decimals: model.effectiveDecimals)) \(model.assetSymbol)")
+                Text(verbatim: totalLineText)
                     .font(UniTypography.footnote.monospacedDigit())
                     .foregroundStyle(UniColors.Text.secondary)
                     .environment(\.layoutDirection, .leftToRight)
@@ -317,6 +323,13 @@ struct SendAmountMultiList: View {
         model.entryUnit == .crypto
             ? "Enter in \(model.currencyCode.uppercased())"
             : "Enter in \(model.assetSymbol)"
+    }
+
+    private var totalLineText: String {
+        if model.entryUnit == .fiat, let fiat = model.fiatValue(ofCrypto: model.totalCrypto) {
+            return WalletFormatting.fiat(fiat, currencyCode: model.currencyCode)
+        }
+        return "\(WalletFormatting.native(model.totalCrypto, decimals: model.effectiveDecimals)) \(model.assetSymbol)"
     }
 }
 

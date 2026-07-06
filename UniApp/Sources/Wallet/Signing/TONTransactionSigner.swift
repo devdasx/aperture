@@ -35,9 +35,15 @@ import WalletCore
 /// `sendBocReturnHash`; `output.hash` is the cell/tx hash.
 enum TONTransactionSigner {
 
-    /// TON amount attached to a jetton transfer message for gas
-    /// (TON Foundation recommendation ~0.05 TON; matrix §G7).
-    private static let jettonGasAttachNanoton: UInt64 = 100_000_000 // 0.1 TON (reference value)
+    /// TON amount attached to a jetton transfer message for gas. TON's
+    /// Jetton transfer flow sends an internal message to the sender's
+    /// jetton wallet; the attached TON funds that message path and excess
+    /// is returned. TonAPI's current cookbook uses 0.05 TON.
+    static let jettonGasAttachNanoton: UInt64 = 50_000_000
+    static let jettonGasAttachTON: Decimal = ComposeDecimal.toDisplay(
+        Decimal(jettonGasAttachNanoton),
+        decimals: SupportedChain.ton.nativeDecimals
+    )
     /// 1 nanoton forward to trigger the transfer notification.
     private static let jettonForwardNanoton: UInt64 = 1
     /// External-message expiry window (now + 60s).

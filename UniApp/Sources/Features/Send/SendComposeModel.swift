@@ -358,6 +358,19 @@ final class SendComposeModel {
         )
     }
 
+    /// Available balance for the asset being sent, in that asset's display
+    /// units. Token sends show token balance; native sends show spendable
+    /// native balance after standing reserves.
+    var availableAssetBalance: Decimal {
+        isToken ? max(tokenBalance ?? 0, 0) : spendableNative
+    }
+
+    /// Available balance converted into the user's currency when the sent
+    /// asset has a price.
+    var availableAssetBalanceFiat: Decimal? {
+        fiatValue(ofCrypto: availableAssetBalance)
+    }
+
     /// The "Max" amount (send-all) for the active asset in display units.
     /// nil when the fee isn't loaded yet (we can't honestly compute it).
     var maxAmount: Decimal? {
