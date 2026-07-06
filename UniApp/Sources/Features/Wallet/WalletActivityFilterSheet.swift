@@ -108,7 +108,6 @@ struct WalletActivityFilterSheet: View {
                 timeSection
                 showSection
                 amountSection
-                resetSection
             }
             .listStyle(.insetGrouped)
             .scrollContentBackground(.hidden)
@@ -116,8 +115,12 @@ struct WalletActivityFilterSheet: View {
             .navigationTitle(Text("Filter & Sort"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
+                ToolbarItemGroup(placement: .topBarLeading) {
                     Button("Cancel") { dismiss() }.tint(UniColors.Button.text)
+                    if hasNonDefaultFilters {
+                        Button("Reset") { isShowingResetConfirmation = true }
+                            .tint(UniColors.Feedback.Error.foreground)
+                    }
                 }
             }
             .navigationDestination(for: WalletActivityFilterDestination.self) { destination in
@@ -155,6 +158,21 @@ struct WalletActivityFilterSheet: View {
                 Text("This clears every Activity filter and sort choice. Continue?")
             }
         }
+    }
+
+    private var hasNonDefaultFilters: Bool {
+        sortKeyRaw != WalletActivityFilterPreferences.defaultSortKey.rawValue
+            || directionRaw != WalletActivityFilterPreferences.defaultDirection.rawValue
+            || statusRaw != WalletActivityFilterPreferences.defaultStatus.rawValue
+            || kindRaw != WalletActivityFilterPreferences.defaultKind.rawValue
+            || assetClassRaw != WalletActivityFilterPreferences.defaultAssetClass.rawValue
+            || timeRangeRaw != WalletActivityFilterPreferences.defaultTimeRange.rawValue
+            || customStart != WalletActivityFilterPreferences.defaultCustomDate
+            || customEnd != WalletActivityFilterPreferences.defaultCustomDate
+            || !selectedNetworks.isEmpty
+            || !selectedSymbols.isEmpty
+            || minFiat != WalletActivityFilterPreferences.defaultAmount
+            || maxFiat != WalletActivityFilterPreferences.defaultAmount
     }
 
     // MARK: - Preview header
@@ -441,25 +459,6 @@ struct WalletActivityFilterSheet: View {
             )
         }
         .padding(.vertical, UniSpacing.xxs)
-    }
-
-    // MARK: - Reset
-
-    @ViewBuilder
-    private var resetSection: some View {
-        Section {
-            UniButton(title: "Reset to defaults", variant: .destructive) {
-                isShowingResetConfirmation = true
-            }
-            .listRowBackground(Color.clear)
-            .listRowSeparator(.hidden)
-            .listRowInsets(EdgeInsets(
-                top: UniSpacing.s,
-                leading: UniSpacing.m,
-                bottom: UniSpacing.s,
-                trailing: UniSpacing.m
-            ))
-        }
     }
 
     // MARK: - Custom window seeding

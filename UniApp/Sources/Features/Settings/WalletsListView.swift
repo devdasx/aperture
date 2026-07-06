@@ -936,7 +936,6 @@ struct WalletsListFilterSheet: View {
                 networksSection
                 securitySection
                 dateSection
-                resetSection
             }
             .listStyle(.insetGrouped)
             .scrollContentBackground(.hidden)
@@ -944,6 +943,12 @@ struct WalletsListFilterSheet: View {
             .navigationTitle(Text("Filter & Sort"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    if hasNonDefaultFilters {
+                        Button("Reset") { isShowingResetConfirm = true }
+                            .tint(UniColors.Feedback.Error.foreground)
+                    }
+                }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button { dismiss() } label: {
                         Text("Done").font(UniTypography.bodyEmphasized)
@@ -962,6 +967,27 @@ struct WalletsListFilterSheet: View {
             }
             .onAppear(perform: migrateLegacyBackupFilter)
         }
+    }
+
+    private var hasNonDefaultFilters: Bool {
+        sortKeyRaw != WalletsListSortKey.custom.rawValue
+            || sortAscending != true
+            || showCreated != true
+            || showImportedMnemonic != true
+            || showImportedKey != true
+            || showWatchOnly != true
+            || activeScopeRaw != WalletsListActiveScope.all.rawValue
+            || visibilityScopeRaw != WalletsListVisibilityScope.all.rawValue
+            || backupScopeRaw != WalletsListBackupScope.all.rawValue
+            || legacyOnlyUnbackedUp != false
+            || balanceScopeRaw != WalletsListBalanceScope.all.rawValue
+            || minFiatRaw != ""
+            || maxFiatRaw != ""
+            || networkScopeRaw != WalletsListNetworkScope.all.rawValue
+            || !WalletsListFilterSupport.decode(selectedNetworksJSON).isEmpty
+            || secretScopeRaw != WalletsListSecretScope.all.rawValue
+            || onlyPassphrase != false
+            || dateRangeRaw != WalletsListDateRange.all.rawValue
     }
 
     private var sortSection: some View {
@@ -1116,17 +1142,6 @@ struct WalletsListFilterSheet: View {
             .listRowBackground(UniColors.List.rowBackground)
         } header: {
             Text("Added").font(UniTypography.footnote).foregroundStyle(UniColors.Text.tertiary)
-        }
-    }
-
-    private var resetSection: some View {
-        Section {
-            Button(role: .destructive) {
-                isShowingResetConfirm = true
-            } label: {
-                Text("Reset filters").font(UniTypography.body)
-            }
-            .listRowBackground(UniColors.List.rowBackground)
         }
     }
 

@@ -5,9 +5,9 @@ import SwiftUI
 /// mode (split vs combined), asset type, sort key + direction,
 /// grouping, the only-with-balance toggle, the min-value threshold,
 /// the networks multi-select, the two visibility editors (Hidden
-/// assets, Hidden chains), and the pinned-assets roster. A
-/// destructive "Reset to defaults" CTA at the bottom wipes every
-/// preference this feature owns, behind a `.confirmationDialog`
+/// assets, Hidden chains), and the pinned-assets roster. A conditional
+/// destructive Reset action in the toolbar wipes every preference this
+/// feature owns, behind a `.confirmationDialog`
 /// gate so the user can pull back.
 ///
 /// **Design intent (Rule #2 §D.1):** put one screen between the
@@ -128,7 +128,6 @@ struct WalletHomeFilterSheet: View {
                 previewSection
                 viewSection
                 showSection
-                resetSection
             }
             .listStyle(.insetGrouped)
             .scrollContentBackground(.hidden)
@@ -136,8 +135,12 @@ struct WalletHomeFilterSheet: View {
             .navigationTitle(Text("Filter & Sort"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
+                ToolbarItemGroup(placement: .topBarLeading) {
                     Button("Cancel") { dismiss() }.tint(UniColors.Button.text)
+                    if hasNonDefaultFilters {
+                        Button("Reset") { isShowingResetConfirmation = true }
+                            .tint(UniColors.Feedback.Error.foreground)
+                    }
                 }
             }
             .navigationDestination(for: FilterDestination.self) { destination in
@@ -180,6 +183,20 @@ struct WalletHomeFilterSheet: View {
                 refreshDerivedState()
             }
         }
+    }
+
+    private var hasNonDefaultFilters: Bool {
+        viewModeRaw != WalletHomeFilterPreferences.defaultViewMode.rawValue
+            || sortKeyRaw != WalletHomeFilterPreferences.defaultSortKey.rawValue
+            || sortDirectionRaw != WalletHomeFilterPreferences.defaultSortDirection.rawValue
+            || onlyWithBalance != WalletHomeFilterPreferences.defaultOnlyWithBalance
+            || !WalletHomeFilterPreferences.decode(hiddenAssetsJSON).isEmpty
+            || !WalletHomeFilterPreferences.decode(hiddenChainsJSON).isEmpty
+            || assetTypeRaw != WalletHomeFilterPreferences.defaultAssetType.rawValue
+            || groupByRaw != WalletHomeFilterPreferences.defaultGroupBy.rawValue
+            || minFiatThresholdRaw != WalletHomeFilterPreferences.defaultMinFiatThreshold
+            || !WalletHomeFilterPreferences.decode(selectedNetworksJSON).isEmpty
+            || !WalletHomeFilterPreferences.decode(pinnedAssetsJSON).isEmpty
     }
 
     // MARK: - Preview header
@@ -521,27 +538,6 @@ struct WalletHomeFilterSheet: View {
         }
         .padding(.vertical, UniSpacing.xxs)
         .uniListRowHitTarget()
-    }
-
-    // MARK: - Reset section
-
-    /// Reset to defaults. Destructive variant; tap presents the
-    /// confirmation dialog above before any writes happen.
-    @ViewBuilder
-    private var resetSection: some View {
-        Section {
-            UniButton(title: "Reset to defaults", variant: .destructive) {
-                isShowingResetConfirmation = true
-            }
-            .listRowBackground(Color.clear)
-            .listRowSeparator(.hidden)
-            .listRowInsets(EdgeInsets(
-                top: UniSpacing.s,
-                leading: UniSpacing.m,
-                bottom: UniSpacing.s,
-                trailing: UniSpacing.m
-            ))
-        }
     }
 
     // MARK: - Preview-message computation (off-body)

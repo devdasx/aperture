@@ -89,9 +89,9 @@ import SwiftUI
 /// uses (EVM checksum, SPL mint, Move address, XRPL
 /// `currency.issuer`, etc.).
 ///
-/// **Reset semantics.** The Reset to defaults button writes every
-/// preference back to its default value AND clears every set to
-/// empty. `WalletHomeFilterPreferences.resetAll()` is the
+/// **Reset semantics.** The toolbar Reset action writes every
+/// preference back to its default value AND clears every set to empty.
+/// `WalletHomeFilterPreferences.resetAll()` is the
 /// implementation; it's the only entry point that writes more than
 /// one key at a time.
 enum WalletHomeFilterPreferences {
@@ -375,7 +375,7 @@ enum WalletHomeFilterPreferences {
     // MARK: - Reset
 
     /// Wipe every preference key this feature owns. Called by the
-    /// "Reset to defaults" CTA in the sheet after the user confirms.
+    /// toolbar Reset action in the sheet after the user confirms.
     static func resetAll() {
         let store = AppPreferenceStore.shared
         store.set(defaultViewMode.rawValue, forKey: viewModeKey)

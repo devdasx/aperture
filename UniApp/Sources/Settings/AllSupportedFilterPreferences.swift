@@ -105,7 +105,7 @@ enum AllSupportedFilterPreferences {
     // MARK: - Reset
 
     /// Wipe every preference key this feature owns. Called by the
-    /// "Reset to defaults" CTA after the user confirms.
+    /// toolbar Reset action after the user confirms.
     static func resetAll() {
         let store = AppPreferenceStore.shared
         store.set(defaultSortKey.rawValue, forKey: sortKeyKey)

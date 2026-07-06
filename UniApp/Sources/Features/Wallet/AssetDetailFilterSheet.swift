@@ -92,7 +92,6 @@ struct AssetDetailFilterSheet: View {
                 previewSection
                 viewSection
                 showSection
-                resetSection
             }
             .listStyle(.insetGrouped)
             .scrollContentBackground(.hidden)
@@ -100,8 +99,12 @@ struct AssetDetailFilterSheet: View {
             .navigationTitle(Text("Filter & Sort"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
+                ToolbarItemGroup(placement: .topBarLeading) {
                     Button("Cancel") { dismiss() }.tint(UniColors.Button.text)
+                    if hasNonDefaultFilters {
+                        Button("Reset") { isShowingResetConfirmation = true }
+                            .tint(UniColors.Feedback.Error.foreground)
+                    }
                 }
             }
             .navigationDestination(for: AssetFilterDestination.self) { destination in
@@ -126,6 +129,14 @@ struct AssetDetailFilterSheet: View {
                 Text("This clears every filter and sort choice for asset details. Continue?")
             }
         }
+    }
+
+    private var hasNonDefaultFilters: Bool {
+        sortKeyRaw != AssetDetailFilterPreferences.defaultSortKey.rawValue
+            || directionRaw != AssetDetailFilterPreferences.defaultDirection.rawValue
+            || !selectedNetworks.isEmpty
+            || timeRangeRaw != AssetDetailFilterPreferences.defaultTimeRange.rawValue
+            || hideZeroNetworks != AssetDetailFilterPreferences.defaultHideZeroNetworks
     }
 
     // MARK: - Preview header
@@ -307,25 +318,6 @@ struct AssetDetailFilterSheet: View {
         .tint(UniColors.Button.Primary.tint)
         .padding(.vertical, UniSpacing.xxs)
         .uniHaptic(.selection, trigger: hideZeroNetworks)
-    }
-
-    // MARK: - Reset section
-
-    @ViewBuilder
-    private var resetSection: some View {
-        Section {
-            UniButton(title: "Reset to defaults", variant: .destructive) {
-                isShowingResetConfirmation = true
-            }
-            .listRowBackground(Color.clear)
-            .listRowSeparator(.hidden)
-            .listRowInsets(EdgeInsets(
-                top: UniSpacing.s,
-                leading: UniSpacing.m,
-                bottom: UniSpacing.s,
-                trailing: UniSpacing.m
-            ))
-        }
     }
 
     // MARK: - Bindings

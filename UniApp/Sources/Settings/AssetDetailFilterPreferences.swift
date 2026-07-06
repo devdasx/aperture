@@ -157,8 +157,8 @@ enum AssetDetailFilterPreferences {
     // MARK: - Reset
 
     /// Wipe every preference key this feature owns. Called by the
-    /// "Reset to defaults" CTA in `AssetDetailFilterSheet` after the
-    /// user confirms.
+    /// toolbar Reset action in `AssetDetailFilterSheet` after the user
+    /// confirms.
     static func resetAll() {
         let store = AppPreferenceStore.shared
         store.set(defaultSortKey.rawValue, forKey: sortKeyKey)
