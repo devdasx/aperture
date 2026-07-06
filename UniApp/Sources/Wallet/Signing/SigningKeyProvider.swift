@@ -53,6 +53,8 @@ enum SigningKeyProvider {
     }
 
     private static let databaseBox = DatabaseBox()
+    private static let solanaPhantomLegacyAccount0Path = "m/44'/501'/0'/0'"
+    private static let solanaPathScanLimit = 50
 
     static func configure(database: AppDatabase) {
         databaseBox.set(database)
@@ -119,8 +121,15 @@ enum SigningKeyProvider {
         _ body: (PrivateKey) throws -> R
     ) throws -> R {
         if let privateKey = loadEncryptedChainKey(walletId: wallet.id, chain: chain, coin: coin) {
-            try assertParity(privateKey: privateKey, coin: coin, expected: expectedAddress, chain: chain)
-            return try body(privateKey)
+            do {
+                try assertParity(privateKey: privateKey, coin: coin, expected: expectedAddress, chain: chain)
+                return try body(privateKey)
+            } catch let error as SigningError {
+                guard chain == .solana else { throw error }
+                // Older wallet rows may hold a Solana address discovered on
+                // Trust Wallet / Phantom paths while chain_states still has a
+                // default key blob. Fall through to mnemonic path matching.
+            }
         }
 
         // A passphrase-protected wallet derived its addresses WITH the
@@ -156,10 +165,38 @@ enum SigningKeyProvider {
         // Bitcoin path below. For a single-key request (EVM + the
         // account-model default), the coin's default-path key is what
         // the importer used.
+        if chain == .solana,
+           let result = try withSolanaMnemonicKey(
+               walletId: wallet.id,
+               hdWallet: hdWallet,
+               coin: coin,
+               expectedAddress: expectedAddress,
+               body
+           ) {
+            return result
+        }
+
         let privateKey = hdWallet.getKeyForCoin(coin: coin)
         try assertParity(privateKey: privateKey, coin: coin, expected: expectedAddress, chain: chain)
         return try body(privateKey)
         // `hdWallet`, `words`, and `privateKey` go out of scope here.
+    }
+
+    private static func withSolanaMnemonicKey<R>(
+        walletId: UUID,
+        hdWallet: HDWallet,
+        coin: CoinType,
+        expectedAddress: String?,
+        _ body: (PrivateKey) throws -> R
+    ) throws -> R? {
+        guard let expectedAddress, !expectedAddress.isEmpty else { return nil }
+        for path in solanaDerivationPathCandidates(walletId: walletId, expectedAddress: expectedAddress) {
+            let privateKey = hdWallet.getKey(coin: coin, derivationPath: path)
+            guard coin.deriveAddress(privateKey: privateKey) == expectedAddress else { continue }
+            persistSolanaAddressPath(walletId: walletId, address: expectedAddress, path: path)
+            return try body(privateKey)
+        }
+        return nil
     }
 
     // MARK: - Single-private-key wallets
@@ -404,6 +441,77 @@ enum SigningKeyProvider {
             if !path.isEmpty { result[address] = path }
         }
         return result
+    }
+
+    private static func loadSolanaAddressPath(walletId: UUID, address: String) -> String? {
+        guard !address.isEmpty, let database = databaseBox.get() else { return nil }
+        let path = try? database.read { db in
+            try String.fetchOne(
+                db,
+                sql: """
+                SELECT derivation_path
+                FROM wallet_addresses
+                WHERE wallet_id = ? AND chain_raw = ? AND address = ?
+                LIMIT 1
+                """,
+                arguments: [walletId.uuidString, SupportedChain.solana.rawValue, address]
+            )
+        }
+        guard let path, !path.isEmpty else { return nil }
+        return path
+    }
+
+    private static func persistSolanaAddressPath(walletId: UUID, address: String, path: String) {
+        guard !address.isEmpty, !path.isEmpty, let database = databaseBox.get() else { return }
+        try? database.write { db in
+            try db.execute(
+                sql: """
+                UPDATE wallet_addresses
+                SET derivation_path = ?
+                WHERE wallet_id = ? AND chain_raw = ? AND address = ?
+                  AND derivation_path != ?
+                """,
+                arguments: [
+                    path,
+                    walletId.uuidString,
+                    SupportedChain.solana.rawValue,
+                    address,
+                    path
+                ]
+            )
+            try db.execute(
+                sql: """
+                UPDATE chain_states
+                SET derivation_path = ?
+                WHERE wallet_id = ? AND chain_raw = ? AND address = ?
+                  AND derivation_path != ?
+                """,
+                arguments: [
+                    path,
+                    walletId.uuidString,
+                    SupportedChain.solana.rawValue,
+                    address,
+                    path
+                ]
+            )
+        }
+    }
+
+    private static func solanaDerivationPathCandidates(walletId: UUID, expectedAddress: String) -> [String] {
+        var paths: [String] = []
+        if let persisted = loadSolanaAddressPath(walletId: walletId, address: expectedAddress) {
+            paths.append(persisted)
+        }
+
+        paths.append(solanaPhantomLegacyAccount0Path)
+        paths.append("m/44'/501'/0'")
+        for account in 0..<solanaPathScanLimit {
+            paths.append("m/44'/501'/\(account)'/0'")
+            paths.append("m/44'/501'/\(account)'")
+        }
+
+        var seen = Set<String>()
+        return paths.filter { seen.insert($0).inserted }
     }
 
     // MARK: - Bitcoin-family BIP purpose / SLIP-44

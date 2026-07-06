@@ -269,14 +269,19 @@ final class WalletCommandRepository {
         for entry in addresses {
             let supportedChain = SupportedChain(rawValue: entry.chainRaw)
             let isFirstAddressForChain = supportedChain.map { addressByChain[$0] == nil } ?? false
+            let derivationPath = supportedChain == .solana ? "m/44'/501'/0'/0'" : ""
             let addressId = UUID()
             try db.execute(
                 sql: """
                 INSERT INTO wallet_addresses
                 (id, wallet_id, chain_raw, address, derivation_path,
                  is_used, is_receive_preferred, last_scanned_at_ms)
-                VALUES (?, ?, ?, ?, '', 0, ?, NULL)
+                VALUES (?, ?, ?, ?, ?, 0, ?, NULL)
                 ON CONFLICT(wallet_id, chain_raw, address) DO UPDATE SET
+                    derivation_path = CASE
+                        WHEN wallet_addresses.derivation_path = '' THEN excluded.derivation_path
+                        ELSE wallet_addresses.derivation_path
+                    END,
                     is_receive_preferred = excluded.is_receive_preferred
                 """,
                 arguments: [
@@ -284,6 +289,7 @@ final class WalletCommandRepository {
                     walletId.uuidString,
                     entry.chainRaw,
                     entry.address,
+                    derivationPath,
                     isFirstAddressForChain
                 ]
             )
@@ -294,15 +300,20 @@ final class WalletCommandRepository {
                  native_balance_raw, native_decimals, native_fiat,
                  native_fiat_numeric, total_fiat, total_fiat_numeric,
                  token_count, fiat_currency_code, sync_state_raw)
-                VALUES (?, ?, ?, ?, '', '0', 0, '0', 0, '0', 0, 0, ?, 'idle')
+                VALUES (?, ?, ?, ?, ?, '0', 0, '0', 0, '0', 0, 0, ?, 'idle')
                 ON CONFLICT(wallet_id, chain_raw) DO UPDATE SET
-                    address = excluded.address
+                    address = excluded.address,
+                    derivation_path = CASE
+                        WHEN chain_states.derivation_path = '' THEN excluded.derivation_path
+                        ELSE chain_states.derivation_path
+                    END
                 """,
                 arguments: [
                     UUID().uuidString,
                     walletId.uuidString,
                     entry.chainRaw,
                     entry.address,
+                    derivationPath,
                     CurrencyPreference.defaultCode
                 ]
             )

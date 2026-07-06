@@ -1,6 +1,7 @@
 import SwiftUI
 import UIKit
 import UniformTypeIdentifiers
+import GRDB
 import WalletCore
 
 /// Step 3 of the Receive sheet — the QR card + address + share +
@@ -44,6 +45,8 @@ struct ReceiveQRDetailView: View {
     @State private var isShowingEVMAccountSearch: Bool = false
     @State private var solanaOverrideAddress: String?
     @State private var isShowingSolanaAccountSearch: Bool = false
+    @State private var isSwitchingSolanaPath: Bool = false
+    @State private var solanaPathSwitchError: String?
 
     /// What the user is receiving, in the toolbar title. Native →
     /// chain name; token → "USDC".
@@ -97,6 +100,33 @@ struct ReceiveQRDetailView: View {
 
     private var showsBitcoinTypePicker: Bool {
         chain == .bitcoin && bitcoinChoices.count > 1
+    }
+
+    private var activeSolanaAddressRecord: WalletAddressRecord? {
+        guard chain == .solana else { return nil }
+        let rows = activeWallet?.addresses.filter {
+            $0.chainRaw == SupportedChain.solana.rawValue && !$0.address.isEmpty
+        } ?? []
+        return rows.first(where: { $0.address == displayedAddress })
+            ?? rows.first(where: \.isReceivePreferred)
+            ?? rows.first
+    }
+
+    private var selectedSolanaPathStyle: SolanaReceivePathStyle? {
+        activeSolanaAddressRecord
+            .flatMap { SolanaReceivePathStyle.parse($0.derivationPath)?.style }
+    }
+
+    private var selectedSolanaPathAccount: Int {
+        activeSolanaAddressRecord
+            .flatMap { SolanaReceivePathStyle.parse($0.derivationPath)?.account }
+            ?? 0
+    }
+
+    private var canSwitchSolanaPath: Bool {
+        guard chain == .solana, let wallet = activeWallet else { return false }
+        guard wallet.hasPassphrase == false else { return false }
+        return wallet.kind == .created || wallet.kind == .importedMnemonic
     }
 
     private var bitcoinSelectionStorageKey: String? {
@@ -202,6 +232,17 @@ struct ReceiveQRDetailView: View {
         }
         .onChange(of: displayedAddress) { _, _ in
             resetCopyButtonFeedback()
+        }
+        .alert(
+            "Couldn't change Solana path",
+            isPresented: Binding(
+                get: { solanaPathSwitchError != nil },
+                set: { if !$0 { solanaPathSwitchError = nil } }
+            )
+        ) {
+            Button("OK", role: .cancel) { solanaPathSwitchError = nil }
+        } message: {
+            Text(solanaPathSwitchError ?? "")
         }
         .onDisappear {
             copyButtonResetTask?.cancel()
@@ -315,6 +356,119 @@ struct ReceiveQRDetailView: View {
         selectedBitcoinTypeRaw = preferredType.rawValue
     }
 
+    @MainActor
+    private func switchSolanaPath(to style: SolanaReceivePathStyle) {
+        guard canSwitchSolanaPath, let wallet = activeWallet, isSwitchingSolanaPath == false else { return }
+        isSwitchingSolanaPath = true
+        solanaPathSwitchError = nil
+
+        let walletId = wallet.id
+        let walletKind = wallet.kind
+        let hasPassphrase = wallet.hasPassphrase
+        let account = selectedSolanaPathAccount
+        let database = AppDatabase.shared
+
+        Task {
+            do {
+                let result = try await Task.detached(priority: .userInitiated) {
+                    try SolanaReceivePathResolver.resolve(
+                        walletId: walletId,
+                        walletKind: walletKind,
+                        hasPassphrase: hasPassphrase,
+                        style: style,
+                        account: account,
+                        database: database
+                    )
+                }.value
+                try persistSolanaReceiveAddress(walletId: walletId, result: result)
+                solanaOverrideAddress = result.address
+            } catch {
+                solanaPathSwitchError = SolanaReceivePathSwitchError.message(for: error)
+            }
+            isSwitchingSolanaPath = false
+        }
+    }
+
+    @MainActor
+    private func persistSolanaReceiveAddress(
+        walletId: UUID,
+        result: SolanaReceivePathSwitchResult
+    ) throws {
+        let chainRaw = SupportedChain.solana.rawValue
+        try AppDatabase.shared.write { db in
+            let existingIdRaw = try String.fetchOne(
+                db,
+                sql: """
+                SELECT id FROM wallet_addresses
+                WHERE wallet_id = ? AND chain_raw = ? AND address = ?
+                LIMIT 1
+                """,
+                arguments: [walletId.uuidString, chainRaw, result.address]
+            )
+            let addressId = existingIdRaw.flatMap(UUID.init(uuidString:)) ?? UUID()
+
+            try db.execute(
+                sql: """
+                UPDATE wallet_addresses
+                SET is_receive_preferred = 0
+                WHERE wallet_id = ? AND chain_raw = ?
+                """,
+                arguments: [walletId.uuidString, chainRaw]
+            )
+
+            if existingIdRaw != nil {
+                try db.execute(
+                    sql: """
+                    UPDATE wallet_addresses
+                    SET derivation_path = ?,
+                        is_receive_preferred = 1
+                    WHERE id = ?
+                    """,
+                    arguments: [result.derivationPath, addressId.uuidString]
+                )
+            } else {
+                try db.execute(
+                    sql: """
+                    INSERT INTO wallet_addresses
+                    (id, wallet_id, chain_raw, address, derivation_path,
+                     is_used, is_receive_preferred, last_scanned_at_ms)
+                    VALUES (?, ?, ?, ?, ?, 0, 1, NULL)
+                    """,
+                    arguments: [
+                        addressId.uuidString,
+                        walletId.uuidString,
+                        chainRaw,
+                        result.address,
+                        result.derivationPath
+                    ]
+                )
+            }
+
+            try db.execute(
+                sql: """
+                INSERT INTO chain_states
+                (id, wallet_id, chain_raw, address, derivation_path,
+                 native_balance_raw, native_decimals, native_fiat,
+                 native_fiat_numeric, total_fiat, total_fiat_numeric,
+                 token_count, fiat_currency_code, sync_state_raw)
+                VALUES (?, ?, ?, ?, ?, '0', ?, '0', 0, '0', 0, 0, ?, 'idle')
+                ON CONFLICT(wallet_id, chain_raw) DO UPDATE SET
+                    address = excluded.address,
+                    derivation_path = excluded.derivation_path
+                """,
+                arguments: [
+                    UUID().uuidString,
+                    walletId.uuidString,
+                    chainRaw,
+                    result.address,
+                    result.derivationPath,
+                    SupportedChain.solana.nativeDecimals,
+                    CurrencyPreference.defaultCode
+                ]
+            )
+        }
+    }
+
     @ToolbarContentBuilder
     private var toolbarContent: some ToolbarContent {
         ToolbarItem(placement: .topBarTrailing) {
@@ -379,6 +533,24 @@ struct ReceiveQRDetailView: View {
                         isShowingSolanaAccountSearch = true
                     }
 
+                    Menu("Address path") {
+                        ForEach(SolanaReceivePathStyle.allCases) { style in
+                            Button {
+                                switchSolanaPath(to: style)
+                            } label: {
+                                Label {
+                                    Text(style.title)
+                                } icon: {
+                                    if selectedSolanaPathStyle == style {
+                                        Image(systemName: "checkmark")
+                                    }
+                                }
+                            }
+                            .disabled(!canSwitchSolanaPath || isSwitchingSolanaPath)
+                        }
+                    }
+                    .disabled(!canSwitchSolanaPath || isSwitchingSolanaPath)
+
                     Button("Address info") {
                         isShowingGuide = true
                     }
@@ -399,6 +571,116 @@ struct ReceiveQRDetailView: View {
                 .accessibilityLabel(Text("What's a receive address?"))
             }
         }
+    }
+}
+
+private enum SolanaReceivePathStyle: String, CaseIterable, Identifiable, Sendable, Hashable {
+    case phantom
+    case trustWallet
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .phantom: return "Phantom"
+        case .trustWallet: return "Trust Wallet"
+        }
+    }
+
+    func derivationPath(account: Int) -> String {
+        switch self {
+        case .phantom:
+            return "m/44'/501'/\(account)'/0'"
+        case .trustWallet:
+            return "m/44'/501'/\(account)'"
+        }
+    }
+
+    static func parse(_ path: String) -> (style: SolanaReceivePathStyle, account: Int)? {
+        let prefix = "m/44'/501'/"
+        guard path.hasPrefix(prefix) else { return nil }
+        let suffix = String(path.dropFirst(prefix.count))
+        if suffix.hasSuffix("'/0'") {
+            let accountRaw = suffix.dropLast(4)
+            guard let account = Int(accountRaw) else { return nil }
+            return (.phantom, account)
+        }
+        if suffix.hasSuffix("'"), suffix.contains("/") == false {
+            let accountRaw = suffix.dropLast()
+            guard let account = Int(accountRaw) else { return nil }
+            return (.trustWallet, account)
+        }
+        return nil
+    }
+}
+
+private struct SolanaReceivePathSwitchResult: Sendable {
+    let style: SolanaReceivePathStyle
+    let account: Int
+    let derivationPath: String
+    let address: String
+}
+
+private enum SolanaReceivePathSwitchError: Error {
+    case unsupportedWallet
+    case passphraseWallet
+    case missingMnemonic
+    case invalidMnemonic
+
+    static func message(for error: Error) -> String {
+        switch error {
+        case SolanaReceivePathSwitchError.unsupportedWallet:
+            return "This wallet has one fixed Solana address, so there is no alternate derivation path to select."
+        case SolanaReceivePathSwitchError.passphraseWallet:
+            return "This wallet uses a BIP-39 passphrase. Entering the passphrase is required before alternate Solana paths can be derived."
+        case SolanaReceivePathSwitchError.missingMnemonic:
+            return "The recovery phrase is not available on this device."
+        case SolanaReceivePathSwitchError.invalidMnemonic:
+            return "The saved recovery phrase could not derive a Solana address."
+        default:
+            return error.localizedDescription
+        }
+    }
+}
+
+private enum SolanaReceivePathResolver {
+    static func resolve(
+        walletId: UUID,
+        walletKind: WalletKind,
+        hasPassphrase: Bool,
+        style: SolanaReceivePathStyle,
+        account: Int,
+        database: AppDatabase
+    ) throws -> SolanaReceivePathSwitchResult {
+        guard walletKind == .created || walletKind == .importedMnemonic else {
+            throw SolanaReceivePathSwitchError.unsupportedWallet
+        }
+        guard hasPassphrase == false else {
+            throw SolanaReceivePathSwitchError.passphraseWallet
+        }
+        guard let words = try WalletSecretPersistence.loadMnemonic(for: walletId, database: database),
+              !words.isEmpty else {
+            throw SolanaReceivePathSwitchError.missingMnemonic
+        }
+
+        let phrase = words
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
+            .filter { !$0.isEmpty }
+            .joined(separator: " ")
+        guard let wallet = HDWallet(mnemonic: phrase, passphrase: "") else {
+            throw SolanaReceivePathSwitchError.invalidMnemonic
+        }
+
+        let path = style.derivationPath(account: account)
+        let privateKey = wallet.getKey(coin: .solana, derivationPath: path)
+        let address = CoinType.solana.deriveAddress(privateKey: privateKey)
+        guard !address.isEmpty else { throw SolanaReceivePathSwitchError.invalidMnemonic }
+        return SolanaReceivePathSwitchResult(
+            style: style,
+            account: account,
+            derivationPath: path,
+            address: address
+        )
     }
 }
 
