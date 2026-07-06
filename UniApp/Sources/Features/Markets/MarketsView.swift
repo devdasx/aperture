@@ -1163,7 +1163,7 @@ private struct MarketAssetRow: View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 5) {
                 Text(asset.name)
-                    .font(.system(size: 15.5, weight: .semibold))
+                    .font(.system(size: 15.5, weight: .medium))
                     .lineLimit(1)
                     .minimumScaleFactor(0.82)
                     .allowsTightening(true)
@@ -1173,19 +1173,13 @@ private struct MarketAssetRow: View {
                         .foregroundStyle(.yellow)
                 }
             }
-            Text(MarketFormatting.marketCapSubtitle(asset.marketCap, code: asset.currencyCode))
-                .font(.footnote)
-                .foregroundStyle(UniColors.Text.secondary)
-                .lineLimit(1)
-                .minimumScaleFactor(0.82)
-                .allowsTightening(true)
         }
     }
 
     private var priceStack: some View {
         VStack(alignment: .trailing, spacing: 5) {
             Text(MarketFormatting.currency(asset.price, code: asset.currencyCode))
-                .font(.system(size: 15, weight: .semibold))
+                .font(.system(size: 15, weight: .medium))
                 .monospacedDigit()
                 .lineLimit(1)
                 .minimumScaleFactor(0.74)
@@ -1504,23 +1498,6 @@ private enum MarketFormatting {
         guard value > 0 else { return "—" }
         let compact = compact(value)
         return "\(currency(compact.value, code: code))\(compact.suffix)"
-    }
-
-    static func marketCapSubtitle(_ value: Double, code: String) -> String {
-        guard value > 0 else { return "MK —" }
-        let symbol = CurrencyPreference.currency(for: code)?.symbol ?? code.uppercased()
-        let compact = compact(value)
-        let absolute = abs(compact.value)
-        let decimals: Int
-        if compact.suffix.isEmpty || absolute >= 100 {
-            decimals = 0
-        } else if absolute >= 10 {
-            decimals = 1
-        } else {
-            decimals = 2
-        }
-        let number = compact.value.formatted(.number.precision(.fractionLength(0...decimals)))
-        return "MK \(number)\(compact.suffix)\(symbol)"
     }
 
     static func compactNumber(_ value: Double, suffix: String) -> String {
