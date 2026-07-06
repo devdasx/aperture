@@ -5,16 +5,17 @@ cryptocurrency wallet for iPhone. Design and copy are grounded directly in the
 app's source code (`github.com/devdasx/aperture`) — every claim on the site
 maps to something real in the product.
 
-**Art direction:** Apple‑style restraint — monochrome (ink `#0B0D11` on white
-`#F5F5F7`), SF‑system type at large scale with tight tracking, generous white
+**Art direction:** restrained monochrome — ink `#0B0D11` on white
+`#F5F5F7`, self-hosted Inter at large scale with tight tracking, generous white
 space, ruled "spec‑sheet" grids, and quiet motion. Light mode throughout.
 
 ---
 
 ## Pages
 
-Open `index.html` (it redirects to the landing screen), or open any screen
-file directly in a browser.
+Open `index.html` for the overview screen. Production routes are clean URLs:
+`/`, `/security`, `/open-source`, `/faq`, `/contact`, `/privacy`,
+`/privacy-choices`, and `/terms`.
 
 | # | File | Screen | What it covers |
 |---|------|--------|----------------|
@@ -25,6 +26,7 @@ file directly in a browser.
 | 5 | `Aperture Open Source.dc.html` | **Open Source** | Reproducible builds (clone → build → compare), two‑dependency discipline, Swift 6, public test suite |
 | 6 | `Aperture Contact.dc.html` | **Contact** | Channels (email, GitHub issues, security disclosures) + a form that composes an email via the visitor's own mail app |
 | 7 | `Aperture FAQ.dc.html` | **FAQ** | 24 grounded Q&As across Getting started / Keys & security / Privacy / Sending & receiving / Verification & trust |
+| 8 | `Aperture Privacy Choices.dc.html` | **Your Privacy Choices** | User-facing privacy choices and legal opt-out explanation for a no-account, no-tracking wallet |
 
 **Navigation:** each page has a top bar (app icon + wordmark, Download button).
 Full navigation lives in the footer, trimmed to **Overview · Security · Open
@@ -36,13 +38,14 @@ Source** on every screen.
 
 ```
 Aperture Website/
-├─ index.html                     # entry point → redirects to the landing screen
+├─ index.html                     # overview entry point
 ├─ README.md                      # this file
 ├─ support.js                     # runtime that renders the .dc.html screens
 ├─ Aperture Landing.dc.html
 ├─ Aperture Security.dc.html
 ├─ Aperture Privacy.dc.html
 ├─ Aperture Terms.dc.html
+├─ Aperture Privacy Choices.dc.html
 ├─ Aperture Open Source.dc.html
 ├─ Aperture Contact.dc.html
 ├─ Aperture FAQ.dc.html
@@ -59,9 +62,9 @@ No build step, no server, no dependencies to install — it runs entirely in the
 browser, offline.
 
 - **Locally:** open `index.html` (or any screen file) in a modern browser.
-- **Hosting:** upload the whole folder to any static host. `index.html` is the
-  entry point. Note that screen filenames contain spaces, so links reference
-  them URL‑encoded (e.g. `Aperture%20Landing.dc.html`).
+- **Hosting:** upload the whole folder to Apache-compatible hosting with
+  `.htaccess` enabled. `index.html` is the entry point, and `.htaccess` maps
+  clean public routes to the generated static screen files.
 
 Each `.dc.html` screen is a self‑contained document that loads the local
 `support.js` runtime and paints itself — there is no bundler and nothing is

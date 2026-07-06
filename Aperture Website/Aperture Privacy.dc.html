@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="description" content="Aperture's privacy policy explains local wallet storage, on-device keys, no accounts, no analytics, and no personal data collection.">
 <meta name="theme-color" content="#0B0D11">
+<link rel="canonical" href="https://aperturex.io/privacy">
 <link rel="icon" type="image/png" href="/assets/icon-192.png">
 <link rel="apple-touch-icon" href="/assets/icon-192.png">
 <link rel="manifest" href="/site.webmanifest">
@@ -29,14 +30,14 @@
   <sc-if value="{{ showNav }}" hint-placeholder-val="{{ true }}">
     <nav style="position: sticky; top: 0; left: 0; right: 0; height: 52px; z-index: 10; display: flex; align-items: center; background: rgba(255,255,255,0.68); -webkit-backdrop-filter: saturate(180%) blur(20px); backdrop-filter: saturate(180%) blur(20px); border-bottom: 1px solid rgba(11,13,17,0.10);">
       <div style="width: 100%; max-width: 1024px; margin: 0 auto; padding: 0 22px; display: flex; align-items: center; justify-content: space-between; gap: 24px;">
-        <a href="Aperture Landing.dc.html" style="display: flex; align-items: center; gap: 9px; text-decoration: none;">
+        <a href="/" style="display: flex; align-items: center; gap: 9px; text-decoration: none;">
           <img src="assets/icon-1024.png" alt="Aperture app icon" style="width: 24px; height: 24px; display: block;">
           <span style="font-size: 15px; font-weight: 600; letter-spacing: -0.01em; color: #0B0D11;">Aperture</span>
         </a>
         <div style="display: flex; align-items: center; gap: 30px; font-size: 12.5px; font-weight: 400; letter-spacing: -0.008em;">
-          <a href="Aperture Landing.dc.html" style="color: rgba(11,13,17,0.80); text-decoration: none;" style-hover="color: #000000;">Overview</a>
-          <a href="Aperture Security.dc.html" style="color: rgba(11,13,17,0.80); text-decoration: none;" style-hover="color: #000000;">Security</a>
-          <a href="Aperture Open Source.dc.html" style="color: rgba(11,13,17,0.80); text-decoration: none;" style-hover="color: #000000;">Open Source</a>
+          <a href="/" style="color: rgba(11,13,17,0.80); text-decoration: none;" style-hover="color: #000000;">Overview</a>
+          <a href="/security" style="color: rgba(11,13,17,0.80); text-decoration: none;" style-hover="color: #000000;">Security</a>
+          <a href="/open-source" style="color: rgba(11,13,17,0.80); text-decoration: none;" style-hover="color: #000000;">Open Source</a>
         </div>
         <a href="https://apps.apple.com/app/id6780187283" target="_blank" rel="noopener" style="font-size: 12px; font-weight: 500; color: #F5F5F7; background: #0B0D11; text-decoration: none; padding: 5px 14px; border-radius: 980px; letter-spacing: -0.005em;" style-hover="background: #000000;">Download</a>
       </div>
@@ -96,7 +97,7 @@
     <p style="margin: 14px 0 0; font-size: 16px; line-height: 1.65; color: rgba(11,13,17,0.72); letter-spacing: -0.006em;">If — and only if — you enable it, Aperture can store a backup of your recovery phrase in your personal iCloud. The phrase is encrypted on your device before upload: a key is derived from your backup password using PBKDF2‑HMAC‑SHA256 with 600,000 iterations and a random salt, and the phrase is sealed with AES‑GCM‑256. Only the ciphertext, the salt, and the iteration count leave the device. Apple stores this blob under your iCloud account subject to Apple's terms; neither Apple nor Aperture can decrypt it. There is no recoverable copy of your backup password anywhere — if you lose it, the backup is permanently unreadable.</p>
 
     <h2 style="margin: 56px 0 0; font-size: 24px; font-weight: 600; letter-spacing: -0.015em;">8. Children and age</h2>
-    <p style="margin: 14px 0 0; font-size: 16px; line-height: 1.65; color: rgba(11,13,17,0.72); letter-spacing: -0.006em;">Aperture collects no age data for the same reason it collects nothing else: there is no account to attach it to. The app is not directed at children, and self‑custody of funds is a serious responsibility — Aperture is intended for adults who have reached the age of majority in their jurisdiction (see the <a href="Aperture Terms.dc.html" style="color: #0B0D11; text-decoration: underline; text-underline-offset: 3px;">Terms of Use</a>). Because no personal information is collected from anyone, no personal information is collected from children.</p>
+    <p style="margin: 14px 0 0; font-size: 16px; line-height: 1.65; color: rgba(11,13,17,0.72); letter-spacing: -0.006em;">Aperture collects no age data for the same reason it collects nothing else: there is no account to attach it to. The app is not directed at children, and self‑custody of funds is a serious responsibility — Aperture is intended for adults who have reached the age of majority in their jurisdiction (see the <a href="/terms" style="color: #0B0D11; text-decoration: underline; text-underline-offset: 3px;">Terms of Use</a>). Because no personal information is collected from anyone, no personal information is collected from children.</p>
 
     <h2 style="margin: 56px 0 0; font-size: 24px; font-weight: 600; letter-spacing: -0.015em;">9. Your rights and choices</h2>
     <p style="margin: 14px 0 0; font-size: 16px; line-height: 1.65; color: rgba(11,13,17,0.72); letter-spacing: -0.006em;">Privacy laws such as the GDPR and CCPA grant rights to access, correct, delete, and port personal data, and to opt out of its sale. Aperture holds no personal data about you, so there is nothing for us to disclose, correct, sell, or delete — those rights are satisfied by architecture rather than by request forms. To erase everything the app knows: delete the app (local data is destroyed) and, if you created one, delete the encrypted backup from Settings. We do not sell personal information; we have none to sell.</p>
@@ -110,13 +111,14 @@
     <div style="margin-top: 72px; border-top: 1px solid rgba(11,13,17,0.14); padding-top: 22px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; font-size: 12px; color: rgba(11,13,17,0.44); letter-spacing: -0.005em;">
       <span>Aperture — sealed in silicon.</span>
       <div style="display: flex; flex-wrap: wrap; gap: 10px 22px; justify-content: flex-end;">
-        <a href="Aperture Landing.dc.html" style="color: rgba(11,13,17,0.44); text-decoration: none;" style-hover="color: #0B0D11;">Overview ›</a>
-        <a href="Aperture Security.dc.html" style="color: rgba(11,13,17,0.44); text-decoration: none;" style-hover="color: #0B0D11;">Security ›</a>
-        <a href="Aperture Privacy.dc.html" style="color: rgba(11,13,17,0.44); text-decoration: none;" style-hover="color: #0B0D11;">Privacy ›</a>
-        <a href="Aperture Terms.dc.html" style="color: rgba(11,13,17,0.44); text-decoration: none;" style-hover="color: #0B0D11;">Terms ›</a>
-        <a href="Aperture Open Source.dc.html" style="color: rgba(11,13,17,0.44); text-decoration: none;" style-hover="color: #0B0D11;">Open Source ›</a>
-        <a href="Aperture Contact.dc.html" style="color: rgba(11,13,17,0.44); text-decoration: none;" style-hover="color: #0B0D11;">Contact ›</a>
-        <a href="Aperture FAQ.dc.html" style="color: rgba(11,13,17,0.44); text-decoration: none;" style-hover="color: #0B0D11;">FAQ ›</a>
+        <a href="/" style="color: rgba(11,13,17,0.44); text-decoration: none;" style-hover="color: #0B0D11;">Overview ›</a>
+        <a href="/security" style="color: rgba(11,13,17,0.44); text-decoration: none;" style-hover="color: #0B0D11;">Security ›</a>
+        <a href="/privacy" style="color: rgba(11,13,17,0.44); text-decoration: none;" style-hover="color: #0B0D11;">Privacy ›</a>
+        <a href="/privacy-choices" style="color: rgba(11,13,17,0.44); text-decoration: none;" style-hover="color: #0B0D11;">Privacy Choices ›</a>
+        <a href="/terms" style="color: rgba(11,13,17,0.44); text-decoration: none;" style-hover="color: #0B0D11;">Terms ›</a>
+        <a href="/open-source" style="color: rgba(11,13,17,0.44); text-decoration: none;" style-hover="color: #0B0D11;">Open Source ›</a>
+        <a href="/contact" style="color: rgba(11,13,17,0.44); text-decoration: none;" style-hover="color: #0B0D11;">Contact ›</a>
+        <a href="/faq" style="color: rgba(11,13,17,0.44); text-decoration: none;" style-hover="color: #0B0D11;">FAQ ›</a>
       </div>
     </div>
   </article>

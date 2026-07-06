@@ -1,49 +1,49 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
-    <loc>https://www.aperturex.io/</loc>
+    <loc>https://aperturex.io/</loc>
     <lastmod>2026-07-06</lastmod>
     <changefreq>weekly</changefreq>
     <priority>1.0</priority>
   </url>
   <url>
-    <loc>https://www.aperturex.io/Aperture%20Landing.dc.html</loc>
-    <lastmod>2026-07-06</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.9</priority>
-  </url>
-  <url>
-    <loc>https://www.aperturex.io/Aperture%20Security.dc.html</loc>
+    <loc>https://aperturex.io/security</loc>
     <lastmod>2026-07-06</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://www.aperturex.io/Aperture%20Open%20Source.dc.html</loc>
+    <loc>https://aperturex.io/open-source</loc>
     <lastmod>2026-07-06</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://www.aperturex.io/Aperture%20FAQ.dc.html</loc>
+    <loc>https://aperturex.io/faq</loc>
     <lastmod>2026-07-06</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
-    <loc>https://www.aperturex.io/Aperture%20Contact.dc.html</loc>
+    <loc>https://aperturex.io/contact</loc>
     <lastmod>2026-07-06</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
   </url>
   <url>
-    <loc>https://www.aperturex.io/Aperture%20Privacy.dc.html</loc>
+    <loc>https://aperturex.io/privacy</loc>
     <lastmod>2026-07-06</lastmod>
     <changefreq>yearly</changefreq>
     <priority>0.5</priority>
   </url>
   <url>
-    <loc>https://www.aperturex.io/Aperture%20Terms.dc.html</loc>
+    <loc>https://aperturex.io/privacy-choices</loc>
+    <lastmod>2026-07-06</lastmod>
+    <changefreq>yearly</changefreq>
+    <priority>0.5</priority>
+  </url>
+  <url>
+    <loc>https://aperturex.io/terms</loc>
     <lastmod>2026-07-06</lastmod>
     <changefreq>yearly</changefreq>
     <priority>0.5</priority>
