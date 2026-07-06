@@ -19,11 +19,9 @@ final class ResetFlowGate {
 /// **Reset Aperture — the full-screen factory-reset flow** (`design_handoff_reset`,
 /// rebuilt to match the HTML reference 1:1).
 ///
-/// Five gates in a mandatory order — nothing is deleted until every one passes:
-/// Warning → Backup checkpoint → Acknowledge (3 checks) → Confirm (type RESET +
-/// Face ID) → Erasing→Factory-fresh (one morphing screen). The backup checkpoint
-/// branches into the real unified backup flow (`WalletBackupFlow` for phrase
-/// wallets, `ExportPrivateKeyFlow` for key wallets). The wipe is the shared
+/// Three gates in a mandatory order — nothing is deleted until every one passes:
+/// Warning → Confirm (type RESET + Face ID/PIN when configured) →
+/// Erasing→Factory-fresh (one morphing screen). The wipe is the shared
 /// `FactoryReset.performStagedWipe`, reported stage-by-stage so the ring is
 /// honest; the iris seal appears only after the wipe truly completes.
 ///
@@ -34,30 +32,14 @@ final class ResetFlowGate {
 struct ResetApertureFlow: View {
     let onClose: () -> Void
 
-    @StateObject private var databaseSnapshot = DatabaseSnapshotObservation()
     @Environment(\.openURL) private var openURL
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    private var wallets: [WalletRecord] {
-        databaseSnapshot.wallets.sorted {
-            if $0.sortOrder == $1.sortOrder { return $0.createdAt < $1.createdAt }
-            return $0.sortOrder < $1.sortOrder
-        }
-    }
-
     private enum Route: Hashable {
-        case backup
-        case backupPicker
-        case acknowledge
         case confirm
         case erasing
     }
     @State private var path: [Route] = []
-
-    @State private var ackWallets = false
-    @State private var ackIrreversible = false
-    @State private var ackBackedUp = false
-    private var allAcknowledged: Bool { ackWallets && ackIrreversible && ackBackedUp }
 
     @State private var typed = ""
     private let confirmWord = "RESET"
@@ -73,18 +55,9 @@ struct ResetApertureFlow: View {
     @State private var eraseErrorReport: ApertureErrorReport?
     @State private var confirmFocused = false
 
-    @State private var backupTarget: BackupTarget?
-    @State private var exportTarget: ExportTarget?
-
-    private struct BackupTarget: Identifiable {
-        let id: UUID; let name: String; let words: [String]; let avatar: WalletAvatarSpec?
-    }
-    private struct ExportTarget: Identifiable { let id: UUID }
-
     // MARK: - Tokens (handoff-exact)
 
     private let hPad: CGFloat = 26
-    private let cardRadius: CGFloat = 20
     private let danger = UniColors.Reset.danger
     private static let visibleProcessStages: [FactoryReset.Stage] = [
         .wallets,
@@ -100,23 +73,6 @@ struct ResetApertureFlow: View {
                 .navigationDestination(for: Route.self) { route in
                     routedScreen(destination(for: route))
                 }
-        }
-        .fullScreenCover(item: $backupTarget) { target in
-            WalletBackupFlow(
-                walletId: target.id, walletName: target.name, words: target.words,
-                avatar: target.avatar, onClose: { backupTarget = nil }
-            )
-            .uniAppEnvironment()
-        }
-        .fullScreenCover(item: $exportTarget) { target in
-            if let wallet = wallets.first(where: { $0.id == target.id }) {
-                ExportPrivateKeyFlow(
-                    descriptor: WalletDescriptor(record: wallet),
-                    chains: exportChainEntries(wallet),
-                    onClose: { exportTarget = nil }
-                )
-                .uniAppEnvironment()
-            }
         }
         // The reset's final gate is the app's UNIFIED lock screen — auto Face
         // ID (when the user enabled biometrics) with the PIN keypad fallback,
@@ -163,12 +119,6 @@ struct ResetApertureFlow: View {
     @ViewBuilder
     private func destination(for route: Route) -> some View {
         switch route {
-        case .backup:
-            backupScreen
-        case .backupPicker:
-            walletPickerScreen
-        case .acknowledge:
-            acknowledgeScreen
         case .confirm:
             confirmScreen
         case .erasing:
@@ -200,7 +150,7 @@ struct ResetApertureFlow: View {
 
             GlassEffectContainer(spacing: 10) {
                 VStack(spacing: 10) {
-                    dangerButton("Continue") { push(.backup) }
+                    dangerButton("Continue") { push(.confirm) }
                     ghostButton("Cancel") { close() }
                 }
             }
@@ -243,283 +193,7 @@ struct ResetApertureFlow: View {
         .accessibilityElement(children: .combine)
     }
 
-    // MARK: - 2 · Backup checkpoint
-
-    private var backupScreen: some View {
-        screenScaffold(
-            title: "Reset Aperture", leading: .none,
-            footer: {
-                primaryButton("My Wallets Are Backed Up") { push(.acknowledge) }
-                ghostButton("Back Up First") { push(.backupPicker) }
-            }
-        ) {
-            VStack(spacing: UniSpacing.mPlus) {
-                heroGlyph("shield", tint: UniColors.Text.primary)
-                bigTitle("Before you continue", centered: true)
-                // Emphasis below uses `Text` string interpolation
-                // (`Text("… \(Text("x").bold()) …")`), the iOS 26-correct
-                // form — NOT the deprecated `Text + Text` `+` operator
-                // (removed in ad60889). If Xcode still flags a `+` here,
-                // it's a stale Issue-Navigator entry; rebuild to clear it.
-                subtitleRich(centered: true) {
-                    Text("Aperture is self-custodial. Your keys never leave this device, and we keep \(Text("no copy").foregroundColor(UniColors.Text.primary).bold()). Without your recovery phrase or private key, any wallet erased here \(Text("can’t be recovered").foregroundColor(UniColors.Text.primary).bold()).")
-                }
-                calloutCard()
-            }
-            .frame(maxWidth: .infinity)
-        }
-    }
-
-    private func calloutCard() -> some View {
-        HStack(alignment: .top, spacing: 12) {
-            Image(systemName: "exclamationmark.triangle")
-                .font(.system(size: 18, weight: .semibold))
-                .foregroundStyle(UniColors.Feedback.Warning.foreground)
-                .frame(width: 22, height: 22)
-            Text("\(Text("No recovery phrase, no recovery.").bold()) Make sure every wallet you want to keep is backed up first.")
-                .foregroundColor(UniColors.Feedback.Warning.foreground)
-                .font(.system(size: 13, weight: .medium))
-                .fixedSize(horizontal: false, vertical: true)
-            Spacer(minLength: 0)
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 15)
-        .background(UniColors.Feedback.Warning.background, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-    }
-
-    // MARK: - 2b · Wallet picker (backup branch)
-
-    private var walletPickerScreen: some View {
-        screenScaffold(
-            title: "Back Up", leading: .none,
-            centered: false,
-            footer: { EmptyView() }
-        ) {
-            VStack(alignment: .leading, spacing: UniSpacing.s) {
-                bigTitle("Which wallet?", centered: false)
-                subtitle("Choose the wallet you want to back up. Each wallet has its own recovery phrase or key.", centered: false)
-                card {
-                    ForEach(Array(wallets.enumerated()), id: \.element.id) { offset, wallet in
-                        walletRow(wallet)
-                        if offset < wallets.count - 1 { hair }
-                    }
-                }
-            }
-        }
-    }
-
-    @ViewBuilder
-    private func walletRow(_ wallet: WalletRecord) -> some View {
-        let isWatchOnly = wallet.kind == .watchOnly
-        Button {
-            beginBackup(for: wallet)
-        } label: {
-            HStack(spacing: 13) {
-                WalletAvatar(spec: wallet.avatarSpec, size: .row, walletId: wallet.id)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(verbatim: wallet.name)
-                        .font(.system(size: 16, weight: .bold))
-                        .foregroundStyle(UniColors.Text.primary)
-                    Text(backupKindLabel(wallet.kind))
-                        .font(.system(size: 12.5))
-                        .foregroundStyle(UniColors.Text.secondary)
-                }
-                Spacer(minLength: 0)
-                if !isWatchOnly {
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(UniColors.Text.tertiary)
-                }
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 14)
-            .opacity(isWatchOnly ? 0.5 : 1)
-            .uniListRowHitTarget()
-        }
-        .buttonStyle(.uniListRow)
-        .disabled(isWatchOnly)
-    }
-
-    private func backupKindLabel(_ kind: WalletKind) -> LocalizedStringKey {
-        switch kind {
-        case .created, .importedMnemonic: return "Recovery phrase"
-        case .importedKey:                return "Private key"
-        case .watchOnly:                  return "Watch-only · nothing to back up"
-        }
-    }
-
-    private func beginBackup(for wallet: WalletRecord) {
-        UniHapticEngine.shared.play(.contextualImpact(.commit))
-        switch wallet.kind {
-        case .importedKey:
-            exportTarget = ExportTarget(id: wallet.id)
-        case .created, .importedMnemonic:
-            let id = wallet.id
-            let name = wallet.name
-            let avatar = wallet.avatarSpec
-            Task { @MainActor in
-                let words = try? await WalletSecretRepository(database: AppDatabase.shared)
-                    .loadMnemonic(for: id)
-                guard let words, !words.isEmpty else { return }
-                backupTarget = BackupTarget(id: id, name: name, words: words, avatar: avatar)
-            }
-        case .watchOnly:
-            break
-        }
-    }
-
-    private func exportChainEntries(_ wallet: WalletRecord) -> [ExportChainEntry] {
-        wallet.addresses.compactMap { addr in
-            guard let chain = SupportedChain(rawValue: addr.chainRaw), !addr.address.isEmpty else { return nil }
-            return ExportChainEntry(chain: chain, address: addr.address)
-        }
-    }
-
-    // MARK: - 3 · Acknowledge
-
-    private var acknowledgeScreen: some View {
-        VStack(spacing: 0) {
-            List {
-                acknowledgeIntroSection
-                acknowledgeChecklistSection
-            }
-            .listStyle(.insetGrouped)
-            .scrollContentBackground(.hidden)
-            .background(UniColors.Background.primary)
-
-            GlassEffectContainer(spacing: 10) {
-                VStack(spacing: 10) {
-                    dangerButton("Continue", isEnabled: allAcknowledged) { push(.confirm) }
-                }
-            }
-            .padding(.horizontal, hPad)
-            .padding(.bottom, UniSpacing.l)
-        }
-        .navigationTitle("Reset Aperture")
-        .navigationBarTitleDisplayMode(.inline)
-    }
-
-    @ViewBuilder
-    private var acknowledgeIntroSection: some View {
-        Section {
-            acknowledgeIntro
-                .listRowBackground(Color.clear)
-                .listRowSeparator(.hidden)
-                .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: UniSpacing.s, trailing: 0))
-        }
-    }
-
-    @ViewBuilder
-    private var acknowledgeChecklistSection: some View {
-        Section {
-            ackRow(
-                symbol: "wallet.pass",
-                title: "All wallets will be erased",
-                isOn: $ackWallets
-            ) {
-                Text("\(Text("Every wallet profile").foregroundColor(UniColors.Text.primary).fontWeight(.semibold)) on this iPhone will be removed, including created, imported, and watch-only wallets.")
-            }
-            ackRow(
-                symbol: "key.slash",
-                title: "Keys cannot be recovered",
-                isOn: $ackIrreversible
-            ) {
-                Text("Aperture keeps \(Text("no cloud backup").foregroundColor(UniColors.Text.primary).fontWeight(.semibold)). Deleted recovery phrases and private keys are gone for good.")
-            }
-            ackRow(
-                symbol: "checkmark.shield",
-                title: "My wallets are backed up",
-                isOn: $ackBackedUp
-            ) {
-                Text("I have saved the \(Text("recovery phrase or private key").foregroundColor(UniColors.Text.primary).fontWeight(.semibold)) for every wallet I want to keep.")
-            }
-        }
-    }
-
-    private var acknowledgeIntro: some View {
-        VStack(alignment: .leading, spacing: UniSpacing.m) {
-            HStack(spacing: UniSpacing.xs) {
-                Image(systemName: "exclamationmark.triangle.fill")
-                    .font(.system(size: 12, weight: .semibold))
-                Text("Destructive reset")
-                    .font(.system(size: 12, weight: .semibold))
-            }
-            .foregroundStyle(danger)
-            .padding(.horizontal, 11)
-            .padding(.vertical, 7)
-            .background(UniColors.Reset.dangerWash, in: Capsule(style: .continuous))
-
-            HStack(alignment: .top, spacing: UniSpacing.m) {
-                ZStack {
-                    Circle()
-                        .fill(UniColors.Reset.dangerWash)
-                    Image(systemName: "trash")
-                        .font(.system(size: 27, weight: .semibold))
-                        .foregroundStyle(danger)
-                }
-                .frame(width: 58, height: 58)
-                .accessibilityHidden(true)
-
-                VStack(alignment: .leading, spacing: UniSpacing.xs) {
-                    Text("Review Before Reset")
-                        .font(.system(size: 30, weight: .semibold))
-                        .foregroundStyle(UniColors.Text.primary)
-                        .fixedSize(horizontal: false, vertical: true)
-                    Text("Resetting Aperture deletes \(Text("local wallet data, encrypted secrets, cached activity, and security state").foregroundColor(UniColors.Text.primary).fontWeight(.semibold)) from this device.")
-                        .font(.system(size: 15, weight: .regular))
-                        .foregroundColor(UniColors.Text.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-            }
-        }
-        .accessibilityElement(children: .combine)
-    }
-
-    private func ackRow(
-        symbol: String,
-        title: LocalizedStringKey,
-        isOn: Binding<Bool>,
-        detail: @escaping () -> Text
-    ) -> some View {
-        Button {
-            let wasAll = allAcknowledged
-            isOn.wrappedValue.toggle()
-            UniHapticEngine.shared.play(isOn.wrappedValue ? .selection : .contextualImpact(.whisper))
-            if !wasAll && allAcknowledged { UniHapticEngine.shared.play(.contextualImpact(.commit)) }
-        } label: {
-            HStack(alignment: .top, spacing: UniSpacing.s) {
-                Image(systemName: symbol)
-                    .font(.system(size: 20, weight: .regular))
-                    .foregroundStyle(isOn.wrappedValue ? danger : UniColors.Text.primary)
-                    .frame(width: 28, height: 28)
-                    .padding(.top, 2)
-                .accessibilityHidden(true)
-
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(title)
-                        .font(.system(size: 16.5, weight: .semibold))
-                        .foregroundStyle(UniColors.Text.primary)
-                    detail()
-                        .font(.system(size: 13.5, weight: .regular))
-                        .foregroundColor(UniColors.Text.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .multilineTextAlignment(.leading)
-                }
-                Spacer(minLength: 0)
-                Image(systemName: isOn.wrappedValue ? "checkmark.circle.fill" : "circle")
-                    .font(.system(size: 24, weight: .semibold))
-                    .foregroundStyle(isOn.wrappedValue ? danger : UniColors.Text.tertiary)
-                    .padding(.top, 4)
-            }
-            .padding(.vertical, 8)
-            .uniListRowHitTarget()
-        }
-        .buttonStyle(.uniListRow)
-        .accessibilityElement(children: .combine)
-        .animation(.smooth(duration: 0.22), value: isOn.wrappedValue)
-    }
-
-    // MARK: - 4 · Confirm (type RESET + Face ID)
+    // MARK: - 2 · Confirm (type RESET + Face ID)
 
     private var confirmScreen: some View {
         screenScaffold(
@@ -577,13 +251,12 @@ struct ResetApertureFlow: View {
     /// (`PinCodeView(.verify)`, which auto-presents Face ID when the user has
     /// enabled biometrics and otherwise shows the PIN keypad) — NOT a raw
     /// `LAContext` Face ID prompt. When no PIN is set there is nothing to
-    /// verify, so the typed RESET + the three acknowledgements are the
-    /// deliberate gates and we proceed.
+    /// verify, so typed RESET is the deliberate final gate and we proceed.
     private func confirmAndAuthenticate() {
         guard typedMatches else { return }
         guard PinCodeStorage.hasPin else {
-            // No PIN to verify → the typed RESET + acknowledgements are the
-            // gates. Drop the keyboard and go straight to the wipe.
+            // No PIN to verify → the typed RESET gate is enough. Drop the
+            // keyboard and go straight to the wipe.
             confirmFocused = false
             push(.erasing)
             return
@@ -605,7 +278,7 @@ struct ResetApertureFlow: View {
         value.uppercased(with: Locale(identifier: "en_US_POSIX"))
     }
 
-    // MARK: - 5 · Erasing → Factory fresh (one morphing screen)
+    // MARK: - 3 · Erasing → Factory fresh (one morphing screen)
 
     private var erasingScreen: some View {
         VStack(spacing: 0) {
@@ -701,7 +374,7 @@ struct ResetApertureFlow: View {
     }
 
     /// The brand iris seal — an `--ink` disc with the iris in the `--surface`
-    /// colour, matching the handoff (and reused as the wallet-picker avatar).
+    /// colour, matching the handoff.
     private func irisDisc(size: CGFloat, irisFraction: CGFloat = 0.82) -> some View {
         ZStack {
             Circle().fill(UniColors.Brand.mark)
@@ -950,16 +623,6 @@ struct ResetApertureFlow: View {
             .frame(maxWidth: .infinity, alignment: centered ? .center : .leading)
     }
 
-    private func subtitleRich(centered: Bool, _ build: () -> Text) -> some View {
-        build()
-            .font(.system(size: 15, weight: .medium))
-            .foregroundColor(UniColors.Text.secondary)
-            .multilineTextAlignment(centered ? .center : .leading)
-            .fixedSize(horizontal: false, vertical: true)
-            .frame(maxWidth: 330)
-            .frame(maxWidth: .infinity, alignment: .center)
-    }
-
     private func subtitleVerbatim(_ text: String) -> some View {
         Text(verbatim: text)
             .font(.system(size: 15, weight: .medium))
@@ -968,17 +631,6 @@ struct ResetApertureFlow: View {
             .fixedSize(horizontal: false, vertical: true)
             .frame(maxWidth: 330)
             .frame(maxWidth: .infinity, alignment: .center)
-    }
-
-    @ViewBuilder
-    private func card<C: View>(@ViewBuilder _ content: () -> C) -> some View {
-        VStack(spacing: 0) { content() }
-            .frame(maxWidth: .infinity)
-            .background(UniColors.Background.secondary, in: RoundedRectangle(cornerRadius: cardRadius, style: .continuous))
-    }
-
-    private var hair: some View {
-        Rectangle().fill(UniColors.Separator.regular).frame(height: 1)
     }
 
     // MARK: - Buttons (unified Liquid Glass — UniButton)
