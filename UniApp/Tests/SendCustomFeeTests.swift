@@ -114,6 +114,44 @@ struct SendCustomFeeTests {
                 "Custom byte rate was lost on refresh")
     }
 
+    @Test("Bitcoin draft carries the auto-selected coin set instead of every cached UTXO")
+    func bitcoinDraftCarriesAutoSelectedCoins() throws {
+        let model = makeModel(chain: .bitcoin)
+        model.applyFeeQuote(bitcoinQuote())
+        model.setBalances(native: Decimal(string: "0.002")!, token: nil, state: .init())
+        model.primaryAmountText = "0.0006"
+
+        let large = SelectedUTXO(
+            ownerAddress: "bc1qchange",
+            txid: String(repeating: "a", count: 64),
+            vout: 0,
+            valueSats: 100_000,
+            scriptHex: nil,
+            confirmed: true
+        )
+        let medium = SelectedUTXO(
+            ownerAddress: "bc1qreceive",
+            txid: String(repeating: "b", count: 64),
+            vout: 1,
+            valueSats: 70_000,
+            scriptHex: nil,
+            confirmed: true
+        )
+        let small = SelectedUTXO(
+            ownerAddress: "bc1qreceive",
+            txid: String(repeating: "c", count: 64),
+            vout: 2,
+            valueSats: 10_000,
+            scriptHex: nil,
+            confirmed: true
+        )
+        model.setAvailableUTXOs([medium, small, large])
+
+        let draft = try #require(model.makeDraft())
+        #expect(draft.selectedUTXOs?.map(\.id) == [large.id])
+        #expect(draft.changeSats ?? 0 > 0)
+    }
+
     // MARK: - EVM custom fee
 
     @Test("EVM custom maxFee/tip is reflected in resolvedFee and survives a refresh")

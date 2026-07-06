@@ -155,8 +155,15 @@ enum BitcoinTransactionSigner {
                 unspent.variant = .p2Trkeypath
             } else if addr.hasPrefix("3") || addr.hasPrefix("M") {
                 unspent.variant = .p2Wpkh
-                if let scriptHash = script.matchPayToScriptHash() {
-                    input.scripts[scriptHash.hexString] = BitcoinScript.buildPayToPublicKeyHash(hash: scriptHash).data
+                if let scriptHash = script.matchPayToScriptHash(),
+                   let redeemScript = compatibleSegWitRedeemScript(
+                    address: addr,
+                    privateKeys: privateKeys,
+                    coin: coin
+                   ) {
+                    input.scripts[scriptHash.hexString] = redeemScript
+                } else {
+                    throw SigningError.signingFailed("missing wrapped SegWit redeem script")
                 }
             } else {
                 // Legacy P2PKH — BTC(1…), LTC(L…), DOGE(D…), BCH(q…/legacy).
@@ -215,6 +222,28 @@ enum BitcoinTransactionSigner {
     /// uses its own owner address when deriving the lock script.
     private static func ownerAddress(of utxo: SelectedUTXO, fallback: String) -> String {
         utxo.ownerAddress ?? fallback
+    }
+
+    /// WalletCore expects P2SH-P2WPKH entries keyed by the P2SH script hash,
+    /// with the value set to the witness redeem script (`0 <pubkeyHash>`).
+    private static func compatibleSegWitRedeemScript(
+        address: String,
+        privateKeys: [PrivateKey],
+        coin: CoinType
+    ) -> Data? {
+        for privateKey in privateKeys {
+            let publicKey = privateKey.getPublicKeySecp256k1(compressed: true)
+            let compatible = BitcoinAddress.compatibleAddress(
+                publicKey: publicKey,
+                prefix: coin.p2shPrefix
+            ).description
+            if compatible == address {
+                return BitcoinScript.buildPayToWitnessPubkeyHash(
+                    hash: publicKey.bitcoinKeyHash
+                ).data
+            }
+        }
+        return nil
     }
 
     /// Display amount → sats (base units) at `decimals`.

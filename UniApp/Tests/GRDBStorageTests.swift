@@ -324,6 +324,45 @@ import Testing
         #expect(try chainRepo.utxos(walletId: walletID, chain: .bitcoin).map(\.txid) == ["spent-b"])
     }
 
+    @Test("discovered Bitcoin receive/change addresses are persisted before UTXO linking")
+    func bitcoinDiscoveredAddressesLinkUTXOs() async throws {
+        let database = try TestAppDatabaseFactory.makeDatabase()
+        defer { TestAppDatabaseFactory.cleanup(database) }
+        let walletID = try await insertWatchWallet(
+            database,
+            chainsAndAddresses: [(.bitcoin, "bc1qreceive")]
+        )
+        let chainRepo = ChainStateRepository(database: database)
+
+        #expect(try chainRepo.upsertDiscoveredAddresses(
+            walletId: walletID,
+            chain: .bitcoin,
+            addresses: [
+                .init(address: "bc1qreceive", derivationPath: "m/84'/0'/0'/0/0", isUsed: true),
+                .init(address: "bc1qchange", derivationPath: "m/84'/0'/0'/1/0", isUsed: true)
+            ]
+        ) == 2)
+        try chainRepo.replaceAddressedUTXOs(
+            walletId: walletID,
+            chain: .bitcoin,
+            utxos: [
+                .init(address: "bc1qreceive", txid: "receive-utxo", vout: 0, valueSats: 10_000, scriptHex: nil, confirmed: true),
+                .init(address: "bc1qchange", txid: "change-utxo", vout: 1, valueSats: 20_000, scriptHex: nil, confirmed: true)
+            ]
+        )
+
+        #expect(try TestAppDatabaseFactory.scalarString(
+            "SELECT derivation_path FROM wallet_addresses WHERE wallet_id = ? AND chain_raw = ? AND address = ?",
+            arguments: [walletID.uuidString, SupportedChain.bitcoin.rawValue, "bc1qchange"],
+            database: database
+        ) == "m/84'/0'/0'/1/0")
+        #expect(try TestAppDatabaseFactory.scalarInt(
+            "SELECT COUNT(*) FROM chain_utxos WHERE wallet_id = ? AND chain_raw = ? AND address_id IS NOT NULL",
+            arguments: [walletID.uuidString, SupportedChain.bitcoin.rawValue],
+            database: database
+        ) == 2)
+    }
+
     @Test("price, chart, and sync repositories persist cache rows with upsert semantics")
     func priceChartAndSyncCaches() async throws {
         let database = try TestAppDatabaseFactory.makeDatabase()

@@ -84,6 +84,22 @@ actor BitcoinElectrumBalanceScanner {
         }
         try txRepo.flush()
 
+        let chainRepo = ChainStateRepository(database: database)
+        let discoveredAddresses = scans
+            .filter(\.hasActivity)
+            .map {
+                ChainStateRepository.DiscoveredAddress(
+                    address: $0.address,
+                    derivationPath: $0.path,
+                    isUsed: true
+                )
+            }
+        _ = try chainRepo.upsertDiscoveredAddresses(
+            walletId: walletId,
+            chain: .bitcoin,
+            addresses: discoveredAddresses
+        )
+
         let utxos = scans.flatMap { scan in
             scan.utxos.map { utxo in
                 ChainStateRepository.AddressedUTXO(
@@ -96,13 +112,12 @@ actor BitcoinElectrumBalanceScanner {
                 )
             }
         }
-        _ = try ChainStateRepository(database: database)
-            .replaceAddressedUTXOs(
-                walletId: walletId,
-                chain: .bitcoin,
-                utxos: utxos
-            )
-        _ = try ChainStateRepository(database: database).rebuild(
+        _ = try chainRepo.replaceAddressedUTXOs(
+            walletId: walletId,
+            chain: .bitcoin,
+            utxos: utxos
+        )
+        _ = try chainRepo.rebuild(
             walletId: walletId,
             fiatCurrencyCode: currencyCode,
             onlyChains: [.bitcoin],
@@ -442,7 +457,7 @@ actor BitcoinPathSearchAddressStore {
 }
 
 private actor BitcoinWalletScanTargetRepository {
-    private let gapLimit = 20
+    private let gapLimit = 50
     private let database: AppDatabase
 
     init(database: AppDatabase) {
@@ -1324,6 +1339,10 @@ private struct BitcoinElectrumAddressScan: Sendable {
     var totalSats: Int64 {
         let (sum, overflow) = confirmedSats.addingReportingOverflow(unconfirmedSats)
         return overflow ? Int64.max : sum
+    }
+
+    var hasActivity: Bool {
+        totalSats > 0 || historyCount > 0 || !utxos.isEmpty
     }
 
     static func sum(utxos: [BitcoinElectrumUTXO]) -> Int64 {

@@ -275,7 +275,7 @@ enum SigningKeyProvider {
 
             for purpose in bitcoinPurposes(for: chain) {
                 for branch in 0...1 {
-                    for index in 0..<25 {
+                    for index in 0..<50 {
                         if requiredAddresses.isSubset(of: covered) { break }
                         let path = "m/\(purpose)'/\(coinId)'/0'/\(branch)/\(index)"
                         let key = hdWallet.getKey(coin: coin, derivationPath: path)

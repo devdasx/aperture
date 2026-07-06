@@ -652,14 +652,37 @@ final class SendComposeModel {
     /// caller gates on `canReview` first.
     func makeDraft() -> SendDraft? {
         guard let fee = resolvedFee else { return nil }
+        let recipients = recipientAmounts
 
         // Bitcoin family: use the selected UTXOs, else the planner's
         // auto-selection over the available set.
         let utxosForDraft: [SelectedUTXO]?
         var changeSats: Int64?
         if capability.supportsUTXO {
-            utxosForDraft = selectedUTXOs ?? availableUTXOs
-            changeSats = nil // computed at sign time from the final plan
+            let candidates = selectedUTXOs ?? availableUTXOs
+            let recipientValues = recipients.map {
+                Self.baseUnitsSats($0.amount, decimals: effectiveDecimals)
+            }
+            let targetSats = recipientValues.reduce(Int64(0)) { partial, value in
+                let (sum, overflow) = partial.addingReportingOverflow(value)
+                return overflow ? Int64.max : sum
+            }
+            if let rate = fee.byteFeeRate, rate > 0, !candidates.isEmpty {
+                let selection = UTXOService().selectCoins(
+                    utxos: candidates,
+                    targetSats: max(targetSats, 0),
+                    feeRate: rate,
+                    chain: chain,
+                    recipientCount: max(recipients.count, 1),
+                    recipientValues: recipientValues,
+                    sendAll: isMaxSend
+                )
+                utxosForDraft = selection.inputs
+                changeSats = selection.changeSats
+            } else {
+                utxosForDraft = candidates
+                changeSats = nil
+            }
         } else {
             utxosForDraft = nil
         }
@@ -675,7 +698,7 @@ final class SendComposeModel {
             tokenContract: tokenContract,
             tokenDecimals: tokenDecimals,
             fromAddress: fromAddress,
-            recipients: recipientAmounts,
+            recipients: recipients,
             fee: fee,
             selectedUTXOs: utxosForDraft,
             changeAddress: fromAddress, // no fresh change path is stored yet
@@ -687,6 +710,11 @@ final class SendComposeModel {
             recipientNeedsActivation: recipientNeedsActivation,
             tonBounceable: chain == .ton ? false : nil
         )
+    }
+
+    private static func baseUnitsSats(_ display: Decimal, decimals: Int) -> Int64 {
+        let base = ComposeDecimal.toBaseUnits(display, decimals: decimals)
+        return NSDecimalNumber(decimal: base).int64Value
     }
 
     // MARK: - Fee fetch (the one owned network read)

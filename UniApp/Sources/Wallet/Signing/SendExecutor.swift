@@ -226,18 +226,22 @@ struct SendExecutor {
         case .bitcoin:
             // Prefer the wallet-level UTXO cache from the latest scanner
             // pass. Bitcoin balances are aggregated across all persisted
-            // receive/change paths, so signing must see the same full set
-            // instead of only the selected display address.
+            // receive/change paths, but signing must keep the exact selected
+            // outpoints from compose after refreshing their current spendability.
             do {
                 let cached = try ChainStateRepository(database: database)
                     .utxos(walletId: wallet.id, chain: draft.chain)
                 if !cached.isEmpty {
-                    return TransactionSigner.JustInTimeData(bitcoinUTXOs: cached)
+                    return TransactionSigner.JustInTimeData(
+                        bitcoinUTXOs: try currentSelectedBitcoinUTXOs(cached, draft: draft)
+                    )
                 }
                 let fresh = try await UTXOService().fetchUTXOs(
                     address: draft.fromAddress, chain: draft.chain
                 )
-                return TransactionSigner.JustInTimeData(bitcoinUTXOs: fresh)
+                return TransactionSigner.JustInTimeData(
+                    bitcoinUTXOs: try currentSelectedBitcoinUTXOs(fresh, draft: draft)
+                )
             } catch let rpc as RPCError {
                 throw SigningError.justInTimeRefreshFailed(rpc.userFacingLabel)
             } catch {
@@ -258,6 +262,30 @@ struct SendExecutor {
         case .polkadot: return try await refreshPolkadot(draft: draft)
         case .ton:      return try await refreshTON(draft: draft)
         }
+    }
+
+    private nonisolated func currentSelectedBitcoinUTXOs(
+        _ current: [SelectedUTXO],
+        draft: SendDraft
+    ) throws -> [SelectedUTXO] {
+        guard let selected = draft.selectedUTXOs, !selected.isEmpty else {
+            return current
+        }
+        var byOutpoint: [String: SelectedUTXO] = [:]
+        for utxo in current {
+            byOutpoint[utxo.id] = utxo
+        }
+        var refreshed: [SelectedUTXO] = []
+        refreshed.reserveCapacity(selected.count)
+        for utxo in selected {
+            guard let current = byOutpoint[utxo.id] else {
+                throw SigningError.justInTimeRefreshFailed(
+                    "One or more selected Bitcoin inputs are no longer spendable"
+                )
+            }
+            refreshed.append(current)
+        }
+        return refreshed
     }
 
     // MARK: - 5. Outbox persistence + confirmation poll

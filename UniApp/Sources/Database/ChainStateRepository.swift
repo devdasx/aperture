@@ -38,6 +38,12 @@ final class ChainStateRepository {
         let confirmed: Bool
     }
 
+    struct DiscoveredAddress: Sendable, Hashable {
+        let address: String
+        let derivationPath: String
+        let isUsed: Bool
+    }
+
     @discardableResult
     func rebuild(
         walletId: UUID,
@@ -310,6 +316,71 @@ final class ChainStateRepository {
                 )
             }
             return (utxos.count, total)
+        }
+    }
+
+    @discardableResult
+    func upsertDiscoveredAddresses(
+        walletId: UUID,
+        chain: SupportedChain,
+        addresses: [DiscoveredAddress]
+    ) throws -> Int {
+        guard !addresses.isEmpty else { return 0 }
+        let chainRaw = chain.rawValue
+        let scannedAt = Date.databaseMilliseconds
+        var seen: Set<String> = []
+        return try database.write { db in
+            var saved = 0
+            for item in addresses where seen.insert(item.address).inserted {
+                let isUsed = item.isUsed ? 1 : 0
+                let existingId = try String.fetchOne(
+                    db,
+                    sql: """
+                    SELECT id FROM wallet_addresses
+                    WHERE wallet_id = ? AND chain_raw = ? AND address = ?
+                    LIMIT 1
+                    """,
+                    arguments: [walletId.uuidString, chainRaw, item.address]
+                )
+                if let existingId {
+                    try db.execute(
+                        sql: """
+                        UPDATE wallet_addresses
+                        SET derivation_path = CASE WHEN ? <> '' THEN ? ELSE derivation_path END,
+                            is_used = CASE WHEN is_used = 1 OR ? = 1 THEN 1 ELSE 0 END,
+                            last_scanned_at_ms = ?
+                        WHERE id = ?
+                        """,
+                        arguments: [
+                            item.derivationPath,
+                            item.derivationPath,
+                            isUsed,
+                            scannedAt,
+                            existingId
+                        ]
+                    )
+                } else {
+                    try db.execute(
+                        sql: """
+                        INSERT INTO wallet_addresses
+                        (id, wallet_id, chain_raw, address, derivation_path,
+                         is_used, is_receive_preferred, last_scanned_at_ms)
+                        VALUES (?, ?, ?, ?, ?, ?, 0, ?)
+                        """,
+                        arguments: [
+                            UUID().uuidString,
+                            walletId.uuidString,
+                            chainRaw,
+                            item.address,
+                            item.derivationPath,
+                            isUsed,
+                            scannedAt
+                        ]
+                    )
+                }
+                saved += 1
+            }
+            return saved
         }
     }
 
