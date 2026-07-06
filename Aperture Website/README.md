@@ -14,7 +14,7 @@ space, ruled "spec‑sheet" grids, and quiet motion. Light mode throughout.
 ## Pages
 
 Open `index.html` for the overview screen. Production routes are clean URLs:
-`/`, `/security`, `/open-source`, `/faq`, `/contact`, `/privacy`,
+`/`, `/security`, `/open-source`, `/faq`, `/support`, `/privacy`,
 `/privacy-choices`, and `/terms`.
 
 | # | File | Screen | What it covers |
@@ -24,7 +24,7 @@ Open `index.html` for the overview screen. Production routes are clean URLs:
 | 3 | `Aperture Privacy.dc.html` | **Privacy Policy** | Full dated policy — "data collected: none", on‑device storage, permissions, third‑party infrastructure exposure, GDPR/CCPA, children/age |
 | 4 | `Aperture Terms.dc.html` | **Terms of Use** | 17‑section legal document — self‑custody responsibility, no recovery/reversal, disclaimers, liability, governing law |
 | 5 | `Aperture Open Source.dc.html` | **Open Source** | Reproducible builds (clone → build → compare), two‑dependency discipline, Swift 6, public test suite |
-| 6 | `Aperture Contact.dc.html` | **Contact** | Channels (email, GitHub issues, security disclosures) + a form that composes an email via the visitor's own mail app |
+| 6 | `Aperture Contact.dc.html` | **Support** | Channels (email, GitHub issues, security disclosures) + a form that composes an email via the visitor's own mail app |
 | 7 | `Aperture FAQ.dc.html` | **FAQ** | 24 grounded Q&As across Getting started / Keys & security / Privacy / Sending & receiving / Verification & trust |
 | 8 | `Aperture Privacy Choices.dc.html` | **Your Privacy Choices** | User-facing privacy choices and legal opt-out explanation for a no-account, no-tracking wallet |
 
@@ -88,7 +88,7 @@ fetched from a CDN.
 
 - **App Store:** every "Download" / "Download on the App Store" button links to
   the live listing `https://apps.apple.com/app/id6780187283`.
-- `support@aperturex.io` on the Contact page is a **placeholder** — replace it
+- `support@aperturex.io` on the Support page is a **placeholder** — replace it
   with the real support address before publishing.
 - All product claims (24 networks, Secure Enclave, reproducible build, 600,000
   PBKDF2 iterations, leaked‑seed blocklist, fresh‑install keychain wipe, etc.)

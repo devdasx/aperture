@@ -63,10 +63,10 @@
       ]
     },
     {
-      "name": "Contact",
-      "short_name": "Contact",
+      "name": "Support",
+      "short_name": "Support",
       "description": "Contact Aperture support.",
-      "url": "/contact",
+      "url": "/support",
       "icons": [
         {
           "src": "/assets/icon-192.png",
