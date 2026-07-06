@@ -72,6 +72,88 @@ enum SendMemoValue: Codable, Hashable, Sendable {
     }
 }
 
+/// Auto-classifies Stellar memo input when the sender was only given a value.
+/// Stellar itself still needs a typed memo in the signed transaction.
+enum StellarMemoInference: Equatable, Sendable {
+    case empty
+    case text(String)
+    case id(UInt64)
+    case hashHex(String)
+    case invalidID
+    case invalidHash
+
+    static func infer(_ raw: String) -> StellarMemoInference {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return .empty }
+
+        let hasHexPrefix = trimmed.lowercased().hasPrefix("0x")
+        let normalizedHex = hasHexPrefix ? String(trimmed.dropFirst(2)) : trimmed
+        let isHex = normalizedHex.range(of: "^[0-9a-fA-F]+$", options: .regularExpression) != nil
+        if hasHexPrefix {
+            return normalizedHex.count == 64 && isHex ? .hashHex(normalizedHex) : .invalidHash
+        }
+        if normalizedHex.count == 64 && isHex {
+            return .hashHex(normalizedHex)
+        }
+
+        let isDigits = trimmed.range(of: "^[0-9]+$", options: .regularExpression) != nil
+        if isDigits {
+            guard let id = UInt64(trimmed) else { return .invalidID }
+            return .id(id)
+        }
+
+        return .text(trimmed)
+    }
+
+    var memo: SendMemoValue.StellarMemo? {
+        switch self {
+        case .empty, .invalidID, .invalidHash:
+            return nil
+        case .text(let text):
+            return .text(text)
+        case .id(let id):
+            return .id(id)
+        case .hashHex(let hash):
+            return .hashHex(hash)
+        }
+    }
+
+    var displayName: String? {
+        switch self {
+        case .empty:
+            return nil
+        case .text:
+            return "Text"
+        case .id, .invalidID:
+            return "ID"
+        case .hashHex, .invalidHash:
+            return "Hash"
+        }
+    }
+
+    var isTextLike: Bool {
+        switch self {
+        case .empty, .text:
+            return true
+        default:
+            return false
+        }
+    }
+
+    var validationError: String? {
+        switch self {
+        case .text(let text) where text.utf8.count > 28:
+            return "Memo text must be 28 bytes or less."
+        case .invalidID:
+            return "Memo ID must be a whole number from 0 to 18,446,744,073,709,551,615."
+        case .invalidHash:
+            return "Memo hash must be exactly 32 bytes, written as 64 hex characters."
+        default:
+            return nil
+        }
+    }
+}
+
 /// The complete, validated output of the compose screen — everything the
 /// FUTURE sign step needs to build, sign, and broadcast the transaction.
 /// Nothing the signer needs is missing (per the brief). Codable +

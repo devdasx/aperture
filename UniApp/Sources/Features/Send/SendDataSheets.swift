@@ -57,35 +57,23 @@ struct SendMemoSheet: View {
     @Bindable var model: SendComposeModel
     @Environment(\.dismiss) private var dismiss
     @State private var draft = ""
-    @State private var stellarMemoType: StellarMemoSheetKind = .text
     @State private var didSeed = false
 
     private var maxBytes: Int? { model.capability.memoMaxBytes }
     private var trimmedDraft: String { draft.trimmingCharacters(in: .whitespacesAndNewlines) }
     private var byteCount: Int { trimmedDraft.utf8.count }
     private var isStellarMemo: Bool { model.capability.memoKind == .stellarMemo }
-    private var countsMemoBytes: Bool { !isStellarMemo || stellarMemoType == .text }
+    private var stellarMemoInference: StellarMemoInference {
+        StellarMemoInference.infer(draft)
+    }
+    private var countsMemoBytes: Bool { !isStellarMemo || stellarMemoInference.isTextLike }
     private var overLimit: Bool {
         guard countsMemoBytes, let m = maxBytes else { return false }
         return byteCount > m
     }
-    private var normalizedStellarHash: String {
-        if trimmedDraft.lowercased().hasPrefix("0x") {
-            return String(trimmedDraft.dropFirst(2))
-        }
-        return trimmedDraft
-    }
     private var stellarMemoError: String? {
-        guard isStellarMemo, !trimmedDraft.isEmpty else { return nil }
-        switch stellarMemoType {
-        case .text:
-            return overLimit ? "Memo text must be 28 bytes or less." : nil
-        case .id:
-            return UInt64(trimmedDraft) == nil ? "Memo ID must be a whole number from 0 to 18,446,744,073,709,551,615." : nil
-        case .hash:
-            let isHex = normalizedStellarHash.range(of: "^[0-9a-fA-F]{64}$", options: .regularExpression) != nil
-            return isHex ? nil : "Memo hash must be exactly 32 bytes, written as 64 hex characters."
-        }
+        guard isStellarMemo else { return nil }
+        return stellarMemoInference.validationError
     }
     private var canSave: Bool { !overLimit && stellarMemoError == nil }
 
@@ -109,22 +97,17 @@ struct SendMemoSheet: View {
                     // Review total is no surprise (Rule #16 honesty · FIX 9).
                     ComposeInfoNote(text: "Adding a memo on TRON costs an extra 1 TRX.")
                 }
-                if isStellarMemo {
-                    Picker("Memo type", selection: $stellarMemoType) {
-                        ForEach(StellarMemoSheetKind.allCases) { type in
-                            Text(type.rawValue).tag(type)
-                        }
-                    }
-                    .pickerStyle(.segmented)
-                }
                 UniTextField(
                     placeholder: memoPlaceholder,
                     text: $draft,
-                    directionPolicy: isStellarMemo && stellarMemoType != .text ? .forceLTR : .automatic,
+                    directionPolicy: isStellarMemo && !stellarMemoInference.isTextLike ? .forceLTR : .automatic,
                     axis: .vertical,
-                    lineLimit: isStellarMemo && stellarMemoType != .text ? 1 : 3,
-                    keyboardType: isStellarMemo && stellarMemoType == .id ? .numberPad : .default
+                    lineLimit: isStellarMemo && !stellarMemoInference.isTextLike ? 1 : 3,
+                    keyboardType: .default
                 )
+                if isStellarMemo, let displayName = stellarMemoInference.displayName {
+                    memoTypeBadge(displayName)
+                }
                 if countsMemoBytes, let m = maxBytes {
                     byteCounter(byteCount, max: m, over: overLimit)
                 }
@@ -143,18 +126,14 @@ struct SendMemoSheet: View {
 
     private var memoBlurb: LocalizedStringKey {
         if isStellarMemo {
-            return "Add the exact memo type and value the recipient gave you."
+            return "Add the exact memo value the recipient gave you."
         }
         return "Add an optional note that travels with the transaction."
     }
 
     private var memoPlaceholder: LocalizedStringKey {
         guard isStellarMemo else { return "Memo" }
-        switch stellarMemoType {
-        case .text: return "Memo text"
-        case .id: return "Memo ID"
-        case .hash: return "64-character memo hash"
-        }
+        return "Memo, ID, or hash"
     }
 
     private var currentMemoText: String {
@@ -170,13 +149,10 @@ struct SendMemoSheet: View {
     private func seedCurrentMemo() {
         switch model.memo {
         case .stellarMemo(.text(let text)):
-            stellarMemoType = .text
             draft = text
         case .stellarMemo(.id(let id)):
-            stellarMemoType = .id
             draft = String(id)
         case .stellarMemo(.hashHex(let hash)):
-            stellarMemoType = .hash
             draft = hash
         default:
             draft = currentMemoText
@@ -189,29 +165,23 @@ struct SendMemoSheet: View {
         switch model.capability.memoKind {
         case .splMemo:    model.memo = .splMemo(trimmed)
         case .stellarMemo:
-            switch stellarMemoType {
-            case .text:
-                guard stellarMemoError == nil else { return }
-                model.memo = .stellarMemo(.text(trimmed))
-            case .id:
-                guard let id = UInt64(trimmed) else { return }
-                model.memo = .stellarMemo(.id(id))
-            case .hash:
-                guard stellarMemoError == nil else { return }
-                model.memo = .stellarMemo(.hashHex(normalizedStellarHash))
-            }
+            guard stellarMemoError == nil, let memo = stellarMemoInference.memo else { return }
+            model.memo = .stellarMemo(memo)
         case .textMemo, .cosmosMemo, .nearFtMemo: model.memo = .text(trimmed)
         default:          model.memo = .text(trimmed)
         }
     }
-}
 
-private enum StellarMemoSheetKind: String, CaseIterable, Identifiable {
-    case text = "Text"
-    case id = "ID"
-    case hash = "Hash"
-
-    var id: String { rawValue }
+    private func memoTypeBadge(_ type: String) -> some View {
+        HStack(spacing: UniSpacing.xs) {
+            Image(systemName: "sparkle.magnifyingglass")
+                .font(.system(size: 12, weight: .semibold))
+            Text("Detected: \(type)")
+                .font(UniTypography.caption1.weight(.semibold))
+        }
+        .foregroundStyle(UniColors.Text.secondary)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
 }
 
 // MARK: - Destination tag (XRP)

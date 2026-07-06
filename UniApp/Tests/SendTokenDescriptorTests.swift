@@ -206,6 +206,19 @@ struct SendTokenDescriptorTests {
         #expect(validator.validate(invalidHashInputs).contains(.memoInvalid))
     }
 
+    @Test("Stellar memo inference detects text, ID, hash, and invalid typed values")
+    func stellarMemoInferenceDetectsTypeFromValue() {
+        let hash = String(repeating: "a", count: 64)
+
+        #expect(StellarMemoInference.infer("invoice 123") == .text("invoice 123"))
+        #expect(StellarMemoInference.infer("9876543210") == .id(9_876_543_210))
+        #expect(StellarMemoInference.infer(hash) == .hashHex(hash))
+        #expect(StellarMemoInference.infer("0x\(hash)") == .hashHex(hash))
+        #expect(StellarMemoInference.infer("18446744073709551616") == .invalidID)
+        #expect(StellarMemoInference.infer("0xabc") == .invalidHash)
+        #expect(StellarMemoInference.infer(String(repeating: "x", count: 29)).validationError == "Memo text must be 28 bytes or less.")
+    }
+
     @Test("Aptos token sends clamp tiny max gas caps before signing")
     func aptosTokenSendsClampTinyMaxGasCaps() {
         let floor = AptosTransactionSigner.minimumMaxGasAmount

@@ -77,7 +77,6 @@ struct SendRecipientView: View {
     @State private var didConsumeInitial: Bool = false
     /// XRP/XLM recipient-service routing data entered beside the address.
     @State private var destinationTagText: String = ""
-    @State private var stellarMemoType: StellarMemoInputKind = .text
     @State private var stellarMemoText: String = ""
 
     private var maxRecipients: Int { ChainSendCapability.maxRecipients(for: chain) }
@@ -108,26 +107,13 @@ struct SendRecipientView: View {
         stellarMemoTrimmed.utf8.count
     }
 
-    private var normalizedStellarHash: String {
-        let trimmed = stellarMemoTrimmed
-        if trimmed.lowercased().hasPrefix("0x") {
-            return String(trimmed.dropFirst(2))
-        }
-        return trimmed
+    private var stellarMemoInference: StellarMemoInference {
+        StellarMemoInference.infer(stellarMemoText)
     }
 
     private var stellarMemoError: String? {
-        guard chain == .stellar, !stellarMemoTrimmed.isEmpty else { return nil }
-        switch stellarMemoType {
-        case .text:
-            return stellarMemoByteCount > 28 ? "Memo text must be 28 bytes or less." : nil
-        case .id:
-            return UInt64(stellarMemoTrimmed) == nil ? "Memo ID must be a whole number from 0 to 18,446,744,073,709,551,615." : nil
-        case .hash:
-            let hash = normalizedStellarHash
-            let isHex = hash.range(of: "^[0-9a-fA-F]{64}$", options: .regularExpression) != nil
-            return isHex ? nil : "Memo hash must be exactly 32 bytes, written as 64 hex characters."
-        }
+        guard chain == .stellar else { return nil }
+        return stellarMemoInference.validationError
     }
 
     private var recipientMemoIsValid: Bool {
@@ -147,16 +133,8 @@ struct SendRecipientView: View {
             guard !destinationTagTrimmed.isEmpty, let tag = parsedDestinationTag else { return nil }
             return .destinationTag(tag)
         case .stellar:
-            guard !stellarMemoTrimmed.isEmpty else { return nil }
-            switch stellarMemoType {
-            case .text:
-                return stellarMemoError == nil ? .stellarMemo(.text(stellarMemoTrimmed)) : nil
-            case .id:
-                guard let id = UInt64(stellarMemoTrimmed) else { return nil }
-                return .stellarMemo(.id(id))
-            case .hash:
-                return stellarMemoError == nil ? .stellarMemo(.hashHex(normalizedStellarHash)) : nil
-            }
+            guard stellarMemoError == nil, let memo = stellarMemoInference.memo else { return nil }
+            return .stellarMemo(memo)
         default:
             return nil
         }
@@ -347,29 +325,26 @@ struct SendRecipientView: View {
                     .foregroundStyle(UniColors.Text.secondary)
                     .padding(.leading, UniSpacing.m)
 
-                Picker("Memo type", selection: $stellarMemoType) {
-                    ForEach(StellarMemoInputKind.allCases) { type in
-                        Text(type.rawValue).tag(type)
-                    }
-                }
-                .pickerStyle(.segmented)
-                .padding(.horizontal, UniSpacing.m)
-
                 UniTextField(
                     placeholder: stellarMemoPlaceholder,
                     text: $stellarMemoText,
-                    directionPolicy: stellarMemoType == .text ? .automatic : .forceLTR,
+                    directionPolicy: stellarMemoInference.isTextLike ? .automatic : .forceLTR,
                     axis: .vertical,
-                    lineLimit: stellarMemoType == .text ? 2 : 1,
-                    keyboardType: stellarMemoType == .id ? .numberPad : .default
+                    lineLimit: stellarMemoInference.isTextLike ? 2 : 1,
+                    keyboardType: .default
                 )
 
+                if let displayName = stellarMemoInference.displayName {
+                    memoTypeBadge(displayName)
+                        .padding(.horizontal, UniSpacing.m)
+                }
+
                 RecipientRoutingNote(
-                    text: "Use the exact memo type and value the exchange or recipient gave you. Many Stellar deposits require this."
+                    text: "Use the exact memo value the exchange or recipient gave you. Many Stellar deposits require this."
                 )
                 .padding(.horizontal, UniSpacing.m)
 
-                if stellarMemoType == .text {
+                if stellarMemoInference.isTextLike {
                     HStack {
                         Spacer()
                         Text(verbatim: "\(stellarMemoByteCount) / 28 bytes")
@@ -391,11 +366,18 @@ struct SendRecipientView: View {
     }
 
     private var stellarMemoPlaceholder: LocalizedStringKey {
-        switch stellarMemoType {
-        case .text: return "Memo text"
-        case .id: return "Memo ID"
-        case .hash: return "64-character memo hash"
+        "Memo, ID, or hash"
+    }
+
+    private func memoTypeBadge(_ type: String) -> some View {
+        HStack(spacing: UniSpacing.xs) {
+            Image(systemName: "sparkle.magnifyingglass")
+                .font(.system(size: 12, weight: .semibold))
+            Text("Detected: \(type)")
+                .font(UniTypography.caption1.weight(.semibold))
         }
+        .foregroundStyle(UniColors.Text.secondary)
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private func memoError(_ text: String) -> some View {
@@ -673,7 +655,7 @@ struct SendRecipientView: View {
             if type.contains("hash") || queryItems["memo_hash"] != nil {
                 return .stellarMemo(.hashHex(rawMemo.trimmingCharacters(in: .whitespacesAndNewlines)))
             }
-            return .stellarMemo(.text(rawMemo.trimmingCharacters(in: .whitespacesAndNewlines)))
+            return StellarMemoInference.infer(rawMemo).memo.map { .stellarMemo($0) }
         default:
             return nil
         }
@@ -687,17 +669,13 @@ struct SendRecipientView: View {
         case .stellarMemo(let stellarMemo) where chain == .stellar:
             switch stellarMemo {
             case .text(let text):
-                stellarMemoType = .text
                 stellarMemoText = text
             case .id(let id):
-                stellarMemoType = .id
                 stellarMemoText = String(id)
             case .hashHex(let hash):
-                stellarMemoType = .hash
                 stellarMemoText = hash
             }
         case .text(let text) where chain == .stellar:
-            stellarMemoType = .text
             stellarMemoText = text
         default:
             break
@@ -741,14 +719,6 @@ private struct RecipientRoutingNote: View {
                 .fill(UniColors.Feedback.Warning.background)
         )
     }
-}
-
-private enum StellarMemoInputKind: String, CaseIterable, Identifiable {
-    case text = "Text"
-    case id = "ID"
-    case hash = "Hash"
-
-    var id: String { rawValue }
 }
 
 // MARK: - One recipient row (owns its resolution)
