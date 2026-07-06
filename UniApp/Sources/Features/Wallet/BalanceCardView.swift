@@ -1,8 +1,8 @@
 import SwiftUI
 
-/// Wallet-home balance summary card.
+/// Wallet-home balance summary group.
 ///
-/// The card renders only the wallet identity, current total, visibility
+/// The native `GroupBox` renders only the wallet identity, current total, visibility
 /// toggle, and zero-state CTA. Chart UI, chart range tabs, chart scrubbing, and
 /// history reconstruction are intentionally not part of this surface.
 struct BalanceCardView: View {
@@ -14,8 +14,6 @@ struct BalanceCardView: View {
     let onSwitchWallet: () -> Void
     let onAddFunds: () -> Void
 
-    @Environment(\.colorScheme) private var colorScheme
-    @Environment(\.legibilityWeight) private var legibilityWeight
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     @GRDBStorage(HideBalancesPreference.hideBalanceOnHomeKey) private var isHidden: Bool = false
@@ -40,8 +38,6 @@ struct BalanceCardView: View {
 
     private enum CardState: Equatable { case value, zero, hidden }
 
-    private var boostContrast: Bool { legibilityWeight == .bold }
-
     private var resolvedState: CardState {
         if isHidden { return .hidden }
         if totalFiat <= 0 { return .zero }
@@ -49,15 +45,14 @@ struct BalanceCardView: View {
     }
 
     var body: some View {
-        ZStack(alignment: .topTrailing) {
-            watermark
+        GroupBox {
             VStack(alignment: .leading, spacing: 0) {
                 header
                     .padding(.bottom, 2)
 
                 Text("Total balance")
                     .font(UniTypography.BalanceCard.label)
-                    .foregroundStyle(UniColors.BalanceCard.textMuted(colorScheme, boostContrast: boostContrast))
+                    .foregroundStyle(UniColors.Text.secondary)
                     .padding(.top, 24)
                     .padding(.bottom, 8)
 
@@ -71,13 +66,11 @@ struct BalanceCardView: View {
                 }
                 .transition(.opacity.combined(with: .move(edge: .bottom)))
             }
-            .padding(.horizontal, UniSpacing.l)
-            .padding(.top, UniSpacing.l)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.vertical, UniSpacing.xs)
         }
+        .groupBoxStyle(.automatic)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(cardSurface)
-        .clipShape(RoundedRectangle(cornerRadius: UniRadius.balanceCard, style: .continuous))
-        .overlay(hairlineOverlay)
         .accessibilityElement(children: .combine)
         .accessibilityLabel(accessibilityLabel)
         .animation(reduceMotion ? nil : .smooth(duration: 0.32), value: resolvedState)
@@ -91,32 +84,6 @@ struct BalanceCardView: View {
         return String(format: String.apertureLocalized("Updated %@"), relative)
     }
 
-    private var cardSurface: some View {
-        UniColors.Background.secondary
-    }
-
-    @ViewBuilder
-    private var hairlineOverlay: some View {
-        if colorScheme == .light {
-            RoundedRectangle(cornerRadius: UniRadius.balanceCard, style: .continuous)
-                .stroke(UniColors.BalanceCard.hairline(colorScheme), lineWidth: 1)
-                .allowsHitTesting(false)
-        }
-    }
-
-    private var watermark: some View {
-        Image(colorScheme == .dark ? "IrisWatermarkWhite" : "IrisWatermarkInk")
-            .resizable()
-            .renderingMode(.original)
-            .scaledToFit()
-            .frame(width: 220, height: 220)
-            .opacity(UniColors.BalanceCard.watermarkOpacity(colorScheme))
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .offset(x: -110, y: -30)
-            .allowsHitTesting(false)
-            .accessibilityHidden(true)
-    }
-
     private var header: some View {
         HStack(alignment: .top, spacing: 11) {
             VStack(alignment: .leading, spacing: 1) {
@@ -124,11 +91,11 @@ struct BalanceCardView: View {
                     HStack(spacing: 3) {
                         Text(verbatim: walletName)
                             .font(UniTypography.BalanceCard.walletName)
-                            .foregroundStyle(UniColors.BalanceCard.textPrimary(colorScheme))
+                            .foregroundStyle(UniColors.Text.primary)
                             .lineLimit(1)
                         Image(systemName: "chevron.down")
                             .font(.system(size: 11, weight: .bold))
-                            .foregroundStyle(UniColors.BalanceCard.textPrimary(colorScheme))
+                            .foregroundStyle(UniColors.Text.primary)
                     }
                     .contentShape(Rectangle())
                 }
@@ -139,7 +106,7 @@ struct BalanceCardView: View {
                     TimelineView(.periodic(from: .now, by: 30)) { _ in
                         Text(verbatim: Self.updatedCaption(lastUpdated))
                             .font(UniTypography.caption2)
-                            .foregroundStyle(UniColors.BalanceCard.textMuted(colorScheme, boostContrast: boostContrast))
+                            .foregroundStyle(UniColors.Text.secondary)
                             .lineLimit(1)
                     }
                 }
@@ -151,13 +118,12 @@ struct BalanceCardView: View {
             Button(action: toggleHidden) {
                 Image(systemName: isHidden ? "eye.slash" : "eye")
                     .font(.system(size: 16, weight: .regular))
-                    .foregroundStyle(UniColors.BalanceCard.eyeGlyph(colorScheme))
-                    .frame(width: 34, height: 34)
-                    .background(Circle().fill(UniColors.BalanceCard.eyeButtonFill(colorScheme)))
-                    .contentShape(Circle())
+                    .frame(width: 22, height: 22)
             }
-            .buttonStyle(.plain)
-            .frame(width: 44, height: 44)
+            .buttonStyle(.bordered)
+            .buttonBorderShape(.circle)
+            .controlSize(.regular)
+            .tint(UniColors.Tint.accent)
             .accessibilityLabel(Text(isHidden ? "Show balance" : "Hide balance"))
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)
@@ -180,13 +146,13 @@ struct BalanceCardView: View {
         let parts = WalletFormatting.fiatParts(totalFiat, currencyCode: currencyCode)
         let currencyRun = Text(verbatim: parts.currency + (parts.currency.isEmpty ? "" : " "))
             .font(UniTypography.BalanceCard.currency)
-            .foregroundStyle(UniColors.BalanceCard.textMuted(colorScheme, boostContrast: boostContrast))
+            .foregroundStyle(UniColors.Text.secondary)
 
         return Group {
             if isHidden {
                 let dots = Text(verbatim: "••••••")
                     .font(UniTypography.BalanceCard.balance)
-                    .foregroundStyle(UniColors.BalanceCard.textPrimary(colorScheme))
+                    .foregroundStyle(UniColors.Text.primary)
                 Text("\(currencyRun)\(dots)")
                     .tracking(2)
             } else {
@@ -205,13 +171,13 @@ struct BalanceCardView: View {
         let parts = WalletFormatting.fiatParts(totalFiat, currencyCode: currencyCode)
         let currency = Text(verbatim: parts.currency)
             .font(UniTypography.BalanceCard.currency)
-            .foregroundStyle(UniColors.BalanceCard.textMuted(colorScheme, boostContrast: boostContrast))
+            .foregroundStyle(UniColors.Text.secondary)
         let integer = Text(verbatim: parts.integer)
             .font(UniTypography.BalanceCard.balance)
-            .foregroundStyle(UniColors.BalanceCard.textPrimary(colorScheme))
+            .foregroundStyle(UniColors.Text.primary)
         let fraction = Text(verbatim: parts.fraction ?? "")
             .font(UniTypography.BalanceCard.balance)
-            .foregroundStyle(UniColors.BalanceCard.decimals(colorScheme, boostContrast: boostContrast))
+            .foregroundStyle(UniColors.Text.tertiary)
         let gap = Text(verbatim: " ")
             .font(UniTypography.BalanceCard.currency)
 
@@ -229,7 +195,7 @@ struct BalanceCardView: View {
 
         Text("Add crypto to get started — receive or transfer it from another wallet.")
             .font(UniTypography.BalanceCard.zeroPrompt)
-            .foregroundStyle(UniColors.BalanceCard.textMuted(colorScheme, boostContrast: boostContrast))
+            .foregroundStyle(UniColors.Text.secondary)
             .lineSpacing(3)
             .fixedSize(horizontal: false, vertical: true)
             .padding(.top, 18)

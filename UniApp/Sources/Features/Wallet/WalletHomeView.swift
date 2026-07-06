@@ -949,21 +949,11 @@ struct WalletHomeView: View {
         }
     }
 
-    /// Unified balance summary card. Charts were removed from the wallet home,
-    /// so this leaf renders only the current database-backed total and refresh
-    /// caption.
+    /// Unified balance summary. Charts were removed from the wallet home, so
+    /// this leaf renders only the current database-backed total, wallet switcher,
+    /// and hide-balance control inside a native SwiftUI group container.
     @ViewBuilder
     private var balanceCardSection: some View {
-        // Production — the flagship `BalanceCardView` as ONE
-        // full-bleed row. The card owns its own gradient surface,
-        // 30pt radius, watermark, header, balance, change pill,
-        // chart, and segmented selector (the design handoff
-        // `design_handoff_balance_card 2/`), so the list row is
-        // chrome-free: a `Color.clear` background, hidden
-        // separators, and a 16pt horizontal inset (the handoff's
-        // "screen − 2×16pt margins") with zero vertical inset (the
-        // card draws its own internal padding). This replaces the
-        // prior two-row hero + sparkline split.
         Section {
             // 2026-06-18 native perf fix — the balance card is wrapped in a
             // leaf that OWNS the high-churn `chainStateRecords` GRDB observation, so the
@@ -979,18 +969,15 @@ struct WalletHomeView: View {
                 onSwitchWallet: { isShowingSwitcher = true },
                 onAddFunds: { isShowingReceive = true }
             )
-            // Re-key on the active wallet so the per-wallet hidden
-            // flag's `@GRDBStorage` key (which embeds the id) is
-            // re-resolved when the user switches wallets — the new
-            // wallet shows its own remembered hidden state.
+            // Re-key on the active wallet so the card's view state resets
+            // cleanly when the user switches wallets. Hide-balance itself is
+            // global and persists through `HideBalancesPreference`.
             .id(activeWallet?.id)
             .listRowBackground(Color.clear)
             .listRowSeparator(.hidden)
-            // Zero row insets so the card surface fills the inset-grouped
-            // section's content width — its left/right edges then line up
-            // exactly with the holdings/transactions grouped card below
-            // (which uses the same section width). The card draws its own
-            // internal padding; the section margin handles the screen gap.
+            // Zero row insets so the native group surface fills the
+            // inset-grouped section's content width and lines up with the
+            // holdings/transactions group below.
             .listRowInsets(EdgeInsets())
         }
     }
