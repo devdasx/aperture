@@ -345,11 +345,6 @@ struct SendRecipientView: View {
             .padding(.vertical, UniSpacing.xs)
         case .stellar:
             VStack(alignment: .leading, spacing: UniSpacing.xs) {
-                Text("Stellar memo")
-                    .font(UniTypography.footnote.weight(.semibold))
-                    .foregroundStyle(UniColors.Text.secondary)
-                    .padding(.leading, UniSpacing.m)
-
                 UniTextField(
                     placeholder: stellarMemoPlaceholder,
                     text: $stellarMemoText,
