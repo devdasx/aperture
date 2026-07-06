@@ -528,7 +528,23 @@ struct SettingsIconTile: View {
 private struct PlaygroundView: View {
     var body: some View {
         List {
-            Section { EmptyView() }
+            Section {
+                VStack(spacing: UniSpacing.s) {
+                    UniButton(title: "Primary button", variant: .primary) {}
+                    UniButton(title: "Secondary button", variant: .secondary) {}
+                }
+                .padding(.vertical, UniSpacing.s)
+                .listRowInsets(
+                    EdgeInsets(
+                        top: 0,
+                        leading: UniSpacing.l,
+                        bottom: 0,
+                        trailing: UniSpacing.l
+                    )
+                )
+                .listRowBackground(Color.clear)
+                .listRowSeparator(.hidden)
+            }
         }
         .listStyle(.insetGrouped)
         .scrollContentBackground(.hidden)
