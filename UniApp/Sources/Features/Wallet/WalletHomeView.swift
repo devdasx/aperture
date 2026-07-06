@@ -2722,7 +2722,7 @@ private struct SupportedTokenRow: View, Equatable {
     var body: some View {
         HStack(spacing: UniSpacing.s) {
             CoinMark(chain: row.chain, tokenSymbol: row.symbol, contract: row.contract)
-                .frame(width: 44, height: 44)
+                .frame(width: AssetLogoMetrics.standard, height: AssetLogoMetrics.standard)
                 .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: UniSpacing.xxs) {

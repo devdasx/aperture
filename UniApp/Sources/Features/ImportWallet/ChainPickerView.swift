@@ -76,7 +76,7 @@ struct ChainPickerView: View {
     @ViewBuilder
     private func chainLogo(for chain: SupportedChain) -> some View {
         CoinMark(chain: chain, tokenSymbol: chain.ticker)
-            .frame(width: 30, height: 30)
+            .frame(width: AssetLogoMetrics.standard, height: AssetLogoMetrics.standard)
             .accessibilityHidden(true)
     }
 }

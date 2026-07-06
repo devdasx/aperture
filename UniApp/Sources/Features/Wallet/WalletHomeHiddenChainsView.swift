@@ -90,7 +90,7 @@ struct WalletHomeHiddenChainsView: View {
     @ViewBuilder
     private func chainMark(for chain: SupportedChain) -> some View {
         CoinMark(chain: chain, tokenSymbol: chain.ticker, contract: nil)
-            .frame(width: 36, height: 36)
+            .frame(width: AssetLogoMetrics.standard, height: AssetLogoMetrics.standard)
     }
 
     /// `Binding<Bool>` for one chain's "hidden" toggle. Same shape

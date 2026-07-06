@@ -74,7 +74,7 @@ struct ReceiveSolanaAccountSearchSheet: View {
         VStack(alignment: .leading, spacing: UniSpacing.m) {
             HStack(spacing: UniSpacing.m) {
                 CoinMark(chain: .solana, tokenSymbol: SupportedChain.solana.ticker)
-                    .frame(width: 42, height: 42)
+                    .frame(width: AssetLogoMetrics.standard, height: AssetLogoMetrics.standard)
                 VStack(alignment: .leading, spacing: 3) {
                     Text("Solana addresses")
                         .font(UniTypography.title2)

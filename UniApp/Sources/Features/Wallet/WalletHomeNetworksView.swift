@@ -236,7 +236,7 @@ private struct NetworkRow: View {
         Button(action: toggle) {
             HStack(spacing: UniSpacing.s) {
                 CoinMark(chain: chain, tokenSymbol: chain.ticker, contract: nil)
-                    .frame(width: 36, height: 36)
+                    .frame(width: AssetLogoMetrics.standard, height: AssetLogoMetrics.standard)
                     .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: UniSpacing.xxs) {
                     Text(verbatim: chain.displayName)

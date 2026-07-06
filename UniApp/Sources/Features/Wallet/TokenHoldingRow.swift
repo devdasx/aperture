@@ -15,7 +15,7 @@ import SwiftUI
 /// the new flat hierarchy.
 ///
 /// **Visual register (Rule #2 + Rule #7):**
-/// - 44pt circular `CoinMark` — same as `AssetRow`. Native sends
+/// - Standard circular `CoinMark` — same as `AssetRow`. Native sends
 ///   resolve to the chain's mark; USDC / USDT resolve to bundled
 ///   stablecoin marks; everything else falls back to an honest
 ///   3-letter initials chip on `Material.card` (never a fabricated
@@ -48,7 +48,7 @@ struct TokenHoldingRow: View {
                 tokenSymbol: balance.tokenSymbol,
                 contract: balance.tokenContract
             )
-                .frame(width: 44, height: 44)
+                .frame(width: AssetLogoMetrics.standard, height: AssetLogoMetrics.standard)
                 .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: UniSpacing.xxs) {

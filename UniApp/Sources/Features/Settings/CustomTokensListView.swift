@@ -239,7 +239,7 @@ private struct CustomTokenRow: View {
                 tokenSymbol: token.symbol,
                 contract: token.contract
             )
-            .frame(width: 36, height: 36)
+            .frame(width: AssetLogoMetrics.standard, height: AssetLogoMetrics.standard)
             .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: 2) {

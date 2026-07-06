@@ -187,7 +187,7 @@ struct TransactionDetailView: View {
                     tokenSymbol: tx.tokenSymbol,
                     contract: tx.tokenContract
                 )
-                .frame(width: 56, height: 56)
+                .frame(width: AssetLogoMetrics.standard, height: AssetLogoMetrics.standard)
                 .padding(.bottom, UniSpacing.xxs)
             }
 
@@ -1400,7 +1400,7 @@ private struct TransactionScreenshotView: View {
                         tokenSymbol: receipt.tokenSymbol,
                         contract: receipt.tokenContract
                     )
-                    .frame(width: 58, height: 58)
+                    .frame(width: AssetLogoMetrics.standard, height: AssetLogoMetrics.standard)
                 }
 
                 Text(verbatim: receipt.directionText)

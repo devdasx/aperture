@@ -1140,8 +1140,8 @@ private struct MarketAssetRow: View {
 
     var body: some View {
         HStack(alignment: .center, spacing: 12) {
-            MarketCoinIcon(symbol: asset.symbol, size: 42)
-                .frame(width: 42, height: 42)
+            MarketCoinIcon(symbol: asset.symbol, size: AssetLogoMetrics.standard)
+                .frame(width: AssetLogoMetrics.standard, height: AssetLogoMetrics.standard)
 
             assetIdentity
                 .frame(minWidth: 82, idealWidth: 136, maxWidth: 178, alignment: .leading)

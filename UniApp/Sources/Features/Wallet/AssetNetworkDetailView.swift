@@ -221,14 +221,14 @@ struct AssetNetworkDetailView: View {
     @ViewBuilder
     private var heroCardSection: some View {
         Section {
-            // Row 1 — identity (80pt mark + name + ticker + this network).
+            // Row 1 — identity (standard mark + name + ticker + this network).
             HStack(spacing: UniSpacing.m) {
                 CoinMark(
                     chain: chain,
                     tokenSymbol: identity.symbol,
                     contract: networkRow?.contract
                 )
-                .frame(width: 80, height: 80)
+                .frame(width: AssetLogoMetrics.standard, height: AssetLogoMetrics.standard)
                 .accessibilityHidden(true)
 
                 VStack(alignment: .leading, spacing: UniSpacing.xxs) {

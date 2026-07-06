@@ -68,7 +68,7 @@ struct ReviewChainRow: View {
     @ViewBuilder
     private var chainLogo: some View {
         CoinMark(chain: chain, tokenSymbol: chain.ticker)
-            .frame(width: 28, height: 28)
+            .frame(width: AssetLogoMetrics.standard, height: AssetLogoMetrics.standard)
             .opacity(isStubAddress ? 0.55 : 1)
             .accessibilityHidden(true)
     }

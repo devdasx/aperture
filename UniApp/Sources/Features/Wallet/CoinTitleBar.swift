@@ -44,7 +44,7 @@ struct CoinTitleBar: View {
                 .font(UniTypography.bodyEmphasized)
                 .foregroundStyle(UniColors.Text.primary)
             CoinMark(chain: chain, tokenSymbol: iconSymbol, contract: contract)
-                .frame(width: 22, height: 22)
+                .frame(width: AssetLogoMetrics.standard, height: AssetLogoMetrics.standard)
             Text(verbatim: fullName)
                 .font(UniTypography.bodyEmphasized)
                 .foregroundStyle(UniColors.Text.primary)

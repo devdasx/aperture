@@ -315,7 +315,7 @@ struct UniQRScannerSheet: View {
 
     private func chainIcon(_ chain: SupportedChain) -> some View {
         CoinMark(chain: chain, tokenSymbol: chain.ticker)
-        .frame(width: 40, height: 40)
+        .frame(width: AssetLogoMetrics.standard, height: AssetLogoMetrics.standard)
     }
 
     private func pillButton(_ title: LocalizedStringKey, systemImage: String?, dark: Bool, tint: Color = .white, action: @escaping () -> Void) -> some View {

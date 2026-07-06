@@ -147,25 +147,25 @@ struct ActivityRow: View {
 
     // MARK: - Leading mark + status badge
 
-    /// 44pt token mark + 18pt corner badge (with 22pt halo).
+    /// Standard token mark + 18pt corner badge (with 22pt halo).
     ///
     /// `ZStack` with `.bottomTrailing` alignment is layout-direction
     /// aware — SwiftUI flips to `.bottomLeading` in RTL automatically
     /// (Rule #11 §B). The badge offset uses positive x in LTR and
     /// SwiftUI re-signs it for RTL.
     ///
-    /// The 5pt offset (was 4pt at the 36pt mark size) keeps the badge
+    /// The 5pt offset keeps the badge
     /// sitting on the corner of the larger mark rather than crowding
     /// into it.
     private var leadingMark: some View {
         ZStack(alignment: .bottomTrailing) {
             CoinMark(chain: chain, tokenSymbol: tokenSymbol, contract: tokenContract)
-                .frame(width: 44, height: 44)
+                .frame(width: AssetLogoMetrics.standard, height: AssetLogoMetrics.standard)
 
             statusBadge
                 .offset(x: 5, y: 5)
         }
-        .frame(width: 44, height: 44, alignment: .topLeading)
+        .frame(width: AssetLogoMetrics.standard, height: AssetLogoMetrics.standard, alignment: .topLeading)
         .accessibilityHidden(true)
     }
 

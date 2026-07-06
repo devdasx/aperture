@@ -390,7 +390,7 @@ private struct PickNetworkScreen: View {
                     Button { onPick(entry) } label: {
                         HStack(spacing: UniSpacing.s) {
                             CoinMark(chain: entry.chain, tokenSymbol: entry.chain.ticker)
-                                .frame(width: 36, height: 36)
+                                .frame(width: AssetLogoMetrics.standard, height: AssetLogoMetrics.standard)
                             Text(verbatim: entry.chain.displayName)
                                 .font(UniTypography.body)
                                 .foregroundStyle(UniColors.Text.primary)
@@ -567,7 +567,7 @@ private struct KeyRevealScreen: View {
 
             HStack(spacing: UniSpacing.xs) {
                 CoinMark(chain: entry.chain, tokenSymbol: entry.chain.ticker)
-                    .frame(width: 22, height: 22)
+                    .frame(width: AssetLogoMetrics.standard, height: AssetLogoMetrics.standard)
                 Text(verbatim: entry.chain.displayName)
                     .font(UniTypography.subheadlineEmphasized)
                     .foregroundStyle(UniColors.Text.primary)

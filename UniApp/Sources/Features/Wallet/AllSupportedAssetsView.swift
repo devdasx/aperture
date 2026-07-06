@@ -356,7 +356,7 @@ struct AllSupportedAssetsView: View {
 // MARK: - TokenSupportedRow
 
 /// One row in `AllSupportedAssetsView`'s Tokens section. Mirrors
-/// `TokenHoldingRow`'s anatomy (44pt mark + ticker + chain + amount
+/// `TokenHoldingRow`'s anatomy (standard mark + ticker + chain + amount
 /// + fiat) so the visual register stays consistent between the
 /// home screen's "Tokens" section and the "Show all" destination.
 ///
@@ -374,7 +374,7 @@ private struct TokenSupportedRow: View {
     var body: some View {
         HStack(spacing: UniSpacing.s) {
             CoinMark(chain: row.chain, tokenSymbol: row.symbol, contract: row.contract)
-                .frame(width: 44, height: 44)
+                .frame(width: AssetLogoMetrics.standard, height: AssetLogoMetrics.standard)
                 .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: UniSpacing.xxs) {

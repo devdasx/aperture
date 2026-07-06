@@ -639,7 +639,7 @@ private struct WalletActivityNetworksPicker: View {
         } label: {
             HStack(spacing: UniSpacing.s) {
                 CoinMark(chain: chain, tokenSymbol: chain.ticker)
-                    .frame(width: 28, height: 28)
+                    .frame(width: AssetLogoMetrics.standard, height: AssetLogoMetrics.standard)
                     .accessibilityHidden(true)
                 Text(verbatim: chain.displayName)
                     .foregroundStyle(UniColors.Text.primary)

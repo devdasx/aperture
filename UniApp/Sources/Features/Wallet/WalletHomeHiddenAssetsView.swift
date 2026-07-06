@@ -232,7 +232,7 @@ struct WalletHomeHiddenAssetsView: View {
     @ViewBuilder
     private func coinMark(for chain: SupportedChain) -> some View {
         CoinMark(chain: chain, tokenSymbol: chain.ticker, contract: nil)
-            .frame(width: 36, height: 36)
+            .frame(width: AssetLogoMetrics.standard, height: AssetLogoMetrics.standard)
     }
 
     /// 36pt mark for a token, using the token's contract so Trust
@@ -241,7 +241,7 @@ struct WalletHomeHiddenAssetsView: View {
     @ViewBuilder
     private func tokenMark(for row: WalletTokenSupportedDisplayRow) -> some View {
         CoinMark(chain: row.chain, tokenSymbol: row.symbol, contract: row.contract)
-            .frame(width: 36, height: 36)
+            .frame(width: AssetLogoMetrics.standard, height: AssetLogoMetrics.standard)
     }
 
     // MARK: - Filtered rows

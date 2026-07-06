@@ -305,7 +305,7 @@ struct AssetDetailView: View {
         }
     }
 
-    /// Identity hero — 80pt CoinMark + name + ticker + "On N networks".
+    /// Identity hero — standard CoinMark + name + ticker + "On N networks".
     /// For native coins ("BTC on Bitcoin") the caption reads the
     /// chain display name; for tokens ("USDC on N networks") it reads
     /// the network count.
@@ -313,7 +313,7 @@ struct AssetDetailView: View {
     private func identityHeroRow(_ derived: DerivedState) -> some View {
         HStack(spacing: UniSpacing.m) {
             heroMark(derived.resolution)
-                .frame(width: 80, height: 80)
+                .frame(width: AssetLogoMetrics.standard, height: AssetLogoMetrics.standard)
                 .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: UniSpacing.xxs) {
@@ -819,7 +819,7 @@ private struct AssetNetworkRowView: View {
     @ViewBuilder
     private var networkMark: some View {
         CoinMark(chain: row.chain, tokenSymbol: row.chain.ticker)
-            .frame(width: 44, height: 44)
+            .frame(width: AssetLogoMetrics.standard, height: AssetLogoMetrics.standard)
             .accessibilityHidden(true)
     }
 

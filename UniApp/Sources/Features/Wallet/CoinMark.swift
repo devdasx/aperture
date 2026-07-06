@@ -1,6 +1,14 @@
 import SwiftUI
 import UIKit
 
+/// Canonical visual size for coin, token, and network marks in app
+/// content. The Markets list established this as the row-logo size;
+/// other wallet surfaces use the same value so asset identity does not
+/// jump between screens.
+enum AssetLogoMetrics {
+    static let standard: CGFloat = 42
+}
+
 /// Stabro-style logo renderer for coins, tokens, and networks.
 ///
 /// Resolution order is intentionally simple and shared everywhere:

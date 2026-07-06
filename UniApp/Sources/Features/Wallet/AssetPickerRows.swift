@@ -26,7 +26,7 @@ struct AssetPickerAssetRow: View {
     var body: some View {
         HStack(spacing: UniSpacing.s) {
             CoinMark(chain: logoChain, tokenSymbol: ticker, contract: logoContract)
-                .frame(width: 36, height: 36)
+                .frame(width: AssetLogoMetrics.standard, height: AssetLogoMetrics.standard)
             VStack(alignment: .leading, spacing: 2) {
                 Text(verbatim: fullName)
                     .font(UniTypography.body)
@@ -62,7 +62,7 @@ struct AssetPickerNetworkRow: View {
     var body: some View {
         HStack(spacing: UniSpacing.s) {
             CoinMark(chain: chain, tokenSymbol: chain.ticker)
-                .frame(width: 36, height: 36)
+                .frame(width: AssetLogoMetrics.standard, height: AssetLogoMetrics.standard)
             VStack(alignment: .leading, spacing: 2) {
                 Text(verbatim: chain.displayName)
                     .font(UniTypography.body)

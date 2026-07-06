@@ -43,7 +43,7 @@ struct ChainNavTitle: View {
     var body: some View {
         HStack(spacing: UniSpacing.xs) {
             CoinMark(chain: chain, tokenSymbol: chain.ticker)
-                .frame(width: 20, height: 20)
+                .frame(width: AssetLogoMetrics.standard, height: AssetLogoMetrics.standard)
                 .accessibilityHidden(true)
             Text(verbatim: chain.displayName)
                 .font(.system(size: 17, weight: .semibold))

@@ -246,7 +246,7 @@ struct ImportSuccessView: View {
 
     private func networkIcon(_ chain: SupportedChain) -> some View {
         CoinMark(chain: chain, tokenSymbol: chain.ticker)
-        .frame(width: 32, height: 32)
+        .frame(width: AssetLogoMetrics.standard, height: AssetLogoMetrics.standard)
         .overlay(Circle().stroke(UniColors.Background.secondary, lineWidth: 2.5))
         .accessibilityLabel(Text(verbatim: chain.displayName))
     }

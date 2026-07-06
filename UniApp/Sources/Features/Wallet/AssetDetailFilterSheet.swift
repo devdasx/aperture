@@ -428,7 +428,7 @@ private struct AssetDetailNetworksPicker: View {
         } label: {
             HStack(spacing: UniSpacing.s) {
                 CoinMark(chain: row.chain, tokenSymbol: row.chain.ticker)
-                    .frame(width: 28, height: 28)
+                    .frame(width: AssetLogoMetrics.standard, height: AssetLogoMetrics.standard)
                     .accessibilityHidden(true)
                 Text(verbatim: row.chain.displayName)
                     .foregroundStyle(UniColors.Text.primary)

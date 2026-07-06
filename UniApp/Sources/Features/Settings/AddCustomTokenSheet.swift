@@ -208,7 +208,7 @@ struct AddCustomTokenSheet: View {
                     tokenSymbol: editedSymbol.isEmpty ? result.symbol : editedSymbol,
                     contract: validatedContract
                 )
-                .frame(width: 64, height: 64)
+                .frame(width: AssetLogoMetrics.standard, height: AssetLogoMetrics.standard)
                 .accessibilityHidden(true)
 
                 VStack(spacing: UniSpacing.xxs) {
