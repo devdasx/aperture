@@ -21,9 +21,14 @@ struct ICloudRestoreView: View {
     let onImported: (UUID) -> Void
 
     @Environment(\.openURL) private var openURL
+    @Environment(\.editMode) private var editMode
 
     @State private var listState: ListState = .loading
     @State private var selectedBackupId: UUID?
+    @State private var selectedBackupIds = Set<UUID>()
+    @State private var pendingDeleteIds = Set<UUID>()
+    @State private var isDeletingBackups = false
+    @State private var deleteErrorMessage: String?
     @State private var password = ""
     @State private var isWorking = false
     @State private var passwordError = false
@@ -48,6 +53,7 @@ struct ICloudRestoreView: View {
         .background(UniColors.Background.primary.ignoresSafeArea())
         .navigationTitle("Restore from iCloud")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar { restoreToolbar }
         .navigationDestination(item: $selectedBackupId) { backupId in
             if let blob = backup(withId: backupId) {
                 passwordScreen(for: blob)
@@ -64,6 +70,24 @@ struct ICloudRestoreView: View {
             }
         }
         .task { await loadIfNeeded() }
+        .onChange(of: isEditingBackups) { _, isEditing in
+            if !isEditing { selectedBackupIds.removeAll() }
+        }
+        .alert(deleteConfirmationTitle, isPresented: deleteConfirmationBinding) {
+            Button("Cancel", role: .cancel) { pendingDeleteIds.removeAll() }
+            Button("Delete", role: .destructive) {
+                let ids = pendingDeleteIds
+                pendingDeleteIds.removeAll()
+                Task { await deleteBackups(ids) }
+            }
+        } message: {
+            Text(deleteConfirmationMessage)
+        }
+        .alert("Couldn't delete backup", isPresented: deleteErrorBinding) {
+            Button("OK", role: .cancel) { deleteErrorMessage = nil }
+        } message: {
+            Text(deleteErrorMessage ?? "")
+        }
     }
 
     // MARK: - List
@@ -106,19 +130,29 @@ struct ICloudRestoreView: View {
                 action: { Task { listState = .loading; await load() } }
             )
         case .loaded(let backups):
-            List {
+            List(selection: $selectedBackupIds) {
                 Section {
                     ForEach(backups) { blob in
-                        Button {
-                            UniHapticEngine.shared.play(.selection)
-                            password = ""
-                            passwordError = false
-                            selectedBackupId = blob.id
-                        } label: {
-                            backupRow(blob)
+                        if isEditingBackups {
+                            backupRow(blob, showsChevron: false)
+                                .tag(blob.id)
+                                .listRowBackground(UniColors.List.rowBackground)
+                        } else {
+                            Button {
+                                UniHapticEngine.shared.play(.selection)
+                                password = ""
+                                passwordError = false
+                                selectedBackupId = blob.id
+                            } label: {
+                                backupRow(blob, showsChevron: true)
+                            }
+                            .buttonStyle(.uniListRow)
+                            .tag(blob.id)
+                            .listRowBackground(UniColors.List.rowBackground)
                         }
-                        .buttonStyle(.uniListRow)
-                        .listRowBackground(UniColors.List.rowBackground)
+                    }
+                    .onDelete { offsets in
+                        confirmDeleteBackups(Set(offsets.map { backups[$0].id }))
                     }
                 } header: {
                     Text("Choose a backup to restore. You'll need its password.")
@@ -130,6 +164,39 @@ struct ICloudRestoreView: View {
             .listStyle(.insetGrouped)
             .scrollContentBackground(.hidden)
             .background(UniColors.Background.primary)
+        }
+    }
+
+    @ToolbarContentBuilder
+    private var restoreToolbar: some ToolbarContent {
+        if hasLoadedBackups {
+            ToolbarItem(placement: .topBarLeading) {
+                EditButton()
+                    .disabled(isDeletingBackups)
+            }
+        }
+        if hasLoadedBackups, isEditingBackups {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button(selectAllTitle) { toggleSelectAllBackups() }
+                    .disabled(isDeletingBackups)
+            }
+            ToolbarItemGroup(placement: .bottomBar) {
+                Button(role: .destructive) { confirmDeleteSelectedBackups() } label: {
+                    if isDeletingBackups {
+                        ProgressView()
+                            .controlSize(.small)
+                    } else {
+                        Text(deleteSelectionTitle)
+                    }
+                }
+                .disabled(selectedBackupIds.isEmpty || isDeletingBackups)
+
+                Spacer()
+
+                Text(selectionSummaryTitle)
+                    .font(UniTypography.footnote)
+                    .foregroundStyle(UniColors.Text.secondary)
+            }
         }
     }
 
@@ -194,7 +261,7 @@ struct ICloudRestoreView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    private func backupRow(_ blob: WalletBackupBlob) -> some View {
+    private func backupRow(_ blob: WalletBackupBlob, showsChevron: Bool) -> some View {
         HStack(spacing: UniSpacing.s) {
             // The wallet's own identity disc (the user's chosen color / logo),
             // not a generic cloud+lock (2026-06-20 user direction). Backups
@@ -214,9 +281,11 @@ struct ICloudRestoreView: View {
                     .foregroundStyle(UniColors.Text.tertiary)
             }
             Spacer(minLength: 0)
-            Image(systemName: "chevron.right")
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(UniColors.Icon.tertiary)
+            if showsChevron {
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(UniColors.Icon.tertiary)
+            }
         }
         .padding(.vertical, UniSpacing.xxs)
         .uniListRowHitTarget()
@@ -225,6 +294,106 @@ struct ICloudRestoreView: View {
     private func backup(withId id: UUID) -> WalletBackupBlob? {
         guard case .loaded(let backups) = listState else { return nil }
         return backups.first { $0.id == id }
+    }
+
+    private var loadedBackups: [WalletBackupBlob] {
+        guard case .loaded(let backups) = listState else { return [] }
+        return backups
+    }
+
+    private var hasLoadedBackups: Bool { !loadedBackups.isEmpty }
+
+    private var isEditingBackups: Bool {
+        editMode?.wrappedValue.isEditing == true
+    }
+
+    private var selectAllTitle: String {
+        selectedBackupIds.count == loadedBackups.count ? String.apertureLocalized("Deselect All") : String.apertureLocalized("Select All")
+    }
+
+    private var deleteSelectionTitle: String {
+        selectedBackupIds.count <= 1
+            ? String.apertureLocalized("Delete")
+            : String(format: String.apertureLocalized("Delete %d"), selectedBackupIds.count)
+    }
+
+    private var selectionSummaryTitle: String {
+        selectedBackupIds.count == 1
+            ? String.apertureLocalized("1 Selected")
+            : String(format: String.apertureLocalized("%d Selected"), selectedBackupIds.count)
+    }
+
+    private var deleteConfirmationTitle: String {
+        pendingDeleteIds.count <= 1
+            ? String.apertureLocalized("Delete iCloud backup?")
+            : String(format: String.apertureLocalized("Delete %d iCloud backups?"), pendingDeleteIds.count)
+    }
+
+    private var deleteConfirmationMessage: String {
+        pendingDeleteIds.count <= 1
+            ? String.apertureLocalized("This permanently removes the encrypted backup from iCloud and this device. You won't be able to restore it later.")
+            : String.apertureLocalized("This permanently removes the selected encrypted backups from iCloud and this device. You won't be able to restore them later.")
+    }
+
+    private var deleteConfirmationBinding: Binding<Bool> {
+        Binding(
+            get: { !pendingDeleteIds.isEmpty },
+            set: { isPresented in
+                if !isPresented { pendingDeleteIds.removeAll() }
+            }
+        )
+    }
+
+    private var deleteErrorBinding: Binding<Bool> {
+        Binding(
+            get: { deleteErrorMessage != nil },
+            set: { isPresented in
+                if !isPresented { deleteErrorMessage = nil }
+            }
+        )
+    }
+
+    private func toggleSelectAllBackups() {
+        let ids = Set(loadedBackups.map(\.id))
+        selectedBackupIds = selectedBackupIds.count == ids.count ? [] : ids
+        UniHapticEngine.shared.play(selectedBackupIds.isEmpty ? .selectionDeselect : .selection)
+    }
+
+    private func confirmDeleteSelectedBackups() {
+        confirmDeleteBackups(selectedBackupIds)
+    }
+
+    private func confirmDeleteBackups(_ ids: Set<UUID>) {
+        guard !ids.isEmpty, !isDeletingBackups else { return }
+        pendingDeleteIds = ids
+    }
+
+    private func deleteBackups(_ ids: Set<UUID>) async {
+        guard !ids.isEmpty, !isDeletingBackups else { return }
+        isDeletingBackups = true
+        defer { isDeletingBackups = false }
+
+        do {
+            for id in ids {
+                try await store.delete(walletId: id)
+            }
+            selectedBackupIds.subtract(ids)
+            if selectedBackupIds.isEmpty {
+                editMode?.wrappedValue = .inactive
+            }
+            applyDeletedBackups(ids)
+            UniHapticEngine.shared.play(.contextualImpact(.weighted))
+        } catch {
+            deleteErrorMessage = Self.message(for: error)
+            UniHapticEngine.shared.play(.warning)
+            await load()
+        }
+    }
+
+    private func applyDeletedBackups(_ ids: Set<UUID>) {
+        guard case .loaded(let backups) = listState else { return }
+        let remaining = backups.filter { !ids.contains($0.id) }
+        listState = remaining.isEmpty ? .empty : .loaded(remaining)
     }
 
     // MARK: - Password
