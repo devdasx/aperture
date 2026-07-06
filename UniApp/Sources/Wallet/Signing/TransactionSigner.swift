@@ -85,6 +85,10 @@ enum TransactionSigner {
         let polkadotBlockNumber: UInt64?
         /// `system_accountNextIndex` nonce.
         let polkadotNonce: UInt64?
+        /// Substrate network whose runtime/metadata the signed extrinsic targets.
+        let polkadotNetwork: PolkadotSigningNetwork?
+        /// Chain genesis hash for the targeted Substrate network.
+        let polkadotGenesisHash: String?
 
         // MARK: Aptos
         /// `accounts/{addr}.sequence_number`.
@@ -127,6 +131,8 @@ enum TransactionSigner {
             polkadotBlockHash: String? = nil,
             polkadotBlockNumber: UInt64? = nil,
             polkadotNonce: UInt64? = nil,
+            polkadotNetwork: PolkadotSigningNetwork? = nil,
+            polkadotGenesisHash: String? = nil,
             aptosSequenceNumber: UInt64? = nil,
             aptosGasUnitPrice: UInt64? = nil,
             suiInputCoins: [SuiCoinRef]? = nil,
@@ -154,6 +160,8 @@ enum TransactionSigner {
             self.polkadotBlockHash = polkadotBlockHash
             self.polkadotBlockNumber = polkadotBlockNumber
             self.polkadotNonce = polkadotNonce
+            self.polkadotNetwork = polkadotNetwork
+            self.polkadotGenesisHash = polkadotGenesisHash
             self.aptosSequenceNumber = aptosSequenceNumber
             self.aptosGasUnitPrice = aptosGasUnitPrice
             self.suiInputCoins = suiInputCoins

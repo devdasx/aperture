@@ -538,16 +538,12 @@ struct BroadcastService: Sendable {
 
     // MARK: - Polkadot
 
-    /// `author_submitExtrinsic([0x SCALE-encoded signed extrinsic])`. Doc:
-    /// polkadot.js.org/docs/substrate/rpc. Live-verified 2026-06-15 on
-    /// `rpc.polkadot.io`: the method is recognized (a `0x00` extrinsic →
-    /// `Verification Error` from the runtime, NOT method-not-found).
-    /// Returns the extrinsic hash on success.
+    /// Asset Hub `author_submitExtrinsic([0x SCALE-encoded signed extrinsic])`.
+    /// Aperture's DOT spendable balance comes from Asset Hub, so broadcast must
+    /// use the same runtime used by the just-in-time nonce/blockhash refresh.
     private func broadcastPolkadot(_ signed: SignedTransaction, chain: SupportedChain) async throws(SigningError) -> String {
         do {
-            let hash = try await client.callJSONString(
-                chain: chain, method: "author_submitExtrinsic", params: [signed.rawHex]
-            )
+            let hash = try await PolkadotAssetHubRPCClient.shared.submitExtrinsic(signed.rawHex)
             guard !hash.isEmpty else { throw SigningError.broadcastAmbiguous("empty Polkadot extrinsic hash") }
             return hash
         } catch let rpc as RPCError {

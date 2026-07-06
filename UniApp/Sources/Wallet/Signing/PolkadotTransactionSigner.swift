@@ -1,7 +1,36 @@
 import Foundation
 import WalletCore
 
-/// Builds + signs Polkadot relay-chain transactions (native DOT
+enum PolkadotSigningNetwork: String, Sendable, Hashable {
+    case relay
+    case assetHub
+
+    var genesisHashHex: String {
+        switch self {
+        case .relay:
+            return "91b171bb158e2d3848fa23a9f1c25182fb8e20313b2c1eb49219da7a70ce90c3"
+        case .assetHub:
+            return "68d56f15f85d3136970ec16946040bc1752654e906147f7e43e9d539d7c3de2f"
+        }
+    }
+
+    var balancesPalletIndex: UInt8 {
+        switch self {
+        case .relay: return 0x05
+        case .assetHub: return 0x0a
+        }
+    }
+
+    var transferKeepAliveCallIndex: UInt8 { 0x03 }
+
+    /// Asset Hub's `ChargeAssetTxPayment` signed extension encodes
+    /// `{ tip, asset_id }`; `asset_id = None` means fees are paid in native DOT.
+    var signedExtraIncludesFeeAssetID: Bool {
+        self == .assetHub
+    }
+}
+
+/// Builds + signs Polkadot Asset Hub transactions (native DOT
 /// `balances.transferKeepAlive`, with a mortal era + optional tip) from
 /// `SendDraft` + just-in-time data.
 ///
@@ -21,29 +50,24 @@ import WalletCore
 /// `balances.transferAll`; for safety + the keep-alive default we sign a
 /// keep-alive transfer of the resolved amount.
 ///
-/// **Genesis hash** is the relay-chain constant (verified live + in the
-/// upstream fixture): `0x91b171bb158e2d3848fa23a9f1c25182fb8e20313b2c1eb…`.
+/// Aperture shows Polkadot balances from Asset Hub, so production sends
+/// target Asset Hub too. Tests still exercise relay-chain constants to keep
+/// the SCALE helpers honest across both Substrate runtimes.
 ///
-/// **No relay-chain tokens** — DOT has no native tokens; assets live on
-/// the Asset Hub parachain (a separate endpoint/pallet, out of scope
-/// here). A token send refuses honestly rather than sign a relay-chain
-/// extrinsic that can't carry it.
+/// **No Asset Hub tokens yet** — native DOT is wired here; asset-token sends
+/// require the `Assets` pallet call path and continue to refuse honestly.
 ///
 /// Output: `output.encoded` is the SCALE-encoded signed extrinsic for
 /// `author_submitExtrinsic` (0x-hex); the node assigns the hash.
 enum PolkadotTransactionSigner {
 
-    /// Polkadot relay-chain genesis hash (constant; verified live via
-    /// `chain_getBlockHash[0]` and the upstream test fixture).
-    private static let genesisHashHex = "91b171bb158e2d3848fa23a9f1c25182fb8e20313b2c1eb49219da7a70ce90c3"
     /// Mortal-era period (~6.4 min at 64 blocks) so a stuck tx expires.
     private static let mortalEraPeriod: UInt64 = 64
     private static let signedExtrinsicVersion: UInt8 = 0x84
     private static let ed25519SignatureKind: UInt8 = 0x00
     private static let multiAddressAccountIdKind: UInt8 = 0x00
-    private static let balancesPalletIndex: UInt8 = 0x05
-    private static let transferKeepAliveCallIndex: UInt8 = 0x03
     private static let checkMetadataHashDisabledMode: UInt8 = 0x00
+    private static let optionNone: UInt8 = 0x00
 
     static func sign(
         draft: SendDraft,
@@ -77,7 +101,9 @@ enum PolkadotTransactionSigner {
         guard let nonce = jit.polkadotNonce else {
             throw SigningError.justInTimeRefreshFailed("Polkadot nonce not refreshed")
         }
-        guard let genesisHash = SigningNumeric.hexToData(genesisHashHex) else {
+        let network = jit.polkadotNetwork ?? .assetHub
+        let genesisHashHex = jit.polkadotGenesisHash ?? network.genesisHashHex
+        guard let genesisHash = SigningNumeric.hexToData(stripped0x(genesisHashHex)) else {
             throw SigningError.signingFailed("Polkadot genesis hash invalid")
         }
         guard let accountId = SS58.decodeAccountId(recipient.address) else {
@@ -88,13 +114,20 @@ enum PolkadotTransactionSigner {
 
         let publicKey = privateKey.getPublicKeyEd25519().data
         let era = mortalEra(blockNumber: blockNumber, period: mortalEraPeriod)
-        let call = transferKeepAliveCall(toAccountId: toAccountId, value: value)
-        let signedExtra = signedExtra(era: era, nonce: nonce, tip: tip, includeMetadataHashMode: true)
+        let call = transferKeepAliveCall(toAccountId: toAccountId, value: value, network: network)
+        let signedExtra = signedExtra(
+            era: era,
+            nonce: nonce,
+            tip: tip,
+            network: network,
+            includeMetadataHashMode: true
+        )
         let additional = additionalSigned(
             specVersion: specVersion,
             transactionVersion: txVersion,
             genesisHash: genesisHash,
-            blockHash: blockHash
+            blockHash: blockHash,
+            includeMetadataHash: true
         )
         let payload = call + signedExtra + additional
         let signable = payload.count > 256 ? BLAKE2b.hash(payload, outlen: 32) : payload
@@ -119,18 +152,27 @@ enum PolkadotTransactionSigner {
 
     // MARK: - SCALE encoding
 
-    static func transferKeepAliveCall(toAccountId: Data, value: UInt64) -> Data {
-        var out = Data([balancesPalletIndex, transferKeepAliveCallIndex])
+    static func transferKeepAliveCall(toAccountId: Data, value: UInt64, network: PolkadotSigningNetwork) -> Data {
+        var out = Data([network.balancesPalletIndex, network.transferKeepAliveCallIndex])
         out.append(multiAddress(accountId: toAccountId))
         out.append(compact(value))
         return out
     }
 
-    static func signedExtra(era: Data, nonce: UInt64, tip: UInt64, includeMetadataHashMode: Bool) -> Data {
+    static func signedExtra(
+        era: Data,
+        nonce: UInt64,
+        tip: UInt64,
+        network: PolkadotSigningNetwork,
+        includeMetadataHashMode: Bool
+    ) -> Data {
         var out = Data()
         out.append(era)
         out.append(compact(nonce))
         out.append(compact(tip))
+        if network.signedExtraIncludesFeeAssetID {
+            out.append(optionNone)
+        }
         if includeMetadataHashMode {
             out.append(checkMetadataHashDisabledMode)
         }
@@ -141,13 +183,17 @@ enum PolkadotTransactionSigner {
         specVersion: UInt32,
         transactionVersion: UInt32,
         genesisHash: Data,
-        blockHash: Data
+        blockHash: Data,
+        includeMetadataHash: Bool
     ) -> Data {
         var out = Data()
         out.append(littleEndian(specVersion))
         out.append(littleEndian(transactionVersion))
         out.append(genesisHash)
         out.append(blockHash)
+        if includeMetadataHash {
+            out.append(optionNone)
+        }
         return out
     }
 
@@ -222,10 +268,199 @@ enum PolkadotTransactionSigner {
         ])
     }
 
+    private static func stripped0x(_ hex: String) -> String {
+        (hex.hasPrefix("0x") || hex.hasPrefix("0X")) ? String(hex.dropFirst(2)) : hex
+    }
+
     private static func nextPowerOfTwo(_ value: UInt64) -> UInt64 {
         guard value > 1 else { return 1 }
         var n: UInt64 = 1
         while n < value { n <<= 1 }
         return n
+    }
+}
+
+actor PolkadotAssetHubRPCClient {
+    static let shared = PolkadotAssetHubRPCClient()
+
+    private let endpoints = [
+        URL(string: "https://polkadot-asset-hub-rpc.polkadot.io")!,
+        URL(string: "https://statemint.api.onfinality.io/public")!,
+        URL(string: "https://asset-hub-polkadot-rpc.n.dwellir.com")!,
+    ]
+    private let session: URLSession
+    private var requestID = 0
+
+    init(session: URLSession? = nil) {
+        if let session {
+            self.session = session
+        } else {
+            let configuration = URLSessionConfiguration.ephemeral
+            configuration.timeoutIntervalForRequest = 10
+            configuration.timeoutIntervalForResource = 20
+            configuration.requestCachePolicy = .reloadIgnoringLocalCacheData
+            configuration.httpMaximumConnectionsPerHost = 4
+            self.session = URLSession(configuration: configuration)
+        }
+    }
+
+    func runtimeVersion() async throws -> (specVersion: UInt32, transactionVersion: UInt32) {
+        let result = try await callJSON(method: "state_getRuntimeVersion", params: [])
+        guard let rv = result as? [String: Any],
+              let specVersion = (rv["specVersion"] as? NSNumber)?.uint32Value,
+              let transactionVersion = (rv["transactionVersion"] as? NSNumber)?.uint32Value else {
+            throw RPCError.invalidResponse("Polkadot Asset Hub runtime version unavailable")
+        }
+        return (specVersion, transactionVersion)
+    }
+
+    func finalizedHead() async throws -> String {
+        try await callJSONString(method: "chain_getFinalizedHead", params: [])
+    }
+
+    func genesisHash() async throws -> String {
+        try await callJSONString(method: "chain_getBlockHash", params: [0])
+    }
+
+    func headerNumber(hash: String) async throws -> UInt64 {
+        let result = try await callJSON(method: "chain_getHeader", params: [hash])
+        guard let header = result as? [String: Any],
+              let numberHex = header["number"] as? String,
+              let number = UInt64(Self.stripped0x(numberHex), radix: 16) else {
+            throw RPCError.invalidResponse("Polkadot Asset Hub header unavailable")
+        }
+        return number
+    }
+
+    func accountNextIndex(address: String) async throws -> UInt64 {
+        try await callJSONUInt64(method: "system_accountNextIndex", params: [address])
+    }
+
+    func submitExtrinsic(_ rawHex: String) async throws -> String {
+        try await callJSONString(method: "author_submitExtrinsic", params: [rawHex])
+    }
+
+    private func callJSONString(method: String, params: [Any]) async throws -> String {
+        let result = try await callJSON(method: method, params: params)
+        guard let string = result as? String else {
+            throw RPCError.invalidResponse("\(method) result was not a string")
+        }
+        return string
+    }
+
+    private func callJSONUInt64(method: String, params: [Any]) async throws -> UInt64 {
+        let result = try await callJSON(method: method, params: params)
+        if let number = result as? NSNumber { return number.uint64Value }
+        if let string = result as? String, let number = UInt64(string) { return number }
+        throw RPCError.invalidResponse("\(method) result was not a number")
+    }
+
+    private func callJSON(method: String, params: [Any]) async throws -> Any {
+        var lastError: RPCError = .allEndpointsFailed(.polkadot)
+        for endpoint in endpoints {
+            do {
+                requestID += 1
+                let id = requestID
+                let body: [String: Any] = [
+                    "jsonrpc": "2.0",
+                    "id": id,
+                    "method": method,
+                    "params": params,
+                ]
+                guard let bodyData = try? JSONSerialization.data(withJSONObject: body) else {
+                    throw RPCError.invalidResponse("Failed to encode Polkadot Asset Hub JSON-RPC envelope")
+                }
+
+                var request = URLRequest(url: endpoint)
+                request.httpMethod = "POST"
+                request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                request.setValue("application/json", forHTTPHeaderField: "Accept")
+                request.setValue("Aperture/1.0", forHTTPHeaderField: "User-Agent")
+                request.httpBody = bodyData
+
+                let responseData: Data
+                let response: URLResponse
+                do {
+                    (responseData, response) = try await session.apertureData(
+                        for: request,
+                        family: "rpc-json",
+                        operation: "Polkadot Asset Hub \(method)",
+                        metadata: [
+                            "chain": "polkadot",
+                            "source": "PolkadotAssetHubRPCClient",
+                            "endpoint": endpoint.host ?? endpoint.absoluteString
+                        ]
+                    )
+                } catch let urlError as URLError {
+                    if urlError.code == .cancelled { throw RPCError.cancelled }
+                    throw RPCError.network(urlError.localizedDescription)
+                } catch is CancellationError {
+                    throw RPCError.cancelled
+                } catch {
+                    throw RPCError.network(error.localizedDescription)
+                }
+
+                if let http = response as? HTTPURLResponse {
+                    if http.statusCode == 429 {
+                        throw RPCError.rateLimited(retryAfter: Self.retryAfterDate(from: http))
+                    }
+                    if !(200..<300).contains(http.statusCode) {
+                        if [408, 502, 503, 504].contains(http.statusCode)
+                            || (520...527).contains(http.statusCode) {
+                            throw RPCError.network("HTTP \(http.statusCode) from \(endpoint.host ?? endpoint.absoluteString)")
+                        }
+                        throw RPCError.invalidResponse("HTTP \(http.statusCode) from \(endpoint.host ?? endpoint.absoluteString)")
+                    }
+                }
+
+                guard let decoded = try? JSONSerialization.jsonObject(with: responseData),
+                      let envelope = decoded as? [String: Any] else {
+                    throw RPCError.decodingFailed("Polkadot Asset Hub response did not parse as JSON")
+                }
+                if let errorDict = envelope["error"] as? [String: Any] {
+                    let code = (errorDict["code"] as? NSNumber)?.intValue ?? -1
+                    let message = errorDict["message"] as? String ?? "unknown"
+                    throw RPCError.rpcError(code: code, message: message)
+                }
+                guard Self.responseID(in: envelope, matches: id) else {
+                    throw RPCError.invalidResponse("JSON-RPC response id does not match request id \(id)")
+                }
+                guard let result = envelope["result"] else {
+                    throw RPCError.invalidResponse("JSON-RPC response missing `result`")
+                }
+                return result
+            } catch let rpc as RPCError {
+                if case .cancelled = rpc { throw rpc }
+                if case .rpcError = rpc { throw rpc }
+                lastError = rpc
+                continue
+            } catch {
+                lastError = .network(error.localizedDescription)
+                continue
+            }
+        }
+        throw lastError
+    }
+
+    private static func responseID(in envelope: [String: Any], matches requestID: Int) -> Bool {
+        if let number = envelope["id"] as? NSNumber {
+            return number.intValue == requestID
+        }
+        if let string = envelope["id"] as? String {
+            return Int(string) == requestID
+        }
+        return false
+    }
+
+    private static func retryAfterDate(from response: HTTPURLResponse) -> Date {
+        if let header = response.value(forHTTPHeaderField: "Retry-After"),
+           let seconds = TimeInterval(header) {
+            return Date().addingTimeInterval(seconds)
+        }
+        return Date().addingTimeInterval(60)
+    }
+
+    private static func stripped0x(_ hex: String) -> String {
+        (hex.hasPrefix("0x") || hex.hasPrefix("0X")) ? String(hex.dropFirst(2)) : hex
     }
 }

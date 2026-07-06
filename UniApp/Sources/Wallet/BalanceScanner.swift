@@ -994,7 +994,6 @@ private extension ISO8601DateFormatter {
 }
 
 private actor PolkadotBalanceHistoryScanner {
-    private let rpc = RPCClient.shared
     private let history = PolkadotStatescanClient()
     private let assetHub = PolkadotAssetHubBalanceClient()
     private let log = Logger(subsystem: "com.thuglife.aperture", category: "polkadot-balance-history")
@@ -1018,22 +1017,20 @@ private actor PolkadotBalanceHistoryScanner {
                 currencyCode: currencyCode
             )
             : [:]
-        async let accountTask = account(address: address.address)
         async let assetHubNativeTask = safeAssetHubNativeAccount(address: address.address)
         async let assetHubTask = safeAssetHubBalances(address: address.address, assets: assetTokens)
         async let historyTask: [PolkadotHistoryEvent] = includeHistory
             ? safeHistory(address: address.address)
             : []
 
-        let account = try await accountTask
         let assetHubNative = await assetHubNativeTask
         let assetHubBalances = await assetHubTask
         let priceMap = await pricesTask
         let events = await historyTask
-        let nativeTotalPlancks = PolkadotCodec.addDecimalStrings(
-            account.totalPlancks,
-            assetHubNative.totalPlancks
-        )
+        // The send path targets Polkadot Asset Hub. Do not report relay-chain
+        // DOT as spendable here, or the send flow can offer funds it cannot
+        // submit with the Asset Hub signer/broadcaster.
+        let nativeTotalPlancks = assetHubNative.totalPlancks
 
         let txRepo = TransactionRepository(database: database)
         try txRepo.upsertBalance(
@@ -1052,8 +1049,7 @@ private actor PolkadotBalanceHistoryScanner {
             save: false
         )
 
-        var isUsed = account.accountExists
-            || assetHubNative.accountExists
+        var isUsed = assetHubNative.accountExists
             || EVMHexQuantity.isPositiveDecimalString(nativeTotalPlancks)
             || !events.isEmpty
         for balance in assetHubBalances {
@@ -1104,29 +1100,6 @@ private actor PolkadotBalanceHistoryScanner {
             failedChains: [],
             interim: false
         )
-    }
-
-    private func account(address: String) async throws -> PolkadotAccountState {
-        guard let accountId = SS58.decodeAccountId(address) else {
-            throw PolkadotBalanceHistoryError.invalidAddress(address)
-        }
-
-        let storageKey = PolkadotCodec.systemAccountStorageKey(accountId: accountId)
-        do {
-            guard let storage = try await rpc.callJSONStringOrNull(
-                chain: .polkadot,
-                method: "state_getStorage",
-                params: [storageKey]
-            ) else {
-                return .zero(accountExists: false)
-            }
-            var decoded = try PolkadotCodec.decodeAccountInfo(hex: storage)
-            decoded.accountExists = true
-            return decoded
-        } catch {
-            log.debug("Polkadot relay storage failed, trying Statescan account fallback: \(String(describing: error), privacy: .public)")
-            return try await history.account(address: address)
-        }
     }
 
     private func safeHistory(address: String) async -> [PolkadotHistoryEvent] {

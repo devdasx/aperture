@@ -294,46 +294,33 @@ extension SendExecutor {
 
     // MARK: - Polkadot
 
-    /// `state_getRuntimeVersion` (specVersion + transactionVersion),
+    /// Asset Hub `state_getRuntimeVersion` (specVersion + transactionVersion),
     /// `chain_getFinalizedHead` + `chain_getHeader` (mortal-era checkpoint
-    /// hash + number), `system_accountNextIndex` (nonce). Doc:
-    /// polkadot.js.org/docs/substrate/rpc.
+    /// hash + number), `system_accountNextIndex` (nonce), and genesis hash.
+    /// Aperture shows spendable DOT from Asset Hub, so sends must target the
+    /// same runtime instead of the relay chain.
     nonisolated func refreshPolkadot(draft: SendDraft) async throws -> TransactionSigner.JustInTimeData {
         do {
-            let rvData = try await RPCClient.shared.callJSONResultData(
-                chain: .polkadot, method: "state_getRuntimeVersion", params: []
-            )
-            guard let rv = (try? JSONSerialization.jsonObject(with: rvData)) as? [String: Any],
-                  let specVersion = (rv["specVersion"] as? NSNumber)?.uint32Value,
-                  let txVersion = (rv["transactionVersion"] as? NSNumber)?.uint32Value else {
-                throw SigningError.justInTimeRefreshFailed("Polkadot runtime version unavailable")
-            }
-
-            let finalizedHash = try await RPCClient.shared.callJSONString(
-                chain: .polkadot, method: "chain_getFinalizedHead", params: []
-            )
-            let headerData = try await RPCClient.shared.callJSONResultData(
-                chain: .polkadot, method: "chain_getHeader", params: [finalizedHash]
-            )
-            guard let header = (try? JSONSerialization.jsonObject(with: headerData)) as? [String: Any],
-                  let numberHex = header["number"] as? String,
-                  let blockNumber = UInt64(numberHex.hasPrefix("0x") ? String(numberHex.dropFirst(2)) : numberHex, radix: 16) else {
-                throw SigningError.justInTimeRefreshFailed("Polkadot header unavailable")
-            }
-
-            let nonce = try await RPCClient.shared.callJSONUInt64(
-                chain: .polkadot, method: "system_accountNextIndex", params: [draft.fromAddress]
-            )
+            async let runtime = PolkadotAssetHubRPCClient.shared.runtimeVersion()
+            async let genesisHash = PolkadotAssetHubRPCClient.shared.genesisHash()
+            let finalizedHash = try await PolkadotAssetHubRPCClient.shared.finalizedHead()
+            async let blockNumber = PolkadotAssetHubRPCClient.shared.headerNumber(hash: finalizedHash)
+            async let nonce = PolkadotAssetHubRPCClient.shared.accountNextIndex(address: draft.fromAddress)
+            let runtimeVersion = try await runtime
 
             return TransactionSigner.JustInTimeData(
-                polkadotSpecVersion: specVersion,
-                polkadotTransactionVersion: txVersion,
+                polkadotSpecVersion: runtimeVersion.specVersion,
+                polkadotTransactionVersion: runtimeVersion.transactionVersion,
                 polkadotBlockHash: finalizedHash,
-                polkadotBlockNumber: blockNumber,
-                polkadotNonce: nonce
+                polkadotBlockNumber: try await blockNumber,
+                polkadotNonce: try await nonce,
+                polkadotNetwork: .assetHub,
+                polkadotGenesisHash: try await genesisHash
             )
         } catch let rpc as RPCError {
             throw SigningError.justInTimeRefreshFailed(rpc.userFacingLabel)
+        } catch {
+            throw SigningError.justInTimeRefreshFailed(error.localizedDescription)
         }
     }
 
