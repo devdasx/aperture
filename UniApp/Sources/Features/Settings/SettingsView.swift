@@ -44,6 +44,7 @@ enum SettingsDestination: Hashable, Codable {
     case appearance
     case currency
     case preferences
+    case playground
     case diagnostics
     case help
     case about
@@ -64,7 +65,7 @@ enum SettingsDestination: Hashable, Codable {
         case .diagnostics:
             return SettingsInternalVisibility.showsDiagnostics
         case .wallets, .walletDetail, .autoLock, .hideSmallBalances,
-             .language, .appearance, .currency, .preferences, .help, .about:
+             .language, .appearance, .currency, .preferences, .playground, .help, .about:
             return true
         }
     }
@@ -336,6 +337,18 @@ struct SettingsView: View {
                 .listRowBackground(UniColors.List.rowBackground)
             }
 
+            Section {
+                NavigationLink(value: SettingsDestination.playground) {
+                    SettingsRow(
+                        systemImage: "hammer",
+                        title: "Playground",
+                        trailing: nil,
+                        iconTint: .purple
+                    )
+                }
+                .listRowBackground(UniColors.List.rowBackground)
+            }
+
             // Section 4 — Help & About
             Section {
                 NavigationLink(value: SettingsDestination.help) {
@@ -409,6 +422,7 @@ struct SettingsView: View {
         case .appearance:                AppearancePickerView()
         case .currency:                  CurrencyPickerView()
         case .preferences:               PreferencesView()
+        case .playground:                PlaygroundView()
         case .diagnostics:               DiagnosticsLogView()
         case .help:                      HelpAndSupportView()
         case .about:                     AboutView()
@@ -463,7 +477,7 @@ struct SettingsView: View {
         case .hideSmallBalances:
             return (.preferences, stack)
         case .wallets, .security, .language, .appearance, .currency,
-             .preferences, .diagnostics, .help, .about:
+             .preferences, .playground, .diagnostics, .help, .about:
             return (first, Array(stack.dropFirst()))
         }
     }
@@ -471,7 +485,7 @@ struct SettingsView: View {
     private static func isSplitRoot(_ destination: SettingsDestination) -> Bool {
         switch destination {
         case .wallets, .security, .language, .appearance, .currency,
-             .preferences, .diagnostics, .help, .about:
+             .preferences, .playground, .diagnostics, .help, .about:
             return true
         case .walletDetail, .autoLock, .hideSmallBalances:
             return false
@@ -536,6 +550,19 @@ struct SettingsIconTile: View {
             }
         }
         .accessibilityHidden(true)
+    }
+}
+
+private struct PlaygroundView: View {
+    var body: some View {
+        List {
+            Section { EmptyView() }
+        }
+        .listStyle(.insetGrouped)
+        .scrollContentBackground(.hidden)
+        .background(UniColors.Background.primary)
+        .navigationTitle(Text("Playground"))
+        .navigationBarTitleDisplayMode(.large)
     }
 }
 
