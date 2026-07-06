@@ -18,7 +18,7 @@ file directly in a browser.
 
 | # | File | Screen | What it covers |
 |---|------|--------|----------------|
-| 1 | `Aperture Landing.dc.html` | **Overview** | Hero landing — app icon bloom, headline, download CTAs, quiet facts row, footer |
+| 1 | `Aperture Landing.dc.html` | **Overview** | Hero landing — app icon bloom, headline, download CTAs, quiet facts row, comparison table (vs MetaMask / Trust / Rabby), footer |
 | 2 | `Aperture Security.dc.html` | **Security** | Secure Enclave key generation, AES‑GCM‑256 at rest, Face ID + hashed PIN, leaked‑seed screening, delete‑means‑delete, encrypted iCloud backup |
 | 3 | `Aperture Privacy.dc.html` | **Privacy Policy** | Full dated policy — "data collected: none", on‑device storage, permissions, third‑party infrastructure exposure, GDPR/CCPA, children/age |
 | 4 | `Aperture Terms.dc.html` | **Terms of Use** | 17‑section legal document — self‑custody responsibility, no recovery/reversal, disclaimers, liability, governing law |
