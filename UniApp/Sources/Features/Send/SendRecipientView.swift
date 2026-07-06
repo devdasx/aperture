@@ -1,5 +1,6 @@
 import Foundation
 import SwiftUI
+import UIKit
 
 /// Send · Step 3 — the recipient(s). Real per-chain address validation
 /// (wallet-core), real name resolution (ENS `.eth` / SNS `.sol`), real
@@ -56,7 +57,7 @@ struct SendRecipientView: View {
 
     @State private var entries: [DraftEntry] = [DraftEntry()]
     /// Identity of the currently-focused recipient field, reported up from
-    /// each `RecipientRow`'s `UniTextField` via its external focus
+    /// each `RecipientRow`'s native `TextField` via its external focus
     /// passthrough. Drives `pruneEmptyUnfocused()` on focus change so an
     /// earlier field the user empties (and then leaves) is removed.
     @FocusState private var focusedEntry: UUID?
@@ -279,7 +280,6 @@ struct SendRecipientView: View {
                             nameHint: nameHint,
                             canRemove: entries.count > 1,
                             isDuplicate: isDuplicateAddress(entry),
-                            usesPlainField: false,
                             focusBinding: $focusedEntry,
                             sendCount: { recents.sendCount(to: $0, chain: chain) },
                             onRemove: { remove(entry.id) }
@@ -306,7 +306,6 @@ struct SendRecipientView: View {
                         nameHint: nameHint,
                         canRemove: entries.count > 1,
                         isDuplicate: isDuplicateAddress(entry),
-                        usesPlainField: true,
                         focusBinding: $focusedEntry,
                         sendCount: { recents.sendCount(to: $0, chain: chain) },
                         onRemove: { remove(entry.id) }
@@ -326,36 +325,27 @@ struct SendRecipientView: View {
         switch chain {
         case .ripple:
             VStack(alignment: .leading, spacing: UniSpacing.xs) {
-                Text("Destination tag")
-                    .font(UniTypography.footnote.weight(.semibold))
-                    .foregroundStyle(UniColors.Text.secondary)
-                    .padding(.leading, UniSpacing.m)
-
-                UniTextField(
-                    placeholder: "Destination tag (optional)",
+                NativeRecipientTextField(
                     text: $destinationTagText,
-                    directionPolicy: .forceLTR,
-                    fill: Color.clear,
-                    verticalPadding: UniSpacing.xs,
-                    showsChrome: false,
+                    prompt: "Destination tag (optional)",
+                    label: "Destination tag",
+                    axis: .horizontal,
+                    lineLimit: 1,
                     keyboardType: .numberPad,
-                    minHeight: UniSpacing.xxxl
+                    forceLTR: true
                 )
             }
             .padding(.vertical, UniSpacing.xs)
         case .stellar:
             VStack(alignment: .leading, spacing: UniSpacing.xs) {
-                UniTextField(
-                    placeholder: stellarMemoPlaceholder,
+                NativeRecipientTextField(
                     text: $stellarMemoText,
-                    directionPolicy: stellarMemoInference.isTextLike ? .automatic : .forceLTR,
+                    prompt: "Memo, ID, or hash",
+                    label: "Stellar memo",
                     axis: .vertical,
                     lineLimit: stellarMemoInference.isTextLike ? 2 : 1,
-                    fill: Color.clear,
-                    verticalPadding: UniSpacing.xs,
-                    showsChrome: false,
                     keyboardType: .default,
-                    minHeight: UniSpacing.xxxl
+                    forceLTR: !stellarMemoInference.isTextLike
                 )
             }
             .padding(.vertical, UniSpacing.xs)
@@ -410,10 +400,6 @@ struct SendRecipientView: View {
         default:
             EmptyView()
         }
-    }
-
-    private var stellarMemoPlaceholder: LocalizedStringKey {
-        "Memo, ID, or hash"
     }
 
     private func memoTypeBadge(_ type: String) -> some View {
@@ -768,11 +754,62 @@ private struct RecipientRoutingNote: View {
     }
 }
 
+private struct NativeRecipientTextField: View {
+    @Binding var text: String
+    let prompt: String
+    let label: String
+    let axis: Axis
+    let lineLimit: Int
+    let keyboardType: UIKeyboardType
+    let forceLTR: Bool
+    var autocapitalization: TextInputAutocapitalization = .never
+    var focusBinding: FocusState<UUID?>.Binding?
+    var focusValue: UUID?
+
+    var body: some View {
+        Group {
+            if let focusBinding, let focusValue {
+                field
+                    .focused(focusBinding, equals: focusValue)
+            } else {
+                field
+            }
+        }
+        .modifier(NativeRecipientDirectionModifier(forceLTR: forceLTR))
+    }
+
+    private var field: some View {
+        TextField(
+            text: $text,
+            prompt: Text(verbatim: prompt),
+            axis: axis
+        ) {
+            Text(verbatim: label)
+        }
+        .keyboardType(keyboardType)
+        .textInputAutocapitalization(autocapitalization)
+        .autocorrectionDisabled(true)
+        .lineLimit(lineLimit)
+    }
+}
+
+private struct NativeRecipientDirectionModifier: ViewModifier {
+    let forceLTR: Bool
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if forceLTR {
+            content.environment(\.layoutDirection, .leftToRight)
+        } else {
+            content
+        }
+    }
+}
+
 // MARK: - One recipient row (owns its resolution)
 
-/// A single recipient ROW inside the connected, inset-grouped container.
-/// The address itself is a normal `UniTextField` so the screen uses the
-/// app-wide input design rather than a bespoke transparent row.
+/// A single recipient row. The address itself is a native SwiftUI
+/// `TextField`; the app does not draw custom text-field chrome here.
 ///
 /// Row anatomy (top to bottom): an optional index label (when more than one
 /// recipient), the full address field (expanding, LTR-locked) on a line with
@@ -792,10 +829,6 @@ private struct RecipientRow: View {
     /// earlier row — suppresses the first-send warning so it fires once
     /// per distinct address, not once per duplicate field.
     let isDuplicate: Bool
-    /// The XRP/XLM memo screens group the recipient and routing memo inside
-    /// one parent form surface, so the address field must render as a plain
-    /// row there instead of drawing its own rounded input pill.
-    let usesPlainField: Bool
     /// External focus passthrough from the parent — the field reports its
     /// identity (`entry.id`) so the parent can prune an emptied, unfocused
     /// earlier field on focus change.
@@ -809,23 +842,18 @@ private struct RecipientRow: View {
                 Text("Recipient \(index)")
                     .font(UniTypography.caption1)
                     .foregroundStyle(UniColors.Text.tertiary)
-                    // Align with the field's internal leading text inset
-                    // (`UniTextField` pads `UniSpacing.m` horizontally).
-                    .padding(.leading, UniSpacing.m)
                     .padding(.top, UniSpacing.s)
             }
 
             HStack(alignment: .top, spacing: 0) {
-                UniTextField(
-                    placeholder: nameHint == nil ? "Recipient address" : "Address or \(nameHint!)",
+                NativeRecipientTextField(
                     text: $entry.text,
-                    directionPolicy: .forceLTR,
+                    prompt: nameHint == nil ? "Recipient address" : "Address or \(nameHint!)",
+                    label: "Recipient address",
                     axis: .vertical,
-                    lineLimit: nil,
-                    fill: usesPlainField ? Color.clear : UniColors.Input.background,
-                    verticalPadding: usesPlainField ? UniSpacing.xs : UniSpacing.m,
-                    showsChrome: !usesPlainField,
-                    minHeight: usesPlainField ? UniSpacing.xxxl : nil,
+                    lineLimit: 4,
+                    keyboardType: .default,
+                    forceLTR: true,
                     autocapitalization: .never,
                     focusBinding: focusBinding,
                     focusValue: entry.id
@@ -846,8 +874,6 @@ private struct RecipientRow: View {
             }
 
             feedback
-                // Align feedback with the field's internal leading text inset.
-                .padding(.leading, UniSpacing.m)
                 .padding(.trailing, UniSpacing.m)
                 .padding(.bottom, UniSpacing.s)
         }
