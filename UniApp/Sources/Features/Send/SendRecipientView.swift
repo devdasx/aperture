@@ -4,23 +4,17 @@ import UIKit
 
 /// Send · Step 3 — the recipient(s). Real per-chain address validation
 /// (wallet-core), real name resolution (ENS `.eth` / SNS `.sol`), real
-/// recents from the wallet's outgoing history, and a real first-send
+/// recent-recipient safety data from the wallet's outgoing history, and a real first-send
 /// warning / send count per recipient.
 ///
 /// **Redesign (2026-06-15 — Apple iOS 26 / Jony Ive).** The recipient
-/// fields are CONNECTED the Apple-native way: one inset-grouped container
-/// (a single rounded `UniCard` surface) holds every recipient as a ROW,
-/// rows separated by inset hairline dividers — the way iOS Contacts "new
-/// contact" fields and Settings grouped forms read. It is one continuous
-/// control, not separate floating pills. Because the container owns the
-/// surface, each row's address field is PLAIN (no per-field fill / radius).
-/// The address — the load-bearing artifact of this step — still expands
-/// vertically as the user types or pastes, never truncated. Restraint:
-/// every element is content the user reads/acts on or chrome they touch;
-/// nothing decorative survives.
+/// fields use native SwiftUI `TextField` controls with system text-field
+/// chrome, so the actual entry surface remains visible without custom
+/// field drawing. The address — the load-bearing artifact of this step —
+/// still expands vertically as the user types or pastes, never truncated.
 ///
-/// **Layers (Rule #2 §B.3).** Content layer: unified input fields, custom
-/// action chips, the recents card, and all copy. This recipient screen avoids
+/// **Layers (Rule #2 §B.3).** Content layer: native input fields, custom
+/// action chips, and all copy. This recipient screen avoids
 /// drop shadows and glass chips; the Send sheet chrome itself owns any system
 /// presentation material.
 ///
@@ -67,7 +61,7 @@ struct SendRecipientView: View {
     /// no lookalike is pending.
     @State private var poisonLookalike: SendSafety.Lookalike?
     /// Tap counter for the ambient affordances' selection haptic — the
-    /// action chips (Paste / Scan / Add) and the recents rows aren't
+    /// action chips (Paste / Scan / Add) aren't
     /// `UniButton`s, so they fire `.uniHaptic(_:trigger:)` keyed to this
     /// on each tap (Rule #10 §B authoring pattern). One counter, one
     /// polite `.selection` beat for every "address landed / sheet opened"
@@ -181,9 +175,6 @@ struct SendRecipientView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: UniSpacing.l) {
                 recipientsBlock
-                if !recentList.isEmpty {
-                    recentsBlock
-                }
             }
             .padding(.horizontal, UniSpacing.l)
             .padding(.top, UniSpacing.m)
@@ -210,7 +201,7 @@ struct SendRecipientView: View {
         .background(UniColors.Background.primary)
         .toolbarBackground(.hidden, for: .navigationBar)
         // One polite `.selection` beat for every ambient affordance on the
-        // screen (chips + recents) — these aren't `UniButton`s, so the
+        // screen chips — these aren't `UniButton`s, so the
         // haptic is wired here, keyed to the shared tap counter.
         .uniHaptic(.selection, trigger: selectionTapCount)
         .uniBottomActionBar { continueBar }
@@ -478,32 +469,6 @@ struct SendRecipientView: View {
         .disabled(!isEnabled)
     }
 
-    // MARK: - Recents (content layer)
-
-    @ViewBuilder
-    private var recentsBlock: some View {
-        VStack(alignment: .leading, spacing: UniSpacing.s) {
-            sectionHeader("Recent")
-            UniCard(padding: 0, cornerRadius: UniRadius.xl) {
-                VStack(spacing: 0) {
-                    ForEach(Array(recentList.enumerated()), id: \.element.id) { offset, recipient in
-                        Button {
-                            selectionTapCount &+= 1
-                            fill(recipient.address)
-                        } label: {
-                            RecentRecipientRow(recipient: recipient)
-                        }
-                        .buttonStyle(.uniListRow)
-                        if offset < recentList.count - 1 {
-                            UniDivider()
-                                .padding(.leading, UniSpacing.m + 36 + UniSpacing.s)
-                        }
-                    }
-                }
-            }
-        }
-    }
-
     // MARK: - Continue (functional layer — floats above content)
 
     private var continueBar: some View {
@@ -585,7 +550,7 @@ struct SendRecipientView: View {
         }
     }
 
-    /// Place a pasted / scanned / recent address into the last empty entry,
+    /// Place a pasted / scanned address into the last empty entry,
     /// else append a new entry (when the chain allows more).
     private func fill(_ value: String) {
         let clean = value.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -611,8 +576,7 @@ struct SendRecipientView: View {
     /// Place a pasted / scanned address into the recipient list — but first
     /// run the address-poisoning check (Flow A3). If the cleaned value
     /// imitates a known recent recipient (matching ends, differing middle),
-    /// raise the full-screen guard instead of silently filling. Recents the
-    /// user taps are known-safe and bypass this (they go straight to `fill`).
+    /// raise the full-screen guard instead of silently filling.
     private func handleIncoming(_ raw: String) {
         let incoming = parseIncoming(raw)
         guard !incoming.address.isEmpty else { return }
@@ -719,12 +683,6 @@ struct SendRecipientView: View {
         guard address.count > 16 else { return address }
         return "\(address.prefix(10))…\(address.suffix(6))"
     }
-
-    static let relativeDate: RelativeDateTimeFormatter = {
-        let f = RelativeDateTimeFormatter()
-        f.unitsStyle = .abbreviated
-        return f
-    }()
 }
 
 private struct IncomingRecipientPayload {
@@ -789,6 +747,8 @@ private struct NativeRecipientTextField: View {
         .keyboardType(keyboardType)
         .textInputAutocapitalization(autocapitalization)
         .autocorrectionDisabled(true)
+        .textFieldStyle(.roundedBorder)
+        .controlSize(.large)
         .lineLimit(lineLimit)
     }
 }
@@ -1017,48 +977,5 @@ private struct RecipientRow: View {
         let result = await RecipientResolver.resolve(trimmed, chain: chain)
         if Task.isCancelled { return }
         withAnimation(.easeOut(duration: 0.2)) { entry.resolution = result }
-    }
-}
-
-// MARK: - Recent recipient row
-
-/// One tappable recent-recipient row inside the recents card. Identity-
-/// first: the shortened address (LTR-locked) leads, the send count + how
-/// long ago sit beneath / trailing, a faint chevron signals it's tappable.
-private struct RecentRecipientRow: View {
-    let recipient: RecentRecipient
-
-    var body: some View {
-        HStack(spacing: UniSpacing.s) {
-            Image(systemName: "clock.arrow.circlepath")
-                .font(.system(size: 18, weight: .regular))
-                .foregroundStyle(UniColors.Icon.secondary)
-                .frame(width: 36, height: 36)
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text(verbatim: SendRecipientView.shorten(recipient.address))
-                    .font(UniTypography.body.monospaced())
-                    .foregroundStyle(UniColors.Text.primary)
-                    .environment(\.layoutDirection, .leftToRight)
-                Text(recipient.sendCount == 1 ? "Sent once" : "Sent \(recipient.sendCount) times")
-                    .font(UniTypography.footnote)
-                    .foregroundStyle(UniColors.Text.tertiary)
-            }
-
-            Spacer(minLength: UniSpacing.s)
-
-            Text(verbatim: SendRecipientView.relativeDate.localizedString(for: recipient.lastSentAt, relativeTo: .now))
-                .font(UniTypography.caption1)
-                .foregroundStyle(UniColors.Text.tertiary)
-            Image(systemName: "chevron.right")
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(UniColors.Icon.tertiary)
-        }
-        .padding(.horizontal, UniSpacing.m)
-        .padding(.vertical, UniSpacing.s)
-        .uniListRowHitTarget()
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel(Text(verbatim: SendRecipientView.shorten(recipient.address)))
-        .accessibilityHint(Text("Use this recipient"))
     }
 }
