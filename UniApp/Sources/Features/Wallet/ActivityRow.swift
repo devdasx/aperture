@@ -67,6 +67,7 @@ struct ActivityRow: View {
     var txHash: String = ""
 
     @Environment(\.openURL) private var openURL
+    @Environment(\.balancePrivacyEnabled) private var hideBalances
 
     var body: some View {
         HStack(spacing: UniSpacing.s) {
@@ -254,7 +255,7 @@ struct ActivityRow: View {
     /// estimate now lives on the trailing subtitle so activity rows show both
     /// values at once.
     private var signedAmount: String {
-        "\(amountSign)\(WalletFormatting.native(amount, decimals: 6)) \(tokenSymbol)"
+        "\(amountSign)\(WalletFormatting.native(amount, decimals: 6, hidden: hideBalances)) \(tokenSymbol)"
     }
 
     private var amountSign: String {
@@ -278,7 +279,7 @@ struct ActivityRow: View {
         guard let fiatValue else {
             return String.apertureLocalized("Price unavailable")
         }
-        return "\(amountSign)\(WalletFormatting.fiat(fiatValue, currencyCode: fiatCurrencyCode))"
+        return "\(amountSign)\(WalletFormatting.fiat(fiatValue, currencyCode: fiatCurrencyCode, hidden: hideBalances))"
     }
 
     private var secondaryColor: Color {

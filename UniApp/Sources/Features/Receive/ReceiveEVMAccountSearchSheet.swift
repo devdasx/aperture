@@ -877,6 +877,8 @@ private struct EVMReceiveAddressScopeSheet: View {
 }
 
 private struct EVMReceiveAccountResultRow: View {
+    @Environment(\.balancePrivacyEnabled) private var hideBalances
+
     let result: EVMReceiveAccountSearchResult
     let currencyCode: String
     let isCurrent: Bool
@@ -916,10 +918,10 @@ private struct EVMReceiveAccountResultRow: View {
                 }
                 Spacer()
                 VStack(alignment: .trailing, spacing: 5) {
-                    Text(WalletFormatting.fiat(result.totalFiat, currencyCode: currencyCode))
+                    Text(WalletFormatting.fiat(result.totalFiat, currencyCode: currencyCode, hidden: hideBalances))
                         .font(UniTypography.headline)
                         .foregroundStyle(result.hasFunds ? UniColors.Text.primary : UniColors.Text.tertiary)
-                    Text("\(result.displayNativeBalance) native")
+                    Text("\(hideBalances ? WalletFormatting.hiddenAmount : result.displayNativeBalance) native")
                         .font(UniTypography.caption1)
                         .foregroundStyle(UniColors.Text.tertiary)
                 }

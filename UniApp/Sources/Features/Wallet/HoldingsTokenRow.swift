@@ -22,6 +22,7 @@ import SwiftUI
 struct HoldingsTokenRow: View {
     let chain: SupportedChain
     let balance: TokenBalanceRecord
+    @Environment(\.balancePrivacyEnabled) private var hideBalances
 
     var body: some View {
         HStack(spacing: UniSpacing.s) {
@@ -46,7 +47,8 @@ struct HoldingsTokenRow: View {
                         rawBalance: balance.rawBalance,
                         decimals: balance.decimals
                     ),
-                    decimals: min(balance.decimals, 8)
+                    decimals: min(balance.decimals, 8),
+                    hidden: hideBalances
                 ))
                 .font(UniTypography.monoBody)
                 .foregroundStyle(UniColors.Text.primary)
@@ -95,7 +97,8 @@ struct HoldingsTokenRow: View {
         // "Price unavailable" (user direction 2026-06-18).
         Text(WalletFormatting.fiat(
             balance.fiatValueCached,
-            currencyCode: balance.fiatCurrencyCode
+            currencyCode: balance.fiatCurrencyCode,
+            hidden: hideBalances
         ))
         .font(UniTypography.footnote)
         .foregroundStyle(UniColors.Text.tertiary)

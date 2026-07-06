@@ -32,6 +32,7 @@ struct TransactionDetailView: View {
     let transactionId: UUID
     @StateObject private var transactionObservation = TransactionRecordObservation()
     @Environment(\.displayScale) private var displayScale
+    @Environment(\.balancePrivacyEnabled) private var hideBalances
 
     /// The live, fetched detail. `nil` until the fetch lands (or if it
     /// fails — distinguished from "still loading" by `isLoading`).
@@ -648,13 +649,13 @@ struct TransactionDetailView: View {
             // Scale the full-precision raw `Decimal` directly (no string
             // round-trip) so a uint256 value keeps its precision.
             let scaled = transfer.valueRaw / pow(Decimal(10), max(0, decimals))
-            let amount = WalletFormatting.native(scaled, decimals: decimals)
+            let amount = WalletFormatting.native(scaled, decimals: decimals, hidden: hideBalances)
             if let symbol = nonEmpty(transfer.symbol ?? "") {
                 return "\(amount) \(symbol)"
             }
             return amount
         }
-        return WalletFormatting.native(transfer.valueRaw, decimals: 0)
+        return WalletFormatting.native(transfer.valueRaw, decimals: 0, hidden: hideBalances)
     }
 
     // MARK: Solana
@@ -1375,7 +1376,7 @@ struct TransactionDetailView: View {
         if let fee = detail?.feeNative {
             let ticker = detail?.feeTicker ?? resolvedChain?.ticker ?? ""
             let decimals = resolvedChain?.nativeDecimals ?? 8
-            return "\(WalletFormatting.native(fee, decimals: decimals)) \(ticker)"
+            return "\(WalletFormatting.native(fee, decimals: decimals, hidden: hideBalances)) \(ticker)"
         }
         if let raw = tx?.feeRaw, !raw.isEmpty {
             return raw
@@ -1388,11 +1389,11 @@ struct TransactionDetailView: View {
     private func bitcoinValue(_ sats: Int64) -> String {
         let coin = Decimal(sats) / pow(Decimal(10), 8)
         let ticker = resolvedChain?.ticker ?? "BTC"
-        return "\(WalletFormatting.native(coin, decimals: 8)) \(ticker)"
+        return "\(WalletFormatting.native(coin, decimals: 8, hidden: hideBalances)) \(ticker)"
     }
 
     private func gasUnits(_ value: Decimal) -> String {
-        WalletFormatting.native(value, decimals: 0)
+        WalletFormatting.native(value, decimals: 0, hidden: hideBalances)
     }
 
     /// wei → gwei (÷1e9), capped to a readable precision. Gas prices are
@@ -1415,7 +1416,7 @@ struct TransactionDetailView: View {
     private func solanaChangeAmount(_ change: SolanaBalanceChange) -> String {
         let sign = change.amount > 0 ? "+" : (change.amount < 0 ? "−" : "")
         let magnitude = change.amount < 0 ? -change.amount : change.amount
-        return "\(sign)\(WalletFormatting.native(magnitude, decimals: 8)) \(change.symbol)"
+        return "\(sign)\(WalletFormatting.native(magnitude, decimals: 8, hidden: hideBalances)) \(change.symbol)"
     }
 
     /// Treat an empty/whitespace string as absent — the service can carry an
@@ -1463,7 +1464,7 @@ struct TransactionDetailView: View {
 
     private func primaryAmountLine(_ tx: TransactionRecord) -> String {
         if showAmountsInFiat, let fiatValue {
-            return "\(amountSign(tx))\(WalletFormatting.fiat(fiatValue, currencyCode: currencyCode))"
+            return "\(amountSign(tx))\(WalletFormatting.fiat(fiatValue, currencyCode: currencyCode, hidden: hideBalances))"
         }
         return nativeAmountLine(tx)
     }
@@ -1475,7 +1476,7 @@ struct TransactionDetailView: View {
 
     private func nativeAmountLine(_ tx: TransactionRecord) -> String {
         let amount = Decimal(string: tx.amountRaw) ?? .zero
-        let formatted = WalletFormatting.native(amount, decimals: 8)
+        let formatted = WalletFormatting.native(amount, decimals: 8, hidden: hideBalances)
         return "\(amountSign(tx))\(formatted) \(tx.tokenSymbol)"
     }
 

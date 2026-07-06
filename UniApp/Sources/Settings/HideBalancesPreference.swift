@@ -1,11 +1,10 @@
-import Foundation
+import SwiftUI
 
-/// Hide-balance preferences. Two orthogonal toggles:
+/// Hide-balance preferences. Two orthogonal controls:
 ///
-/// 1. **`hideBalanceOnHome`** — Bool. When `true`, the wallet-home
-///    hero number renders as `••••` until the user taps to reveal.
-///    Shoulder-surfing protection for public spaces. Default `false`
-///    (most users want to see their number on open).
+/// 1. **`hideBalanceOnHome`** — Bool. Historical key name, now treated
+///    as the global balance-privacy toggle. When `true`, user-owned
+///    balances and transaction values render as bullets across the app.
 ///
 /// 2. **`hideSmallBalancesThreshold`** — Double (fiat units in the
 ///    user's currency). Holdings whose `fiatValueCached` is strictly
@@ -40,5 +39,18 @@ enum HideBalancesPreference {
 
     static func option(for raw: Double) -> ThresholdOption {
         ThresholdOption(rawValue: raw) ?? .showAll
+    }
+}
+
+private struct BalancePrivacyEnabledKey: EnvironmentKey {
+    static let defaultValue = false
+}
+
+extension EnvironmentValues {
+    /// Global shoulder-surfing protection for visible wallet values.
+    /// `UniAppEnvironmentModifier` injects this once per presentation root.
+    var balancePrivacyEnabled: Bool {
+        get { self[BalancePrivacyEnabledKey.self] }
+        set { self[BalancePrivacyEnabledKey.self] = newValue }
     }
 }

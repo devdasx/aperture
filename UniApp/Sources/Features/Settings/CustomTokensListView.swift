@@ -212,6 +212,8 @@ struct CustomTokensListView: View {
 // MARK: - Row
 
 private struct CustomTokenRow: View {
+    @Environment(\.balancePrivacyEnabled) private var hideBalances
+
     let token: CustomTokenRecord
     /// The active wallet's held balance for this token, if any. `nil`
     /// renders a 0 placeholder so the row always carries a balance.
@@ -270,13 +272,13 @@ private struct CustomTokenRow: View {
             // (2026-06-19 user direction).
             VStack(alignment: .trailing, spacing: 2) {
                 if let fiatValue {
-                    Text(verbatim: WalletFormatting.fiat(fiatValue, currencyCode: balance?.fiatCurrencyCode ?? currencyCode))
+                    Text(verbatim: WalletFormatting.fiat(fiatValue, currencyCode: balance?.fiatCurrencyCode ?? currencyCode, hidden: hideBalances))
                         .font(UniTypography.bodyEmphasized)
                         .foregroundStyle(UniColors.Text.primary)
                         .monospacedDigit()
                         .lineLimit(1)
                 }
-                Text(verbatim: "\(WalletFormatting.native(amount, decimals: 6)) \(token.symbol)")
+                Text(verbatim: "\(WalletFormatting.native(amount, decimals: 6, hidden: hideBalances)) \(token.symbol)")
                     .font(UniTypography.subheadline)
                     .foregroundStyle(UniColors.Text.secondary)
                     .monospacedDigit()

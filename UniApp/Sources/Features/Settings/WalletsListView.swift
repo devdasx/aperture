@@ -9,6 +9,7 @@ import SwiftUI
 /// only visible when the user has > 5 wallets so the empty / small
 /// list doesn't carry chrome it doesn't need.
 struct WalletsListView: View {
+    @Environment(\.balancePrivacyEnabled) private var hideBalances
     @StateObject private var databaseSnapshot = DatabaseSnapshotObservation()
     @GRDBStorage("activeWalletId") private var activeWalletIdRaw: String = ""
     @GRDBStorage(CurrencyPreference.storageKey) private var currencyCode: String = CurrencyPreference.defaultCode
@@ -535,7 +536,7 @@ struct WalletsListView: View {
                 // secondary / monospaced-digit / forced-LTR. The
                 // "imported from…" kind subtitle was removed; it lives on
                 // the wallet detail screen's Kind row.
-                Text(WalletFormatting.fiat(fiatBalance(for: wallet), currencyCode: currencyCode))
+                Text(WalletFormatting.fiat(fiatBalance(for: wallet), currencyCode: currencyCode, hidden: hideBalances))
                     .font(UniTypography.footnote)
                     .foregroundStyle(UniColors.Text.secondary)
                     .monospacedDigit()

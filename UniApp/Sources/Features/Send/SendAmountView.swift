@@ -24,6 +24,8 @@ import SwiftUI
 /// **RTL (Rule #11).** Layout is semantic; the amount, the asset symbol,
 /// and any address are LTR-locked because they're transcribable artifacts.
 struct SendAmountView: View {
+    @Environment(\.balancePrivacyEnabled) private var hideBalances
+
     let chain: SupportedChain
     let token: SendTokenDescriptor?
     let fromAddress: String
@@ -259,9 +261,9 @@ struct SendAmountView: View {
     }
 
     private func nativeAmountText(_ amount: Decimal) -> String {
-        var text = "\(WalletFormatting.native(amount, decimals: chain.nativeDecimals)) \(chain.ticker)"
+        var text = "\(WalletFormatting.native(amount, decimals: chain.nativeDecimals, hidden: hideBalances)) \(chain.ticker)"
         if let price = model.nativeUnitPrice, price > 0 {
-            text += " (\(WalletFormatting.fiat(amount * price, currencyCode: model.currencyCode)))"
+            text += " (\(WalletFormatting.fiat(amount * price, currencyCode: model.currencyCode, hidden: hideBalances)))"
         }
         return text
     }

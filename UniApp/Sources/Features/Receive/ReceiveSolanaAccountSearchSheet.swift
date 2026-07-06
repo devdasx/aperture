@@ -543,6 +543,8 @@ struct ReceiveSolanaAccountSearchSheet: View {
 }
 
 private struct SolanaReceiveAccountResultRow: View {
+    @Environment(\.balancePrivacyEnabled) private var hideBalances
+
     let result: SolanaReceiveAccountSearchResult
     let currencyCode: String
     let isCurrent: Bool
@@ -582,10 +584,10 @@ private struct SolanaReceiveAccountResultRow: View {
                 }
                 Spacer()
                 VStack(alignment: .trailing, spacing: 5) {
-                    Text(WalletFormatting.fiat(result.totalFiat, currencyCode: currencyCode))
+                    Text(WalletFormatting.fiat(result.totalFiat, currencyCode: currencyCode, hidden: hideBalances))
                         .font(UniTypography.headline)
                         .foregroundStyle(result.hasFunds ? UniColors.Text.primary : UniColors.Text.tertiary)
-                    Text("\(result.displayNativeBalance) SOL")
+                    Text("\(hideBalances ? WalletFormatting.hiddenAmount : result.displayNativeBalance) SOL")
                         .font(UniTypography.caption1)
                         .foregroundStyle(UniColors.Text.tertiary)
                 }

@@ -9,6 +9,8 @@ import SwiftUI
 /// else is quiet support. No decorative chrome. The number is LTR-locked
 /// (Rule #11) because it's a value the user reads and transcribes.
 struct SendAmountHero: View {
+    @Environment(\.balancePrivacyEnabled) private var hideBalances
+
     @Bindable var model: SendComposeModel
     var amountFocused: FocusState<Bool>.Binding
     @Binding var selectionTapCount: Int
@@ -155,10 +157,10 @@ struct SendAmountHero: View {
         switch model.entryUnit {
         case .crypto:
             if let fiat = model.fiatValue(ofCrypto: crypto) {
-                conversionText("≈ \(WalletFormatting.fiat(fiat, currencyCode: model.currencyCode))")
+                conversionText("≈ \(WalletFormatting.fiat(fiat, currencyCode: model.currencyCode, hidden: hideBalances))")
             }
         case .fiat:
-            conversionText("≈ \(WalletFormatting.native(crypto, decimals: model.effectiveDecimals)) \(model.assetSymbol)")
+            conversionText("≈ \(WalletFormatting.native(crypto, decimals: model.effectiveDecimals, hidden: hideBalances)) \(model.assetSymbol)")
         }
     }
 
@@ -191,9 +193,9 @@ struct SendAmountHero: View {
 
     private var availableBalanceText: String {
         if model.entryUnit == .fiat, let fiat = model.availableAssetBalanceFiat {
-            return WalletFormatting.fiat(fiat, currencyCode: model.currencyCode)
+            return WalletFormatting.fiat(fiat, currencyCode: model.currencyCode, hidden: hideBalances)
         }
-        return "\(WalletFormatting.native(model.availableAssetBalance, decimals: model.effectiveDecimals)) \(model.assetSymbol)"
+        return "\(WalletFormatting.native(model.availableAssetBalance, decimals: model.effectiveDecimals, hidden: hideBalances)) \(model.assetSymbol)"
     }
 
     // MARK: - Quiet pill buttons (selection-class affordances, not CTAs)
@@ -248,6 +250,8 @@ private extension String {
 /// Shown only when the chain can pay many recipients atomically AND more
 /// than one was passed from the recipient step.
 struct SendAmountMultiList: View {
+    @Environment(\.balancePrivacyEnabled) private var hideBalances
+
     @Bindable var model: SendComposeModel
     @Binding var selectionTapCount: Int
 
@@ -327,9 +331,9 @@ struct SendAmountMultiList: View {
 
     private var totalLineText: String {
         if model.entryUnit == .fiat, let fiat = model.fiatValue(ofCrypto: model.totalCrypto) {
-            return WalletFormatting.fiat(fiat, currencyCode: model.currencyCode)
+            return WalletFormatting.fiat(fiat, currencyCode: model.currencyCode, hidden: hideBalances)
         }
-        return "\(WalletFormatting.native(model.totalCrypto, decimals: model.effectiveDecimals)) \(model.assetSymbol)"
+        return "\(WalletFormatting.native(model.totalCrypto, decimals: model.effectiveDecimals, hidden: hideBalances)) \(model.assetSymbol)"
     }
 }
 
@@ -338,6 +342,8 @@ struct SendAmountMultiList: View {
 /// the cascade (FIX 4), the active unit (FIX 1), and over-allocation
 /// (FIX 3). Cheap by construction — the status is plain arithmetic.
 private struct SendAmountRow: View {
+    @Environment(\.balancePrivacyEnabled) private var hideBalances
+
     @Bindable var model: SendComposeModel
     @Binding var entry: SendComposeModel.AmountEntry
     /// Zero-based position in `model.amounts`.
@@ -456,10 +462,10 @@ private struct SendAmountRow: View {
             switch model.entryUnit {
             case .crypto:
                 if let f = model.fiatValue(ofCrypto: crypto) {
-                    conversionText(WalletFormatting.fiat(f, currencyCode: model.currencyCode))
+                    conversionText(WalletFormatting.fiat(f, currencyCode: model.currencyCode, hidden: hideBalances))
                 }
             case .fiat:
-                conversionText("\(WalletFormatting.native(crypto, decimals: model.effectiveDecimals)) \(model.assetSymbol)")
+                conversionText("\(WalletFormatting.native(crypto, decimals: model.effectiveDecimals, hidden: hideBalances)) \(model.assetSymbol)")
             }
         }
     }

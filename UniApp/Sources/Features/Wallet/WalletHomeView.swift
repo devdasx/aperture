@@ -121,8 +121,6 @@ struct WalletHomeView: View {
     // stays database-backed without summing live rows in this parent.
     @GRDBStorage("activeWalletId") private var activeWalletIdRaw: String = ""
     @GRDBStorage(CurrencyPreference.storageKey) private var currencyCode: String = CurrencyPreference.defaultCode
-    @GRDBStorage(HideBalancesPreference.hideBalanceOnHomeKey) private var hideBalanceOnHome: Bool = false
-
     @GRDBStorage(HideBalancesPreference.thresholdKey) private var hideSmallThreshold: Double = HideBalancesPreference.defaultThreshold
 
     /// **iPad / Mac adaptation (2026-06-16).** Two regular-width-only
@@ -2728,6 +2726,7 @@ private struct RecentActivityRows: View {
 /// the Sendable value-typed row.
 private struct SupportedTokenRow: View, Equatable {
     let row: WalletTokenSupportedDisplayRow
+    @Environment(\.balancePrivacyEnabled) private var hideBalances
 
     nonisolated static func == (lhs: SupportedTokenRow, rhs: SupportedTokenRow) -> Bool {
         lhs.row == rhs.row
@@ -2755,12 +2754,12 @@ private struct SupportedTokenRow: View, Equatable {
             Spacer(minLength: UniSpacing.s)
 
             VStack(alignment: .trailing, spacing: UniSpacing.xxs) {
-                Text(WalletFormatting.native(row.amount, decimals: 6))
+                Text(WalletFormatting.native(row.amount, decimals: 6, hidden: hideBalances))
                     .font(UniTypography.monoBody)
                     .foregroundStyle(UniColors.Text.primary)
                 // Zero/unheld → "US$0.00", never "Price unavailable"
                 // (user direction 2026-06-18).
-                Text(WalletFormatting.fiat(row.fiatValue ?? 0, currencyCode: row.fiatCurrencyCode))
+                Text(WalletFormatting.fiat(row.fiatValue ?? 0, currencyCode: row.fiatCurrencyCode, hidden: hideBalances))
                     .font(UniTypography.footnote)
                     .foregroundStyle(UniColors.Text.tertiary)
                     .monospacedDigit()

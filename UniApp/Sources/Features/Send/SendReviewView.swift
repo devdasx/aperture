@@ -29,6 +29,8 @@ import UniformTypeIdentifiers
 ///    plain whether anything was sent (a pre-broadcast failure moved
 ///    nothing).
 struct SendReviewView: View {
+    @Environment(\.balancePrivacyEnabled) private var hideBalances
+
     let draft: SendDraft
     let currencyCode: String
     let assetUnitPrice: Decimal?
@@ -81,7 +83,7 @@ struct SendReviewView: View {
             case .sent(let tx):
                 SendSentView(
                     transaction: tx,
-                    amount: WalletFormatting.native(draft.totalAmount, decimals: draft.effectiveDecimals),
+                    amount: WalletFormatting.native(draft.totalAmount, decimals: draft.effectiveDecimals, hidden: hideBalances),
                     assetSymbol: assetSymbol,
                     recipient: draft.recipients.first?.name
                         ?? WalletFormatting.shortAddress(draft.recipients.first?.address ?? "", prefix: 8, suffix: 6),
@@ -159,14 +161,14 @@ struct SendReviewView: View {
 
     private var amountHero: some View {
         VStack(spacing: UniSpacing.xs) {
-            Text(verbatim: "\(WalletFormatting.native(draft.totalAmount, decimals: draft.effectiveDecimals)) \(assetSymbol)")
+            Text(verbatim: "\(WalletFormatting.native(draft.totalAmount, decimals: draft.effectiveDecimals, hidden: hideBalances)) \(assetSymbol)")
                 .font(.system(size: 40, weight: .semibold, design: .default).monospacedDigit())
                 .foregroundStyle(UniColors.Text.primary)
                 .environment(\.layoutDirection, .leftToRight)
                 .lineLimit(1)
                 .minimumScaleFactor(0.5)
             if let price = assetUnitPrice, price > 0 {
-                Text(verbatim: WalletFormatting.fiat(draft.totalAmount * price, currencyCode: currencyCode))
+                Text(verbatim: WalletFormatting.fiat(draft.totalAmount * price, currencyCode: currencyCode, hidden: hideBalances))
                     .font(UniTypography.callout.monospacedDigit())
                     .foregroundStyle(UniColors.Text.tertiary)
                     .environment(\.layoutDirection, .leftToRight)
@@ -202,7 +204,7 @@ struct SendReviewView: View {
                 if offset < draft.recipients.count - 1 { divider }
             }
             divider
-            detailRow("Total", value: "\(WalletFormatting.native(draft.totalAmount, decimals: draft.effectiveDecimals)) \(assetSymbol)", mono: true)
+            detailRow("Total", value: "\(WalletFormatting.native(draft.totalAmount, decimals: draft.effectiveDecimals, hidden: hideBalances)) \(assetSymbol)", mono: true)
         }
     }
 
@@ -221,7 +223,7 @@ struct SendReviewView: View {
                     .truncationMode(.middle)
             }
             Spacer(minLength: UniSpacing.s)
-            Text(verbatim: "\(WalletFormatting.native(r.amount, decimals: draft.effectiveDecimals)) \(assetSymbol)")
+            Text(verbatim: "\(WalletFormatting.native(r.amount, decimals: draft.effectiveDecimals, hidden: hideBalances)) \(assetSymbol)")
                 .font(UniTypography.callout.monospacedDigit())
                 .foregroundStyle(UniColors.Text.primary)
                 .environment(\.layoutDirection, .leftToRight)
@@ -237,12 +239,12 @@ struct SendReviewView: View {
                 .foregroundStyle(UniColors.Text.secondary)
             Spacer(minLength: UniSpacing.s)
             VStack(alignment: .trailing, spacing: 2) {
-                Text(verbatim: "\(WalletFormatting.native(draft.fee.estimatedTotalNative, decimals: 8)) \(chain.ticker)")
+                Text(verbatim: "\(WalletFormatting.native(draft.fee.estimatedTotalNative, decimals: 8, hidden: hideBalances)) \(chain.ticker)")
                     .font(UniTypography.callout.monospacedDigit())
                     .foregroundStyle(UniColors.Text.primary)
                     .environment(\.layoutDirection, .leftToRight)
                 if let price = nativeUnitPrice, price > 0 {
-                    Text(verbatim: WalletFormatting.fiat(draft.fee.estimatedTotalNative * price, currencyCode: currencyCode))
+                    Text(verbatim: WalletFormatting.fiat(draft.fee.estimatedTotalNative * price, currencyCode: currencyCode, hidden: hideBalances))
                         .font(UniTypography.caption1.monospacedDigit())
                         .foregroundStyle(UniColors.Text.tertiary)
                         .environment(\.layoutDirection, .leftToRight)

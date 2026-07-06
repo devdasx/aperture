@@ -369,6 +369,7 @@ struct AllSupportedAssetsView: View {
 /// the symbol leads. Same anatomy, different emphasis.
 private struct TokenSupportedRow: View {
     let row: AllSupportedAssetsView.TokenSupportedDisplayRow
+    @Environment(\.balancePrivacyEnabled) private var hideBalances
 
     var body: some View {
         HStack(spacing: UniSpacing.s) {
@@ -396,7 +397,7 @@ private struct TokenSupportedRow: View {
             Spacer(minLength: UniSpacing.s)
 
             VStack(alignment: .trailing, spacing: UniSpacing.xxs) {
-                Text(WalletFormatting.native(row.amount, decimals: 6))
+                Text(WalletFormatting.native(row.amount, decimals: 6, hidden: hideBalances))
                     .font(UniTypography.monoBody)
                     .foregroundStyle(UniColors.Text.primary)
                 fiatLabel
@@ -412,7 +413,7 @@ private struct TokenSupportedRow: View {
         // Zero/unheld → "US$0.00", never "Price unavailable" (user
         // direction 2026-06-18). `row.fiatCurrencyCode` carries the active
         // currency even for an unheld supported asset.
-        Text(WalletFormatting.fiat(row.fiatValue ?? 0, currencyCode: row.fiatCurrencyCode))
+        Text(WalletFormatting.fiat(row.fiatValue ?? 0, currencyCode: row.fiatCurrencyCode, hidden: hideBalances))
             .font(UniTypography.footnote)
             .foregroundStyle(UniColors.Text.tertiary)
             .monospacedDigit()

@@ -14,6 +14,7 @@ struct WalletSwitcherSheet: View {
     @StateObject private var portfolioObservation = WalletPortfolioSummariesObservation()
     @GRDBStorage("activeWalletId") private var activeWalletIdRaw: String = ""
     @GRDBStorage(CurrencyPreference.storageKey) private var currencyCode: String = CurrencyPreference.defaultCode
+    @Environment(\.balancePrivacyEnabled) private var hideBalances
     @Environment(\.dismiss) private var dismiss
 
     private var wallets: [WalletRecord] {
@@ -118,7 +119,7 @@ struct WalletSwitcherSheet: View {
                         .foregroundStyle(UniColors.Text.primary)
                     // The wallet's balance (the kind/"imported from…" subtitle
                     // moved to the wallet detail screen's Kind row, 2026-06-19).
-                    Text(WalletFormatting.fiat(fiatBalance(for: wallet), currencyCode: currencyCode))
+                    Text(WalletFormatting.fiat(fiatBalance(for: wallet), currencyCode: currencyCode, hidden: hideBalances))
                         .font(UniTypography.footnote)
                         .foregroundStyle(UniColors.Text.secondary)
                         .monospacedDigit()

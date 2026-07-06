@@ -5,6 +5,7 @@ import Foundation
 /// returning `String` (or `LocalizedStringResource`) so they're safely
 /// callable from background actors.
 enum WalletFormatting {
+    static let hiddenAmount = "••••••"
 
     // MARK: - Cached formatters / styles (2026-06-14 perf)
     //
@@ -70,6 +71,10 @@ enum WalletFormatting {
     /// - ar_SA: `"١٢٣٬٤٥٦٫٧٨ US$"` (Arabic-Indic digits in ar locales)
     static func fiat(_ amount: Decimal, currencyCode: String) -> String {
         amount.formatted(.currency(code: currencyCode))
+    }
+
+    static func fiat(_ amount: Decimal, currencyCode: String, hidden: Bool) -> String {
+        hidden ? hiddenAmount : fiat(amount, currencyCode: currencyCode)
     }
 
     // MARK: - Fiat parts (balance-card three-run rendering)
@@ -191,6 +196,10 @@ enum WalletFormatting {
                 .precision(.fractionLength(0...cap))
                 .rounded(rule: .towardZero)
         )
+    }
+
+    static func native(_ amount: Decimal, decimals: Int, hidden: Bool) -> String {
+        hidden ? hiddenAmount : native(amount, decimals: decimals)
     }
 
     /// Convert a raw integer balance (as stored in `TokenBalanceRecord.rawBalance`)

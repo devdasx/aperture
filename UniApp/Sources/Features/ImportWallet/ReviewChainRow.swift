@@ -24,6 +24,8 @@ import UIKit
 /// numeric column. Absence of the dot IS the "fresh" signal —
 /// subtractive design (Rule #2 §A.2).
 struct ReviewChainRow: View {
+    @Environment(\.balancePrivacyEnabled) private var hideBalances
+
     let chain: SupportedChain
     let address: String
     let balance: ChainBalance?
@@ -88,14 +90,14 @@ struct ReviewChainRow: View {
                     usedDot
                 }
                 VStack(alignment: .trailing, spacing: UniSpacing.xxs) {
-                    Text(verbatim: BalanceFormatter.native(balance.nativeBalance, chain: chain))
+                    Text(verbatim: hideBalances ? "\(WalletFormatting.hiddenAmount) \(chain.ticker)" : BalanceFormatter.native(balance.nativeBalance, chain: chain))
                         .font(UniTypography.callout.monospacedDigit())
                         .foregroundStyle(UniColors.Text.primary)
                     // Render the fiat value, defaulting an unknown price to
                     // zero → "US$0.00", never "Price unavailable" (user
                     // direction 2026-06-18). A $0.00 row is honest data; the
                     // value refines as the price batch resolves.
-                    Text(verbatim: BalanceFormatter.fiat(balance.fiatBalance ?? 0, currencyCode: balance.fiatCurrencyCode))
+                    Text(verbatim: WalletFormatting.fiat(balance.fiatBalance ?? 0, currencyCode: balance.fiatCurrencyCode, hidden: hideBalances))
                         .font(UniTypography.caption1.monospacedDigit())
                         .foregroundStyle(UniColors.Text.tertiary)
                 }

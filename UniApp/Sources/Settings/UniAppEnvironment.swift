@@ -14,6 +14,7 @@ import SwiftUI
 struct UniAppEnvironmentModifier: ViewModifier {
     @GRDBStorage("themePreference") private var themeRaw: String = ThemePreference.defaultRaw
     @GRDBStorage("languagePreference") private var languageCode: String = LanguagePreference.systemCode
+    @GRDBStorage(HideBalancesPreference.hideBalanceOnHomeKey) private var hideBalances: Bool = false
 
     private var theme: ThemePreference {
         ThemePreference(rawValue: themeRaw) ?? .system
@@ -24,6 +25,7 @@ struct UniAppEnvironmentModifier: ViewModifier {
             .preferredColorScheme(theme.colorScheme)
             .environment(\.locale, LanguagePreference.locale(for: languageCode) ?? .current)
             .environment(\.layoutDirection, LanguagePreference.layoutDirection(for: languageCode))
+            .environment(\.balancePrivacyEnabled, hideBalances)
     }
 }
 

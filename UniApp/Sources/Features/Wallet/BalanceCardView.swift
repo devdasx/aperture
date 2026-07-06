@@ -18,7 +18,7 @@ struct BalanceCardView: View {
     @Environment(\.legibilityWeight) private var legibilityWeight
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    @GRDBStorage private var isHidden: Bool
+    @GRDBStorage(HideBalancesPreference.hideBalanceOnHomeKey) private var isHidden: Bool = false
 
     init(
         walletId: UUID?,
@@ -36,8 +36,6 @@ struct BalanceCardView: View {
         self.lastUpdated = lastUpdated
         self.onSwitchWallet = onSwitchWallet
         self.onAddFunds = onAddFunds
-        let key = "balanceCardHidden." + (walletId?.uuidString ?? "none")
-        self._isHidden = GRDBStorage(wrappedValue: false, key)
     }
 
     private enum CardState: Equatable { case value, zero, hidden }

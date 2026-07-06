@@ -93,17 +93,18 @@ struct AssetPickerNetworkRow: View {
 private struct AssetPickerBalanceColumn: View {
     let totals: AssetPickerHoldings.Totals
     let currencyCode: String
+    @Environment(\.balancePrivacyEnabled) private var hideBalances
 
     var body: some View {
         if totals.hasBalance {
             VStack(alignment: .trailing, spacing: 2) {
-                Text(verbatim: WalletFormatting.native(totals.native, decimals: 8))
+                Text(verbatim: WalletFormatting.native(totals.native, decimals: 8, hidden: hideBalances))
                     .font(UniTypography.subheadlineEmphasized)
                     .monospacedDigit()
                     .foregroundStyle(UniColors.Text.primary)
                     .environment(\.layoutDirection, .leftToRight)
                 if totals.fiat > 0 {
-                    Text(verbatim: WalletFormatting.fiat(totals.fiat, currencyCode: currencyCode))
+                    Text(verbatim: WalletFormatting.fiat(totals.fiat, currencyCode: currencyCode, hidden: hideBalances))
                         .font(UniTypography.footnote)
                         .monospacedDigit()
                         .foregroundStyle(UniColors.Text.tertiary)

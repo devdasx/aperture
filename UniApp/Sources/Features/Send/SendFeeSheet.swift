@@ -10,6 +10,8 @@ import SwiftUI
 /// Native sheet (Rule #15): `NavigationStack` + `navigationTitle`, Cancel
 /// leading / Done trailing in the toolbar, opaque presentation background.
 struct SendFeeSheet: View {
+    @Environment(\.balancePrivacyEnabled) private var hideBalances
+
     @Bindable var model: SendComposeModel
     @Environment(\.dismiss) private var dismiss
 
@@ -140,12 +142,12 @@ struct SendFeeSheet: View {
     private func feeColumn(_ choice: FeeChoice?) -> some View {
         if let choice {
             VStack(alignment: .trailing, spacing: 2) {
-                Text(verbatim: "\(WalletFormatting.native(choice.estimatedTotalNative, decimals: 8)) \(model.chain.ticker)")
+                Text(verbatim: "\(WalletFormatting.native(choice.estimatedTotalNative, decimals: 8, hidden: hideBalances)) \(model.chain.ticker)")
                     .font(UniTypography.callout.monospacedDigit())
                     .foregroundStyle(UniColors.Text.primary)
                     .environment(\.layoutDirection, .leftToRight)
                 if let price = model.nativeUnitPrice, price > 0 {
-                    Text(verbatim: WalletFormatting.fiat(choice.estimatedTotalNative * price, currencyCode: model.currencyCode))
+                    Text(verbatim: WalletFormatting.fiat(choice.estimatedTotalNative * price, currencyCode: model.currencyCode, hidden: hideBalances))
                         .font(UniTypography.caption1.monospacedDigit())
                         .foregroundStyle(UniColors.Text.tertiary)
                         .environment(\.layoutDirection, .leftToRight)

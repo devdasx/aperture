@@ -398,7 +398,7 @@ struct AssetDetailView: View {
     @ViewBuilder
     private func balanceLabel(_ derived: DerivedState) -> some View {
         let display: String = {
-            if hideBalance { return "••••••" }
+            if hideBalance { return WalletFormatting.hiddenAmount }
             // Zero/unpriced → "US$0.00", never "Price unavailable"
             // (user direction 2026-06-18).
             return WalletFormatting.fiat(derived.resolution.totalFiat ?? 0, currencyCode: derived.resolution.fiatCurrencyCode)
@@ -421,7 +421,7 @@ struct AssetDetailView: View {
     /// the one chain's amount; for tokens that's the cross-network
     /// sum. Honest about asset-scoped totals.
     private func nativeRollup(_ resolution: AssetResolution) -> some View {
-        let amount = WalletFormatting.native(resolution.totalAmount, decimals: 6)
+        let amount = WalletFormatting.native(resolution.totalAmount, decimals: 6, hidden: hideBalance)
         return Text(verbatim: "\(amount) \(identity.symbol)")
             .font(UniTypography.subheadline)
             .foregroundStyle(UniColors.Text.secondary)
@@ -792,6 +792,7 @@ struct AssetDetailView: View {
 private struct AssetNetworkRowView: View {
     let row: AssetNetworkRow
     let assetSymbol: String
+    @Environment(\.balancePrivacyEnabled) private var hideBalances
 
     var body: some View {
         HStack(spacing: UniSpacing.s) {
@@ -826,21 +827,21 @@ private struct AssetNetworkRowView: View {
     /// name has already taken the top slot, so the bottom slot is
     /// pure asset quantity.
     private var secondaryLine: String {
-        let amountText = WalletFormatting.native(row.amount, decimals: 6)
+        let amountText = WalletFormatting.native(row.amount, decimals: 6, hidden: hideBalances)
         return "\(amountText) \(assetSymbol)"
     }
 
     @ViewBuilder
     private var fiatLabel: some View {
         if let fiat = row.fiatValue, fiat > 0 {
-            Text(WalletFormatting.fiat(fiat, currencyCode: row.fiatCurrencyCode))
+            Text(WalletFormatting.fiat(fiat, currencyCode: row.fiatCurrencyCode, hidden: hideBalances))
                 .font(UniTypography.bodyEmphasized)
                 .foregroundStyle(UniColors.Text.primary)
                 .monospacedDigit()
         } else if row.isHeld {
             // Held but the value rounds to / is zero → "US$0.00", never
             // "Price unavailable" (user direction 2026-06-18).
-            Text(WalletFormatting.fiat(row.fiatValue ?? 0, currencyCode: row.fiatCurrencyCode))
+            Text(WalletFormatting.fiat(row.fiatValue ?? 0, currencyCode: row.fiatCurrencyCode, hidden: hideBalances))
                 .font(UniTypography.bodyEmphasized)
                 .foregroundStyle(UniColors.Text.primary)
                 .monospacedDigit()

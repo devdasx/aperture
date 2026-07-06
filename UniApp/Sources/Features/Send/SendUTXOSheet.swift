@@ -10,6 +10,8 @@ import SwiftUI
 /// Native sheet (Rule #15): `NavigationStack` + `navigationTitle`, Cancel /
 /// Done in the toolbar, opaque background.
 struct SendUTXOSheet: View {
+    @Environment(\.balancePrivacyEnabled) private var hideBalances
+
     @Bindable var model: SendComposeModel
     @Environment(\.dismiss) private var dismiss
 
@@ -115,7 +117,7 @@ struct SendUTXOSheet: View {
                     .font(.system(size: 20))
                     .foregroundStyle(selected ? UniColors.Icon.accent : UniColors.Icon.tertiary)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(verbatim: "\(WalletFormatting.native(displayAmount(utxo), decimals: model.chain.nativeDecimals)) \(model.chain.ticker)")
+                    Text(verbatim: "\(WalletFormatting.native(displayAmount(utxo), decimals: model.chain.nativeDecimals, hidden: hideBalances)) \(model.chain.ticker)")
                         .font(UniTypography.body.monospacedDigit())
                         .foregroundStyle(UniColors.Text.primary)
                         .environment(\.layoutDirection, .leftToRight)
@@ -177,7 +179,7 @@ struct SendUTXOSheet: View {
 
     private var runningTotalText: String {
         let total = ComposeDecimal.toDisplay(Decimal(selectedTotalSats), decimals: model.chain.nativeDecimals)
-        return "\(WalletFormatting.native(total, decimals: model.chain.nativeDecimals)) \(model.chain.ticker)"
+        return "\(WalletFormatting.native(total, decimals: model.chain.nativeDecimals, hidden: hideBalances)) \(model.chain.ticker)"
     }
 
     private func shortTxid(_ txid: String) -> String {

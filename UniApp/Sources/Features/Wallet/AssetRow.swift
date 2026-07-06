@@ -30,6 +30,7 @@ struct AssetRow: View {
     let fiatValue: Decimal?
     /// Currency code for `fiatValue` rendering.
     let fiatCurrencyCode: String
+    @Environment(\.balancePrivacyEnabled) private var hideBalances
 
     var body: some View {
         HStack(spacing: UniSpacing.s) {
@@ -50,7 +51,7 @@ struct AssetRow: View {
             Spacer(minLength: UniSpacing.s)
 
             VStack(alignment: .trailing, spacing: UniSpacing.xxs) {
-                Text(WalletFormatting.native(nativeAmount, decimals: nativeDecimals))
+                Text(WalletFormatting.native(nativeAmount, decimals: nativeDecimals, hidden: hideBalances))
                     .font(UniTypography.monoBody)
                     .foregroundStyle(UniColors.Text.primary)
                 fiatLabel
@@ -73,7 +74,7 @@ struct AssetRow: View {
         // no price needed; never the "Price unavailable" eyesore, user
         // direction 2026-06-18). `fiatCurrencyCode` is always the active
         // currency, even on an unheld row, so the format is correct.
-        Text(WalletFormatting.fiat(fiatValue ?? 0, currencyCode: fiatCurrencyCode))
+        Text(WalletFormatting.fiat(fiatValue ?? 0, currencyCode: fiatCurrencyCode, hidden: hideBalances))
             .font(UniTypography.footnote)
             .foregroundStyle(UniColors.Text.tertiary)
             .monospacedDigit()

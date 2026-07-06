@@ -23,6 +23,7 @@ struct AssetNetworkDetailView: View {
     @StateObject private var cachedPricesObservation = CachedPricesObservation()
     @GRDBStorage("activeWalletId") private var activeWalletIdRaw: String = ""
     @GRDBStorage(CurrencyPreference.storageKey) private var currencyCode: String = CurrencyPreference.defaultCode
+    @Environment(\.balancePrivacyEnabled) private var hideBalances
 
     private var allWallets: [WalletRecord] {
         walletRecordsObservation.wallets
@@ -268,7 +269,7 @@ struct AssetNetworkDetailView: View {
     @ViewBuilder
     private var balanceHeroLabel: some View {
         if let fiat = networkRow?.fiatValue, fiat > 0 {
-            Text(WalletFormatting.fiat(fiat, currencyCode: networkRow?.fiatCurrencyCode ?? currencyCode))
+            Text(WalletFormatting.fiat(fiat, currencyCode: networkRow?.fiatCurrencyCode ?? currencyCode, hidden: hideBalances))
                 .font(UniTypography.heroBalance)
                 .foregroundStyle(UniColors.Text.primary)
                 .lineLimit(1)
@@ -278,7 +279,7 @@ struct AssetNetworkDetailView: View {
         } else if let row = networkRow, row.isHeld {
             // Held on this network but the value rounds to / is zero →
             // "US$0.00", never "Price unavailable" (user direction 2026-06-18).
-            Text(WalletFormatting.fiat(row.fiatValue ?? 0, currencyCode: row.fiatCurrencyCode))
+            Text(WalletFormatting.fiat(row.fiatValue ?? 0, currencyCode: row.fiatCurrencyCode, hidden: hideBalances))
                 .font(UniTypography.heroBalance)
                 .foregroundStyle(UniColors.Text.primary)
                 .lineLimit(1)
@@ -304,7 +305,7 @@ struct AssetNetworkDetailView: View {
 
     private var rollupText: String {
         let amount = networkRow?.amount ?? .zero
-        let amountText = WalletFormatting.native(amount, decimals: 6)
+        let amountText = WalletFormatting.native(amount, decimals: 6, hidden: hideBalances)
         return "\(amountText) \(identity.symbol)"
     }
 
