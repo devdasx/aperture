@@ -142,7 +142,6 @@ struct WalletIconPickerSheet: View {
                     livePreview(wallet)
                     colorSection
                     symbolSection
-                    tipFootnote
                 }
                 .padding(.horizontal, UniSpacing.l)
                 .padding(.top, UniSpacing.m)
@@ -516,18 +515,6 @@ struct WalletIconPickerSheet: View {
         let head = name.prefix(max / 2)
         let tail = name.suffix(max / 2 - 1)
         return "\(head)\u{2026}\(tail)"
-    }
-
-    // MARK: - Tip footnote
-
-    @ViewBuilder
-    private var tipFootnote: some View {
-        Text("Tip: leave it on \u{201C}Letter\u{201D} to auto-use the wallet\u{2019}s initial.")
-            .font(UniTypography.footnote)
-            .foregroundStyle(UniColors.Text.tertiary)
-            .multilineTextAlignment(.leading)
-            .fixedSize(horizontal: false, vertical: true)
-            .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     // MARK: - Save bar

@@ -725,12 +725,10 @@ final class MarketsViewModel: ObservableObject {
 // MARK: - Screens
 
 struct MarketsView: View {
-    @Environment(\.layoutDirection) private var layoutDirection
     @GRDBStorage(CurrencyPreference.storageKey) private var currencyCode: String = CurrencyPreference.defaultCode
     @StateObject private var model = MarketsViewModel()
     @State private var segment: MarketsSegment = .top
     @State private var searchText: String = ""
-    @GRDBStorage("tip.marketsWatchlistSwipe.dismissed") private var watchlistSwipeTipDismissed: Bool = false
 
     private var visibleAssets: [MarketAsset] {
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
@@ -780,27 +778,6 @@ struct MarketsView: View {
                     marketsEmptyState
                 }
             } else {
-                if !watchlistSwipeTipDismissed {
-                    Section {
-                        ApertureTipCard(
-                            title: String.apertureLocalized("Tip"),
-                            message: layoutDirection == .rightToLeft
-                                ? String.apertureLocalized("Swipe a coin row to the right to add or remove it from your watchlist.")
-                                : String.apertureLocalized("Swipe a coin row to the left to add or remove it from your watchlist."),
-                            systemImage: "star",
-                            onDismiss: { watchlistSwipeTipDismissed = true }
-                        )
-                        .listRowBackground(Color.clear)
-                        .listRowSeparator(.hidden)
-                        .listRowInsets(EdgeInsets(
-                            top: 0,
-                            leading: UniSpacing.m,
-                            bottom: UniSpacing.s,
-                            trailing: UniSpacing.m
-                        ))
-                    }
-                }
-
                 Section {
                     ForEach(visibleAssets) { asset in
                         NavigationLink(value: asset) {

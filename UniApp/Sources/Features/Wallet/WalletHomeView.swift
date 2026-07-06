@@ -88,7 +88,6 @@ struct WalletHomeView: View {
 
     private var allWallets: [WalletRecord] { walletRecordsObservation.wallets }
 
-    @GRDBStorage("tip.walletSwitcher.dismissed") private var walletSwitcherTipDismissed: Bool = false
     private var metadataRows: [AppMetadataRecord] { metadataObservation.metadataRows }
     // Cached prices stay here only for the recent-activity preview. The balance
     // card no longer subscribes to price rows now that charts are removed from
@@ -1019,23 +1018,6 @@ struct WalletHomeView: View {
     @ViewBuilder
     private var chromeSection: some View {
         Section {
-            if allWallets.count >= 2 && !walletSwitcherTipDismissed {
-                ApertureTipCard(
-                    title: String.apertureLocalized("Switch between wallets"),
-                    message: String.apertureLocalized("Long-press the Wallet tab to switch, customise, create, or import."),
-                    systemImage: "rectangle.stack.fill",
-                    onDismiss: { walletSwitcherTipDismissed = true }
-                )
-                .listRowBackground(Color.clear)
-                .listRowSeparator(.hidden)
-                .listRowInsets(EdgeInsets(
-                    top: 0,
-                    leading: UniSpacing.m,
-                    bottom: UniSpacing.m,
-                    trailing: UniSpacing.m
-                ))
-            }
-
             if requiresBiometricReenrollment {
                 BiometricReenrollmentBanner()
                     .listRowBackground(Color.clear)
