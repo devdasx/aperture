@@ -92,4 +92,158 @@ struct SendTokenDescriptorTests {
         #expect(model.effectiveDecimals == 6)
         #expect(model.isToken)
     }
+
+    @MainActor
+    @Test("XRP recipient destination tag reaches send draft")
+    func xrpRecipientDestinationTagReachesDraft() throws {
+        let model = SendComposeModel(
+            chain: .ripple,
+            tokenSymbol: nil,
+            tokenContract: nil,
+            tokenDecimals: nil,
+            fromAddress: "rFromAddress",
+            recipients: [
+                SendRecipientEntry(
+                    address: "rBuZfn1m4tA6znziHsRp9AyC1M3qg6rgbF",
+                    name: nil,
+                    memo: .destinationTag(42_424)
+                )
+            ],
+            currencyCode: "USD"
+        )
+
+        model.applyFeeQuote(xrpQuote())
+        model.setBalances(native: 1_000, token: nil, state: .init())
+        model.primaryAmountText = "1"
+
+        #expect(model.canReview)
+        let draft = try #require(model.makeDraft())
+        #expect(draft.memo == .destinationTag(42_424))
+    }
+
+    @MainActor
+    @Test("Stellar recipient memo ID reaches send draft")
+    func stellarRecipientMemoIDReachesDraft() throws {
+        let memoID = UInt64(9_876_543_210)
+        let model = SendComposeModel(
+            chain: .stellar,
+            tokenSymbol: nil,
+            tokenContract: nil,
+            tokenDecimals: nil,
+            fromAddress: "GFROMADDRESS",
+            recipients: [
+                SendRecipientEntry(
+                    address: "GDESTINATIONADDRESS",
+                    name: nil,
+                    memo: .stellarMemo(.id(memoID))
+                )
+            ],
+            currencyCode: "USD"
+        )
+
+        model.applyFeeQuote(stellarQuote())
+        model.setBalances(native: 1_000, token: nil, state: .init())
+        model.primaryAmountText = "1"
+
+        #expect(model.canReview)
+        let draft = try #require(model.makeDraft())
+        #expect(draft.memo == .stellarMemo(.id(memoID)))
+    }
+
+    @Test("Stellar typed memo validation accepts IDs and rejects malformed hashes")
+    func stellarTypedMemoValidation() {
+        let validator = SendDraftValidator()
+        let fee = stellarFeeChoice()
+        let recipient = SendRecipientAmount(address: "GDESTINATIONADDRESS", amount: 1, name: nil)
+        let base = SendDraftValidator.Inputs(
+            chain: .stellar,
+            isToken: false,
+            nativeBalance: 1_000,
+            tokenBalance: nil,
+            recipients: [recipient],
+            fee: fee,
+            state: .init(),
+            memo: .stellarMemo(.id(123)),
+            opReturnByteCount: nil,
+            recipientRequiresDestinationTag: false,
+            recipientRequiresMemo: true,
+            recipientIsNew: false
+        )
+
+        #expect(!validator.validate(base).contains(.memoRequired))
+
+        let validHash = String(repeating: "a", count: 64)
+        let validHashInputs = SendDraftValidator.Inputs(
+            chain: base.chain,
+            isToken: base.isToken,
+            nativeBalance: base.nativeBalance,
+            tokenBalance: base.tokenBalance,
+            recipients: base.recipients,
+            fee: base.fee,
+            state: base.state,
+            memo: .stellarMemo(.hashHex(validHash)),
+            opReturnByteCount: base.opReturnByteCount,
+            recipientRequiresDestinationTag: base.recipientRequiresDestinationTag,
+            recipientRequiresMemo: base.recipientRequiresMemo,
+            recipientIsNew: base.recipientIsNew
+        )
+        #expect(!validator.validate(validHashInputs).contains(.memoInvalid))
+
+        let invalidHashInputs = SendDraftValidator.Inputs(
+            chain: base.chain,
+            isToken: base.isToken,
+            nativeBalance: base.nativeBalance,
+            tokenBalance: base.tokenBalance,
+            recipients: base.recipients,
+            fee: base.fee,
+            state: base.state,
+            memo: .stellarMemo(.hashHex("not-a-32-byte-hash")),
+            opReturnByteCount: base.opReturnByteCount,
+            recipientRequiresDestinationTag: base.recipientRequiresDestinationTag,
+            recipientRequiresMemo: base.recipientRequiresMemo,
+            recipientIsNew: base.recipientIsNew
+        )
+        #expect(validator.validate(invalidHashInputs).contains(.memoInvalid))
+    }
+
+    private func xrpQuote() -> FeeQuote {
+        var fee = FeeChoice(
+            tier: .normal,
+            feeModel: .xrpFixed,
+            estimatedTotalNative: 0.00001,
+            worstCaseTotalNative: 0.00001
+        )
+        fee.xrpDrops = 10
+        return FeeQuote(
+            chain: .ripple,
+            feeModel: .xrpFixed,
+            tiers: [.normal: fee],
+            isCustomAllowed: true,
+            hasSpeedTiers: true,
+            note: nil
+        )
+    }
+
+    private func stellarQuote() -> FeeQuote {
+        FeeQuote(
+            chain: .stellar,
+            feeModel: .stellarPerOp,
+            tiers: [.normal: stellarFeeChoice()],
+            isCustomAllowed: true,
+            hasSpeedTiers: true,
+            note: nil
+        )
+    }
+
+    private func stellarFeeChoice() -> FeeChoice {
+        var fee = FeeChoice(
+            tier: .normal,
+            feeModel: .stellarPerOp,
+            estimatedTotalNative: 0.00001,
+            worstCaseTotalNative: 0.00001
+        )
+        fee.stellarPerOpStroops = 100
+        fee.stellarOpCount = 1
+        return fee
+    }
 }

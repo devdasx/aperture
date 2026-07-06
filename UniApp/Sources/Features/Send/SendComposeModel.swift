@@ -255,6 +255,7 @@ final class SendComposeModel {
         self.currencyCode = currencyCode
         self.capability = ChainComposeCapability.capability(for: chain)
         self.amounts = recipients.map { AmountEntry(address: $0.address, name: $0.name) }
+        self.memo = recipients.compactMap(\.memo).first ?? .none
     }
 
     // MARK: - Derived identity

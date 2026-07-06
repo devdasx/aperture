@@ -22,6 +22,8 @@ enum SendValidationError: Error, Hashable, Sendable {
     case memoRequired
     /// Memo exceeds the chain's byte cap.
     case memoTooLong(maxBytes: Int)
+    /// Memo is not valid for the chain's typed memo field.
+    case memoInvalid
     /// OP_RETURN data note exceeds the chain's byte cap.
     case opReturnTooLong(maxBytes: Int)
     /// No recipients.
@@ -57,6 +59,8 @@ enum SendValidationError: Error, Hashable, Sendable {
             return "This recipient requires a memo"
         case .memoTooLong:
             return "Memo is too long"
+        case .memoInvalid:
+            return "Memo is invalid"
         case .opReturnTooLong:
             return "Data note is too long"
         case .noRecipients:
@@ -181,6 +185,9 @@ struct SendDraftValidator: Sendable {
         if let maxBytes = cap.memoMaxBytes, let bytes = memoByteLength(inputs.memo), bytes > maxBytes {
             errors.append(.memoTooLong(maxBytes: maxBytes))
         }
+        if !memoHasValidTypedShape(inputs.memo) {
+            errors.append(.memoInvalid)
+        }
 
         // OP_RETURN data-note length (Bitcoin family). Over the chain's
         // datacarrier cap → the output is non-standard and won't relay.
@@ -215,6 +222,16 @@ struct SendDraftValidator: Sendable {
         case .stellarMemo(let m):
             if case .text(let s) = m { return s.utf8.count }
             return nil
+        }
+    }
+
+    private func memoHasValidTypedShape(_ memo: SendMemoValue) -> Bool {
+        switch memo {
+        case .stellarMemo(.hashHex(let hex)):
+            let normalized = hex.lowercased().hasPrefix("0x") ? String(hex.dropFirst(2)) : hex
+            return normalized.range(of: "^[0-9a-fA-F]{64}$", options: .regularExpression) != nil
+        default:
+            return true
         }
     }
 }

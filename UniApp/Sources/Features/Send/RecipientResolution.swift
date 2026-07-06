@@ -14,7 +14,14 @@ import WalletCore
 struct SendRecipientEntry: Codable, Hashable, Identifiable {
     let address: String
     let name: String?
+    let memo: SendMemoValue?
     var id: String { address }
+
+    init(address: String, name: String?, memo: SendMemoValue? = nil) {
+        self.address = address
+        self.name = name
+        self.memo = memo
+    }
 }
 
 /// The outcome of resolving the recipient field.

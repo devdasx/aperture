@@ -105,7 +105,7 @@ enum StellarTransactionSigner {
             input.opPayment = payment
         }
 
-        applyMemo(&input, memo: draft.memo)
+        try applyMemo(&input, memo: draft.memo)
 
         let output: StellarSigningOutput = AnySigner.sign(input: input, coin: .stellar)
         guard output.error == .ok, !output.signature.isEmpty else {
@@ -124,18 +124,19 @@ enum StellarTransactionSigner {
 
     /// Map the draft's typed Stellar memo onto wallet-core's memo oneof
     /// (matrix §G5: text ≤28 bytes, id uint64, hash 32 bytes).
-    private static func applyMemo(_ input: inout StellarSigningInput, memo: SendMemoValue) {
+    private static func applyMemo(_ input: inout StellarSigningInput, memo: SendMemoValue) throws {
         switch memo {
         case .stellarMemo(.text(let text)):
             input.memoText = StellarMemoText.with { $0.text = String(text.prefix(28)) }
         case .stellarMemo(.id(let id)):
             input.memoID = StellarMemoId.with { $0.id = Int64(bitPattern: id) }
         case .stellarMemo(.hashHex(let hex)):
-            if let data = SigningNumeric.hexToData(hex.hasPrefix("0x") ? String(hex.dropFirst(2)) : hex),
+            let normalizedHex = hex.lowercased().hasPrefix("0x") ? String(hex.dropFirst(2)) : hex
+            if let data = SigningNumeric.hexToData(normalizedHex),
                data.count == 32 {
                 input.memoHash = StellarMemoHash.with { $0.hash = data }
             } else {
-                input.memoVoid = StellarMemoVoid()
+                throw SigningError.malformedDraft("invalid Stellar memo hash")
             }
         case .text(let s):
             input.memoText = StellarMemoText.with { $0.text = String(s.prefix(28)) }

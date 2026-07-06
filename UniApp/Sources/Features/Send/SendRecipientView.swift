@@ -1,3 +1,4 @@
+import Foundation
 import SwiftUI
 
 /// Send · Step 3 — the recipient(s). Real per-chain address validation
@@ -74,10 +75,92 @@ struct SendRecipientView: View {
     /// Guards the one-time `initialRecipient` prefill so it doesn't re-run if
     /// the view re-appears.
     @State private var didConsumeInitial: Bool = false
+    /// XRP/XLM recipient-service routing data entered beside the address.
+    @State private var destinationTagText: String = ""
+    @State private var stellarMemoType: StellarMemoInputKind = .text
+    @State private var stellarMemoText: String = ""
 
     private var maxRecipients: Int { ChainSendCapability.maxRecipients(for: chain) }
     private var isMulti: Bool { maxRecipients > 1 }
     private var recentList: [RecentRecipient] { recents.recents(for: chain) }
+
+    private var showsRecipientMemo: Bool {
+        chain == .ripple || chain == .stellar
+    }
+
+    private var destinationTagTrimmed: String {
+        destinationTagText.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var parsedDestinationTag: UInt32? {
+        UInt32(destinationTagTrimmed)
+    }
+
+    private var destinationTagIsInvalid: Bool {
+        !destinationTagTrimmed.isEmpty && parsedDestinationTag == nil
+    }
+
+    private var stellarMemoTrimmed: String {
+        stellarMemoText.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var stellarMemoByteCount: Int {
+        stellarMemoTrimmed.utf8.count
+    }
+
+    private var normalizedStellarHash: String {
+        let trimmed = stellarMemoTrimmed
+        if trimmed.lowercased().hasPrefix("0x") {
+            return String(trimmed.dropFirst(2))
+        }
+        return trimmed
+    }
+
+    private var stellarMemoError: String? {
+        guard chain == .stellar, !stellarMemoTrimmed.isEmpty else { return nil }
+        switch stellarMemoType {
+        case .text:
+            return stellarMemoByteCount > 28 ? "Memo text must be 28 bytes or less." : nil
+        case .id:
+            return UInt64(stellarMemoTrimmed) == nil ? "Memo ID must be a whole number from 0 to 18,446,744,073,709,551,615." : nil
+        case .hash:
+            let hash = normalizedStellarHash
+            let isHex = hash.range(of: "^[0-9a-fA-F]{64}$", options: .regularExpression) != nil
+            return isHex ? nil : "Memo hash must be exactly 32 bytes, written as 64 hex characters."
+        }
+    }
+
+    private var recipientMemoIsValid: Bool {
+        switch chain {
+        case .ripple:
+            return !destinationTagIsInvalid
+        case .stellar:
+            return stellarMemoError == nil
+        default:
+            return true
+        }
+    }
+
+    private var recipientMemoValue: SendMemoValue? {
+        switch chain {
+        case .ripple:
+            guard !destinationTagTrimmed.isEmpty, let tag = parsedDestinationTag else { return nil }
+            return .destinationTag(tag)
+        case .stellar:
+            guard !stellarMemoTrimmed.isEmpty else { return nil }
+            switch stellarMemoType {
+            case .text:
+                return stellarMemoError == nil ? .stellarMemo(.text(stellarMemoTrimmed)) : nil
+            case .id:
+                guard let id = UInt64(stellarMemoTrimmed) else { return nil }
+                return .stellarMemo(.id(id))
+            case .hash:
+                return stellarMemoError == nil ? .stellarMemo(.hashHex(normalizedStellarHash)) : nil
+            }
+        default:
+            return nil
+        }
+    }
 
     private var nameHint: String? {
         if chain.family == .evm { return ".eth name" }
@@ -90,12 +173,16 @@ struct SendRecipientView: View {
         let nonEmpty = entries.filter { !$0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
         guard !nonEmpty.isEmpty else { return false }
         return nonEmpty.allSatisfy { if case .resolved = $0.resolution { return true } else { return false } }
+            && recipientMemoIsValid
     }
 
     private var resolvedRecipients: [SendRecipientEntry] {
-        entries.compactMap { entry in
+        let memo = recipientMemoValue
+        var didAttachMemo = false
+        return entries.compactMap { entry in
             if case let .resolved(address, name) = entry.resolution {
-                return SendRecipientEntry(address: address, name: name)
+                defer { didAttachMemo = true }
+                return SendRecipientEntry(address: address, name: name, memo: didAttachMemo ? nil : memo)
             }
             return nil
         }
@@ -216,8 +303,111 @@ struct SendRecipientView: View {
                 }
             }
 
+            if showsRecipientMemo {
+                recipientMemoBlock
+                    .padding(.top, UniSpacing.xxs)
+            }
+
             actionChips
                 .padding(.top, UniSpacing.xxs)
+        }
+    }
+
+    @ViewBuilder
+    private var recipientMemoBlock: some View {
+        switch chain {
+        case .ripple:
+            VStack(alignment: .leading, spacing: UniSpacing.xs) {
+                Text("Destination tag")
+                    .font(UniTypography.footnote.weight(.semibold))
+                    .foregroundStyle(UniColors.Text.secondary)
+                    .padding(.leading, UniSpacing.m)
+
+                UniTextField(
+                    placeholder: "Destination tag (optional)",
+                    text: $destinationTagText,
+                    directionPolicy: .forceLTR,
+                    keyboardType: .numberPad
+                )
+
+                RecipientRoutingNote(
+                    text: "Use the exact tag the exchange or recipient gave you. XRP sent to a shared address without the required tag can be lost."
+                )
+                .padding(.horizontal, UniSpacing.m)
+
+                if destinationTagIsInvalid {
+                    memoError("Destination tag must be a number from 0 to 4,294,967,295.")
+                        .padding(.horizontal, UniSpacing.m)
+                }
+            }
+        case .stellar:
+            VStack(alignment: .leading, spacing: UniSpacing.xs) {
+                Text("Stellar memo")
+                    .font(UniTypography.footnote.weight(.semibold))
+                    .foregroundStyle(UniColors.Text.secondary)
+                    .padding(.leading, UniSpacing.m)
+
+                Picker("Memo type", selection: $stellarMemoType) {
+                    ForEach(StellarMemoInputKind.allCases) { type in
+                        Text(type.rawValue).tag(type)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .padding(.horizontal, UniSpacing.m)
+
+                UniTextField(
+                    placeholder: stellarMemoPlaceholder,
+                    text: $stellarMemoText,
+                    directionPolicy: stellarMemoType == .text ? .automatic : .forceLTR,
+                    axis: .vertical,
+                    lineLimit: stellarMemoType == .text ? 2 : 1,
+                    keyboardType: stellarMemoType == .id ? .numberPad : .default
+                )
+
+                RecipientRoutingNote(
+                    text: "Use the exact memo type and value the exchange or recipient gave you. Many Stellar deposits require this."
+                )
+                .padding(.horizontal, UniSpacing.m)
+
+                if stellarMemoType == .text {
+                    HStack {
+                        Spacer()
+                        Text(verbatim: "\(stellarMemoByteCount) / 28 bytes")
+                            .font(UniTypography.caption1.monospacedDigit())
+                            .foregroundStyle(stellarMemoByteCount > 28 ? UniColors.Feedback.Error.foreground : UniColors.Text.tertiary)
+                            .environment(\.layoutDirection, .leftToRight)
+                    }
+                    .padding(.horizontal, UniSpacing.m)
+                }
+
+                if let stellarMemoError {
+                    memoError(stellarMemoError)
+                        .padding(.horizontal, UniSpacing.m)
+                }
+            }
+        default:
+            EmptyView()
+        }
+    }
+
+    private var stellarMemoPlaceholder: LocalizedStringKey {
+        switch stellarMemoType {
+        case .text: return "Memo text"
+        case .id: return "Memo ID"
+        case .hash: return "64-character memo hash"
+        }
+    }
+
+    private func memoError(_ text: String) -> some View {
+        Label {
+            Text(verbatim: text)
+                .font(UniTypography.footnote)
+                .foregroundStyle(UniColors.Feedback.Error.foreground)
+                .fixedSize(horizontal: false, vertical: true)
+        } icon: {
+            Image(systemName: "exclamationmark.circle.fill")
+                .font(.system(size: 13))
+                .foregroundStyle(UniColors.Feedback.Error.foreground)
         }
     }
 
@@ -409,27 +599,109 @@ struct SendRecipientView: View {
     /// raise the full-screen guard instead of silently filling. Recents the
     /// user taps are known-safe and bypass this (they go straight to `fill`).
     private func handleIncoming(_ raw: String) {
-        let clean = cleanScanned(raw)
-        guard !clean.isEmpty else { return }
+        let incoming = parseIncoming(raw)
+        guard !incoming.address.isEmpty else { return }
         let known = recentList.map(\.address)
-        if let look = SendSafety.lookalike(for: clean, among: known, chain: chain) {
+        if let look = SendSafety.lookalike(for: incoming.address, among: known, chain: chain) {
             poisonLookalike = look
             return
         }
-        fill(clean)
+        applyIncomingMemo(incoming.memo)
+        fill(incoming.address)
     }
 
     /// Strip a URI scheme (`ethereum:`, `solana:`, …) and any query the QR
     /// / pasteboard may carry, leaving the bare address.
-    private func cleanScanned(_ raw: String) -> String {
+    private func parseIncoming(_ raw: String) -> IncomingRecipientPayload {
         var s = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        var query: String?
+        var scheme: String?
         if let schemeRange = s.range(of: ":"), s.range(of: "://") == nil {
+            scheme = String(s[..<schemeRange.lowerBound]).lowercased()
             let after = String(s[schemeRange.upperBound...])
             if !after.isEmpty { s = after }
         }
-        if let q = s.firstIndex(of: "?") { s = String(s[..<q]) }
+        if let q = s.firstIndex(of: "?") {
+            query = String(s[s.index(after: q)...])
+            s = String(s[..<q])
+        }
+        let queryItems = queryItems(from: query)
+        if chain == .stellar, scheme == "web+stellar", s.lowercased() == "pay",
+           let destination = queryItems["destination"], !destination.isEmpty {
+            s = destination
+        }
         if let at = s.firstIndex(of: "@") { s = String(s[..<at]) }
-        return s.trimmingCharacters(in: .whitespacesAndNewlines)
+        let address = s.trimmingCharacters(in: .whitespacesAndNewlines)
+        return IncomingRecipientPayload(address: address, memo: memo(from: queryItems))
+    }
+
+    private func queryItems(from query: String?) -> [String: String] {
+        guard let query, !query.isEmpty else { return [:] }
+        var components = URLComponents()
+        components.percentEncodedQuery = query
+        var result: [String: String] = [:]
+        for item in components.queryItems ?? [] {
+            guard let value = item.value else { continue }
+            result[item.name.lowercased()] = value
+        }
+        return result
+    }
+
+    private func memo(from queryItems: [String: String]) -> SendMemoValue? {
+        switch chain {
+        case .ripple:
+            let raw = queryItems["dt"]
+                ?? queryItems["destinationtag"]
+                ?? queryItems["destination_tag"]
+                ?? queryItems["tag"]
+                ?? queryItems["memo"]
+            guard let raw, let tag = UInt32(raw.trimmingCharacters(in: .whitespacesAndNewlines)) else { return nil }
+            return .destinationTag(tag)
+        case .stellar:
+            let rawMemo = queryItems["memo"]
+                ?? queryItems["memo_text"]
+                ?? queryItems["memo_id"]
+                ?? queryItems["memo_hash"]
+            guard let rawMemo, !rawMemo.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+            let type = (queryItems["memo_type"] ?? queryItems["memotype"] ?? "")
+                .lowercased()
+                .replacingOccurrences(of: "-", with: "_")
+            if type.contains("id") || queryItems["memo_id"] != nil {
+                guard let id = UInt64(rawMemo.trimmingCharacters(in: .whitespacesAndNewlines)) else { return nil }
+                return .stellarMemo(.id(id))
+            }
+            if type.contains("hash") || queryItems["memo_hash"] != nil {
+                return .stellarMemo(.hashHex(rawMemo.trimmingCharacters(in: .whitespacesAndNewlines)))
+            }
+            return .stellarMemo(.text(rawMemo.trimmingCharacters(in: .whitespacesAndNewlines)))
+        default:
+            return nil
+        }
+    }
+
+    private func applyIncomingMemo(_ memo: SendMemoValue?) {
+        guard let memo else { return }
+        switch memo {
+        case .destinationTag(let tag) where chain == .ripple:
+            destinationTagText = String(tag)
+        case .stellarMemo(let stellarMemo) where chain == .stellar:
+            switch stellarMemo {
+            case .text(let text):
+                stellarMemoType = .text
+                stellarMemoText = text
+            case .id(let id):
+                stellarMemoType = .id
+                stellarMemoText = String(id)
+            case .hashHex(let hash):
+                stellarMemoType = .hash
+                stellarMemoText = hash
+            }
+        case .text(let text) where chain == .stellar:
+            stellarMemoType = .text
+            stellarMemoText = text
+        default:
+            break
+        }
     }
 
     static func shorten(_ address: String) -> String {
@@ -442,6 +714,41 @@ struct SendRecipientView: View {
         f.unitsStyle = .abbreviated
         return f
     }()
+}
+
+private struct IncomingRecipientPayload {
+    let address: String
+    let memo: SendMemoValue?
+}
+
+private struct RecipientRoutingNote: View {
+    let text: LocalizedStringKey
+
+    var body: some View {
+        HStack(alignment: .top, spacing: UniSpacing.xs) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.system(size: 14))
+                .foregroundStyle(UniColors.Feedback.Warning.foreground)
+            Text(text)
+                .font(UniTypography.footnote)
+                .foregroundStyle(UniColors.Text.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(UniSpacing.s)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: UniRadius.row, style: .continuous)
+                .fill(UniColors.Feedback.Warning.background)
+        )
+    }
+}
+
+private enum StellarMemoInputKind: String, CaseIterable, Identifiable {
+    case text = "Text"
+    case id = "ID"
+    case hash = "Hash"
+
+    var id: String { rawValue }
 }
 
 // MARK: - One recipient row (owns its resolution)
