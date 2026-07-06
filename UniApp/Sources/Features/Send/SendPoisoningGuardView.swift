@@ -30,7 +30,7 @@ struct SendPoisoningGuardView: View {
 
     var body: some View {
         ZStack {
-            SendBloomBackground()
+            UniColors.Background.primary.ignoresSafeArea()
             // The danger bloom at the top — a red wash that says "stop"
             // without flooding the whole screen.
             VStack {

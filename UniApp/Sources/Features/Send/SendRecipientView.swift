@@ -206,7 +206,7 @@ struct SendRecipientView: View {
         }
         .scrollIndicators(.hidden)
         .scrollDismissesKeyboard(.interactively)
-        .background(SendBloomBackground())
+        .background(UniColors.Background.primary)
         .toolbarBackground(.hidden, for: .navigationBar)
         // One polite `.selection` beat for every ambient affordance on the
         // screen (chips + recents) — these aren't `UniButton`s, so the
