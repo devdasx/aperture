@@ -1,5 +1,4 @@
 import SwiftUI
-import UIKit
 
 struct ApertureErrorReport: Identifiable, Equatable, Sendable {
     static let supportEmail = "care@aperturex.io"
@@ -62,7 +61,7 @@ struct ApertureErrorReport: Identifiable, Equatable, Sendable {
             }
         }
         lines.append("")
-        lines.append("Advanced sandbox:")
+        lines.append("Technical diagnostics:")
         lines.append(technicalDetails)
         return lines.joined(separator: "\n")
     }
@@ -107,63 +106,29 @@ struct ApertureErrorSupportSection: View {
     let report: ApertureErrorReport
 
     @Environment(\.openURL) private var openURL
-    @State private var isExpanded = false
-    @State private var didCopy = false
 
     var body: some View {
         UniCard(stroke: UniColors.Feedback.Error.stroke.opacity(0.45)) {
             VStack(alignment: .leading, spacing: UniSpacing.m) {
                 VStack(alignment: .leading, spacing: UniSpacing.xs) {
                     Label {
-                        Text("Advanced sandbox")
+                        Text("Contact support")
                             .font(UniTypography.callout.weight(.semibold))
                             .foregroundStyle(UniColors.Text.primary)
                     } icon: {
-                        Image(systemName: "wrench.and.screwdriver")
+                        Image(systemName: "envelope")
                             .font(.system(size: 15, weight: .semibold))
                             .foregroundStyle(UniColors.Feedback.Error.foreground)
                     }
-                    Text("These details help diagnose what happened on this iPhone. They are not sent unless you choose to email support.")
+                    Text("If this keeps happening, email support. The email includes technical diagnostics so we can investigate the failure.")
                         .font(UniTypography.footnote)
                         .foregroundStyle(UniColors.Text.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
 
-                DisclosureGroup(isExpanded: $isExpanded) {
-                    ScrollView(.vertical) {
-                        Text(verbatim: report.supportBody)
-                            .font(.system(.caption, design: .monospaced))
-                            .foregroundStyle(UniColors.Text.secondary)
-                            .textSelection(.enabled)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(UniSpacing.s)
-                    }
-                    .frame(maxHeight: 360)
-                    .scrollIndicators(.visible)
-                    .background(
-                        RoundedRectangle(cornerRadius: UniRadius.row, style: .continuous)
-                            .fill(UniColors.Fill.quaternary)
-                    )
-                    .padding(.top, UniSpacing.xs)
-                } label: {
-                    Text("Show details")
-                        .font(UniTypography.callout)
-                        .foregroundStyle(UniColors.Text.primary)
-                }
-
-                HStack(spacing: UniSpacing.s) {
-                    UniButton(
-                        verbatim: didCopy ? "Copied" : "Copy details",
-                        variant: .secondary,
-                        tint: didCopy ? UniColors.Feedback.Success.foreground : nil
-                    ) {
-                        UIPasteboard.general.string = report.supportBody
-                        didCopy = true
-                    }
-                    UniButton(title: "Email support", variant: .primary, systemImage: "envelope") {
-                        if let url = report.supportMailURL {
-                            openURL(url)
-                        }
+                UniButton(title: "Contact support", variant: .primary, systemImage: "envelope") {
+                    if let url = report.supportMailURL {
+                        openURL(url)
                     }
                 }
             }

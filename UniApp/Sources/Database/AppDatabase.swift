@@ -251,19 +251,139 @@ final class AppDatabase: @unchecked Sendable {
             """,
             arguments: [now]
         )
-        try db.execute(
-            sql: """
-            INSERT OR IGNORE INTO app_settings
-            (id, theme_preference, language_preference, pin_enabled, biometric_enabled,
-             auto_lock_seconds, currency_preference, haptic_feedback_enabled,
-             background_balance_refresh, selected_tab, active_wallet_id, settings_deep_link,
-             has_unbackedup_wallet, hide_import_key_warning, updated_at_ms)
-            VALUES ('app-settings-singleton', '', '', 0, 0, 0, '', 1, 1, 0, '', '', 0, 0, ?)
-            """,
-            arguments: [now]
-        )
+        try AppSettingsProjection.ensureSingleton(db, activeWalletId: "", now: now)
         try LocalSecureBlobStore.ensureSecurityKeys(db: db)
     }
+}
+
+enum AppSettingsProjection {
+    static func ensureSingleton(
+        _ db: Database,
+        activeWalletId: String,
+        now: Int64 = Date.databaseMilliseconds
+    ) throws {
+        let columns = try Row.fetchAll(db, sql: "PRAGMA table_info(app_settings)")
+            .compactMap(AppSettingsColumn.init(row:))
+        guard !columns.isEmpty else { return }
+
+        var arguments: StatementArguments = []
+        let names = columns.map { quoteIdentifier($0.name) }.joined(separator: ", ")
+        let placeholders = Array(repeating: "?", count: columns.count).joined(separator: ", ")
+        for column in columns {
+            append(defaultValue(for: column, activeWalletId: activeWalletId, now: now), to: &arguments)
+        }
+
+        try db.execute(
+            sql: """
+            INSERT INTO app_settings (\(names))
+            VALUES (\(placeholders))
+            ON CONFLICT(id) DO UPDATE SET
+                active_wallet_id = excluded.active_wallet_id,
+                updated_at_ms = excluded.updated_at_ms
+            """,
+            arguments: arguments
+        )
+    }
+
+    private static func defaultValue(
+        for column: AppSettingsColumn,
+        activeWalletId: String,
+        now: Int64
+    ) -> AppSettingsValue {
+        switch column.name {
+        case "id":
+            return .text(AppSettingsRecord.singletonId)
+        case "theme_preference":
+            return .text(ThemePreference.defaultRaw)
+        case "language_preference":
+            return .text(LanguagePreference.systemCode)
+        case "pin_enabled", "biometric_enabled", "erase_data_after_failed_attempts",
+             "hide_balance_on_home", "has_unbackedup_wallet", "hide_import_key_warning":
+            return .int(0)
+        case "require_biometric_for_send", "haptic_feedback_enabled",
+             "background_balance_refresh", "transaction_amount_display":
+            return .int(1)
+        case "auto_lock_seconds", "selected_tab":
+            return .int(0)
+        case "currency_preference":
+            return .text(CurrencyPreference.defaultForCurrentRegion())
+        case "active_wallet_id":
+            return .text(activeWalletId)
+        case "settings_deep_link", "coin_market_cap_api_key":
+            return .text("")
+        case "hide_small_balances_threshold":
+            return .double(0)
+        case "restoration_left_app_at", "restoration_settings_path", "restoration_wallet_home_path":
+            return .null
+        case "wallet_home_balance_history_range":
+            // Older on-device databases may still carry this removed chart
+            // preference as TEXT NOT NULL without a SQL default.
+            return .text("all")
+        case "updated_at_ms":
+            return .int64(now)
+        default:
+            return fallbackValue(for: column)
+        }
+    }
+
+    private static func fallbackValue(for column: AppSettingsColumn) -> AppSettingsValue {
+        guard column.isNotNull else { return .null }
+        let type = column.type.uppercased()
+        if type.contains("INT") { return .int(0) }
+        if type.contains("REAL") || type.contains("FLOA") || type.contains("DOUB") { return .double(0) }
+        if type.contains("BLOB") { return .data(Data()) }
+        return .text("")
+    }
+
+    private static func append(_ value: AppSettingsValue, to arguments: inout StatementArguments) {
+        switch value {
+        case .text(let raw):
+            arguments += [raw]
+        case .int(let raw):
+            arguments += [raw]
+        case .int64(let raw):
+            arguments += [raw]
+        case .double(let raw):
+            arguments += [raw]
+        case .data(let raw):
+            arguments += [raw]
+        case .null:
+            let null: String? = nil
+            arguments += [null]
+        }
+    }
+
+    private static func quoteIdentifier(_ identifier: String) -> String {
+        "\"\(identifier.replacingOccurrences(of: "\"", with: "\"\""))\""
+    }
+}
+
+private struct AppSettingsColumn {
+    let name: String
+    let type: String
+    let isNotNull: Bool
+
+    init?(row: Row) {
+        guard let name: String = row["name"] else { return nil }
+        self.name = name
+        self.type = row["type"] as String? ?? ""
+        if let raw: Int = row["notnull"] {
+            self.isNotNull = raw != 0
+        } else if let raw: Int64 = row["notnull"] {
+            self.isNotNull = raw != 0
+        } else {
+            self.isNotNull = false
+        }
+    }
+}
+
+private enum AppSettingsValue {
+    case text(String)
+    case int(Int)
+    case int64(Int64)
+    case double(Double)
+    case data(Data)
+    case null
 }
 
 private extension AppDatabase {
