@@ -38,6 +38,8 @@ struct ReceiveQRDetailView: View {
     @State private var sharePayload: ReceiveSharePayload?
     @State private var bitcoinChoices: [BitcoinReceiveAddressChoice] = []
     @State private var selectedBitcoinTypeRaw: String = ""
+    @State private var bitcoinOverrideAddress: String?
+    @State private var isShowingBitcoinPathSearch: Bool = false
     @State private var evmOverrideAddress: String?
     @State private var isShowingEVMAccountSearch: Bool = false
     @State private var solanaOverrideAddress: String?
@@ -58,7 +60,11 @@ struct ReceiveQRDetailView: View {
 
     private var displayedAddress: String {
         if chain == .bitcoin {
-            return selectedBitcoinChoice?.address ?? bitcoinChoices.first?.address ?? address
+            return bitcoinOverrideAddress
+                ?? preferredReceiveAddress(for: .bitcoin)
+                ?? selectedBitcoinChoice?.address
+                ?? bitcoinChoices.first?.address
+                ?? address
         }
         if chain.family == .evm {
             return evmOverrideAddress ?? preferredEVMReceiveAddress ?? address
@@ -144,6 +150,17 @@ struct ReceiveQRDetailView: View {
             ReceiveActivityShareSheet(items: payload.items)
                 .ignoresSafeArea()
         }
+        .sheet(isPresented: $isShowingBitcoinPathSearch) {
+            ReceiveBitcoinPathSearchSheet(
+                activeAddress: displayedAddress,
+                wallet: activeWallet
+            ) { newAddress in
+                bitcoinOverrideAddress = newAddress
+            }
+            .uniAppEnvironment()
+            .uniSheetDetents([.large])
+            .presentationBackground(UniColors.Background.primary)
+        }
         .sheet(isPresented: $isShowingEVMAccountSearch) {
             ReceiveEVMAccountSearchSheet(
                 chain: chain,
@@ -169,6 +186,7 @@ struct ReceiveQRDetailView: View {
             .presentationBackground(UniColors.Background.primary)
         }
         .task(id: "\(activeWalletIdRaw)-\(chain.rawValue)-\(address)") {
+            bitcoinOverrideAddress = nil
             evmOverrideAddress = nil
             solanaOverrideAddress = nil
             loadBitcoinAddressChoices()
@@ -302,6 +320,10 @@ struct ReceiveQRDetailView: View {
         ToolbarItem(placement: .topBarTrailing) {
             if chain == .bitcoin {
                 Menu {
+                    Button("Search paths") {
+                        isShowingBitcoinPathSearch = true
+                    }
+
                     if showsBitcoinTypePicker {
                         Menu("Change type") {
                             ForEach(bitcoinChoices) { choice in

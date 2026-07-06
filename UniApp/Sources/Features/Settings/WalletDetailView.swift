@@ -314,19 +314,6 @@ struct WalletDetailView: View {
                 }
             }
 
-            if supportsBitcoinPathSearch(wallet) {
-                Section {
-                    bitcoinPathSearchRow(wallet)
-                } header: {
-                    Text("Bitcoin").font(UniTypography.footnote).foregroundStyle(UniColors.Text.tertiary)
-                } footer: {
-                    Text("Search specific BIP-44, BIP-49, or BIP-84 account paths for funded or previously used Bitcoin addresses. Found addresses can be saved to this wallet so balances and history keep syncing from the database.")
-                        .font(UniTypography.footnote)
-                        .foregroundStyle(UniColors.Text.tertiary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-            }
-
             // Custom tokens — Aperture reads what the contract says
             // about itself, the user adds tokens by pasting contract
             // addresses. Row is always visible (no count gate); the
@@ -678,30 +665,6 @@ struct WalletDetailView: View {
         .listRowBackground(UniColors.List.rowBackground)
     }
 
-    private func bitcoinPathSearchRow(_ wallet: WalletRecord) -> some View {
-        NavigationLink(value: SettingsDestination.bitcoinPathSearch(wallet.id)) {
-            HStack(spacing: UniSpacing.s) {
-                Image(systemName: "point.3.connected.trianglepath.dotted")
-                    .font(.system(size: 17, weight: .regular))
-                    .foregroundStyle(UniColors.Icon.accent)
-                    .frame(width: 28)
-
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Bitcoin path search")
-                        .font(UniTypography.body)
-                        .foregroundStyle(UniColors.Text.primary)
-                    Text("Find funded receive/change paths")
-                        .font(UniTypography.footnote)
-                        .foregroundStyle(UniColors.Text.secondary)
-                }
-
-                Spacer()
-            }
-            .padding(.vertical, UniSpacing.xxs)
-        }
-        .listRowBackground(UniColors.List.rowBackground)
-    }
-
     /// The distinct chains this wallet holds, each paired with its address,
     /// for the per-chain key export. Deduped by chain (first address wins),
     /// sorted by display name for a stable list.
@@ -715,12 +678,6 @@ struct WalletDetailView: View {
             entries.append(ExportChainEntry(chain: chain, address: address.address))
         }
         return entries.sorted { $0.chain.displayName.localizedStandardCompare($1.chain.displayName) == .orderedAscending }
-    }
-
-    private func supportsBitcoinPathSearch(_ wallet: WalletRecord) -> Bool {
-        guard wallet.kind == .created || wallet.kind == .importedMnemonic else { return false }
-        guard hasStoredMnemonic, !wallet.hasPassphrase else { return false }
-        return wallet.addresses.contains { $0.chainRaw == SupportedChain.bitcoin.rawValue }
     }
 
     private func deleteRow(_ wallet: WalletRecord) -> some View {

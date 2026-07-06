@@ -1,16 +1,14 @@
 import SwiftUI
 
-/// Settings -> Wallets -> Wallet -> Bitcoin path search.
-///
-/// This is a wallet-repair/discovery tool, not a receive-screen shortcut.
-/// It derives explicit Bitcoin BIP paths from the wallet's stored mnemonic,
-/// asks Electrum for balance + history, then optionally persists only the
-/// funded/used addresses into `WalletAddressRecord` so the rest of the app
-/// remains database-backed.
-struct BitcoinPathSearchView: View {
-    let walletId: UUID
+// Kept in this legacy source path because the local Xcode project compiles
+// it from here. The Settings route is removed; this sheet is presented from
+// the Bitcoin receive options menu.
+struct ReceiveBitcoinPathSearchSheet: View {
+    let activeAddress: String
+    let wallet: WalletRecord?
+    let onUseAddress: (String) -> Void
 
-    @StateObject private var databaseSnapshot = DatabaseSnapshotObservation()
+    @Environment(\.dismiss) private var dismiss
 
     @State private var purpose: BitcoinPathSearchPurpose = .bip84
     @State private var accountFrom: String = "0"
@@ -22,19 +20,12 @@ struct BitcoinPathSearchView: View {
     @State private var saveFoundAddresses: Bool = true
 
     @State private var isSearching: Bool = false
+    @State private var isSavingAddress: String?
     @State private var hasSearched: Bool = false
     @State private var results: [BitcoinPathSearchResult] = []
     @State private var savedCount: Int?
     @State private var errorMessage: String?
     @State private var searchTask: Task<Void, Never>?
-
-    private var wallet: WalletRecord? {
-        databaseSnapshot.wallets.first { $0.id == walletId }
-    }
-
-    private var walletName: String {
-        wallet?.name ?? String.apertureLocalized("Wallet")
-    }
 
     private var requestPreview: BitcoinPathSearchRequest? {
         try? makeRequest(validate: false)
@@ -46,23 +37,34 @@ struct BitcoinPathSearchView: View {
 
     private var targetCountLabel: String {
         guard targetCount > 0 else { return "Enter valid ranges" }
-        if targetCount == 1 { return "1 address" }
-        return "\(targetCount) addresses"
+        return targetCount == 1 ? "1 address" : "\(targetCount) addresses"
     }
 
     var body: some View {
-        List {
-            overviewSection
-            pathSection
-            saveSection
-            runSection
-            resultsSection
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: UniSpacing.l) {
+                    header
+                    scopeCard
+                    pathCard
+                    saveCard
+                    searchButton
+                    resultSection
+                }
+                .padding(.horizontal, UniSpacing.l)
+                .padding(.top, UniSpacing.l)
+                .padding(.bottom, UniSpacing.xxl)
+            }
+            .scrollIndicators(.hidden)
+            .background(UniColors.Background.primary)
+            .navigationTitle("Search paths")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("Close") { dismiss() }
+                }
+            }
         }
-        .listStyle(.insetGrouped)
-        .scrollContentBackground(.hidden)
-        .background(UniColors.Background.primary)
-        .navigationTitle(Text("Bitcoin path search"))
-        .navigationBarTitleDisplayMode(.large)
         .alert(
             Text("Search failed"),
             isPresented: Binding(
@@ -79,111 +81,191 @@ struct BitcoinPathSearchView: View {
         }
     }
 
-    private var overviewSection: some View {
-        Section {
-            VStack(alignment: .leading, spacing: UniSpacing.s) {
-                HStack(spacing: UniSpacing.s) {
-                    SettingsIconTile(
-                        systemImage: "point.3.connected.trianglepath.dotted",
-                        tint: UniColors.Tint.accent
-                    )
-
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(verbatim: walletName)
-                            .font(UniTypography.headline)
-                            .foregroundStyle(UniColors.Text.primary)
-                        Text("Search balance and history by exact Bitcoin derivation path.")
-                            .font(UniTypography.subheadline)
-                            .foregroundStyle(UniColors.Text.secondary)
-                    }
+    private var header: some View {
+        VStack(alignment: .leading, spacing: UniSpacing.m) {
+            HStack(spacing: UniSpacing.m) {
+                CoinMark(chain: .bitcoin, tokenSymbol: SupportedChain.bitcoin.ticker)
+                    .frame(width: 42, height: 42)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Bitcoin paths")
+                        .font(UniTypography.title2)
+                        .foregroundStyle(UniColors.Text.primary)
+                    Text("Receive and change addresses.")
+                        .font(UniTypography.subheadline)
+                        .foregroundStyle(UniColors.Text.secondary)
                 }
-
-                Text("Use this when funds were sent to a different account, change branch, or legacy SegWit path. Aperture checks Electrum and saves only addresses that have balance or history when you keep saving enabled.")
-                    .font(UniTypography.footnote)
-                    .foregroundStyle(UniColors.Text.tertiary)
-                    .fixedSize(horizontal: false, vertical: true)
             }
-            .padding(.vertical, UniSpacing.xxs)
+
+            Text("Aperture derives Bitcoin addresses locally, checks Electrum for balance and history, then lets you save the address you want to receive with.")
+                .font(UniTypography.body)
+                .foregroundStyle(UniColors.Text.secondary)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 
-    private var pathSection: some View {
-        Section {
+    private var scopeCard: some View {
+        VStack(alignment: .leading, spacing: UniSpacing.m) {
+            HStack {
+                Text("Current address")
+                    .font(UniTypography.subheadline.weight(.semibold))
+                    .foregroundStyle(UniColors.Text.primary)
+                Spacer()
+                Text(WalletFormatting.shortAddress(activeAddress))
+                    .font(.system(.subheadline, design: .monospaced))
+                    .foregroundStyle(UniColors.Text.secondary)
+            }
+
+            UniDivider()
+
+            HStack {
+                scopeChip("4", "BIP types")
+                scopeChip("BTC", "native")
+                scopeChip("Electrum", "history")
+            }
+        }
+        .padding(UniSpacing.m)
+        .background(UniColors.Card.background)
+        .clipShape(RoundedRectangle(cornerRadius: UniRadius.card, style: .continuous))
+    }
+
+    private var pathCard: some View {
+        VStack(alignment: .leading, spacing: UniSpacing.m) {
+            Text("Path range")
+                .font(UniTypography.headline)
+                .foregroundStyle(UniColors.Text.primary)
+
             Picker("Address type", selection: $purpose) {
                 ForEach(BitcoinPathSearchPurpose.allCases) { option in
                     Text(verbatim: option.title).tag(option)
                 }
             }
             .pickerStyle(.segmented)
-            .padding(.vertical, UniSpacing.xxs)
 
-            VStack(alignment: .leading, spacing: UniSpacing.xxs) {
+            VStack(alignment: .leading, spacing: UniSpacing.xs) {
                 Text(verbatim: purpose.pathTemplate)
                     .font(.system(.footnote, design: .monospaced))
                     .foregroundStyle(UniColors.Text.primary)
                 Text(verbatim: purpose.subtitle)
-                    .font(UniTypography.footnote)
+                    .font(UniTypography.caption1)
                     .foregroundStyle(UniColors.Text.tertiary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
-            .padding(.vertical, UniSpacing.xxs)
 
             rangeRow(
                 title: "Account",
-                subtitle: "Hardened account number",
+                detail: "Hardened account number",
                 from: $accountFrom,
                 to: $accountTo
             )
             rangeRow(
                 title: "Branch",
-                subtitle: "0 receive, 1 change",
+                detail: "0 receive, 1 change",
                 from: $changeFrom,
                 to: $changeTo
             )
             rangeRow(
                 title: "Index",
-                subtitle: "Address index inside each branch",
+                detail: "Address index",
                 from: $indexFrom,
                 to: $indexTo
             )
-        } header: {
-            Text("Path range")
-        } footer: {
-            Text(verbatim: "This run will check \(targetCountLabel). Keep searches under \(BitcoinPathSearchRequest.maxTargets) addresses so the phone stays responsive.")
+
+            Text("This run checks \(targetCountLabel). Keep searches under \(BitcoinPathSearchRequest.maxTargets) addresses so the phone stays responsive.")
+                .font(UniTypography.caption1)
+                .foregroundStyle(UniColors.Text.tertiary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(UniSpacing.m)
+        .background(UniColors.Card.background)
+        .clipShape(RoundedRectangle(cornerRadius: UniRadius.card, style: .continuous))
+    }
+
+    private var saveCard: some View {
+        Toggle(isOn: $saveFoundAddresses) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Save found paths")
+                    .font(UniTypography.body)
+                    .foregroundStyle(UniColors.Text.primary)
+                Text("Saved addresses become part of this wallet's database record and keep syncing with balance/history scans.")
+                    .font(UniTypography.footnote)
+                    .foregroundStyle(UniColors.Text.secondary)
+            }
+        }
+        .padding(UniSpacing.m)
+        .background(UniColors.Card.background)
+        .clipShape(RoundedRectangle(cornerRadius: UniRadius.card, style: .continuous))
+    }
+
+    private var searchButton: some View {
+        UniButton(
+            title: "Search Bitcoin",
+            variant: .primary,
+            isLoading: isSearching,
+            isEnabled: !isSearching && isSavingAddress == nil
+        ) {
+            startSearch()
         }
     }
 
-    private var saveSection: some View {
-        Section {
-            Toggle(isOn: $saveFoundAddresses) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Save found addresses")
-                        .font(UniTypography.body)
-                        .foregroundStyle(UniColors.Text.primary)
-                    Text("Saved addresses become part of this wallet's database record and sync with balance/history scans.")
-                        .font(UniTypography.footnote)
+    @ViewBuilder
+    private var resultSection: some View {
+        VStack(alignment: .leading, spacing: UniSpacing.m) {
+            HStack {
+                Text("Results")
+                    .font(UniTypography.headline)
+                    .foregroundStyle(UniColors.Text.primary)
+                Spacer()
+                if isSearching, targetCount > 0 {
+                    Text("\(targetCount)")
+                        .font(UniTypography.subheadline.weight(.semibold))
+                        .foregroundStyle(UniColors.Text.secondary)
+                } else if hasSearched {
+                    Text("\(results.count)")
+                        .font(UniTypography.subheadline.weight(.semibold))
                         .foregroundStyle(UniColors.Text.secondary)
                 }
             }
-        }
-    }
 
-    private var runSection: some View {
-        Section {
-            UniButton(
-                title: "Search paths",
-                variant: .primary,
-                isLoading: isSearching,
-                isEnabled: !isSearching
-            ) {
-                startSearch()
+            if let errorMessage {
+                warningCard(errorMessage)
+            } else if !hasSearched {
+                UniListEmptyState(
+                    title: "Search Bitcoin",
+                    detail: "Aperture will check BIP44, BIP49, BIP84, or BIP86 paths for funded or previously used addresses.",
+                    minHeight: 180
+                )
+            } else if isSearching {
+                UniListEmptyState(
+                    title: "Search running",
+                    detail: "Aperture is checking Bitcoin paths with Electrum.",
+                    minHeight: 180
+                )
+            } else if results.isEmpty {
+                UniListEmptyState(
+                    title: "No Bitcoin paths found",
+                    detail: "Try another BIP type, account, branch, or index range.",
+                    minHeight: 180
+                )
+            } else {
+                VStack(spacing: 0) {
+                    ForEach(results) { result in
+                        BitcoinReceivePathResultRow(
+                            result: result,
+                            isCurrent: result.address == activeAddress,
+                            isSaving: isSavingAddress == result.address,
+                            onUse: {
+                                Task { await saveAndUse(result) }
+                            }
+                        )
+                        if result.id != results.last?.id {
+                            UniDivider()
+                                .padding(.leading, 64)
+                        }
+                    }
+                }
+                .background(UniColors.Card.background)
+                .clipShape(RoundedRectangle(cornerRadius: UniRadius.card, style: .continuous))
             }
-            .listRowInsets(EdgeInsets(
-                top: UniSpacing.s,
-                leading: UniSpacing.s,
-                bottom: UniSpacing.s,
-                trailing: UniSpacing.s
-            ))
-            .listRowBackground(Color.clear)
 
             if let savedCount {
                 Label {
@@ -194,43 +276,13 @@ struct BitcoinPathSearchView: View {
                     Image(systemName: "checkmark.circle.fill")
                         .foregroundStyle(UniColors.Feedback.Success.foreground)
                 }
-                .padding(.vertical, UniSpacing.xxs)
-            }
-        }
-    }
-
-    @ViewBuilder
-    private var resultsSection: some View {
-        if !hasSearched {
-            Section {
-                Text("Results appear here after the search finishes.")
-                    .font(UniTypography.subheadline)
-                    .foregroundStyle(UniColors.Text.tertiary)
-            }
-        } else if results.isEmpty {
-            Section {
-                UniListEmptyState(
-                    title: "No funded paths found.",
-                    detail: "Try another account, branch, index range, or address type.",
-                    minHeight: 260
-                )
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, UniSpacing.l)
-            }
-        } else {
-            Section {
-                ForEach(results) { result in
-                    resultRow(result)
-                }
-            } header: {
-                Text(verbatim: results.count == 1 ? "Found 1 path" : "Found \(results.count) paths")
             }
         }
     }
 
     private func rangeRow(
-        title: LocalizedStringKey,
-        subtitle: LocalizedStringKey,
+        title: String,
+        detail: String,
         from: Binding<String>,
         to: Binding<String>
     ) -> some View {
@@ -238,11 +290,11 @@ struct BitcoinPathSearchView: View {
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(title)
-                        .font(UniTypography.body)
+                        .font(UniTypography.subheadline.weight(.semibold))
                         .foregroundStyle(UniColors.Text.primary)
-                    Text(subtitle)
-                        .font(UniTypography.footnote)
-                        .foregroundStyle(UniColors.Text.secondary)
+                    Text(detail)
+                        .font(UniTypography.caption1)
+                        .foregroundStyle(UniColors.Text.tertiary)
                 }
 
                 Spacer()
@@ -250,13 +302,12 @@ struct BitcoinPathSearchView: View {
                 HStack(spacing: UniSpacing.xs) {
                     compactNumberField("From", text: from)
                     Text("to")
-                        .font(UniTypography.footnote)
+                        .font(UniTypography.caption1)
                         .foregroundStyle(UniColors.Text.tertiary)
                     compactNumberField("To", text: to)
                 }
             }
         }
-        .padding(.vertical, UniSpacing.xxs)
     }
 
     private func compactNumberField(
@@ -274,45 +325,51 @@ struct BitcoinPathSearchView: View {
         .frame(width: 68)
     }
 
-    private func resultRow(_ result: BitcoinPathSearchResult) -> some View {
-        VStack(alignment: .leading, spacing: UniSpacing.xs) {
-            HStack(alignment: .firstTextBaseline) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(verbatim: result.path)
-                        .font(.system(.subheadline, design: .monospaced).weight(.semibold))
-                        .foregroundStyle(UniColors.Text.primary)
-                    Text(verbatim: result.address)
-                        .font(.system(.caption, design: .monospaced))
-                        .foregroundStyle(UniColors.Text.secondary)
-                        .lineLimit(2)
-                }
-                Spacer()
-                VStack(alignment: .trailing, spacing: 2) {
-                    Text(verbatim: formatBTC(result.btcAmount))
-                        .font(UniTypography.subheadlineEmphasized)
-                        .foregroundStyle(result.totalSats > 0 ? UniColors.Text.primary : UniColors.Text.secondary)
-                    Text(verbatim: result.historyCount == 1 ? "1 tx" : "\(result.historyCount) tx")
-                        .font(UniTypography.footnote)
-                        .foregroundStyle(UniColors.Text.tertiary)
-                }
-            }
-
-            if result.unconfirmedSats != 0 {
-                Text("Includes unconfirmed balance")
-                    .font(UniTypography.caption1)
-                    .foregroundStyle(UniColors.Feedback.Warning.foreground)
-            }
+    private func scopeChip(_ title: String, _ subtitle: String) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(title)
+                .font(UniTypography.subheadline.weight(.semibold))
+                .foregroundStyle(UniColors.Text.primary)
+            Text(subtitle)
+                .font(UniTypography.caption1)
+                .foregroundStyle(UniColors.Text.tertiary)
         }
-        .padding(.vertical, UniSpacing.xxs)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, UniSpacing.s)
+        .padding(.vertical, UniSpacing.xs)
+        .background(UniColors.Fill.secondary)
+        .clipShape(RoundedRectangle(cornerRadius: UniRadius.s, style: .continuous))
+    }
+
+    private func warningCard(_ message: String) -> some View {
+        HStack(alignment: .top, spacing: UniSpacing.s) {
+            Image(systemName: "exclamationmark.triangle")
+                .foregroundStyle(UniColors.Feedback.Warning.foreground)
+            Text(message)
+                .font(UniTypography.subheadline)
+                .foregroundStyle(UniColors.Text.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(UniSpacing.m)
+        .background(UniColors.Feedback.Warning.background)
+        .clipShape(RoundedRectangle(cornerRadius: UniRadius.card, style: .continuous))
     }
 
     private func startSearch() {
-        guard let request = try? makeRequest(validate: true) else { return }
+        guard !isSearching else { return }
+        guard let wallet else {
+            errorMessage = "No active wallet was found for this receive screen."
+            return
+        }
+        let request: BitcoinPathSearchRequest
+        do {
+            request = try makeRequest(validate: true)
+        } catch {
+            errorMessage = error.localizedDescription
+            return
+        }
+
         searchTask?.cancel()
-
-        let walletId = walletId
-        let shouldSave = saveFoundAddresses
-
         isSearching = true
         hasSearched = false
         results = []
@@ -322,18 +379,12 @@ struct BitcoinPathSearchView: View {
         searchTask = Task {
             do {
                 let found = try await BitcoinPathSearchEngine.search(
-                    walletId: walletId,
+                    walletId: wallet.id,
                     request: request,
                     database: AppDatabase.shared
                 )
-                let saved = shouldSave && !found.isEmpty
-                    ? try await BitcoinPathSearchAddressStore(database: AppDatabase.shared)
-                        .save(walletId: walletId, results: found)
-                    : nil
-
                 await MainActor.run {
                     results = found
-                    savedCount = saved
                     hasSearched = true
                     isSearching = false
                 }
@@ -348,6 +399,29 @@ struct BitcoinPathSearchView: View {
                     isSearching = false
                 }
             }
+        }
+    }
+
+    @MainActor
+    private func saveAndUse(_ result: BitcoinPathSearchResult) async {
+        guard isSavingAddress == nil else { return }
+        guard let wallet else { return }
+
+        isSavingAddress = result.address
+        defer { isSavingAddress = nil }
+
+        do {
+            let rowsToSave = saveFoundAddresses ? results : [result]
+            let saved = try await BitcoinPathSearchAddressStore(database: AppDatabase.shared).save(
+                walletId: wallet.id,
+                results: rowsToSave,
+                preferredResult: result
+            )
+            savedCount = saved
+            onUseAddress(result.address)
+            dismiss()
+        } catch {
+            errorMessage = error.localizedDescription
         }
     }
 
@@ -378,6 +452,56 @@ struct BitcoinPathSearchView: View {
             throw BitcoinPathSearchError.invalidRange
         }
         return value
+    }
+}
+
+private struct BitcoinReceivePathResultRow: View {
+    let result: BitcoinPathSearchResult
+    let isCurrent: Bool
+    let isSaving: Bool
+    let onUse: () -> Void
+
+    var body: some View {
+        HStack(alignment: .center, spacing: UniSpacing.s) {
+            Image(systemName: result.totalSats > 0 ? "bitcoinsign.circle.fill" : "clock.arrow.circlepath")
+                .font(.system(size: 24, weight: .regular))
+                .foregroundStyle(result.totalSats > 0 ? UniColors.Tint.accent : UniColors.Icon.secondary)
+                .frame(width: 44)
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(verbatim: result.path)
+                    .font(.system(.subheadline, design: .monospaced).weight(.semibold))
+                    .foregroundStyle(UniColors.Text.primary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.75)
+                Text(verbatim: WalletFormatting.shortAddress(result.address, prefix: 8, suffix: 6))
+                    .font(.system(.caption, design: .monospaced))
+                    .foregroundStyle(UniColors.Text.secondary)
+                HStack(spacing: UniSpacing.xs) {
+                    Text(verbatim: formatBTC(result.btcAmount))
+                    Text(verbatim: result.historyCount == 1 ? "1 tx" : "\(result.historyCount) tx")
+                    if result.unconfirmedSats != 0 {
+                        Text("unconfirmed")
+                            .foregroundStyle(UniColors.Feedback.Warning.foreground)
+                    }
+                }
+                .font(UniTypography.caption1)
+                .foregroundStyle(UniColors.Text.tertiary)
+            }
+
+            Spacer()
+
+            UniButton(
+                title: isCurrent ? "Current" : "Use",
+                variant: isCurrent ? .secondary : .primary,
+                isLoading: isSaving,
+                isEnabled: !isCurrent && !isSaving,
+                action: onUse
+            )
+            .frame(width: 96)
+        }
+        .padding(.horizontal, UniSpacing.m)
+        .padding(.vertical, UniSpacing.s)
     }
 
     private func formatBTC(_ value: Decimal) -> String {

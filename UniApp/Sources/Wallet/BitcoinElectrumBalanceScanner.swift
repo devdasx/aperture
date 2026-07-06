@@ -413,9 +413,13 @@ actor BitcoinPathSearchAddressStore {
 
     func save(
         walletId: UUID,
-        results: [BitcoinPathSearchResult]
+        results: [BitcoinPathSearchResult],
+        preferredResult: BitcoinPathSearchResult? = nil
     ) throws -> Int {
-        let found = results.filter(\.hasActivity)
+        var found = results.filter(\.hasActivity)
+        if let preferredResult, !found.contains(where: { $0.id == preferredResult.id }) {
+            found.append(preferredResult)
+        }
         guard !found.isEmpty else { return 0 }
 
         let chainRaw = SupportedChain.bitcoin.rawValue
@@ -424,8 +428,23 @@ actor BitcoinPathSearchAddressStore {
             guard try BitcoinWalletRow.exists(db, walletId: walletId) else {
                 throw BitcoinPathSearchError.walletNotFound
             }
+
+            if preferredResult != nil {
+                try db.execute(
+                    sql: """
+                    UPDATE wallet_addresses
+                    SET is_receive_preferred = 0
+                    WHERE wallet_id = ? AND chain_raw = ?
+                    """,
+                    arguments: [walletId.uuidString, chainRaw]
+                )
+            }
+
             var saved = 0
+            var seen: Set<String> = []
             for result in found {
+                guard seen.insert(result.id).inserted else { continue }
+                let isPreferred = preferredResult?.id == result.id
                 let addressId = try String.fetchOne(
                     db,
                     sql: """
@@ -439,10 +458,13 @@ actor BitcoinPathSearchAddressStore {
                     try db.execute(
                         sql: """
                         UPDATE wallet_addresses
-                        SET derivation_path = ?, is_used = 1, last_scanned_at_ms = ?
+                        SET derivation_path = ?,
+                            is_used = 1,
+                            is_receive_preferred = CASE WHEN ? = 1 THEN 1 ELSE is_receive_preferred END,
+                            last_scanned_at_ms = ?
                         WHERE id = ?
                         """,
-                        arguments: [result.path, scannedAt, addressId]
+                        arguments: [result.path, isPreferred ? 1 : 0, scannedAt, addressId]
                     )
                 } else {
                     try db.execute(
@@ -450,9 +472,17 @@ actor BitcoinPathSearchAddressStore {
                         INSERT INTO wallet_addresses
                         (id, wallet_id, chain_raw, address, derivation_path,
                          is_used, is_receive_preferred, last_scanned_at_ms)
-                        VALUES (?, ?, ?, ?, ?, 1, 0, ?)
+                        VALUES (?, ?, ?, ?, ?, 1, ?, ?)
                         """,
-                        arguments: [UUID().uuidString, walletId.uuidString, chainRaw, result.address, result.path, scannedAt]
+                        arguments: [
+                            UUID().uuidString,
+                            walletId.uuidString,
+                            chainRaw,
+                            result.address,
+                            result.path,
+                            isPreferred ? 1 : 0,
+                            scannedAt
+                        ]
                     )
                 }
                 saved += 1
