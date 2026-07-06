@@ -38,8 +38,12 @@ enum AptosTransactionSigner {
     /// Default gas price (octas/gas) when not resolved (matrix: live
     /// `estimate_gas_price` returned 100).
     private static let defaultGasUnitPrice: UInt64 = 100
-    /// Default max gas amount (units) — generous headroom for a transfer.
-    private static let defaultMaxGasAmount: UInt64 = 100_000
+    /// Minimum max gas amount (units) we will sign. Mainnet currently
+    /// rejects the old tiny 2k/5k caps with
+    /// `MAX_GAS_UNITS_BELOW_MIN_TRANSACTION_GAS_UNITS`; recent accepted
+    /// user transactions commonly carry 100k+ caps. This is a cap only:
+    /// Aptos charges actual gas used, not the full cap.
+    static let minimumMaxGasAmount: UInt64 = 100_000
     /// Tx expiry window (now + 600s).
     private static let expirySeconds: UInt64 = 600
 
@@ -126,8 +130,8 @@ enum AptosTransactionSigner {
         return n
     }
 
-    private static func resolveMaxGas(_ value: Decimal?) -> UInt64 {
-        guard let value, let n = SigningAmount.uint64(value), n > 0 else { return defaultMaxGasAmount }
-        return n
+    static func resolveMaxGas(_ value: Decimal?) -> UInt64 {
+        guard let value, let n = SigningAmount.uint64(value), n > 0 else { return minimumMaxGasAmount }
+        return max(n, minimumMaxGasAmount)
     }
 }

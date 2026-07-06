@@ -206,6 +206,17 @@ struct SendTokenDescriptorTests {
         #expect(validator.validate(invalidHashInputs).contains(.memoInvalid))
     }
 
+    @Test("Aptos token sends clamp tiny max gas caps before signing")
+    func aptosTokenSendsClampTinyMaxGasCaps() {
+        let floor = AptosTransactionSigner.minimumMaxGasAmount
+
+        #expect(ComposeFeeService.aptosMaxGasAmount(isToken: false) == Decimal(floor))
+        #expect(ComposeFeeService.aptosMaxGasAmount(isToken: true) == Decimal(floor))
+        #expect(AptosTransactionSigner.resolveMaxGas(5_000) == floor)
+        #expect(AptosTransactionSigner.resolveMaxGas(nil) == floor)
+        #expect(AptosTransactionSigner.resolveMaxGas(200_000) == 200_000)
+    }
+
     private func xrpQuote() -> FeeQuote {
         var fee = FeeChoice(
             tier: .normal,

@@ -486,7 +486,7 @@ struct BroadcastService: Sendable {
             }
             throw SigningError.broadcastAmbiguous("unexpected Aptos submit response")
         } catch let rpc as RPCError {
-            throw Self.mapBroadcastError(rpc)
+            throw Self.mapAptosBroadcastError(rpc)
         } catch let signing as SigningError {
             throw signing
         } catch {
@@ -639,5 +639,23 @@ struct BroadcastService: Sendable {
             // Cancelled mid-flight → outcome UNKNOWN.
             return .broadcastAmbiguous("cancelled")
         }
+    }
+
+    private static func mapAptosBroadcastError(_ error: RPCError) -> SigningError {
+        switch error {
+        case .invalidResponse(let message):
+            if isAptosDeterministicRejection(message) {
+                return .broadcastFailed(message)
+            }
+            return .broadcastAmbiguous(message)
+        default:
+            return mapBroadcastError(error)
+        }
+    }
+
+    private static func isAptosDeterministicRejection(_ message: String) -> Bool {
+        message.localizedCaseInsensitiveContains("Invalid transaction")
+            || message.localizedCaseInsensitiveContains("vm_error")
+            || message.localizedCaseInsensitiveContains("MAX_GAS_UNITS")
     }
 }

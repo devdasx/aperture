@@ -272,10 +272,12 @@ extension ComposeFeeService {
     // MARK: - Aptos
 
     /// Aptos fee = gas_unit_price × max_gas_amount (octas). Price from
-    /// `/v1/estimate_gas_price` (deprioritized/regular/prioritized). A
-    /// native coin transfer (0x1::aptos_account::transfer) uses ~10 gas
-    /// units typically; max_gas_amount defaults provide headroom and are
-    /// refined via `/v1/transactions/simulate` before signing.
+    /// `/v1/estimate_gas_price` (deprioritized/regular/prioritized).
+    /// `max_gas_amount` is the sender's cap, not the charged fee; Aptos
+    /// rejects tiny caps before execution with
+    /// `MAX_GAS_UNITS_BELOW_MIN_TRANSACTION_GAS_UNITS`. Mainnet user
+    /// transactions commonly use 100k+ gas-unit caps, so quote and signer
+    /// both clamp to that floor.
     /// Docs: https://aptos.dev/network/blockchain/gas-txn-fee ;
     /// https://aptos.dev/rest-api/operations/estimate_gas_price ;
     /// live-verified 2026-06-15:
@@ -283,10 +285,7 @@ extension ComposeFeeService {
     func aptosQuote(_ ctx: Context) async throws -> FeeQuote {
         let dec = ctx.chain.nativeDecimals // 8 (octa)
         let prices = try await fetchAptosGasPrice()
-        // max_gas_amount: a simple coin transfer consumes few gas units;
-        // a safe default cap is 2000 (refined by simulate). Token
-        // (fungible-asset) transfers cost more — cap 5000.
-        let maxGas: Decimal = ctx.isToken ? 5000 : 2000
+        let maxGas = Self.aptosMaxGasAmount(isToken: ctx.isToken)
 
         func choice(_ tier: FeeTier, price: Decimal) -> FeeChoice {
             // Estimated fee uses a realistic gas_used (~10 units for a
@@ -321,7 +320,11 @@ extension ComposeFeeService {
         // slow/normal/fast tiers map the three estimate levels.
         return FeeQuote(chain: ctx.chain, feeModel: .aptosGas, tiers: tiers,
                         isCustomAllowed: false, hasSpeedTiers: false,
-                        note: "Max gas is refined by a simulation before signing")
+                        note: "Max gas is capped automatically; only used gas is charged")
+    }
+
+    static func aptosMaxGasAmount(isToken: Bool) -> Decimal {
+        Decimal(AptosTransactionSigner.minimumMaxGasAmount)
     }
 
     /// `GET /v1/estimate_gas_price` (REST). The registered Aptos endpoint
