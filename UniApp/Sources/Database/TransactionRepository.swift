@@ -3,9 +3,47 @@ import GRDB
 
 final class TransactionRepository {
     private let database: AppDatabase
+    private var pendingWrites: [PendingWrite] = []
 
     init(database: AppDatabase = .shared) {
         self.database = database
+    }
+
+    private enum PendingWrite {
+        case transaction(TransactionWrite)
+        case balance(BalanceWrite)
+        case scanComplete(ScanCompleteWrite)
+    }
+
+    private struct TransactionWrite {
+        let addressId: UUID
+        let txHash: String
+        let direction: TransactionDirection
+        let amountRaw: String
+        let tokenSymbol: String
+        let tokenContract: String?
+        let kind: TransactionKind?
+        let blockNumber: Int64?
+        let occurredAt: Date
+        let status: TransactionStatus
+        let counterparty: String
+        let feeRaw: String?
+        let id: UUID
+    }
+
+    private struct BalanceWrite {
+        let addressId: UUID
+        let tokenSymbol: String
+        let tokenContract: String?
+        let decimals: Int
+        let rawBalance: String
+        let fiatValueCached: Decimal?
+        let fiatCurrencyCode: String
+    }
+
+    private struct ScanCompleteWrite {
+        let addressId: UUID
+        let isUsed: Bool
     }
 
     private func balanceOnlyFiatFallback(
@@ -57,116 +95,27 @@ final class TransactionRepository {
         id: UUID = UUID(),
         save: Bool = true
     ) throws {
-        let normalizedContract = try database.read { db -> String? in
-            guard let chainRaw = try String.fetchOne(
-                db,
-                sql: "SELECT chain_raw FROM wallet_addresses WHERE id = ?",
-                arguments: [addressId.uuidString]
-            ) else { return tokenContract }
-            return SupportedChain(rawValue: chainRaw)?.family == .evm ? tokenContract?.lowercased() : tokenContract
+        let write = TransactionWrite(
+            addressId: addressId,
+            txHash: txHash,
+            direction: direction,
+            amountRaw: amountRaw,
+            tokenSymbol: tokenSymbol,
+            tokenContract: tokenContract,
+            kind: kind,
+            blockNumber: blockNumber,
+            occurredAt: occurredAt,
+            status: status,
+            counterparty: counterparty,
+            feeRaw: feeRaw,
+            id: id
+        )
+        guard save else {
+            pendingWrites.append(.transaction(write))
+            return
         }
-        let resolvedKind = kind ?? Self.classifyKind(direction: direction)
-        let occurredAtMs = occurredAt.databaseMilliseconds
-
         try database.write { db in
-            if direction == .internal {
-                try db.execute(
-                    sql: """
-                    UPDATE transactions
-                    SET direction_raw = ?,
-                        amount_raw = ?,
-                        counterparty = '',
-                        kind_raw = ?,
-                        fee_raw = ?
-                    WHERE tx_hash = ?
-                      AND address_id = ?
-                      AND IFNULL(token_contract, '') = IFNULL(?, '')
-                      AND token_symbol = ?
-                      AND direction_raw != ?
-                    """,
-                    arguments: [
-                        TransactionDirection.internal.rawValue,
-                        amountRaw,
-                        TransactionKind.selfTransfer.rawValue,
-                        feeRaw,
-                        txHash,
-                        addressId.uuidString,
-                        normalizedContract,
-                        tokenSymbol,
-                        TransactionDirection.internal.rawValue
-                    ]
-                )
-            }
-
-            let existing = try Row.fetchOne(
-                db,
-                sql: """
-                SELECT id, status_raw, block_number, fee_raw, kind_raw
-                FROM transactions
-                WHERE tx_hash = ?
-                  AND address_id = ?
-                  AND IFNULL(token_contract, '') = IFNULL(?, '')
-                  AND token_symbol = ?
-                  AND direction_raw = ?
-                LIMIT 1
-                """,
-                arguments: [txHash, addressId.uuidString, normalizedContract, tokenSymbol, direction.rawValue]
-            )
-
-            if let existing {
-                let existingID: String = existing["id"]
-                let existingKind: String? = existing["kind_raw"]
-                let targetKindRaw = kind?.rawValue ?? existingKind ?? resolvedKind.rawValue
-                let unchanged =
-                    (existing["status_raw"] as String) == status.rawValue
-                    && (existing["block_number"] as Int64?) == blockNumber
-                    && (existing["fee_raw"] as String?) == feeRaw
-                    && existingKind == targetKindRaw
-                if !unchanged {
-                    try db.execute(
-                        sql: """
-                        UPDATE transactions
-                        SET status_raw = ?,
-                            block_number = ?,
-                            fee_raw = ?,
-                            kind_raw = ?
-                        WHERE id = ?
-                        """,
-                        arguments: [status.rawValue, blockNumber, feeRaw, targetKindRaw, existingID]
-                    )
-                }
-            } else {
-                try db.execute(
-                    sql: """
-                    INSERT INTO transactions
-                    (id, address_id, tx_hash, direction_raw, amount_raw,
-                     token_symbol, token_contract, block_number, occurred_at_ms,
-                     status_raw, counterparty, fee_raw, kind_raw)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    ON CONFLICT(tx_hash, address_id, IFNULL(token_contract, ''), token_symbol, direction_raw)
-                    DO UPDATE SET
-                        status_raw = excluded.status_raw,
-                        block_number = excluded.block_number,
-                        fee_raw = excluded.fee_raw,
-                        kind_raw = COALESCE(excluded.kind_raw, transactions.kind_raw)
-                    """,
-                    arguments: [
-                        id.uuidString,
-                        addressId.uuidString,
-                        txHash,
-                        direction.rawValue,
-                        amountRaw,
-                        tokenSymbol,
-                        normalizedContract,
-                        blockNumber,
-                        occurredAtMs,
-                        status.rawValue,
-                        counterparty,
-                        feeRaw,
-                        resolvedKind.rawValue
-                    ]
-                )
-            }
+            try performUpsertTransaction(write, in: db)
         }
     }
 
@@ -265,85 +214,21 @@ final class TransactionRepository {
         fiatCurrencyCode: String,
         save: Bool = true
     ) throws {
+        let write = BalanceWrite(
+            addressId: addressId,
+            tokenSymbol: tokenSymbol,
+            tokenContract: tokenContract,
+            decimals: decimals,
+            rawBalance: rawBalance,
+            fiatValueCached: fiatValueCached,
+            fiatCurrencyCode: fiatCurrencyCode
+        )
+        guard save else {
+            pendingWrites.append(.balance(write))
+            return
+        }
         try database.write { db in
-            let addressCount = try Int.fetchOne(
-                db,
-                sql: "SELECT COUNT(*) FROM wallet_addresses WHERE id = ?",
-                arguments: [addressId.uuidString]
-            ) ?? 0
-            guard addressCount > 0 else { return }
-
-            let now = Date.databaseMilliseconds
-            let existing = try Row.fetchOne(
-                db,
-                sql: """
-                SELECT raw_balance, decimals, fiat_value_cached, fiat_currency_code
-                FROM token_balances
-                WHERE address_id = ?
-                  AND token_symbol = ?
-                  AND IFNULL(token_contract, '') = IFNULL(?, '')
-                LIMIT 1
-                """,
-                arguments: [addressId.uuidString, tokenSymbol, tokenContract]
-            )
-            let resolvedFiat: Decimal
-            let resolvedCurrency: String
-            if let existing {
-                let oldFiat = Decimal(string: existing["fiat_value_cached"] as String) ?? 0
-                if let fiatValueCached {
-                    resolvedFiat = fiatValueCached
-                    resolvedCurrency = fiatCurrencyCode
-                } else {
-                    resolvedFiat = balanceOnlyFiatFallback(
-                        existingRawBalance: existing["raw_balance"],
-                        existingDecimals: existing["decimals"],
-                        existingFiat: oldFiat,
-                        newRawBalance: rawBalance,
-                        newDecimals: decimals
-                    )
-                    resolvedCurrency = existing["fiat_currency_code"]
-                }
-            } else {
-                resolvedFiat = fiatValueCached ?? 0
-                resolvedCurrency = fiatCurrencyCode
-            }
-
-            try db.execute(
-                sql: """
-                INSERT INTO token_balances
-                (id, address_id, token_symbol, token_contract, decimals, raw_balance,
-                 fiat_value_cached, fiat_value_cached_numeric, fiat_currency_code, updated_at_ms)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(address_id, token_symbol, IFNULL(token_contract, ''))
-                DO UPDATE SET
-                    decimals = excluded.decimals,
-                    raw_balance = excluded.raw_balance,
-                    fiat_value_cached = excluded.fiat_value_cached,
-                    fiat_value_cached_numeric = excluded.fiat_value_cached_numeric,
-                    fiat_currency_code = excluded.fiat_currency_code,
-                    updated_at_ms = excluded.updated_at_ms
-                WHERE token_balances.raw_balance != excluded.raw_balance
-                   OR token_balances.decimals != excluded.decimals
-                   OR token_balances.fiat_value_cached != excluded.fiat_value_cached
-                   OR token_balances.fiat_currency_code != excluded.fiat_currency_code
-                """,
-                arguments: [
-                    UUID().uuidString,
-                    addressId.uuidString,
-                    tokenSymbol,
-                    tokenContract,
-                    decimals,
-                    rawBalance,
-                    resolvedFiat.databaseText,
-                    resolvedFiat.databaseDouble,
-                    resolvedCurrency,
-                    now
-                ]
-            )
-            try db.execute(
-                sql: "UPDATE wallet_addresses SET last_scanned_at_ms = ? WHERE id = ?",
-                arguments: [now, addressId.uuidString]
-            )
+            try performUpsertBalance(write, in: db)
         }
     }
 
@@ -435,21 +320,284 @@ final class TransactionRepository {
         return NSDecimalNumber(decimal: rounded).stringValue
     }
 
-    func markScanComplete(addressId: UUID, isUsed: Bool, save: Bool = true) throws {
-        try database.write { db in
-            let now = Date.databaseMilliseconds
+    private func performUpsertTransaction(_ write: TransactionWrite, in db: Database) throws {
+        let normalizedContract: String?
+        if let chainRaw = try String.fetchOne(
+            db,
+            sql: "SELECT chain_raw FROM wallet_addresses WHERE id = ?",
+            arguments: [write.addressId.uuidString]
+        ) {
+            normalizedContract = SupportedChain(rawValue: chainRaw)?.family == .evm
+                ? write.tokenContract?.lowercased()
+                : write.tokenContract
+        } else {
+            normalizedContract = write.tokenContract
+        }
+        let resolvedKind = write.kind ?? Self.classifyKind(direction: write.direction)
+        let occurredAtMs = write.occurredAt.databaseMilliseconds
+
+        if write.direction == .internal {
             try db.execute(
                 sql: """
-                UPDATE wallet_addresses
-                SET is_used = ?,
-                    last_scanned_at_ms = COALESCE(last_scanned_at_ms, ?)
-                WHERE id = ?
-                  AND (is_used != ? OR last_scanned_at_ms IS NULL)
+                UPDATE transactions
+                SET direction_raw = ?,
+                    amount_raw = ?,
+                    counterparty = '',
+                    kind_raw = ?,
+                    fee_raw = ?
+                WHERE tx_hash = ?
+                  AND address_id = ?
+                  AND IFNULL(token_contract, '') = IFNULL(?, '')
+                  AND token_symbol = ?
+                  AND direction_raw != ?
                 """,
-                arguments: [isUsed, now, addressId.uuidString, isUsed]
+                arguments: [
+                    TransactionDirection.internal.rawValue,
+                    write.amountRaw,
+                    TransactionKind.selfTransfer.rawValue,
+                    write.feeRaw,
+                    write.txHash,
+                    write.addressId.uuidString,
+                    normalizedContract,
+                    write.tokenSymbol,
+                    TransactionDirection.internal.rawValue
+                ]
+            )
+        }
+
+        let existing = try Row.fetchOne(
+            db,
+            sql: """
+            SELECT id, status_raw, block_number, fee_raw, kind_raw
+            FROM transactions
+            WHERE tx_hash = ?
+              AND address_id = ?
+              AND IFNULL(token_contract, '') = IFNULL(?, '')
+              AND token_symbol = ?
+              AND direction_raw = ?
+            LIMIT 1
+            """,
+            arguments: [
+                write.txHash,
+                write.addressId.uuidString,
+                normalizedContract,
+                write.tokenSymbol,
+                write.direction.rawValue
+            ]
+        )
+
+        if let existing {
+            let existingID: String = existing["id"]
+            let existingKind: String? = existing["kind_raw"]
+            let targetKindRaw = write.kind?.rawValue ?? existingKind ?? resolvedKind.rawValue
+            let unchanged =
+                (existing["status_raw"] as String) == write.status.rawValue
+                && (existing["block_number"] as Int64?) == write.blockNumber
+                && (existing["fee_raw"] as String?) == write.feeRaw
+                && existingKind == targetKindRaw
+            if !unchanged {
+                try db.execute(
+                    sql: """
+                    UPDATE transactions
+                    SET status_raw = ?,
+                        block_number = ?,
+                        fee_raw = ?,
+                        kind_raw = ?
+                    WHERE id = ?
+                    """,
+                    arguments: [
+                        write.status.rawValue,
+                        write.blockNumber,
+                        write.feeRaw,
+                        targetKindRaw,
+                        existingID
+                    ]
+                )
+            }
+        } else {
+            try db.execute(
+                sql: """
+                INSERT INTO transactions
+                (id, address_id, tx_hash, direction_raw, amount_raw,
+                 token_symbol, token_contract, block_number, occurred_at_ms,
+                 status_raw, counterparty, fee_raw, kind_raw)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(tx_hash, address_id, IFNULL(token_contract, ''), token_symbol, direction_raw)
+                DO UPDATE SET
+                    status_raw = excluded.status_raw,
+                    block_number = excluded.block_number,
+                    fee_raw = excluded.fee_raw,
+                    kind_raw = COALESCE(excluded.kind_raw, transactions.kind_raw)
+                """,
+                arguments: [
+                    write.id.uuidString,
+                    write.addressId.uuidString,
+                    write.txHash,
+                    write.direction.rawValue,
+                    write.amountRaw,
+                    write.tokenSymbol,
+                    normalizedContract,
+                    write.blockNumber,
+                    occurredAtMs,
+                    write.status.rawValue,
+                    write.counterparty,
+                    write.feeRaw,
+                    resolvedKind.rawValue
+                ]
             )
         }
     }
 
-    func flush() throws {}
+    private func performUpsertBalance(_ write: BalanceWrite, in db: Database) throws {
+        let addressCount = try Int.fetchOne(
+            db,
+            sql: "SELECT COUNT(*) FROM wallet_addresses WHERE id = ?",
+            arguments: [write.addressId.uuidString]
+        ) ?? 0
+        guard addressCount > 0 else { return }
+
+        let now = Date.databaseMilliseconds
+        let existing = try Row.fetchOne(
+            db,
+            sql: """
+            SELECT id, raw_balance, decimals, fiat_value_cached, fiat_currency_code
+            FROM token_balances
+            WHERE address_id = ?
+              AND token_symbol = ?
+              AND IFNULL(token_contract, '') = IFNULL(?, '')
+            LIMIT 1
+            """,
+            arguments: [write.addressId.uuidString, write.tokenSymbol, write.tokenContract]
+        )
+
+        let resolvedFiat: Decimal
+        let resolvedCurrency: String
+        if let existing {
+            let oldFiat = Decimal(string: existing["fiat_value_cached"] as String) ?? 0
+            if let fiatValueCached = write.fiatValueCached {
+                resolvedFiat = fiatValueCached
+                resolvedCurrency = write.fiatCurrencyCode
+            } else {
+                resolvedFiat = balanceOnlyFiatFallback(
+                    existingRawBalance: existing["raw_balance"],
+                    existingDecimals: existing["decimals"],
+                    existingFiat: oldFiat,
+                    newRawBalance: write.rawBalance,
+                    newDecimals: write.decimals
+                )
+                resolvedCurrency = existing["fiat_currency_code"]
+            }
+        } else {
+            resolvedFiat = write.fiatValueCached ?? 0
+            resolvedCurrency = write.fiatCurrencyCode
+        }
+
+        var balanceChanged = false
+        if let existing {
+            let existingID: String = existing["id"]
+            let existingFiat = Decimal(string: existing["fiat_value_cached"] as String) ?? 0
+            let existingCurrency: String = existing["fiat_currency_code"]
+            let unchanged =
+                (existing["raw_balance"] as String) == write.rawBalance
+                && (existing["decimals"] as Int) == write.decimals
+                && existingFiat == resolvedFiat
+                && existingCurrency.uppercased() == resolvedCurrency.uppercased()
+            if !unchanged {
+                balanceChanged = true
+                try db.execute(
+                    sql: """
+                    UPDATE token_balances
+                    SET decimals = ?,
+                        raw_balance = ?,
+                        fiat_value_cached = ?,
+                        fiat_value_cached_numeric = ?,
+                        fiat_currency_code = ?,
+                        updated_at_ms = ?
+                    WHERE id = ?
+                    """,
+                    arguments: [
+                        write.decimals,
+                        write.rawBalance,
+                        resolvedFiat.databaseText,
+                        resolvedFiat.databaseDouble,
+                        resolvedCurrency,
+                        now,
+                        existingID
+                    ]
+                )
+            }
+        } else {
+            balanceChanged = true
+            try db.execute(
+                sql: """
+                INSERT INTO token_balances
+                (id, address_id, token_symbol, token_contract, decimals, raw_balance,
+                 fiat_value_cached, fiat_value_cached_numeric, fiat_currency_code, updated_at_ms)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                arguments: [
+                    UUID().uuidString,
+                    write.addressId.uuidString,
+                    write.tokenSymbol,
+                    write.tokenContract,
+                    write.decimals,
+                    write.rawBalance,
+                    resolvedFiat.databaseText,
+                    resolvedFiat.databaseDouble,
+                    resolvedCurrency,
+                    now
+                ]
+            )
+        }
+
+        if balanceChanged {
+            try db.execute(
+                sql: "UPDATE wallet_addresses SET last_scanned_at_ms = ? WHERE id = ?",
+                arguments: [now, write.addressId.uuidString]
+            )
+        }
+    }
+
+    private func performMarkScanComplete(_ write: ScanCompleteWrite, in db: Database) throws {
+        let now = Date.databaseMilliseconds
+        try db.execute(
+            sql: """
+            UPDATE wallet_addresses
+            SET is_used = ?,
+                last_scanned_at_ms = COALESCE(last_scanned_at_ms, ?)
+            WHERE id = ?
+              AND (is_used != ? OR last_scanned_at_ms IS NULL)
+            """,
+            arguments: [write.isUsed, now, write.addressId.uuidString, write.isUsed]
+        )
+    }
+
+    func markScanComplete(addressId: UUID, isUsed: Bool, save: Bool = true) throws {
+        let write = ScanCompleteWrite(addressId: addressId, isUsed: isUsed)
+        guard save else {
+            pendingWrites.append(.scanComplete(write))
+            return
+        }
+        try database.write { db in
+            try performMarkScanComplete(write, in: db)
+        }
+    }
+
+    func flush() throws {
+        guard !pendingWrites.isEmpty else { return }
+        let writes = pendingWrites
+        try database.write { db in
+            for write in writes {
+                switch write {
+                case .transaction(let transaction):
+                    try performUpsertTransaction(transaction, in: db)
+                case .balance(let balance):
+                    try performUpsertBalance(balance, in: db)
+                case .scanComplete(let scanComplete):
+                    try performMarkScanComplete(scanComplete, in: db)
+                }
+            }
+        }
+        pendingWrites.removeAll(keepingCapacity: true)
+    }
 }

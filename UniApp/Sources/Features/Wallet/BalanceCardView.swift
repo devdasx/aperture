@@ -66,6 +66,7 @@ struct BalanceCardView: View {
     let priceHistory: [String: [Int: Decimal]]
     let hourlyHoldings: [BalanceHourlyHolding]
     let hourlyPriceSnapshots: [BalanceHourlyPriceSnapshot]
+    let rebuildToken: String
 
     /// Scrub channel — the hero (this card's balance label) renders the
     /// touched point's value while dragging; resets to `totalFiat` on
@@ -119,6 +120,7 @@ struct BalanceCardView: View {
         priceHistory: [String: [Int: Decimal]],
         hourlyHoldings: [BalanceHourlyHolding],
         hourlyPriceSnapshots: [BalanceHourlyPriceSnapshot],
+        rebuildToken: String,
         scrubModel: ChartScrubModel,
         onSwitchWallet: @escaping () -> Void,
         onAddFunds: @escaping () -> Void
@@ -134,6 +136,7 @@ struct BalanceCardView: View {
         self.priceHistory = priceHistory
         self.hourlyHoldings = hourlyHoldings
         self.hourlyPriceSnapshots = hourlyPriceSnapshots
+        self.rebuildToken = rebuildToken
         self.scrubModel = scrubModel
         self.onSwitchWallet = onSwitchWallet
         self.onAddFunds = onAddFunds
@@ -711,50 +714,13 @@ struct BalanceCardView: View {
     /// Cheap dependency key over the transaction ledger, selected range,
     /// currency, and local price inputs. It gates the heavy reconstruction
     /// behind real changes while keeping balance rows out of the chart path.
-    private var rebuildKey: Int {
-        var hasher = Hasher()
-        hasher.combine(transactions.count)
-        for tx in transactions {
-            hasher.combine(tx.id)
-            hasher.combine(tx.occurredAt)
-            hasher.combine(tx.statusRaw)
-            hasher.combine(tx.directionRaw)
-            hasher.combine(tx.amountRaw)
-            hasher.combine(tx.tokenSymbol)
-            hasher.combine(tx.tokenContract)
-            hasher.combine(tx.counterparty)
-        }
-        hasher.combine(selectedRangeRaw)
-        hasher.combine(currencyCode)
-        hasher.combine(totalFiat)
-        hasher.combine(priceCache.count)
-        var priceSum = Decimal.zero
-        for price in priceCache.values { priceSum += price }
-        hasher.combine(priceSum)
-        hasher.combine(priceHistory.count)
-        var histDayCount = 0
-        var histValueSum = Decimal.zero
-        for series in priceHistory.values {
-            histDayCount += series.count
-            for value in series.values { histValueSum += value }
-        }
-        hasher.combine(histDayCount)
-        hasher.combine(histValueSum)
-        hasher.combine(hourlyHoldings.count)
-        for holding in hourlyHoldings {
-            hasher.combine(holding.symbol)
-            hasher.combine(holding.amount)
-            hasher.combine(holding.currentPrice)
-        }
-        hasher.combine(hourlyPriceSnapshots.count)
-        var hourlyPriceSum = Decimal.zero
-        for snapshot in hourlyPriceSnapshots {
-            hasher.combine(snapshot.symbol)
-            hasher.combine(snapshot.fetchedAt)
-            hourlyPriceSum += snapshot.price
-        }
-        hasher.combine(hourlyPriceSum)
-        return hasher.finalize()
+    private var rebuildKey: String {
+        [
+            selectedRangeRaw,
+            currencyCode,
+            totalFiat.description,
+            rebuildToken
+        ].joined(separator: "|")
     }
 
     private func rebuild() async {

@@ -7,7 +7,10 @@ import SwiftUI
 /// stack starts at the useful place: recipient for single-network assets,
 /// or the network list for multi-network tokens.
 struct SendNetworkFirstView: View {
-    @StateObject private var databaseSnapshot = DatabaseSnapshotObservation()
+    @StateObject private var walletRecordsObservation = WalletRecordsObservation()
+    @StateObject private var assetCatalogObservation = AssetCatalogObservation()
+    @StateObject private var activeBalancesObservation = ActiveWalletBalancesObservation()
+    @StateObject private var activeTransactionsObservation = ActiveWalletTransactionsObservation()
     @GRDBStorage("activeWalletId") private var activeWalletIdRaw: String = ""
 
     @Binding var navigationPath: NavigationPath
@@ -28,30 +31,26 @@ struct SendNetworkFirstView: View {
     }
 
     private var allWallets: [WalletRecord] {
-        databaseSnapshot.wallets
+        walletRecordsObservation.wallets
     }
 
     private var customTokenRecords: [CustomTokenRecord] {
-        databaseSnapshot.customTokenRecords.sorted {
+        assetCatalogObservation.customTokenRecords.sorted {
             $0.symbol.localizedStandardCompare($1.symbol) == .orderedAscending
         }
     }
 
     private var assetRecords: [AssetRecord] {
-        databaseSnapshot.assetRecords
+        assetCatalogObservation.assetRecords
     }
 
     private var holdingsKey: String {
         guard let wallet = activeWallet else { return "none" }
-        var rows = 0
-        var newest = Date.distantPast
-        for address in wallet.addresses {
-            rows += address.balances.count
-            for balance in address.balances where balance.updatedAt > newest {
-                newest = balance.updatedAt
-            }
-        }
-        return "\(wallet.id.uuidString)|\(rows)|\(newest.timeIntervalSince1970)"
+        return [
+            wallet.id.uuidString,
+            activeBalancesObservation.revision,
+            activeTransactionsObservation.revision
+        ].joined(separator: "|")
     }
 
     var body: some View {
@@ -101,9 +100,19 @@ struct SendNetworkFirstView: View {
         .task(id: activeWalletHealKey) {
             healActiveWalletIdIfNeeded()
         }
+        .task(id: activeWalletScopeKey) {
+            syncObservationScopes()
+        }
         .task(id: holdingsKey) {
-            holdings = AssetPickerHoldings(wallet: activeWallet)
-            recents = RecentRecipientsIndex(wallet: activeWallet)
+            holdings = AssetPickerHoldings(
+                wallet: activeWallet,
+                balances: activeBalancesObservation.balances,
+                transactions: activeTransactionsObservation.transactions
+            )
+            recents = RecentRecipientsIndex(
+                wallet: activeWallet,
+                transactions: activeTransactionsObservation.transactions
+            )
         }
         .alert(
             Text("No address for this network"),
@@ -227,6 +236,16 @@ struct SendNetworkFirstView: View {
 
     private var activeWalletHealKey: String {
         "\(activeWalletIdRaw)|\(allWallets.count)"
+    }
+
+    private var activeWalletScopeKey: String {
+        "\(activeWalletIdRaw)|\(walletRecordsObservation.revision)"
+    }
+
+    private func syncObservationScopes() {
+        let scopedWalletId = activeWallet?.id ?? UUID(uuidString: activeWalletIdRaw)
+        activeBalancesObservation.setWalletId(scopedWalletId)
+        activeTransactionsObservation.setWalletId(scopedWalletId)
     }
 
     private var availableChains: [SupportedChain] {

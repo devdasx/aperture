@@ -17,20 +17,24 @@ struct AssetNetworkDetailView: View {
     let identity: AssetIdentity
     let chain: SupportedChain
 
-    @StateObject private var databaseSnapshot = DatabaseSnapshotObservation()
+    @StateObject private var walletRecordsObservation = WalletRecordsObservation()
+    @StateObject private var activeBalancesObservation = ActiveWalletBalancesObservation()
+    @StateObject private var activeTransactionsObservation = ActiveWalletTransactionsObservation()
+    @StateObject private var cachedPricesObservation = CachedPricesObservation()
+    @StateObject private var historicalPricesObservation = HistoricalPricesObservation()
     @GRDBStorage("activeWalletId") private var activeWalletIdRaw: String = ""
     @GRDBStorage(CurrencyPreference.storageKey) private var currencyCode: String = CurrencyPreference.defaultCode
 
     private var allWallets: [WalletRecord] {
-        databaseSnapshot.wallets
+        walletRecordsObservation.wallets
     }
 
     private var cachedPrices: [CachedPriceRecord] {
-        databaseSnapshot.cachedPrices
+        cachedPricesObservation.prices
     }
 
     private var historicalPrices: [HistoricalPriceRecord] {
-        databaseSnapshot.historicalPrices
+        historicalPricesObservation.prices
     }
 
     private var priceMap: [String: Decimal] {
@@ -133,6 +137,9 @@ struct AssetNetworkDetailView: View {
             // off-body, re-keyed if the asset identity changes (2026-06-19).
             await loadDustPrices()
         }
+        .task(id: observationScopeKey) {
+            syncObservationScopes()
+        }
     }
 
     // MARK: - Actions (token + network already chosen → pre-filled flows)
@@ -169,8 +176,10 @@ struct AssetNetworkDetailView: View {
                 && $0.symbol.uppercased() == identity.symbol.uppercased()
                 && tokenContractMatches($0.contract, contract, chain: chain)
         }
-        let balance = walletAddress?.balances.first {
-            $0.tokenSymbol.uppercased() == identity.symbol.uppercased()
+        let targetAddressId = walletAddress?.id
+        let balance = activeBalancesObservation.balances.first {
+            ($0.addressId ?? $0.address?.id) == targetAddressId
+                && $0.tokenSymbol.uppercased() == identity.symbol.uppercased()
                 && tokenContractMatches($0.tokenContract, contract, chain: chain)
         }
         return SendTokenDescriptor(
@@ -498,6 +507,18 @@ struct AssetNetworkDetailView: View {
         ActiveWalletResolver.resolve(rawID: activeWalletIdRaw, wallets: allWallets)
     }
 
+    private var observationScopeKey: String {
+        "\(activeWalletIdRaw)|\(walletRecordsObservation.revision)|\(currencyCode)"
+    }
+
+    private func syncObservationScopes() {
+        let scopedWalletId = activeWallet?.id ?? UUID(uuidString: activeWalletIdRaw)
+        activeBalancesObservation.setWalletId(scopedWalletId)
+        activeTransactionsObservation.setWalletId(scopedWalletId)
+        cachedPricesObservation.setCurrencyCode(currencyCode)
+        historicalPricesObservation.setCurrencyCode(currencyCode)
+    }
+
     /// First address on the active wallet whose `chainRaw` matches
     /// this view's chain. The "receiving address" the user would
     /// share — same address `ReceiveView` would show on this chain.
@@ -507,19 +528,28 @@ struct AssetNetworkDetailView: View {
 
     private var allHeldRows: [(chain: SupportedChain, balance: TokenBalanceRecord)] {
         guard let wallet = activeWallet else { return [] }
-        var result: [(SupportedChain, TokenBalanceRecord)] = []
-        for address in wallet.addresses {
-            guard let chain = SupportedChain(rawValue: address.chainRaw) else { continue }
-            for balance in address.balances where !balance.rawBalance.isEmpty {
-                result.append((chain, balance))
+        let chainByAddressId = Dictionary(
+            uniqueKeysWithValues: wallet.addresses.compactMap { address -> (UUID, SupportedChain)? in
+                guard let chain = SupportedChain(rawValue: address.chainRaw) else { return nil }
+                return (address.id, chain)
             }
+        )
+        var result: [(SupportedChain, TokenBalanceRecord)] = []
+        for balance in activeBalancesObservation.balances where !balance.rawBalance.isEmpty {
+            guard let addressId = balance.addressId ?? balance.address?.id,
+                  let chain = chainByAddressId[addressId] else { continue }
+            result.append((chain, balance))
         }
         return result
     }
 
     private var allTransactions: [TransactionRecord] {
         guard let wallet = activeWallet else { return [] }
-        return wallet.addresses.flatMap { $0.transactions }
+        let addressIds = Set(wallet.addresses.map(\.id))
+        return activeTransactionsObservation.transactions.filter { tx in
+            guard let addressId = tx.addressId else { return false }
+            return addressIds.contains(addressId)
+        }
     }
 
     private func tokenContractMatches(_ lhs: String?, _ rhs: String, chain: SupportedChain) -> Bool {

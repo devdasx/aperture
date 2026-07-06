@@ -35,22 +35,24 @@ import SwiftUI
 /// store directly (`database.fetch`) closes that gap, so this
 /// screen never shows the wrong wallet's transactions.
 struct WalletActivityView: View {
-    @StateObject private var databaseSnapshot = DatabaseSnapshotObservation()
+    @StateObject private var walletRecordsObservation = WalletRecordsObservation()
+    @StateObject private var activeTransactionsObservation = ActiveWalletTransactionsObservation()
+    @StateObject private var cachedPricesObservation = CachedPricesObservation()
 
     @GRDBStorage("activeWalletId") private var activeWalletIdRaw: String = ""
     // Local-currency activity amounts (2026-06-18): spot prices feed
     // `priceMap` (symbol → unit price in `currencyCode`).
     @GRDBStorage(CurrencyPreference.storageKey) private var currencyCode: String = CurrencyPreference.defaultCode
     private var allWallets: [WalletRecord] {
-        databaseSnapshot.wallets
+        walletRecordsObservation.wallets
     }
 
     private var allTransactionRecords: [TransactionRecord] {
-        databaseSnapshot.transactions.sorted { $0.occurredAt > $1.occurredAt }
+        activeTransactionsObservation.transactions
     }
 
     private var cachedPrices: [CachedPriceRecord] {
-        databaseSnapshot.cachedPrices
+        cachedPricesObservation.prices
     }
 
     private var priceMap: [String: Decimal] {
@@ -118,7 +120,7 @@ struct WalletActivityView: View {
     /// shared GRDB reference, so status still updates without a
     /// feed rebuild.
     private var feedKey: String {
-        "\(activeWalletIdRaw)|\(allTransactionRecords.count)"
+        "\(activeWalletIdRaw)|\(activeTransactionsObservation.revision)"
     }
 
     /// The honest base feed — the wallet's transactions with sub-$0.01-USD
@@ -337,6 +339,9 @@ struct WalletActivityView: View {
             rebuild()
             await loadDustPrices()
         }
+        .task(id: observationScopeKey) {
+            syncObservationScopes()
+        }
     }
 
     private var activityList: some View {
@@ -451,6 +456,16 @@ struct WalletActivityView: View {
     /// returns nil instead of showing a different wallet's rows.
     private var activeWallet: WalletRecord? {
         ActiveWalletResolver.resolve(rawID: activeWalletIdRaw, wallets: allWallets)
+    }
+
+    private var observationScopeKey: String {
+        "\(activeWalletIdRaw)|\(walletRecordsObservation.revision)|\(currencyCode)"
+    }
+
+    private func syncObservationScopes() {
+        let scopedWalletId = activeWallet?.id ?? UUID(uuidString: activeWalletIdRaw)
+        activeTransactionsObservation.setWalletId(scopedWalletId)
+        cachedPricesObservation.setCurrencyCode(currencyCode)
     }
 
     /// Resolves the chain a `TransactionRecord` belongs to. Returns

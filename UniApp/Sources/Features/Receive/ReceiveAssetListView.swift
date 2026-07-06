@@ -11,22 +11,12 @@ struct ReceiveAssetListView: View {
     let availableChains: [SupportedChain]
     let holdings: AssetPickerHoldings
     let currencyCode: String
+    let customTokenRecords: [CustomTokenRecord]
+    let assetRecords: [AssetRecord]
     let onSelectNative: (SupportedChain) -> Void
     let onSelectToken: (ReceiveAsset) -> Void
 
-    @StateObject private var databaseSnapshot = DatabaseSnapshotObservation()
-
     @State private var searchText: String = ""
-
-    private var customTokenRecords: [CustomTokenRecord] {
-        databaseSnapshot.customTokenRecords.sorted {
-            $0.symbol.localizedStandardCompare($1.symbol) == .orderedAscending
-        }
-    }
-
-    private var assetRecords: [AssetRecord] {
-        databaseSnapshot.assetRecords
-    }
 
     private var sortedNatives: [SupportedChain] {
         AssetPickerSort.natives(availableChains, holdings: holdings)

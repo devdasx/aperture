@@ -79,4 +79,40 @@ extension RecentRecipientsIndex {
         }
         self.byChain = byChain
     }
+
+    @MainActor
+    init(wallet: WalletRecord?, transactions: [TransactionRecord]) {
+        guard let wallet else { self = .empty; return }
+        let chainByAddressId = Dictionary(
+            uniqueKeysWithValues: wallet.addresses.compactMap { address -> (UUID, SupportedChain)? in
+                guard let chain = SupportedChain(rawValue: address.chainRaw) else { return nil }
+                return (address.id, chain)
+            }
+        )
+        var byChain: [String: [String: RecentRecipient]] = [:]
+
+        for tx in transactions where tx.directionRaw == TransactionDirection.outgoing.rawValue {
+            guard let addressId = tx.addressId,
+                  let chain = chainByAddressId[addressId] else { continue }
+            let counterparty = tx.counterparty.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !counterparty.isEmpty else { continue }
+            let key = RecentRecipientsIndex.normalize(counterparty, chain: chain)
+            var bucket = byChain[chain.rawValue] ?? [:]
+            if let existing = bucket[key] {
+                bucket[key] = RecentRecipient(
+                    address: existing.address,
+                    sendCount: existing.sendCount + 1,
+                    lastSentAt: max(existing.lastSentAt, tx.occurredAt)
+                )
+            } else {
+                bucket[key] = RecentRecipient(
+                    address: counterparty,
+                    sendCount: 1,
+                    lastSentAt: tx.occurredAt
+                )
+            }
+            byChain[chain.rawValue] = bucket
+        }
+        self.byChain = byChain
+    }
 }

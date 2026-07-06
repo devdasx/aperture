@@ -96,7 +96,8 @@ struct WalletHomeFilterSheet: View {
     private var currencyCode: String = CurrencyPreference.defaultCode
     @GRDBStorage("activeWalletId") private var activeWalletIdRaw: String = ""
 
-    @StateObject private var databaseSnapshot = DatabaseSnapshotObservation()
+    @StateObject private var walletRecordsObservation = WalletRecordsObservation()
+    @StateObject private var activeBalancesObservation = ActiveWalletBalancesObservation()
 
     @State private var isShowingResetConfirmation: Bool = false
 
@@ -115,7 +116,7 @@ struct WalletHomeFilterSheet: View {
     @State private var pinnedAssetCount: Int = 0
 
     private var allWallets: [WalletRecord] {
-        databaseSnapshot.wallets
+        walletRecordsObservation.wallets
     }
     @State private var networksReadout: String = ""
 
@@ -164,6 +165,9 @@ struct WalletHomeFilterSheet: View {
             // renders empty on the appearance frame; the keyed task
             // below owns every subsequent recompute.
             .onAppear { refreshDerivedState() }
+            .task(id: observationScopeKey) {
+                syncObservationScopes()
+            }
             .task(id: previewRebuildKey) {
                 // Debounce while a live search query is active — a
                 // new keystroke changes the id, cancels this task,
@@ -563,6 +567,7 @@ struct WalletHomeFilterSheet: View {
             pinnedAssetsJSON,
             currencyCode,
             activeWalletIdRaw,
+            activeBalancesObservation.revision,
             searchPreview
         ].joined(separator: "\u{1F}")
     }
@@ -745,14 +750,28 @@ struct WalletHomeFilterSheet: View {
         ActiveWalletResolver.resolve(rawID: activeWalletIdRaw, wallets: allWallets)
     }
 
+    private var observationScopeKey: String {
+        "\(activeWalletIdRaw)|\(walletRecordsObservation.revision)"
+    }
+
+    private func syncObservationScopes() {
+        let scopedWalletId = activeWallet?.id ?? UUID(uuidString: activeWalletIdRaw)
+        activeBalancesObservation.setWalletId(scopedWalletId)
+    }
+
     private var heldRows: [(chain: SupportedChain, balance: TokenBalanceRecord)] {
         guard let wallet = activeWallet else { return [] }
-        var result: [(SupportedChain, TokenBalanceRecord)] = []
-        for address in wallet.addresses {
-            guard let chain = SupportedChain(rawValue: address.chainRaw) else { continue }
-            for balance in address.balances where !balance.rawBalance.isEmpty {
-                result.append((chain, balance))
+        let chainByAddressId = Dictionary(
+            uniqueKeysWithValues: wallet.addresses.compactMap { address -> (UUID, SupportedChain)? in
+                guard let chain = SupportedChain(rawValue: address.chainRaw) else { return nil }
+                return (address.id, chain)
             }
+        )
+        var result: [(SupportedChain, TokenBalanceRecord)] = []
+        for balance in activeBalancesObservation.balances where !balance.rawBalance.isEmpty {
+            guard let addressId = balance.addressId ?? balance.address?.id,
+                  let chain = chainByAddressId[addressId] else { continue }
+            result.append((chain, balance))
         }
         return result
     }

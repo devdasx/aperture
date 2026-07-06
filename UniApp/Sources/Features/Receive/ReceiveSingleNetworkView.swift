@@ -6,7 +6,7 @@ import SwiftUI
 /// QR/address screen as the sheet root, so single-network coins and tokens
 /// do not ask the user to choose a network they cannot actually vary.
 struct ReceiveSingleNetworkView: View {
-    @StateObject private var databaseSnapshot = DatabaseSnapshotObservation()
+    @StateObject private var walletRecordsObservation = WalletRecordsObservation()
     @GRDBStorage("activeWalletId") private var activeWalletIdRaw: String = ""
 
     @Binding var navigationPath: NavigationPath
@@ -15,7 +15,7 @@ struct ReceiveSingleNetworkView: View {
     let chain: SupportedChain
 
     private var allWallets: [WalletRecord] {
-        databaseSnapshot.wallets
+        walletRecordsObservation.wallets
     }
 
     var body: some View {

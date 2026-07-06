@@ -79,11 +79,18 @@ struct RootGate: View {
 /// - Biometric drift detected → top banner
 ///   (`BiometricReenrollmentBanner`).
 struct WalletHomeView: View {
-    @StateObject private var databaseSnapshot = DatabaseSnapshotObservation()
-    private var allWallets: [WalletRecord] { databaseSnapshot.wallets }
+    @StateObject private var walletRecordsObservation = WalletRecordsObservation()
+    @StateObject private var metadataObservation = AppMetadataObservation()
+    @StateObject private var assetCatalogObservation = AssetCatalogObservation()
+    @StateObject private var activeBalancesObservation = ActiveWalletBalancesObservation()
+    @StateObject private var activeTransactionsObservation = ActiveWalletTransactionsObservation()
+    @StateObject private var historicalPricesObservation = HistoricalPricesObservation()
+    @StateObject private var cachedPricesObservation = CachedPricesObservation()
+
+    private var allWallets: [WalletRecord] { walletRecordsObservation.wallets }
 
     @GRDBStorage("tip.walletSwitcher.dismissed") private var walletSwitcherTipDismissed: Bool = false
-    private var metadataRows: [AppMetadataRecord] { databaseSnapshot.metadataRows }
+    private var metadataRows: [AppMetadataRecord] { metadataObservation.metadataRows }
     // **2026-06-18 Part 3.1.** The spot-price `cachedPrices` GRDB observation was MOVED
     // off this parent and into the two leaves that consume it —
     // `BalanceCardLiveSection` (the chart map) and `RecentActivityRows` (row
@@ -97,20 +104,20 @@ struct WalletHomeView: View {
     /// honest historical fiat ($4000 then) not today's collapsed
     /// valuation ($50). Populated by `CoinbaseHistoricalPriceService`
     /// via the `.task` ensure-loop below.
-    private var historicalPrices: [HistoricalPriceRecord] { databaseSnapshot.historicalPrices }
+    private var historicalPrices: [HistoricalPriceRecord] { historicalPricesObservation.prices }
     /// **Local-first asset universe (Rule #27 §D).** The supported
     /// chains + tokens, read from the DB (seeded by `AssetCatalogSeeder`
     /// from the static registries). `catalogChains` / `catalogAssets`
     /// map these to the registry-agnostic shape the display builders
     /// consume, falling back to the identical static `AssetCatalog`
     /// during the pre-seed cold-launch window so the list never blanks.
-    private var chainRecords: [ChainRecord] { databaseSnapshot.chainRecords }
-    private var assetRecords: [AssetRecord] { databaseSnapshot.assetRecords }
+    private var chainRecords: [ChainRecord] { assetCatalogObservation.chainRecords }
+    private var assetRecords: [AssetRecord] { assetCatalogObservation.assetRecords }
     /// User-added custom tokens (2026-06-19). Merged into the home's
     /// token holdings so a token the user pasted into "Add custom token"
     /// shows in the Tokens section with its (scanned) balance — or a 0
     /// placeholder — exactly like the catalog tokens, not only in the asset picker.
-    private var customTokenRecords: [CustomTokenRecord] { databaseSnapshot.customTokenRecords }
+    private var customTokenRecords: [CustomTokenRecord] { assetCatalogObservation.customTokenRecords }
 
     // **Per-chain aggregate rows (2026-06-17).** The `chainStateRecords`
     // GRDB observation that drives the hero total now lives in the
@@ -380,7 +387,7 @@ struct WalletHomeView: View {
     /// top-level GRDB observation re-runs its fetch whenever ANY context on the
     /// shared container inserts a `TransactionRecord`, so new activity
     /// shows the instant it's persisted — no relaunch, no navigate-away.
-    private var allTransactionRecords: [TransactionRecord] { databaseSnapshot.transactions }
+    private var allTransactionRecords: [TransactionRecord] { activeTransactionsObservation.transactions }
 
     /// **Live balance feed (2026-06-21).** A TOP-LEVEL GRDB observation, NOT a
     /// `wallet.addresses[].balances` relationship traversal — for the SAME
@@ -399,7 +406,7 @@ struct WalletHomeView: View {
     /// relaunch, no manual refresh (Rule #25, now honoured for balances as it
     /// already was for transactions). The hero total itself was already live
     /// via `BalanceCardLiveSection`'s own `chainStateRecords` query.
-    private var allBalanceRecords: [TokenBalanceRecord] { databaseSnapshot.balances }
+    private var allBalanceRecords: [TokenBalanceRecord] { activeBalancesObservation.balances }
 
     /// The active wallet's transactions, newest first — the live
     /// top-level GRDB observation filtered to the active wallet's address ids.
@@ -556,6 +563,9 @@ struct WalletHomeView: View {
                 // keeps native pull-to-refresh responsive without producing
                 // cancellation storms in the RPC layer.
                 .refreshable { await runRefresh(userInitiated: true) }
+                .task(id: observationScopeKey) {
+                    syncObservationScopes()
+                }
                 .task(id: activeWalletIdRaw) {
                     ensureActiveWalletSet()
                     // Seed the memoized DISPLAY projections (balances /
@@ -615,6 +625,7 @@ struct WalletHomeView: View {
                     rebuildFilteredRows()
                 }
                 .onChange(of: activeWalletIdRaw) { _, _ in
+                    syncObservationScopes()
                     displayRebuildTask?.cancel()
                     chainReconcileTask?.cancel()
                     clearWalletScopedSnapshots()
@@ -641,6 +652,7 @@ struct WalletHomeView: View {
                     }
                 }
                 .onChange(of: currencyCode) { _, _ in
+                    syncObservationScopes()
                     // Labels react immediately (the hero + unheld rows
                     // read `currencyCode` directly)…
                     scheduleDisplayRowsRebuild(after: 50_000_000)
@@ -673,7 +685,7 @@ struct WalletHomeView: View {
                 // cross-context inserts, Rule #25) — refresh the cached
                 // `allTransactions` so the Recent activity list + chart
                 // reflect them immediately, not only after a refresh ends.
-                .onChange(of: allTransactionRecords.count) { _, _ in
+                .onChange(of: activeTransactionsObservation.revision) { _, _ in
                     scheduleDisplayRowsRebuild()
                 }
                 // Re-derive when the DB asset seed lands (Rule #27 §D — the
@@ -683,7 +695,7 @@ struct WalletHomeView: View {
                 // it immediately, not only after the next refresh). One
                 // combined key keeps the body's modifier chain inside the
                 // Swift type-checker's complexity budget.
-                .onChange(of: "\(assetRecords.count)-\(customTokenRecords.count)") { _, _ in
+                .onChange(of: assetCatalogObservation.revision) { _, _ in
                     scheduleDisplayRowsRebuild()
                 }
                 .onDisappear {
@@ -817,6 +829,22 @@ struct WalletHomeView: View {
                 .uniSheetDetents([.large])
                 .presentationBackground(UniColors.Background.primary)
         }
+    }
+
+    private var observationScopeKey: String {
+        [
+            activeWalletIdRaw,
+            walletRecordsObservation.revision,
+            currencyCode
+        ].joined(separator: "|")
+    }
+
+    private func syncObservationScopes() {
+        let scopedWalletId = activeWallet?.id ?? UUID(uuidString: activeWalletIdRaw)
+        activeBalancesObservation.setWalletId(scopedWalletId)
+        activeTransactionsObservation.setWalletId(scopedWalletId)
+        historicalPricesObservation.setCurrencyCode(currencyCode)
+        cachedPricesObservation.setCurrencyCode(currencyCode)
     }
 
     // MARK: - Layout
@@ -1006,10 +1034,15 @@ struct WalletHomeView: View {
                 walletName: activeWallet?.name ?? String.apertureLocalized("Wallet"),
                 currencyCode: currencyCode,
                 transactions: allTransactions,
+                transactionRevision: activeTransactionsObservation.revision,
+                balances: allBalanceRecords,
+                balanceRevision: balanceRowsRevision,
+                activeAddressIds: Set((activeWallet?.addresses ?? []).map(\.id)),
                 // The wallet's own addresses (lowercased) so the chart can
                 // drop self-transfers (counterparty == one of these).
                 ownAddresses: Set((activeWallet?.addresses ?? []).map { $0.address.lowercased() }),
                 priceHistory: priceHistoryMemo,
+                priceHistoryRevision: priceDataFingerprint,
                 scrubModel: scrubModel,
                 onSwitchWallet: { isShowingSwitcher = true },
                 onAddFunds: { isShowingReceive = true }
@@ -1757,7 +1790,7 @@ struct WalletHomeView: View {
     private var priceDataFingerprint: String {
         // `cachedPrices` moved to the leaves (Part 3.1); the parent now only
         // memoizes the historical close series the chart needs.
-        "\(historicalPrices.count)|\(currencyCode)"
+        "\(historicalPricesObservation.revision)|\(currencyCode)"
     }
 
     /// Rebuild the memoized history dictionary. The only place that pays
@@ -1817,19 +1850,7 @@ struct WalletHomeView: View {
     /// until an app relaunch). `count` catches add/remove, `newest` catches a
     /// re-fetch even at an unchanged value, and `fiatSum` catches a value move.
     private var balanceRowsRevision: String {
-        guard let wallet = activeWallet else { return "none" }
-        let ids = Set(wallet.addresses.map { $0.id })
-        guard !ids.isEmpty else { return "none" }
-        var count = 0
-        var newest = Date.distantPast
-        var fiatSum = Decimal.zero
-        for balance in allBalanceRecords {
-            guard let aid = balance.addressId ?? balance.address?.id, ids.contains(aid) else { continue }
-            count += 1
-            if balance.updatedAt > newest { newest = balance.updatedAt }
-            fiatSum += balance.fiatValueCached
-        }
-        return "\(count)|\(newest.timeIntervalSince1970)|\(fiatSum)"
+        activeBalancesObservation.revision
     }
 
     /// Decode the `@GRDBStorage`-bound preference values into the
@@ -1934,7 +1955,7 @@ struct WalletHomeView: View {
     /// O(1) key for the dust-price load — re-fires on wallet switch or a
     /// tx count change, the only moments the feed's symbol set can grow.
     private var dustPriceKey: String {
-        "\(activeWalletIdRaw)|\(allTransactionRecords.count)"
+        "\(activeWalletIdRaw)|\(activeTransactionsObservation.revision)"
     }
 
     private func scheduleDisplayRowsRebuild(after delayNanoseconds: UInt64 = 120_000_000) {
@@ -2141,7 +2162,7 @@ struct WalletHomeView: View {
         RecentActivityRows(
             rows: recentActivityModels,
             currencyCode: currencyCode,
-            cachedPrices: databaseSnapshot.cachedPrices,
+            cachedPrices: cachedPricesObservation.prices,
             onSelect: { navigationPath.append(WalletHomeDestination.transaction($0)) }
         )
     }
@@ -2481,6 +2502,15 @@ struct WalletHomeView: View {
         guard let walletId = await resolveRefreshWalletId() else { return }
         if !userInitiated {
             Task {
+                await WalletBackgroundWorkCoordinator.shared.refreshBalances(
+                    walletId: walletId,
+                    currencyCode: currencyCode,
+                    database: AppDatabase.shared,
+                    userInitiated: false
+                )
+                guard !Task.isCancelled else { return }
+                try? await Task.sleep(for: .seconds(2))
+                guard !Task.isCancelled else { return }
                 await WalletBackgroundWorkCoordinator.shared.startFullRefresh(
                     walletId: walletId,
                     currencyCode: currencyCode,
@@ -2673,22 +2703,33 @@ private struct BalanceCardLiveSection: View {
     let walletName: String
     let currencyCode: String
     let transactions: [TransactionRecord]
+    let transactionRevision: String
+    let balances: [TokenBalanceRecord]
+    let balanceRevision: String
+    let activeAddressIds: Set<UUID>
     let ownAddresses: Set<String>
     let priceHistory: [String: [Int: Decimal]]
+    let priceHistoryRevision: String
     let scrubModel: ChartScrubModel
     let onSwitchWallet: () -> Void
     let onAddFunds: () -> Void
 
-    @StateObject private var databaseSnapshot = DatabaseSnapshotObservation()
+    @StateObject private var cardObservation = WalletBalanceCardObservation()
     @State private var recentHourlyPriceSnapshots: [BalanceHourlyPriceSnapshot] = []
+    @State private var hourlySnapshotsRevision: String = "empty"
 
     init(
         walletId: UUID?,
         walletName: String,
         currencyCode: String,
         transactions: [TransactionRecord],
+        transactionRevision: String,
+        balances: [TokenBalanceRecord],
+        balanceRevision: String,
+        activeAddressIds: Set<UUID>,
         ownAddresses: Set<String>,
         priceHistory: [String: [Int: Decimal]],
+        priceHistoryRevision: String,
         scrubModel: ChartScrubModel,
         onSwitchWallet: @escaping () -> Void,
         onAddFunds: @escaping () -> Void
@@ -2697,61 +2738,36 @@ private struct BalanceCardLiveSection: View {
         self.walletName = walletName
         self.currencyCode = currencyCode
         self.transactions = transactions
+        self.transactionRevision = transactionRevision
+        self.balances = balances
+        self.balanceRevision = balanceRevision
+        self.activeAddressIds = activeAddressIds
         self.ownAddresses = ownAddresses
         self.priceHistory = priceHistory
+        self.priceHistoryRevision = priceHistoryRevision
         self.scrubModel = scrubModel
         self.onSwitchWallet = onSwitchWallet
         self.onAddFunds = onAddFunds
     }
 
     private var chainStateRecords: [ChainStateRecord] {
-        guard let walletId else { return [] }
-        let code = currencyCode.uppercased()
-        return databaseSnapshot.chainStates.filter {
-            $0.walletId == walletId && $0.fiatCurrencyCode.caseInsensitiveCompare(code) == .orderedSame
-        }
+        cardObservation.chainStates
     }
 
     private var portfolioSummaries: [WalletPortfolioSummaryRecord] {
-        guard let walletId else { return [] }
-        let key = WalletPortfolioSummaryRecord.makeLookupKey(walletId: walletId, currencyCode: currencyCode)
-        return databaseSnapshot.portfolioSummaries.filter { $0.lookupKey == key }
+        cardObservation.portfolioSummaries
     }
 
     private var syncStatuses: [SyncStatusRecord] {
-        guard let walletId else { return [] }
-        let scope = walletId.uuidString
-        return databaseSnapshot.syncStatuses.filter {
-            $0.scopeId == scope && ($0.domainRaw == SyncDomain.balances.rawValue || $0.domainRaw == SyncDomain.transactions.rawValue)
-        }
+        cardObservation.syncStatuses
     }
 
     private var cachedPrices: [CachedPriceRecord] {
-        databaseSnapshot.cachedPrices.filter { $0.fiat.caseInsensitiveCompare(currencyCode) == .orderedSame }
-    }
-
-    private var walletAddresses: [WalletAddressRecord] {
-        guard let walletId else { return [] }
-        return databaseSnapshot.walletAddresses.filter { $0.walletId == walletId }
-    }
-
-    private var tokenBalances: [TokenBalanceRecord] {
-        databaseSnapshot.balances
+        cardObservation.cachedPrices
     }
 
     private var priceCacheMap: [String: Decimal] {
-        var map: [String: Decimal] = [:]
-        for row in cachedPrices where row.fiat.caseInsensitiveCompare(currencyCode) == .orderedSame {
-            map[row.symbol.uppercased()] = row.price
-        }
-        return map
-    }
-
-    private var activeAddressIds: Set<UUID> {
-        guard let walletId else { return [] }
-        return Set(walletAddresses.compactMap { address in
-            address.walletId == walletId ? address.id : nil
-        })
+        cardObservation.priceMap
     }
 
     private func hourlyHoldings(
@@ -2761,7 +2777,7 @@ private struct BalanceCardLiveSection: View {
         guard !addressIds.isEmpty else { return [] }
 
         var amountsBySymbol: [String: Decimal] = [:]
-        for balance in tokenBalances {
+        for balance in balances {
             let balanceAddressId = balance.addressId ?? balance.address?.id
             guard let balanceAddressId, addressIds.contains(balanceAddressId) else { continue }
             guard let amount = EVMHexQuantity.decimalAmount(
@@ -2803,10 +2819,27 @@ private struct BalanceCardLiveSection: View {
         return String(hasher.finalize())
     }
 
+    private var cardScopeKey: String {
+        "\(walletId?.uuidString ?? "none")|\(currencyCode.uppercased())"
+    }
+
+    private func chartRevision(snapshotKey: String) -> String {
+        [
+            cardScopeKey,
+            cardObservation.revision,
+            transactionRevision,
+            balanceRevision,
+            priceHistoryRevision,
+            snapshotKey,
+            hourlySnapshotsRevision
+        ].joined(separator: "|")
+    }
+
     @MainActor
     private func reloadHourlyPriceSnapshots(symbols: Set<String>) async {
         guard !symbols.isEmpty else {
             recentHourlyPriceSnapshots = []
+            hourlySnapshotsRevision = "empty"
             return
         }
 
@@ -2826,11 +2859,24 @@ private struct BalanceCardLiveSection: View {
             }
             withTransaction(Transaction(animation: nil)) {
                 recentHourlyPriceSnapshots = snapshots
+                hourlySnapshotsRevision = hourlySnapshotsRevision(for: snapshots)
             }
         } catch {
             guard !Task.isCancelled else { return }
             recentHourlyPriceSnapshots = []
+            hourlySnapshotsRevision = "empty"
         }
+    }
+
+    private func hourlySnapshotsRevision(for snapshots: [BalanceHourlyPriceSnapshot]) -> String {
+        var hasher = Hasher()
+        hasher.combine(snapshots.count)
+        for snapshot in snapshots {
+            hasher.combine(snapshot.symbol)
+            hasher.combine(snapshot.price)
+            hasher.combine(snapshot.fetchedAt)
+        }
+        return String(hasher.finalize())
     }
 
     /// Hero total. The balance card is backed by the database read model only:
@@ -2874,8 +2920,7 @@ private struct BalanceCardLiveSection: View {
 
     var body: some View {
         let priceMap = priceCacheMap
-        let addressIds = activeAddressIds
-        let hourHoldings = hourlyHoldings(addressIds: addressIds, prices: priceMap)
+        let hourHoldings = hourlyHoldings(addressIds: activeAddressIds, prices: priceMap)
         let hourlySymbols = Set(hourHoldings.map(\.symbol))
         let snapshotKey = hourlySnapshotKey(holdings: hourHoldings, prices: priceMap)
         BalanceCardView(
@@ -2890,10 +2935,14 @@ private struct BalanceCardLiveSection: View {
             priceHistory: priceHistory,
             hourlyHoldings: hourHoldings,
             hourlyPriceSnapshots: recentHourlyPriceSnapshots,
+            rebuildToken: chartRevision(snapshotKey: snapshotKey),
             scrubModel: scrubModel,
             onSwitchWallet: onSwitchWallet,
             onAddFunds: onAddFunds
         )
+        .task(id: cardScopeKey) {
+            cardObservation.setScope(walletId: walletId, currencyCode: currencyCode)
+        }
         .task(id: snapshotKey) {
             await reloadHourlyPriceSnapshots(symbols: hourlySymbols)
         }

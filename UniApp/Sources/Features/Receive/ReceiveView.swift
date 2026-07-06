@@ -32,7 +32,10 @@ import SwiftUI
 /// `NavigationPath` can be persisted across Rule #12 §G direction
 /// rebuilds.
 struct ReceiveView: View {
-    @StateObject private var databaseSnapshot = DatabaseSnapshotObservation()
+    @StateObject private var walletRecordsObservation = WalletRecordsObservation()
+    @StateObject private var assetCatalogObservation = AssetCatalogObservation()
+    @StateObject private var activeBalancesObservation = ActiveWalletBalancesObservation()
+    @StateObject private var activeTransactionsObservation = ActiveWalletTransactionsObservation()
     @GRDBStorage("activeWalletId") private var activeWalletIdRaw: String = ""
 
     /// The sheet's own NavigationPath. Lives on the sheet root so the
@@ -71,28 +74,26 @@ struct ReceiveView: View {
     }
 
     private var allWallets: [WalletRecord] {
-        databaseSnapshot.wallets
+        walletRecordsObservation.wallets
     }
 
     private var customTokenRecords: [CustomTokenRecord] {
-        databaseSnapshot.customTokenRecords.sorted {
+        assetCatalogObservation.customTokenRecords.sorted {
             $0.symbol.localizedStandardCompare($1.symbol) == .orderedAscending
         }
     }
 
     private var assetRecords: [AssetRecord] {
-        databaseSnapshot.assetRecords
+        assetCatalogObservation.assetRecords
     }
 
     private var holdingsKey: String {
         guard let wallet = activeWallet else { return "none" }
-        var rows = 0
-        var newest = Date.distantPast
-        for address in wallet.addresses {
-            rows += address.balances.count
-            for bal in address.balances where bal.updatedAt > newest { newest = bal.updatedAt }
-        }
-        return "\(wallet.id.uuidString)|\(rows)|\(newest.timeIntervalSince1970)"
+        return [
+            wallet.id.uuidString,
+            activeBalancesObservation.revision,
+            activeTransactionsObservation.revision
+        ].joined(separator: "|")
     }
 
     var body: some View {
@@ -101,6 +102,8 @@ struct ReceiveView: View {
                 availableChains: availableChains,
                 holdings: holdings,
                 currencyCode: currencyCode,
+                customTokenRecords: customTokenRecords,
+                assetRecords: assetRecords,
                 onSelectNative: { chain in
                     openNative(chain)
                 },
@@ -167,8 +170,15 @@ struct ReceiveView: View {
         .task(id: activeWalletHealKey) {
             healActiveWalletIdIfNeeded()
         }
+        .task(id: activeWalletScopeKey) {
+            syncObservationScopes()
+        }
         .task(id: holdingsKey) {
-            holdings = AssetPickerHoldings(wallet: activeWallet)
+            holdings = AssetPickerHoldings(
+                wallet: activeWallet,
+                balances: activeBalancesObservation.balances,
+                transactions: activeTransactionsObservation.transactions
+            )
         }
         .task(id: prefillSeedKey) {
             seedAssetPrefillIfNeeded()
@@ -194,6 +204,16 @@ struct ReceiveView: View {
     /// set changes (e.g. the active wallet was deleted mid-session).
     private var activeWalletHealKey: String {
         "\(activeWalletIdRaw)|\(allWallets.count)"
+    }
+
+    private var activeWalletScopeKey: String {
+        "\(activeWalletIdRaw)|\(walletRecordsObservation.revision)"
+    }
+
+    private func syncObservationScopes() {
+        let scopedWalletId = activeWallet?.id ?? UUID(uuidString: activeWalletIdRaw)
+        activeBalancesObservation.setWalletId(scopedWalletId)
+        activeTransactionsObservation.setWalletId(scopedWalletId)
     }
 
     private var prefillSeedKey: String {

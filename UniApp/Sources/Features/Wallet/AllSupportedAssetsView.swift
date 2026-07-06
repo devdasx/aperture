@@ -39,12 +39,13 @@ import SwiftUI
 /// and `network_*` assets first, then a cached Trust Wallet URL, then
 /// an honest initials chip. Never a fabricated brand mark.
 struct AllSupportedAssetsView: View {
-    @StateObject private var databaseSnapshot = DatabaseSnapshotObservation()
+    @StateObject private var walletRecordsObservation = WalletRecordsObservation()
+    @StateObject private var activeBalancesObservation = ActiveWalletBalancesObservation()
     @GRDBStorage("activeWalletId") private var activeWalletIdRaw: String = ""
     @GRDBStorage(CurrencyPreference.storageKey) private var currencyCode: String = CurrencyPreference.defaultCode
 
     private var allWallets: [WalletRecord] {
-        databaseSnapshot.wallets
+        walletRecordsObservation.wallets
     }
 
     @State private var searchText: String = ""
@@ -132,6 +133,9 @@ struct AllSupportedAssetsView: View {
             .uniSheetDetents([.large])
             .presentationDragIndicator(.visible)
             .presentationBackground(UniColors.Background.primary)
+        }
+        .task(id: activeWalletScopeKey) {
+            syncObservationScopes()
         }
     }
 
@@ -229,16 +233,28 @@ struct AllSupportedAssetsView: View {
         ActiveWalletResolver.resolve(rawID: activeWalletIdRaw, wallets: allWallets)
     }
 
+    private var activeWalletScopeKey: String {
+        "\(activeWallet?.id.uuidString ?? activeWalletIdRaw)|\(walletRecordsObservation.revision)"
+    }
+
+    private func syncObservationScopes() {
+        activeBalancesObservation.setWalletId(activeWallet?.id ?? UUID(uuidString: activeWalletIdRaw))
+    }
+
     /// All `(chain, TokenBalanceRecord)` rows the active wallet has
     /// non-empty balances for. Same source the wallet home uses.
     private var heldRows: [(chain: SupportedChain, balance: TokenBalanceRecord)] {
         guard let wallet = activeWallet else { return [] }
-        var result: [(SupportedChain, TokenBalanceRecord)] = []
-        for address in wallet.addresses {
-            guard let chain = SupportedChain(rawValue: address.chainRaw) else { continue }
-            for balance in address.balances where !balance.rawBalance.isEmpty {
-                result.append((chain, balance))
+        let chainByAddressId = Dictionary(
+            uniqueKeysWithValues: wallet.addresses.compactMap { address -> (UUID, SupportedChain)? in
+                guard let chain = SupportedChain(rawValue: address.chainRaw) else { return nil }
+                return (address.id, chain)
             }
+        )
+        var result: [(SupportedChain, TokenBalanceRecord)] = []
+        for balance in activeBalancesObservation.balances where !balance.rawBalance.isEmpty {
+            guard let addressId = balance.addressId, let chain = chainByAddressId[addressId] else { continue }
+            result.append((chain, balance))
         }
         return result
     }

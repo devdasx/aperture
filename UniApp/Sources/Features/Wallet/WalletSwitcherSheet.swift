@@ -10,33 +10,24 @@ import SwiftUI
 /// `.large` detent because this is a navigation experience (it could
 /// push to a wallet-detail screen later, T-042).
 struct WalletSwitcherSheet: View {
-    @StateObject private var databaseSnapshot = DatabaseSnapshotObservation()
+    @StateObject private var walletRecordsObservation = WalletRecordsObservation()
+    @StateObject private var portfolioObservation = WalletPortfolioSummariesObservation()
     @GRDBStorage("activeWalletId") private var activeWalletIdRaw: String = ""
     @GRDBStorage(CurrencyPreference.storageKey) private var currencyCode: String = CurrencyPreference.defaultCode
     @Environment(\.dismiss) private var dismiss
 
     private var wallets: [WalletRecord] {
-        databaseSnapshot.wallets.sorted {
+        walletRecordsObservation.wallets.sorted {
             if $0.sortOrder == $1.sortOrder { return $0.createdAt < $1.createdAt }
             return $0.sortOrder < $1.sortOrder
         }
     }
 
-    private var tokenBalances: [TokenBalanceRecord] {
-        databaseSnapshot.balances
-    }
-
     /// A wallet's total balance in the user's currency, summed from its own
     /// addresses' cached token-fiat values (mirrors `WalletsListView`).
     private func fiatBalance(for wallet: WalletRecord) -> Decimal {
-        let addressIds = Set(wallet.addresses.map(\.id))
-        var total = Decimal.zero
-        for balance in tokenBalances {
-            guard balance.fiatCurrencyCode == currencyCode else { continue }
-            guard let aid = balance.addressId, addressIds.contains(aid) else { continue }
-            total += balance.fiatValueCached
-        }
-        return total
+        let key = WalletPortfolioSummaryRecord.makeLookupKey(walletId: wallet.id, currencyCode: currencyCode)
+        return portfolioObservation.summaries.first(where: { $0.lookupKey == key })?.totalFiat ?? 0
     }
 
     /// Fired when the user picks an existing wallet (after writing the
@@ -86,6 +77,9 @@ struct WalletSwitcherSheet: View {
                 }
             }
             .listStyle(.insetGrouped)
+            .task(id: currencyCode) {
+                portfolioObservation.setCurrencyCode(currencyCode)
+            }
             .navigationTitle("Wallets")
             .navigationBarTitleDisplayMode(.large)
             .toolbar {

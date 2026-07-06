@@ -119,6 +119,50 @@ extension AssetPickerHoldings {
         self.txCountByChainSymbol = tx
         self.fingerprint = "\(wallet.id.uuidString)|\(held.count)|\(txTotal)|\(fiatSum)"
     }
+
+    @MainActor
+    init(
+        wallet: WalletRecord?,
+        balances: [TokenBalanceRecord],
+        transactions: [TransactionRecord]
+    ) {
+        guard let wallet else { self = .empty; return }
+        let chainByAddressId = Dictionary(
+            uniqueKeysWithValues: wallet.addresses.compactMap { address -> (UUID, SupportedChain)? in
+                guard let chain = SupportedChain(rawValue: address.chainRaw) else { return nil }
+                return (address.id, chain)
+            }
+        )
+        var held: [Held] = []
+        var tx: [String: Int] = [:]
+        var fiatSum = Decimal(0)
+
+        for balance in balances {
+            guard let addressId = balance.addressId ?? balance.address?.id,
+                  let chain = chainByAddressId[addressId] else { continue }
+            let amount = WalletFormatting.decimalAmount(rawBalance: balance.rawBalance, decimals: balance.decimals)
+            let fiat = max(balance.fiatValueCached, 0)
+            fiatSum += fiat
+            held.append(Held(
+                chain: chain,
+                symbolUpper: balance.tokenSymbol.uppercased(),
+                isNative: balance.tokenContract == nil,
+                native: amount,
+                fiat: fiat
+            ))
+        }
+
+        for transaction in transactions {
+            guard let addressId = transaction.addressId,
+                  let chain = chainByAddressId[addressId] else { continue }
+            tx["\(chain.rawValue)|\(transaction.tokenSymbol.uppercased())", default: 0] += 1
+        }
+
+        let txTotal = tx.values.reduce(0, +)
+        self.held = held
+        self.txCountByChainSymbol = tx
+        self.fingerprint = "\(wallet.id.uuidString)|\(held.count)|\(txTotal)|\(fiatSum)"
+    }
 }
 
 // MARK: - Sort (balance high→low, then tx-count high→low)

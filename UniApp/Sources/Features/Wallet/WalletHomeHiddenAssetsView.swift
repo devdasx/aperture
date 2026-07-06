@@ -56,7 +56,8 @@ import SwiftUI
 /// content in a `NavigationStack`. The parent sheet owns the stack
 /// and the sub-screen consumes it. Title via `.navigationTitle`.
 struct WalletHomeHiddenAssetsView: View {
-    @StateObject private var databaseSnapshot = DatabaseSnapshotObservation()
+    @StateObject private var walletRecordsObservation = WalletRecordsObservation()
+    @StateObject private var activeBalancesObservation = ActiveWalletBalancesObservation()
     @GRDBStorage("activeWalletId") private var activeWalletIdRaw: String = ""
     @GRDBStorage(CurrencyPreference.storageKey) private var currencyCode: String = CurrencyPreference.defaultCode
     @GRDBStorage(WalletHomeFilterPreferences.hiddenAssetsKey)
@@ -82,7 +83,7 @@ struct WalletHomeHiddenAssetsView: View {
     @State private var pinnedSet: Set<String>
 
     private var allWallets: [WalletRecord] {
-        databaseSnapshot.wallets
+        walletRecordsObservation.wallets
     }
 
     init() {
@@ -124,6 +125,7 @@ struct WalletHomeHiddenAssetsView: View {
             let decoded = WalletHomeFilterPreferences.decode(newValue)
             if decoded != pinnedSet { pinnedSet = decoded }
         }
+        .task(id: observationScopeKey) { syncObservationScopes() }
     }
 
     // MARK: - Sections
@@ -285,18 +287,32 @@ struct WalletHomeHiddenAssetsView: View {
     /// visibility, not reading totals).
     private var heldRows: [(chain: SupportedChain, balance: TokenBalanceRecord)] {
         guard let wallet = activeWallet else { return [] }
-        var result: [(SupportedChain, TokenBalanceRecord)] = []
-        for address in wallet.addresses {
-            guard let chain = SupportedChain(rawValue: address.chainRaw) else { continue }
-            for balance in address.balances where !balance.rawBalance.isEmpty {
-                result.append((chain, balance))
+        let chainByAddressId = Dictionary(
+            uniqueKeysWithValues: wallet.addresses.compactMap { address -> (UUID, SupportedChain)? in
+                guard let chain = SupportedChain(rawValue: address.chainRaw) else { return nil }
+                return (address.id, chain)
             }
+        )
+        var result: [(SupportedChain, TokenBalanceRecord)] = []
+        for balance in activeBalancesObservation.balances where !balance.rawBalance.isEmpty {
+            guard let addressId = balance.addressId ?? balance.address?.id,
+                  let chain = chainByAddressId[addressId] else { continue }
+            result.append((chain, balance))
         }
         return result
     }
 
     private var activeWallet: WalletRecord? {
         ActiveWalletResolver.resolve(rawID: activeWalletIdRaw, wallets: allWallets)
+    }
+
+    private var observationScopeKey: String {
+        "\(activeWalletIdRaw)|\(walletRecordsObservation.revision)"
+    }
+
+    private func syncObservationScopes() {
+        let scopedWalletId = activeWallet?.id ?? UUID(uuidString: activeWalletIdRaw)
+        activeBalancesObservation.setWalletId(scopedWalletId)
     }
 
     // MARK: - Toggle bindings (hidden)

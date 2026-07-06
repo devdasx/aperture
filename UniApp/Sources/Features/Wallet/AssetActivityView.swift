@@ -16,24 +16,28 @@ import SwiftUI
 struct AssetActivityView: View {
     let identity: AssetIdentity
 
-    @StateObject private var databaseSnapshot = DatabaseSnapshotObservation()
+    @StateObject private var walletRecordsObservation = WalletRecordsObservation()
+    @StateObject private var activeBalancesObservation = ActiveWalletBalancesObservation()
+    @StateObject private var activeTransactionsObservation = ActiveWalletTransactionsObservation()
+    @StateObject private var assetCatalogObservation = AssetCatalogObservation()
+    @StateObject private var cachedPricesObservation = CachedPricesObservation()
     @GRDBStorage("activeWalletId") private var activeWalletIdRaw: String = ""
     @GRDBStorage(CurrencyPreference.storageKey) private var currencyCode: String = CurrencyPreference.defaultCode
 
     private var allWallets: [WalletRecord] {
-        databaseSnapshot.wallets
+        walletRecordsObservation.wallets
     }
 
     private var allTransactionRecords: [TransactionRecord] {
-        databaseSnapshot.transactions.sorted { $0.occurredAt > $1.occurredAt }
+        activeTransactionsObservation.transactions
     }
 
     private var cachedPrices: [CachedPriceRecord] {
-        databaseSnapshot.cachedPrices
+        cachedPricesObservation.prices
     }
 
     private var customTokenRecords: [CustomTokenRecord] {
-        databaseSnapshot.customTokenRecords
+        assetCatalogObservation.customTokenRecords
     }
 
     private var priceMap: [String: Decimal] {
@@ -153,6 +157,9 @@ struct AssetActivityView: View {
             derivedCache = computed
             await loadDustPrices(symbols: computed.assetScopedTransactions.map(\.tokenSymbol))
         }
+        .task(id: observationScopeKey) {
+            syncObservationScopes()
+        }
     }
 
     /// Resolve USD unit prices for the asset's symbols so the $0.01-USD
@@ -217,8 +224,9 @@ struct AssetActivityView: View {
             // Cheap data-change signal — O(1) — replacing the O(all-tx)
             // WalletDataFingerprint.make that ran on every body pass.
             activeWalletIdRaw,
-            String(allTransactionRecords.count),
-            String(customTokenRecords.count)
+            activeBalancesObservation.revision,
+            activeTransactionsObservation.revision,
+            assetCatalogObservation.revision
         ].joined(separator: "|")
     }
 
@@ -266,14 +274,30 @@ struct AssetActivityView: View {
         ActiveWalletResolver.resolve(rawID: activeWalletIdRaw, wallets: allWallets)
     }
 
+    private var observationScopeKey: String {
+        "\(activeWalletIdRaw)|\(walletRecordsObservation.revision)|\(currencyCode)"
+    }
+
+    private func syncObservationScopes() {
+        let scopedWalletId = activeWallet?.id ?? UUID(uuidString: activeWalletIdRaw)
+        activeBalancesObservation.setWalletId(scopedWalletId)
+        activeTransactionsObservation.setWalletId(scopedWalletId)
+        cachedPricesObservation.setCurrencyCode(currencyCode)
+    }
+
     private var allHeldRows: [(chain: SupportedChain, balance: TokenBalanceRecord)] {
         guard let wallet = activeWallet else { return [] }
-        var result: [(SupportedChain, TokenBalanceRecord)] = []
-        for address in wallet.addresses {
-            guard let chain = SupportedChain(rawValue: address.chainRaw) else { continue }
-            for balance in address.balances where !balance.rawBalance.isEmpty {
-                result.append((chain, balance))
+        let chainByAddressId = Dictionary(
+            uniqueKeysWithValues: wallet.addresses.compactMap { address -> (UUID, SupportedChain)? in
+                guard let chain = SupportedChain(rawValue: address.chainRaw) else { return nil }
+                return (address.id, chain)
             }
+        )
+        var result: [(SupportedChain, TokenBalanceRecord)] = []
+        for balance in activeBalancesObservation.balances where !balance.rawBalance.isEmpty {
+            guard let addressId = balance.addressId ?? balance.address?.id,
+                  let chain = chainByAddressId[addressId] else { continue }
+            result.append((chain, balance))
         }
         return result
     }

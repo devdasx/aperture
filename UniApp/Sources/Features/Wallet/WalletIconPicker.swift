@@ -41,7 +41,7 @@ import CryptoKit
 struct WalletIconPickerSheet: View {
     let walletId: UUID
 
-    @StateObject private var databaseSnapshot = DatabaseSnapshotObservation()
+    @StateObject private var walletRecordsObservation = WalletRecordsObservation()
     @Environment(\.dismiss) private var dismiss
 
     // MARK: - Staged spec (commit on Save, discard on Cancel)
@@ -89,7 +89,7 @@ struct WalletIconPickerSheet: View {
     @State private var uploadWarningTick: Int = 0
 
     private var wallet: WalletRecord? {
-        databaseSnapshot.wallets.first { $0.id == walletId }
+        walletRecordsObservation.wallets.first { $0.id == walletId }
     }
 
     // MARK: - Upload error model

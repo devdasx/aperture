@@ -16,7 +16,10 @@ import SwiftUI
 /// lists the real networks the wallet can sign from. Step 3 (compose) is
 /// the seam where the next increment — amount entry + recipient — lands.
 struct SendView: View {
-    @StateObject private var databaseSnapshot = DatabaseSnapshotObservation()
+    @StateObject private var walletRecordsObservation = WalletRecordsObservation()
+    @StateObject private var assetCatalogObservation = AssetCatalogObservation()
+    @StateObject private var activeBalancesObservation = ActiveWalletBalancesObservation()
+    @StateObject private var activeTransactionsObservation = ActiveWalletTransactionsObservation()
     @GRDBStorage("activeWalletId") private var activeWalletIdRaw: String = ""
 
     /// The sheet's own NavigationPath — lives on the sheet root so it can
@@ -65,17 +68,17 @@ struct SendView: View {
     }
 
     private var allWallets: [WalletRecord] {
-        databaseSnapshot.wallets
+        walletRecordsObservation.wallets
     }
 
     private var customTokenRecords: [CustomTokenRecord] {
-        databaseSnapshot.customTokenRecords.sorted {
+        assetCatalogObservation.customTokenRecords.sorted {
             $0.symbol.localizedStandardCompare($1.symbol) == .orderedAscending
         }
     }
 
     private var assetRecords: [AssetRecord] {
-        databaseSnapshot.assetRecords
+        assetCatalogObservation.assetRecords
     }
 
     /// Cheap change-detector for the holdings rebuild — wallet id + the
@@ -83,13 +86,11 @@ struct SendView: View {
     /// refresh re-sorts).
     private var holdingsKey: String {
         guard let wallet = activeWallet else { return "none" }
-        var rows = 0
-        var newest = Date.distantPast
-        for address in wallet.addresses {
-            rows += address.balances.count
-            for bal in address.balances where bal.updatedAt > newest { newest = bal.updatedAt }
-        }
-        return "\(wallet.id.uuidString)|\(rows)|\(newest.timeIntervalSince1970)"
+        return [
+            wallet.id.uuidString,
+            activeBalancesObservation.revision,
+            activeTransactionsObservation.revision
+        ].joined(separator: "|")
     }
 
     var body: some View {
@@ -98,6 +99,8 @@ struct SendView: View {
                 availableChains: availableChains,
                 holdings: holdings,
                 currencyCode: currencyCode,
+                customTokenRecords: customTokenRecords,
+                assetRecords: assetRecords,
                 onSelectNative: { chain in
                     openNative(chain)
                 },
@@ -162,9 +165,19 @@ struct SendView: View {
         .task(id: activeWalletHealKey) {
             healActiveWalletIdIfNeeded()
         }
+        .task(id: activeWalletScopeKey) {
+            syncObservationScopes()
+        }
         .task(id: holdingsKey) {
-            holdings = AssetPickerHoldings(wallet: activeWallet)
-            recents = RecentRecipientsIndex(wallet: activeWallet)
+            holdings = AssetPickerHoldings(
+                wallet: activeWallet,
+                balances: activeBalancesObservation.balances,
+                transactions: activeTransactionsObservation.transactions
+            )
+            recents = RecentRecipientsIndex(
+                wallet: activeWallet,
+                transactions: activeTransactionsObservation.transactions
+            )
         }
         // Prefills: jump past already-known choices exactly once. Scan
         // prefill wins because it carries a recipient too; asset prefill
@@ -283,6 +296,16 @@ struct SendView: View {
 
     private var activeWalletHealKey: String {
         "\(activeWalletIdRaw)|\(allWallets.count)"
+    }
+
+    private var activeWalletScopeKey: String {
+        "\(activeWalletIdRaw)|\(walletRecordsObservation.revision)"
+    }
+
+    private func syncObservationScopes() {
+        let scopedWalletId = activeWallet?.id ?? UUID(uuidString: activeWalletIdRaw)
+        activeBalancesObservation.setWalletId(scopedWalletId)
+        activeTransactionsObservation.setWalletId(scopedWalletId)
     }
 
     private func healActiveWalletIdIfNeeded() {

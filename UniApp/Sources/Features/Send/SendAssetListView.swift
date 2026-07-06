@@ -11,10 +11,10 @@ struct SendAssetListView: View {
     let availableChains: [SupportedChain]
     let holdings: AssetPickerHoldings
     let currencyCode: String
+    let customTokenRecords: [CustomTokenRecord]
+    let assetRecords: [AssetRecord]
     let onSelectNative: (SupportedChain) -> Void
     let onSelectToken: (SendAsset) -> Void
-
-    @StateObject private var databaseSnapshot = DatabaseSnapshotObservation()
 
     /// Memoized, balance-sorted rows — rebuilt only when the chains, the
     /// custom-token set, the seeded catalog, or the holdings change.
@@ -24,16 +24,6 @@ struct SendAssetListView: View {
 
     private var rowsKey: String {
         "\(availableChains.map(\.rawValue).joined(separator: ","))|\(customTokenRecords.count)|\(assetRecords.count)|\(holdings.fingerprint)"
-    }
-
-    private var customTokenRecords: [CustomTokenRecord] {
-        databaseSnapshot.customTokenRecords.sorted {
-            $0.symbol.localizedStandardCompare($1.symbol) == .orderedAscending
-        }
-    }
-
-    private var assetRecords: [AssetRecord] {
-        databaseSnapshot.assetRecords
     }
 
     var body: some View {

@@ -31,7 +31,8 @@ struct SendAmountView: View {
     /// Proceed to Review with the assembled draft.
     let onReview: (SendDraft) -> Void
 
-    @StateObject private var databaseSnapshot = DatabaseSnapshotObservation()
+    @StateObject private var walletRecordsObservation = WalletRecordsObservation()
+    @StateObject private var activeBalancesObservation = ActiveWalletBalancesObservation()
     @GRDBStorage("activeWalletId") private var activeWalletIdRaw: String = ""
 
     @State private var model: SendComposeModel
@@ -66,7 +67,7 @@ struct SendAmountView: View {
     }
 
     private var allWallets: [WalletRecord] {
-        databaseSnapshot.wallets
+        walletRecordsObservation.wallets
     }
 
     init(
@@ -140,6 +141,7 @@ struct SendAmountView: View {
             ToolbarItem(placement: .topBarTrailing) { optionsMenu }
         }
         .task(id: balancesKey) { resolveBalances() }
+        .task(id: activeWalletScopeKey) { syncObservationScopes() }
         .task { await resolvePrices() }
         .task { await model.loadFee() }
         .task { await model.loadUTXOs(walletId: activeWallet?.id) }
@@ -379,13 +381,16 @@ struct SendAmountView: View {
 
     private var balancesKey: String {
         guard let wallet = activeWallet else { return "none" }
-        var rows = 0
-        var newest = Date.distantPast
-        for address in wallet.addresses where address.chainRaw == chain.rawValue {
-            rows += address.balances.count
-            for b in address.balances where b.updatedAt > newest { newest = b.updatedAt }
-        }
-        return "\(wallet.id.uuidString)|\(chain.rawValue)|\(rows)|\(newest.timeIntervalSince1970)"
+        return "\(wallet.id.uuidString)|\(chain.rawValue)|\(activeBalancesObservation.revision)"
+    }
+
+    private var activeWalletScopeKey: String {
+        "\(activeWalletIdRaw)|\(walletRecordsObservation.revision)"
+    }
+
+    private func syncObservationScopes() {
+        let scopedWalletId = activeWallet?.id ?? UUID(uuidString: activeWalletIdRaw)
+        activeBalancesObservation.setWalletId(scopedWalletId)
     }
 
     /// Re-fetch / re-derive the fee when a material input changes. For
@@ -415,17 +420,18 @@ struct SendAmountView: View {
         var native: Decimal = 0
         var tokenBalance: Decimal?
         let state = SendAmountMath.AccountState()
-        for address in wallet.addresses where address.chainRaw == chain.rawValue {
-            for bal in address.balances {
-                let amount = WalletFormatting.decimalAmount(rawBalance: bal.rawBalance, decimals: bal.decimals)
-                if bal.tokenContract == nil && bal.tokenSymbol.uppercased() == chain.ticker.uppercased() {
-                    native += amount
-                }
-                if let selectedToken,
-                   bal.tokenSymbol.uppercased() == symbolUpper,
-                   tokenContractMatches(bal.tokenContract, selectedToken.contract, chain: selectedToken.chain) {
-                    tokenBalance = (tokenBalance ?? 0) + amount
-                }
+        let addressIds = Set(wallet.addresses.filter { $0.chainRaw == chain.rawValue }.map(\.id))
+        for bal in activeBalancesObservation.balances {
+            guard let addressId = bal.addressId ?? bal.address?.id,
+                  addressIds.contains(addressId) else { continue }
+            let amount = WalletFormatting.decimalAmount(rawBalance: bal.rawBalance, decimals: bal.decimals)
+            if bal.tokenContract == nil && bal.tokenSymbol.uppercased() == chain.ticker.uppercased() {
+                native += amount
+            }
+            if let selectedToken,
+               bal.tokenSymbol.uppercased() == symbolUpper,
+               tokenContractMatches(bal.tokenContract, selectedToken.contract, chain: selectedToken.chain) {
+                tokenBalance = (tokenBalance ?? 0) + amount
             }
         }
         model.setBalances(native: native, token: tokenBalance, state: state)

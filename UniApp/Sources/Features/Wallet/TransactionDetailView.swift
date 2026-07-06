@@ -30,7 +30,7 @@ import UniformTypeIdentifiers
 /// + Trust Wallet coin marks; every color is a `UniColors` role.
 struct TransactionDetailView: View {
     let transactionId: UUID
-    @StateObject private var databaseSnapshot = DatabaseSnapshotObservation()
+    @StateObject private var transactionObservation = TransactionRecordObservation()
     @Environment(\.displayScale) private var displayScale
 
     /// The live, fetched detail. `nil` until the fetch lands (or if it
@@ -63,7 +63,7 @@ struct TransactionDetailView: View {
     @State private var exportFailed = false
 
     private var matches: [TransactionRecord] {
-        databaseSnapshot.transactions.filter { $0.id == transactionId }
+        transactionObservation.transaction.map { [$0] } ?? []
     }
 
     var body: some View {
@@ -110,9 +110,12 @@ struct TransactionDetailView: View {
         } message: {
             Text("Something went wrong preparing the export. Please try again.")
         }
-        // Off-main, re-runs if the id changes. Keyed on the stored tx's
-        // hash + chain so a navigation reuse with a fresh id refetches.
         .task(id: transactionId) {
+            transactionObservation.setTransactionId(transactionId)
+        }
+        // Off-main, re-runs once the narrow transaction observer has the
+        // stored tx, then whenever that row changes.
+        .task(id: transactionDetailLoadKey) {
             await loadDetail()
         }
         // Resolve the hero's fiat conversion off-main (Rule #28), re-running
@@ -1136,6 +1139,10 @@ struct TransactionDetailView: View {
     private var fiatKey: String {
         guard let tx = matches.first else { return "none" }
         return "\(tx.tokenSymbol)|\(tx.amountRaw)|\(currencyCode)|\(showAmountsInFiat)"
+    }
+
+    private var transactionDetailLoadKey: String {
+        "\(transactionId.uuidString)|\(transactionObservation.revision)"
     }
 
     /// Resolve the transaction amount's fiat value through the shared

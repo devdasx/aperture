@@ -27,7 +27,7 @@ struct ReceiveQRDetailView: View {
     let address: String
 
     @Environment(\.displayScale) private var displayScale
-    @StateObject private var databaseSnapshot = DatabaseSnapshotObservation()
+    @StateObject private var walletRecordsObservation = WalletRecordsObservation()
     @GRDBStorage("activeWalletId") private var activeWalletIdRaw: String = ""
 
     @State private var justCopiedAt: Date?
@@ -55,7 +55,7 @@ struct ReceiveQRDetailView: View {
     }
 
     private var activeWallet: WalletRecord? {
-        ActiveWalletResolver.resolve(rawID: activeWalletIdRaw, wallets: databaseSnapshot.wallets)
+        ActiveWalletResolver.resolve(rawID: activeWalletIdRaw, wallets: walletRecordsObservation.wallets)
     }
 
     private var displayedAddress: String {
