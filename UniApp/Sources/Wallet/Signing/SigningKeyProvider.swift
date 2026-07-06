@@ -413,7 +413,8 @@ enum SigningKeyProvider {
     /// the common receive/change windows when a path was not persisted.
     private static func bitcoinPurposes(for chain: SupportedChain) -> [Int] {
         switch chain {
-        case .bitcoin, .litecoin: return [84, 49, 44]
+        case .bitcoin: return [86, 84, 49, 44]
+        case .litecoin: return [84, 49, 44]
         case .bitcoinCash, .dogecoin: return [44]
         default: return [84]
         }
@@ -453,8 +454,16 @@ enum SigningKeyProvider {
                 ?? coin.deriveAddress(privateKey: privateKey)
         case 49:
             return BitcoinAddress.compatibleAddress(publicKey: publicKey, prefix: coin.p2shPrefix).description
+        case 86:
+            return coin.deriveAddressFromPublicKeyAndDerivation(
+                publicKey: publicKey,
+                derivation: .bitcoinTaproot
+            )
         default:
-            return coin.deriveAddressFromPublicKey(publicKey: publicKey)
+            return coin.deriveAddressFromPublicKeyAndDerivation(
+                publicKey: publicKey,
+                derivation: .bitcoinSegwit
+            )
         }
     }
 }

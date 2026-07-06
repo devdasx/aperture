@@ -87,6 +87,38 @@ struct ExtendedKeyImportTests {
         #expect(Set(addresses).count == addresses.count)
     }
 
+    @Test("Bitcoin recipient validation accepts every standard output address family")
+    func bitcoinRecipientValidationAcceptsStandardOutputFamilies() {
+        let addresses = [
+            "1AC4gh14wwZPULVPCdxUkgqbtPvC92PQPN", // BIP44 / P2PKH
+            "396BPtVBUXqigCS2RCbUs4LFuA4QWW9djN", // BIP49 / P2SH
+            "bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4", // BIP84 / P2WPKH
+            "bc1pnncpg8s7gu7t6xmmzxqarcj8ydthmaz8gr4m76eephjfprs53maswgel0w", // BIP86 / P2TR
+            "bc1qcuqamesrt803xld4l2j2vxx8rxmrx7aq82mkw7xwxh643wzqjlnqutkcv2" // BIP48-style P2WSH output
+        ]
+
+        for address in addresses {
+            #expect(service.validateAddress(address, on: .bitcoin))
+            #expect(!BitcoinScript.lockScriptForAddress(address: address, coin: .bitcoin).data.isEmpty)
+        }
+    }
+
+    @Test("BIP86 child paths derive Taproot addresses")
+    func bip86ChildPathsDeriveTaprootAddresses() throws {
+        let mnemonic = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about"
+        let wallet = try #require(HDWallet(mnemonic: mnemonic, passphrase: ""))
+        let path = "m/86'/0'/0'/0/0"
+        let privateKey = wallet.getKey(coin: .bitcoin, derivationPath: path)
+        let publicKey = privateKey.getPublicKeySecp256k1(compressed: true)
+        let address = CoinType.bitcoin.deriveAddressFromPublicKeyAndDerivation(
+            publicKey: publicKey,
+            derivation: .bitcoinTaproot
+        )
+
+        #expect(address == wallet.getAddressDerivation(coin: .bitcoin, derivation: .bitcoinTaproot))
+        #expect(address.hasPrefix("bc1p"))
+    }
+
     /// A garbage string that isn't an extended key throws an HONEST error —
     /// it must never fabricate an address (Rule #16).
     @Test("Non-extended-key input is rejected, never mocked")

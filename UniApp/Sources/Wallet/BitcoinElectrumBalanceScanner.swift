@@ -201,6 +201,7 @@ actor BitcoinElectrumBalanceScanner {
 }
 
 enum BitcoinPathSearchPurpose: String, CaseIterable, Identifiable, Sendable {
+    case bip86
     case bip84
     case bip49
     case bip44
@@ -209,6 +210,7 @@ enum BitcoinPathSearchPurpose: String, CaseIterable, Identifiable, Sendable {
 
     var title: String {
         switch self {
+        case .bip86: return "BIP86"
         case .bip84: return "BIP84"
         case .bip49: return "BIP49"
         case .bip44: return "BIP44"
@@ -217,6 +219,8 @@ enum BitcoinPathSearchPurpose: String, CaseIterable, Identifiable, Sendable {
 
     var subtitle: String {
         switch self {
+        case .bip86:
+            return "Taproot receive paths, addresses start with bc1p."
         case .bip84:
             return "Native SegWit receive paths, addresses start with bc1q."
         case .bip49:
@@ -228,6 +232,7 @@ enum BitcoinPathSearchPurpose: String, CaseIterable, Identifiable, Sendable {
 
     var pathTemplate: String {
         switch self {
+        case .bip86: return "m/86'/0'/account'/change/index"
         case .bip84: return "m/84'/0'/account'/change/index"
         case .bip49: return "m/49'/0'/account'/change/index"
         case .bip44: return "m/44'/0'/account'/change/index"
@@ -236,6 +241,7 @@ enum BitcoinPathSearchPurpose: String, CaseIterable, Identifiable, Sendable {
 
     fileprivate var accountKind: BitcoinAccountKind {
         switch self {
+        case .bip86: return .bip86
         case .bip84: return .bip84
         case .bip49: return .bip49
         case .bip44: return .bip44
@@ -627,12 +633,14 @@ private struct BitcoinElectrumScanTarget: Sendable {
 }
 
 private enum BitcoinAccountKind: CaseIterable, Sendable {
-    case bip44
-    case bip49
+    case bip86
     case bip84
+    case bip49
+    case bip44
 
     var purpose: Purpose {
         switch self {
+        case .bip86: return .bip86
         case .bip44: return .bip44
         case .bip49: return .bip49
         case .bip84: return .bip84
@@ -641,6 +649,7 @@ private enum BitcoinAccountKind: CaseIterable, Sendable {
 
     var purposeNumber: Int {
         switch self {
+        case .bip86: return 86
         case .bip44: return 44
         case .bip49: return 49
         case .bip84: return 84
@@ -649,6 +658,7 @@ private enum BitcoinAccountKind: CaseIterable, Sendable {
 
     var publicVersion: HDVersion {
         switch self {
+        case .bip86: return .xpub
         case .bip44: return .xpub
         case .bip49: return .ypub
         case .bip84: return .zpub
@@ -793,6 +803,11 @@ private enum BitcoinHDAddressDeriver {
         kind: BitcoinAccountKind
     ) throws -> String {
         switch kind {
+        case .bip86:
+            return CoinType.bitcoin.deriveAddressFromPublicKeyAndDerivation(
+                publicKey: publicKey,
+                derivation: .bitcoinTaproot
+            )
         case .bip44:
             guard let address = BitcoinAddress(
                 publicKey: publicKey,
