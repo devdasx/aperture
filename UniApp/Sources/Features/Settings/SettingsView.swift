@@ -101,6 +101,7 @@ struct SettingsView: View {
     @State private var navigationPath: [SettingsDestination]
     @State private var splitSelection: SettingsDestination?
     @State private var splitDetailPath: [SettingsDestination]
+    @State private var activeOpenSourceSheetDesign: OpenSourceSheetDesign?
 
     init(showsCloseButton: Bool = false, allowsSplitLayout: Bool = true) {
         self.showsCloseButton = showsCloseButton
@@ -158,10 +159,18 @@ struct SettingsView: View {
     }
 
     var body: some View {
-        if usesSplitLayout {
-            splitBody
-        } else {
-            compactBody
+        Group {
+            if usesSplitLayout {
+                splitBody
+            } else {
+                compactBody
+            }
+        }
+        .sheet(item: $activeOpenSourceSheetDesign) { design in
+            OpenSourceSheetDesignPreview(design: design)
+                .uniAppEnvironment()
+                .intrinsicHeightSheet()
+                .presentationBackground(UniColors.Background.primary)
         }
     }
 
@@ -360,6 +369,27 @@ struct SettingsView: View {
                     }
                     .listRowBackground(UniColors.List.rowBackground)
                 }
+            }
+
+            Section {
+                ForEach(OpenSourceSheetDesign.allCases) { design in
+                    Button {
+                        activeOpenSourceSheetDesign = design
+                    } label: {
+                        SettingsRow(
+                            systemImage: "rectangle.bottomthird.inset.filled",
+                            title: design.settingsTitle,
+                            trailing: design.settingsSubtitle,
+                            iconTint: .purple
+                        )
+                    }
+                    .buttonStyle(.uniListRow)
+                    .listRowBackground(UniColors.List.rowBackground)
+                }
+            } header: {
+                Text("Sheet designs")
+            } footer: {
+                Text("Temporary prototypes for choosing the new Open Source sheet layout.")
             }
 
             // Section 6 — Reset Aperture (terminal nuclear hatch). Moved
