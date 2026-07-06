@@ -59,9 +59,9 @@ struct TransactionDetailView: View {
     /// available, so the hero falls back to the native amount rather than
     /// fabricating a local-currency value.
     @State private var fiatValue: Decimal?
-    @State private var isGeneratingPDF = false
-    @State private var exportedPDF: ExportedActivityPDF?
-    @State private var exportFailed = false
+    @State private var isRenderingShareImage = false
+    @State private var screenshotShareItem: TransactionScreenshotShareItem?
+    @State private var screenshotShareFailed = false
 
     private var matches: [TransactionRecord] {
         transactionObservation.transaction.map { [$0] } ?? []
@@ -88,28 +88,30 @@ struct TransactionDetailView: View {
             if matches.first != nil {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
-                        exportTransactionPDF()
+                        if let tx = matches.first {
+                            shareTransactionScreenshot(tx)
+                        }
                     } label: {
                         Image(systemName: "square.and.arrow.up")
-                            .accessibilityLabel(Text("Export transaction PDF"))
+                            .accessibilityLabel(Text("Share screenshot"))
                     }
                     .tint(UniColors.Icon.accent)
-                    .disabled(isGeneratingPDF)
+                    .disabled(isRenderingShareImage)
                 }
             }
         }
-        .sheet(item: $exportedPDF) { pdf in
-            ActivityPDFShareSheet(url: pdf.url)
+        .sheet(item: $screenshotShareItem) { item in
+            TransactionScreenshotShareSheet(item: item)
         }
         .overlay {
-            if isGeneratingPDF {
-                pdfGeneratingOverlay
+            if isRenderingShareImage {
+                shareRenderingOverlay
             }
         }
-        .alert("Couldn't create the PDF.", isPresented: $exportFailed) {
+        .alert("Couldn't share the screenshot.", isPresented: $screenshotShareFailed) {
             Button("OK", role: .cancel) {}
         } message: {
-            Text("Something went wrong preparing the export. Please try again.")
+            Text("Something went wrong preparing the image. Please try again.")
         }
         .task(id: transactionId) {
             transactionObservation.setTransactionId(transactionId)
@@ -137,10 +139,9 @@ struct TransactionDetailView: View {
         List {
             heroSection(tx)
             commonSection(tx)
+            transactionActionsSection(tx)
         }
         .listStyle(.insetGrouped)
-        .scrollContentBackground(.hidden)
-        .background(UniColors.Background.primary)
         .frame(maxWidth: .infinity)
     }
 
@@ -273,34 +274,28 @@ struct TransactionDetailView: View {
                 accessibilityName: "transaction hash"
             )
 
+        }
+    }
+
+    @ViewBuilder
+    private func transactionActionsSection(_ tx: TransactionRecord) -> some View {
+        Section {
             if let url = detail?.explorerURL ?? explorerFallbackURL(tx) {
-                divider
-                explorerLink(url)
+                Link(destination: url) {
+                    Label("View on explorer", systemImage: "safari")
+                }
             }
+            Button {
+                shareTransactionScreenshot(tx)
+            } label: {
+                Label("Share screenshot", systemImage: "photo.on.rectangle.angled")
+            }
+            .disabled(isRenderingShareImage)
         }
     }
 
-    private func explorerLink(_ url: URL) -> some View {
-        Link(destination: url) {
-            HStack(spacing: UniSpacing.s) {
-                Image(systemName: "safari")
-                    .font(.system(size: 17, weight: .semibold))
-                Text("View on explorer")
-                    .font(UniTypography.bodyEmphasized)
-                Spacer(minLength: 0)
-                Image(systemName: "arrow.up.right")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(UniColors.Icon.tertiary)
-            }
-            .foregroundStyle(UniColors.Text.link)
-            .contentShape(Rectangle())
-        }
-        .accessibilityLabel(Text("View on block explorer"))
-    }
-
-    /// Native progress overlay shown while the single-transaction receipt
-    /// renders.
-    private var pdfGeneratingOverlay: some View {
+    /// Native progress overlay shown while the transaction screenshot renders.
+    private var shareRenderingOverlay: some View {
         ZStack {
             UniColors.Background.primary.opacity(0.6).ignoresSafeArea()
             ProgressView()
@@ -384,20 +379,17 @@ struct TransactionDetailView: View {
     /// One redacted dummy row. BOTH label and value are `Text(verbatim:)` —
     /// these placeholders are shimmer-only (redacted, never visibly rendered
     /// and never localized), so they must NOT enter the string catalog
-    /// (Rule #20). Mirrors `keyValueRow`'s layout exactly.
+    /// (Rule #20). Mirrors `keyValueRow`'s native `LabeledContent` layout.
     private func skeletonRow(monospaced: Bool) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: UniSpacing.s) {
-            Text(verbatim: skeletonLabel)
-                .font(UniTypography.footnote)
-                .foregroundStyle(UniColors.Text.secondary)
-            Spacer(minLength: UniSpacing.s)
+        LabeledContent {
             keyValueText(
                 monospaced ? skeletonMono : skeletonValue,
                 monospaced: monospaced,
                 valueColor: UniColors.Text.primary
             )
+        } label: {
+            Text(verbatim: skeletonLabel)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     // Fixed-width dummy strings — clearly placeholders under the native
@@ -746,66 +738,49 @@ struct TransactionDetailView: View {
     }
 
     private func genericRow(_ field: DetailField) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: UniSpacing.s) {
-            // Label is an English source string — localize it (Rule #9/#20).
-            Text(LocalizedStringKey(field.label))
-                .font(UniTypography.footnote)
-                .foregroundStyle(UniColors.Text.secondary)
-            Spacer(minLength: UniSpacing.s)
-            // Value is real chain data — verbatim, mono, LTR, copyable.
+        LabeledContent {
             Button {
                 copy(field.value, name: field.label.lowercased())
             } label: {
                 Text(verbatim: genericDisplayValue(field.value))
-                    .font(UniTypography.monoBody)
-                    .foregroundStyle(UniColors.Text.primary)
+                    .font(.body.monospaced())
                     .multilineTextAlignment(.trailing)
                     .lineLimit(3)
                     .environment(\.layoutDirection, .leftToRight)
             }
             .buttonStyle(.plain)
             .accessibilityLabel(Text("Copy \(field.label)"))
+        } label: {
+            Text(LocalizedStringKey(field.label))
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     // MARK: - Reusable section / row primitives
 
-    /// A native inset-grouped `List` `Section` with a leading section header
-    /// (Rule #3 — system List; Rule #2 §B.3 — opaque content). Optional
-    /// trailing count chip (Inputs · 3) sits in the section header. The
-    /// section's rows are composed as one list cell so the existing
-    /// row + `divider` + `ForEach` content inside each section is preserved
-    /// verbatim — the surface is native, the content unchanged.
+    /// Native inset-grouped `List` section. Rows are emitted directly so
+    /// iOS owns separators, insets, highlighting, and grouped section chrome.
     private func sectionCard<C: View>(
         title: LocalizedStringKey,
         trailing: String? = nil,
         @ViewBuilder content: @escaping () -> C
     ) -> some View {
         Section {
-            VStack(alignment: .leading, spacing: UniSpacing.s) {
-                content()
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .listRowBackground(UniColors.List.rowBackground)
+            content()
         } header: {
-            HStack(alignment: .firstTextBaseline) {
-                Text(title)
-                    .font(UniTypography.footnote)
-                    .foregroundStyle(UniColors.Text.tertiary)
-                    .textCase(.uppercase)
-                    .tracking(0.6)
-                if let trailing {
+            if let trailing {
+                HStack {
+                    Text(title)
                     Spacer(minLength: UniSpacing.s)
                     Text(verbatim: trailing)
-                        .font(UniTypography.footnote.monospacedDigit())
-                        .foregroundStyle(UniColors.Text.tertiary)
                 }
+            } else {
+                Text(title)
             }
         }
     }
 
-    private var divider: some View { UniDivider() }
+    @ViewBuilder
+    private var divider: some View { EmptyView() }
 
     /// A plain label → value row. `monospaced` for numeric / hashy values.
     private func keyValueRow(
@@ -814,17 +789,11 @@ struct TransactionDetailView: View {
         monospaced: Bool = false,
         valueColor: Color = UniColors.Text.primary
     ) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: UniSpacing.s) {
-            Text(label)
-                .font(UniTypography.footnote)
-                .foregroundStyle(UniColors.Text.secondary)
-            Spacer(minLength: UniSpacing.s)
-            // Monospaced values are hashy/numeric chain data — LTR-locked
-            // (Rule #11 §C). Plain prose values (status, "Contract
-            // creation") follow the ambient direction.
+        LabeledContent {
             keyValueText(value, monospaced: monospaced, valueColor: valueColor)
+        } label: {
+            Text(label)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     /// A label → truncated-mono-value row that copies the FULL value on
@@ -835,26 +804,20 @@ struct TransactionDetailView: View {
         full: String,
         accessibilityName: String
     ) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: UniSpacing.s) {
-            Text(label)
-                .font(UniTypography.footnote)
-                .foregroundStyle(UniColors.Text.secondary)
-            Spacer(minLength: UniSpacing.s)
+        LabeledContent {
             Button {
                 copy(full, name: accessibilityName)
             } label: {
                 HStack(spacing: UniSpacing.xs) {
                     monoValue(display, truncate: false)
                     Image(systemName: "doc.on.doc")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(UniColors.Text.link)
                 }
-                .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .accessibilityLabel(Text("Copy \(accessibilityName)"))
+        } label: {
+            Text(label)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     /// A monospaced value `Text`, LTR-locked. `truncate` middle-truncates
@@ -1177,136 +1140,50 @@ struct TransactionDetailView: View {
         }
     }
 
-    // MARK: - Single transaction PDF export
+    // MARK: - Screenshot sharing
 
-    private func exportTransactionPDF() {
-        guard let tx = matches.first, !isGeneratingPDF else { return }
-        let row = transactionPDFRow(tx)
-        let document = transactionPDFDocument(tx: tx, row: row)
-        let fileName = transactionPDFFileName(tx)
-        let scale = displayScale
+    @MainActor
+    private func shareTransactionScreenshot(_ tx: TransactionRecord) {
+        guard !isRenderingShareImage else { return }
+        isRenderingShareImage = true
+        defer { isRenderingShareImage = false }
 
-        isGeneratingPDF = true
-        Task {
-            let url = await ActivityPDFExporter.makeTransactionReceiptFile(
-                row: row,
-                document: document,
-                fileName: fileName,
-                displayScale: scale
-            )
-            isGeneratingPDF = false
-            if let url {
-                exportedPDF = ExportedActivityPDF(url: url)
-            } else {
-                exportFailed = true
-            }
-        }
-    }
-
-    private func transactionPDFRow(_ tx: TransactionRecord) -> ActivityPDFRow {
         let direction = TransactionDirection(rawValue: tx.directionRaw) ?? .outgoing
-        let amount = Decimal(string: tx.amountRaw) ?? .zero
-        let sign = amountSign(tx)
-        let chain = resolvedChain ?? tx.address.flatMap { SupportedChain(rawValue: $0.chainRaw) } ?? .ethereum
         let status = statusForDisplay(tx) ?? .pending
-        let fiatText: String
-        if let fiatValue {
-            fiatText = "\(sign)\(WalletFormatting.fiat(fiatValue, currencyCode: currencyCode))"
-        } else {
-            fiatText = "—"
-        }
-
-        return ActivityPDFRow(
-            occurredAt: detail?.blockTime ?? tx.occurredAt,
-            dateText: Self.receiptDateFormatter.string(from: detail?.blockTime ?? tx.occurredAt),
-            timeText: Self.receiptTimeFormatter.string(from: detail?.blockTime ?? tx.occurredAt),
-            assetSymbol: tx.tokenSymbol,
-            networkName: chain.displayName,
-            chain: chain,
-            tokenContract: tx.tokenContract,
-            typeText: pdfTypeLabel(direction),
-            transferType: pdfTransferType(direction),
-            amountText: "\(sign)\(WalletFormatting.native(amount, decimals: 6))",
-            unitText: tx.tokenSymbol,
-            fiatText: fiatText,
-            fiatValue: fiatValue,
-            statusText: statusText(status),
-            status: pdfStatusKind(status)
-        )
-    }
-
-    private func transactionPDFDocument(tx: TransactionRecord, row: ActivityPDFRow) -> ActivityPDFDocument {
-        let walletName = tx.address?.wallet?.name ?? String.apertureLocalized("Wallet")
         let when = detail?.blockTime ?? tx.occurredAt
-        let details = [
-            ActivityPDFReceiptDetail(label: "Status", value: row.statusText, monospaced: false),
-            ActivityPDFReceiptDetail(label: "When", value: Self.receiptDateTimeFormatter.string(from: when), monospaced: false),
-            ActivityPDFReceiptDetail(label: "Network", value: row.networkName, monospaced: false),
-            ActivityPDFReceiptDetail(label: "Asset", value: row.assetSymbol, monospaced: false),
-            ActivityPDFReceiptDetail(label: "Network fee", value: feeDisplay(tx) ?? "—", monospaced: true),
-            ActivityPDFReceiptDetail(
-                label: "Hash",
-                value: WalletFormatting.shortAddress(hashForDisplay(tx), prefix: 12, suffix: 10),
-                monospaced: true
-            )
-        ]
-
-        return ActivityPDFDocument(
-            appName: "Aperture",
-            title: String(localized: "Transaction Receipt"),
-            walletName: walletName,
-            generatedText: Self.receiptDateTimeFormatter.string(from: Date()),
-            transactionCount: 1,
-            assetCount: 1,
-            confirmedCount: row.status == .confirmed ? 1 : 0,
-            failedCount: row.status == .failed ? 1 : 0,
-            internalCount: row.transferType == .internalTransfer ? 1 : 0,
-            receivedFiatText: row.transferType == .received ? row.fiatText : "—",
-            sentFiatText: row.transferType == .sent ? row.fiatText : "—",
-            netFiatText: row.fiatText,
-            netIsPositive: row.transferType != .sent,
-            periodText: Self.receiptDateFormatter.string(from: when),
-            chainSummaries: [ActivityPDFChainSummary(chain: row.chain, count: 1)],
-            downloadCaption: String(localized: "Get Aperture"),
-            appStoreURLText: ApertureWeb.appStoreDisplay,
-            footerSiteText: "aperturex.io",
-            pageLabelFormat: String(localized: "Page %1$lld of %2$lld"),
-            emptyText: String(localized: "No transaction to show."),
-            legalTitle: String(localized: "About this receipt"),
-            legalText: String(localized: "This receipt was generated by Aperture from local wallet data and live on-chain detail when available. Fiat values are estimates and are for reference only."),
-            isRTL: false,
-            style: .transactionReceipt,
-            receiptDetails: details
+        let receipt = TransactionScreenshotReceipt(
+            chain: resolvedChain,
+            tokenSymbol: tx.tokenSymbol,
+            tokenContract: tx.tokenContract,
+            directionText: screenshotDirectionLabel(direction).uppercased(),
+            primaryAmount: primaryAmountLine(tx),
+            subtitleAmount: amountSubtitleLine(tx),
+            statusText: statusText(status),
+            status: status,
+            whenText: Self.receiptDateTimeFormatter.string(from: when),
+            networkFeeText: feeDisplay(tx),
+            hashText: WalletFormatting.shortAddress(hashForDisplay(tx), prefix: 12, suffix: 10),
+            appStoreText: ApertureWeb.appStoreDisplay
+        )
+        let renderer = ImageRenderer(
+            content: TransactionScreenshotView(receipt: receipt)
+        )
+        renderer.scale = displayScale
+        guard let image = renderer.uiImage else {
+            screenshotShareFailed = true
+            return
+        }
+        screenshotShareItem = TransactionScreenshotShareItem(
+            image: image,
+            appStoreURL: URL(string: ApertureWeb.appStore)
         )
     }
 
-    private func transactionPDFFileName(_ tx: TransactionRecord) -> String {
-        let date = Self.receiptFileDateFormatter.string(from: Date())
-        let hash = WalletFormatting.shortAddress(hashForDisplay(tx), prefix: 8, suffix: 6)
-        return "Aperture Transaction - \(tx.tokenSymbol) - \(hash) - \(date).pdf"
-    }
-
-    private func pdfTypeLabel(_ direction: TransactionDirection) -> String {
+    private func screenshotDirectionLabel(_ direction: TransactionDirection) -> String {
         switch direction {
         case .incoming: return String(localized: "Received")
         case .outgoing: return String(localized: "Sent")
         case .internal: return String(localized: "Internal")
-        }
-    }
-
-    private func pdfTransferType(_ direction: TransactionDirection) -> ActivityPDFRow.TransferType {
-        switch direction {
-        case .incoming: return .received
-        case .outgoing: return .sent
-        case .internal: return .internalTransfer
-        }
-    }
-
-    private func pdfStatusKind(_ status: TransactionStatus) -> ActivityPDFRow.Status {
-        switch status {
-        case .confirmed: return .confirmed
-        case .pending: return .pending
-        case .failed: return .failed
         }
     }
 
@@ -1488,31 +1365,157 @@ struct TransactionDetailView: View {
         }
     }
 
-    private static let receiptDateFormatter: DateFormatter = {
-        let f = DateFormatter()
-        f.locale = Locale(identifier: "en_US_POSIX")
-        f.dateFormat = "d MMM yyyy"
-        return f
-    }()
-
-    private static let receiptTimeFormatter: DateFormatter = {
-        let f = DateFormatter()
-        f.locale = Locale(identifier: "en_US_POSIX")
-        f.dateFormat = "HH:mm"
-        return f
-    }()
-
     private static let receiptDateTimeFormatter: DateFormatter = {
         let f = DateFormatter()
         f.locale = Locale(identifier: "en_US_POSIX")
         f.dateFormat = "d MMM yyyy 'at' HH:mm:ss"
         return f
     }()
+}
 
-    private static let receiptFileDateFormatter: DateFormatter = {
-        let f = DateFormatter()
-        f.locale = Locale(identifier: "en_US_POSIX")
-        f.dateFormat = "yyyy-MM-dd"
-        return f
-    }()
+private struct TransactionScreenshotReceipt {
+    let chain: SupportedChain?
+    let tokenSymbol: String
+    let tokenContract: String?
+    let directionText: String
+    let primaryAmount: String
+    let subtitleAmount: String?
+    let statusText: String
+    let status: TransactionStatus
+    let whenText: String
+    let networkFeeText: String?
+    let hashText: String
+    let appStoreText: String
+}
+
+private struct TransactionScreenshotView: View {
+    let receipt: TransactionScreenshotReceipt
+
+    var body: some View {
+        VStack(spacing: 22) {
+            VStack(spacing: 8) {
+                if let chain = receipt.chain {
+                    CoinMark(
+                        chain: chain,
+                        tokenSymbol: receipt.tokenSymbol,
+                        contract: receipt.tokenContract
+                    )
+                    .frame(width: 58, height: 58)
+                }
+
+                Text(verbatim: receipt.directionText)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(UniColors.Text.tertiary)
+
+                Text(verbatim: receipt.primaryAmount)
+                    .font(.system(size: 42, weight: .semibold))
+                    .minimumScaleFactor(0.6)
+                    .lineLimit(1)
+                    .environment(\.layoutDirection, .leftToRight)
+
+                if let subtitle = receipt.subtitleAmount {
+                    Text(verbatim: subtitle)
+                        .font(.system(size: 20, weight: .regular).monospacedDigit())
+                        .foregroundStyle(UniColors.Text.secondary)
+                        .minimumScaleFactor(0.7)
+                        .lineLimit(1)
+                        .environment(\.layoutDirection, .leftToRight)
+                }
+
+                Text(verbatim: receipt.statusText)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(statusForeground)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .background(Capsule().fill(statusBackground))
+            }
+            .frame(maxWidth: .infinity)
+
+            VStack(spacing: 0) {
+                screenshotRow("Status", value: receipt.statusText, valueColor: statusForeground)
+                Divider()
+                screenshotRow("When", value: receipt.whenText)
+                if let fee = receipt.networkFeeText {
+                    Divider()
+                    screenshotRow("Network fee", value: fee, monospaced: true)
+                }
+                Divider()
+                screenshotRow("Hash", value: receipt.hashText, monospaced: true)
+            }
+            .padding(16)
+            .background(
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .fill(UniColors.Card.background)
+            )
+
+            VStack(spacing: 3) {
+                Text("Shared with Aperture")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(UniColors.Text.secondary)
+                Text(verbatim: "Download on the App Store • \(receipt.appStoreText)")
+                    .font(.caption2)
+                    .foregroundStyle(UniColors.Text.tertiary)
+                    .multilineTextAlignment(.center)
+            }
+        }
+        .padding(28)
+        .frame(width: 390)
+        .background(UniColors.Background.primary)
+    }
+
+    private func screenshotRow(
+        _ label: LocalizedStringKey,
+        value: String,
+        monospaced: Bool = false,
+        valueColor: Color = UniColors.Text.primary
+    ) -> some View {
+        LabeledContent {
+            Text(verbatim: value)
+                .font(monospaced ? .body.monospacedDigit() : .body)
+                .foregroundStyle(valueColor)
+                .multilineTextAlignment(.trailing)
+                .lineLimit(2)
+                .environment(\.layoutDirection, .leftToRight)
+        } label: {
+            Text(label)
+                .foregroundStyle(UniColors.Text.secondary)
+        }
+        .padding(.vertical, 10)
+    }
+
+    private var statusForeground: Color {
+        switch receipt.status {
+        case .confirmed: return UniColors.Feedback.Success.foreground
+        case .pending: return UniColors.Feedback.Warning.foreground
+        case .failed: return UniColors.Feedback.Error.foreground
+        }
+    }
+
+    private var statusBackground: Color {
+        switch receipt.status {
+        case .confirmed: return UniColors.Feedback.Success.background
+        case .pending: return UniColors.Feedback.Warning.background
+        case .failed: return UniColors.Feedback.Error.background
+        }
+    }
+}
+
+private struct TransactionScreenshotShareItem: Identifiable {
+    let id = UUID()
+    let image: UIImage
+    let appStoreURL: URL?
+}
+
+private struct TransactionScreenshotShareSheet: UIViewControllerRepresentable {
+    let item: TransactionScreenshotShareItem
+
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        var items: [Any] = [item.image]
+        if let appStoreURL = item.appStoreURL {
+            items.append(appStoreURL)
+        }
+        return UIActivityViewController(activityItems: items, applicationActivities: nil)
+    }
+
+    func updateUIViewController(_ controller: UIActivityViewController, context: Context) {}
 }
