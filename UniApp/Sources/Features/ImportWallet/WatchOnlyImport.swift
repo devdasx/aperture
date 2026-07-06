@@ -101,7 +101,7 @@ struct WatchOnlyEntryView: View {
                 .intrinsicHeightSheet()
                 .presentationBackground(UniColors.Background.primary)
         }
-        .safeAreaInset(edge: .bottom) {
+        .uniBottomActionBar {
             UniButton(title: "Continue", variant: .primary, isEnabled: canContinue) {
                 onContinue()
             }
@@ -216,7 +216,7 @@ struct WatchOnlyReviewView: View {
         .background(UniColors.Background.primary)
         .navigationTitle("Review watch-only")
         .navigationBarTitleDisplayMode(.inline)
-        .safeAreaInset(edge: .bottom) {
+        .uniBottomActionBar {
             if !isDeriving && !addresses.isEmpty {
                 GlassEffectContainer(spacing: UniSpacing.s) {
                     UniButton(
@@ -238,7 +238,7 @@ struct WatchOnlyReviewView: View {
 
     /// Inline error surface — shown when validation / derivation
     /// rejected every entry. The commit button stays hidden (the
-    /// `safeAreaInset` guards on `!addresses.isEmpty`), so nothing
+    /// bottom action bar guards on `!addresses.isEmpty`, so nothing
     /// invalid can be committed; this row explains why.
     private var errorState: some View {
         VStack(alignment: .leading, spacing: UniSpacing.m) {

@@ -213,7 +213,7 @@ struct SendRecipientView: View {
         // screen (chips + recents) — these aren't `UniButton`s, so the
         // haptic is wired here, keyed to the shared tap counter.
         .uniHaptic(.selection, trigger: selectionTapCount)
-        .safeAreaInset(edge: .bottom) { continueBar }
+        .uniBottomActionBar { continueBar }
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .principal) {

@@ -132,7 +132,7 @@ struct SendAmountView: View {
         .scrollIndicators(.hidden)
         .background(UniColors.Background.primary)
         .uniHaptic(.selection, trigger: selectionTapCount)
-        .safeAreaInset(edge: .bottom) { reviewBar }
+        .uniBottomActionBar { reviewBar }
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .principal) {

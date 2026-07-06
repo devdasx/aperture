@@ -169,7 +169,7 @@ struct MnemonicEntryView: View {
             // ToolbarItem (CustomizableToolbarContent), not the inner Button.
             .matchedTransitionSource(id: passphraseZoomID, in: passphraseZoom)
         }
-        .safeAreaInset(edge: .bottom) { bottomBar }
+        .uniBottomActionBar { bottomBar }
         .onAppear {
             if words.isEmpty, draft.isEmpty {
                 let restored = state.mnemonicWords.filter { !$0.isEmpty }

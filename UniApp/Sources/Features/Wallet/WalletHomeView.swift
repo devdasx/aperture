@@ -872,7 +872,7 @@ struct WalletHomeView: View {
     /// **Pull-to-refresh + auto-refresh** continue to attach to this
     /// surface (`List` consumes `.refreshable` and `.task` the same
     /// way `ScrollView` did). The bottom test-mode banner continues
-    /// to ride `.safeAreaInset(edge: .bottom)` on the body. The
+    /// to ride the body-level bottom overlay. The
     /// 2026-06-09 Lottie indicator was reverted per user direction;
     /// the system pull-to-refresh spinner is back.
     ///

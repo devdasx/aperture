@@ -251,7 +251,7 @@ private struct RollYourOwnKeypadView: View {
         .background(UniColors.Background.primary)
         .navigationTitle(titleKey)
         .navigationBarTitleDisplayMode(.inline)
-        .safeAreaInset(edge: .bottom) {
+        .uniBottomActionBar {
             actionRegion
                 .padding(.horizontal, UniSpacing.l)
                 .padding(.bottom, UniSpacing.l)
@@ -536,7 +536,7 @@ private struct RollYourOwnPreviewView: View {
         .background(UniColors.Background.primary)
         .navigationTitle("Your recovery phrase")
         .navigationBarTitleDisplayMode(.inline)
-        .safeAreaInset(edge: .bottom) {
+        .uniBottomActionBar {
             actionRegion
                 .padding(.horizontal, UniSpacing.l)
                 .padding(.bottom, UniSpacing.l)

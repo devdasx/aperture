@@ -178,7 +178,7 @@ struct PinCodeView: View {
         .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar { navigationControlsToolbar }
-        .safeAreaInset(edge: .bottom) { biometricFallbackButton }
+        .uniBottomActionBar { biometricFallbackButton }
         .scrollDismissesKeyboard(.never)
         .contentShape(Rectangle())
         .onTapGesture { focusNativeKeyboard() }

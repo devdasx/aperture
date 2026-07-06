@@ -135,8 +135,9 @@ struct OnboardingView: View {
 
                     bottomStack
                         .padding(.horizontal, UniSpacing.l)
-                        .padding(.bottom, UniSpacing.l)
+                        .padding(.bottom, UniSpacing.xs)
                 }
+                .ignoresSafeArea(.container, edges: .bottom)
             }
             // Match the wallet-home pattern exactly: the settings gear
             // lives inside a system `.toolbar { ToolbarItem(.topBarLeading) }`

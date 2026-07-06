@@ -59,7 +59,7 @@ struct BackupVerifyView: View {
             .padding(.top, UniSpacing.m)
             .padding(.bottom, UniSpacing.l)
         }
-        .safeAreaInset(edge: .bottom) {
+        .uniBottomActionBar {
             actionRegion
                 .padding(.horizontal, UniSpacing.l)
                 .padding(.bottom, UniSpacing.l)

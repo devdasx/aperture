@@ -114,7 +114,7 @@ struct WalletReadyView: View {
             }
             Spacer()
         }
-        .safeAreaInset(edge: .bottom) {
+        .uniBottomActionBar {
             VStack(spacing: UniSpacing.s) {
                 UniFootnote(
                     text: LocalizedStringKey(message),

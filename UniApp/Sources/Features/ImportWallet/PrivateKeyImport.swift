@@ -89,7 +89,7 @@ struct PrivateKeyEntryView: View {
                     .tint(UniColors.Button.text)
             }
         }
-        .safeAreaInset(edge: .bottom) {
+        .uniBottomActionBar {
             continueRegion
                 .padding(.horizontal, UniSpacing.l)
                 .padding(.bottom, UniSpacing.l)
@@ -240,7 +240,7 @@ struct PrivateKeyReviewView: View {
         .background(UniColors.Background.primary)
         .navigationTitle("Review account")
         .navigationBarTitleDisplayMode(.inline)
-        .safeAreaInset(edge: .bottom) {
+        .uniBottomActionBar {
             if error == nil && !isDeriving {
                 GlassEffectContainer(spacing: UniSpacing.s) {
                     UniButton(

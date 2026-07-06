@@ -68,7 +68,7 @@ struct WalletDeleteSheet: View {
     var body: some View {
         NavigationStack {
             // Short, fixed content — no `ScrollView` per Rule #15. The
-            // bottom commit lives in a `safeAreaInset` so it floats over
+            // bottom commit lives in the shared bottom overlay so it floats over
             // the content as Liquid Glass chrome.
             VStack(alignment: .leading, spacing: UniSpacing.l) {
                 hero
@@ -99,7 +99,7 @@ struct WalletDeleteSheet: View {
                     .accessibilityLabel(Text("Cancel"))
                 }
             }
-            .safeAreaInset(edge: .bottom) {
+            .uniBottomActionBar {
                 GlassEffectContainer(spacing: UniSpacing.s) {
                     UniButton(
                         title: "Remove this wallet",

@@ -121,7 +121,7 @@ struct SendReviewView: View {
         .scrollIndicators(.hidden)
         .scrollDisabled(isWorking)
         .background(UniColors.Background.primary)
-        .safeAreaInset(edge: .bottom) { actionBar }
+        .uniBottomActionBar { actionBar }
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(isWorking)
         .toolbar {
@@ -558,7 +558,7 @@ private struct SendSentView: View {
             .scrollIndicators(.hidden)
         }
         .background(UniColors.Background.primary)
-        .safeAreaInset(edge: .bottom) { doneBar }
+        .uniBottomActionBar { doneBar }
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(true)
         .uniHaptic(.success, trigger: copiedAt)
@@ -772,7 +772,7 @@ private struct SendFailedView: View {
             .scrollIndicators(.hidden)
         }
         .background(UniColors.Background.primary)
-        .safeAreaInset(edge: .bottom) { actionBar }
+        .uniBottomActionBar { actionBar }
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(true)
     }

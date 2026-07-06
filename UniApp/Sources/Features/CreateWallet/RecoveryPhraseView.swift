@@ -125,7 +125,7 @@ struct RecoveryPhraseView: View {
             .padding(.bottom, UniSpacing.l)
         }
         .background(UniColors.Background.primary.ignoresSafeArea())
-        .safeAreaInset(edge: .bottom) {
+        .uniBottomActionBar {
             actionRegion
                 .padding(.horizontal, UniSpacing.l)
                 .padding(.top, UniSpacing.s)

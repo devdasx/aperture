@@ -969,7 +969,7 @@ struct MarketDetailView: View {
                 .tint(model.isWatchlisted(asset.symbol) ? .yellow : nil)
             }
         }
-        .safeAreaInset(edge: .bottom) {
+        .uniBottomActionBar {
             detailFooter
         }
         .sheet(isPresented: $isShowingSend, onDismiss: { sendPath = NavigationPath() }) {

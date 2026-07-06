@@ -402,7 +402,7 @@ private struct BiometricPromptStep: View {
             Spacer()
         }
         .padding(.horizontal, UniSpacing.l)
-        .safeAreaInset(edge: .bottom) {
+        .uniBottomActionBar {
             actionRegion
                 .padding(.horizontal, UniSpacing.l)
                 .padding(.bottom, UniSpacing.l)
