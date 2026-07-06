@@ -1958,7 +1958,7 @@ struct WalletHomeView: View {
                 try? await Task.sleep(nanoseconds: delayNanoseconds)
             }
             guard !Task.isCancelled, let walletId = UUID(uuidString: rawWalletId) else { return }
-            _ = try? await ChainStateRepository(database: AppDatabase.shared)
+            _ = try? ChainStateRepository(database: AppDatabase.shared)
                 .rebuild(walletId: walletId, fiatCurrencyCode: code)
         }
     }
@@ -2615,7 +2615,7 @@ struct WalletHomeView: View {
                 }
             }
         }
-        _ = try? await ChainStateRepository(database: AppDatabase.shared)
+        _ = try? ChainStateRepository(database: AppDatabase.shared)
             .rebuild(walletId: walletId, fiatCurrencyCode: code)
         // Value-only updates don't move the count proxies — rebuild the
         // memoized display projections explicitly.
@@ -2814,7 +2814,7 @@ private struct BalanceCardLiveSection: View {
         let since = Date().addingTimeInterval(-7_200)
 
         do {
-            let observations = try await PriceSnapshotRepository(database: AppDatabase.shared)
+            let observations = try PriceSnapshotRepository(database: AppDatabase.shared)
                 .recentObservations(symbols: symbols, currency: code, since: since)
             guard !Task.isCancelled else { return }
             let snapshots = observations.map {

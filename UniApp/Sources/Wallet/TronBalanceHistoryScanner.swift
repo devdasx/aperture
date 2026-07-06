@@ -33,7 +33,7 @@ actor TronBalanceHistoryScanner {
         let events = await historyTask
 
         let txRepo = TransactionRepository(database: database)
-        try await txRepo.upsertBalance(
+        try txRepo.upsertBalance(
             addressId: address.id,
             tokenSymbol: SupportedChain.tron.ticker,
             tokenContract: nil,
@@ -55,7 +55,7 @@ actor TronBalanceHistoryScanner {
             if EVMHexQuantity.isPositiveDecimalString(balance.rawBalance) {
                 isUsed = true
             }
-            try await txRepo.upsertBalance(
+            try txRepo.upsertBalance(
                 addressId: address.id,
                 tokenSymbol: balance.entry.symbol,
                 tokenContract: balance.entry.contract,
@@ -77,7 +77,7 @@ actor TronBalanceHistoryScanner {
             isUsed = true
         }
         for event in events.prefix(50) {
-            try await txRepo.upsertTransaction(
+            try txRepo.upsertTransaction(
                 addressId: address.id,
                 txHash: event.txHash,
                 direction: event.direction,
@@ -93,10 +93,10 @@ actor TronBalanceHistoryScanner {
             )
         }
 
-        try await txRepo.markScanComplete(addressId: address.id, isUsed: isUsed, save: false)
-        try await txRepo.flush()
+        try txRepo.markScanComplete(addressId: address.id, isUsed: isUsed, save: false)
+        try txRepo.flush()
 
-        _ = try await ChainStateRepository(database: database).rebuild(
+        _ = try ChainStateRepository(database: database).rebuild(
             walletId: walletId,
             fiatCurrencyCode: currencyCode,
             onlyChains: [.tron],

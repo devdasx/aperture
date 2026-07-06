@@ -277,7 +277,7 @@ struct SendExecutor {
         let counterparty = draft.recipients.first?.address ?? ""
         let repository = TransactionRepository(database: database)
         do {
-            try await repository.upsertTransaction(
+            try repository.upsertTransaction(
                 addressId: addressId,
                 txHash: txHash,
                 direction: .outgoing,
@@ -393,7 +393,7 @@ struct SendExecutor {
                 }
                 guard let resolved else { continue }
                 let repository = TransactionRepository(database: database)
-                try? await repository.upsertTransaction(
+                try? repository.upsertTransaction(
                     addressId: addressId,
                     txHash: txHash,
                     direction: .outgoing,
@@ -448,7 +448,7 @@ struct SendExecutor {
                 let resolved: TransactionStatus = (status["err"] is NSNull || status["err"] == nil) ? .confirmed : .failed
                 let slot = (status["slot"] as? NSNumber)?.int64Value
                 let repository = TransactionRepository(database: database)
-                try? await repository.upsertTransaction(
+                try? repository.upsertTransaction(
                     addressId: addressId,
                     txHash: txHash,
                     direction: .outgoing,

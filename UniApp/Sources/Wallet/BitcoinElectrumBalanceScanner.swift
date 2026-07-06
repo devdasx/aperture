@@ -46,7 +46,7 @@ actor BitcoinElectrumBalanceScanner {
         )
 
         let txRepo = TransactionRepository(database: database)
-        try await txRepo.upsertBalance(
+        try txRepo.upsertBalance(
             addressId: plan.primaryAddressId,
             tokenSymbol: SupportedChain.bitcoin.ticker,
             tokenContract: nil,
@@ -59,7 +59,7 @@ actor BitcoinElectrumBalanceScanner {
         if includeHistory {
             let history = await safeRecentEvents(scans: scans)
             for event in history.prefix(50) {
-                try await txRepo.upsertTransaction(
+                try txRepo.upsertTransaction(
                     addressId: plan.primaryAddressId,
                     txHash: event.txHash,
                     direction: event.direction,
@@ -76,13 +76,13 @@ actor BitcoinElectrumBalanceScanner {
             }
         }
         if includeHistory || totalSats > 0 {
-            try await txRepo.markScanComplete(
+            try txRepo.markScanComplete(
                 addressId: plan.primaryAddressId,
                 isUsed: isUsed,
                 save: false
             )
         }
-        try await txRepo.flush()
+        try txRepo.flush()
 
         let utxos = scans.flatMap { scan in
             scan.utxos.map { utxo in
@@ -96,13 +96,13 @@ actor BitcoinElectrumBalanceScanner {
                 )
             }
         }
-        _ = try await ChainStateRepository(database: database)
+        _ = try ChainStateRepository(database: database)
             .replaceAddressedUTXOs(
                 walletId: walletId,
                 chain: .bitcoin,
                 utxos: utxos
             )
-        _ = try await ChainStateRepository(database: database).rebuild(
+        _ = try ChainStateRepository(database: database).rebuild(
             walletId: walletId,
             fiatCurrencyCode: currencyCode,
             onlyChains: [.bitcoin],

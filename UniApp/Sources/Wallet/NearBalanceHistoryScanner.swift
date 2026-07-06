@@ -43,7 +43,7 @@ actor NearBalanceHistoryScanner {
         )
 
         let txRepo = TransactionRepository(database: database)
-        try await txRepo.upsertBalance(
+        try txRepo.upsertBalance(
             addressId: address.id,
             tokenSymbol: SupportedChain.near.ticker,
             tokenContract: nil,
@@ -64,7 +64,7 @@ actor NearBalanceHistoryScanner {
             if DecimalString.isPositive(tokenBalance.rawBalance) {
                 isUsed = true
             }
-            try await txRepo.upsertBalance(
+            try txRepo.upsertBalance(
                 addressId: address.id,
                 tokenSymbol: tokenBalance.symbol,
                 tokenContract: tokenBalance.tokenAccount,
@@ -88,7 +88,7 @@ actor NearBalanceHistoryScanner {
             isUsed = true
         }
         for event in events {
-            try await txRepo.upsertTransaction(
+            try txRepo.upsertTransaction(
                 addressId: address.id,
                 txHash: event.txHash,
                 direction: event.direction,
@@ -104,10 +104,10 @@ actor NearBalanceHistoryScanner {
             )
         }
 
-        try await txRepo.markScanComplete(addressId: address.id, isUsed: isUsed, save: false)
-        try await txRepo.flush()
+        try txRepo.markScanComplete(addressId: address.id, isUsed: isUsed, save: false)
+        try txRepo.flush()
 
-        _ = try await ChainStateRepository(database: database).rebuild(
+        _ = try ChainStateRepository(database: database).rebuild(
             walletId: walletId,
             fiatCurrencyCode: currencyCode,
             onlyChains: [.near],

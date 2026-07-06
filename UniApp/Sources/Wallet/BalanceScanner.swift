@@ -130,7 +130,7 @@ actor WalletDataRefreshCoordinator {
 
         let walletRepository = WalletRepository(database: database)
         let addressLoadStart = Date()
-        let addressSnapshots = (try? await walletRepository.addresses(walletId: walletId)) ?? []
+        let addressSnapshots = (try? walletRepository.addresses(walletId: walletId)) ?? []
         let addressByChain = Dictionary(addressSnapshots.map { ($0.chain, $0) }, uniquingKeysWith: { first, _ in first })
         DiagnosticsLogStore.shared.record(
             .debug,
@@ -446,7 +446,7 @@ actor WalletDataRefreshCoordinator {
 
         if !attemptedChains.isEmpty {
             let rebuildStart = Date()
-            let rebuilt = try? await ChainStateRepository(database: database).rebuild(
+            let rebuilt = try? ChainStateRepository(database: database).rebuild(
                 walletId: walletId,
                 fiatCurrencyCode: normalizedCurrency,
                 onlyChains: attemptedChains,
@@ -469,7 +469,7 @@ actor WalletDataRefreshCoordinator {
             )
         }
         let chartSnapshotStart = Date()
-        let chartSnapshot = try? await WalletChartSnapshotRepository(database: database)
+        let chartSnapshot = try? WalletChartSnapshotRepository(database: database)
             .captureFromPersistedBalances(
                 walletId: walletId,
                 currencyCode: normalizedCurrency
@@ -609,7 +609,7 @@ private actor StellarBalanceHistoryScanner {
         let transactions = await transactionsTask
 
         let txRepo = TransactionRepository(database: database)
-        try await txRepo.upsertBalance(
+        try txRepo.upsertBalance(
             addressId: address.id,
             tokenSymbol: SupportedChain.stellar.ticker,
             tokenContract: nil,
@@ -631,7 +631,7 @@ private actor StellarBalanceHistoryScanner {
             isUsed = true
         }
         for event in events {
-            try await txRepo.upsertTransaction(
+            try txRepo.upsertTransaction(
                 addressId: address.id,
                 txHash: event.txHash,
                 direction: event.direction,
@@ -647,10 +647,10 @@ private actor StellarBalanceHistoryScanner {
             )
         }
 
-        try await txRepo.markScanComplete(addressId: address.id, isUsed: isUsed, save: false)
-        try await txRepo.flush()
+        try txRepo.markScanComplete(addressId: address.id, isUsed: isUsed, save: false)
+        try txRepo.flush()
 
-        _ = try await ChainStateRepository(database: database).rebuild(
+        _ = try ChainStateRepository(database: database).rebuild(
             walletId: walletId,
             fiatCurrencyCode: currencyCode,
             onlyChains: [.stellar],
@@ -1036,7 +1036,7 @@ private actor PolkadotBalanceHistoryScanner {
         )
 
         let txRepo = TransactionRepository(database: database)
-        try await txRepo.upsertBalance(
+        try txRepo.upsertBalance(
             addressId: address.id,
             tokenSymbol: SupportedChain.polkadot.ticker,
             tokenContract: nil,
@@ -1060,7 +1060,7 @@ private actor PolkadotBalanceHistoryScanner {
             if EVMHexQuantity.isPositiveDecimalString(balance.rawBalance) {
                 isUsed = true
             }
-            try await txRepo.upsertBalance(
+            try txRepo.upsertBalance(
                 addressId: address.id,
                 tokenSymbol: balance.entry.symbol,
                 tokenContract: String(balance.entry.assetId),
@@ -1078,7 +1078,7 @@ private actor PolkadotBalanceHistoryScanner {
         }
 
         for event in events.prefix(50) {
-            try await txRepo.upsertTransaction(
+            try txRepo.upsertTransaction(
                 addressId: address.id,
                 txHash: event.txHash,
                 direction: event.direction,
@@ -1094,10 +1094,10 @@ private actor PolkadotBalanceHistoryScanner {
             )
         }
 
-        try await txRepo.markScanComplete(addressId: address.id, isUsed: isUsed, save: false)
-        try await txRepo.flush()
+        try txRepo.markScanComplete(addressId: address.id, isUsed: isUsed, save: false)
+        try txRepo.flush()
 
-        _ = try await ChainStateRepository(database: database).rebuild(
+        _ = try ChainStateRepository(database: database).rebuild(
             walletId: walletId,
             fiatCurrencyCode: currencyCode,
             onlyChains: [.polkadot],
@@ -1787,7 +1787,7 @@ private actor SolanaBalanceHistoryScanner {
         let events = await historyTask
 
         let txRepo = TransactionRepository(database: database)
-        try await txRepo.upsertBalance(
+        try txRepo.upsertBalance(
             addressId: address.id,
             tokenSymbol: SupportedChain.solana.ticker,
             tokenContract: nil,
@@ -1808,7 +1808,7 @@ private actor SolanaBalanceHistoryScanner {
             if EVMHexQuantity.isPositiveDecimalString(balance.rawBalance) {
                 isUsed = true
             }
-            try await txRepo.upsertBalance(
+            try txRepo.upsertBalance(
                 addressId: address.id,
                 tokenSymbol: balance.token.entry.symbol,
                 tokenContract: balance.token.mint,
@@ -1829,7 +1829,7 @@ private actor SolanaBalanceHistoryScanner {
             isUsed = true
         }
         for event in events.prefix(50) {
-            try await txRepo.upsertTransaction(
+            try txRepo.upsertTransaction(
                 addressId: address.id,
                 txHash: event.txHash,
                 direction: event.direction,
@@ -1845,10 +1845,10 @@ private actor SolanaBalanceHistoryScanner {
             )
         }
 
-        try await txRepo.markScanComplete(addressId: address.id, isUsed: isUsed, save: false)
-        try await txRepo.flush()
+        try txRepo.markScanComplete(addressId: address.id, isUsed: isUsed, save: false)
+        try txRepo.flush()
 
-        _ = try await ChainStateRepository(database: database).rebuild(
+        _ = try ChainStateRepository(database: database).rebuild(
             walletId: walletId,
             fiatCurrencyCode: currencyCode,
             onlyChains: [.solana],
@@ -2491,7 +2491,7 @@ private actor PublicNodeEVMBalanceScanner {
         let historyEvents = await transactionHistory
 
         let txRepo = TransactionRepository(database: database)
-        try await txRepo.upsertBalance(
+        try txRepo.upsertBalance(
             addressId: address.id,
             tokenSymbol: chain.ticker,
             tokenContract: nil,
@@ -2507,7 +2507,7 @@ private actor PublicNodeEVMBalanceScanner {
             if EVMHexQuantity.isPositiveDecimalString(token.rawBalance) {
                 isUsed = true
             }
-            try await txRepo.upsertBalance(
+            try txRepo.upsertBalance(
                 addressId: address.id,
                 tokenSymbol: token.entry.symbol,
                 tokenContract: token.entry.contract.lowercased(),
@@ -2520,7 +2520,7 @@ private actor PublicNodeEVMBalanceScanner {
         }
 
         for event in historyEvents {
-            try await txRepo.upsertTransaction(
+            try txRepo.upsertTransaction(
                 addressId: address.id,
                 txHash: event.txHash,
                 direction: event.direction,
@@ -2536,9 +2536,9 @@ private actor PublicNodeEVMBalanceScanner {
             )
         }
 
-        try await txRepo.markScanComplete(addressId: address.id, isUsed: isUsed, save: false)
-        try await txRepo.flush()
-        _ = try await ChainStateRepository(database: database).rebuild(
+        try txRepo.markScanComplete(addressId: address.id, isUsed: isUsed, save: false)
+        try txRepo.flush()
+        _ = try ChainStateRepository(database: database).rebuild(
             walletId: walletId,
             fiatCurrencyCode: currencyCode,
             onlyChains: [chain],
@@ -2961,7 +2961,7 @@ actor WalletBackgroundWorkCoordinator {
                 walletId: walletId,
                 waitsForCompletion: false
             ) {
-                _ = try? await WalletChartSnapshotRepository(database: database)
+                _ = try? WalletChartSnapshotRepository(database: database)
                     .captureFromPersistedBalances(walletId: walletId, currencyCode: currencyCode)
             }
         }
@@ -2974,7 +2974,7 @@ actor WalletBackgroundWorkCoordinator {
                 walletId: walletId,
                 waitsForCompletion: false
             ) {
-                try? await WalletRepository(database: database)
+                try? WalletRepository(database: database)
                     .backfillEncryptedChainKeysFromStoredSecrets()
             }
         }
@@ -3029,7 +3029,7 @@ actor WalletBackgroundWorkCoordinator {
         } else {
             Task {
                 await task.value
-                await self.clearJob(key: key, token: token)
+                self.clearJob(key: key, token: token)
             }
         }
     }

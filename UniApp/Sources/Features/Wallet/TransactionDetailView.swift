@@ -1109,7 +1109,7 @@ struct TransactionDetailView: View {
         feeRaw: String?
     ) {
         Task { @MainActor in
-            try? await TransactionRepository(database: AppDatabase.shared).upsertTransaction(
+            try? TransactionRepository(database: AppDatabase.shared).upsertTransaction(
                 addressId: addressId,
                 txHash: tx.txHash,
                 direction: direction,

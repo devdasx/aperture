@@ -34,7 +34,7 @@ actor BitcoinFamilyRESTBalanceScanner {
         let history = await historyTask
 
         let txRepo = TransactionRepository(database: database)
-        try await txRepo.upsertBalance(
+        try txRepo.upsertBalance(
             addressId: address.id,
             tokenSymbol: address.chain.ticker,
             tokenContract: nil,
@@ -52,7 +52,7 @@ actor BitcoinFamilyRESTBalanceScanner {
 
         let isUsed = snapshot.isUsed || !history.isEmpty || !utxos.isEmpty
         for event in history.prefix(50) {
-            try await txRepo.upsertTransaction(
+            try txRepo.upsertTransaction(
                 addressId: address.id,
                 txHash: event.txHash,
                 direction: event.direction,
@@ -68,8 +68,8 @@ actor BitcoinFamilyRESTBalanceScanner {
             )
         }
 
-        try await txRepo.markScanComplete(addressId: address.id, isUsed: isUsed, save: false)
-        try await txRepo.flush()
+        try txRepo.markScanComplete(addressId: address.id, isUsed: isUsed, save: false)
+        try txRepo.flush()
 
         let addressedUTXOs = utxos.map {
             ChainStateRepository.AddressedUTXO(
@@ -81,13 +81,13 @@ actor BitcoinFamilyRESTBalanceScanner {
                 confirmed: $0.confirmed
             )
         }
-        _ = try await ChainStateRepository(database: database)
+        _ = try ChainStateRepository(database: database)
             .replaceAddressedUTXOs(
                 walletId: walletId,
                 chain: address.chain,
                 utxos: addressedUTXOs
             )
-        _ = try await ChainStateRepository(database: database).rebuild(
+        _ = try ChainStateRepository(database: database).rebuild(
             walletId: walletId,
             fiatCurrencyCode: currencyCode,
             onlyChains: Set([address.chain]),

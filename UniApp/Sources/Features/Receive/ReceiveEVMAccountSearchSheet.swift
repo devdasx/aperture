@@ -603,7 +603,7 @@ struct ReceiveEVMAccountSearchSheet: View {
         result: EVMReceiveAccountSearchResult
     ) async throws {
         let txRepo = TransactionRepository(database: AppDatabase.shared)
-        try await txRepo.upsertBalance(
+        try txRepo.upsertBalance(
             addressId: addressId,
             tokenSymbol: chain.ticker,
             tokenContract: nil,
@@ -614,7 +614,7 @@ struct ReceiveEVMAccountSearchSheet: View {
             save: false
         )
         for token in result.tokens {
-            try await txRepo.upsertBalance(
+            try txRepo.upsertBalance(
                 addressId: addressId,
                 tokenSymbol: token.symbol,
                 tokenContract: token.contract,
@@ -625,11 +625,11 @@ struct ReceiveEVMAccountSearchSheet: View {
                 save: false
             )
         }
-        try await txRepo.markScanComplete(addressId: addressId, isUsed: result.isUsed, save: false)
-        try await txRepo.flush()
+        try txRepo.markScanComplete(addressId: addressId, isUsed: result.isUsed, save: false)
+        try txRepo.flush()
 
         let chainStateRepo = ChainStateRepository(database: AppDatabase.shared)
-        _ = try await chainStateRepo.rebuild(
+        _ = try chainStateRepo.rebuild(
             walletId: walletId,
             fiatCurrencyCode: currencyCode,
             onlyChains: [chain]

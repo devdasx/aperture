@@ -293,7 +293,7 @@ actor TokenPricingEngine {
         guard let database = persistenceDatabase else { return [:] }
         let upperCurrency = currency.uppercased()
         let upperSymbols = symbols.map { $0.uppercased() }
-        guard let rows = try? await PriceCacheRepository(database: database)
+        guard let rows = try? PriceCacheRepository(database: database)
             .prices(symbols: upperSymbols, fiat: upperCurrency) else { return [:] }
         return rows.reduce(into: [:]) { output, entry in
             output[entry.key.uppercased()] = ResolvedPrice(
@@ -308,7 +308,7 @@ actor TokenPricingEngine {
         guard let database = persistenceDatabase else { return [:] }
         let upperCurrency = currency.uppercased()
         let upperSymbols = symbols.map { $0.uppercased() }
-        guard let rows = try? await PriceCacheRepository(database: database)
+        guard let rows = try? PriceCacheRepository(database: database)
             .latestPriceAnyCurrency(symbols: upperSymbols) else { return [:] }
 
         var output: [String: ResolvedPrice] = [:]
@@ -348,8 +348,8 @@ actor TokenPricingEngine {
                 )
             }
         guard !entries.isEmpty else { return }
-        try? await PriceCacheRepository(database: database).upsertMany(entries)
-        try? await PriceSnapshotRepository(database: database).record(
+        try? PriceCacheRepository(database: database).upsertMany(entries)
+        try? PriceSnapshotRepository(database: database).record(
             entries.map {
                 (
                     symbol: $0.symbol,
@@ -360,7 +360,7 @@ actor TokenPricingEngine {
             },
             at: now
         )
-        try? await SyncStatusRepository(database: database)
+        try? SyncStatusRepository(database: database)
             .markSynced(domain: .prices, scopeId: SyncDomain.globalScope)
     }
 

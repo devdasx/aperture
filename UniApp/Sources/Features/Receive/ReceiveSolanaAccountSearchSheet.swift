@@ -503,7 +503,7 @@ struct ReceiveSolanaAccountSearchSheet: View {
         result: SolanaReceiveAccountSearchResult
     ) async throws {
         let txRepo = TransactionRepository(database: AppDatabase.shared)
-        try await txRepo.upsertBalance(
+        try txRepo.upsertBalance(
             addressId: addressId,
             tokenSymbol: SupportedChain.solana.ticker,
             tokenContract: nil,
@@ -514,7 +514,7 @@ struct ReceiveSolanaAccountSearchSheet: View {
             save: false
         )
         for token in result.tokens {
-            try await txRepo.upsertBalance(
+            try txRepo.upsertBalance(
                 addressId: addressId,
                 tokenSymbol: token.symbol,
                 tokenContract: token.mint,
@@ -525,11 +525,11 @@ struct ReceiveSolanaAccountSearchSheet: View {
                 save: false
             )
         }
-        try await txRepo.markScanComplete(addressId: addressId, isUsed: result.isUsed, save: false)
-        try await txRepo.flush()
+        try txRepo.markScanComplete(addressId: addressId, isUsed: result.isUsed, save: false)
+        try txRepo.flush()
 
         let chainStateRepo = ChainStateRepository(database: AppDatabase.shared)
-        _ = try await chainStateRepo.rebuild(
+        _ = try chainStateRepo.rebuild(
             walletId: walletId,
             fiatCurrencyCode: currencyCode,
             onlyChains: [.solana]
