@@ -148,6 +148,25 @@ struct WalletAvatarSpec: Hashable, Sendable, Codable {
         self.customColorHex = customColorHex
     }
 
+    /// The only supported wallet identity mark: Aperture's iris logo
+    /// over the wallet's chosen colour.
+    static func walletMark(
+        gradient: WalletAvatarGradient,
+        badge: WalletAvatarBadge?,
+        customColorHex: String? = nil
+    ) -> WalletAvatarSpec {
+        WalletAvatarSpec(
+            gradient: gradient,
+            symbolType: .glyph,
+            glyph: .iris,
+            monogram: nil,
+            customSvg: nil,
+            customTint: nil,
+            badge: badge,
+            customColorHex: customColorHex
+        )
+    }
+
     // MARK: - Hydration from primitive columns
 
     /// Build a spec from the GRDB-persisted primitive columns plus
@@ -182,35 +201,16 @@ struct WalletAvatarSpec: Hashable, Sendable, Codable {
         // badge is derived from the wallet kind, per the hard rule.
         _ = badgeRaw
 
-        // Decode the persisted columns. Each decode returns nil on an
-        // unknown rawValue — defensive against a future palette /
-        // glyph set rev that drops a key. The `auto(name)` fallback
-        // covers a row whose gradient or symbol type came back nil.
-        //
-        // **Pre-v3 glyph-name retirement (2026-06-09).** The v3
-        // wallet-avatar glyph set replaces the prior 20 geometric
-        // marks with 30 Lucide icons. Some pre-v3 raw values (`dot`,
-        // `ring`, `rings`, `dots`, `bars`, `hex`, `diamond`,
-        // `triangle`, `square`, `bolt`, `heart`, `leaf`, `moon`,
-        // `key`) are not in the v3 enum. `WalletAvatarGlyph(rawValue:)`
-        // returns nil for those, and the no-resolvable-glyph branch
-        // below falls back to a `.mono` avatar on the wallet's
-        // initial. Never blank, never crashing. See
-        // `WalletAvatarGlyph.swift` for the full retired list.
+        // Decode only the persisted colour and symbol type. Symbol
+        // payload columns are intentionally ignored now: alternate
+        // glyphs, monograms, and custom SVG marks hydrate back to the
+        // fixed Aperture iris while preserving the wallet colour.
         let parsedGradient = WalletAvatarGradient(rawValue: gradientRaw)
         let parsedSymbolType = WalletAvatarSymbolType(rawValue: symbolTypeRaw)
-        let parsedGlyph: WalletAvatarGlyph? = glyphRaw.flatMap { raw in
-            raw.isEmpty ? nil : WalletAvatarGlyph(rawValue: raw)
-        }
-        let parsedMonogram: String? = monogramRaw.flatMap { raw in
-            raw.isEmpty ? nil : raw
-        }
-        let parsedCustomSvg: String? = customSvgRaw.flatMap { raw in
-            raw.isEmpty ? nil : raw
-        }
-        let parsedCustomTint: CustomTint = customTintRaw
-            .flatMap { CustomTint(rawValue: $0) }
-            ?? .white
+        _ = glyphRaw
+        _ = monogramRaw
+        _ = customSvgRaw
+        _ = customTintRaw
 
         // Derive the type badge from the wallet's kind. Per the hard
         // rule, this is NEVER user-selectable.
@@ -221,100 +221,29 @@ struct WalletAvatarSpec: Hashable, Sendable, Codable {
         // picker — route it to `customColorHex` and render a glyph disc
         // from that colour. (Reuses the existing column, no migration.)
         if gradientRaw.hasPrefix("#") {
-            return WalletAvatarSpec(
+            return WalletAvatarSpec.walletMark(
                 gradient: .graphite, // sentinel; overridden by customColorHex
-                symbolType: .glyph,
-                glyph: parsedGlyph ?? .iris,
-                monogram: nil,
-                customSvg: nil,
-                customTint: nil,
                 badge: derivedBadge,
                 customColorHex: gradientRaw
             )
         }
 
-        // If the persisted gradient AND symbol type both resolve, we
-        // have a real user-picked spec. Honor it.
-        if let gradient = parsedGradient, let symbolType = parsedSymbolType {
-            switch symbolType {
-            case .glyph:
-                // If the persisted glyph is nil (unknown rawValue,
-                // including retired pre-v3 names), fall back to mono
-                // on the wallet's initial — a defensive recovery that
-                // preserves the user's chosen gradient even if the
-                // glyph column got corrupted OR was a retired name.
-                if let glyph = parsedGlyph {
-                    return WalletAvatarSpec(
-                        gradient: gradient,
-                        symbolType: .glyph,
-                        glyph: glyph,
-                        monogram: nil,
-                        customSvg: nil,
-                        customTint: nil,
-                        badge: derivedBadge
-                    )
-                } else {
-                    return WalletAvatarSpec(
-                        gradient: gradient,
-                        symbolType: .mono,
-                        glyph: nil,
-                        monogram: monogramFromName(walletName),
-                        customSvg: nil,
-                        customTint: nil,
-                        badge: derivedBadge
-                    )
-                }
-            case .mono:
-                return WalletAvatarSpec(
-                    gradient: gradient,
-                    symbolType: .mono,
-                    glyph: nil,
-                    monogram: parsedMonogram ?? monogramFromName(walletName),
-                    customSvg: nil,
-                    customTint: nil,
-                    badge: derivedBadge
-                )
-            case .custom:
-                // The Upload tab's persisted shape. We require a
-                // non-empty sanitized SVG to honor `.custom` — without
-                // it the renderer has nothing to draw and would fall
-                // through to a blank disc. Mono-on-initial is the
-                // safe recovery (same shape as the glyph branch when
-                // the glyph column resolves to nil).
-                if let svg = parsedCustomSvg {
-                    return WalletAvatarSpec(
-                        gradient: gradient,
-                        symbolType: .custom,
-                        glyph: nil,
-                        monogram: nil,
-                        customSvg: svg,
-                        customTint: parsedCustomTint,
-                        badge: derivedBadge
-                    )
-                } else {
-                    return WalletAvatarSpec(
-                        gradient: gradient,
-                        symbolType: .mono,
-                        glyph: nil,
-                        monogram: monogramFromName(walletName),
-                        customSvg: nil,
-                        customTint: nil,
-                        badge: derivedBadge
-                    )
-                }
-            }
+        // If the persisted gradient AND symbol type both resolve, keep
+        // the persisted colour but normalize the mark. Older installs may
+        // still have monograms, alternate glyphs, or custom SVGs in the
+        // database; avatar identity is now fixed to the Aperture iris.
+        if let gradient = parsedGradient, parsedSymbolType != nil {
+            return WalletAvatarSpec.walletMark(
+                gradient: gradient,
+                badge: derivedBadge
+            )
         }
 
         // Otherwise: empty / pre-migration row. Auto(name) gives us a
         // deterministic, on-brand identity from the wallet's name.
         let auto = WalletAvatarSpec.auto(name: walletName)
-        return WalletAvatarSpec(
+        return WalletAvatarSpec.walletMark(
             gradient: auto.gradient,
-            symbolType: auto.symbolType,
-            glyph: auto.glyph,
-            monogram: auto.monogram,
-            customSvg: nil,
-            customTint: nil,
             badge: derivedBadge
         )
     }
@@ -348,11 +277,8 @@ struct WalletAvatarSpec: Hashable, Sendable, Codable {
         // each new wallet's gradient is genuinely random.
         let h = deterministicHash(name.isEmpty ? "Wallet" : name)
         let gradient = WalletAvatarGradient.allCases[Int(h % UInt32(WalletAvatarGradient.allCases.count))]
-        return WalletAvatarSpec(
+        return WalletAvatarSpec.walletMark(
             gradient: gradient,
-            symbolType: .glyph,
-            glyph: .iris,
-            monogram: nil,
             badge: nil
         )
     }
@@ -376,21 +302,10 @@ struct WalletAvatarSpec: Hashable, Sendable, Codable {
     /// asked for on the write side.
     static func randomDefault() -> WalletAvatarSpec {
         let gradient = WalletAvatarGradient.allCases.randomElement() ?? .graphite
-        return WalletAvatarSpec(
+        return WalletAvatarSpec.walletMark(
             gradient: gradient,
-            symbolType: .glyph,
-            glyph: .iris,
-            monogram: nil,
             badge: nil
         )
-    }
-
-    /// First character of the name, uppercased. Empty / whitespace
-    /// names fall back to `"W"` so the avatar is never blank.
-    private static func monogramFromName(_ name: String) -> String {
-        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let first = trimmed.first else { return "W" }
-        return String(first).uppercased()
     }
 
     /// 31-multiplier accumulator hash with 32-bit unsigned overflow.
@@ -419,4 +334,3 @@ struct WalletAvatarSpec: Hashable, Sendable, Codable {
         return h
     }
 }
-
