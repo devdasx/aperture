@@ -468,6 +468,7 @@ actor WalletDataRefreshCoordinator {
                 ]
             )
         }
+        await PendingTransactionMonitor.shared.kick(database: database)
         DiagnosticsLogStore.shared.record(
             .info,
             category: "scanner",

@@ -174,6 +174,37 @@ import Testing
         #expect(all.last?.status == .confirmed)
         #expect(all.last?.blockNumber == 99)
         #expect(try repo.transactions(walletId: walletID, direction: .incoming).count == 1)
+
+        try repo.upsertTransaction(
+            addressId: addressID,
+            txHash: "0xpending",
+            direction: .outgoing,
+            amountRaw: "1.5",
+            tokenSymbol: "ETH",
+            blockNumber: nil,
+            occurredAt: newer.addingTimeInterval(2),
+            status: .pending,
+            counterparty: "0xrecipient",
+            feeRaw: nil
+        )
+        let pending = try repo.pendingTransactions()
+        let pendingRow = try #require(pending.first { $0.txHash == "0xpending" })
+        #expect(pendingRow.walletId == walletID)
+        #expect(pendingRow.addressId == addressID)
+        #expect(pendingRow.chain == .ethereum)
+        #expect(pendingRow.status == .pending)
+        try repo.resolvePendingTransaction(
+            pendingRow,
+            status: .confirmed,
+            blockNumber: 101,
+            occurredAt: newer.addingTimeInterval(3),
+            feeRaw: "0.00021"
+        )
+        #expect(try repo.pendingTransactions().isEmpty)
+        let resolved = try #require(try repo.transactions(walletId: walletID).first { $0.txHash == "0xpending" })
+        #expect(resolved.status == .confirmed)
+        #expect(resolved.blockNumber == 101)
+        #expect(resolved.feeRaw == "0.00021")
     }
 
     @Test("balance upserts, chain summaries, and UTXO snapshots aggregate across owned addresses")

@@ -93,24 +93,10 @@ struct SendExecutor {
         )
         await applyOptimisticOutgoingState(walletId: walletId, draft: draft)
 
-        // Fire-and-forget confirmation poll where a cheap, definitive
-        // status RPC exists; otherwise the pending row is reconciled by
-        // the next history scan (the Bitcoin-family pattern). Honest about
-        // which chains poll vs reconcile:
-        //   - EVM        → eth_getTransactionReceipt (definitive 0x1/0x0).
-        //   - Solana     → getSignatureStatuses (confirmed/finalized).
-        //   - Bitcoin / Stellar / Sui / XRP / TRON / Cosmos / Aptos / NEAR
-        //     / Polkadot / TON → reconcile via the next history scan; a
-        //     successful broadcast is the source of truth and the scanner
-        //     flips the row when the tx lands (no fragile per-chain poll).
-        switch draft.chain.family {
-        case .evm:
-            pollEVMReceipt(txHash: txHash, chain: draft.chain, addressId: addressId, draft: draft)
-        case .ed25519 where draft.chain == .solana:
-            pollSolanaStatus(txHash: txHash, addressId: addressId, draft: draft)
-        default:
-            break // reconciled by the next history scan (Rule: honest, no fake poll)
-        }
+        // Fire-and-forget DB monitor. It polls every 3 seconds while pending
+        // rows exist and stops per row once the chain reports confirmed or
+        // failed, so all supported chains share the same reconciliation path.
+        await PendingTransactionMonitor.shared.kick(database: database)
 
         return .success(SentTransaction(txHash: txHash, chain: draft.chain, recordId: recordId))
     }
@@ -384,115 +370,4 @@ struct SendExecutor {
         )
     }
 
-    /// Poll `eth_getTransactionReceipt` a few times and flip the pending
-    /// row to confirmed/failed when the receipt lands. Detached so it
-    /// doesn't block the executor's return; the row updates live (Rule
-    /// #25). `result == "0x1"` confirmed, `"0x0"` failed, null = still
-    /// pending (the next history scan will also reconcile it).
-    private func pollEVMReceipt(
-        txHash: String,
-        chain: SupportedChain,
-        addressId: UUID?,
-        draft: SendDraft
-    ) {
-        guard let addressId else { return }
-        let database = self.database
-        let symbol = draft.tokenSymbol ?? draft.chain.ticker
-        let amountRaw = draft.totalAmount.description
-        let counterparty = draft.recipients.first?.address ?? ""
-        let feeRaw = draft.fee.estimatedTotalNative.description
-        Task.detached(priority: .utility) {
-            for attempt in 0..<10 {
-                try? await Task.sleep(for: .seconds(attempt == 0 ? 4 : 6))
-                guard let data = try? await RPCClient.shared.callJSONResultData(
-                    chain: chain, method: "eth_getTransactionReceipt", params: [txHash]
-                ) else { continue }
-                guard let dict = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else {
-                    continue // null receipt → still pending; keep polling
-                }
-                let statusHex = dict["status"] as? String
-                let blockHex = dict["blockNumber"] as? String
-                let blockNumber = blockHex.flatMap { Int64(($0.hasPrefix("0x") ? String($0.dropFirst(2)) : $0), radix: 16) }
-                let resolved: TransactionStatus?
-                switch statusHex {
-                case "0x1": resolved = .confirmed
-                case "0x0": resolved = .failed
-                default:    resolved = nil
-                }
-                guard let resolved else { continue }
-                let repository = TransactionRepository(database: database)
-                try? repository.upsertTransaction(
-                    addressId: addressId,
-                    txHash: txHash,
-                    direction: .outgoing,
-                    amountRaw: amountRaw,
-                    tokenSymbol: symbol,
-                    tokenContract: draft.tokenContract,
-                    kind: nil,
-                    blockNumber: blockNumber,
-                    occurredAt: Date(),
-                    status: resolved,
-                    counterparty: counterparty,
-                    feeRaw: feeRaw,
-                    save: true
-                )
-                return // terminal status written; stop polling
-            }
-        }
-    }
-
-    /// Poll Solana `getSignatureStatuses` a few times and flip the pending
-    /// row to confirmed/failed. Doc: solana.com/docs/rpc/http/
-    /// getsignaturestatuses — `value[0]` is null while unknown, then carries
-    /// `confirmationStatus` (processed/confirmed/finalized) + `err` (null =
-    /// success). `searchTransactionHistory: true` so a just-landed sig is
-    /// found. Detached; the row updates live (Rule #25). If it never
-    /// resolves in the window, the next history scan reconciles it.
-    private func pollSolanaStatus(
-        txHash: String,
-        addressId: UUID?,
-        draft: SendDraft
-    ) {
-        guard let addressId, !txHash.isEmpty else { return }
-        let database = self.database
-        let symbol = draft.tokenSymbol ?? draft.chain.ticker
-        let amountRaw = draft.totalAmount.description
-        let counterparty = draft.recipients.first?.address ?? ""
-        let feeRaw = draft.fee.estimatedTotalNative.description
-        let tokenContract = draft.tokenContract
-        Task.detached(priority: .utility) {
-            for attempt in 0..<8 {
-                try? await Task.sleep(for: .seconds(attempt == 0 ? 3 : 5))
-                let opts: [String: Sendable] = ["searchTransactionHistory": true]
-                guard let data = try? await RPCClient.shared.callJSONResultData(
-                    chain: .solana, method: "getSignatureStatuses",
-                    params: [[txHash], opts]
-                ) else { continue }
-                guard let root = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
-                      let values = root["value"] as? [Any], let first = values.first else { continue }
-                guard let status = first as? [String: Any] else { continue } // null → still pending
-                let confirmation = status["confirmationStatus"] as? String ?? ""
-                guard confirmation == "confirmed" || confirmation == "finalized" else { continue }
-                let resolved: TransactionStatus = (status["err"] is NSNull || status["err"] == nil) ? .confirmed : .failed
-                let slot = (status["slot"] as? NSNumber)?.int64Value
-                let repository = TransactionRepository(database: database)
-                try? repository.upsertTransaction(
-                    addressId: addressId,
-                    txHash: txHash,
-                    direction: .outgoing,
-                    amountRaw: amountRaw,
-                    tokenSymbol: symbol,
-                    tokenContract: tokenContract,
-                    kind: nil,
-                    blockNumber: slot,
-                    occurredAt: Date(),
-                    status: resolved,
-                    counterparty: counterparty,
-                    feeRaw: feeRaw,
-                    save: true
-                )
-                return // terminal status written; stop polling
-            }
-        }
-    }
 }

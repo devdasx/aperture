@@ -120,6 +120,7 @@ struct UniAppApp: App {
                     await Task.detached(priority: .utility) {
                         await DisabledChainDataPurge.runIfNeeded(database: AppDatabase.shared)
                     }.value
+                    await PendingTransactionMonitor.shared.kick(database: AppDatabase.shared)
                     Self.diagnostic(.info, "Root startup task finished", start: startupTaskStart)
                 }
         }

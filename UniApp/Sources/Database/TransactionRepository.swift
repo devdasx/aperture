@@ -139,6 +139,25 @@ final class TransactionRepository {
         let feeRaw: String?
     }
 
+    struct PendingTransactionSnapshot: Sendable, Hashable {
+        let id: UUID
+        let walletId: UUID
+        let addressId: UUID
+        let address: String
+        let chain: SupportedChain
+        let txHash: String
+        let direction: TransactionDirection
+        let kind: TransactionKind
+        let status: TransactionStatus
+        let amountRaw: String
+        let tokenSymbol: String
+        let tokenContract: String?
+        let blockNumber: Int64?
+        let occurredAt: Date
+        let counterparty: String
+        let feeRaw: String?
+    }
+
     func transactions(
         walletId: UUID,
         kind: TransactionKind? = nil,
@@ -194,8 +213,83 @@ final class TransactionRepository {
         }
     }
 
+    func pendingTransactions(limit: Int = 100) throws -> [PendingTransactionSnapshot] {
+        try database.read { db in
+            let rows = try Row.fetchAll(
+                db,
+                sql: """
+                SELECT t.*, a.wallet_id, a.address, a.chain_raw
+                FROM transactions t
+                JOIN wallet_addresses a ON a.id = t.address_id
+                WHERE t.status_raw = ?
+                ORDER BY t.occurred_at_ms ASC
+                LIMIT ?
+                """,
+                arguments: [TransactionStatus.pending.rawValue, limit]
+            )
+            return rows.compactMap { row in
+                guard
+                    let id = UUID(uuidString: row["id"]),
+                    let walletId = UUID(uuidString: row["wallet_id"]),
+                    let addressId = UUID(uuidString: row["address_id"]),
+                    let chain = SupportedChain(rawValue: row["chain_raw"])
+                else { return nil }
+                let direction = TransactionDirection(rawValue: row["direction_raw"]) ?? .incoming
+                return PendingTransactionSnapshot(
+                    id: id,
+                    walletId: walletId,
+                    addressId: addressId,
+                    address: row["address"],
+                    chain: chain,
+                    txHash: row["tx_hash"],
+                    direction: direction,
+                    kind: TransactionKind.effectiveKind(kindRaw: row["kind_raw"], directionRaw: row["direction_raw"]),
+                    status: TransactionStatus(rawValue: row["status_raw"]) ?? .pending,
+                    amountRaw: row["amount_raw"],
+                    tokenSymbol: row["token_symbol"],
+                    tokenContract: row["token_contract"],
+                    blockNumber: row["block_number"],
+                    occurredAt: Date(databaseMilliseconds: row["occurred_at_ms"]),
+                    counterparty: row["counterparty"],
+                    feeRaw: row["fee_raw"]
+                )
+            }
+        }
+    }
+
     func failedTransactions(walletId: UUID, limit: Int = 0) throws -> [TransactionSnapshot] {
         try transactions(walletId: walletId, status: .failed, limit: limit)
+    }
+
+    func resolvePendingTransaction(
+        _ transaction: PendingTransactionSnapshot,
+        status: TransactionStatus,
+        blockNumber: Int64?,
+        occurredAt: Date?,
+        feeRaw: String?
+    ) throws {
+        guard status != .pending else { return }
+        try database.write { db in
+            try db.execute(
+                sql: """
+                UPDATE transactions
+                SET status_raw = ?,
+                    block_number = COALESCE(?, block_number),
+                    occurred_at_ms = COALESCE(?, occurred_at_ms),
+                    fee_raw = COALESCE(?, fee_raw)
+                WHERE id = ?
+                  AND status_raw = ?
+                """,
+                arguments: [
+                    status.rawValue,
+                    blockNumber,
+                    occurredAt?.databaseMilliseconds,
+                    feeRaw,
+                    transaction.id.uuidString,
+                    TransactionStatus.pending.rawValue
+                ]
+            )
+        }
     }
 
     func clearTransactions(for addressId: UUID) throws {
