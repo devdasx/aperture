@@ -19,8 +19,6 @@ import SwiftUI
 /// **What's preserved from the prior splash design:**
 /// - The glow halo behind the logo.
 /// - The "Aperture" wordmark with its wipe-up reveal.
-/// - The "Your keys. Your crypto." tagline fade.
-/// - The determinate loader bar at the bottom.
 /// - The radial-gradient monochrome background.
 ///
 /// **What changed:**
@@ -54,11 +52,8 @@ struct SplashView: View {
     /// `AppRoot` unmounts this view entirely.
     let phase: AppPhase
 
-    /// Fired when the splash's `splashDuration` timer elapses —
-    /// i.e. the splash has held long enough that the user has
-    /// read the brand mark and any initialization the splash was
-    /// masking has completed. `AppRoot` consumes this to start
-    /// the matchedGeometryEffect transition.
+    /// Fired as soon as the logo bloom + "Aperture" wordmark reveal finish.
+    /// `AppRoot` consumes this to start the matchedGeometryEffect transition.
     let onSplashComplete: () -> Void
 
     @Environment(\.colorScheme) private var colorScheme
@@ -76,18 +71,14 @@ struct SplashView: View {
     /// clock stops instead of ticking forever on a settled screen.
     @State private var isChromeSettled: Bool = false
 
-    /// Total wall time the splash holds before calling
-    /// `onSplashComplete`. Matches the prior splash spec's
-    /// "~2.35s entrance + brief hold" — a small buffer so the
-    /// logo bloom completes and the user reads the brand
-    /// mark before the transition starts.
-    private static let splashDuration: TimeInterval = 2.6
+    /// Total wall time the splash holds before calling `onSplashComplete`.
+    /// This now tracks the last remaining visible keyframe: the wordmark wipe
+    /// (delay 0.92s + duration 0.80s), with a tiny frame buffer.
+    private static let splashDuration: TimeInterval = 1.76
 
-    /// The instant the last chrome keyframe lands. The loader is the
-    /// final mover (delay 0.35s + duration 2.00s); past this point
-    /// every `SplashChromeState` value is constant, so the timeline
-    /// can pause.
-    private static let chromeSettleDuration: TimeInterval = 2.35
+    /// The instant the last chrome keyframe lands. Past this point every
+    /// `SplashChromeState` value is constant, so the timeline can pause.
+    private static let chromeSettleDuration: TimeInterval = 1.72
     /// Reduce-motion collapses every keyframe to a single 0.30s ramp.
     private static let reducedMotionSettleDuration: TimeInterval = 0.30
 
@@ -136,11 +127,6 @@ struct SplashView: View {
                     wordmark(chrome: chrome)
                         .position(x: centerX, y: centerY - 22 + 80 / 2 + 30 + 20)
 
-                    tagline(chrome: chrome)
-                        .position(x: centerX, y: proxy.size.height - 104)
-
-                    loader(chrome: chrome)
-                        .position(x: centerX, y: proxy.size.height - 64)
                 }
             }
             .ignoresSafeArea()
@@ -163,8 +149,9 @@ struct SplashView: View {
             // `hasFiredComplete` guard stays as the last line of
             // defense against any double fire.
             guard completionTask == nil else { return }
+            let duration = reduceMotion ? Self.reducedMotionSettleDuration : Self.splashDuration
             completionTask = Task {
-                try? await Task.sleep(for: .seconds(Self.splashDuration))
+                try? await Task.sleep(for: .seconds(duration))
                 guard !Task.isCancelled, !hasFiredComplete else { return }
                 hasFiredComplete = true
                 onSplashComplete()
@@ -174,12 +161,11 @@ struct SplashView: View {
             completionTask?.cancel()
             completionTask = nil
         }
-        // Splash chrome (background, glow, wordmark, tagline,
-        // loader) fades out when the shared-element transition
+        // Splash chrome (background, glow, wordmark) fades out when
+        // the shared-element transition
         // starts. The logo itself does NOT fade — it flies via
         // matchedGeometryEffect. The 0.35s fade matches the
-        // handoff's "wordmark + tagline fade opacity 1 → 0 over
-        // ~0.35s starting at t=0 of the move."
+        // handoff's wordmark fade at the start of the move.
         .opacity(phase == .splash ? 1 : 0)
         .animation(.easeOut(duration: 0.35), value: phase)
     }
@@ -256,36 +242,12 @@ struct SplashView: View {
         .clipped()
     }
 
-    // MARK: - Tagline
-
-    private func tagline(chrome: SplashChromeState) -> some View {
-        Text("Your keys. Your crypto.")
-            .font(.system(size: 13.5, weight: .medium))
-            .kerning(0.27)
-            .foregroundStyle(UniColors.Splash.tagline)
-            .opacity(chrome.taglineOpacity)
-            .offset(y: chrome.taglineOffsetY)
-    }
-
-    // MARK: - Loader
-
-    private func loader(chrome: SplashChromeState) -> some View {
-        ZStack(alignment: .leading) {
-            RoundedRectangle(cornerRadius: 1.5, style: .continuous)
-                .fill(UniColors.Splash.loaderTrack)
-                .frame(width: 120, height: 3)
-            RoundedRectangle(cornerRadius: 1.5, style: .continuous)
-                .fill(UniColors.Splash.mark)
-                .frame(width: 120 * chrome.loaderProgress, height: 3)
-        }
-        .frame(width: 120, height: 3)
-    }
 }
 
 // MARK: - Splash chrome state
 
-/// Per-frame state for the splash elements — logo bloom, glow,
-/// wordmark, tagline, loader. The logo's *transition to onboarding*
+/// Per-frame state for the splash elements — logo bloom, glow, and wordmark.
+/// The logo's *transition to onboarding*
 /// is owned by `matchedGeometryEffect` (driven by the
 /// `AppRoot.phase` change); only its entrance bloom is computed
 /// here.
@@ -302,9 +264,6 @@ private struct SplashChromeState {
     let glowOpacity: Double
     let glowScale: Double
     let wordmarkOffsetFraction: Double
-    let taglineOpacity: Double
-    let taglineOffsetY: Double
-    let loaderProgress: Double
 
     init(elapsed: TimeInterval, reduceMotion: Bool) {
         if reduceMotion {
@@ -314,9 +273,6 @@ private struct SplashChromeState {
             self.glowOpacity = 0.6 * p
             self.glowScale = 1
             self.wordmarkOffsetFraction = 0
-            self.taglineOpacity = p
-            self.taglineOffsetY = 0
-            self.loaderProgress = p
             return
         }
 
@@ -351,24 +307,6 @@ private struct SplashChromeState {
         let wordT = clampUnit((elapsed - 0.92) / 0.80)
         let wordE = SplashEase.cubicBezier(wordT, 0.2, 0.8, 0.2, 1.0)
         self.wordmarkOffsetFraction = 1.10 * (1.0 - wordE)
-
-        // Tagline — delay 1.50s, duration 0.70s, ease (.25, .1, .25, 1)
-        let tagT = clampUnit((elapsed - 1.50) / 0.70)
-        let tagE = SplashEase.cubicBezier(tagT, 0.25, 0.1, 0.25, 1.0)
-        self.taglineOpacity = tagE
-        self.taglineOffsetY = 8.0 * (1.0 - tagE)
-
-        // Loader — delay 0.35s, duration 2.00s, (.4, 0, .2, 1)
-        let loadT = clampUnit((elapsed - 0.35) / 2.00)
-        if loadT < 0.70 {
-            let local = loadT / 0.70
-            let e = SplashEase.cubicBezier(local, 0.4, 0.0, 0.2, 1.0)
-            self.loaderProgress = 0.82 * e
-        } else {
-            let local = (loadT - 0.70) / 0.30
-            let e = SplashEase.cubicBezier(local, 0.4, 0.0, 0.2, 1.0)
-            self.loaderProgress = 0.82 + (1.0 - 0.82) * e
-        }
     }
 }
 
