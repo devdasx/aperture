@@ -55,7 +55,7 @@ struct SendExecutor {
         passphrase: String? = nil
     ) async -> Result<SentTransaction, SigningError> {
         // 1. Resolve the wallet descriptor + the address row id.
-        guard let resolved = resolveWallet(walletId: walletId, chain: draft.chain) else {
+        guard let resolved = resolveWallet(walletId: walletId, chain: draft.chain, fromAddress: draft.fromAddress) else {
             return .failure(.noWallet)
         }
         let walletDescriptor = resolved.descriptor
@@ -65,7 +65,7 @@ struct SendExecutor {
         let signed: SignedTransaction
         do {
             signed = try await signOffMain(
-                draft: draft, wallet: walletDescriptor, passphrase: passphrase
+                draft: draft, wallet: walletDescriptor, database: database, passphrase: passphrase
             )
         } catch let error as SigningError {
             return .failure(error)
@@ -91,6 +91,7 @@ struct SendExecutor {
         let recordId = await writePendingRecord(
             txHash: txHash, draft: draft, addressId: addressId, signed: signed
         )
+        await applyOptimisticOutgoingState(walletId: walletId, draft: draft)
 
         // Fire-and-forget confirmation poll where a cheap, definitive
         // status RPC exists; otherwise the pending row is reconciled by
@@ -118,7 +119,7 @@ struct SendExecutor {
 
     private struct ResolvedWallet { let descriptor: WalletDescriptor; let addressId: UUID? }
 
-    private func resolveWallet(walletId: UUID, chain: SupportedChain) -> ResolvedWallet? {
+    private func resolveWallet(walletId: UUID, chain: SupportedChain, fromAddress: String) -> ResolvedWallet? {
         do {
             return try database.read { db in
                 guard let walletRow = try Row.fetchOne(
@@ -137,19 +138,33 @@ struct SendExecutor {
                     db,
                     sql: """
                     SELECT id FROM wallet_addresses
-                    WHERE wallet_id = ? AND chain_raw = ?
-                    ORDER BY is_receive_preferred DESC
+                    WHERE wallet_id = ? AND chain_raw = ? AND address = ?
                     LIMIT 1
                     """,
-                    arguments: [walletId.uuidString, chain.rawValue]
+                    arguments: [walletId.uuidString, chain.rawValue, fromAddress]
                 )
+                let fallbackAddressRaw: String?
+                if let addressRaw {
+                    fallbackAddressRaw = addressRaw
+                } else {
+                    fallbackAddressRaw = try String.fetchOne(
+                        db,
+                        sql: """
+                        SELECT id FROM wallet_addresses
+                        WHERE wallet_id = ? AND chain_raw = ?
+                        ORDER BY is_receive_preferred DESC
+                        LIMIT 1
+                        """,
+                        arguments: [walletId.uuidString, chain.rawValue]
+                    )
+                }
                 return ResolvedWallet(
                     descriptor: WalletDescriptor(
                         id: id,
                         kind: WalletKind(rawValue: walletRow["kind_raw"]) ?? .watchOnly,
                         hasPassphrase: (walletRow["has_passphrase"] as Int) != 0
                     ),
-                    addressId: addressRaw.flatMap(UUID.init(uuidString:))
+                    addressId: fallbackAddressRaw.flatMap(UUID.init(uuidString:))
                 )
             }
         } catch {
@@ -162,9 +177,12 @@ struct SendExecutor {
     private nonisolated func signOffMain(
         draft: SendDraft,
         wallet: WalletDescriptor,
+        database: AppDatabase,
         passphrase: String?
     ) async throws -> SignedTransaction {
-        let jit = try await refreshJustInTime(draft: draft, wallet: wallet, passphrase: passphrase)
+        let jit = try await refreshJustInTime(
+            draft: draft, wallet: wallet, database: database, passphrase: passphrase
+        )
         // Detached so the PBKDF2 seed stretch + secp256k1/ed25519 sign
         // run off any actor (Rule #28). Only Sendable values cross in;
         // the SignedTransaction crosses back.
@@ -186,6 +204,7 @@ struct SendExecutor {
     private nonisolated func refreshJustInTime(
         draft: SendDraft,
         wallet: WalletDescriptor,
+        database: AppDatabase,
         passphrase: String?
     ) async throws -> TransactionSigner.JustInTimeData {
         switch draft.chain.family {
@@ -205,13 +224,16 @@ struct SendExecutor {
                 throw SigningError.justInTimeRefreshFailed(rpc.userFacingLabel)
             }
         case .bitcoin:
-            // Re-fetch the address's CURRENT unspent set immediately before
-            // signing (Rule #27 §C) — the draft's UTXO set was captured on
-            // the amount screen and may be stale (a selected input could
-            // have been spent since). wallet-core's planner selects + sizes
-            // change over this fresh set. On a transport failure we refuse
-            // honestly rather than sign against a stale set.
+            // Prefer the wallet-level UTXO cache from the latest scanner
+            // pass. Bitcoin balances are aggregated across all persisted
+            // receive/change paths, so signing must see the same full set
+            // instead of only the selected display address.
             do {
+                let cached = try ChainStateRepository(database: database)
+                    .utxos(walletId: wallet.id, chain: draft.chain)
+                if !cached.isEmpty {
+                    return TransactionSigner.JustInTimeData(bitcoinUTXOs: cached)
+                }
                 let fresh = try await UTXOService().fetchUTXOs(
                     address: draft.fromAddress, chain: draft.chain
                 )
@@ -275,6 +297,63 @@ struct SendExecutor {
             return nil
         }
         return recordId
+    }
+
+    private func applyOptimisticOutgoingState(walletId: UUID, draft: SendDraft) async {
+        let txRepository = TransactionRepository(database: database)
+        var changed = false
+
+        if draft.isTokenSend, let tokenSymbol = draft.tokenSymbol {
+            changed = ((try? txRepository.applyOptimisticOutgoingDebit(
+                walletId: walletId,
+                chain: draft.chain,
+                tokenSymbol: tokenSymbol,
+                tokenContract: draft.tokenContract,
+                decimals: draft.effectiveDecimals,
+                displayAmount: draft.totalAmount
+            )) ?? false) || changed
+        }
+
+        let nativeDebit = draft.isTokenSend
+            ? draft.fee.estimatedTotalNative
+            : draft.totalAmount + draft.fee.estimatedTotalNative
+        if nativeDebit > 0 {
+            changed = ((try? txRepository.applyOptimisticOutgoingDebit(
+                walletId: walletId,
+                chain: draft.chain,
+                tokenSymbol: draft.chain.ticker,
+                tokenContract: nil,
+                decimals: draft.chain.nativeDecimals,
+                displayAmount: nativeDebit
+            )) ?? false) || changed
+        }
+
+        if draft.chain.family == .bitcoin, let spent = draft.selectedUTXOs, !spent.isEmpty {
+            do {
+                try ChainStateRepository(database: database).removeUTXOs(
+                    walletId: walletId,
+                    chain: draft.chain,
+                    utxos: spent
+                )
+                changed = true
+            } catch {
+                // Best effort: the pending transaction row remains the source
+                // of truth if the local UTXO cache cleanup fails.
+            }
+        }
+
+        guard changed else { return }
+        let currencyCode = AppPreferenceStore.shared.string(
+            CurrencyPreference.storageKey,
+            default: CurrencyPreference.defaultCode
+        )
+        _ = try? ChainStateRepository(database: database).rebuild(
+            walletId: walletId,
+            fiatCurrencyCode: currencyCode,
+            onlyChains: [draft.chain],
+            failedChains: [],
+            interim: false
+        )
     }
 
     /// Poll `eth_getTransactionReceipt` a few times and flip the pending

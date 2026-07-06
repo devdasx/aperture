@@ -347,6 +347,94 @@ final class TransactionRepository {
         }
     }
 
+    @discardableResult
+    func applyOptimisticOutgoingDebit(
+        walletId: UUID,
+        chain: SupportedChain,
+        tokenSymbol: String,
+        tokenContract: String?,
+        decimals: Int,
+        displayAmount: Decimal
+    ) throws -> Bool {
+        let rawDebit = rawBaseUnits(displayAmount: displayAmount, decimals: decimals)
+        guard rawDebit > 0 else { return false }
+        let normalizedContract = chain.family == .evm ? tokenContract?.lowercased() : tokenContract
+        let contractPredicate = chain.family == .evm
+            ? "LOWER(IFNULL(b.token_contract, '')) = LOWER(IFNULL(?, ''))"
+            : "IFNULL(b.token_contract, '') = IFNULL(?, '')"
+        let symbolUpper = tokenSymbol.uppercased()
+
+        return try database.write { db in
+            let rows = try Row.fetchAll(
+                db,
+                sql: """
+                SELECT b.id, b.raw_balance, b.fiat_value_cached, b.fiat_currency_code
+                FROM token_balances b
+                JOIN wallet_addresses a ON a.id = b.address_id
+                WHERE a.wallet_id = ?
+                  AND a.chain_raw = ?
+                  AND UPPER(b.token_symbol) = ?
+                  AND \(contractPredicate)
+                ORDER BY LENGTH(b.raw_balance) DESC, b.raw_balance DESC, b.updated_at_ms DESC
+                """,
+                arguments: [walletId.uuidString, chain.rawValue, symbolUpper, normalizedContract]
+            )
+            var remaining = rawDebit
+            var changed = false
+            let now = Date.databaseMilliseconds
+            for row in rows where remaining > 0 {
+                let id: String = row["id"]
+                guard let oldRaw = Decimal(string: row["raw_balance"] as String), oldRaw > 0 else {
+                    continue
+                }
+                let debit = oldRaw < remaining ? oldRaw : remaining
+                let nextRaw = oldRaw - debit
+                let newRaw: Decimal = nextRaw > 0 ? nextRaw : 0
+                let oldFiat = Decimal(string: row["fiat_value_cached"] as String) ?? 0
+                let newFiat = oldRaw > 0 ? oldFiat * newRaw / oldRaw : 0
+                try db.execute(
+                    sql: """
+                    UPDATE token_balances
+                    SET raw_balance = ?,
+                        fiat_value_cached = ?,
+                        fiat_value_cached_numeric = ?,
+                        updated_at_ms = ?
+                    WHERE id = ?
+                    """,
+                    arguments: [
+                        integerDatabaseText(newRaw),
+                        newFiat.databaseText,
+                        newFiat.databaseDouble,
+                        now,
+                        id
+                    ]
+                )
+                remaining -= debit
+                changed = true
+            }
+            return changed
+        }
+    }
+
+    private func rawBaseUnits(displayAmount: Decimal, decimals: Int) -> Decimal {
+        guard displayAmount > 0, decimals >= 0 else { return 0 }
+        var scaled = displayAmount
+        if decimals > 0 {
+            for _ in 0..<decimals { scaled *= 10 }
+        }
+        var rounded = Decimal.zero
+        NSDecimalRound(&rounded, &scaled, 0, .plain)
+        return rounded > 0 ? rounded : 0
+    }
+
+    private func integerDatabaseText(_ value: Decimal) -> String {
+        guard value > 0 else { return "0" }
+        var mutable = value
+        var rounded = Decimal.zero
+        NSDecimalRound(&rounded, &mutable, 0, .plain)
+        return NSDecimalNumber(decimal: rounded).stringValue
+    }
+
     func markScanComplete(addressId: UUID, isUsed: Bool, save: Bool = true) throws {
         try database.write { db in
             let now = Date.databaseMilliseconds

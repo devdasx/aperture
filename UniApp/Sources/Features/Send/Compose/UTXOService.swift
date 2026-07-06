@@ -77,7 +77,7 @@ struct UTXOService: Sendable {
                   let vout = item["vout"] as? Int,
                   let value = (item["value"] as? NSNumber)?.int64Value else { return nil }
             let confirmed = (item["status"] as? [String: Any])?["confirmed"] as? Bool ?? false
-            return SelectedUTXO(txid: txid, vout: vout, valueSats: value, scriptHex: nil, confirmed: confirmed)
+            return SelectedUTXO(ownerAddress: address, txid: txid, vout: vout, valueSats: value, scriptHex: nil, confirmed: confirmed)
         }
     }
 
@@ -100,7 +100,7 @@ struct UTXOService: Sendable {
                   let value = (item["value"] as? NSNumber)?.int64Value else { return nil }
             let script = item["pkscript"] as? String
             let confirmed = (item["block"] as? [String: Any])?["height"] != nil
-            return SelectedUTXO(txid: txid, vout: index, valueSats: value, scriptHex: script, confirmed: confirmed)
+            return SelectedUTXO(ownerAddress: address, txid: txid, vout: index, valueSats: value, scriptHex: script, confirmed: confirmed)
         }
     }
 
@@ -127,7 +127,7 @@ struct UTXOService: Sendable {
             let script = item["script"] as? String
             let confirmed = (item["confirmed"] as? String) != nil
                 || ((item["confirmations"] as? NSNumber)?.intValue ?? 0) > 0
-            return SelectedUTXO(txid: txid, vout: vout, valueSats: value, scriptHex: script, confirmed: confirmed)
+            return SelectedUTXO(ownerAddress: address, txid: txid, vout: vout, valueSats: value, scriptHex: script, confirmed: confirmed)
         }
     }
 

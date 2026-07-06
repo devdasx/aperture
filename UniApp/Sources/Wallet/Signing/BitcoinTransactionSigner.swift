@@ -210,13 +210,11 @@ enum BitcoinTransactionSigner {
 
     // MARK: - Helpers
 
-    /// The address owning a UTXO. `SelectedUTXO` doesn't carry the owner
-    /// address (the UTXO set fetch keys by the queried address), so for
-    /// a single-address own send we use `fromAddress`. When a future
-    /// multi-address UTXO model adds per-UTXO owner addresses, thread it
-    /// through here; the lock-script derivation depends on it.
+    /// The address owning a UTXO. Wallet-level Bitcoin sends can spend
+    /// coins from several persisted receive/change paths, so every input
+    /// uses its own owner address when deriving the lock script.
     private static func ownerAddress(of utxo: SelectedUTXO, fallback: String) -> String {
-        fallback
+        utxo.ownerAddress ?? fallback
     }
 
     /// Display amount → sats (base units) at `decimals`.

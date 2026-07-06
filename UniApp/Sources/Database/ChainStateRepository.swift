@@ -313,6 +313,47 @@ final class ChainStateRepository {
         }
     }
 
+    func utxos(walletId: UUID, chain: SupportedChain) throws -> [SelectedUTXO] {
+        try database.read { db in
+            try Row.fetchAll(
+                db,
+                sql: """
+                SELECT address, txid, vout, value_sats_raw, script_hex, confirmed
+                FROM chain_utxos
+                WHERE wallet_id = ? AND chain_raw = ?
+                ORDER BY confirmed DESC, LENGTH(value_sats_raw) DESC, value_sats_raw DESC
+                """,
+                arguments: [walletId.uuidString, chain.rawValue]
+            ).compactMap { row in
+                guard let value = Int64(row["value_sats_raw"] as String) else { return nil }
+                let vout: Int = row["vout"]
+                return SelectedUTXO(
+                    ownerAddress: row["address"],
+                    txid: row["txid"],
+                    vout: vout,
+                    valueSats: value,
+                    scriptHex: row["script_hex"],
+                    confirmed: (row["confirmed"] as Int) != 0
+                )
+            }
+        }
+    }
+
+    func removeUTXOs(walletId: UUID, chain: SupportedChain, utxos: [SelectedUTXO]) throws {
+        guard !utxos.isEmpty else { return }
+        try database.write { db in
+            for utxo in utxos {
+                try db.execute(
+                    sql: """
+                    DELETE FROM chain_utxos
+                    WHERE wallet_id = ? AND chain_raw = ? AND txid = ? AND vout = ?
+                    """,
+                    arguments: [walletId.uuidString, chain.rawValue, utxo.txid, utxo.vout]
+                )
+            }
+        }
+    }
+
     func storeEncryptedKeys(walletId: UUID, blobs: [SupportedChain: Data]) throws {
         guard !blobs.isEmpty else { return }
         try database.write { db in

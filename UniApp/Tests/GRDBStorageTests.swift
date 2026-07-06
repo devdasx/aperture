@@ -267,6 +267,63 @@ import Testing
         #expect(state.hasEncryptedKey)
     }
 
+    @Test("optimistic outgoing debits persisted balances and cached UTXOs")
+    func optimisticOutgoingDebitAndUTXOCache() async throws {
+        let database = try TestAppDatabaseFactory.makeDatabase()
+        defer { TestAppDatabaseFactory.cleanup(database) }
+        let walletID = try await insertWatchWallet(
+            database,
+            chainsAndAddresses: [
+                (.bitcoin, "bc1qreceive"),
+                (.bitcoin, "bc1qchange")
+            ]
+        )
+        let addressIDs = try addressIDs(walletID: walletID, chain: .bitcoin, database: database)
+        let txRepo = TransactionRepository(database: database)
+        try txRepo.upsertBalance(
+            addressId: addressIDs[0],
+            tokenSymbol: "BTC",
+            tokenContract: nil,
+            decimals: 8,
+            rawBalance: "100000000",
+            fiatValueCached: 30_000,
+            fiatCurrencyCode: "USD"
+        )
+
+        #expect(try txRepo.applyOptimisticOutgoingDebit(
+            walletId: walletID,
+            chain: .bitcoin,
+            tokenSymbol: "BTC",
+            tokenContract: nil,
+            decimals: 8,
+            displayAmount: Decimal(string: "0.2501")!
+        ))
+        #expect(try TestAppDatabaseFactory.scalarString(
+            "SELECT raw_balance FROM token_balances WHERE address_id = ?",
+            arguments: [addressIDs[0].uuidString],
+            database: database
+        ) == "74990000")
+        #expect(try TestAppDatabaseFactory.scalarString(
+            "SELECT fiat_value_cached FROM token_balances WHERE address_id = ?",
+            arguments: [addressIDs[0].uuidString],
+            database: database
+        ) == "22497")
+
+        let chainRepo = ChainStateRepository(database: database)
+        try chainRepo.replaceAddressedUTXOs(
+            walletId: walletID,
+            chain: .bitcoin,
+            utxos: [
+                .init(address: "bc1qreceive", txid: "spent-a", vout: 0, valueSats: 20_000, scriptHex: "51", confirmed: true),
+                .init(address: "bc1qchange", txid: "spent-b", vout: 1, valueSats: 10_000, scriptHex: "52", confirmed: false)
+            ]
+        )
+        let cached = try chainRepo.utxos(walletId: walletID, chain: .bitcoin)
+        #expect(cached.map(\.ownerAddress) == ["bc1qreceive", "bc1qchange"])
+        try chainRepo.removeUTXOs(walletId: walletID, chain: .bitcoin, utxos: [cached[0]])
+        #expect(try chainRepo.utxos(walletId: walletID, chain: .bitcoin).map(\.txid) == ["spent-b"])
+    }
+
     @Test("price, chart, and sync repositories persist cache rows with upsert semantics")
     func priceChartAndSyncCaches() async throws {
         let database = try TestAppDatabaseFactory.makeDatabase()

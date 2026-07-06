@@ -245,7 +245,6 @@ enum SigningKeyProvider {
 
             var keys: [PrivateKey] = []
             var covered: Set<String> = []
-            let purpose = bitcoinPurpose(for: chain)
             let coinId = bitcoinSlip44(for: chain)
 
             // Receive chain (0) then change chain (1); scan a generous
@@ -254,19 +253,38 @@ enum SigningKeyProvider {
             // a wallet that only ever used its primary address signs
             // even if the per-path scan misses an unusual derivation.
             let defaultKey = hdWallet.getKeyForCoin(coin: coin)
-            let defaultAddr = coin.deriveAddress(privateKey: defaultKey)
+            let defaultAddr = bitcoinAddress(
+                privateKey: defaultKey, coin: coin, chain: chain, derivationPath: nil
+            )
             keys.append(defaultKey)
             covered.insert(defaultAddr)
 
-            for branch in 0...1 {
-                for index in 0..<25 {
-                    if requiredAddresses.isSubset(of: covered) { break }
-                    let path = "m/\(purpose)'/\(coinId)'/0'/\(branch)/\(index)"
-                    let key = hdWallet.getKey(coin: coin, derivationPath: path)
-                    let addr = coin.deriveAddress(privateKey: key)
-                    if covered.insert(addr).inserted {
-                        keys.append(key)
+            let persistedPaths = loadBitcoinAddressPaths(
+                walletId: wallet.id, chain: chain, requiredAddresses: requiredAddresses
+            )
+            for address in requiredAddresses.sorted() {
+                guard let path = persistedPaths[address], bitcoinPurposeNumber(from: path) != nil else {
+                    continue
+                }
+                let key = hdWallet.getKey(coin: coin, derivationPath: path)
+                let derived = bitcoinAddress(privateKey: key, coin: coin, chain: chain, derivationPath: path)
+                if derived == address, covered.insert(address).inserted {
+                    keys.append(key)
+                }
+            }
+
+            for purpose in bitcoinPurposes(for: chain) {
+                for branch in 0...1 {
+                    for index in 0..<25 {
+                        if requiredAddresses.isSubset(of: covered) { break }
+                        let path = "m/\(purpose)'/\(coinId)'/0'/\(branch)/\(index)"
+                        let key = hdWallet.getKey(coin: coin, derivationPath: path)
+                        let addr = bitcoinAddress(privateKey: key, coin: coin, chain: chain, derivationPath: path)
+                        if covered.insert(addr).inserted {
+                            keys.append(key)
+                        }
                     }
+                    if requiredAddresses.isSubset(of: covered) { break }
                 }
                 if requiredAddresses.isSubset(of: covered) { break }
             }
@@ -361,17 +379,43 @@ enum SigningKeyProvider {
         return privateKey
     }
 
+    private static func loadBitcoinAddressPaths(
+        walletId: UUID,
+        chain: SupportedChain,
+        requiredAddresses: Set<String>
+    ) -> [String: String] {
+        guard !requiredAddresses.isEmpty, let database = databaseBox.get() else { return [:] }
+        let rows = (try? database.read { db in
+            try Row.fetchAll(
+                db,
+                sql: """
+                SELECT address, derivation_path
+                FROM wallet_addresses
+                WHERE wallet_id = ? AND chain_raw = ?
+                """,
+                arguments: [walletId.uuidString, chain.rawValue]
+            )
+        }) ?? []
+        var result: [String: String] = [:]
+        for row in rows {
+            let address: String = row["address"]
+            guard requiredAddresses.contains(address) else { continue }
+            let path: String = row["derivation_path"]
+            if !path.isEmpty { result[address] = path }
+        }
+        return result
+    }
+
     // MARK: - Bitcoin-family BIP purpose / SLIP-44
 
-    /// BIP purpose number per Bitcoin-family chain — the importer +
-    /// wallet-core default-address path: BTC/LTC = BIP-84 (native
-    /// SegWit), BCH/DOGE = BIP-44 (legacy P2PKH, no SegWit). Matches
-    /// `HDKeyDerivation.derivationPath` in the reference + the matrix.
-    private static func bitcoinPurpose(for chain: SupportedChain) -> Int {
+    /// BIP purpose numbers to scan for Bitcoin-family fallback key
+    /// discovery. Exact persisted paths are tried first; this list covers
+    /// the common receive/change windows when a path was not persisted.
+    private static func bitcoinPurposes(for chain: SupportedChain) -> [Int] {
         switch chain {
-        case .bitcoin, .litecoin: return 84
-        case .bitcoinCash, .dogecoin: return 44
-        default: return 84
+        case .bitcoin, .litecoin: return [84, 49, 44]
+        case .bitcoinCash, .dogecoin: return [44]
+        default: return [84]
         }
     }
 
@@ -383,6 +427,34 @@ enum SigningKeyProvider {
         case .dogecoin: return 3
         case .bitcoinCash: return 145
         default: return 0
+        }
+    }
+
+    private static func bitcoinPurposeNumber(from path: String) -> Int? {
+        let parts = path.split(separator: "/")
+        guard parts.count >= 2 else { return nil }
+        let purpose = parts[1].replacingOccurrences(of: "'", with: "")
+        return Int(purpose)
+    }
+
+    private static func bitcoinAddress(
+        privateKey: PrivateKey,
+        coin: CoinType,
+        chain: SupportedChain,
+        derivationPath: String?
+    ) -> String {
+        guard chain == .bitcoin || chain == .litecoin else {
+            return coin.deriveAddress(privateKey: privateKey)
+        }
+        let publicKey = privateKey.getPublicKeySecp256k1(compressed: true)
+        switch bitcoinPurposeNumber(from: derivationPath ?? "") {
+        case 44:
+            return BitcoinAddress(publicKey: publicKey, prefix: coin.p2pkhPrefix)?.description
+                ?? coin.deriveAddress(privateKey: privateKey)
+        case 49:
+            return BitcoinAddress.compatibleAddress(publicKey: publicKey, prefix: coin.p2shPrefix).description
+        default:
+            return coin.deriveAddressFromPublicKey(publicKey: publicKey)
         }
     }
 }

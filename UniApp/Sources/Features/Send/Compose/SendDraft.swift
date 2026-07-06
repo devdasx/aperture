@@ -17,6 +17,9 @@ struct SendRecipientAmount: Codable, Hashable, Sendable, Identifiable {
 /// (hex) when the provider returns it inline (Haskoin/BlockCypher) so no
 /// extra script fetch is needed.
 struct SelectedUTXO: Codable, Hashable, Sendable, Identifiable {
+    /// Own address that controls this output. Required when a wallet has
+    /// spendable coins across multiple receive/change paths.
+    let ownerAddress: String?
     /// Transaction id (big-endian hex as the provider returns it).
     let txid: String
     /// Output index (vout).
@@ -29,6 +32,22 @@ struct SelectedUTXO: Codable, Hashable, Sendable, Identifiable {
     /// Whether the UTXO is confirmed (prefer confirmed inputs).
     let confirmed: Bool
     var id: String { "\(txid):\(vout)" }
+
+    init(
+        ownerAddress: String? = nil,
+        txid: String,
+        vout: Int,
+        valueSats: Int64,
+        scriptHex: String?,
+        confirmed: Bool
+    ) {
+        self.ownerAddress = ownerAddress
+        self.txid = txid
+        self.vout = vout
+        self.valueSats = valueSats
+        self.scriptHex = scriptHex
+        self.confirmed = confirmed
+    }
 }
 
 /// The kind of memo/tag value carried in a draft (matches `ComposeMemoKind`

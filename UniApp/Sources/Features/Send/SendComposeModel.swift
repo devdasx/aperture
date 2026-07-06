@@ -748,11 +748,23 @@ final class SendComposeModel {
 
     /// Fetch the Bitcoin-family UTXO set off-main (advanced "Select coins"
     /// + auto-selection). No-op for non-UTXO chains.
-    func loadUTXOs(service: UTXOService = UTXOService()) async {
+    func loadUTXOs(
+        walletId: UUID? = nil,
+        database: AppDatabase = .shared,
+        service: UTXOService = UTXOService()
+    ) async {
         guard capability.supportsUTXO else { return }
         isLoadingUTXOs = true
         defer { isLoadingUTXOs = false }
         do {
+            if let walletId {
+                let cached = try ChainStateRepository(database: database)
+                    .utxos(walletId: walletId, chain: chain)
+                if !cached.isEmpty {
+                    availableUTXOs = cached.sorted { $0.valueSats > $1.valueSats }
+                    return
+                }
+            }
             let utxos = try await service.fetchUTXOs(address: fromAddress, chain: chain)
             guard !Task.isCancelled else { return }
             availableUTXOs = utxos.sorted { $0.valueSats > $1.valueSats }

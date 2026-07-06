@@ -142,7 +142,7 @@ struct SendAmountView: View {
         .task(id: balancesKey) { resolveBalances() }
         .task { await resolvePrices() }
         .task { await model.loadFee() }
-        .task { await model.loadUTXOs() }
+        .task { await model.loadUTXOs(walletId: activeWallet?.id) }
         .task { await focusInitialAmountField() }
         // Re-fetch the fee when a material input changes (recipient count,
         // or — for UTXO chains — the selected coins / amount that drive the

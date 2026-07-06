@@ -188,7 +188,11 @@ enum TransactionSigner {
             }
 
         case .bitcoin:
-            let requiredAddresses: Set<String> = [draft.fromAddress]
+            let candidateUTXOs = (jit.bitcoinUTXOs?.isEmpty == false)
+                ? jit.bitcoinUTXOs!
+                : (draft.selectedUTXOs ?? [])
+            var requiredAddresses = Set(candidateUTXOs.map { $0.ownerAddress ?? draft.fromAddress })
+            requiredAddresses.insert(draft.fromAddress)
             return try SigningKeyProvider.withBitcoinKeys(
                 wallet: wallet, chain: draft.chain, passphrase: passphrase,
                 requiredAddresses: requiredAddresses
