@@ -2,9 +2,11 @@ import SwiftUI
 
 /// Wallet-home balance summary group.
 ///
-/// The native `GroupBox` renders only the wallet identity, current total, visibility
-/// toggle, and zero-state CTA. Chart UI, chart range tabs, chart scrubbing, and
-/// history reconstruction are intentionally not part of this surface.
+/// The native `GroupBox` renders only the wallet identity, current total,
+/// visibility toggle, and zero-state CTA. Its style uses the app's semantic
+/// card fill so the surface adapts with the rest of the light/dark card
+/// system. Chart UI, chart range tabs, chart scrubbing, and history
+/// reconstruction are intentionally not part of this surface.
 struct BalanceCardView: View {
     let walletId: UUID?
     let walletName: String
@@ -69,7 +71,7 @@ struct BalanceCardView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.vertical, UniSpacing.xs)
         }
-        .groupBoxStyle(.automatic)
+        .groupBoxStyle(BalanceCardGroupBoxStyle())
         .frame(maxWidth: .infinity, alignment: .leading)
         .accessibilityElement(children: .combine)
         .accessibilityLabel(accessibilityLabel)
@@ -229,5 +231,18 @@ struct BalanceCardView: View {
             return Text("Total balance \(value). Add crypto to get started.")
         }
         return Text("Total balance \(value)")
+    }
+}
+
+private struct BalanceCardGroupBoxStyle: GroupBoxStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.content
+            .padding(UniSpacing.l)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background {
+                RoundedRectangle(cornerRadius: UniRadius.hero, style: .continuous)
+                    .fill(UniColors.Card.background)
+            }
+            .containerShape(RoundedRectangle(cornerRadius: UniRadius.hero, style: .continuous))
     }
 }
