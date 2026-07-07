@@ -293,7 +293,7 @@ private struct RecoveryPhraseRevealScreen: View {
     private func load() async {
         let id = walletId
         do {
-            let loaded = try await WalletSecretRepository(database: AppDatabase.shared)
+            let loaded = try WalletSecretRepository(database: AppDatabase.shared)
                 .loadMnemonic(for: id) ?? []
             words = loaded
             if words.isEmpty {

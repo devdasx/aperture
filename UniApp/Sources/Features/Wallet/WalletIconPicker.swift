@@ -265,7 +265,7 @@ struct WalletIconPickerSheet: View {
     private func commit(_ wallet: WalletRecord) {
         let spec = stagedSpec(for: wallet)
         Task { @MainActor in
-            try? await WalletCommandRepository(database: AppDatabase.shared)
+            _ = try? await WalletCommandRepository(database: AppDatabase.shared)
                 .updateAvatar(id: wallet.id, spec: spec)
             WalletCustomSvgRenderer.invalidate(walletId: wallet.id)
             dismiss()

@@ -201,7 +201,7 @@ struct CustomTokensListView: View {
         Task { @MainActor in
             let repo = CustomTokenRepository(database: AppDatabase.shared)
             do {
-                try await repo.remove(id: id)
+                try repo.remove(id: id)
             } catch {
                 isShowingDeleteError = true
             }

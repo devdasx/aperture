@@ -775,7 +775,7 @@ struct WalletDetailView: View {
         Task { @MainActor in
             let repo = WalletRepository(database: AppDatabase.shared)
             do {
-                try await repo.renameWallet(id: id, to: newName)
+                try repo.renameWallet(id: id, to: newName)
             } catch {
                 // Revert the field to the persisted name so the UI
                 // never shows a rename that didn't land.
@@ -951,7 +951,7 @@ struct WalletDetailView: View {
             return
         }
         let id = walletId
-        let loaded = try? await WalletSecretRepository(database: AppDatabase.shared)
+        let loaded = try? WalletSecretRepository(database: AppDatabase.shared)
             .loadMnemonic(for: id)
         guard let words = loaded, !words.isEmpty else {
             pendingBackupMethod = nil

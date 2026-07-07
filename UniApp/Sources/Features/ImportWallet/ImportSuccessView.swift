@@ -287,7 +287,7 @@ struct ImportSuccessView: View {
     private func commitRename() {
         let trimmed = renameDraft.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, let wallet else { return }
-        try? WalletRepository(database: AppDatabase.shared).renameWallet(id: wallet.id, to: trimmed)
+        _ = try? WalletRepository(database: AppDatabase.shared).renameWallet(id: wallet.id, to: trimmed)
     }
 
     // MARK: - Variant copy / scoping

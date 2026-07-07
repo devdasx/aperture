@@ -446,7 +446,7 @@ struct AddCustomTokenSheet: View {
         Task { @MainActor in
             let repo = CustomTokenRepository(database: AppDatabase.shared)
             do {
-                try await repo.add(
+                try repo.add(
                     chain: chain,
                     contract: contract,
                     symbol: symbol,

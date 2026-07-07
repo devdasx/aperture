@@ -895,7 +895,7 @@ private struct ManualVerifyScreen: View {
         }
         let repo = WalletRepository(database: AppDatabase.shared)
         do {
-            try await repo.markManualBackupComplete(id: walletId)
+            try repo.markManualBackupComplete(id: walletId)
         } catch {
             isShowingError = true
             return

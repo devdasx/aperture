@@ -160,7 +160,7 @@ struct BackupExistingWalletFlow: View {
         guard state == nil, loadError == nil else { return }
         let id = walletId
         do {
-            let words = try await WalletSecretRepository(database: AppDatabase.shared)
+            let words = try WalletSecretRepository(database: AppDatabase.shared)
                 .loadMnemonic(for: id)
             guard let words, !words.isEmpty else {
                 loadError = "There's no encrypted phrase stored for this wallet. If you saved it elsewhere, you're already its only copy."
@@ -193,7 +193,7 @@ struct BackupExistingWalletFlow: View {
     private func complete() async {
         let repo = WalletRepository(database: AppDatabase.shared)
         do {
-            try await repo.markBackupComplete(id: walletId)
+            try repo.markBackupComplete(id: walletId)
         } catch {
             isShowingCompleteError = true
             return

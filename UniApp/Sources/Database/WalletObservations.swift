@@ -1455,8 +1455,8 @@ final class DatabaseSnapshotObservation: ObservableObject {
                 .compactMap(Self.wallet)
             let addresses = try Row.fetchAll(db, sql: "SELECT * FROM wallet_addresses ORDER BY chain_raw ASC, is_receive_preferred DESC")
                 .compactMap(Self.address)
-            var walletById = Dictionary(uniqueKeysWithValues: wallets.map { ($0.id, $0) })
-            var addressById = Dictionary(uniqueKeysWithValues: addresses.map { ($0.id, $0) })
+            let walletById = Dictionary(uniqueKeysWithValues: wallets.map { ($0.id, $0) })
+            let addressById = Dictionary(uniqueKeysWithValues: addresses.map { ($0.id, $0) })
             for address in addresses {
                 guard let walletId = address.walletId, let wallet = walletById[walletId] else { continue }
                 address.wallet = wallet
