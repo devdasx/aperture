@@ -73,6 +73,7 @@ struct UniQRScannerSheet: View {
             }
 
             topBar
+                .zIndex(10)
         }
         .preferredColorScheme(.dark)
         .task { await resolvePermission() }
@@ -97,6 +98,7 @@ struct UniQRScannerSheet: View {
             .padding(.top, UniSpacing.s)
             Spacer()
         }
+        .allowsHitTesting(true)
     }
 
     // MARK: - Bottom controls (flash · paste · gallery)
@@ -134,8 +136,10 @@ struct UniQRScannerSheet: View {
                 .frame(width: 40, height: 40)
                 .glassEffect(.regular, in: .circle)
                 .background(filled ? Color.white : Color.clear, in: .circle)
+                .contentShape(Circle())
         }
         .buttonStyle(.plain)
+        .contentShape(Circle())
     }
 
     // MARK: - Permission surfaces
@@ -190,6 +194,7 @@ struct UniQRScannerSheet: View {
         ZStack {
             QRScannerCameraView(onDecode: handleDecode(_:), onReady: { cameraView = $0 })
                 .ignoresSafeArea()
+                .allowsHitTesting(false)
 
             ScannerCameraShadow()
                 .ignoresSafeArea()
@@ -657,6 +662,7 @@ struct QRScannerCameraView: UIViewRepresentable {
 
     func makeUIView(context: Context) -> CameraPreviewUIView {
         let view = CameraPreviewUIView()
+        view.isUserInteractionEnabled = false
         view.start(onDecode: onDecode)
         DispatchQueue.main.async { onReady(view) }
         return view
