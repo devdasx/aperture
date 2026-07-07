@@ -17,6 +17,7 @@ struct BalanceCardView: View {
     let onAddFunds: () -> Void
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.colorScheme) private var colorScheme
 
     @GRDBStorage(HideBalancesPreference.hideBalanceOnHomeKey) private var isHidden: Bool = false
 
@@ -66,7 +67,6 @@ struct BalanceCardView: View {
                         valueBody
                     }
                 }
-                .transition(.opacity.combined(with: .move(edge: .bottom)))
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.vertical, UniSpacing.xs)
@@ -75,8 +75,6 @@ struct BalanceCardView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .accessibilityElement(children: .combine)
         .accessibilityLabel(accessibilityLabel)
-        .animation(reduceMotion ? nil : .smooth(duration: 0.32), value: resolvedState)
-        .animation(reduceMotion ? nil : .smooth(duration: 0.32), value: totalFiat)
     }
 
     private static func updatedCaption(_ date: Date) -> String {
@@ -119,13 +117,20 @@ struct BalanceCardView: View {
 
             Button(action: toggleHidden) {
                 Image(systemName: isHidden ? "eye.slash" : "eye")
-                    .font(.system(size: 16, weight: .regular))
-                    .frame(width: 22, height: 22)
+                    .font(.system(size: 18, weight: .medium))
+                    .foregroundStyle(UniColors.BalanceCard.eyeGlyph(colorScheme))
+                    .frame(width: 44, height: 44)
+                    .background {
+                        Circle()
+                            .fill(UniColors.BalanceCard.eyeButtonFill(colorScheme))
+                    }
+                    .overlay {
+                        Circle()
+                            .stroke(UniColors.BalanceCard.avatarRing(colorScheme), lineWidth: 1)
+                    }
+                    .contentShape(Circle())
             }
-            .buttonStyle(.bordered)
-            .buttonBorderShape(.circle)
-            .controlSize(.regular)
-            .tint(UniColors.Tint.accent)
+            .buttonStyle(.plain)
             .accessibilityLabel(Text(isHidden ? "Show balance" : "Hide balance"))
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)
@@ -166,7 +171,6 @@ struct BalanceCardView: View {
         .contentTransition(reduceMotion ? .identity : .numericText())
         .environment(\.layoutDirection, .leftToRight)
         .animation(reduceMotion ? nil : .smooth(duration: 0.28), value: totalFiat)
-        .animation(reduceMotion ? nil : .smooth(duration: 0.24), value: isHidden)
     }
 
     private func composedBalance() -> Text {
@@ -216,7 +220,7 @@ struct BalanceCardView: View {
     }
 
     private func toggleHidden() {
-        withAnimation(reduceMotion ? nil : .smooth(duration: 0.28)) {
+        withAnimation(reduceMotion ? nil : .default) {
             isHidden.toggle()
         }
         UniHapticEngine.shared.play(.toggle)
