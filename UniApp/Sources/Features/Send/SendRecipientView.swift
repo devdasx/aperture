@@ -7,11 +7,11 @@ import UIKit
 /// recent-recipient safety data from the wallet's outgoing history, and a real first-send
 /// warning / send count per recipient.
 ///
-/// **Redesign (2026-06-15 — Apple iOS 26 / Jony Ive).** The recipient
-/// fields use native SwiftUI `TextField` controls with system text-field
-/// chrome, so the actual entry surface remains visible without custom
-/// field drawing. The address — the load-bearing artifact of this step —
-/// still expands vertically as the user types or pastes, never truncated.
+/// **Redesign (2026-06-15 — Apple iOS 26).** The recipient fields use
+/// native SwiftUI `TextField` controls with the current platform style, not
+/// app-drawn field chrome. The address — the load-bearing artifact of this
+/// step — still expands vertically as the user types or pastes, never
+/// truncated.
 ///
 /// **Layers (Rule #2 §B.3).** Content layer: native input fields, custom
 /// action chips, and all copy. This recipient screen avoids
@@ -747,8 +747,7 @@ private struct NativeRecipientTextField: View {
         .keyboardType(keyboardType)
         .textInputAutocapitalization(autocapitalization)
         .autocorrectionDisabled(true)
-        .textFieldStyle(.roundedBorder)
-        .controlSize(.large)
+        .textFieldStyle(.automatic)
         .lineLimit(lineLimit)
     }
 }
