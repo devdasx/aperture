@@ -544,7 +544,7 @@ enum MainTab: String, Hashable, CaseIterable {
         case .wallet:   return isSelected ? "wallet.bifold.fill" : "wallet.bifold"
         case .activity: return "clock.arrow.circlepath"
         case .markets:  return "chart.line.uptrend.xyaxis"
-        case .settings: return "gearshape"
+        case .settings: return isSelected ? "gearshape.fill" : "gearshape"
         }
     }
 
