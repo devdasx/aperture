@@ -299,7 +299,7 @@ struct MainTabView: View {
         NavigationSplitView(columnVisibility: .constant(.all)) {
             List(selection: sidebarSelection) {
                 ForEach(MainTab.allCases, id: \.self) { tab in
-                    MainSidebarRow(tab: tab)
+                    MainSidebarRow(tab: tab, isSelected: currentTab == tab)
                         .tag(tab)
                 }
             }
@@ -343,7 +343,7 @@ struct MainTabView: View {
         Label {
             Text(tab.title)
         } icon: {
-            Image(systemName: tab.systemImage)
+            Image(systemName: tab.systemImage(isSelected: currentTab == tab))
                 .symbolVariant(.none)
                 .symbolRenderingMode(.monochrome)
                 .imageScale(.large)
@@ -539,9 +539,9 @@ enum MainTab: String, Hashable, CaseIterable {
         }
     }
 
-    var systemImage: String {
+    func systemImage(isSelected: Bool = false) -> String {
         switch self {
-        case .wallet:   return "wallet.bifold"
+        case .wallet:   return isSelected ? "wallet.bifold.fill" : "wallet.bifold"
         case .activity: return "clock.arrow.circlepath"
         case .markets:  return "chart.line.uptrend.xyaxis"
         case .settings: return "gearshape"
@@ -560,6 +560,7 @@ enum MainTab: String, Hashable, CaseIterable {
 
 private struct MainSidebarRow: View {
     let tab: MainTab
+    let isSelected: Bool
 
     var body: some View {
         Label {
@@ -569,7 +570,7 @@ private struct MainSidebarRow: View {
                 .fill(tab.tint)
                 .frame(width: 29, height: 29)
                 .overlay {
-                    Image(systemName: tab.systemImage)
+                    Image(systemName: tab.systemImage(isSelected: isSelected))
                         .font(.system(size: 15, weight: .semibold))
                         .symbolRenderingMode(.monochrome)
                         .foregroundStyle(.white)
