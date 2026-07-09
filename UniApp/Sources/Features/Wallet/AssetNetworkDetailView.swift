@@ -58,6 +58,9 @@ struct AssetNetworkDetailView: View {
     // NavigationPath.
     @State private var isShowingSend = false
     @State private var isShowingReceive = false
+    @State private var isShowingAddCustomToken = false
+    @State private var addCustomTokenInitialChain: SupportedChain?
+    @State private var openAddCustomTokenAfterReceiveDismiss = false
     @State private var sendPath = NavigationPath()
     @State private var receivePath = NavigationPath()
 
@@ -116,13 +119,32 @@ struct AssetNetworkDetailView: View {
                 .presentationBackground(UniColors.Background.primary)
         }
         // Receive — pre-seeded to the QR/address screen for THIS network.
-        .sheet(isPresented: $isShowingReceive, onDismiss: { receivePath = NavigationPath() }) {
-            ReceiveView(navigationPath: $receivePath)
+        .sheet(isPresented: $isShowingReceive, onDismiss: handleReceiveSheetDismiss) {
+            ReceiveView(
+                navigationPath: $receivePath,
+                onAddCustomToken: { chain in
+                    requestStandaloneAddCustomToken(initialChain: chain)
+                }
+            )
                 .id(sheetDirectionKey)
                 .uniAppEnvironment()
                 .uniSheetDetents([.large])
                 .presentationDragIndicator(.visible)
                 .presentationBackground(UniColors.Background.primary)
+        }
+        .sheet(isPresented: $isShowingAddCustomToken, onDismiss: {
+            addCustomTokenInitialChain = nil
+        }) {
+            AddCustomTokenSheet(
+                initialChain: addCustomTokenInitialChain ?? firstSupportedCustomTokenChain,
+                availableChains: availableChainsForCustomTokenAdd,
+                onSaved: {}
+            )
+            .id(sheetDirectionKey)
+            .uniAppEnvironment()
+            .uniSheetDetents([.large])
+            .presentationDragIndicator(.visible)
+            .presentationBackground(UniColors.Background.primary)
         }
         .task(id: identity.symbol) {
             // USD prices for the $0.01-USD dust gate — engine-cached,
@@ -435,6 +457,36 @@ struct AssetNetworkDetailView: View {
 
     private var activeWallet: WalletRecord? {
         ActiveWalletResolver.resolve(rawID: activeWalletIdRaw, wallets: allWallets)
+    }
+
+    private var availableChainsForCustomTokenAdd: [SupportedChain] {
+        guard let wallet = activeWallet else { return [] }
+        let chains: Set<SupportedChain> = Set(wallet.addresses.compactMap { address in
+            guard !address.address.isEmpty else { return nil }
+            return SupportedChain(rawValue: address.chainRaw)
+        })
+        return SupportedChain.allCases.filter { chains.contains($0) }
+    }
+
+    private var firstSupportedCustomTokenChain: SupportedChain {
+        CustomTokenSupport.preferredInitialChain(availableChains: availableChainsForCustomTokenAdd)
+    }
+
+    private func requestStandaloneAddCustomToken(initialChain: SupportedChain?) {
+        addCustomTokenInitialChain = initialChain ?? firstSupportedCustomTokenChain
+        if isShowingReceive {
+            openAddCustomTokenAfterReceiveDismiss = true
+            isShowingReceive = false
+        } else {
+            isShowingAddCustomToken = true
+        }
+    }
+
+    private func handleReceiveSheetDismiss() {
+        receivePath = NavigationPath()
+        guard openAddCustomTokenAfterReceiveDismiss else { return }
+        openAddCustomTokenAfterReceiveDismiss = false
+        isShowingAddCustomToken = true
     }
 
     private var observationScopeKey: String {

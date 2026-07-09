@@ -49,7 +49,7 @@ struct AddCustomTokenSheet: View {
     @Environment(\.dismiss) private var dismiss
 
     @State private var selectedChain: SupportedChain
-    @State private var step: Step = .networkSelection
+    @State private var navigationPath: [Destination] = []
     @State private var networkSearchText: String = ""
     @State private var contractInput: String = ""
     @State private var phase: Phase = .entry
@@ -80,48 +80,45 @@ struct AddCustomTokenSheet: View {
     }
 
     var body: some View {
-        NavigationStack {
-            Group {
-                switch step {
-                case .networkSelection:
-                    networkSelectionScreen
-                case .contractEntry:
-                    contractEntryScreen
-                }
-            }
+        NavigationStack(path: $navigationPath) {
+            networkSelectionScreen
             .background(UniColors.Background.primary)
-            .navigationTitle(step.navigationTitle(selectedChain: selectedChain))
+            .navigationTitle("Choose network")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    switch step {
-                    case .networkSelection:
+                    if navigationPath.isEmpty {
                         Button("Cancel") {
                             fetchTask?.cancel()
                             dismiss()
                         }
-                            .tint(UniColors.Button.text)
-                    case .contractEntry:
-                        Button {
-                            fetchTask?.cancel()
-                            phase = .entry
-                            validatedContract = nil
-                            step = .networkSelection
-                        } label: {
-                            Label("Networks", systemImage: "chevron.left")
-                                .labelStyle(.titleAndIcon)
-                        }
-                            .tint(UniColors.Button.text)
-                    }
-                }
-                ToolbarItem(placement: .topBarTrailing) {
-                    if step == .contractEntry, case .preview = phase {
-                        Button("Save") { save() }.tint(UniColors.Button.text)
-                            .fontWeight(.semibold)
-                            .disabled(!canSave)
+                        .tint(UniColors.Button.text)
                     }
                 }
             }
+            .navigationDestination(for: Destination.self) { destination in
+                switch destination {
+                case .contractEntry(let chain):
+                    contractEntryScreen
+                        .background(UniColors.Background.primary)
+                        .navigationTitle("Add on \(chain.displayName)")
+                        .navigationBarTitleDisplayMode(.inline)
+                        .toolbar {
+                            ToolbarItem(placement: .topBarTrailing) {
+                                if case .preview = phase {
+                                    Button("Save") { save() }
+                                        .tint(UniColors.Button.text)
+                                        .fontWeight(.semibold)
+                                        .disabled(!canSave)
+                                }
+                            }
+                        }
+                }
+            }
+        }
+        .onChange(of: navigationPath) { _, newPath in
+            guard newPath.isEmpty else { return }
+            resetContractEntryState(clearInput: true)
         }
         .onChange(of: contractInput) { _, _ in
             scheduleFetch()
@@ -179,7 +176,7 @@ struct AddCustomTokenSheet: View {
                 Section {
                     ForEach(filteredNetworkChoices, id: \.self) { chain in
                         Button {
-                            selectNetwork(chain)
+                            openContractEntry(for: chain)
                         } label: {
                             AssetPickerNetworkRow(
                                 chain: chain,
@@ -314,32 +311,21 @@ struct AddCustomTokenSheet: View {
 
     @ViewBuilder
     private var selectedNetworkSummary: some View {
-        Button {
-            fetchTask?.cancel()
-            phase = .entry
-            validatedContract = nil
-            step = .networkSelection
-        } label: {
-            HStack {
-                CoinMark(chain: selectedChain, tokenSymbol: selectedChain.ticker)
-                    .frame(width: 32, height: 32)
-                    .accessibilityHidden(true)
-                Text(verbatim: selectedChain.displayName)
-                    .font(UniTypography.body)
-                    .foregroundStyle(UniColors.Text.primary)
-                Spacer()
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(UniColors.Icon.tertiary)
-            }
-            .padding(.horizontal, UniSpacing.m)
-            .padding(.vertical, UniSpacing.s)
-            .background(
-                RoundedRectangle(cornerRadius: UniRadius.m, style: .continuous)
-                    .fill(UniColors.Background.secondary)
-            )
+        HStack {
+            CoinMark(chain: selectedChain, tokenSymbol: selectedChain.ticker)
+                .frame(width: 32, height: 32)
+                .accessibilityHidden(true)
+            Text(verbatim: selectedChain.displayName)
+                .font(UniTypography.body)
+                .foregroundStyle(UniColors.Text.primary)
+            Spacer()
         }
-        .uniHaptic(.selection, trigger: selectedChain.rawValue)
+        .padding(.horizontal, UniSpacing.m)
+        .padding(.vertical, UniSpacing.s)
+        .background(
+            RoundedRectangle(cornerRadius: UniRadius.m, style: .continuous)
+                .fill(UniColors.Background.secondary)
+        )
     }
 
     @ViewBuilder
@@ -539,7 +525,7 @@ struct AddCustomTokenSheet: View {
 
     // MARK: - Actions
 
-    private func selectNetwork(_ chain: SupportedChain) {
+    private func openContractEntry(for chain: SupportedChain) {
         fetchTask?.cancel()
         let changedNetwork = chain != selectedChain
         selectedChain = chain
@@ -549,7 +535,18 @@ struct AddCustomTokenSheet: View {
         }
         phase = .entry
         validatedContract = nil
-        step = .contractEntry
+        navigationPath.append(.contractEntry(chain))
+    }
+
+    private func resetContractEntryState(clearInput: Bool) {
+        fetchTask?.cancel()
+        phase = .entry
+        validatedContract = nil
+        editedName = ""
+        editedSymbol = ""
+        if clearInput {
+            contractInput = ""
+        }
     }
 
     private func prepareCSVExport() {
@@ -816,18 +813,8 @@ extension AddCustomTokenSheet {
         let message: String
     }
 
-    enum Step: Equatable {
-        case networkSelection
-        case contractEntry
-
-        func navigationTitle(selectedChain: SupportedChain) -> LocalizedStringKey {
-            switch self {
-            case .networkSelection:
-                return "Choose network"
-            case .contractEntry:
-                return "Add on \(selectedChain.displayName)"
-            }
-        }
+    enum Destination: Hashable {
+        case contractEntry(SupportedChain)
     }
 
     enum Phase: Equatable {

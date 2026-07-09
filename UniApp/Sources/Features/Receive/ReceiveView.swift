@@ -48,6 +48,7 @@ struct ReceiveView: View {
     /// with one network go straight to QR; multi-network tokens open
     /// the native Receive network picker with the token already chosen.
     var assetPrefill: AssetPrefill? = nil
+    var onAddCustomToken: ((SupportedChain?) -> Void)? = nil
 
     @State private var didSeedAssetPrefill: Bool = false
 
@@ -111,7 +112,7 @@ struct ReceiveView: View {
                     openToken(asset)
                 },
                 onAddCustomToken: {
-                    isShowingAddCustomToken = true
+                    requestAddCustomToken()
                 }
             )
             .navigationTitle("Receive")
@@ -126,7 +127,7 @@ struct ReceiveView: View {
                         }
 
                         Button {
-                            isShowingAddCustomToken = true
+                            requestAddCustomToken()
                         } label: {
                             Label("Add custom token", systemImage: "plus")
                         }
@@ -169,7 +170,12 @@ struct ReceiveView: View {
                         address: address
                     )
                 case .customTokens:
-                    CustomTokensListView(initialChainForAdd: firstSupportedCustomTokenChain)
+                    CustomTokensListView(
+                        initialChainForAdd: firstSupportedCustomTokenChain,
+                        onAddCustomToken: { chain in
+                            requestAddCustomToken(initialChain: chain)
+                        }
+                    )
                 }
             }
         }
@@ -327,6 +333,15 @@ struct ReceiveView: View {
         navigationPath.append(
             ReceiveDestination.qr(chain: chain, tokenSymbol: tokenSymbol, address: address)
         )
+    }
+
+    private func requestAddCustomToken(initialChain: SupportedChain? = nil) {
+        let chain = initialChain ?? firstSupportedCustomTokenChain
+        if let onAddCustomToken {
+            onAddCustomToken(chain)
+        } else {
+            isShowingAddCustomToken = true
+        }
     }
 
     /// First supported chain for the Add Custom Token sheet's

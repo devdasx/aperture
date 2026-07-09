@@ -72,9 +72,14 @@ struct CustomTokensListView: View {
     /// caller passes the wallet's currently-displayed chain so the
     /// sheet opens with one less tap.
     let initialChainForAdd: SupportedChain?
+    let onAddCustomToken: ((SupportedChain?) -> Void)?
 
-    init(initialChainForAdd: SupportedChain? = nil) {
+    init(
+        initialChainForAdd: SupportedChain? = nil,
+        onAddCustomToken: ((SupportedChain?) -> Void)? = nil
+    ) {
         self.initialChainForAdd = initialChainForAdd
+        self.onAddCustomToken = onAddCustomToken
     }
 
     private var tokensByChain: [(chain: SupportedChain, tokens: [CustomTokenRecord])] {
@@ -98,7 +103,7 @@ struct CustomTokensListView: View {
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
-                    isShowingAddSheet = true
+                    requestAddToken()
                 } label: {
                     Image(systemName: "plus")
                         .font(.system(size: 17, weight: .semibold))
@@ -142,7 +147,7 @@ struct CustomTokensListView: View {
 
             Section {
                 UniButton(title: "Add a token", variant: .secondary) {
-                    isShowingAddSheet = true
+                    requestAddToken()
                 }
                 .listRowBackground(Color.clear)
                 .listRowSeparator(.hidden)
@@ -214,6 +219,14 @@ struct CustomTokensListView: View {
             } catch {
                 isShowingDeleteError = true
             }
+        }
+    }
+
+    private func requestAddToken() {
+        if let onAddCustomToken {
+            onAddCustomToken(initialChainForAdd)
+        } else {
+            isShowingAddSheet = true
         }
     }
 }

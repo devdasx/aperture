@@ -210,6 +210,9 @@ struct WalletHomeView: View {
     /// a push. Owned here on the parent so its path can be reset on
     /// dismiss per Rule #12 §G.
     @State private var isShowingReceive: Bool = false
+    @State private var isShowingAddCustomToken: Bool = false
+    @State private var addCustomTokenInitialChain: SupportedChain?
+    @State private var openAddCustomTokenAfterReceiveDismiss: Bool = false
     /// Drives the Send sheet (the Receive twin). Its own NavigationPath
     /// lives here so the sheet survives Rule #12 §G direction rebuilds.
     @State private var isShowingSend: Bool = false
@@ -672,18 +675,37 @@ struct WalletHomeView: View {
         // gear. Receive remains a sheet because its surface is
         // commit-shaped (pick chain → render QR → share), not a
         // top-level section.
-        .sheet(isPresented: $isShowingReceive, onDismiss: { receivePath = NavigationPath() }) {
+        .sheet(isPresented: $isShowingReceive, onDismiss: handleReceiveSheetDismiss) {
             // Receive v2 — asset-first bottom sheet. `.large` detent
             // only (per M-005, avoids `.medium` clipping locale-
             // sensitive list rows in RTL languages). Rule #12 §G
             // direction-only rebuild key + `.uniAppEnvironment()` so
             // theme + locale propagate into the sheet's own scope.
-            ReceiveView(navigationPath: $receivePath)
+            ReceiveView(
+                navigationPath: $receivePath,
+                onAddCustomToken: { chain in
+                    requestStandaloneAddCustomToken(initialChain: chain)
+                }
+            )
                 .id(sheetDirectionKey)
                 .uniAppEnvironment()
                 .uniSheetDetents([.large])
                 .presentationDragIndicator(.visible)
                 .presentationBackground(UniColors.Background.primary)
+        }
+        .sheet(isPresented: $isShowingAddCustomToken, onDismiss: {
+            addCustomTokenInitialChain = nil
+        }) {
+            AddCustomTokenSheet(
+                initialChain: addCustomTokenInitialChain ?? firstSupportedCustomTokenChain,
+                availableChains: availableChainsForCustomTokenAdd,
+                onSaved: {}
+            )
+            .id(sheetDirectionKey)
+            .uniAppEnvironment()
+            .uniSheetDetents([.large])
+            .presentationDragIndicator(.visible)
+            .presentationBackground(UniColors.Background.primary)
         }
         // Send — asset-first bottom sheet, the twin of Receive. Same
         // `.large`-only detent, same Rule #12 §G direction rebuild key +
@@ -2236,6 +2258,36 @@ struct WalletHomeView: View {
             rawID: activeWalletIdRaw,
             wallets: allWallets
         )
+    }
+
+    private var availableChainsForCustomTokenAdd: [SupportedChain] {
+        guard let wallet = activeWallet else { return [] }
+        let chains: Set<SupportedChain> = Set(wallet.addresses.compactMap { address in
+            guard !address.address.isEmpty else { return nil }
+            return SupportedChain(rawValue: address.chainRaw)
+        })
+        return SupportedChain.allCases.filter { chains.contains($0) }
+    }
+
+    private var firstSupportedCustomTokenChain: SupportedChain {
+        CustomTokenSupport.preferredInitialChain(availableChains: availableChainsForCustomTokenAdd)
+    }
+
+    private func requestStandaloneAddCustomToken(initialChain: SupportedChain?) {
+        addCustomTokenInitialChain = initialChain ?? firstSupportedCustomTokenChain
+        if isShowingReceive {
+            openAddCustomTokenAfterReceiveDismiss = true
+            isShowingReceive = false
+        } else {
+            isShowingAddCustomToken = true
+        }
+    }
+
+    private func handleReceiveSheetDismiss() {
+        receivePath = NavigationPath()
+        guard openAddCustomTokenAfterReceiveDismiss else { return }
+        openAddCustomTokenAfterReceiveDismiss = false
+        isShowingAddCustomToken = true
     }
 
     /// All balances belonging to the active wallet, sorted by fiat
