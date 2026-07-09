@@ -16,7 +16,6 @@ struct BalanceCardView: View {
     let onSwitchWallet: () -> Void
     let onAddFunds: () -> Void
 
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.colorScheme) private var colorScheme
 
     @GRDBStorage(HideBalancesPreference.hideBalanceOnHomeKey) private var isHidden: Bool = false
@@ -48,14 +47,14 @@ struct BalanceCardView: View {
 
     var body: some View {
         GroupBox {
-            DisclosureGroup(isExpanded: balanceDisclosureBinding) {
-                balanceDisclosureContent
-            } label: {
-                balanceDisclosureLabel
+            VStack(alignment: .leading, spacing: 0) {
+                balanceSummary
+
+                if resolvedState == .zero {
+                    zeroBody
+                }
             }
-            .disclosureGroupStyle(BalanceCardDisclosureStyle())
             .padding(.vertical, UniSpacing.xs)
-            .animation(reduceMotion ? nil : .default, value: isHidden)
         }
         .groupBoxStyle(BalanceCardGroupBoxStyle())
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -70,23 +69,7 @@ struct BalanceCardView: View {
         return String(format: String.apertureLocalized("Updated %@"), relative)
     }
 
-    private var balanceDisclosureBinding: Binding<Bool> {
-        Binding<Bool>(
-            get: { !isHidden },
-            set: { isExpanded in
-                setHidden(!isExpanded)
-            }
-        )
-    }
-
-    @ViewBuilder
-    private var balanceDisclosureContent: some View {
-        if resolvedState == .zero {
-            zeroBody
-        }
-    }
-
-    private var balanceDisclosureLabel: some View {
+    private var balanceSummary: some View {
         VStack(alignment: .leading, spacing: 0) {
             header
 
@@ -217,18 +200,60 @@ struct BalanceCardView: View {
 
     @ViewBuilder
     private var zeroBody: some View {
-        Text("Add crypto to get started — receive or transfer it from another wallet.")
-            .font(UniTypography.BalanceCard.zeroPrompt)
-            .foregroundStyle(UniColors.Text.secondary)
-            .lineSpacing(3)
-            .fixedSize(horizontal: false, vertical: true)
+        ZStack(alignment: .topLeading) {
+            zeroVisibleBody
+                .opacity(isHidden ? 0 : 1)
+                .allowsHitTesting(!isHidden)
+                .accessibilityHidden(isHidden)
+
+            zeroSkeletonBody
+                .opacity(isHidden ? 1 : 0)
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
+        }
+    }
+
+    private var zeroVisibleBody: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text("Add crypto to get started — receive or transfer it from another wallet.")
+                .font(UniTypography.BalanceCard.zeroPrompt)
+                .foregroundStyle(UniColors.Text.secondary)
+                .lineSpacing(3)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.top, 18)
+                .padding(.bottom, 16)
+
+            UniButton(title: "Add funds", variant: .primary, systemImage: "plus") {
+                onAddFunds()
+            }
+            .accessibilityLabel(Text("Add funds, opens Receive"))
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var zeroSkeletonBody: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            VStack(alignment: .leading, spacing: 8) {
+                skeletonBar(widthFraction: 0.94, height: 13)
+                skeletonBar(widthFraction: 0.68, height: 13)
+            }
             .padding(.top, 18)
             .padding(.bottom, 16)
 
-        UniButton(title: "Add funds", variant: .primary, systemImage: "plus") {
-            onAddFunds()
+            Capsule(style: .continuous)
+                .fill(UniColors.Skeleton.base)
+                .frame(height: 47)
         }
-        .accessibilityLabel(Text("Add funds, opens Receive"))
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func skeletonBar(widthFraction: CGFloat, height: CGFloat) -> some View {
+        GeometryReader { proxy in
+            RoundedRectangle(cornerRadius: height / 2, style: .continuous)
+                .fill(UniColors.Skeleton.base)
+                .frame(width: max(0, proxy.size.width * widthFraction), height: height)
+        }
+        .frame(height: height)
     }
 
     private func switchWallet() {
@@ -237,19 +262,13 @@ struct BalanceCardView: View {
     }
 
     private func toggleHidden() {
-        balanceDisclosureBinding.wrappedValue.toggle()
+        setHidden(!isHidden)
         UniHapticEngine.shared.play(.toggle)
     }
 
     private func setHidden(_ hidden: Bool) {
         guard hidden != isHidden else { return }
-        if reduceMotion {
-            isHidden = hidden
-        } else {
-            withAnimation {
-                isHidden = hidden
-            }
-        }
+        isHidden = hidden
     }
 
     private var accessibilityLabel: Text {
@@ -261,56 +280,6 @@ struct BalanceCardView: View {
             return Text("Total balance \(value). Add crypto to get started.")
         }
         return Text("Total balance \(value)")
-    }
-}
-
-private struct BalanceCardDisclosureStyle: DisclosureGroupStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
-            configuration.label
-                .padding(.bottom, configuration.isExpanded ? 2 : 0)
-
-            BalanceCardDisclosureReveal(isExpanded: configuration.isExpanded) {
-                configuration.content
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .topLeading)
-    }
-}
-
-private struct BalanceCardDisclosureReveal<Content: View>: View {
-    let isExpanded: Bool
-    @ViewBuilder var content: () -> Content
-
-    @State private var contentHeight: CGFloat?
-
-    var body: some View {
-        content()
-            .fixedSize(horizontal: false, vertical: true)
-            .background {
-                GeometryReader { proxy in
-                    Color.clear.preference(
-                        key: BalanceCardDisclosureHeightKey.self,
-                        value: proxy.size.height
-                    )
-                }
-            }
-            .onPreferenceChange(BalanceCardDisclosureHeightKey.self) { nextHeight in
-                guard nextHeight.isFinite else { return }
-                if let contentHeight, abs(contentHeight - nextHeight) <= 0.5 { return }
-                contentHeight = nextHeight
-            }
-            .frame(height: isExpanded ? contentHeight : 0, alignment: .top)
-            .clipped()
-            .accessibilityHidden(!isExpanded)
-    }
-}
-
-private struct BalanceCardDisclosureHeightKey: PreferenceKey {
-    static let defaultValue: CGFloat = 0
-
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
-        value = nextValue()
     }
 }
 
