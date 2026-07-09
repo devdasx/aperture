@@ -337,8 +337,7 @@ struct WalletsListView: View {
             RecoveryPhraseFlow(
                 navigationPath: $createPath,
                 onDismiss: { isShowingCreate = false },
-                onUserSkippedBackup: {},
-                onUserCompletedBackup: {}
+                onUserContinuedWithoutVerifiedBackup: {}
             )
             .id(sheetDirectionKey)
             .uniAppEnvironment()

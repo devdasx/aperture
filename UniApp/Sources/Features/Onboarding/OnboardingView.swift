@@ -214,10 +214,8 @@ struct OnboardingView: View {
                     // flow's NavigationStack.
                     RecoveryPhraseFlow(
                         navigationPath: $recoveryPath,
-                        startsAtDisclosure: true,
                         onDismiss: { activeFlow = nil },
-                        onUserSkippedBackup: { hasUnbackedupWallet = true },
-                        onUserCompletedBackup: { hasUnbackedupWallet = false }
+                        onUserContinuedWithoutVerifiedBackup: { hasUnbackedupWallet = true }
                     )
                 case .importWallet:
                     // Import Wallet flow (T-003). Mirrors the

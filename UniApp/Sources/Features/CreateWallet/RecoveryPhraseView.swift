@@ -10,8 +10,8 @@ import UIKit
 /// **Intent (one sentence):** present the words clearly, with the
 /// appropriate weight of consequence, give the user every honest tool to
 /// save them (copy with auto-expiring clipboard, screenshot-warning sheet
-/// with a regenerate-the-phrase escape hatch), and offer the two paths
-/// out — back up now, or skip with eyes open.
+/// with a regenerate-the-phrase escape hatch), then continue into passcode
+/// setup.
 ///
 /// **Layout.**
 /// - Top hero: a small `key.fill` mark in `UniColors.Brand.mark`, plus a
@@ -21,14 +21,13 @@ import UIKit
 ///   with a 2-digit position badge in
 ///   `UniColors.Text.tertiary` and the word in body-emphasized weight.
 ///   Non-interactive: no tap, no copy menu.
-/// - A subtle `Copy` button below the grid. Tap copies the phrase to
+/// - A plain text `Copy` action below the grid. Tap copies the phrase to
 ///   `UIPasteboard.general` with a 60-second `.expirationDate` so the
 ///   system auto-clears it; a transient `UniFootnote` confirms and names
 ///   the expiry.
 /// - A short footnote reminding the user the phrase will not be shown
 ///   again, plus a hint that switching word counts replaces the phrase.
-/// - Two CTAs in one `GlassEffectContainer` at the bottom: primary
-///   "Back up now" and secondary "Skip for now".
+/// - One bottom CTA: Continue.
 ///
 /// **Toolbar.** Leading: a bare inline `xmark` glyph (no glass pill —
 /// per the iOS 26 navigation-bar pattern for a sheet-style close).
@@ -51,28 +50,12 @@ struct RecoveryPhraseView: View {
     /// Fires when the user taps the close (xmark) button. The caller
     /// dismisses the parent `fullScreenCover`.
     let onClose: () -> Void
-    /// Fires when the user taps "Back up now". Caller routes to the native
-    /// backup screens in the owning `NavigationStack`.
-    let onBackUpNow: () -> Void
-    /// Fires when the user taps "Skip for now". Caller presents the native
-    /// skip-backup alert and decides whether to continue.
-    let onSkipForNow: () -> Void
-
-    /// `true` while a full-screen child (the iCloud/Manual backup flow) is
-    /// covering this view. A `.fullScreenCover` does NOT fire this view's
-    /// `.onDisappear`, so `isVisible` stays `true` and the global screenshot
-    /// observer would keep firing for screenshots taken on the covering
-    /// screen — which shows NO phrase (e.g. "Backing up to iCloud"). The
-    /// parent (`RecoveryPhraseFlow`) owns the cover, so it tells us when it's
-    /// up and we suppress the warning then. (2026-06-20 user report: the
-    /// warning must fire ONLY on the seed-phrase screen.) This mirrors the
-    /// `!isShowingBackup` guard the Export flow already uses for the same
-    /// cover-over-phrase case.
-    var coveredByChild: Bool = false
+    /// Fires when the user taps Continue. Caller routes to passcode setup
+    /// or the wallet-ready screen, depending on existing security state.
+    let onContinue: () -> Void
 
     /// Root presentations show a close glyph so the user can dismiss the
-    /// slide-up flow. When this screen is pushed from the disclosure step,
-    /// the native back chevron is the correct control.
+    /// slide-up flow.
     var showsCloseButton: Bool = true
 
     /// Toggle for the passphrase sheet. Local state — the sheet does not
@@ -118,6 +101,7 @@ struct RecoveryPhraseView: View {
             VStack(alignment: .leading, spacing: UniSpacing.l) {
                 intro
                 PhraseGrid(words: state.words)
+                copyTextButton
                 metaBlock
             }
             .padding(.horizontal, UniSpacing.l)
@@ -201,14 +185,11 @@ struct RecoveryPhraseView: View {
             )
         ) { _ in
             // Only fire when the recovery-phrase view is actually on
-            // screen. If the user has navigated forward (BackupVerify,
-            // PinSetup) or backward (closed the cover), a screenshot
-            // taken elsewhere should NOT surface this sheet — the
-            // sensitive content (the 12/24 words) is no longer visible.
-            // `coveredByChild` handles the one case `.onDisappear` misses:
-            // a full-screen backup cover presented by the parent, which
-            // leaves this view "visible" but shows no phrase.
-            guard isVisible, !coveredByChild else { return }
+            // screen. If the user has navigated forward (PinSetup) or
+            // backward (closed the cover), a screenshot taken elsewhere
+            // should NOT surface this sheet — the sensitive content (the
+            // 12/24 words) is no longer visible.
+            guard isVisible else { return }
             isShowingScreenshotWarning = true
         }
     }
@@ -325,40 +306,35 @@ struct RecoveryPhraseView: View {
 
     // MARK: - Actions
 
-    /// Footer: [Copy | Back up now] on one row, Skip for now full-width below.
+    /// Bottom CTA. Copy lives directly under the phrase grid as a text
+    /// action, so the bottom stays focused on forward progress.
     private var actionRegion: some View {
-        VStack(spacing: UniSpacing.mPlus) {
-            GeometryReader { proxy in
-                let availableWidth = max(0, proxy.size.width - UniSpacing.s)
-                HStack(spacing: UniSpacing.s) {
-                    copyButton
-                        .frame(width: availableWidth * 0.3, height: 47)
-                    UniButton(title: "Back up now", variant: .primary) {
-                        onBackUpNow()
-                    }
-                    .frame(width: availableWidth * 0.7, height: 47)
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-            }
-            .frame(height: 47)
-            UniButton(title: "Skip for now", variant: .secondary) {
-                onSkipForNow()
+        GlassEffectContainer(spacing: UniSpacing.s) {
+            UniButton(title: "Continue", variant: .primary) {
+                onContinue()
             }
             .frame(height: 47)
         }
     }
 
-    /// Copy — the unified `.secondary` button. The phrase is shown by default
-    /// now (tap-to-reveal removed, 2026-06-21 user direction), so Copy is
-    /// always available. +4pt each side of breathing room.
-    private var copyButton: some View {
-        UniButton(
-            title: isShowingCopiedConfirmation ? "Copied" : "Copy",
-            variant: .secondary,
-            systemImage: isShowingCopiedConfirmation ? "checkmark" : "doc.on.doc"
-        ) {
+    /// Copy as plain text under the phrase grid. It deliberately avoids the
+    /// unified glass button treatment so the only heavy CTA on this screen is
+    /// Continue.
+    private var copyTextButton: some View {
+        Button {
             copyPhrase()
+        } label: {
+            Text(isShowingCopiedConfirmation ? "Copied" : "Copy")
+                .font(UniTypography.bodyEmphasized)
+                .foregroundStyle(
+                    isShowingCopiedConfirmation
+                        ? UniColors.Feedback.Success.foreground
+                        : UniColors.Button.text
+                )
+                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                .contentShape(Rectangle())
         }
+        .buttonStyle(.plain)
         .animation(.easeInOut(duration: 0.2), value: isShowingCopiedConfirmation)
         .accessibilityLabel(Text("Copy recovery phrase"))
     }
@@ -371,8 +347,7 @@ struct RecoveryPhraseView: View {
         RecoveryPhraseView(
             state: CreateWalletState(),
             onClose: {},
-            onBackUpNow: {},
-            onSkipForNow: {}
+            onContinue: {}
         )
     }
     .preferredColorScheme(.light)
@@ -383,8 +358,7 @@ struct RecoveryPhraseView: View {
         RecoveryPhraseView(
             state: CreateWalletState(),
             onClose: {},
-            onBackUpNow: {},
-            onSkipForNow: {}
+            onContinue: {}
         )
     }
     .preferredColorScheme(.dark)

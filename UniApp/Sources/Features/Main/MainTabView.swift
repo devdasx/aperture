@@ -208,8 +208,7 @@ struct MainTabView: View {
                 RecoveryPhraseFlow(
                     navigationPath: $createPath,
                     onDismiss: { isShowingCreate = false },
-                    onUserSkippedBackup: {},
-                    onUserCompletedBackup: {}
+                    onUserContinuedWithoutVerifiedBackup: {}
                 )
                 .uniAppEnvironment()
                 .presentationBackground(UniColors.Background.primary)

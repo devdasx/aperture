@@ -1,8 +1,7 @@
 import SwiftUI
 
-/// Verify-your-phrase step in the create-wallet flow. Pushed onto the
-/// cover's `NavigationStack` when the user taps "Back up now" on
-/// `RecoveryPhraseView`.
+/// Verify-your-phrase step used by manual backup flows. Pushed onto the
+/// cover's `NavigationStack` when a flow needs phrase verification.
 ///
 /// **Intent (one sentence):** make sure the user actually wrote down the
 /// phrase — without lecturing them, without locking them out on a wrong

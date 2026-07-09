@@ -140,7 +140,7 @@ struct UniSheet<BodyContent: View, Actions: View>: View {
         // Horizontal padding at `UniSpacing.m` (16pt). 2026-06-07
         // tightened from `UniSpacing.l` (24pt) after the user reported
         // a system `Toggle` switch having its right pill clipped on
-        // small iPhones (CreateWalletDisclosureSheet screenshot,
+        // small iPhones (large onboarding sheets screenshot,
         // /var/.../simulator_screenshot_…) — at 24pt each side the
         // content area was 345pt on iPhone 17 (393pt screen), and the
         // 16pt internal `UniCard` padding plus a trailing `Toggle`
