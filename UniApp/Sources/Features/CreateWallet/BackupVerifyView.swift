@@ -65,12 +65,11 @@ struct BackupVerifyView: View {
         }
         .navigationTitle(Text("Verify your recovery phrase"))
         .navigationBarTitleDisplayMode(.inline)
-        // Challenges are keyed to the phrase itself — if the phrase
-        // regenerates while this view is alive (screenshot-warning
-        // "Generate new phrase", word-count change), stale challenges
-        // built from the old words would be unanswerable. The `id:`
-        // re-runs the task and rebuilds everything from the current
-        // words; it also covers the initial appearance.
+        // Challenges are keyed to the phrase itself. If the phrase
+        // changes while this view is alive, stale challenges built from
+        // the old words would be unanswerable. The `id:` re-runs the
+        // task and rebuilds everything from the current words; it also
+        // covers the initial appearance.
         .task(id: state.words.joined(separator: " ")) {
             challenges = Self.makeChallenges(for: state.words)
             selections = [:]

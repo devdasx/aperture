@@ -111,11 +111,6 @@ private struct RecoveryPhraseRevealScreen: View {
     @State private var copied = false
     @State private var isShowingQR = false
     @State private var isShowingBackup = false
-    @State private var isShowingScreenshotWarning = false
-    /// Gates the screenshot notification to when this screen is actually on
-    /// top — the notification is global and keeps firing under pushed/
-    /// presented screens otherwise.
-    @State private var isVisible = false
 
     /// "Write these 12 words down…" — the count is the wallet's real word
     /// count (12 or 24), never hard-coded (2026-06-19 user direction).
@@ -202,18 +197,6 @@ private struct RecoveryPhraseRevealScreen: View {
                 .presentationBackground(UniColors.Background.primary)
             }
         }
-        .sheet(isPresented: $isShowingScreenshotWarning) {
-            // Same warning sheet as wallet creation, in export mode (no
-            // "generate new phrase" — this wallet already exists). We do NOT
-            // block the screenshot; per the export security model the user
-            // is always allowed to capture their own backup.
-            ScreenshotWarningSheet(
-                onKeepScreenshot: { isShowingScreenshotWarning = false }
-            )
-            .uniAppEnvironment()
-            .intrinsicHeightSheet()
-            .presentationBackground(UniColors.Background.primary)
-        }
         .fullScreenCover(isPresented: $isShowingBackup) {
             WalletBackupFlow(
                 walletId: walletId,
@@ -228,17 +211,8 @@ private struct RecoveryPhraseRevealScreen: View {
             .presentationBackground(UniColors.Background.primary)
         }
         .task { await load() }
-        .onAppear { isVisible = true }
         .onDisappear {
-            isVisible = false
             words = []
-        }
-        .onReceive(NotificationCenter.default.publisher(for: UIApplication.userDidTakeScreenshotNotification)) { _ in
-            // Don't fire while the backup flow is covering this screen — the
-            // phrase isn't visible there (e.g. the "create backup password"
-            // screen). The backup flow's own phrase screen warns separately.
-            guard isVisible, !isShowingBackup else { return }
-            isShowingScreenshotWarning = true
         }
     }
 
@@ -443,9 +417,6 @@ private struct KeyRevealScreen: View {
     @State private var loaded = false
     @State private var copied = false
     @State private var isShowingQR = false
-    @State private var isShowingScreenshotWarning = false
-    /// Gates the global screenshot notification to when this screen is on top.
-    @State private var isVisible = false
 
     private var keyValue: String? { row?.value }
 
@@ -534,26 +505,9 @@ private struct KeyRevealScreen: View {
                 .presentationBackground(UniColors.Background.primary)
             }
         }
-        .sheet(isPresented: $isShowingScreenshotWarning) {
-            // Same warning sheet as the recovery-phrase reveal, in the
-            // private-key wording. Screenshots are not blocked — user choice.
-            ScreenshotWarningSheet(
-                onKeepScreenshot: { isShowingScreenshotWarning = false },
-                secret: .privateKey
-            )
-            .uniAppEnvironment()
-            .intrinsicHeightSheet()
-            .presentationBackground(UniColors.Background.primary)
-        }
         .task { await load() }
-        .onAppear { isVisible = true }
         .onDisappear {
-            isVisible = false
             row = nil
-        }
-        .onReceive(NotificationCenter.default.publisher(for: UIApplication.userDidTakeScreenshotNotification)) { _ in
-            guard isVisible else { return }
-            isShowingScreenshotWarning = true
         }
     }
 

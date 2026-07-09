@@ -49,9 +49,9 @@ final class CreateWalletState {
     /// Stable identifier for the wallet being created. Generated once
     /// at construction so the same UUID flows through wallet-secret rows
     /// and `WalletRepository.insertCreatedWallet`. If the user regenerates
-    /// the phrase (screenshot warning → "Generate new phrase", Roll your
-    /// own commit), this id is rolled too — a different phrase is a
-    /// different wallet identity, even before persistence.
+    /// the phrase (word-count change or Roll your own commit), this id is
+    /// rolled too — a different phrase is a different wallet identity, even
+    /// before persistence.
     private(set) var pendingWalletId: UUID = UUID()
 
     init(wordCount: BIP39WordCount = .twelve) {
@@ -74,17 +74,13 @@ final class CreateWalletState {
 
     /// Discards the current mnemonic and draws a fresh one from CSPRNG
     /// entropy. Called automatically when `wordCount` changes; safe to
-    /// call externally for "Show me a new phrase" flows in the future
-    /// (used by the screenshot-warning sheet's "Generate new phrase"
-    /// CTA — the screenshot of the previous phrase is then a screenshot
-    /// of an invalidated wallet).
+    /// call externally for "Show me a new phrase" flows.
     ///
     /// Also rolls `pendingWalletId` because a different phrase is a
-    /// different wallet identity. If we kept the same id, the
-    /// screenshot-of-a-now-invalidated-phrase scenario would land in
-    /// the old seed row — fine mechanically but conceptually wrong, and
-    /// would give the new wallet the createdAt of the old one if the
-    /// `WalletRecord` was already persisted.
+    /// different wallet identity. If we kept the same id, a regenerated
+    /// phrase could land in the old seed row — fine mechanically but
+    /// conceptually wrong, and would give the new wallet the createdAt
+    /// of the old one if the `WalletRecord` was already persisted.
     func regenerate() {
         words = BIP39.generateMnemonic(wordCount: wordCount)
         pendingWalletId = UUID()

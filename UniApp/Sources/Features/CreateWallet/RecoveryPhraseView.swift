@@ -9,9 +9,8 @@ import UIKit
 ///
 /// **Intent (one sentence):** present the words clearly, with the
 /// appropriate weight of consequence, give the user every honest tool to
-/// save them (copy with auto-expiring clipboard, screenshot-warning sheet
-/// with a regenerate-the-phrase escape hatch), then continue into passcode
-/// setup.
+/// save them (copy with auto-expiring clipboard), then continue into
+/// passcode setup.
 ///
 /// **Layout.**
 /// - Top hero: a small `key.fill` mark in `UniColors.Brand.mark`, plus a
@@ -34,13 +33,6 @@ import UIKit
 /// Trailing: an overflow `Menu` rendered as a bare `ellipsis` glyph (no
 /// `.circle` chrome — see `MISTAKES.md` M-003) containing the word-count
 /// picker and the passphrase action.
-///
-/// **Screenshot policy.** The view does **not** blank the words when a
-/// screenshot fires. Honest behaviour: the screenshot succeeds, and an
-/// immediate sheet warns about the risks (cloud sync, photo library,
-/// unlocked-phone access) plus offers two ways forward — regenerate the
-/// phrase (the screenshot is now of an invalidated wallet) or keep the
-/// screenshot (the user knows what they're doing).
 struct RecoveryPhraseView: View {
     /// Shared flow state — owns the mnemonic, the word-count preference,
     /// and the optional passphrase. The view binds to it via `@Bindable`
@@ -63,27 +55,11 @@ struct RecoveryPhraseView: View {
     /// to the flow.
     @State private var isShowingPassphraseSheet: Bool = false
 
-    /// Toggle for the screenshot-warning sheet. Set to `true` from the
-    /// `UIApplication.userDidTakeScreenshotNotification` publisher; the
-    /// sheet itself decides what happens next.
-    @State private var isShowingScreenshotWarning: Bool = false
-
     /// Toggle for the "Roll your own" entropy sheet (user-supplied
     /// dice / coin / hex entropy). Local state — the sheet is
     /// self-contained and commits its result to `state.words` on
     /// success.
     @State private var isShowingRollYourOwn: Bool = false
-
-    /// Tracks whether this view is currently the topmost (visible) view
-    /// in the navigation stack. The screenshot notification is global —
-    /// `.onReceive` keeps firing even when `RecoveryPhraseView` has been
-    /// pushed-onto (e.g., the user is in `BackupVerifyView` or
-    /// `PinSetupFlow`). Without this gate, taking a screenshot in PIN
-    /// setup would surface the recovery-phrase regenerate warning, which
-    /// is wrong: the sensitive surface is only visible HERE, so only
-    /// here should the warning fire. Toggled by `.onAppear` /
-    /// `.onDisappear`, which fire on push/pop in `NavigationStack`.
-    @State private var isVisible: Bool = false
 
     /// Toggle for the open-source verification sheet (Rule #16 §A.4).
     /// Anchored to this surface because the recovery-phrase view is
@@ -142,25 +118,6 @@ struct RecoveryPhraseView: View {
                 .intrinsicHeightSheet()
                 .presentationBackground(UniColors.Background.primary)
         }
-        .sheet(isPresented: $isShowingScreenshotWarning) {
-            ScreenshotWarningSheet(
-                onRegeneratePhrase: {
-                    // The screenshot just taken is now of a phrase that
-                    // is no longer the wallet's. New entropy, new words.
-                    // The passphrase is also cleared so the user starts
-                    // from scratch — anything else would be dishonest.
-                    state.passphrase = ""
-                    state.regenerate()
-                    isShowingScreenshotWarning = false
-                },
-                onKeepScreenshot: {
-                    isShowingScreenshotWarning = false
-                }
-            )
-            .uniAppEnvironment()
-            .intrinsicHeightSheet()
-            .presentationBackground(UniColors.Background.primary)
-        }
         .sheet(isPresented: $isShowingRollYourOwn) {
             // Per the jony-ive 2026-06-05 audit: this is a navigation
             // experience (NavigationStack-rooted, three screens) — same
@@ -177,21 +134,6 @@ struct RecoveryPhraseView: View {
             .presentationBackground(UniColors.Background.primary)
         }
         .uniHapticSignature(.phraseRevealed, trigger: state.words.joined())
-        .onAppear { isVisible = true }
-        .onDisappear { isVisible = false }
-        .onReceive(
-            NotificationCenter.default.publisher(
-                for: UIApplication.userDidTakeScreenshotNotification
-            )
-        ) { _ in
-            // Only fire when the recovery-phrase view is actually on
-            // screen. If the user has navigated forward (PinSetup) or
-            // backward (closed the cover), a screenshot taken elsewhere
-            // should NOT surface this sheet — the sensitive content (the
-            // 12/24 words) is no longer visible.
-            guard isVisible else { return }
-            isShowingScreenshotWarning = true
-        }
     }
 
     // MARK: - Toolbar leading: bare X (no glass pill — see MISTAKES.md M-002)

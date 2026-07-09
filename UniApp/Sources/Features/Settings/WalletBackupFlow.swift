@@ -804,9 +804,6 @@ struct ManualWriteDownScreen: View {
     let words: [String]
     let onWrittenDown: () -> Void
 
-    @State private var isShowingScreenshotWarning = false
-    @State private var isVisible = false
-
     var body: some View {
         VStack(spacing: 0) {
             ScrollView {
@@ -838,22 +835,6 @@ struct ManualWriteDownScreen: View {
             .padding(.bottom, UniSpacing.m)
         }
         .background(UniColors.Background.primary.ignoresSafeArea())
-        // This IS a seed-phrase screen, so a screenshot here warns (the
-        // password / progress / success screens don't — they show no phrase).
-        .sheet(isPresented: $isShowingScreenshotWarning) {
-            ScreenshotWarningSheet(
-                onKeepScreenshot: { isShowingScreenshotWarning = false }
-            )
-            .uniAppEnvironment()
-            .intrinsicHeightSheet()
-            .presentationBackground(UniColors.Background.primary)
-        }
-        .onAppear { isVisible = true }
-        .onDisappear { isVisible = false }
-        .onReceive(NotificationCenter.default.publisher(for: UIApplication.userDidTakeScreenshotNotification)) { _ in
-            guard isVisible else { return }
-            isShowingScreenshotWarning = true
-        }
     }
 }
 
