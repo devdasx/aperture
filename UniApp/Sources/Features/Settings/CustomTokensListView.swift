@@ -151,12 +151,7 @@ struct CustomTokensListView: View {
                 }
                 .listRowBackground(Color.clear)
                 .listRowSeparator(.hidden)
-                .listRowInsets(EdgeInsets(
-                    top: 0,
-                    leading: UniSpacing.m,
-                    bottom: 0,
-                    trailing: UniSpacing.m
-                ))
+                .listRowInsets(EdgeInsets())
             }
         }
         .listStyle(.insetGrouped)
