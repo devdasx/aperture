@@ -218,15 +218,17 @@ enum RPCRegistry {
     private static func zkSyncEndpoints() -> [RPCEndpoint?] {
         // NOTE: `zksync-era-rpc.publicnode.com` was removed 2026-06-16 —
         // it now returns HTTP 404 (publicnode dropped zkSync Era).
-        // `mainnet.era.zksync.io` (matter-labs official), `zksync.drpc.org`,
-        // and keyed 1rpc (`zksync2-era`) were live-verified (chainId 0x144).
-        // **2026-06-16 — live-probe (curl-verified, chainId 0x144).**
-        // All three healthy; keyless `zks-1rpc` public path is quota-dead
-        // (-32001) but keyed is fine — demoted below the keyless-always
-        // mainnet/drpc.
+        // **2026-07-10 — live-probe (curl-verified, chainId 0x144).**
+        // `zksync.drpc.org` was the fastest healthy keyless endpoint across
+        // eth_chainId/eth_blockNumber/eth_gasPrice probes, so it is the
+        // primary public fallback. `rpc.ankr.com/zksync_era` was also
+        // healthy and is kept ahead of the official Matter Labs endpoint.
+        // Keyless 1RPC is still quota-dead (-32001), but the keyed path is
+        // fine and stays in the keyed 1RPC slot when configured.
         [
-            jr("zks-mainnet",     "https://mainnet.era.zksync.io",                .zkSync, "matter-labs",   .publicNode,  0),
-            jr("zks-drpc",        "https://zksync.drpc.org",                      .zkSync, "drpc",          .moderate10,  1),
+            jr("zks-drpc",        "https://zksync.drpc.org",                      .zkSync, "drpc",          .moderate10,  0),
+            jr("zks-ankr",        "https://rpc.ankr.com/zksync_era",              .zkSync, "ankr",          .moderate10,  1),
+            jr("zks-mainnet",     "https://mainnet.era.zksync.io",                .zkSync, "matter-labs",   .publicNode,  2),
             oneRPC("zks-1rpc",    slug: "zksync2-era",                            .zkSync,                                9),
         ]
     }

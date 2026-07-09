@@ -2855,8 +2855,9 @@ actor PublicNodeEVMRPCClient {
             return URL(string: "https://scroll-rpc.publicnode.com")
         case .zkSync:
             // PublicNode removed zkSync Era (the old endpoint is HTTP 404).
-            // 1RPC is live-verified for chainId 0x144 and parallel balanceOf reads.
-            return URL(string: "https://1rpc.io/zksync2-era")
+            // dRPC was the fastest healthy keyless fallback in 2026-07-10 probes;
+            // keyless 1RPC returns -32001 quota errors.
+            return URL(string: "https://zksync.drpc.org")
         case .polygon:
             return URL(string: "https://polygon-bor-rpc.publicnode.com")
         case .bnbChain:
