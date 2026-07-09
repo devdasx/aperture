@@ -9,6 +9,9 @@ struct PrivateKeyEntryView: View {
 
     @State private var isShowingGuide: Bool = false
     @State private var isShowingLeakedWarning: Bool = false
+    @State private var isShowingScanner: Bool = false
+    @State private var isKeyRevealed: Bool = false
+    @FocusState private var keyFocused: Bool
 
     /// `true` while the view is disappearing because the user chose to
     /// continue forward (review push). Back-navigation leaves it
@@ -48,11 +51,6 @@ struct PrivateKeyEntryView: View {
                     subtitle: LocalizedStringKey("Paste the key for your \(chain.displayName) account. Aperture checks the format before deriving any address, and the key never leaves this iPhone.")
                 )
                 keyField
-                ImportExampleCaption(
-                    caption: "Example only — never type a real key from a tutorial.",
-                    example: chain.exampleKeyPreview,
-                    monospaced: true
-                )
                 detectionLabel
             }
             .padding(.horizontal, UniSpacing.l)
@@ -74,24 +72,21 @@ struct PrivateKeyEntryView: View {
             ToolbarItem(placement: .principal) {
                 ChainNavTitle(chain: chain)
             }
-            ToolbarItem(placement: .topBarTrailing) {
-                Button("Paste") {
-                    if let clipboard = SafePasteboard.string {
-                        let trimmed = clipboard.trimmingCharacters(in: .whitespacesAndNewlines)
-                        guard !trimmed.isEmpty else { return }
-                        state.privateKeyRaw = trimmed
-                        // Clear properly — `items = []` removes the
-                        // entry; assigning `""` would leave an empty
-                        // string item behind.
-                        SafePasteboard.clear()
-                    }
-                }
-                    .tint(UniColors.Button.text)
-            }
         }
         .uniBottomActionBar {
             continueRegion
                 .padding(.horizontal, UniSpacing.l)
+        }
+        .fullScreenCover(isPresented: $isShowingScanner) {
+            UniQRScannerSheet(
+                title: "Scan private key",
+                prompt: "Point your camera at a private-key QR code.",
+                onRawDeliver: { scanned in
+                    fillPrivateKey(scanned)
+                    isShowingScanner = false
+                }
+            )
+            .uniAppEnvironment()
         }
         .sheet(isPresented: $isShowingGuide) {
             PrivateKeyGuideSheet(onDismiss: { isShowingGuide = false })
@@ -158,16 +153,139 @@ struct PrivateKeyEntryView: View {
     /// app's locale, so even an Arabic-locale user sees the key text
     /// flow left-to-right.
     private var keyField: some View {
-        UniTextField(
-            placeholder: "Paste your private key",
-            text: $state.privateKeyRaw,
-            directionPolicy: .forceLTR,
-            isSecure: true,
-            showsRevealToggle: true,
-            axis: .vertical,
-            lineLimit: 6,
-            contentType: .password
-        )
+        ZStack(alignment: .bottomTrailing) {
+            privateKeyInputControl
+                .focused($keyFocused)
+                .textFieldStyle(.automatic)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled(true)
+                .keyboardType(.default)
+                .textContentType(.password)
+                .submitLabel(.done)
+                .font(UniTypography.body)
+                .foregroundStyle(UniColors.Input.text)
+                .tint(UniColors.Tint.accent)
+                .lineLimit(isKeyRevealed ? 4...8 : 1...1)
+                .padding(.leading, UniSpacing.mPlus)
+                .padding(.trailing, 56)
+                .padding(.top, UniSpacing.m)
+                .padding(.bottom, 62)
+                .frame(maxWidth: .infinity, minHeight: 166, alignment: .topLeading)
+                .background(keyInputBackground)
+                .privacySensitive()
+                .environment(\.layoutDirection, .leftToRight)
+                .onSubmit {
+                    keyFocused = false
+                }
+                .onChange(of: state.privateKeyRaw) { _, newValue in
+                    guard newValue.contains(where: \.isNewline) else { return }
+                    state.privateKeyRaw = newValue.filter { !$0.isNewline }
+                    keyFocused = false
+                }
+
+            revealKeyButton
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+                .padding(.top, 6)
+                .padding(.trailing, UniSpacing.xs)
+
+            keyUtilityButtons
+                .padding(.trailing, UniSpacing.s)
+                .padding(.bottom, UniSpacing.s)
+        }
+    }
+
+    @ViewBuilder
+    private var privateKeyInputControl: some View {
+        if isKeyRevealed {
+            TextField("Paste your private key", text: $state.privateKeyRaw, axis: .vertical)
+        } else {
+            SecureField("Paste your private key", text: $state.privateKeyRaw)
+        }
+    }
+
+    private var keyInputBackground: some View {
+        RoundedRectangle(cornerRadius: UniRadius.textField, style: .continuous)
+            .fill(UniColors.Input.background)
+            .overlay {
+                RoundedRectangle(cornerRadius: UniRadius.textField, style: .continuous)
+                    .stroke(
+                        keyFocused ? UniColors.Input.focusedBorder : UniColors.Input.border,
+                        lineWidth: keyFocused ? 1 : 0
+                    )
+            }
+    }
+
+    private var revealKeyButton: some View {
+        Button {
+            isKeyRevealed.toggle()
+            keyFocused = true
+        } label: {
+            Image(systemName: isKeyRevealed ? "eye.slash" : "eye")
+                .font(.system(size: 17, weight: .regular))
+                .foregroundStyle(UniColors.Input.revealIcon)
+                .frame(width: 44, height: 44)
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(Text(isKeyRevealed ? "Hide private key" : "Show private key"))
+    }
+
+    private var keyUtilityButtons: some View {
+        HStack(spacing: 8) {
+            keyUtilityButton(
+                title: "Paste",
+                systemImage: "doc.on.clipboard",
+                accessibilityLabel: "Paste private key"
+            ) {
+                pastePrivateKeyFromClipboard()
+            }
+
+            keyUtilityButton(
+                title: "Scan",
+                systemImage: "qrcode.viewfinder",
+                accessibilityLabel: "Scan private key"
+            ) {
+                UniHapticEngine.shared.play(.selection)
+                isShowingScanner = true
+            }
+        }
+    }
+
+    private func keyUtilityButton(
+        title: LocalizedStringKey,
+        systemImage: String,
+        accessibilityLabel: LocalizedStringKey,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Label(title, systemImage: systemImage)
+                .font(.system(size: 14, weight: .semibold))
+                .labelStyle(.titleAndIcon)
+                .foregroundStyle(UniColors.Text.primary)
+                .padding(.horizontal, 12)
+                .frame(height: 38)
+                .background(.regularMaterial, in: Capsule(style: .continuous))
+                .overlay {
+                    Capsule(style: .continuous)
+                        .stroke(UniColors.Input.border.opacity(0.7), lineWidth: 1)
+                }
+                .contentShape(Capsule(style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(Text(accessibilityLabel))
+    }
+
+    private func pastePrivateKeyFromClipboard() {
+        guard let clipboard = SafePasteboard.string else { return }
+        fillPrivateKey(clipboard)
+        SafePasteboard.clear()
+        UniHapticEngine.shared.play(.selection)
+    }
+
+    private func fillPrivateKey(_ raw: String) {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        state.privateKeyRaw = trimmed.filter { !$0.isNewline }
     }
 
     @ViewBuilder
