@@ -48,6 +48,7 @@ actor DiagnosticsLogStore {
     private var database: AppDatabase?
     private var pendingEntries: [DiagnosticsLogEntry] = []
     private var dropsEntriesUntilAttached = false
+    private var dropEntriesCreatedBefore: Date?
 
     private init() {
         let encoder = JSONEncoder()
@@ -132,13 +133,27 @@ actor DiagnosticsLogStore {
     }
 
     func clear() throws {
+        dropEntriesCreatedBefore = Date()
         pendingEntries.removeAll()
         try database?.write { db in
             try db.execute(sql: "DELETE FROM diagnostic_log_entries")
         }
     }
 
+    func clear(database targetDatabase: AppDatabase) throws {
+        dropEntriesCreatedBefore = Date()
+        pendingEntries.removeAll()
+        database = targetDatabase
+        dropsEntriesUntilAttached = false
+        try targetDatabase.write { db in
+            try db.execute(sql: "DELETE FROM diagnostic_log_entries")
+        }
+    }
+
     private func append(_ entry: DiagnosticsLogEntry) {
+        if let dropEntriesCreatedBefore, entry.timestamp <= dropEntriesCreatedBefore {
+            return
+        }
         guard let database else {
             guard !dropsEntriesUntilAttached else { return }
             pendingEntries.append(entry)
@@ -210,8 +225,14 @@ actor DiagnosticsLogStore {
         self.database = database
         dropsEntriesUntilAttached = false
         guard !pendingEntries.isEmpty else { return }
-        let pending = pendingEntries
+        let pending: [DiagnosticsLogEntry]
+        if let dropEntriesCreatedBefore {
+            pending = pendingEntries.filter { $0.timestamp > dropEntriesCreatedBefore }
+        } else {
+            pending = pendingEntries
+        }
         pendingEntries.removeAll()
+        guard !pending.isEmpty else { return }
         try? database.write { db in
             for entry in pending {
                 try insert(entry, db: db)

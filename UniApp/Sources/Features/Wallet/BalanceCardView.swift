@@ -270,11 +270,47 @@ private struct BalanceCardDisclosureStyle: DisclosureGroupStyle {
             configuration.label
                 .padding(.bottom, configuration.isExpanded ? 2 : 0)
 
-            if configuration.isExpanded {
+            BalanceCardDisclosureReveal(isExpanded: configuration.isExpanded) {
                 configuration.content
             }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+    }
+}
+
+private struct BalanceCardDisclosureReveal<Content: View>: View {
+    let isExpanded: Bool
+    @ViewBuilder var content: () -> Content
+
+    @State private var contentHeight: CGFloat?
+
+    var body: some View {
+        content()
+            .fixedSize(horizontal: false, vertical: true)
+            .background {
+                GeometryReader { proxy in
+                    Color.clear.preference(
+                        key: BalanceCardDisclosureHeightKey.self,
+                        value: proxy.size.height
+                    )
+                }
+            }
+            .onPreferenceChange(BalanceCardDisclosureHeightKey.self) { nextHeight in
+                guard nextHeight.isFinite else { return }
+                if let contentHeight, abs(contentHeight - nextHeight) <= 0.5 { return }
+                contentHeight = nextHeight
+            }
+            .frame(height: isExpanded ? contentHeight : 0, alignment: .top)
+            .clipped()
+            .accessibilityHidden(!isExpanded)
+    }
+}
+
+private struct BalanceCardDisclosureHeightKey: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = nextValue()
     }
 }
 
@@ -282,7 +318,7 @@ private struct BalanceCardGroupBoxStyle: GroupBoxStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.content
             .padding(UniSpacing.l)
-            .frame(maxWidth: .infinity, alignment: .leading)
+            .frame(maxWidth: .infinity, alignment: .topLeading)
             .background {
                 RoundedRectangle(cornerRadius: UniRadius.hero, style: .continuous)
                     .fill(UniColors.Card.background)

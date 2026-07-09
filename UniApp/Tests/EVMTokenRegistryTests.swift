@@ -297,7 +297,7 @@ struct EVMTokenRegistryTests {
     @Test("zkSync Era balanceOf live read returns base-unit balances")
     func zkSyncEraBalanceOfLiveRead() async throws {
         let holder = "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045"
-        let client = PublicNodeEVMTestClient(endpoint: URL(string: "https://1rpc.io/zksync2-era")!)
+        let client = PublicNodeEVMTestClient(endpoint: URL(string: "https://mainnet.era.zksync.io")!)
 
         let chainId = try await client.callString(method: "eth_chainId", params: [])
         #expect(chainId == "0x144")
