@@ -22,6 +22,7 @@ struct ReceiveQRCard: View {
     /// generator so the produced `UIImage` carries the correct
     /// point-size for this window (not `UIScreen.main`'s).
     @Environment(\.displayScale) private var displayScale
+    @Environment(\.colorScheme) private var colorScheme
 
     /// Off-main QR generation (Rule #28): cache hits render synchronously
     /// (no flash); a cache miss generates off the main thread via the
@@ -36,6 +37,10 @@ struct ReceiveQRCard: View {
             return "\(tokenSymbol) on \(chain.displayName)"
         }
         return "\(chain.displayName) · \(chain.ticker)"
+    }
+
+    private var qrStyle: QRCodeGenerator.Style {
+        colorScheme == .dark ? .inverted : .standard
     }
 
     var body: some View {
@@ -60,7 +65,7 @@ struct ReceiveQRCard: View {
         .frame(maxWidth: .infinity)
         .background(
             RoundedRectangle(cornerRadius: UniRadius.hero, style: .continuous)
-                .fill(Color.white)
+                .fill(UniColors.Card.background)
         )
         .overlay(
             RoundedRectangle(cornerRadius: UniRadius.hero, style: .continuous)
@@ -78,7 +83,7 @@ struct ReceiveQRCard: View {
     @ViewBuilder
     private var qrImage: some View {
         Group {
-            if let image = QRCodeGenerator.shared.cachedImage(for: address) ?? resolvedQR {
+            if let image = QRCodeGenerator.shared.cachedImage(for: address, style: qrStyle) ?? resolvedQR {
                 Image(uiImage: image)
                     .resizable()
                     .interpolation(.none) // crisp modules — no smoothing
@@ -105,11 +110,15 @@ struct ReceiveQRCard: View {
                     .aspectRatio(1, contentMode: .fit)
             }
         }
-        .task(id: address) {
+        .task(id: "\(address)-\(qrStyle.rawValue)") {
             qrFailed = false
             resolvedQR = nil
-            if QRCodeGenerator.shared.cachedImage(for: address) != nil { return }
-            if let image = await QRCodeGenerator.shared.image(for: address, displayScale: displayScale) {
+            if QRCodeGenerator.shared.cachedImage(for: address, style: qrStyle) != nil { return }
+            if let image = await QRCodeGenerator.shared.image(
+                for: address,
+                displayScale: displayScale,
+                style: qrStyle
+            ) {
                 resolvedQR = image
             } else {
                 qrFailed = true
@@ -122,7 +131,7 @@ struct ReceiveQRCard: View {
         let overlaySize: CGFloat = 56
         ZStack {
             RoundedRectangle(cornerRadius: UniRadius.s, style: .continuous)
-                .fill(Color.white)
+                .fill(UniColors.Card.background)
                 .frame(width: overlaySize, height: overlaySize)
             chainLogo
                 .frame(width: overlaySize - 14, height: overlaySize - 14)

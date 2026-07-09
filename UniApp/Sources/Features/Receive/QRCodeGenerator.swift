@@ -3,15 +3,15 @@ import CoreImage
 import CoreImage.CIFilterBuiltins
 import UIKit
 
-/// QR-code generator + per-payload cache. Wraps Core Image's native
+/// QR-code generator + per-payload/style cache. Wraps Core Image's native
 /// `CIFilter.qrCodeGenerator()` — no third-party dependency (Rule #3).
 ///
 /// **Why a cache.** The Receive screen rebuilds its body on every
 /// chain switch / size-class change / theme toggle / locale flip. The
-/// QR for a given `(chain, address)` doesn't change between rebuilds —
-/// regenerating it would burn CPU + a frame of latency for no visible
-/// benefit. The cache is keyed by payload string; identical payloads
-/// reuse the rendered `UIImage`.
+/// QR for a given `(chain, address, appearance)` doesn't change between
+/// rebuilds — regenerating it would burn CPU + a frame of latency for no
+/// visible benefit. The cache is keyed by payload string plus style;
+/// identical payload/style pairs reuse the rendered `UIImage`.
 ///
 /// **Error-correction level.** Set to `"H"` (≈30% recovery) so the
 /// small chain-logo overlay at the centre stays scannable even when it
@@ -34,6 +34,30 @@ final class QRCodeGenerator {
 
     private init() {}
 
+    enum Style: String, Sendable {
+        /// Black modules on a transparent background. The receive card
+        /// provides the white/light card surface behind it.
+        case standard
+        /// White modules on a transparent background. Used by dark-mode
+        /// receive cards so the QR sits on the app's soft card surface.
+        case inverted
+
+        fileprivate var colors: QRCodeStyleColors {
+            switch self {
+            case .standard:
+                return QRCodeStyleColors(
+                    module: QRCodeRGBA(red: 0, green: 0, blue: 0, alpha: 1),
+                    background: QRCodeRGBA(red: 1, green: 1, blue: 1, alpha: 0)
+                )
+            case .inverted:
+                return QRCodeStyleColors(
+                    module: QRCodeRGBA(red: 1, green: 1, blue: 1, alpha: 1),
+                    background: QRCodeRGBA(red: 0, green: 0, blue: 0, alpha: 0)
+                )
+            }
+        }
+    }
+
     /// Render the payload to a `UIImage` at the requested output size.
     /// Returns `nil` only when Core Image fails to produce a CIImage
     /// (extremely rare — empty payload, encoding overflow).
@@ -47,7 +71,9 @@ final class QRCodeGenerator {
     /// Synchronous cache-only lookup (no generation). The Receive card
     /// calls this first so an already-rendered QR shows instantly with no
     /// flash; on a miss it awaits `image(for:)` to generate off-main.
-    func cachedImage(for payload: String) -> UIImage? { cache[payload] }
+    func cachedImage(for payload: String, style: Style = .standard) -> UIImage? {
+        cache[cacheKey(for: payload, style: style)]
+    }
 
     /// Return the QR for `payload`, generating it OFF the main thread on a
     /// cache miss (Rule #28 — CIFilter rasterization no longer blocks the
@@ -55,15 +81,30 @@ final class QRCodeGenerator {
     /// instantly. The detached generation uses its OWN `CIContext` (the
     /// non-Sendable shared one is gone) — QR generation is once-per-address
     /// then cached, so a fresh context per miss is cheap.
-    func image(for payload: String, scale: CGFloat = 16, displayScale: CGFloat = 3) async -> UIImage? {
-        if let hit = cache[payload] { return hit }
+    func image(
+        for payload: String,
+        scale: CGFloat = 16,
+        displayScale: CGFloat = 3,
+        style: Style = .standard
+    ) async -> UIImage? {
+        let key = cacheKey(for: payload, style: style)
+        if let hit = cache[key] { return hit }
+
+        let colors = style.colors
 
         let generated = await Task.detached(priority: .userInitiated) { () -> UIImage? in
             let filter = CIFilter.qrCodeGenerator()
             filter.message = Data(payload.utf8)
             filter.correctionLevel = "H"
             guard let output = filter.outputImage else { return nil }
-            let transformed = output.transformed(by: CGAffineTransform(scaleX: scale, y: scale))
+
+            let palette = CIFilter.falseColor()
+            palette.inputImage = output
+            palette.color0 = colors.module.ciColor
+            palette.color1 = colors.background.ciColor
+
+            guard let styledOutput = palette.outputImage else { return nil }
+            let transformed = styledOutput.transformed(by: CGAffineTransform(scaleX: scale, y: scale))
             let context = CIContext(options: nil)
             guard let cg = context.createCGImage(transformed, from: transformed.extent) else {
                 return nil
@@ -79,8 +120,8 @@ final class QRCodeGenerator {
             insertionOrder.removeFirst()
             cache.removeValue(forKey: oldest)
         }
-        cache[payload] = image
-        insertionOrder.append(payload)
+        cache[key] = image
+        insertionOrder.append(key)
         return image
     }
 
@@ -196,5 +237,25 @@ final class QRCodeGenerator {
             return image
         }
         return nil
+    }
+
+    private func cacheKey(for payload: String, style: Style) -> String {
+        "\(style.rawValue)|\(payload)"
+    }
+}
+
+private struct QRCodeStyleColors: Sendable {
+    let module: QRCodeRGBA
+    let background: QRCodeRGBA
+}
+
+private struct QRCodeRGBA: Sendable {
+    let red: Double
+    let green: Double
+    let blue: Double
+    let alpha: Double
+
+    var ciColor: CIColor {
+        CIColor(red: red, green: green, blue: blue, alpha: alpha)
     }
 }

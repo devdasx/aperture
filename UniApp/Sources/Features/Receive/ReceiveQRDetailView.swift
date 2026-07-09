@@ -163,7 +163,7 @@ struct ReceiveQRDetailView: View {
         .toolbar { toolbarContent }
         .toolbar {
             ToolbarItem(placement: .principal) {
-                CoinTitleBar(chain: chain, tokenSymbol: tokenSymbol, verb: "Receive")
+                CoinTitleBar(chain: chain, tokenSymbol: tokenSymbol, verb: "Receive", showsIcon: false)
             }
         }
         .sheet(isPresented: $isShowingGuide) {

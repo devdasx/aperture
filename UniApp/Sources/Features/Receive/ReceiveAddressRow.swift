@@ -2,7 +2,7 @@ import SwiftUI
 import UIKit
 import UniformTypeIdentifiers
 
-/// The address row beneath the QR card. Monospaced address with a
+/// The address row beneath the QR card. Full centered address text with a
 /// leading-aligned label and a tap-to-copy gesture on the entire row.
 /// The visible copy affordance lives in the parent action row.
 ///
@@ -62,17 +62,32 @@ struct ReceiveAddressRow: View {
         // this text subtree so the surrounding chrome keeps the
         // ambient locale's direction.
         //
-        // **`.fixedSize(horizontal: false, vertical: true)`** lets
-        // the text grow vertically for long addresses while staying
-        // within the row's horizontal width — the canonical
-        // SwiftUI pattern for "wrap multi-line, don't truncate."
-        Text(verbatim: address)
-            .font(.system(.callout, design: .monospaced))
+        // **Manual visual line breaks.** Letting SwiftUI hyphenate one
+        // continuous address can add a visual "-" at a wrap point. We
+        // keep copy/paste tied to the original `address`, but display
+        // predictable centered lines.
+        Text(verbatim: displayAddress)
+            .font(UniTypography.callout)
             .foregroundStyle(UniColors.Text.primary)
-            .multilineTextAlignment(.leading)
+            .multilineTextAlignment(.center)
             .fixedSize(horizontal: false, vertical: true)
-            .frame(maxWidth: .infinity, alignment: .leading)
+            .frame(maxWidth: .infinity, alignment: .center)
             .environment(\.layoutDirection, .leftToRight)
+    }
+
+    private var displayAddress: String {
+        guard address.count > 24 else { return address }
+        let lineLength = address.count <= 44
+            ? max(1, (address.count + 1) / 2)
+            : 22
+        var lines: [String] = []
+        var start = address.startIndex
+        while start < address.endIndex {
+            let end = address.index(start, offsetBy: lineLength, limitedBy: address.endIndex) ?? address.endIndex
+            lines.append(String(address[start..<end]))
+            start = end
+        }
+        return lines.joined(separator: "\n")
     }
 
     private func copy() {

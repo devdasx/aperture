@@ -18,6 +18,10 @@ struct CoinTitleBar: View {
     let verb: LocalizedStringKey
     /// Optional trailing word — "to" on the Send recipient step.
     var trailing: LocalizedStringKey? = nil
+    /// Shows the asset/network mark between the verb and title.
+    /// Receive keeps this off on the QR detail screen because the selected
+    /// network is already repeated in the QR card and warning copy.
+    var showsIcon: Bool = true
 
     private var catalogEntry: CatalogAsset? {
         guard let symbol = tokenSymbol else { return nil }
@@ -43,8 +47,10 @@ struct CoinTitleBar: View {
             Text(verb)
                 .font(UniTypography.bodyEmphasized)
                 .foregroundStyle(UniColors.Text.primary)
-            CoinMark(chain: chain, tokenSymbol: iconSymbol, contract: contract)
-                .frame(width: AssetLogoMetrics.standard, height: AssetLogoMetrics.standard)
+            if showsIcon {
+                CoinMark(chain: chain, tokenSymbol: iconSymbol, contract: contract)
+                    .frame(width: AssetLogoMetrics.standard, height: AssetLogoMetrics.standard)
+            }
             Text(verbatim: fullName)
                 .font(UniTypography.bodyEmphasized)
                 .foregroundStyle(UniColors.Text.primary)
