@@ -8,6 +8,7 @@ import SwiftUI
 /// `CoinMark`. Shares its rows + sort + holdings with the Send picker so
 /// the two flows are identical.
 struct ReceiveAssetListView: View {
+    let activeWalletId: UUID?
     let availableChains: [SupportedChain]
     let holdings: AssetPickerHoldings
     let currencyCode: String
@@ -15,6 +16,7 @@ struct ReceiveAssetListView: View {
     let assetRecords: [AssetRecord]
     let onSelectNative: (SupportedChain) -> Void
     let onSelectToken: (ReceiveAsset) -> Void
+    let onSelectTemplate: (WalletAssetRouteTemplateRecord) -> Void
     let onAddCustomToken: () -> Void
 
     @State private var searchText: String = ""
@@ -63,6 +65,13 @@ struct ReceiveAssetListView: View {
                 if natives.isEmpty && tokens.isEmpty {
                     noResultsSection
                 } else {
+                    if searchQuery.isEmpty {
+                        AssetRouteTemplatesSection(
+                            walletId: activeWalletId,
+                            flow: .receive,
+                            onSelect: onSelectTemplate
+                        )
+                    }
                     if !natives.isEmpty { nativeSection(natives) }
                     if !tokens.isEmpty { tokenSection(tokens) }
                 }

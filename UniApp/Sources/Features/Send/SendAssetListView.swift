@@ -8,6 +8,7 @@ import SwiftUI
 /// Rule #14) filters by name + ticker. Logos go through the cached
 /// `CoinMark`.
 struct SendAssetListView: View {
+    let activeWalletId: UUID?
     let availableChains: [SupportedChain]
     let holdings: AssetPickerHoldings
     let currencyCode: String
@@ -15,6 +16,7 @@ struct SendAssetListView: View {
     let assetRecords: [AssetRecord]
     let onSelectNative: (SupportedChain) -> Void
     let onSelectToken: (SendAsset) -> Void
+    let onSelectTemplate: (WalletAssetRouteTemplateRecord) -> Void
     let onAddCustomToken: (SupportedChain?) -> Void
 
     /// Memoized, balance-sorted rows — rebuilt only when the chains, the
@@ -58,6 +60,13 @@ struct SendAssetListView: View {
                 if natives.isEmpty && tokens.isEmpty {
                     noResultsSection
                 } else {
+                    if searchQuery.isEmpty {
+                        AssetRouteTemplatesSection(
+                            walletId: activeWalletId,
+                            flow: .send,
+                            onSelect: onSelectTemplate
+                        )
+                    }
                     if !natives.isEmpty { nativeSection(natives) }
                     if !tokens.isEmpty { tokenSection(tokens) }
                 }

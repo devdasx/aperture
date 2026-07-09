@@ -101,6 +101,7 @@ struct ReceiveView: View {
     var body: some View {
         NavigationStack(path: $navigationPath) {
             ReceiveAssetListView(
+                activeWalletId: activeWallet?.id,
                 availableChains: availableChains,
                 holdings: holdings,
                 currencyCode: currencyCode,
@@ -111,6 +112,9 @@ struct ReceiveView: View {
                 },
                 onSelectToken: { asset in
                     openToken(asset)
+                },
+                onSelectTemplate: { template in
+                    openTemplate(template)
                 },
                 onAddCustomToken: {
                     requestAddCustomToken()
@@ -329,15 +333,81 @@ struct ReceiveView: View {
         }
     }
 
+    private func openTemplate(_ template: WalletAssetRouteTemplateRecord) {
+        guard template.flow == .receive else { return }
+        openNetwork(
+            template.chain,
+            tokenSymbol: template.assetKind == .token ? template.symbol : nil
+        )
+    }
+
     private func openNetwork(_ chain: SupportedChain, tokenSymbol: String?) {
         guard let address = address(for: chain) else {
             missingAddressChain = chain
             isShowingMissingAddressAlert = true
             return
         }
+        recordTemplate(chain: chain, tokenSymbol: tokenSymbol)
         navigationPath.append(
             ReceiveDestination.qr(chain: chain, tokenSymbol: tokenSymbol, address: address)
         )
+    }
+
+    private func recordTemplate(chain: SupportedChain, tokenSymbol: String?) {
+        guard let walletId = activeWallet?.id else { return }
+        let repository = WalletAssetRouteTemplateRepository()
+        do {
+            if let tokenSymbol {
+                let metadata = tokenMetadata(chain: chain, symbol: tokenSymbol)
+                try repository.upsertToken(
+                    walletId: walletId,
+                    flow: .receive,
+                    chain: chain,
+                    symbol: tokenSymbol,
+                    name: metadata?.name ?? tokenSymbol,
+                    contract: metadata?.contract,
+                    decimals: metadata?.decimals,
+                    sourceRaw: metadata?.sourceRaw
+                )
+            } else {
+                try repository.upsertNative(walletId: walletId, flow: .receive, chain: chain)
+            }
+        } catch {
+            DiagnosticsLogStore.shared.record(
+                .warning,
+                category: "receive",
+                message: "Failed to save receive route template",
+                metadata: ["error": String(describing: error)]
+            )
+        }
+    }
+
+    private func tokenMetadata(
+        chain: SupportedChain,
+        symbol: String
+    ) -> (name: String, contract: String?, decimals: Int?, sourceRaw: String?)? {
+        let normalized = symbol.uppercased()
+        if let custom = customTokenRecords.first(where: {
+            $0.chain == chain && $0.symbol.uppercased() == normalized
+        }) {
+            return (
+                custom.name,
+                custom.contract,
+                custom.decimals,
+                WalletAssetRouteTemplateSource.custom.rawValue
+            )
+        }
+        if let catalog = catalogAssets.first(where: {
+            $0.chain == chain && $0.symbol.uppercased() == normalized
+        }) {
+            return (
+                catalog.name,
+                catalog.contract,
+                catalog.decimals,
+                WalletAssetRouteTemplateSource.catalog.rawValue
+            )
+        }
+        return nil
     }
 
     private func requestAddCustomToken(initialChain: SupportedChain? = nil) {

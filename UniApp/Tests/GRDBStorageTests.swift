@@ -23,6 +23,66 @@ import Testing
         #expect(try TestAppDatabaseFactory.count("assets", database: database) == AssetCatalog.allAssets.count)
     }
 
+    @Test("wallet asset route templates are wallet scoped and newest first")
+    func walletAssetRouteTemplatesAreWalletScopedAndNewestFirst() async throws {
+        let database = try TestAppDatabaseFactory.makeDatabase()
+        defer { TestAppDatabaseFactory.cleanup(database) }
+
+        let primaryWallet = try await insertWatchWallet(
+            database,
+            chains: [.bitcoin, .ethereum, .solana, .tron]
+        )
+        let otherWallet = try await insertWatchWallet(database, chains: [.ethereum])
+        let repository = WalletAssetRouteTemplateRepository(database: database)
+
+        try repository.upsertNative(walletId: primaryWallet, flow: .receive, chain: .bitcoin)
+        try await Task.sleep(nanoseconds: 2_000_000)
+        try repository.upsertToken(
+            walletId: primaryWallet,
+            flow: .receive,
+            chain: .ethereum,
+            symbol: "USDT",
+            name: "Tether USD",
+            contract: "0xdAC17F958D2ee523a2206206994597C13D831ec7",
+            decimals: 6,
+            sourceRaw: WalletAssetRouteTemplateSource.catalog.rawValue
+        )
+        try await Task.sleep(nanoseconds: 2_000_000)
+        try repository.upsertToken(
+            walletId: primaryWallet,
+            flow: .receive,
+            chain: .solana,
+            symbol: "USDC",
+            name: "USD Coin",
+            contract: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+            decimals: 6,
+            sourceRaw: WalletAssetRouteTemplateSource.catalog.rawValue
+        )
+        try await Task.sleep(nanoseconds: 2_000_000)
+        try repository.upsertNative(walletId: primaryWallet, flow: .receive, chain: .tron)
+        try await Task.sleep(nanoseconds: 2_000_000)
+        try repository.upsertToken(
+            walletId: primaryWallet,
+            flow: .receive,
+            chain: .ethereum,
+            symbol: "USDT",
+            name: "Tether USD",
+            contract: "0xdAC17F958D2ee523a2206206994597C13D831ec7",
+            decimals: 6,
+            sourceRaw: WalletAssetRouteTemplateSource.catalog.rawValue
+        )
+        try repository.upsertNative(walletId: primaryWallet, flow: .send, chain: .bitcoin)
+
+        let receiveTemplates = try repository.latest(walletId: primaryWallet, flow: .receive)
+        #expect(receiveTemplates.map(\.chain) == [.ethereum, .tron, .solana])
+        #expect(receiveTemplates.first?.symbol == "USDT")
+        #expect(receiveTemplates.first?.contract == "0xdAC17F958D2ee523a2206206994597C13D831ec7")
+        #expect(receiveTemplates.first?.decimals == 6)
+        #expect(try repository.latest(walletId: primaryWallet, flow: .send).map(\.chain) == [.bitcoin])
+        #expect(try repository.latest(walletId: otherWallet, flow: .receive).isEmpty)
+        #expect(try TestAppDatabaseFactory.count("wallet_asset_route_templates", database: database) == 5)
+    }
+
     @Test("legacy defaults are ignored because GRDB is the single preference store")
     func legacyDefaultsAreIgnoredByGRDBPreferenceStore() throws {
         let defaultsSnapshot = UserDefaults.standard.dictionaryRepresentation()

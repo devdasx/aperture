@@ -100,6 +100,7 @@ struct SendView: View {
     var body: some View {
         NavigationStack(path: $navigationPath) {
             SendAssetListView(
+                activeWalletId: activeWallet?.id,
                 availableChains: availableChains,
                 holdings: holdings,
                 currencyCode: currencyCode,
@@ -110,6 +111,9 @@ struct SendView: View {
                 },
                 onSelectToken: { asset in
                     openToken(asset)
+                },
+                onSelectTemplate: { template in
+                    openTemplate(template)
                 },
                 onAddCustomToken: { chain in
                     requestAddCustomToken(initialChain: chain)
@@ -279,6 +283,34 @@ struct SendView: View {
         }
     }
 
+    private func openTemplate(_ template: WalletAssetRouteTemplateRecord) {
+        guard template.flow == .send else { return }
+        switch template.assetKind {
+        case .native:
+            openNetwork(template.chain, token: nil)
+        case .token:
+            guard let descriptor = sendDescriptor(from: template) else { return }
+            openNetwork(template.chain, token: descriptor)
+        }
+    }
+
+    private func sendDescriptor(from template: WalletAssetRouteTemplateRecord) -> SendTokenDescriptor? {
+        guard template.assetKind == .token,
+              let contract = template.contract,
+              let decimals = template.decimals,
+              !contract.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return nil
+        }
+        return SendTokenDescriptor(
+            symbol: template.symbol,
+            name: template.displayName,
+            chain: template.chain,
+            contract: contract,
+            decimals: decimals,
+            source: template.sourceRaw == WalletAssetRouteTemplateSource.custom.rawValue ? .custom : .catalog
+        )
+    }
+
     private func openNetwork(
         _ chain: SupportedChain,
         token: SendTokenDescriptor?,
@@ -288,6 +320,7 @@ struct SendView: View {
             presentMissingAddress(chain)
             return
         }
+        recordTemplate(chain: chain, token: token)
         navigationPath.append(
             SendDestination.recipient(
                 chain: chain,
@@ -296,6 +329,34 @@ struct SendView: View {
                 prefillRecipient: prefillRecipient
             )
         )
+    }
+
+    private func recordTemplate(chain: SupportedChain, token: SendTokenDescriptor?) {
+        guard let walletId = activeWallet?.id else { return }
+        let repository = WalletAssetRouteTemplateRepository()
+        do {
+            if let token {
+                try repository.upsertToken(
+                    walletId: walletId,
+                    flow: .send,
+                    chain: chain,
+                    symbol: token.symbol,
+                    name: token.name,
+                    contract: token.contract,
+                    decimals: token.decimals,
+                    sourceRaw: token.source.rawValue
+                )
+            } else {
+                try repository.upsertNative(walletId: walletId, flow: .send, chain: chain)
+            }
+        } catch {
+            DiagnosticsLogStore.shared.record(
+                .warning,
+                category: "send",
+                message: "Failed to save send route template",
+                metadata: ["error": String(describing: error)]
+            )
+        }
     }
 
     private func presentMissingAddress(_ chain: SupportedChain) {

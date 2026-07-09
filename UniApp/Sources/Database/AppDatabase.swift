@@ -497,6 +497,9 @@ private extension AppDatabase {
         migrator.registerMigration("v4_grdb_blob_and_security_stores") { db in
             try db.execute(sql: blobAndSecurityTablesSQL)
         }
+        migrator.registerMigration("v5_wallet_asset_route_templates") { db in
+            try db.execute(sql: walletAssetRouteTemplatesSQL)
+        }
         return migrator
     }
 
@@ -589,6 +592,27 @@ private extension AppDatabase {
         created_at_ms INTEGER NOT NULL,
         updated_at_ms INTEGER NOT NULL
     );
+    """
+
+    nonisolated static let walletAssetRouteTemplatesSQL = """
+    CREATE TABLE IF NOT EXISTS wallet_asset_route_templates (
+        id TEXT PRIMARY KEY,
+        wallet_id TEXT NOT NULL REFERENCES wallets(id) ON DELETE CASCADE,
+        flow_raw TEXT NOT NULL,
+        asset_kind_raw TEXT NOT NULL,
+        chain_raw TEXT NOT NULL,
+        symbol TEXT NOT NULL,
+        name TEXT NOT NULL,
+        contract TEXT,
+        decimals INTEGER,
+        source_raw TEXT,
+        dedup_key TEXT NOT NULL,
+        created_at_ms INTEGER NOT NULL,
+        updated_at_ms INTEGER NOT NULL,
+        UNIQUE(wallet_id, flow_raw, dedup_key)
+    );
+    CREATE INDEX IF NOT EXISTS idx_wallet_asset_route_templates_lookup
+        ON wallet_asset_route_templates(wallet_id, flow_raw, updated_at_ms DESC);
     """
 
     nonisolated static let schemaSQL = """
@@ -907,6 +931,8 @@ private extension AppDatabase {
     CREATE INDEX idx_chain_utxos_address ON chain_utxos(address_id);
 
     \(blobAndSecurityTablesSQL)
+
+    \(walletAssetRouteTemplatesSQL)
     """
 }
 
