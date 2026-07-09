@@ -60,7 +60,10 @@ struct AssetNetworkDetailView: View {
     @State private var isShowingReceive = false
     @State private var isShowingAddCustomToken = false
     @State private var addCustomTokenInitialChain: SupportedChain?
+    @State private var addCustomTokenActionContext: AddCustomTokenSheet.ActionContext = .none
+    @State private var pendingIncludedTokenTarget: AddCustomTokenSheet.TokenNavigationTarget?
     @State private var openAddCustomTokenAfterReceiveDismiss = false
+    @State private var openAddCustomTokenAfterSendDismiss = false
     @State private var sendPath = NavigationPath()
     @State private var receivePath = NavigationPath()
 
@@ -110,8 +113,13 @@ struct AssetNetworkDetailView: View {
             .presentationBackground(UniColors.Background.primary)
         }
         // Send — pre-seeded to the recipient step for THIS token + network.
-        .sheet(isPresented: $isShowingSend, onDismiss: { sendPath = NavigationPath() }) {
-            SendView(navigationPath: $sendPath)
+        .sheet(isPresented: $isShowingSend, onDismiss: handleSendSheetDismiss) {
+            SendView(
+                navigationPath: $sendPath,
+                onAddCustomToken: { chain in
+                    requestStandaloneAddCustomToken(initialChain: chain, actionContext: .send)
+                }
+            )
                 .id(sheetDirectionKey)
                 .uniAppEnvironment()
                 .uniSheetDetents([.large])
@@ -123,7 +131,7 @@ struct AssetNetworkDetailView: View {
             ReceiveView(
                 navigationPath: $receivePath,
                 onAddCustomToken: { chain in
-                    requestStandaloneAddCustomToken(initialChain: chain)
+                    requestStandaloneAddCustomToken(initialChain: chain, actionContext: .receive)
                 }
             )
                 .id(sheetDirectionKey)
@@ -132,13 +140,15 @@ struct AssetNetworkDetailView: View {
                 .presentationDragIndicator(.visible)
                 .presentationBackground(UniColors.Background.primary)
         }
-        .sheet(isPresented: $isShowingAddCustomToken, onDismiss: {
-            addCustomTokenInitialChain = nil
-        }) {
+        .sheet(isPresented: $isShowingAddCustomToken, onDismiss: handleAddCustomTokenDismiss) {
             AddCustomTokenSheet(
                 initialChain: addCustomTokenInitialChain ?? firstSupportedCustomTokenChain,
                 availableChains: availableChainsForCustomTokenAdd,
-                onSaved: {}
+                actionContext: addCustomTokenActionContext,
+                onSaved: {},
+                onUseIncludedToken: { target in
+                    pendingIncludedTokenTarget = target
+                }
             )
             .id(sheetDirectionKey)
             .uniAppEnvironment()
@@ -472,11 +482,18 @@ struct AssetNetworkDetailView: View {
         CustomTokenSupport.preferredInitialChain(availableChains: availableChainsForCustomTokenAdd)
     }
 
-    private func requestStandaloneAddCustomToken(initialChain: SupportedChain?) {
+    private func requestStandaloneAddCustomToken(
+        initialChain: SupportedChain?,
+        actionContext: AddCustomTokenSheet.ActionContext
+    ) {
         addCustomTokenInitialChain = initialChain ?? firstSupportedCustomTokenChain
+        addCustomTokenActionContext = actionContext
         if isShowingReceive {
             openAddCustomTokenAfterReceiveDismiss = true
             isShowingReceive = false
+        } else if isShowingSend {
+            openAddCustomTokenAfterSendDismiss = true
+            isShowingSend = false
         } else {
             isShowingAddCustomToken = true
         }
@@ -487,6 +504,67 @@ struct AssetNetworkDetailView: View {
         guard openAddCustomTokenAfterReceiveDismiss else { return }
         openAddCustomTokenAfterReceiveDismiss = false
         isShowingAddCustomToken = true
+    }
+
+    private func handleSendSheetDismiss() {
+        sendPath = NavigationPath()
+        guard openAddCustomTokenAfterSendDismiss else { return }
+        openAddCustomTokenAfterSendDismiss = false
+        isShowingAddCustomToken = true
+    }
+
+    private func handleAddCustomTokenDismiss() {
+        addCustomTokenInitialChain = nil
+        let actionContext = addCustomTokenActionContext
+        addCustomTokenActionContext = .none
+        guard let target = pendingIncludedTokenTarget else { return }
+        pendingIncludedTokenTarget = nil
+        openIncludedTokenTarget(target, actionContext: actionContext)
+    }
+
+    private func openIncludedTokenTarget(
+        _ target: AddCustomTokenSheet.TokenNavigationTarget,
+        actionContext: AddCustomTokenSheet.ActionContext
+    ) {
+        switch actionContext {
+        case .receive:
+            guard let address = walletAddress(for: target.chain) else { return }
+            var path = NavigationPath()
+            path.append(ReceiveDestination.qr(
+                chain: target.chain,
+                tokenSymbol: target.symbol,
+                address: address
+            ))
+            receivePath = path
+            isShowingReceive = true
+        case .send:
+            guard let address = walletAddress(for: target.chain) else { return }
+            let descriptor = SendTokenDescriptor(
+                symbol: target.symbol,
+                name: target.name,
+                chain: target.chain,
+                contract: target.contract,
+                decimals: target.decimals,
+                source: target.source == .catalog ? .catalog : .custom
+            )
+            var path = NavigationPath()
+            path.append(SendDestination.recipient(
+                chain: target.chain,
+                token: descriptor,
+                fromAddress: address,
+                prefillRecipient: nil
+            ))
+            sendPath = path
+            isShowingSend = true
+        case .none:
+            break
+        }
+    }
+
+    private func walletAddress(for chain: SupportedChain) -> String? {
+        activeWallet?.addresses.first {
+            $0.chainRaw == chain.rawValue && !$0.address.isEmpty
+        }?.address
     }
 
     private var observationScopeKey: String {

@@ -44,7 +44,9 @@ struct AddCustomTokenSheet: View {
     /// network when a caller has a strong context.
     let initialChain: SupportedChain?
     let availableChains: [SupportedChain]
+    let actionContext: ActionContext
     let onSaved: () -> Void
+    let onUseIncludedToken: (TokenNavigationTarget) -> Void
 
     @Environment(\.dismiss) private var dismiss
 
@@ -61,15 +63,20 @@ struct AddCustomTokenSheet: View {
     @State private var isExportingCSV: Bool = false
     @State private var csvExportDocument = CustomTokenCSVDocument()
     @State private var csvAlert: CSVAlert?
+    @State private var includedTokenAlert: IncludedTokenAlert?
 
     init(
         initialChain: SupportedChain? = nil,
         availableChains: [SupportedChain] = [],
-        onSaved: @escaping () -> Void
+        actionContext: ActionContext = .none,
+        onSaved: @escaping () -> Void,
+        onUseIncludedToken: @escaping (TokenNavigationTarget) -> Void = { _ in }
     ) {
         self.initialChain = initialChain
         self.availableChains = availableChains
+        self.actionContext = actionContext
         self.onSaved = onSaved
+        self.onUseIncludedToken = onUseIncludedToken
 
         let choices = CustomTokenSupport.orderedChains(availableChains: availableChains)
         let normalizedInitial = CustomTokenSupport.normalizedInitialChain(initialChain)
@@ -153,6 +160,25 @@ struct AddCustomTokenSheet: View {
                 message: Text(alert.message),
                 dismissButton: .default(Text("OK"))
             )
+        }
+        .alert(item: $includedTokenAlert) { alert in
+            if let actionTitle = actionContext.actionTitle {
+                Alert(
+                    title: Text("Token already included"),
+                    message: Text(alert.message),
+                    primaryButton: .default(Text(actionTitle)) {
+                        onUseIncludedToken(alert.target)
+                        dismiss()
+                    },
+                    secondaryButton: .cancel(Text("OK"))
+                )
+            } else {
+                Alert(
+                    title: Text("Token already included"),
+                    message: Text(alert.message),
+                    dismissButton: .default(Text("OK"))
+                )
+            }
         }
     }
 
@@ -290,9 +316,6 @@ struct AddCustomTokenSheet: View {
     @ViewBuilder
     private var contractSection: some View {
         VStack(alignment: .leading, spacing: UniSpacing.s) {
-            UniCaption(text: "Network", color: UniColors.Text.tertiary)
-            selectedNetworkSummary
-
             UniCaption(
                 text: contractFieldLabel,
                 color: UniColors.Text.tertiary
@@ -307,25 +330,6 @@ struct AddCustomTokenSheet: View {
                 disablesAutocorrection: true
             )
         }
-    }
-
-    @ViewBuilder
-    private var selectedNetworkSummary: some View {
-        HStack {
-            CoinMark(chain: selectedChain, tokenSymbol: selectedChain.ticker)
-                .frame(width: 32, height: 32)
-                .accessibilityHidden(true)
-            Text(verbatim: selectedChain.displayName)
-                .font(UniTypography.body)
-                .foregroundStyle(UniColors.Text.primary)
-            Spacer()
-        }
-        .padding(.horizontal, UniSpacing.m)
-        .padding(.vertical, UniSpacing.s)
-        .background(
-            RoundedRectangle(cornerRadius: UniRadius.m, style: .continuous)
-                .fill(UniColors.Background.secondary)
-        )
     }
 
     @ViewBuilder
@@ -778,6 +782,10 @@ struct AddCustomTokenSheet: View {
         Task { @MainActor in
             let repo = CustomTokenRepository(database: AppDatabase.shared)
             do {
+                if let included = try includedTokenTarget(chain: chain, contract: contract, repository: repo) {
+                    includedTokenAlert = IncludedTokenAlert(target: included)
+                    return
+                }
                 try repo.add(
                     chain: chain,
                     contract: contract,
@@ -789,11 +797,73 @@ struct AddCustomTokenSheet: View {
                 onSavedClosure()
                 dismiss()
             } catch CustomTokenError.duplicate {
-                phase = .failed(.duplicate)
+                if let included = try? includedCustomTokenTarget(
+                    chain: chain,
+                    contract: contract,
+                    repository: repo
+                ) {
+                    includedTokenAlert = IncludedTokenAlert(target: included)
+                } else {
+                    includedTokenAlert = IncludedTokenAlert(
+                        target: TokenNavigationTarget(
+                            chain: chain,
+                            contract: contract,
+                            symbol: symbol,
+                            name: name,
+                            decimals: decimals,
+                            source: .custom
+                        )
+                    )
+                }
             } catch {
                 phase = .failed(.persistence)
             }
         }
+    }
+
+    private func includedTokenTarget(
+        chain: SupportedChain,
+        contract: String,
+        repository: CustomTokenRepository
+    ) throws -> TokenNavigationTarget? {
+        if let catalogToken = catalogTokenTarget(chain: chain, contract: contract) {
+            return catalogToken
+        }
+        return try includedCustomTokenTarget(chain: chain, contract: contract, repository: repository)
+    }
+
+    private func catalogTokenTarget(chain: SupportedChain, contract: String) -> TokenNavigationTarget? {
+        guard let asset = AssetCatalog.allAssets.first(where: {
+            $0.chain == chain && ContractTokenDiscovery.contractMatches($0.contract, chain: chain, query: contract)
+        }) else {
+            return nil
+        }
+        return TokenNavigationTarget(
+            chain: asset.chain,
+            contract: asset.contract,
+            symbol: asset.symbol,
+            name: asset.name,
+            decimals: asset.decimals,
+            source: .catalog
+        )
+    }
+
+    private func includedCustomTokenTarget(
+        chain: SupportedChain,
+        contract: String,
+        repository: CustomTokenRepository
+    ) throws -> TokenNavigationTarget? {
+        guard let token = try repository.fetchByContract(chain: chain, contract: contract) else {
+            return nil
+        }
+        return TokenNavigationTarget(
+            chain: token.chain,
+            contract: token.contract,
+            symbol: token.symbol,
+            name: token.name,
+            decimals: token.decimals,
+            source: .custom
+        )
     }
 
     private func abbreviated(_ contract: String) -> String {
@@ -807,6 +877,51 @@ struct AddCustomTokenSheet: View {
 // MARK: - Phase
 
 extension AddCustomTokenSheet {
+    enum ActionContext: Equatable {
+        case none
+        case receive
+        case send
+
+        var actionTitle: String? {
+            switch self {
+            case .none:
+                return nil
+            case .receive:
+                return "Receive"
+            case .send:
+                return "Send"
+            }
+        }
+    }
+
+    struct TokenNavigationTarget: Sendable, Equatable {
+        let chain: SupportedChain
+        let contract: String
+        let symbol: String
+        let name: String
+        let decimals: Int
+        let source: Source
+
+        enum Source: Sendable, Equatable {
+            case catalog
+            case custom
+        }
+    }
+
+    struct IncludedTokenAlert: Identifiable, Equatable {
+        let id = UUID()
+        let target: TokenNavigationTarget
+
+        var message: String {
+            switch target.source {
+            case .catalog:
+                return "\(target.symbol) on \(target.chain.displayName) is already included in Aperture."
+            case .custom:
+                return "\(target.symbol) on \(target.chain.displayName) is already in your Custom Tokens list."
+            }
+        }
+    }
+
     struct CSVAlert: Identifiable, Equatable {
         let id = UUID()
         let title: String

@@ -39,6 +39,7 @@ struct SendView: View {
     /// one supported network also go straight to recipient; multi-network
     /// tokens open the network picker.
     var assetPrefill: AssetPrefill? = nil
+    var onAddCustomToken: ((SupportedChain?) -> Void)? = nil
 
     /// Seeds the scan prefill exactly once.
     @State private var didSeedPrefill: Bool = false
@@ -52,6 +53,9 @@ struct SendView: View {
     /// wallet — drives the honest "no address" alert instead of a dead tap.
     @State private var missingAddressChain: SupportedChain?
     @State private var isShowingMissingAddressAlert: Bool = false
+    @State private var isShowingAddCustomToken: Bool = false
+    @State private var addCustomTokenInitialChain: SupportedChain?
+    @State private var pendingIncludedTokenTarget: AddCustomTokenSheet.TokenNavigationTarget?
 
     /// Real holdings snapshot (balances + per-(chain,symbol) tx counts),
     /// rebuilt off the render path when balances change (Rule #28). Drives
@@ -106,6 +110,9 @@ struct SendView: View {
                 },
                 onSelectToken: { asset in
                     openToken(asset)
+                },
+                onAddCustomToken: { chain in
+                    requestAddCustomToken(initialChain: chain)
                 }
             )
             .navigationTitle("Send")
@@ -194,6 +201,21 @@ struct SendView: View {
         } message: { chain in
             Text("This wallet has no \(chain.displayName) address yet, so there's nothing to send from on this network. Aperture may still be deriving your accounts — try again in a moment.")
         }
+        .sheet(isPresented: $isShowingAddCustomToken, onDismiss: handleAddCustomTokenDismiss) {
+            AddCustomTokenSheet(
+                initialChain: addCustomTokenInitialChain ?? firstSupportedCustomTokenChain,
+                availableChains: availableChains,
+                actionContext: .send,
+                onSaved: {},
+                onUseIncludedToken: { target in
+                    pendingIncludedTokenTarget = target
+                }
+            )
+            .uniAppEnvironment()
+            .uniSheetDetents([.large])
+            .presentationDragIndicator(.visible)
+            .presentationBackground(UniColors.Background.primary)
+        }
     }
 
     private var prefillSeedKey: String {
@@ -279,6 +301,39 @@ struct SendView: View {
     private func presentMissingAddress(_ chain: SupportedChain) {
         missingAddressChain = chain
         isShowingMissingAddressAlert = true
+    }
+
+    private func requestAddCustomToken(initialChain: SupportedChain?) {
+        let chain = initialChain ?? firstSupportedCustomTokenChain
+        if let onAddCustomToken {
+            onAddCustomToken(chain)
+        } else {
+            addCustomTokenInitialChain = chain
+            isShowingAddCustomToken = true
+        }
+    }
+
+    private var firstSupportedCustomTokenChain: SupportedChain {
+        CustomTokenSupport.preferredInitialChain(availableChains: availableChains)
+    }
+
+    private func handleAddCustomTokenDismiss() {
+        addCustomTokenInitialChain = nil
+        guard let target = pendingIncludedTokenTarget else { return }
+        pendingIncludedTokenTarget = nil
+        openIncludedTokenTarget(target)
+    }
+
+    private func openIncludedTokenTarget(_ target: AddCustomTokenSheet.TokenNavigationTarget) {
+        let descriptor = SendTokenDescriptor(
+            symbol: target.symbol,
+            name: target.name,
+            chain: target.chain,
+            contract: target.contract,
+            decimals: target.decimals,
+            source: target.source == .catalog ? .catalog : .custom
+        )
+        openNetwork(target.chain, token: descriptor)
     }
 
     /// Close the entire Send flow (dismiss the sheet). The Send sheet's

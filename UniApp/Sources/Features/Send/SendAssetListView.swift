@@ -15,6 +15,7 @@ struct SendAssetListView: View {
     let assetRecords: [AssetRecord]
     let onSelectNative: (SupportedChain) -> Void
     let onSelectToken: (SendAsset) -> Void
+    let onAddCustomToken: (SupportedChain?) -> Void
 
     /// Memoized, balance-sorted rows — rebuilt only when the chains, the
     /// custom-token set, the seeded catalog, or the holdings change.
@@ -175,6 +176,13 @@ struct SendAssetListView: View {
                         customTokens: customTokenSnapshots,
                         onAdded: {}
                     )
+                    .padding(.horizontal, UniSpacing.m)
+                }
+
+                if canOfferCustomTokenAdd {
+                    UniButton(title: "Add custom token", variant: .secondary, systemImage: "plus") {
+                        onAddCustomToken(nil)
+                    }
                     .padding(.horizontal, UniSpacing.m)
                 }
             }

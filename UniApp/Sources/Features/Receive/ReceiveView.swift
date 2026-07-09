@@ -57,6 +57,7 @@ struct ReceiveView: View {
     /// chains preselect the most likely target (the first EVM chain we
     /// find, else Solana).
     @State private var isShowingAddCustomToken: Bool = false
+    @State private var pendingIncludedTokenTarget: AddCustomTokenSheet.TokenNavigationTarget?
 
     /// The chain the user tapped that has no derived address on the
     /// active wallet. Non-nil drives the honest "no address" alert —
@@ -138,11 +139,15 @@ struct ReceiveView: View {
                     }
                 }
             }
-            .sheet(isPresented: $isShowingAddCustomToken) {
+            .sheet(isPresented: $isShowingAddCustomToken, onDismiss: handleAddCustomTokenDismiss) {
                 AddCustomTokenSheet(
                     initialChain: firstSupportedCustomTokenChain,
                     availableChains: availableChains,
-                    onSaved: {}
+                    actionContext: .receive,
+                    onSaved: {},
+                    onUseIncludedToken: { target in
+                        pendingIncludedTokenTarget = target
+                    }
                 )
                 .uniAppEnvironment()
                 .uniSheetDetents([.large])
@@ -342,6 +347,12 @@ struct ReceiveView: View {
         } else {
             isShowingAddCustomToken = true
         }
+    }
+
+    private func handleAddCustomTokenDismiss() {
+        guard let target = pendingIncludedTokenTarget else { return }
+        pendingIncludedTokenTarget = nil
+        openNetwork(target.chain, tokenSymbol: target.symbol)
     }
 
     /// First supported chain for the Add Custom Token sheet's
