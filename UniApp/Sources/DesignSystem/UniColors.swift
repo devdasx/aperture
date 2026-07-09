@@ -628,8 +628,6 @@ enum UniColors {
         static let base = Color("SplashBase", bundle: .main)
         /// Wordmark + mark tint (white in dark / Ink in light).
         static let mark = Color("SplashMark", bundle: .main)
-        /// Halo behind the mark (white@.14 dark / ink@.08 light).
-        static let glow = Color("SplashGlow", bundle: .main)
         /// Loader track (white@.16 dark / ink@.10 light).
         static let loaderTrack = Color("SplashLoaderTrack", bundle: .main)
         /// Tagline color (white@.5 dark / ink@.5 light).

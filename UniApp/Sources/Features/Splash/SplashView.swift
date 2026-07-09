@@ -6,8 +6,7 @@ import SwiftUI
 /// rebuilt against `/Users/thuglifex/Downloads/design_handoff_splash_to_onboarding/`.
 /// The logo is no longer the hand-driven 6-blade iris from the
 /// prior `design_handoff_splash_screen/` redesign; it is now the
-/// new **circle logo** — a dark vertical gradient disc containing
-/// the white iris — shared with the onboarding welcome slide via
+/// unified Aperture iris mark shared with the onboarding welcome slide via
 /// SwiftUI's `matchedGeometryEffect`. The logo blooms in on splash
 /// entrance via a native scale + opacity keyframe driven by the
 /// same `TimelineView` elapsed-time state as the rest of the
@@ -17,16 +16,16 @@ import SwiftUI
 /// haptic firing at landing.
 ///
 /// **What's preserved from the prior splash design:**
-/// - The glow halo behind the logo.
 /// - The "Aperture" wordmark with its wipe-up reveal.
-/// - The radial-gradient monochrome background.
+/// - The monochrome background.
 ///
 /// **What changed:**
-/// - The mark itself: from `Brand/Mark.imageset` (bare iris) to
-///   `ApertureAppLogo` (adaptive app-logo seal + iris).
+/// - The mark itself: `Brand/Mark.imageset` is rendered through
+///   `ApertureIrisView`, so dark mode uses the white brand mark.
 /// - The mark bloom: a single restrained scale + opacity bloom
 ///   computed in `SplashChromeState` from the elapsed time — the
-///   same cubic-bezier family the glow uses, one shot, no loops.
+///   same cubic-bezier family as the wordmark, one shot, no loops.
+/// - The splash glow/halo is removed completely.
 /// - The logo view carries `.matchedGeometryEffect` so the
 ///   onboarding welcome slide can claim it on transition.
 ///
@@ -35,9 +34,8 @@ import SwiftUI
 /// third-party Lottie SPM package — a Rule #3 (native-only)
 /// violation in the UI layer. The bloom is now computed natively
 /// from the existing `TimelineView` clock; its final frame is the
-/// still `ApertureAppLogo` itself, so the splash → onboarding
-/// shared-element transition stays pixel-aligned (both screens
-/// render the same adaptive logo view).
+/// still `ApertureIrisView` itself, so the splash mark stays on the
+/// shared brand component.
 struct SplashView: View {
     /// Logo namespace shared with the onboarding welcome slide via
     /// `AppRoot`. Both views attach `matchedGeometryEffect` to
@@ -56,7 +54,6 @@ struct SplashView: View {
     /// `AppRoot` consumes this to start the matchedGeometryEffect transition.
     let onSplashComplete: () -> Void
 
-    @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     @State private var startDate: Date = .init()
@@ -94,9 +91,6 @@ struct SplashView: View {
                 GeometryReader { proxy in
                     let centerX = proxy.size.width / 2
                     let centerY = proxy.size.height / 2
-
-                    glow(chrome: chrome)
-                        .position(x: centerX, y: centerY - 26)
 
                     // The logo container — native scale + opacity
                     // bloom on splash entrance, then carried into
@@ -161,7 +155,7 @@ struct SplashView: View {
             completionTask?.cancel()
             completionTask = nil
         }
-        // Splash chrome (background, glow, wordmark) fades out when
+        // Splash chrome (background and wordmark) fades out when
         // the shared-element transition
         // starts. The logo itself does NOT fade — it flies via
         // matchedGeometryEffect. The 0.35s fade matches the
@@ -173,47 +167,13 @@ struct SplashView: View {
     // MARK: - Background
 
     private var background: some View {
-        ZStack {
-            UniColors.Splash.base
-                .ignoresSafeArea()
-            EllipticalGradient(
-                stops: [
-                    .init(color: UniColors.Splash.lift, location: 0),
-                    .init(color: UniColors.Splash.base, location: 1)
-                ],
-                center: UnitPoint(x: 0.5, y: 0.38),
-                startRadiusFraction: 0,
-                endRadiusFraction: 0.64
-            )
+        UniColors.Splash.base
             .ignoresSafeArea()
-        }
-    }
-
-    // MARK: - Glow
-
-    private func glow(chrome: SplashChromeState) -> some View {
-        Circle()
-            .fill(
-                RadialGradient(
-                    stops: [
-                        .init(color: UniColors.Splash.glow, location: 0),
-                        .init(color: UniColors.Splash.glow.opacity(0), location: 0.7),
-                        .init(color: .clear, location: 1.0)
-                    ],
-                    center: .center,
-                    startRadius: 0,
-                    endRadius: 170
-                )
-            )
-            .frame(width: 340, height: 340)
-            .blur(radius: 48)
-            .opacity(chrome.glowOpacity)
-            .scaleEffect(chrome.glowScale)
     }
 
     // MARK: - Logo
 
-    /// The adaptive app-logo seal.
+    /// The adaptive unified brand mark.
     /// On splash entrance, the bloom is a native one-shot scale +
     /// opacity keyframe (`SplashChromeState.logoScale` /
     /// `.logoOpacity`) applied at the call site in `body`. Because
@@ -221,7 +181,7 @@ struct SplashView: View {
     /// onboarding, so the matchedGeometryEffect handoff stays contiguous
     /// while the logo respects light/dark appearance.
     private var logo: some View {
-        ApertureAppLogo(size: 80)
+        ApertureIrisView(ringColor: UniColors.Brand.mark)
     }
 
     // MARK: - Wordmark
@@ -244,23 +204,17 @@ struct SplashView: View {
 
 // MARK: - Splash chrome state
 
-/// Per-frame state for the splash elements — logo bloom, glow, and wordmark.
+/// Per-frame state for the splash elements: logo bloom and wordmark.
 /// The logo's *transition to onboarding*
 /// is owned by `matchedGeometryEffect` (driven by the
 /// `AppRoot.phase` change); only its entrance bloom is computed
 /// here.
 ///
-/// The chrome animation curves match the original splash spec from
-/// `design_handoff_splash_screen/` — those elements weren't
-/// touched by the new handoff so their motion is preserved. The
-/// logo bloom is the first beat: it completes just before the
-/// wordmark's 0.92s wipe-up begins, using the same cubic-bezier
-/// family as the glow. One bloom, no loops (Rule #2 restraint).
+/// The logo bloom is the first beat: it completes just before the
+/// wordmark's 0.92s wipe-up begins. One bloom, no loops.
 private struct SplashChromeState {
     let logoOpacity: Double
     let logoScale: Double
-    let glowOpacity: Double
-    let glowScale: Double
     let wordmarkOffsetFraction: Double
 
     init(elapsed: TimeInterval, reduceMotion: Bool) {
@@ -268,15 +222,13 @@ private struct SplashChromeState {
             let p = max(0, min(1, elapsed / 0.30))
             self.logoOpacity = p
             self.logoScale = 1
-            self.glowOpacity = 0.6 * p
-            self.glowScale = 1
             self.wordmarkOffsetFraction = 0
             return
         }
 
         // Logo bloom — delay 0s, duration 0.90s, (.2, .7, .2, 1).
         // Scale 0.60 → 1.00 across the full bloom; opacity 0 → 1
-        // over the first 60% so the disc is fully present while it
+        // over the first 60% so the mark is fully present while it
         // settles into its final size. Done before the wordmark's
         // 0.92s entrance — the logo leads, everything else follows.
         let logoT = clampUnit(elapsed / 0.90)
@@ -284,22 +236,6 @@ private struct SplashChromeState {
         self.logoScale = 0.60 + 0.40 * logoE
         let logoFadeT = clampUnit(logoT / 0.60)
         self.logoOpacity = SplashEase.cubicBezier(logoFadeT, 0.2, 0.7, 0.2, 1.0)
-
-        // Glow — delay 0.10s, duration 1.50s, (.2, .7, .2, 1)
-        let glowT = clampUnit((elapsed - 0.10) / 1.50)
-        let glowE = SplashEase.cubicBezier(glowT, 0.2, 0.7, 0.2, 1.0)
-        if glowT <= 0 {
-            self.glowOpacity = 0
-        } else if glowT < 0.55 {
-            let local = glowT / 0.55
-            let localE = SplashEase.cubicBezier(local, 0.2, 0.7, 0.2, 1.0)
-            self.glowOpacity = 0.95 * localE
-        } else {
-            let local = (glowT - 0.55) / 0.45
-            let localE = SplashEase.cubicBezier(local, 0.2, 0.7, 0.2, 1.0)
-            self.glowOpacity = 0.95 + (0.6 - 0.95) * localE
-        }
-        self.glowScale = 0.5 + 0.5 * glowE
 
         // Wordmark — delay 0.92s, duration 0.80s, (.2, .8, .2, 1)
         let wordT = clampUnit((elapsed - 0.92) / 0.80)
