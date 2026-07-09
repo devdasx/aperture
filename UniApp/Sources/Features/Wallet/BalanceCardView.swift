@@ -49,26 +49,12 @@ struct BalanceCardView: View {
 
     var body: some View {
         GroupBox {
-            VStack(alignment: .leading, spacing: 0) {
+            DisclosureGroup(isExpanded: balanceDisclosureBinding) {
+                balanceDisclosureContent
+            } label: {
                 header
-                    .padding(.bottom, 2)
-
-                Text("Total balance")
-                    .font(UniTypography.BalanceCard.label)
-                    .foregroundStyle(UniColors.Text.secondary)
-                    .padding(.top, 24)
-                    .padding(.bottom, 8)
-
-                Group {
-                    switch resolvedState {
-                    case .zero:
-                        zeroBody
-                    case .hidden, .value:
-                        valueBody
-                    }
-                }
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
+            .disclosureGroupStyle(BalanceCardDisclosureStyle())
             .padding(.vertical, UniSpacing.xs)
         }
         .groupBoxStyle(BalanceCardGroupBoxStyle())
@@ -82,6 +68,34 @@ struct BalanceCardView: View {
         formatter.unitsStyle = .short
         let relative = formatter.localizedString(for: date, relativeTo: Date())
         return String(format: String.apertureLocalized("Updated %@"), relative)
+    }
+
+    private var balanceDisclosureBinding: Binding<Bool> {
+        let binding = Binding<Bool>(
+            get: { !isHidden },
+            set: { isExpanded in
+                isHidden = !isExpanded
+            }
+        )
+        return reduceMotion ? binding : binding.animation()
+    }
+
+    @ViewBuilder
+    private var balanceDisclosureContent: some View {
+        Text("Total balance")
+            .font(UniTypography.BalanceCard.label)
+            .foregroundStyle(UniColors.Text.secondary)
+            .padding(.top, 24)
+            .padding(.bottom, 8)
+
+        Group {
+            switch resolvedState {
+            case .zero:
+                zeroBody
+            case .hidden, .value:
+                valueBody
+            }
+        }
     }
 
     private var header: some View {
@@ -138,7 +152,6 @@ struct BalanceCardView: View {
 
     private var valueBody: some View {
         tappableBalanceNumber
-            .padding(.bottom, UniSpacing.balanceCardBottom)
     }
 
     private var tappableBalanceNumber: some View {
@@ -168,9 +181,7 @@ struct BalanceCardView: View {
         }
         .lineLimit(1)
         .minimumScaleFactor(0.5)
-        .contentTransition(reduceMotion ? .identity : .numericText())
         .environment(\.layoutDirection, .leftToRight)
-        .animation(reduceMotion ? nil : .smooth(duration: 0.28), value: totalFiat)
     }
 
     private func composedBalance() -> Text {
@@ -210,7 +221,6 @@ struct BalanceCardView: View {
         UniButton(title: "Add funds", variant: .primary, systemImage: "plus") {
             onAddFunds()
         }
-        .padding(.bottom, UniSpacing.l)
         .accessibilityLabel(Text("Add funds, opens Receive"))
     }
 
@@ -220,9 +230,7 @@ struct BalanceCardView: View {
     }
 
     private func toggleHidden() {
-        withAnimation(reduceMotion ? nil : .default) {
-            isHidden.toggle()
-        }
+        balanceDisclosureBinding.wrappedValue.toggle()
         UniHapticEngine.shared.play(.toggle)
     }
 
@@ -235,6 +243,20 @@ struct BalanceCardView: View {
             return Text("Total balance \(value). Add crypto to get started.")
         }
         return Text("Total balance \(value)")
+    }
+}
+
+private struct BalanceCardDisclosureStyle: DisclosureGroupStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            configuration.label
+                .padding(.bottom, configuration.isExpanded ? 2 : 0)
+
+            if configuration.isExpanded {
+                configuration.content
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 
