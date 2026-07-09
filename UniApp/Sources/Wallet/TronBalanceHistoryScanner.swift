@@ -9,12 +9,13 @@ actor TronBalanceHistoryScanner {
         address: WalletRepository.AddressSnapshot,
         currencyCode: String,
         database: AppDatabase,
+        customTokens: [CustomTokenSnapshot] = [],
         includePrices: Bool = true,
         includeHistory: Bool = true
     ) async throws {
         guard address.chain == .tron else { return }
 
-        let tokens = TronTokenRegistry.tokens.sorted { $0.symbol < $1.symbol }
+        let tokens = supportedTokens(customTokens: customTokens)
         let symbols = Array(Set(([SupportedChain.tron.ticker] + tokens.map(\.symbol)).map { $0.uppercased() })).sorted()
 
         async let pricesTask: [String: TokenPricingEngine.ResolvedPrice] = includePrices
@@ -103,6 +104,24 @@ actor TronBalanceHistoryScanner {
             failedChains: [],
             interim: false
         )
+    }
+
+    private func supportedTokens(customTokens: [CustomTokenSnapshot]) -> [TronTokenRegistry.Entry] {
+        var rows = TronTokenRegistry.tokens
+        var seen = Set(rows.map(\.contract))
+        for token in customTokens where token.chain == .tron {
+            guard seen.insert(token.contract).inserted else { continue }
+            rows.append(TronTokenRegistry.Entry(
+                contract: token.contract,
+                symbol: token.symbol,
+                name: token.name,
+                decimals: token.decimals
+            ))
+        }
+        return rows.sorted {
+            if $0.symbol == $1.symbol { return $0.contract < $1.contract }
+            return $0.symbol < $1.symbol
+        }
     }
 
     private func safeHistory(

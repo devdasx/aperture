@@ -248,11 +248,7 @@ struct ReceiveNetworkFirstView: View {
     }
 
     private var firstSupportedCustomTokenChain: SupportedChain {
-        for chain in availableChains where chain.family == .evm {
-            return chain
-        }
-        if availableChains.contains(.solana) { return .solana }
-        return .ethereum
+        CustomTokenSupport.preferredInitialChain(availableChains: availableChains)
     }
 
     private func totals(for chain: SupportedChain) -> AssetPickerHoldings.Totals {

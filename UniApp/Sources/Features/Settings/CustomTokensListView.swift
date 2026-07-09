@@ -125,7 +125,7 @@ struct CustomTokensListView: View {
             Section {
                 UniListEmptyState(
                     title: "No custom tokens yet.",
-                    detail: "Add a token by pasting its contract address. Aperture reads the rest from chain.",
+                    detail: "Add an ERC-20, Solana, or TRON token by pasting its contract or mint address. Aperture reads the rest from chain.",
                     mark: .icon(systemName: "tag"),
                     minHeight: 320
                 )

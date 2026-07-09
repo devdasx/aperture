@@ -131,6 +131,9 @@ extension ReceiveAsset {
             // Solana token logos resolve from the mint address.
             return SolanaTokenRegistry.mints.first(where: { $0.value.symbol == symbol })?.key
         }
+        if chain == .tron {
+            return TronTokenRegistry.tokens.first(where: { $0.symbol == symbol })?.contract
+        }
         return nil
     }
 }

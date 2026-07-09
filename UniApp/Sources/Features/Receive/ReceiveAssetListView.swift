@@ -15,6 +15,7 @@ struct ReceiveAssetListView: View {
     let assetRecords: [AssetRecord]
     let onSelectNative: (SupportedChain) -> Void
     let onSelectToken: (ReceiveAsset) -> Void
+    let onAddCustomToken: () -> Void
 
     @State private var searchText: String = ""
 
@@ -34,6 +35,14 @@ struct ReceiveAssetListView: View {
     private var catalogAssets: [CatalogAsset] {
         let seededAssets = AssetCatalog.assets(from: assetRecords)
         return seededAssets.isEmpty ? AssetCatalog.allAssets : seededAssets
+    }
+
+    private var searchQuery: String {
+        searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var canOfferCustomTokenAdd: Bool {
+        !searchQuery.isEmpty && CustomTokenSupport.hasSupportedChain(in: availableChains)
     }
 
     var body: some View {
@@ -60,7 +69,7 @@ struct ReceiveAssetListView: View {
     // MARK: - Filtering
 
     private var filteredNatives: [SupportedChain] {
-        let q = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let q = searchQuery
         guard !q.isEmpty else { return sortedNatives }
         return sortedNatives.filter {
             $0.displayName.localizedStandardContains(q) || $0.ticker.localizedStandardContains(q)
@@ -68,7 +77,7 @@ struct ReceiveAssetListView: View {
     }
 
     private var filteredTokens: [ReceiveAsset] {
-        let q = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let q = searchQuery
         guard !q.isEmpty else { return sortedTokens }
         return sortedTokens.filter { asset in
             guard case let .token(symbol, name, _) = asset else { return false }
@@ -131,12 +140,27 @@ struct ReceiveAssetListView: View {
     @ViewBuilder
     private var noResultsSection: some View {
         Section {
-            UniListEmptyState(
-                title: "No assets match your search.",
-                detail: "Try a coin name, token name, or ticker.",
-                mark: .icon(systemName: "magnifyingglass"),
-                minHeight: 260
-            )
+            VStack(spacing: UniSpacing.m) {
+                UniEmptyState(
+                    title: "No assets match your search.",
+                    detail: canOfferCustomTokenAdd
+                        ? "If this is an ERC-20, Solana, or TRON token, add it by contract address."
+                        : "Try a coin name, token name, or ticker.",
+                    mark: .icon(systemName: "magnifyingglass")
+                )
+
+                if canOfferCustomTokenAdd {
+                    UniButton(title: "Add custom token", variant: .secondary, systemImage: "plus") {
+                        onAddCustomToken()
+                    }
+                    .padding(.horizontal, UniSpacing.m)
+                }
+            }
+            .frame(maxWidth: .infinity)
+            .frame(minHeight: 300)
+            .listRowBackground(Color.clear)
+            .listRowSeparator(.hidden)
+            .listRowInsets(EdgeInsets())
         }
     }
 

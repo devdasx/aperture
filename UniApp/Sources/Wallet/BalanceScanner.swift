@@ -132,6 +132,8 @@ actor WalletDataRefreshCoordinator {
         let addressLoadStart = Date()
         let addressSnapshots = (try? walletRepository.addresses(walletId: walletId)) ?? []
         let addressByChain = Dictionary(addressSnapshots.map { ($0.chain, $0) }, uniquingKeysWith: { first, _ in first })
+        let customTokens = (try? CustomTokenRepository(database: database).fetchAll()) ?? []
+        let customTokensByChain = Dictionary(grouping: customTokens, by: \.chain)
         DiagnosticsLogStore.shared.record(
             .debug,
             category: "scanner",
@@ -142,6 +144,7 @@ actor WalletDataRefreshCoordinator {
                 "mode": mode.rawValue,
                 "addressRows": "\(addressSnapshots.count)",
                 "addressChains": "\(addressByChain.count)",
+                "customTokens": "\(customTokens.count)",
                 "elapsedMs": DiagnosticsLogStore.elapsedMilliseconds(since: addressLoadStart)
             ]
         )
@@ -285,6 +288,7 @@ actor WalletDataRefreshCoordinator {
                     address: address,
                     currencyCode: normalizedCurrency,
                     database: database,
+                    customTokens: customTokensByChain[.solana] ?? [],
                     includePrices: includePrices,
                     includeHistory: includeHistory
                 )
@@ -317,6 +321,7 @@ actor WalletDataRefreshCoordinator {
                     address: address,
                     currencyCode: normalizedCurrency,
                     database: database,
+                    customTokens: customTokensByChain[.tron] ?? [],
                     includePrices: includePrices,
                     includeHistory: includeHistory
                 )
@@ -382,6 +387,7 @@ actor WalletDataRefreshCoordinator {
                         address: address,
                         currencyCode: normalizedCurrency,
                         database: database,
+                        customTokens: customTokensByChain[chain] ?? [],
                         includePrices: includePrices,
                         includeHistory: includeHistory
                     )
@@ -1711,14 +1717,13 @@ private actor SolanaBalanceHistoryScanner {
         address: WalletRepository.AddressSnapshot,
         currencyCode: String,
         database: AppDatabase,
+        customTokens: [CustomTokenSnapshot] = [],
         includePrices: Bool = true,
         includeHistory: Bool = true
     ) async throws {
         guard address.chain == .solana else { return }
 
-        let tokens = SolanaTokenRegistry.mints
-            .map { SolanaSupportedToken(mint: $0.key, entry: $0.value) }
-            .sorted { $0.entry.symbol < $1.entry.symbol }
+        let tokens = await supportedTokens(customTokens: customTokens)
         let symbols = Array(Set(([SupportedChain.solana.ticker] + tokens.map(\.entry.symbol)).map { $0.uppercased() })).sorted()
 
         async let pricesTask: [String: TokenPricingEngine.ResolvedPrice] = includePrices
@@ -1735,7 +1740,8 @@ private actor SolanaBalanceHistoryScanner {
         async let historyTask: [SolanaHistoryEvent] = includeHistory
             ? safeHistory(
                 owner: address.address,
-                activeTokenAccounts: tokenBalances.flatMap(\.tokenAccounts)
+                activeTokenAccounts: tokenBalances.flatMap(\.tokenAccounts),
+                tokens: tokens
             )
             : []
 
@@ -1824,6 +1830,56 @@ private actor SolanaBalanceHistoryScanner {
             lamports: String(response.value),
             accountExists: response.value > 0
         )
+    }
+
+    private func supportedTokens(customTokens: [CustomTokenSnapshot]) async -> [SolanaSupportedToken] {
+        var byMint: [String: SolanaSupportedToken] = [:]
+        byMint.reserveCapacity(SolanaTokenRegistry.mints.count + customTokens.count)
+
+        for (mint, entry) in SolanaTokenRegistry.mints {
+            byMint[mint] = SolanaSupportedToken(mint: mint, entry: entry)
+        }
+
+        let customRows = await customSolanaTokens(customTokens)
+        for token in customRows where byMint[token.mint] == nil {
+            byMint[token.mint] = token
+        }
+
+        return byMint.values.sorted {
+            if $0.entry.symbol == $1.entry.symbol { return $0.mint < $1.mint }
+            return $0.entry.symbol < $1.entry.symbol
+        }
+    }
+
+    private func customSolanaTokens(_ customTokens: [CustomTokenSnapshot]) async -> [SolanaSupportedToken] {
+        let solanaTokens = customTokens.filter { $0.chain == .solana }
+        guard !solanaTokens.isEmpty else { return [] }
+        let adapter = SolanaChainAdapter(client: rpc)
+
+        return await withTaskGroup(of: SolanaSupportedToken?.self) { group in
+            for token in solanaTokens {
+                group.addTask {
+                    let mintInfo = try? await adapter.fetchMintInfo(mint: token.contract)
+                    let standard = mintInfo?.standard ?? .splToken
+                    return SolanaSupportedToken(
+                        mint: token.contract,
+                        entry: SolanaTokenRegistry.Entry(
+                            symbol: token.symbol,
+                            name: token.name,
+                            decimals: token.decimals,
+                            standard: standard
+                        )
+                    )
+                }
+            }
+
+            var rows: [SolanaSupportedToken] = []
+            rows.reserveCapacity(solanaTokens.count)
+            for await row in group {
+                if let row { rows.append(row) }
+            }
+            return rows
+        }
     }
 
     private func tokenBalances(
@@ -1958,10 +2014,11 @@ private actor SolanaBalanceHistoryScanner {
 
     private func safeHistory(
         owner: String,
-        activeTokenAccounts: [String]
+        activeTokenAccounts: [String],
+        tokens: [SolanaSupportedToken]
     ) async -> [SolanaHistoryEvent] {
         do {
-            return try await history(owner: owner, activeTokenAccounts: activeTokenAccounts)
+            return try await history(owner: owner, activeTokenAccounts: activeTokenAccounts, tokens: tokens)
         } catch {
             log.debug("Solana history failed: \(String(describing: error), privacy: .public)")
             return []
@@ -1970,7 +2027,8 @@ private actor SolanaBalanceHistoryScanner {
 
     private func history(
         owner: String,
-        activeTokenAccounts: [String]
+        activeTokenAccounts: [String],
+        tokens: [SolanaSupportedToken]
     ) async throws -> [SolanaHistoryEvent] {
         let signatureRequests: [(address: String, limit: Int)] =
             [(owner, 25)] + Array(Set(activeTokenAccounts)).sorted().map { ($0, 12) }
@@ -1983,7 +2041,8 @@ private actor SolanaBalanceHistoryScanner {
             .prefix(60)
 
         let knownTokenAccounts = Set(activeTokenAccounts)
-        let tokenMints = Set(SolanaTokenRegistry.mints.keys)
+        let tokenByMint = Dictionary(uniqueKeysWithValues: tokens.map { ($0.mint, $0.entry) })
+        let tokenMints = Set(tokenByMint.keys)
 
         return await withTaskGroup(of: [SolanaHistoryEvent].self) { group in
             for item in latest {
@@ -1993,6 +2052,7 @@ private actor SolanaBalanceHistoryScanner {
                             signature: item.signature,
                             owner: owner,
                             tokenMints: tokenMints,
+                            tokenByMint: tokenByMint,
                             knownTokenAccounts: knownTokenAccounts,
                             fallbackBlockTime: item.blockTime
                         )
@@ -2058,6 +2118,7 @@ private actor SolanaBalanceHistoryScanner {
         signature: String,
         owner: String,
         tokenMints: Set<String>,
+        tokenByMint: [String: SolanaTokenRegistry.Entry],
         knownTokenAccounts: Set<String>,
         fallbackBlockTime: Int64?
     ) async throws -> [SolanaHistoryEvent] {
@@ -2108,6 +2169,7 @@ private actor SolanaBalanceHistoryScanner {
             txHash: signature,
             owner: owner,
             tokenMints: tokenMints,
+            tokenByMint: tokenByMint,
             knownTokenAccounts: knownTokenAccounts,
             meta: meta,
             accountKeys: accountKeys,
@@ -2173,6 +2235,7 @@ private actor SolanaBalanceHistoryScanner {
         txHash: String,
         owner: String,
         tokenMints: Set<String>,
+        tokenByMint: [String: SolanaTokenRegistry.Entry],
         knownTokenAccounts: Set<String>,
         meta: [String: Any],
         accountKeys: [String],
@@ -2192,7 +2255,7 @@ private actor SolanaBalanceHistoryScanner {
         }
 
         return grouped.compactMap { mint, delta in
-            guard delta != 0, let registry = SolanaTokenRegistry.mints[mint] else { return nil }
+            guard delta != 0, let registry = tokenByMint[mint] else { return nil }
             let direction: TransactionDirection = delta > 0 ? .incoming : .outgoing
             let amount = delta < 0 ? -delta : delta
             let raw = NSDecimalNumber(decimal: amount).stringValue
@@ -2503,13 +2566,14 @@ private actor PublicNodeEVMBalanceScanner {
         address: WalletRepository.AddressSnapshot,
         currencyCode: String,
         database: AppDatabase,
+        customTokens: [CustomTokenSnapshot] = [],
         includePrices: Bool = true,
         includeHistory: Bool = true
     ) async throws {
         let chain = address.chain
         guard client.supports(chain: chain) else { return }
 
-        let tokens = EVMTokenRegistry.tokens(for: chain)
+        let tokens = supportedTokens(chain: chain, customTokens: customTokens)
         let symbols = Array(Set(([chain.ticker] + tokens.map(\.symbol)).map { $0.uppercased() }))
 
         async let prices: [String: TokenPricingEngine.ResolvedPrice] = includePrices
@@ -2621,6 +2685,28 @@ private actor PublicNodeEVMBalanceScanner {
                 if let row { rows.append(row) }
             }
             return rows.sorted { $0.entry.symbol < $1.entry.symbol }
+        }
+    }
+
+    private func supportedTokens(
+        chain: SupportedChain,
+        customTokens: [CustomTokenSnapshot]
+    ) -> [EVMTokenRegistry.Entry] {
+        var rows = EVMTokenRegistry.tokens(for: chain)
+        var seen = Set(rows.map { $0.contract.lowercased() })
+        for token in customTokens where token.chain == chain {
+            let key = token.contract.lowercased()
+            guard seen.insert(key).inserted else { continue }
+            rows.append(EVMTokenRegistry.Entry(
+                contract: token.contract,
+                symbol: token.symbol,
+                name: token.name,
+                decimals: token.decimals
+            ))
+        }
+        return rows.sorted {
+            if $0.symbol == $1.symbol { return $0.contract.lowercased() < $1.contract.lowercased() }
+            return $0.symbol < $1.symbol
         }
     }
 

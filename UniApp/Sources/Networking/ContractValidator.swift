@@ -92,6 +92,22 @@ enum ContractValidator {
         }
         return .valid(normalized: trimmed)
     }
+
+    /// Validate a TRON TRC-20 contract address.
+    ///
+    /// TRON exposes contract accounts in the same address formats as
+    /// EOAs: Base58Check for user-facing addresses, or a 21-byte hex
+    /// payload prefixed with `41`. We accept both and normalize to
+    /// Base58Check because that is what TRON's HTTP API expects when
+    /// `visible` is true.
+    static func validateTronContract(_ input: String) -> ValidationResult {
+        switch TronAddressCodec.normalizeAddress(input) {
+        case .valid(let normalized):
+            return .valid(normalized: normalized)
+        case .invalid(let reason):
+            return .invalid(reason)
+        }
+    }
 }
 
 /// Result of a `ContractValidator` call. `.valid` carries the

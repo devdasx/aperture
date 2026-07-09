@@ -56,7 +56,7 @@ struct AddCustomTokenSheet: View {
     init(initialChain: SupportedChain? = nil, onSaved: @escaping () -> Void) {
         self.initialChain = initialChain
         self.onSaved = onSaved
-        _selectedChain = State(initialValue: initialChain ?? .ethereum)
+        _selectedChain = State(initialValue: CustomTokenSupport.normalizedInitialChain(initialChain))
     }
 
     var body: some View {
@@ -120,15 +120,11 @@ struct AddCustomTokenSheet: View {
             chainPicker
 
             UniCaption(
-                text: selectedChain.family == .ed25519 && selectedChain == .solana
-                    ? "Token mint"
-                    : "Contract address",
+                text: contractFieldLabel,
                 color: UniColors.Text.tertiary
             )
             UniTextField(
-                placeholder: selectedChain == .solana
-                    ? LocalizedStringKey("Paste the mint address")
-                    : LocalizedStringKey("Paste the contract address"),
+                placeholder: contractFieldPlaceholder,
                 text: $contractInput,
                 directionPolicy: .forceLTR,
                 axis: .vertical,
@@ -142,7 +138,7 @@ struct AddCustomTokenSheet: View {
     @ViewBuilder
     private var chainPicker: some View {
         Menu {
-            ForEach(Self.supportedChainsForCustomTokens, id: \.self) { chain in
+            ForEach(CustomTokenSupport.chains, id: \.self) { chain in
                 Button {
                     selectedChain = chain
                 } label: {
@@ -177,9 +173,7 @@ struct AddCustomTokenSheet: View {
     private var guidanceSection: some View {
         VStack(alignment: .leading, spacing: UniSpacing.xxs) {
             UniBody(
-                text: selectedChain == .solana
-                    ? "Paste an SPL token mint address. Aperture reads decimals from the mint and looks up name + symbol from Metaplex."
-                    : "Paste an ERC-20-style contract address. Aperture reads name, symbol, and decimals directly from the contract.",
+                text: guidanceCopy,
                 color: UniColors.Text.secondary
             )
             .fixedSize(horizontal: false, vertical: true)
@@ -321,11 +315,31 @@ struct AddCustomTokenSheet: View {
             && !editedName.trimmingCharacters(in: .whitespaces).isEmpty
     }
 
-    private static let supportedChainsForCustomTokens: [SupportedChain] = [
-        .ethereum, .arbitrum, .base, .optimism, .scroll, .zkSync,
-        .polygon, .bnbChain, .opBNB, .avalanche, .celo,
-        .solana,
-    ]
+    private var contractFieldLabel: LocalizedStringKey {
+        selectedChain == .solana ? "Token mint" : "Contract address"
+    }
+
+    private var contractFieldPlaceholder: LocalizedStringKey {
+        switch selectedChain {
+        case .solana:
+            return "Paste the mint address"
+        case .tron:
+            return "Paste the TRC-20 contract address"
+        default:
+            return "Paste the contract address"
+        }
+    }
+
+    private var guidanceCopy: LocalizedStringKey {
+        switch selectedChain {
+        case .solana:
+            return "Paste an SPL token mint address. Aperture reads decimals from the mint and looks up name + symbol from Metaplex."
+        case .tron:
+            return "Paste a TRC-20 contract address. Aperture reads name, symbol, and decimals directly from the contract."
+        default:
+            return "Paste an ERC-20-style contract address. Aperture reads name, symbol, and decimals directly from the contract."
+        }
+    }
 
     // MARK: - Actions
 
@@ -340,9 +354,7 @@ struct AddCustomTokenSheet: View {
         }
 
         // Validate shape.
-        let result: ValidationResult = selectedChain == .solana
-            ? ContractValidator.validateSolanaMint(trimmed)
-            : ContractValidator.validateEVM(trimmed)
+        let result = validateContractInput(trimmed)
 
         switch result {
         case .invalid(let reason):
@@ -393,6 +405,25 @@ struct AddCustomTokenSheet: View {
                     self.phase = .failed(.fetch(chain: selectedChain))
                 }
             }
+        case .tron:
+            let adapter = TronChainAdapter(client: RPCClient.shared)
+            do {
+                let meta = try await adapter.fetchTokenMetadata(contract: contract)
+                guard !Task.isCancelled else { return }
+                await MainActor.run {
+                    self.phase = .preview(PreviewResult(
+                        name: meta.name,
+                        symbol: meta.symbol,
+                        decimals: meta.decimals,
+                        metadataFromChain: true
+                    ))
+                }
+            } catch {
+                guard !Task.isCancelled else { return }
+                await MainActor.run {
+                    self.phase = .failed(.fetch(chain: selectedChain))
+                }
+            }
         default:
             // Solana
             let adapter = SolanaChainAdapter(client: RPCClient.shared)
@@ -425,6 +456,17 @@ struct AddCustomTokenSheet: View {
                     self.phase = .failed(.fetch(chain: selectedChain))
                 }
             }
+        }
+    }
+
+    private func validateContractInput(_ trimmed: String) -> ValidationResult {
+        switch selectedChain {
+        case .solana:
+            return ContractValidator.validateSolanaMint(trimmed)
+        case .tron:
+            return ContractValidator.validateTronContract(trimmed)
+        default:
+            return ContractValidator.validateEVM(trimmed)
         }
     }
 
@@ -502,20 +544,34 @@ extension AddCustomTokenSheet {
                 case .empty:
                     return "Paste a contract address to continue."
                 case .wrongLength:
-                    return chain == .solana
-                        ? "Not a valid Solana mint — base58 mints decode to 32 bytes."
-                        : "Not a valid EVM address — must be 0x followed by 40 hex characters."
+                    switch chain {
+                    case .solana:
+                        return "Not a valid Solana mint — base58 mints decode to 32 bytes."
+                    case .tron:
+                        return "Not a valid TRON contract address — Base58Check addresses start with T, or use the 41-prefixed hex form."
+                    default:
+                        return "Not a valid EVM address — must be 0x followed by 40 hex characters."
+                    }
                 case .invalidCharacter:
-                    return chain == .solana
-                        ? "Mint contains characters that aren't valid base58."
-                        : "Contract contains characters that aren't valid hexadecimal."
+                    switch chain {
+                    case .solana:
+                        return "Mint contains characters that aren't valid base58."
+                    case .tron:
+                        return "TRON contract contains characters that aren't valid Base58Check or hex."
+                    default:
+                        return "Contract contains characters that aren't valid hexadecimal."
+                    }
                 case .invalidChecksum:
-                    return "EIP-55 checksum doesn't match. Double-check the address — one wrong letter case can mean the wrong contract."
+                    return chain == .tron
+                        ? "TRON address checksum doesn't match. Paste it again from your source."
+                        : "EIP-55 checksum doesn't match. Double-check the address — one wrong letter case can mean the wrong contract."
                 case .notBase58:
-                    return "Mint isn't valid base58 — paste it again from your source."
+                    return chain == .tron
+                        ? "TRON contract isn't valid Base58Check — paste it again from your source."
+                        : "Mint isn't valid base58 — paste it again from your source."
                 }
             case .fetch:
-                return "Couldn't fetch metadata. The contract may not implement the standard ERC-20 / SPL surface, or the network may be unreachable."
+                return "Couldn't fetch metadata. The contract may not implement the standard ERC-20 / SPL / TRC-20 surface, or the network may be unreachable."
             case .duplicate:
                 return "This token is already in your Custom Tokens list."
             case .persistence:

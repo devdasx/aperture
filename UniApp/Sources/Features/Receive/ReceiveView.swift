@@ -109,6 +109,9 @@ struct ReceiveView: View {
                 },
                 onSelectToken: { asset in
                     openToken(asset)
+                },
+                onAddCustomToken: {
+                    isShowingAddCustomToken = true
                 }
             )
             .navigationTitle("Receive")
@@ -327,15 +330,11 @@ struct ReceiveView: View {
 
     /// First supported chain for the Add Custom Token sheet's
     /// initial selection. Picks the first EVM chain the user has an
-    /// address on (Ethereum is most likely), else Solana, else
+    /// address on (Ethereum is most likely), else Solana, else TRON, else
     /// `.ethereum` as a backstop — the sheet's picker lets the user
     /// override regardless.
     private var firstSupportedCustomTokenChain: SupportedChain {
-        for chain in availableChains where chain.family == .evm {
-            return chain
-        }
-        if availableChains.contains(.solana) { return .solana }
-        return .ethereum
+        CustomTokenSupport.preferredInitialChain(availableChains: availableChains)
     }
 
     struct AssetPrefill: Equatable {
