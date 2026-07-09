@@ -55,6 +55,7 @@ struct BalanceCardView: View {
             }
             .disclosureGroupStyle(BalanceCardDisclosureStyle())
             .padding(.vertical, UniSpacing.xs)
+            .animation(reduceMotion ? nil : .default, value: isHidden)
         }
         .groupBoxStyle(BalanceCardGroupBoxStyle())
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -70,13 +71,12 @@ struct BalanceCardView: View {
     }
 
     private var balanceDisclosureBinding: Binding<Bool> {
-        let binding = Binding<Bool>(
+        Binding<Bool>(
             get: { !isHidden },
             set: { isExpanded in
-                isHidden = !isExpanded
+                setHidden(!isExpanded)
             }
         )
-        return reduceMotion ? binding : binding.animation()
     }
 
     @ViewBuilder
@@ -161,18 +161,9 @@ struct BalanceCardView: View {
     }
 
     private var balanceNumber: some View {
-        let parts = WalletFormatting.fiatParts(totalFiat, currencyCode: currencyCode)
-        let currencyRun = Text(verbatim: parts.currency + (parts.currency.isEmpty ? "" : " "))
-            .font(UniTypography.BalanceCard.currency)
-            .foregroundStyle(UniColors.Text.secondary)
-
-        return Group {
+        Group {
             if isHidden {
-                let dots = Text(verbatim: "••••••")
-                    .font(UniTypography.BalanceCard.balance)
-                    .foregroundStyle(UniColors.Text.primary)
-                Text("\(currencyRun)\(dots)")
-                    .tracking(2)
+                maskedBalance()
             } else {
                 composedBalance()
             }
@@ -180,6 +171,26 @@ struct BalanceCardView: View {
         .lineLimit(1)
         .minimumScaleFactor(0.5)
         .environment(\.layoutDirection, .leftToRight)
+    }
+
+    private func maskedBalance() -> Text {
+        let parts = WalletFormatting.fiatParts(totalFiat, currencyCode: currencyCode)
+        let currency = Text(verbatim: parts.currency)
+            .font(UniTypography.BalanceCard.currency)
+            .foregroundStyle(UniColors.Text.secondary)
+        let dots = Text(verbatim: "••••••")
+            .font(UniTypography.BalanceCard.balance)
+            .foregroundStyle(UniColors.Text.primary)
+            .tracking(2)
+        let gap = Text(verbatim: " ")
+            .font(UniTypography.BalanceCard.currency)
+
+        if parts.currency.isEmpty {
+            return dots
+        }
+        return parts.currencyLeads
+            ? Text("\(currency)\(gap)\(dots)")
+            : Text("\(dots)\(gap)\(currency)")
     }
 
     private func composedBalance() -> Text {
@@ -228,6 +239,17 @@ struct BalanceCardView: View {
     private func toggleHidden() {
         balanceDisclosureBinding.wrappedValue.toggle()
         UniHapticEngine.shared.play(.toggle)
+    }
+
+    private func setHidden(_ hidden: Bool) {
+        guard hidden != isHidden else { return }
+        if reduceMotion {
+            isHidden = hidden
+        } else {
+            withAnimation {
+                isHidden = hidden
+            }
+        }
     }
 
     private var accessibilityLabel: Text {
