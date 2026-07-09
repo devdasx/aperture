@@ -64,6 +64,7 @@ struct AddCustomTokenSheet: View {
     @State private var csvExportDocument = CustomTokenCSVDocument()
     @State private var csvAlert: CSVAlert?
     @State private var includedTokenAlert: IncludedTokenAlert?
+    @State private var isScanningContract: Bool = false
 
     init(
         initialChain: SupportedChain? = nil,
@@ -179,6 +180,17 @@ struct AddCustomTokenSheet: View {
                     dismissButton: .default(Text("OK"))
                 )
             }
+        }
+        .fullScreenCover(isPresented: $isScanningContract) {
+            UniQRScannerSheet(
+                title: "Scan contract",
+                prompt: scannerPrompt,
+                onRawDeliver: { payload in
+                    applyIncomingContract(payload)
+                    isScanningContract = false
+                }
+            )
+            .uniAppEnvironment()
         }
     }
 
@@ -320,14 +332,15 @@ struct AddCustomTokenSheet: View {
                 text: contractFieldLabel,
                 color: UniColors.Text.tertiary
             )
-            UniTextField(
+            ContractAddressInputField(
                 placeholder: contractFieldPlaceholder,
                 text: $contractInput,
-                directionPolicy: .forceLTR,
-                axis: .vertical,
-                lineLimit: 2,
-                autocapitalization: .never,
-                disablesAutocorrection: true
+                label: contractFieldLabel,
+                onPaste: pasteContractFromClipboard,
+                onScan: {
+                    UniHapticEngine.shared.play(.selection)
+                    isScanningContract = true
+                }
             )
         }
     }
@@ -504,6 +517,17 @@ struct AddCustomTokenSheet: View {
         }
     }
 
+    private var scannerPrompt: LocalizedStringKey {
+        switch selectedChain {
+        case .solana:
+            return "Point your camera at an SPL token mint QR code."
+        case .tron:
+            return "Point your camera at a TRC-20 contract QR code."
+        default:
+            return "Point your camera at an ERC-20 contract QR code."
+        }
+    }
+
     private var networkChoices: [SupportedChain] {
         CustomTokenSupport.orderedChains(availableChains: availableChains)
     }
@@ -578,6 +602,35 @@ struct AddCustomTokenSheet: View {
                 )
             }
         }
+    }
+
+    private func pasteContractFromClipboard() {
+        UniHapticEngine.shared.play(.selection)
+        guard let pasted = SafePasteboard.trimmedString else { return }
+        applyIncomingContract(pasted)
+    }
+
+    private func applyIncomingContract(_ raw: String) {
+        let clean = parseIncomingContract(raw)
+        guard !clean.isEmpty else { return }
+        contractInput = clean
+    }
+
+    private func parseIncomingContract(_ raw: String) -> String {
+        var value = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let schemeRange = value.range(of: ":"), value.range(of: "://") == nil {
+            let afterScheme = String(value[schemeRange.upperBound...])
+            if !afterScheme.isEmpty {
+                value = afterScheme
+            }
+        }
+        if let queryStart = value.firstIndex(of: "?") {
+            value = String(value[..<queryStart])
+        }
+        if let atSign = value.firstIndex(of: "@") {
+            value = String(value[..<atSign])
+        }
+        return value.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     private func handleCSVImport(_ result: Result<[URL], Error>) {
@@ -871,6 +924,101 @@ struct AddCustomTokenSheet: View {
         let prefix = contract.prefix(6)
         let suffix = contract.suffix(4)
         return "\(prefix)…\(suffix)"
+    }
+}
+
+private struct ContractAddressInputField: View {
+    let placeholder: LocalizedStringKey
+    @Binding var text: String
+    let label: LocalizedStringKey
+    let onPaste: () -> Void
+    let onScan: () -> Void
+
+    @FocusState private var isFocused: Bool
+
+    var body: some View {
+        ZStack(alignment: .bottomTrailing) {
+            TextField(
+                text: $text,
+                prompt: Text(placeholder),
+                axis: .vertical
+            ) {
+                Text(label)
+            }
+            .focused($isFocused)
+            .textFieldStyle(.automatic)
+            .textInputAutocapitalization(.never)
+            .autocorrectionDisabled(true)
+            .keyboardType(.default)
+            .submitLabel(.done)
+            .font(UniTypography.body)
+            .foregroundStyle(UniColors.Input.text)
+            .tint(UniColors.Tint.accent)
+            .lineLimit(2...4)
+            .padding(.horizontal, UniSpacing.mPlus)
+            .padding(.top, UniSpacing.m)
+            .padding(.bottom, 62)
+            .frame(maxWidth: .infinity, minHeight: 140, alignment: .topLeading)
+            .background(inputBackground)
+            .environment(\.layoutDirection, .leftToRight)
+            .onSubmit {
+                isFocused = false
+            }
+            .onChange(of: text) { _, newValue in
+                guard newValue.contains(where: \.isNewline) else { return }
+                text = newValue.filter { !$0.isNewline }
+                isFocused = false
+            }
+
+            fieldUtilities
+                .padding(.trailing, UniSpacing.s)
+                .padding(.bottom, UniSpacing.s)
+        }
+    }
+
+    private var inputBackground: some View {
+        RoundedRectangle(cornerRadius: UniRadius.textField, style: .continuous)
+            .fill(isFocused ? UniColors.Input.focusedBackground : UniColors.Input.background)
+    }
+
+    private var fieldUtilities: some View {
+        HStack(spacing: 8) {
+            fieldUtilityButton(
+                title: "Paste",
+                systemImage: "doc.on.clipboard",
+                accessibilityLabel: "Paste contract address",
+                action: onPaste
+            )
+            fieldUtilityButton(
+                title: "Scan",
+                systemImage: "qrcode.viewfinder",
+                accessibilityLabel: "Scan contract address",
+                action: onScan
+            )
+        }
+    }
+
+    private func fieldUtilityButton(
+        title: LocalizedStringKey,
+        systemImage: String,
+        accessibilityLabel: LocalizedStringKey,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Label(title, systemImage: systemImage)
+                .font(.system(size: 14, weight: .semibold))
+                .labelStyle(.titleAndIcon)
+                .foregroundStyle(UniColors.Text.primary)
+                .padding(.horizontal, 12)
+                .frame(height: 38)
+                .background(.regularMaterial, in: Capsule(style: .continuous))
+                .overlay {
+                    Capsule(style: .continuous)
+                        .stroke(UniColors.Input.border.opacity(0.7), lineWidth: 1)
+                }
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(Text(accessibilityLabel))
     }
 }
 
