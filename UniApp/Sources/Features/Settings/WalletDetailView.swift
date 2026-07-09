@@ -47,7 +47,7 @@ struct WalletDetailView: View {
     /// Live iCloud-backup status for this wallet, resolved from CloudKit.
     @State private var iCloudStatus: BackupRowStatus = .checking
 
-    enum BackupRowStatus: Equatable { case checking, done, notDone, unavailable }
+    enum BackupRowStatus: Equatable { case checking, done, notDone, unavailable(String) }
 
     private struct WalletBackupPresentation: Identifiable {
         let id = UUID()
@@ -939,8 +939,14 @@ struct WalletDetailView: View {
     }
 
     /// Auth-gate → decrypt → present the selected backup path. The row already
-    /// names the method, so do not show the method chooser again.
+    /// names the method, so do not show the method chooser again. If iCloud is
+    /// known-unavailable, explain why instead of entering the passcode flow.
     private func startWalletBackup(_ method: WalletBackupMethod) {
+        if case .iCloud = method, case .unavailable(let reason) = iCloudStatus {
+            pendingBackupMethod = nil
+            errorAlertMessage = reason
+            return
+        }
         pendingBackupMethod = method
         requestReveal(.backup)
     }
@@ -982,10 +988,35 @@ struct WalletDetailView: View {
             _ = try await store.fetch(walletId: walletId)
             iCloudStatus = .done
         } catch let error as CloudKitBackupStore.StoreError {
-            iCloudStatus = (error == .notFound) ? .notDone : .unavailable
+            iCloudStatus = (error == .notFound) ? .notDone : .unavailable(Self.iCloudUnavailableMessage(for: error))
         } catch {
-            iCloudStatus = .unavailable
+            iCloudStatus = .unavailable(Self.iCloudUnavailableMessage(for: error))
         }
+    }
+
+    private static func iCloudUnavailableMessage(for error: Error) -> String {
+        if let e = error as? CloudKitBackupStore.StoreError {
+            switch e {
+            case .notSignedIn:
+                return String.apertureLocalized("iCloud backup is unavailable because you're not signed in to iCloud. Sign in from Settings, then try again.")
+            case .iCloudUnavailable:
+                return String.apertureLocalized("iCloud backup is unavailable because iCloud isn't available on this device right now. Try again later.")
+            case .networkUnavailable:
+                return String.apertureLocalized("iCloud backup is unavailable because this iPhone has no internet connection. Reconnect and try again.")
+            case .quotaExceeded:
+                return String.apertureLocalized("iCloud backup is unavailable because your iCloud storage is full. Free up space and try again.")
+            case .notFound:
+                return String.apertureLocalized("This wallet does not have an iCloud backup yet.")
+            case .cloudKit(let code, let message):
+                if [5, 8, 10, 15].contains(code) {
+                    return String(format: String.apertureLocalized("iCloud backup is unavailable because CloudKit isn't set up for this build. In Xcode → Signing & Capabilities, add iCloud → CloudKit and the iCloud.com.aperture.wallet container, then try again. (CloudKit %lld)"), Int64(code))
+                }
+                return String(format: String.apertureLocalized("iCloud backup is unavailable because CloudKit returned error %lld: %@"), Int64(code), message)
+            case .unknown(let message):
+                return String(format: String.apertureLocalized("iCloud backup is unavailable: %@"), message)
+            }
+        }
+        return String(format: String.apertureLocalized("iCloud backup is unavailable: %@"), error.localizedDescription)
     }
 
     @MainActor
