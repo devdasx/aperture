@@ -46,13 +46,12 @@ struct UniAppApp: App {
         // 0) Fresh-install guard. iOS Keychain items survive app
         //    deletion by default; without this call a user who
         //    deletes Aperture and re-installs would see their old
-        //    legacy wallet/security compatibility items come back — which
-        //    breaks the Rule #16 §A.5 contract ("your wallet only
-        //    lives on this iPhone"). The guard checks for a local
-        //    GRDB store file; if it's missing we delete every legacy Keychain item under
-        //    our known service identifiers. Runs BEFORE every other
-        //    bootstrap call so legacy compatibility state is known-empty on
-        //    first launch after install.
+        //    legacy wallet/security compatibility items come back. The
+        //    guard checks for the sandbox install marker; if it is
+        //    missing, it resets SQLite sidecars and deletes
+        //    Aperture-visible Keychain generic-password items before any
+        //    subsystem can read them. Runs BEFORE every other bootstrap
+        //    call so first launch after install is known-empty.
         let freshInstallStart = Date()
         FreshInstallGuard.purgeKeychainIfFreshInstall()
         Self.diagnostic(.debug, "Fresh-install guard finished", start: freshInstallStart)

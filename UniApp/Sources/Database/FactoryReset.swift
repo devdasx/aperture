@@ -89,6 +89,12 @@ enum FactoryReset {
         SettingsStore.shared.start(database: database)
         ActiveWalletPointer.set(nil)
         await onStageComplete(.settings)
+        try await DiagnosticsLogStore.shared.clear()
+        // Guarantee the concrete reset store is empty even if diagnostics
+        // were detached or reattached while reset rebuilt app state.
+        try database.write { db in
+            try db.execute(sql: "DELETE FROM diagnostic_log_entries")
+        }
         log.notice("Full wipe completed.")
     }
 

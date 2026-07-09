@@ -2,8 +2,8 @@ import Foundation
 import Security
 import os.log
 
-/// Wipes Aperture-owned legacy Keychain items on the **first launch after
-/// a true app reinstall**.
+/// Wipes Aperture-owned persisted state on the **first launch after a true app
+/// reinstall**.
 ///
 /// **The problem this solves.** iOS Keychain items survive app
 /// deletion by default. A user who deletes Aperture and re-installs
@@ -11,21 +11,18 @@ import os.log
 /// stored wallet/PIN from old Keychain-backed builds come back because
 /// the app sandbox got wiped while Keychain entries survived.
 ///
-/// **The fix.** The current wallet store is GRDB in the app sandbox.
-/// The guard keeps a non-secret install marker in both the sandbox and
-/// Keychain. On normal upgrades both markers remain. On delete/reinstall
-/// the sandbox marker disappears while the Keychain marker survives, so
-/// we purge legacy Aperture Keychain services and reset any restored
-/// SQLite sidecars before GRDB opens. First launch of a pre-marker build
-/// with an existing database is adopted, not wiped.
+/// **The fix.** The current wallet store is GRDB in the app sandbox. The guard
+/// keeps a non-secret install marker in the sandbox. On delete/reinstall the
+/// sandbox marker disappears, so we reset any SQLite sidecars and purge
+/// Aperture-accessible Keychain generic-password items before GRDB opens. This
+/// deliberately treats a missing sandbox marker as a zero-data install even if
+/// iOS or a local restore left some files behind.
 ///
-/// **Why this is safe.** The Keychain items we delete are all
-/// owned by Aperture (`com.thuglife.aperture.*` services). We do NOT
-/// touch Keychain items belonging to other apps; that's structurally
-/// impossible because iOS scopes Keychain by app entitlement. We do
-/// NOT touch iCloud-synced items because the purge only targets
-/// generic-password items in this app's access group with Aperture-owned
-/// service names.
+/// **Why this is safe.** The Keychain items we delete are visible only to this
+/// app's Keychain access group. We do NOT touch Keychain items belonging to
+/// other apps; iOS scopes those away from this process. The purge covers both
+/// local and synchronizable generic-password items so a delete/reinstall cannot
+/// resurrect data from iCloud Keychain either.
 ///
 /// **Where this runs.** Synchronously from `UniAppApp.init()` BEFORE
 /// any other subsystem touches Keychain — before
@@ -36,22 +33,18 @@ import os.log
 enum FreshInstallGuard {
 
     #if DEBUG
-    nonisolated(unsafe) private static var ignoresExistingStoreForTesting = false
+    nonisolated(unsafe) private static var storeResetHookForTesting: (() throws -> Void)?
     #endif
 
     private static let installMarkerFileName = ".aperture-install-marker-v1"
     private static let installMarkerService = "com.thuglife.aperture.install-state"
     private static let installMarkerAccount = "current-install"
-    private static let ownedServicePrefixes = [
-        "com.thuglife.aperture.",
-        "com.aperture."
-    ]
 
     /// Every Keychain `kSecAttrService` identifier Aperture writes
-    /// under. Adding a new vault later requires adding its service
-    /// string here so the fresh-install wipe covers it — a service
-    /// missing from this list means wallets RESURRECT after a delete
-    /// + reinstall, breaking the user's zero-data contract.
+    /// under. Kept for audit visibility and targeted database-replacement
+    /// cleanup; fresh-install cleanup also enumerates every other generic
+    /// password item visible to this app so an unlisted legacy service cannot
+    /// resurrect wallets after delete + reinstall.
     ///
     /// Legacy service inventory. Current wallet/PIN material is stored
     /// in GRDB, but these names are kept so delete/reinstall cannot
@@ -85,13 +78,14 @@ enum FreshInstallGuard {
                 let query: [String: Any] = [
                     kSecClass as String: secClass,
                     kSecAttrService as String: serviceName,
+                    kSecAttrSynchronizable as String: kSecAttrSynchronizableAny,
                 ]
                 if SecItemDelete(query as CFDictionary) == errSecSuccess {
                     deletedCount += 1
                 }
             }
         }
-        deletedCount += purgeUnknownOwnedGenericPasswordServices()
+        deletedCount += purgeAllOtherGenericPasswordItems()
         return deletedCount
     }
 
@@ -100,7 +94,7 @@ enum FreshInstallGuard {
     /// items key service-like identity through different attributes, so adding
     /// that class here produces invalid Keychain queries on simulator/device.
     /// Future key/cert/internet-password vaults must add their own explicit
-    /// purge path; this guard does not perform class-wide deletes.
+    /// purge path.
     private static var serviceScopedClasses: [CFString] {
         [kSecClassGenericPassword]
     }
@@ -111,61 +105,37 @@ enum FreshInstallGuard {
     )
 
     /// Idempotent. Call once from `UniAppApp.init()`. Returns `true`
-    /// iff a destructive legacy-Keychain wipe actually ran.
+    /// iff a destructive fresh-install wipe actually ran.
     @discardableResult
     static func purgeKeychainIfFreshInstall() -> Bool {
-        #if DEBUG
-        let shouldRespectExistingStore = !ignoresExistingStoreForTesting
-        #else
-        let shouldRespectExistingStore = true
-        #endif
-        let hasStore = shouldRespectExistingStore && hasExistingLocalStore()
         let hasContainerMarker = hasContainerInstallMarker()
-        let hasSurvivingKeychainMarker = hasKeychainInstallMarker()
-        let isReinstallAfterMarkedBuild = hasSurvivingKeychainMarker && !hasContainerMarker
-        let isFirstLaunchWithoutStore = !hasStore && !hasContainerMarker
-        let shouldWipe = isReinstallAfterMarkedBuild || isFirstLaunchWithoutStore
-
-        guard shouldWipe else {
+        guard !hasContainerMarker else {
             ensureCurrentInstallMarkers()
             return false
         }
 
-        if isReinstallAfterMarkedBuild {
-            try? AppDatabase.resetStoreFiles()
+        do {
+            try resetStoreFilesForFreshInstall()
+        } catch {
+            log.error("Fresh-install SQLite reset failed: \(String(describing: error), privacy: .public)")
         }
 
-        log.log("Fresh install detected — purging Aperture-owned Keychain items")
+        log.log("Fresh install detected — resetting Aperture local data")
         let deletedCount = purgeAllKnownKeychainServicesForDatabaseReplacement()
         ensureCurrentInstallMarkers()
 
-        #if DEBUG
-        ignoresExistingStoreForTesting = false
-        #endif
-        log.log("Fresh-install Keychain purge complete — \(deletedCount, privacy: .public) entries cleared")
+        log.log("Fresh-install cleanup complete — \(deletedCount, privacy: .public) Keychain entries cleared")
         return true
     }
 
-    private static func hasExistingLocalStore() -> Bool {
-        let fm = FileManager.default
-        let base: URL
-        if let appSupport = try? fm.url(
-            for: .applicationSupportDirectory,
-            in: .userDomainMask,
-            appropriateFor: nil,
-            create: false
-        ) {
-            base = appSupport
-        } else {
-            base = fm.urls(for: .documentDirectory, in: .userDomainMask).first
-                ?? URL(fileURLWithPath: NSTemporaryDirectory())
+    private static func resetStoreFilesForFreshInstall() throws {
+        #if DEBUG
+        if let storeResetHookForTesting {
+            try storeResetHookForTesting()
+            return
         }
-        let store = base
-            .appendingPathComponent("Aperture", isDirectory: true)
-            .appendingPathComponent("aperture.sqlite", isDirectory: false)
-        return fm.fileExists(atPath: store.path)
-            || fm.fileExists(atPath: store.path + "-wal")
-            || fm.fileExists(atPath: store.path + "-shm")
+        #endif
+        try AppDatabase.resetStoreFiles()
     }
 
     private static func hasContainerInstallMarker() -> Bool {
@@ -231,11 +201,12 @@ enum FreshInstallGuard {
         }
     }
 
-    private static func purgeUnknownOwnedGenericPasswordServices() -> Int {
+    private static func purgeAllOtherGenericPasswordItems() -> Int {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecReturnAttributes as String: true,
-            kSecMatchLimit as String: kSecMatchLimitAll
+            kSecMatchLimit as String: kSecMatchLimitAll,
+            kSecAttrSynchronizable as String: kSecAttrSynchronizableAny,
         ]
         var result: CFTypeRef?
         let status = SecItemCopyMatching(query as CFDictionary, &result)
@@ -243,23 +214,27 @@ enum FreshInstallGuard {
             return 0
         }
 
-        var deletedServices = Set<String>()
+        var deletedItems = 0
         for row in rows {
-            guard let service = row[kSecAttrService as String] as? String,
-                  service != installMarkerService,
-                  ownedServicePrefixes.contains(where: { service.hasPrefix($0) }),
-                  !deletedServices.contains(service)
-            else { continue }
+            let service = row[kSecAttrService as String] as? String
+            guard service != installMarkerService else { continue }
 
-            let deleteQuery: [String: Any] = [
-                kSecClass as String: kSecClassGenericPassword,
-                kSecAttrService as String: service
-            ]
+            var deleteQuery: [String: Any] = [kSecClass as String: kSecClassGenericPassword]
+            if let service { deleteQuery[kSecAttrService as String] = service }
+            if let account = row[kSecAttrAccount as String] as? String {
+                deleteQuery[kSecAttrAccount as String] = account
+            }
+            if let accessGroup = row[kSecAttrAccessGroup as String] as? String {
+                deleteQuery[kSecAttrAccessGroup as String] = accessGroup
+            }
+            deleteQuery[kSecAttrSynchronizable as String] =
+                row[kSecAttrSynchronizable as String] ?? kSecAttrSynchronizableAny
+
             if SecItemDelete(deleteQuery as CFDictionary) == errSecSuccess {
-                deletedServices.insert(service)
+                deletedItems += 1
             }
         }
-        return deletedServices.count
+        return deletedItems
     }
 
     /// Test-only. Resets the marker so a subsequent
@@ -267,7 +242,7 @@ enum FreshInstallGuard {
     /// by the smoke test below in DEBUG builds.
     #if DEBUG
     static func _resetMarkerForTesting() {
-        ignoresExistingStoreForTesting = true
+        storeResetHookForTesting = nil
         if let marker = installMarkerURL(createDirectory: false) {
             try? FileManager.default.removeItem(at: marker)
         }
@@ -277,6 +252,10 @@ enum FreshInstallGuard {
             kSecAttrAccount as String: installMarkerAccount
         ]
         _ = SecItemDelete(deleteQuery as CFDictionary)
+    }
+
+    static func _setStoreResetHookForTesting(_ hook: (() throws -> Void)?) {
+        storeResetHookForTesting = hook
     }
     #endif
 }
