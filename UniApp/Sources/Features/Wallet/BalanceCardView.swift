@@ -39,10 +39,9 @@ struct BalanceCardView: View {
         self.onAddFunds = onAddFunds
     }
 
-    private enum CardState: Equatable { case value, zero, hidden }
+    private enum CardState: Equatable { case value, zero }
 
     private var resolvedState: CardState {
-        if isHidden { return .hidden }
         if totalFiat <= 0 { return .zero }
         return .value
     }
@@ -52,7 +51,7 @@ struct BalanceCardView: View {
             DisclosureGroup(isExpanded: balanceDisclosureBinding) {
                 balanceDisclosureContent
             } label: {
-                header
+                balanceDisclosureLabel
             }
             .disclosureGroupStyle(BalanceCardDisclosureStyle())
             .padding(.vertical, UniSpacing.xs)
@@ -82,19 +81,22 @@ struct BalanceCardView: View {
 
     @ViewBuilder
     private var balanceDisclosureContent: some View {
-        Text("Total balance")
-            .font(UniTypography.BalanceCard.label)
-            .foregroundStyle(UniColors.Text.secondary)
-            .padding(.top, 24)
-            .padding(.bottom, 8)
+        if resolvedState == .zero {
+            zeroBody
+        }
+    }
 
-        Group {
-            switch resolvedState {
-            case .zero:
-                zeroBody
-            case .hidden, .value:
-                valueBody
-            }
+    private var balanceDisclosureLabel: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            header
+
+            Text("Total balance")
+                .font(UniTypography.BalanceCard.label)
+                .foregroundStyle(UniColors.Text.secondary)
+                .padding(.top, 24)
+                .padding(.bottom, 8)
+
+            tappableBalanceNumber
         }
     }
 
@@ -148,10 +150,6 @@ struct BalanceCardView: View {
             .accessibilityLabel(Text(isHidden ? "Show balance" : "Hide balance"))
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)
-    }
-
-    private var valueBody: some View {
-        tappableBalanceNumber
     }
 
     private var tappableBalanceNumber: some View {
@@ -208,8 +206,6 @@ struct BalanceCardView: View {
 
     @ViewBuilder
     private var zeroBody: some View {
-        tappableBalanceNumber
-
         Text("Add crypto to get started — receive or transfer it from another wallet.")
             .font(UniTypography.BalanceCard.zeroPrompt)
             .foregroundStyle(UniColors.Text.secondary)

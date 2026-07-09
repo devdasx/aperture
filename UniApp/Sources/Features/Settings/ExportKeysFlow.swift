@@ -528,9 +528,10 @@ private struct KeyRevealScreen: View {
             }
 
             Text(value)
-                .font(.system(.body, design: .monospaced))
+                .font(UniTypography.body)
                 .foregroundStyle(UniColors.Text.primary)
-                .frame(maxWidth: .infinity, alignment: .leading)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: .infinity, alignment: .center)
                 .textSelection(.disabled)
                 .environment(\.layoutDirection, .leftToRight)
 
