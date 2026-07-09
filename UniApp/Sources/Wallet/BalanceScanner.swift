@@ -3060,6 +3060,27 @@ actor WalletBackgroundWorkCoordinator {
         }
     }
 
+    func refreshFull(
+        walletId: UUID,
+        currencyCode: String,
+        database: AppDatabase
+    ) async {
+        await runReplacing(
+            type: .fullRefresh,
+            walletId: walletId,
+            waitsForCompletion: true
+        ) {
+            await TokenPricingEngine.shared.configure(database: database)
+            await WalletDataRefreshCoordinator.shared.refresh(
+                walletId: walletId,
+                currencyCode: currencyCode,
+                database: database,
+                userInitiated: false,
+                mode: .full
+            )
+        }
+    }
+
     func startPriceRefresh(
         walletId: UUID,
         symbols: [String],

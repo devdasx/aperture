@@ -257,12 +257,24 @@ struct WalletHomeView: View {
     @State private var importPath: NavigationPath = NavigationPath()
     @GRDBStorage(MainTab.storageKey) private var selectedTabRaw: String = MainTab.wallet.rawValue
     @State private var isRefreshing: Bool = false
+    @State private var firstRefreshSkeletonWalletId: UUID?
+    @State private var firstRefreshSkeletonRunId: UUID?
 
     /// `true` while a refresh this view started is in flight. Refresh now
     /// fetches nothing (data-fetching layer removed 2026-06-25), so this stays
     /// `false`; kept because the Retry control still reads it.
     private var isAnyRefreshInFlight: Bool {
         isRefreshing
+    }
+
+    /// Initial create/import scan gate. A wallet with no completed address
+    /// scan should render loading placeholders only while this view's first
+    /// background refresh is actually in flight; after that completes, the
+    /// normal fresh-wallet empty state or balance card owns the truth.
+    private var isShowingFirstRefreshSkeleton: Bool {
+        guard let wallet = activeWallet else { return false }
+        return firstRefreshSkeletonWalletId == wallet.id
+            && mostRecentScanAt == nil
     }
 
     /// Network-error state retired with the data-fetching layer (2026-06-25):
@@ -960,7 +972,9 @@ struct WalletHomeView: View {
     ///   clear that Combined owns the asset-type presentation.
     @ViewBuilder
     private var holdingsBody: some View {
-        if showsNetworkErrorState {
+        if isShowingFirstRefreshSkeleton {
+            firstRefreshHoldingsSkeletonSection
+        } else if showsNetworkErrorState {
             // Fresh wallet + total scan failure — nothing persisted,
             // so the all-supported $0.00 list would be a lie. Show
             // the honest error state with a Retry CTA instead
@@ -983,7 +997,12 @@ struct WalletHomeView: View {
     private var balanceCardSection: some View {
         Section {
             Group {
-                if shouldShowFreshWalletBalanceEmptyState {
+                if isShowingFirstRefreshSkeleton {
+                    FirstRefreshBalanceCardSkeleton(
+                        walletName: activeWallet?.name ?? String.apertureLocalized("Wallet"),
+                        currencyCode: currencyCode
+                    )
+                } else if shouldShowFreshWalletBalanceEmptyState {
                     FreshWalletBalanceEmptyState(
                         walletName: activeWallet?.name ?? String.apertureLocalized("Wallet"),
                         onSwitchWallet: { isShowingSwitcher = true },
@@ -1157,6 +1176,148 @@ struct WalletHomeView: View {
                 transaction.disablesAnimations = true
             }
         }
+    }
+
+    // MARK: - First refresh skeleton
+
+    /// Initial wallet scan loading state. This uses the same List section,
+    /// segmented-control row, and asset row components as the production
+    /// holdings surface, then applies SwiftUI's native placeholder redaction
+    /// to the rows so text metrics and row heights match the final UI.
+    @ViewBuilder
+    private var firstRefreshHoldingsSkeletonSection: some View {
+        Section {
+            holdingsControlsListRow
+                .disabled(true)
+                .accessibilityHidden(true)
+
+            switch filterViewMode {
+            case .split:
+                switch selectedHoldingsTab {
+                case .coins:
+                    firstRefreshCoinSkeletonRows
+                case .tokens:
+                    firstRefreshTokenSkeletonRows
+                }
+            case .combined:
+                firstRefreshCombinedSkeletonRows
+            }
+        }
+        .transaction { transaction in
+            transaction.animation = nil
+            transaction.disablesAnimations = true
+        }
+    }
+
+    @ViewBuilder
+    private var firstRefreshCoinSkeletonRows: some View {
+        ForEach(firstRefreshSkeletonCoins, id: \.chain.rawValue) { row in
+            firstRefreshSkeletonRow {
+                AssetRow(
+                    chain: row.chain,
+                    tokenSymbol: row.chain.ticker,
+                    nativeAmount: row.amount,
+                    nativeDecimals: min(row.chain.nativeDecimals, 8),
+                    fiatValue: row.fiatValue,
+                    fiatCurrencyCode: row.fiatCurrencyCode
+                )
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var firstRefreshTokenSkeletonRows: some View {
+        ForEach(firstRefreshSkeletonTokens, id: \.id) { row in
+            firstRefreshSkeletonRow {
+                supportedTokenRow(row)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var firstRefreshCombinedSkeletonRows: some View {
+        ForEach(firstRefreshSkeletonCoins.prefix(3), id: \.chain.rawValue) { row in
+            firstRefreshSkeletonRow {
+                AssetRow(
+                    chain: row.chain,
+                    tokenSymbol: row.chain.ticker,
+                    nativeAmount: row.amount,
+                    nativeDecimals: min(row.chain.nativeDecimals, 8),
+                    fiatValue: row.fiatValue,
+                    fiatCurrencyCode: row.fiatCurrencyCode
+                )
+            }
+        }
+
+        ForEach(firstRefreshSkeletonTokens.prefix(2), id: \.id) { row in
+            firstRefreshSkeletonRow {
+                supportedTokenRow(row)
+            }
+        }
+    }
+
+    private func firstRefreshSkeletonRow<Content: View>(
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        content()
+            .redacted(reason: .placeholder)
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
+    }
+
+    private var firstRefreshSkeletonCoins: [WalletCoinSupportedRow] {
+        [
+            WalletCoinSupportedRow(chain: .tron, amount: .zero, fiatValue: .zero, fiatCurrencyCode: currencyCode),
+            WalletCoinSupportedRow(chain: .ton, amount: .zero, fiatValue: .zero, fiatCurrencyCode: currencyCode),
+            WalletCoinSupportedRow(chain: .solana, amount: .zero, fiatValue: .zero, fiatCurrencyCode: currencyCode),
+            WalletCoinSupportedRow(chain: .ethereum, amount: .zero, fiatValue: .zero, fiatCurrencyCode: currencyCode),
+            WalletCoinSupportedRow(chain: .bitcoin, amount: .zero, fiatValue: .zero, fiatCurrencyCode: currencyCode)
+        ]
+    }
+
+    private var firstRefreshSkeletonTokens: [WalletTokenSupportedDisplayRow] {
+        [
+            WalletTokenSupportedDisplayRow(
+                id: "skeleton.solana.usdt",
+                chain: .solana,
+                symbol: "USDT",
+                name: "Tether USD",
+                contract: "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB",
+                amount: .zero,
+                fiatValue: .zero,
+                fiatCurrencyCode: currencyCode
+            ),
+            WalletTokenSupportedDisplayRow(
+                id: "skeleton.tron.usdt",
+                chain: .tron,
+                symbol: "USDT",
+                name: "Tether USD",
+                contract: "TXLAQ63Xg1NAzckPwKHvzw7CSEmLMEqcdj",
+                amount: .zero,
+                fiatValue: .zero,
+                fiatCurrencyCode: currencyCode
+            ),
+            WalletTokenSupportedDisplayRow(
+                id: "skeleton.ethereum.usdc",
+                chain: .ethereum,
+                symbol: "USDC",
+                name: "USD Coin",
+                contract: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+                amount: .zero,
+                fiatValue: .zero,
+                fiatCurrencyCode: currencyCode
+            ),
+            WalletTokenSupportedDisplayRow(
+                id: "skeleton.base.usdc",
+                chain: .base,
+                symbol: "USDC",
+                name: "USD Coin",
+                contract: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+                amount: .zero,
+                fiatValue: .zero,
+                fiatCurrencyCode: currencyCode
+            )
+        ]
     }
 
     // MARK: - Coins rows (native coins, 10-row cap + Show all)
@@ -2527,8 +2688,21 @@ struct WalletHomeView: View {
     @MainActor
     private func runRefresh(userInitiated: Bool = false) async {
         guard let walletId = await resolveRefreshWalletId() else { return }
+        let shouldShowInitialSkeleton = shouldShowFirstRefreshSkeleton(for: walletId)
+        let skeletonRunId = shouldShowInitialSkeleton ? UUID() : nil
+        if let skeletonRunId {
+            firstRefreshSkeletonWalletId = walletId
+            firstRefreshSkeletonRunId = skeletonRunId
+        }
         if !userInitiated {
             Task {
+                defer {
+                    if let skeletonRunId {
+                        Task { @MainActor in
+                            clearFirstRefreshSkeleton(walletId: walletId, runId: skeletonRunId)
+                        }
+                    }
+                }
                 await WalletBackgroundWorkCoordinator.shared.refreshBalances(
                     walletId: walletId,
                     currencyCode: currencyCode,
@@ -2538,11 +2712,19 @@ struct WalletHomeView: View {
                 guard !Task.isCancelled else { return }
                 try? await Task.sleep(for: .seconds(2))
                 guard !Task.isCancelled else { return }
-                await WalletBackgroundWorkCoordinator.shared.startFullRefresh(
-                    walletId: walletId,
-                    currencyCode: currencyCode,
-                    database: AppDatabase.shared
-                )
+                if shouldShowInitialSkeleton {
+                    await WalletBackgroundWorkCoordinator.shared.refreshFull(
+                        walletId: walletId,
+                        currencyCode: currencyCode,
+                        database: AppDatabase.shared
+                    )
+                } else {
+                    await WalletBackgroundWorkCoordinator.shared.startFullRefresh(
+                        walletId: walletId,
+                        currencyCode: currencyCode,
+                        database: AppDatabase.shared
+                    )
+                }
                 await WalletBackgroundWorkCoordinator.shared.startChainKeyBackfill(
                     walletId: walletId,
                     database: AppDatabase.shared
@@ -2552,7 +2734,12 @@ struct WalletHomeView: View {
         }
 
         isRefreshing = true
-        defer { isRefreshing = false }
+        defer {
+            isRefreshing = false
+            if let skeletonRunId {
+                clearFirstRefreshSkeleton(walletId: walletId, runId: skeletonRunId)
+            }
+        }
 
         await WalletBackgroundWorkCoordinator.shared.refreshBalances(
             walletId: walletId,
@@ -2564,6 +2751,18 @@ struct WalletHomeView: View {
         rebuildFilterInputs()
         rebuildDisplayRows()
         UniHapticEngine.shared.play(.signature(.irisSettle))
+    }
+
+    private func shouldShowFirstRefreshSkeleton(for walletId: UUID) -> Bool {
+        activeWallet?.id == walletId
+            && mostRecentScanAt == nil
+    }
+
+    private func clearFirstRefreshSkeleton(walletId: UUID, runId: UUID) {
+        guard firstRefreshSkeletonWalletId == walletId,
+              firstRefreshSkeletonRunId == runId else { return }
+        firstRefreshSkeletonWalletId = nil
+        firstRefreshSkeletonRunId = nil
     }
 
     /// Currency-change re-price (2026-06-13, **deep fix 2026-06-13b**).
@@ -2703,6 +2902,29 @@ struct WalletHomeView: View {
             }
         }
         return activeWallet?.id
+    }
+}
+
+// MARK: - FirstRefreshBalanceCardSkeleton
+
+private struct FirstRefreshBalanceCardSkeleton: View {
+    let walletName: String
+    let currencyCode: String
+
+    var body: some View {
+        BalanceCardView(
+            walletId: nil,
+            walletName: walletName,
+            totalFiat: .zero,
+            currencyCode: currencyCode,
+            lastUpdated: nil,
+            onSwitchWallet: {},
+            onAddFunds: {}
+        )
+        .redacted(reason: .placeholder)
+        .disabled(true)
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
     }
 }
 
