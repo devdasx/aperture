@@ -243,16 +243,15 @@ struct UniSheet<BodyContent: View, Actions: View>: View {
     @ViewBuilder
     private var titleContent: some View {
         if let icon {
-            Label {
-                titleText
-            } icon: {
+            VStack(alignment: .leading, spacing: UniSpacing.s) {
                 Image(systemName: icon)
                     .font(.system(size: 24, weight: .semibold))
                     .symbolRenderingMode(.hierarchical)
                     .foregroundStyle(iconTint)
                     .accessibilityHidden(true)
+
+                titleText
             }
-            .labelStyle(.titleAndIcon)
         } else {
             titleText
         }
@@ -260,7 +259,7 @@ struct UniSheet<BodyContent: View, Actions: View>: View {
 
     private var titleText: some View {
         Text(title)
-            .font(UniTypography.title1)
+            .font(.system(size: 22, weight: .semibold))
             .foregroundStyle(UniColors.Sheet.title)
             .multilineTextAlignment(layoutDirection == .rightToLeft ? .trailing : .leading)
             .fixedSize(horizontal: false, vertical: true)
