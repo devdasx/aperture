@@ -278,7 +278,7 @@ struct SettingsView: View {
                     navigateToProtectedDestination(.security)
                 } label: {
                     SettingsRow(
-                        systemImage: "lock.shield",
+                        systemImage: "lock",
                         title: "Security",
                         trailing: nil,
                         iconTint: .green
