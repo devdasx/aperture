@@ -982,20 +982,30 @@ struct WalletHomeView: View {
     @ViewBuilder
     private var balanceCardSection: some View {
         Section {
-            // 2026-06-18 native perf fix — the balance card is wrapped in a
-            // leaf that OWNS the high-churn `chainStateRecords` GRDB observation, so the
-            // refresh coordinator's ~300ms aggregate commits re-render only
-            // the card, never this whole body (Apple "extract subviews to
-            // localize invalidation"). The leaf computes the hero total only
-            // from the persisted per-chain aggregate rows, which are rebuilt
-            // from TokenBalanceRecord whenever local balance rows change.
-            BalanceCardLiveSection(
-                walletId: activeWallet?.id,
-                walletName: activeWallet?.name ?? String.apertureLocalized("Wallet"),
-                currencyCode: currencyCode,
-                onSwitchWallet: { isShowingSwitcher = true },
-                onAddFunds: { isShowingReceive = true }
-            )
+            Group {
+                if shouldShowFreshWalletBalanceEmptyState {
+                    FreshWalletBalanceEmptyState(
+                        walletName: activeWallet?.name ?? String.apertureLocalized("Wallet"),
+                        onSwitchWallet: { isShowingSwitcher = true },
+                        onReceiveFunds: { isShowingReceive = true }
+                    )
+                } else {
+                    // 2026-06-18 native perf fix — the balance card is wrapped in a
+                    // leaf that OWNS the high-churn `chainStateRecords` GRDB observation, so the
+                    // refresh coordinator's ~300ms aggregate commits re-render only
+                    // the card, never this whole body (Apple "extract subviews to
+                    // localize invalidation"). The leaf computes the hero total only
+                    // from the persisted per-chain aggregate rows, which are rebuilt
+                    // from TokenBalanceRecord whenever local balance rows change.
+                    BalanceCardLiveSection(
+                        walletId: activeWallet?.id,
+                        walletName: activeWallet?.name ?? String.apertureLocalized("Wallet"),
+                        currencyCode: currencyCode,
+                        onSwitchWallet: { isShowingSwitcher = true },
+                        onAddFunds: { isShowingReceive = true }
+                    )
+                }
+            }
             // Re-key on the active wallet so the card's view state resets
             // cleanly when the user switches wallets. Hide-balance itself is
             // global and persists through `HideBalancesPreference`.
@@ -1550,6 +1560,25 @@ struct WalletHomeView: View {
     private var hasHeldBalance: Bool {
         coinDisplayRows.contains { $0.isHeld }
             || tokenDisplayRows.contains { $0.isHeld }
+    }
+
+    private var shouldShowFreshWalletBalanceEmptyState: Bool {
+        activeWallet != nil
+            && !hasAnyCurrentBalance
+            && allTransactions.isEmpty
+    }
+
+    private var hasAnyCurrentBalance: Bool {
+        allHeldRows.contains { !isZeroRawBalance($0.balance.rawBalance) }
+    }
+
+    private func isZeroRawBalance(_ rawBalance: String) -> Bool {
+        let trimmed = rawBalance.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return true }
+        if let decimal = Decimal(string: trimmed) {
+            return decimal == .zero
+        }
+        return trimmed.allSatisfy { $0 == "0" }
     }
 
     // MARK: - Network failure surfaces (2026-06-12)
@@ -2674,6 +2703,76 @@ struct WalletHomeView: View {
             }
         }
         return activeWallet?.id
+    }
+}
+
+// MARK: - FreshWalletBalanceEmptyState
+
+private struct FreshWalletBalanceEmptyState: View {
+    let walletName: String
+    let onSwitchWallet: () -> Void
+    let onReceiveFunds: () -> Void
+
+    var body: some View {
+        UniCard(padding: UniSpacing.l, cornerRadius: UniRadius.hero) {
+            VStack(alignment: .leading, spacing: UniSpacing.l) {
+                walletHeader
+
+                VStack(spacing: UniSpacing.m) {
+                    Image("MarkEmptyDashed")
+                        .resizable()
+                        .renderingMode(.template)
+                        .scaledToFit()
+                        .foregroundStyle(UniColors.EmptyState.icon)
+                        .frame(width: 72, height: 72)
+                        .opacity(0.28)
+                        .accessibilityHidden(true)
+
+                    VStack(spacing: UniSpacing.xs) {
+                        UniHeadline(
+                            text: "Receive funds to see your balance",
+                            alignment: .center
+                        )
+                        UniFootnote(
+                            text: "Your balance card will appear here after this wallet receives crypto on-chain.",
+                            alignment: .center,
+                            color: UniColors.Text.secondary
+                        )
+                    }
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, UniSpacing.s)
+
+                UniButton(title: "Receive funds", variant: .primary, systemImage: "arrow.down.left") {
+                    onReceiveFunds()
+                }
+                .accessibilityHint(Text("Opens Receive so you can copy an address or QR code"))
+            }
+            .frame(maxWidth: .infinity, minHeight: 284, alignment: .topLeading)
+        }
+        .accessibilityElement(children: .contain)
+    }
+
+    private var walletHeader: some View {
+        Button {
+            UniHapticEngine.shared.play(.contextualImpact(.tap))
+            onSwitchWallet()
+        } label: {
+            HStack(spacing: 3) {
+                Text(verbatim: walletName)
+                    .font(UniTypography.BalanceCard.walletName)
+                    .foregroundStyle(UniColors.Text.primary)
+                    .lineLimit(1)
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(UniColors.Text.primary)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(Text("Switch wallet, currently \(walletName)"))
     }
 }
 
