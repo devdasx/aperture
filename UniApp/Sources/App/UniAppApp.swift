@@ -30,8 +30,8 @@ struct UniAppApp: App {
     /// latency on open" honest rather than aspirational.
     ///
     /// **Order matters:**
-    /// 1. Preference bootstrap (Locale-driven currency seed).
-    /// 2. SQLite database open + row bootstrap.
+    /// 1. SQLite database open + row bootstrap.
+    /// 2. Launch navigation reset + preference bootstrap.
     ///
     /// The biometric enrollment drift check is intentionally NOT here
     /// (2026-06-10): it performs blocking biometric LocalAuthentication
@@ -57,31 +57,29 @@ struct UniAppApp: App {
         FreshInstallGuard.purgeKeychainIfFreshInstall()
         Self.diagnostic(.debug, "Fresh-install guard finished", start: freshInstallStart)
 
-        // 0.5) Last-screen restoration resolve (2026-06-13). Reads the
-        //    "user left the app at T" stamp written on every real
-        //    `.background` entry (see `AutoLockController`). Away for
-        //    < 2 minutes → the persisted tab + NavigationStack paths
-        //    are left in place and the restorable views consume them
-        //    at init; ≥ 2 minutes → paths cleared and the selected tab
-        //    reset to the wallet tab, so the user starts at the main
-        //    screen. Must run before `WindowGroup` constructs the
-        //    first view tree — `SettingsView` / `WalletHomeView` read
-        //    the persisted paths in their `init`s.
+        // 1) SQLite database — synchronous open. `shared` is a
+        //    `static let`; first access opens the SQLite file. `bootstrap()`
+        //    configures `AppPreferenceStore`, so every preference-backed
+        //    launch decision below writes to the real GRDB store.
+        let databaseStart = Date()
+        AppDatabase.shared.bootstrap()
+        Self.diagnostic(.debug, "Database bootstrap requested", start: databaseStart)
+
+        // 2) Launch navigation reset. A brand-new app process must
+        //    always start at the Wallet tab root, not whichever tab or
+        //    pushed screen the previous process last mirrored. Must run
+        //    before `WindowGroup` constructs the first view tree —
+        //    `SettingsView` / `WalletHomeView` read the mirrored paths
+        //    in their `init`s.
         let restorationStart = Date()
         ScreenRestoration.resolveOnLaunch()
-        Self.diagnostic(.debug, "Screen restoration resolved", start: restorationStart)
+        Self.diagnostic(.debug, "Launch navigation reset resolved", start: restorationStart)
 
-        // 1) Locale-driven currency seed (Rule #16 — the user's iPhone
+        // 3) Locale-driven currency seed (Rule #16 — the user's iPhone
         //    configuration is the wallet's first impression).
         let currencyStart = Date()
         CurrencyPreference.bootstrapIfNeeded()
         Self.diagnostic(.debug, "Currency preference bootstrapped", start: currencyStart)
-
-        // 2) SQLite database — synchronous open. `shared` is a
-        //    `static let`; first access opens the SQLite file.
-        let databaseStart = Date()
-        AppDatabase.shared.bootstrap()
-        Self.diagnostic(.debug, "Database bootstrap requested", start: databaseStart)
 
         Self.diagnostic(.info, "App init finished", start: appInitStart)
     }
@@ -98,7 +96,7 @@ struct UniAppApp: App {
                     lockController.handleScenePhaseChange(newPhase)
                 }
                 // Biometric drift detection per user direction
-                // 2026-06-06. If the user changed their Face ID
+                // 2026-06-06. If the user changed their biometric
                 // enrollment in iOS Settings since their last
                 // successful Aperture biometric authentication, flips
                 // `biometricEnabled` to `false` and sets
@@ -329,6 +327,7 @@ private struct AppRoot: View {
         // `.transitioning` middle state is gone.
         .environment(\.appPhase, isShowingSplash ? .splash : .onboarding)
         .onAppear {
+            lockController.refreshLaunchLockState()
             mountLockOverlayWindowIfNeeded()
             syncLockOverlay(lockVisible: isLockSurfaceVisible)
         }

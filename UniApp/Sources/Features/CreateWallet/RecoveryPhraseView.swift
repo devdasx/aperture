@@ -20,12 +20,9 @@ import UIKit
 ///   with a 2-digit position badge in
 ///   `UniColors.Text.tertiary` and the word in body-emphasized weight.
 ///   Non-interactive: no tap, no copy menu.
-/// - A plain text `Copy` action below the grid. Tap copies the phrase to
-///   `UIPasteboard.general` with a 60-second `.expirationDate` so the
-///   system auto-clears it; a transient `UniFootnote` confirms and names
-///   the expiry.
-/// - A short footnote reminding the user the phrase will not be shown
-///   again, plus a hint that switching word counts replaces the phrase.
+/// - A centered plain text `Copy` action directly below the grid. Tap copies
+///   the phrase to `UIPasteboard.general` with a short `.expirationDate` so
+///   the system auto-clears it.
 /// - One bottom CTA: Continue.
 ///
 /// **Toolbar.** Leading: a bare inline `xmark` glyph (no glass pill —
@@ -61,24 +58,17 @@ struct RecoveryPhraseView: View {
     /// success.
     @State private var isShowingRollYourOwn: Bool = false
 
-    /// Toggle for the open-source verification sheet (Rule #16 §A.4).
-    /// Anchored to this surface because the recovery-phrase view is
-    /// the most consequential security moment in the app — the user
-    /// must be able to audit *here* how the words on screen were
-    /// generated.
-    @State private var isShowingOpenSource: Bool = false
-
     /// Visible iff the user just tapped Copy. Auto-clears after a short
     /// delay so the confirmation does not linger.
     @State private var isShowingCopiedConfirmation: Bool = false
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: UniSpacing.l) {
+            VStack(alignment: .leading, spacing: 0) {
                 intro
+                    .padding(.bottom, UniSpacing.l)
                 PhraseGrid(words: state.words)
                 copyTextButton
-                metaBlock
             }
             .padding(.horizontal, UniSpacing.l)
             .padding(.top, UniSpacing.m)
@@ -89,7 +79,6 @@ struct RecoveryPhraseView: View {
             actionRegion
                 .padding(.horizontal, UniSpacing.l)
                 .padding(.top, UniSpacing.s)
-                .padding(.bottom, UniSpacing.l)
         }
         .navigationTitle(Text("Recovery Phrase"))
         .navigationBarTitleDisplayMode(.inline)
@@ -111,12 +100,6 @@ struct RecoveryPhraseView: View {
             .uniAppEnvironment()
             .intrinsicHeightSheet()
             .presentationBackground(UniColors.Background.primary)
-        }
-        .sheet(isPresented: $isShowingOpenSource) {
-            OpenSourceSheet()
-                .uniAppEnvironment()
-                .intrinsicHeightSheet()
-                .presentationBackground(UniColors.Background.primary)
         }
         .sheet(isPresented: $isShowingRollYourOwn) {
             // Per the jony-ive 2026-06-05 audit: this is a navigation
@@ -205,25 +188,6 @@ struct RecoveryPhraseView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    // MARK: - Meta (open source)
-
-    /// "Open source. Learn more…" — gray caption + inline blue link
-    /// (iOS 26 register). Opens the open-source verification sheet.
-    private var metaBlock: some View {
-        Button {
-            UniHapticEngine.shared.play(.selection)
-            isShowingOpenSource = true
-        } label: {
-            Text("\(Text("Open source. ").foregroundStyle(UniColors.Text.tertiary))\(Text("Learn more…").foregroundStyle(UniColors.Button.text))")
-            .font(UniTypography.footnote)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(Text("Open source. Learn more"))
-        .accessibilityHint(Text("Opens a sheet describing how this recovery phrase was generated"))
-    }
-
     // MARK: - Copy
 
     private func copyPhrase() {
@@ -273,7 +237,7 @@ struct RecoveryPhraseView: View {
                         ? UniColors.Feedback.Success.foreground
                         : UniColors.Button.text
                 )
-                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                .frame(maxWidth: .infinity, minHeight: 44, alignment: .center)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)

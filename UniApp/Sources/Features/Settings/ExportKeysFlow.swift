@@ -190,7 +190,7 @@ private struct RecoveryPhraseRevealScreen: View {
                 ) {
                     // The app mark centres the phrase QR (there's no single
                     // coin for a whole wallet).
-                    Image("LogoCircle").resizable().scaledToFit()
+                    ApertureAppLogo(size: 52)
                 }
                 .uniAppEnvironment()
                 .uniSheetDetents([.large])

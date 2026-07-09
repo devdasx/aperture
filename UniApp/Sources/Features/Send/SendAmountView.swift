@@ -371,7 +371,6 @@ struct SendAmountView: View {
             )
             .padding(.horizontal, UniSpacing.l)
             .padding(.top, UniSpacing.s)
-            .padding(.bottom, UniSpacing.xs)
         }
     }
 

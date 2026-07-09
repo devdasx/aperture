@@ -22,7 +22,7 @@ final class BiometricService: Sendable {
 
     /// Concrete biometry type currently available on the device. Resolved
     /// at init time from a fresh `LAContext.biometryType`.
-    enum BiometryType {
+    enum BiometryType: Sendable {
         case none
         case touchID
         case faceID
@@ -49,7 +49,7 @@ final class BiometricService: Sendable {
 
     /// `true` iff `LAContext.canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, _)`
     /// returned `true` at init time. Read this before presenting any
-    /// biometric affordance; if `false`, hide the Face ID / Touch ID
+    /// biometric affordance; if `false`, hide the biometric
     /// option entirely rather than offering a button that will fail.
     let isAvailable: Bool
 
@@ -129,6 +129,74 @@ final class BiometricService: Sendable {
             return .unavailable
         default:
             return .systemError(error)
+        }
+    }
+}
+
+extension BiometricService.BiometryType {
+    var displayName: String {
+        switch self {
+        case .faceID:  return "Face ID"
+        case .touchID: return "Touch ID"
+        case .opticID: return "Optic ID"
+        case .none:    return "Biometrics"
+        }
+    }
+
+    var systemImageName: String {
+        switch self {
+        case .faceID:  return "faceid"
+        case .touchID: return "touchid"
+        case .opticID: return "opticid"
+        case .none:    return "lock.shield"
+        }
+    }
+
+    var enableReason: LocalizedStringResource {
+        switch self {
+        case .faceID:  return "Enable Face ID for Aperture."
+        case .touchID: return "Enable Touch ID for Aperture."
+        case .opticID: return "Enable Optic ID for Aperture."
+        case .none:    return "Enable biometric unlock for Aperture."
+        }
+    }
+
+    var unlockReason: LocalizedStringResource {
+        switch self {
+        case .faceID:  return "Unlock Aperture with Face ID."
+        case .touchID: return "Unlock Aperture with Touch ID."
+        case .opticID: return "Unlock Aperture with Optic ID."
+        case .none:    return "Unlock Aperture."
+        }
+    }
+
+    var reenrollmentReason: LocalizedStringResource {
+        switch self {
+        case .faceID:  return "Confirm your new Face ID enrollment."
+        case .touchID: return "Confirm your new Touch ID enrollment."
+        case .opticID: return "Confirm your new Optic ID enrollment."
+        case .none:    return "Confirm your biometric enrollment."
+        }
+    }
+
+    var enableTitle: String {
+        "Enable \(displayName)"
+    }
+
+    var unlockActionTitle: String {
+        "Use \(displayName)"
+    }
+
+    var promptDescription: String {
+        switch self {
+        case .faceID:
+            return "Unlock Aperture and confirm transactions with a glance — without typing your PIN every time."
+        case .touchID:
+            return "Unlock Aperture and confirm transactions with your fingerprint — without typing your PIN every time."
+        case .opticID:
+            return "Unlock Aperture and confirm transactions with Optic ID — without typing your PIN every time."
+        case .none:
+            return "Unlock Aperture and confirm transactions with device biometrics — without typing your PIN every time."
         }
     }
 }

@@ -11,9 +11,12 @@ struct AbandonWalletWarningSheet: View {
     let onAbandon: () -> Void
 
     var body: some View {
-        UniSheet(title: "Stop creating your wallet?") {
+        UniSheet(
+            title: "Stop creating your wallet?",
+            icon: "xmark.octagon",
+            iconTint: UniColors.Feedback.Warning.foreground
+        ) {
             VStack(alignment: .leading, spacing: UniSpacing.l) {
-                hero
                 copyBlock
                 footnoteLine
             }
@@ -28,18 +31,6 @@ struct AbandonWalletWarningSheet: View {
                     }
                 }
             }
-        }
-    }
-
-    private var hero: some View {
-        HStack {
-            Spacer()
-            Image(systemName: "xmark.octagon")
-                .font(.system(size: 48, weight: .regular))
-                .symbolRenderingMode(.hierarchical)
-                .foregroundStyle(UniColors.Feedback.Warning.foreground)
-                .accessibilityHidden(true)
-            Spacer()
         }
     }
 

@@ -9,9 +9,8 @@ struct RecoveryPhraseGuideSheet: View {
     let onDismiss: () -> Void
 
     var body: some View {
-        UniSheet(title: "What's a recovery phrase?") {
+        UniSheet(title: "What's a recovery phrase?", icon: "text.book.closed.fill") {
             VStack(alignment: .leading, spacing: UniSpacing.l) {
-                hero
                 explainerBody
                 exampleBlock
                 howToUse
@@ -21,19 +20,6 @@ struct RecoveryPhraseGuideSheet: View {
             UniButton(title: "Got it", variant: .primary) {
                 onDismiss()
             }
-        }
-    }
-
-    private var hero: some View {
-        HStack {
-            Spacer()
-            Image(systemName: "text.book.closed.fill")
-                .font(.system(size: 44, weight: .regular))
-                .symbolRenderingMode(.hierarchical)
-                .foregroundStyle(UniColors.Brand.mark)
-                .symbolEffect(.bounce, options: .nonRepeating)
-                .accessibilityHidden(true)
-            Spacer()
         }
     }
 
@@ -95,9 +81,8 @@ struct PrivateKeyGuideSheet: View {
     let onDismiss: () -> Void
 
     var body: some View {
-        UniSheet(title: "What's a private key?") {
+        UniSheet(title: "What's a private key?", icon: "key.horizontal.fill") {
             VStack(alignment: .leading, spacing: UniSpacing.l) {
-                hero
                 explainerBody
                 exampleBlock
                 howToUse
@@ -107,19 +92,6 @@ struct PrivateKeyGuideSheet: View {
             UniButton(title: "Got it", variant: .primary) {
                 onDismiss()
             }
-        }
-    }
-
-    private var hero: some View {
-        HStack {
-            Spacer()
-            Image(systemName: "key.horizontal.fill")
-                .font(.system(size: 44, weight: .regular))
-                .symbolRenderingMode(.hierarchical)
-                .foregroundStyle(UniColors.Brand.mark)
-                .symbolEffect(.bounce, options: .nonRepeating)
-                .accessibilityHidden(true)
-            Spacer()
         }
     }
 
@@ -182,9 +154,8 @@ struct WatchOnlyGuideSheet: View {
     let onDismiss: () -> Void
 
     var body: some View {
-        UniSheet(title: "What does watch-only mean?") {
+        UniSheet(title: "What does watch-only mean?", icon: "eye.fill") {
             VStack(alignment: .leading, spacing: UniSpacing.l) {
-                hero
                 explainerBody
                 exampleBlock
                 howToUse
@@ -194,19 +165,6 @@ struct WatchOnlyGuideSheet: View {
             UniButton(title: "Got it", variant: .primary) {
                 onDismiss()
             }
-        }
-    }
-
-    private var hero: some View {
-        HStack {
-            Spacer()
-            Image(systemName: "eye.fill")
-                .font(.system(size: 44, weight: .regular))
-                .symbolRenderingMode(.hierarchical)
-                .foregroundStyle(UniColors.Brand.mark)
-                .symbolEffect(.bounce, options: .nonRepeating)
-                .accessibilityHidden(true)
-            Spacer()
         }
     }
 
@@ -270,9 +228,12 @@ struct LeakedSeedWarningSheet: View {
     let onUseAnyway: () -> Void
 
     var body: some View {
-        UniSheet(title: titleKey) {
+        UniSheet(
+            title: titleKey,
+            icon: "exclamationmark.triangle.fill",
+            iconTint: UniColors.Feedback.Warning.foreground
+        ) {
             VStack(alignment: .leading, spacing: UniSpacing.l) {
-                hero
                 copyBlock
             }
         } actions: {
@@ -293,18 +254,6 @@ struct LeakedSeedWarningSheet: View {
         switch kind {
         case .mnemonic:   return "This phrase is publicly known"
         case .privateKey: return "This key is publicly known"
-        }
-    }
-
-    private var hero: some View {
-        HStack {
-            Spacer()
-            Image(systemName: "exclamationmark.triangle.fill")
-                .font(.system(size: 44, weight: .regular))
-                .symbolRenderingMode(.hierarchical)
-                .foregroundStyle(UniColors.Feedback.Warning.foreground)
-                .accessibilityHidden(true)
-            Spacer()
         }
     }
 

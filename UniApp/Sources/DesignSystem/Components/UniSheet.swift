@@ -74,21 +74,28 @@ import SwiftUI
 /// ```
 struct UniSheet<BodyContent: View, Actions: View>: View {
     let title: LocalizedStringKey
+    let icon: String?
+    let iconTint: Color
     /// Optional back-navigation closure. When non-nil, the title row
     /// renders a leading `chevron.backward` button that calls this
     /// closure. Used by multi-step sheets like Settings to navigate
     /// between root and sub-pickers without a NavigationStack.
     let onBack: (() -> Void)?
+    @Environment(\.layoutDirection) private var layoutDirection
     @ViewBuilder let bodyContent: () -> BodyContent
     @ViewBuilder let actions: () -> Actions
 
     init(
         title: LocalizedStringKey,
+        icon: String? = nil,
+        iconTint: Color = UniColors.Brand.mark,
         onBack: (() -> Void)? = nil,
         @ViewBuilder bodyContent: @escaping () -> BodyContent,
         @ViewBuilder actions: @escaping () -> Actions
     ) {
         self.title = title
+        self.icon = icon
+        self.iconTint = iconTint
         self.onBack = onBack
         self.bodyContent = bodyContent
         self.actions = actions
@@ -153,11 +160,6 @@ struct UniSheet<BodyContent: View, Actions: View>: View {
         // sheet container already places content below the indicator;
         // this is breathing room.
         .padding(.top, UniSpacing.l)
-        // Bottom padding keeps action region clear of the home
-        // indicator on devices with one. Inside a `.sheet`, the
-        // bottom safe-area inset is handled by the system; this is
-        // for visual comfort.
-        .padding(.bottom, UniSpacing.l)
         // Hidden intrinsic-height probe. Renders the same content
         // (title + body + actions + paddings) with
         // `.fixedSize(vertical: true)` so a `GeometryReader` can
@@ -203,7 +205,6 @@ struct UniSheet<BodyContent: View, Actions: View>: View {
         // 2026-06-07: 24 → 16 (UniSpacing.l → UniSpacing.m).
         .padding(.horizontal, UniSpacing.m)
         .padding(.top, UniSpacing.l)
-        .padding(.bottom, UniSpacing.l)
         .fixedSize(horizontal: false, vertical: true)
         .hidden()
         .allowsHitTesting(false)
@@ -234,20 +235,34 @@ struct UniSheet<BodyContent: View, Actions: View>: View {
                 .buttonStyle(.plain)
                 .accessibilityLabel(Text("Back"))
             }
-            Text(title)
-                // Matches `.navigationTitle("…").displayMode(.large)`
-                // visual weight without the NavigationStack chrome.
-                // Token (not a fixed point size) so the title scales
-                // with Dynamic Type and bold-text accessibility.
-                .font(UniTypography.largeTitle)
-                .foregroundStyle(UniColors.Sheet.title)
-                .multilineTextAlignment(.leading)
-                // Critical: lets the title wrap onto multiple lines
-                // in locales where the translation is longer than
-                // English (Arabic, German, Russian) instead of
-                // truncating with `…`.
-                .fixedSize(horizontal: false, vertical: true)
+            titleContent
             Spacer(minLength: 0)
         }
+    }
+
+    @ViewBuilder
+    private var titleContent: some View {
+        if let icon {
+            Label {
+                titleText
+            } icon: {
+                Image(systemName: icon)
+                    .font(.system(size: 24, weight: .semibold))
+                    .symbolRenderingMode(.hierarchical)
+                    .foregroundStyle(iconTint)
+                    .accessibilityHidden(true)
+            }
+            .labelStyle(.titleAndIcon)
+        } else {
+            titleText
+        }
+    }
+
+    private var titleText: some View {
+        Text(title)
+            .font(UniTypography.title1)
+            .foregroundStyle(UniColors.Sheet.title)
+            .multilineTextAlignment(layoutDirection == .rightToLeft ? .trailing : .leading)
+            .fixedSize(horizontal: false, vertical: true)
     }
 }

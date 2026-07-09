@@ -324,14 +324,13 @@ struct UniTextField: View {
 
     private var inputChrome: some View {
         RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-            .fill(showsChrome ? (isEnabled ? fill : UniColors.Input.disabledBackground) : fill)
-            .overlay {
-                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .stroke(
-                        showsChrome && isFieldFocused ? UniColors.Input.focusedBorder : UniColors.Input.border,
-                        lineWidth: showsChrome && isFieldFocused ? 1 : 0
-                    )
-            }
+            .fill(inputFill)
+    }
+
+    private var inputFill: Color {
+        guard showsChrome else { return fill }
+        guard isEnabled else { return UniColors.Input.disabledBackground }
+        return isFieldFocused ? UniColors.Input.focusedBackground : fill
     }
 
     private var resolvedMinHeight: CGFloat? {
@@ -431,12 +430,7 @@ struct UniTextArea: View {
 
     private var inputChrome: some View {
         RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-            .fill(isEnabled ? fill : UniColors.Input.disabledBackground)
-            .overlay {
-                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .stroke(isFieldFocused ? UniColors.Input.focusedBorder : UniColors.Input.border,
-                            lineWidth: isFieldFocused ? 1 : 0)
-            }
+            .fill(isEnabled ? (isFieldFocused ? UniColors.Input.focusedBackground : fill) : UniColors.Input.disabledBackground)
     }
 
     private var resolvedDirection: LayoutDirection? {

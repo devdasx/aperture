@@ -106,7 +106,6 @@ struct WatchOnlyEntryView: View {
                 onContinue()
             }
             .padding(.horizontal, UniSpacing.l)
-            .padding(.bottom, UniSpacing.l)
         }
         .onChange(of: state.watchOnlyExtendedKeyMode) { _, _ in
             // Switching modes clears the buffer — the formats are
@@ -228,7 +227,6 @@ struct WatchOnlyReviewView: View {
                     }
                 }
                 .padding(.horizontal, UniSpacing.l)
-                .padding(.bottom, UniSpacing.l)
             }
         }
         .task {

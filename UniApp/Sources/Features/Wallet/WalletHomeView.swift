@@ -227,12 +227,11 @@ struct WalletHomeView: View {
     /// this view's body the moment the sheet writes them.
     @State private var isShowingFilter: Bool = false
     @State private var receivePath: NavigationPath = NavigationPath()
-    /// **Last-screen restoration (2026-06-13, hardened 2026-06-14).**
+    /// **Navigation mirror (2026-06-13, launch reset 2026-07-09).**
     /// Seeded from `ScreenRestoration`'s mirror in `init` (below) and
-    /// mirrored back on every change — cold launches within the
-    /// 2-minute window land the user back on the screen they left;
-    /// `ScreenRestoration.resolveOnLaunch()` clears the mirror for
-    /// longer absences.
+    /// mirrored back on every change. New app processes clear the mirror
+    /// before this view is constructed; in-session root rebuilds, such as
+    /// direction flips, can still re-seed the current stack.
     ///
     /// **Why a typed `[WalletHomeDestination]`, not `NavigationPath`.**
     /// An opaque `NavigationPath` can't be inspected, so restoration
@@ -492,11 +491,10 @@ struct WalletHomeView: View {
     @State private var chainReconcileTask: Task<Void, Never>?
 
     init() {
-        // Last-screen restoration seed (2026-06-13). `@State` reads
-        // its initial value only when the view's identity is fresh —
-        // cold launch and the root direction-flip rebuild — which are
-        // exactly the restoration moments. All other properties keep
-        // their declaration defaults.
+        // Navigation mirror seed. `@State` reads its initial value only when
+        // the view's identity is fresh — launch, where the mirror has already
+        // been cleared, and root direction-flip rebuilds, where preserving the
+        // current path is intentional.
         _navigationPath = State(initialValue: ScreenRestoration.restoredWalletHomeStack())
     }
 
@@ -601,11 +599,8 @@ struct WalletHomeView: View {
                     rebuildDisplayRows()
                     scheduleChainStateReconcile(after: 0)
                 }
-                // Last-screen restoration mirror (2026-06-13). Every
-                // push / pop lands in `ScreenRestoration`'s
-                // GRDB mirror so a force-quit needs no
-                // last-moment save. Consumed by `init` on the next
-                // fresh identity.
+                // Navigation mirror for root rebuilds. Cold launch clears it
+                // before this view's `init`; live rebuilds can consume it.
                 .onChange(of: navigationPath) { _, newPath in
                     ScreenRestoration.saveWalletHomeStack(newPath)
                 }

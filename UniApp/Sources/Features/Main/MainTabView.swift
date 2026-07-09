@@ -78,12 +78,11 @@ final class TabReselectSignal {
 }
 
 struct MainTabView: View {
-    /// Persisted across launches so the user lands on whichever tab
-    /// they last had open. Default `.wallet`. Restoration nuance
-    /// (2026-06-13): `ScreenRestoration.resolveOnLaunch()` resets this
-    /// key to `.wallet` during `UniAppApp.init()` when the user was
-    /// away ≥ 2 minutes — so "lands on the last tab" only holds within
-    /// the 2-minute restoration window.
+    /// Persisted during a running app session so root rebuilds keep the
+    /// selected tab. On a new process launch,
+    /// `ScreenRestoration.resolveOnLaunch()` resets this key to `.wallet`
+    /// before this view is constructed, so a fully closed app always reopens
+    /// on the main Wallet screen.
     @GRDBStorage(MainTab.storageKey) private var selectedTabRaw: String = MainTab.wallet.rawValue
 
     /// The active wallet's UUID string. Drives the Wallet tab's
@@ -560,7 +559,7 @@ enum MainTab: String, Hashable, CaseIterable {
     /// under. Single source of truth shared by `MainTabView`,
     /// `WalletHomeView`'s long-press deep link, and
     /// `ScreenRestoration.resolveOnLaunch()` (which resets the value to
-    /// `.wallet` when the user has been away ≥ 2 minutes).
+    /// `.wallet` on every new app process).
     static let storageKey = "selectedTab"
 
     var title: LocalizedStringKey {
@@ -627,15 +626,12 @@ private struct WalletCompletionNoticeSheet: View {
     let onDone: () -> Void
 
     var body: some View {
-        UniSheet(title: notice.title) {
+        UniSheet(
+            title: notice.title,
+            icon: "checkmark.circle.fill",
+            iconTint: UniColors.Feedback.Success.foreground
+        ) {
             VStack(alignment: .leading, spacing: UniSpacing.m) {
-                Image(systemName: "checkmark.circle.fill")
-                    .font(.system(size: 48, weight: .semibold))
-                    .symbolRenderingMode(.hierarchical)
-                    .foregroundStyle(UniColors.Feedback.Success.foreground)
-                    .frame(maxWidth: .infinity)
-                    .accessibilityHidden(true)
-
                 UniBody(
                     text: notice.message,
                     alignment: .center,

@@ -13,8 +13,8 @@ import SwiftUI
 /// 2. `.confirm` step — `PinCodeView(mode: .confirm(expected: setPin))`.
 ///    On match, save via `PinCodeStorage.setPin(_:)` + set
 ///    `pinEnabled = true`, advance to the biometric prompt.
-/// 3. `.biometricPrompt` step — invite the user to enable Face ID / Touch
-///    ID. **Skipped entirely** if `BiometricService.isAvailable == false`.
+/// 3. `.biometricPrompt` step — invite the user to enable the current device
+///    biometric. **Skipped entirely** if `BiometricService.isAvailable == false`.
 /// 4. The view calls `onFinish()`. The parent flow pushes `WalletReadyView`.
 ///
 /// **No nested `NavigationStack`.** This view is itself pushed onto the
@@ -296,7 +296,7 @@ struct PinSetupFlow: View {
         // Trailing "Skip" — present the skip-PIN warning sheet on the
         // .set and .confirm steps (PIN isn't saved yet there; skipping
         // means "no PIN"). On `.biometricPrompt`, the PIN is already
-        // committed — "Skip" here means "no Face ID", which is what the
+        // committed — "Skip" here means "no biometric unlock", which is what the
         // body's "Not now" CTA already handles. Surfacing the
         // PIN-skip-warning sheet again at that point was the
         // 2026-06-05 bug: it asked the user to set a PIN they had
@@ -347,7 +347,7 @@ struct PinSetupFlow: View {
                 }
             } else {
                 // Device has no biometry — skip the prompt entirely per the
-                // user's 2026-06-04 direction. Don't show a "Face ID not
+                // user's 2026-06-04 direction. Don't show a "biometry not
                 // available" message; just advance to WalletReadyView.
                 finishSuccessfully()
             }
@@ -360,7 +360,7 @@ struct PinSetupFlow: View {
     /// finish anyway — the user can enable it later in Settings.
     private func enableBiometric() async {
         let result = await biometricService.authenticate(
-            reason: "Unlock Aperture with Face ID."
+            reason: biometricService.biometryType.unlockReason
         )
         // The flow may have disappeared while the system prompt was up
         // (`.onDisappear` cancels `biometricEnableTask`) — don't flip
@@ -383,7 +383,7 @@ struct PinSetupFlow: View {
 
 // MARK: - Biometric prompt step
 
-/// "Enable Face ID" screen — Rule #17 §E step 3.
+/// "Enable biometrics" screen — Rule #17 §E step 3.
 ///
 /// One hero icon, two sentences, two buttons. Restraint per Rule #16 §B:
 /// brand-graphite SF Symbol, no alarming red, no marketing. The body
@@ -405,7 +405,6 @@ private struct BiometricPromptStep: View {
         .uniBottomActionBar {
             actionRegion
                 .padding(.horizontal, UniSpacing.l)
-                .padding(.bottom, UniSpacing.l)
         }
         .navigationBarTitleDisplayMode(.inline)
     }
@@ -419,38 +418,29 @@ private struct BiometricPromptStep: View {
     }
 
     private var heroSymbol: String {
-        switch biometryType {
-        case .faceID:  return "faceid"
-        case .touchID: return "touchid"
-        case .opticID: return "opticid"
-        case .none:    return "lock.shield"
-        }
+        biometryType.systemImageName
     }
 
     private var copyBlock: some View {
         VStack(spacing: UniSpacing.s) {
-            UniLargeTitle(text: titleKey, alignment: .center)
-            UniBody(
-                text: "Unlock Aperture and confirm transactions with a glance — without typing your PIN every time.",
-                alignment: .center,
-                color: UniColors.Text.secondary
-            )
-        }
-    }
-
-    private var titleKey: LocalizedStringKey {
-        switch biometryType {
-        case .faceID:  return "Enable Face ID"
-        case .touchID: return "Enable Touch ID"
-        case .opticID: return "Enable Optic ID"
-        case .none:    return "Enable biometrics"
+            Text(verbatim: biometryType.enableTitle)
+                .font(UniTypography.largeTitle)
+                .fontWeight(.bold)
+                .foregroundStyle(UniColors.Text.primary)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+            Text(verbatim: biometryType.promptDescription)
+                .font(UniTypography.body)
+                .foregroundStyle(UniColors.Text.secondary)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 
     private var actionRegion: some View {
         GlassEffectContainer(spacing: UniSpacing.s) {
             VStack(spacing: UniSpacing.s) {
-                UniButton(title: enableTitleKey, variant: .primary) {
+                UniButton(verbatim: biometryType.enableTitle, variant: .primary) {
                     onEnable()
                 }
                 UniButton(title: "Not now", variant: .secondary) {
@@ -460,14 +450,6 @@ private struct BiometricPromptStep: View {
         }
     }
 
-    private var enableTitleKey: LocalizedStringKey {
-        switch biometryType {
-        case .faceID:  return "Enable Face ID"
-        case .touchID: return "Enable Touch ID"
-        case .opticID: return "Enable Optic ID"
-        case .none:    return "Enable biometrics"
-        }
-    }
 }
 
 // MARK: - Previews

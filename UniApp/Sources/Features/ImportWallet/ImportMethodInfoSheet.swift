@@ -105,18 +105,8 @@ struct ImportMethodInfoSheet: View {
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
-        UniSheet(title: info.title) {
+        UniSheet(title: info.title, icon: info.heroIcon) {
             VStack(alignment: .leading, spacing: UniSpacing.l) {
-                HStack {
-                    Spacer()
-                    Image(systemName: info.heroIcon)
-                        .font(.system(size: 38, weight: .regular))
-                        .symbolRenderingMode(.hierarchical)
-                        .foregroundStyle(UniColors.Icon.secondary)
-                        .accessibilityHidden(true)
-                    Spacer()
-                }
-
                 Text(info.lede)
                     .font(UniTypography.body)
                     .foregroundStyle(UniColors.Text.secondary)

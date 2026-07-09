@@ -15,9 +15,8 @@ struct ReceiveGuideSheet: View {
     let onDismiss: () -> Void
 
     var body: some View {
-        UniSheet(title: "What's a receive address?") {
+        UniSheet(title: "What's a receive address?", icon: "qrcode") {
             VStack(alignment: .leading, spacing: UniSpacing.l) {
-                hero
                 explainerBody
                 exampleBlock
                 howToUse
@@ -27,19 +26,6 @@ struct ReceiveGuideSheet: View {
             UniButton(title: "Got it", variant: .primary) {
                 onDismiss()
             }
-        }
-    }
-
-    private var hero: some View {
-        HStack {
-            Spacer()
-            Image(systemName: "qrcode")
-                .font(.system(size: 44, weight: .regular))
-                .symbolRenderingMode(.hierarchical)
-                .foregroundStyle(UniColors.Brand.mark)
-                .symbolEffect(.bounce, options: .nonRepeating)
-                .accessibilityHidden(true)
-            Spacer()
         }
     }
 

@@ -460,7 +460,8 @@ struct WalletDetailView: View {
                     },
                     onCancel: { isShowingPasscodeGate = false },
                     allowsBiometrics: true,
-                    showsNavigationControls: false
+                    showsNavigationControls: false,
+                    accessContext: .viewWalletSecrets
                 )
                 .toolbar {
                     ToolbarItem(placement: .topBarLeading) {

@@ -39,9 +39,8 @@ struct OpenSourceSheet: View {
     private let repositoryURL: URL = URL(string: "https://github.com/devdasx/aperture")!
 
     var body: some View {
-        UniSheet(title: "Open source") {
+        UniSheet(title: "Open source", icon: "lock.shield.fill") {
             VStack(spacing: UniSpacing.l) {
-                hero
                 copyBlock
                 verifyCard
             }
@@ -57,21 +56,6 @@ struct OpenSourceSheet: View {
                 .accessibilityLabel(Text("View source code on GitHub"))
             }
         }
-    }
-
-    // MARK: - Hero
-
-    /// A single quiet mark — `lock.shield.fill` in
-    /// `UniColors.Brand.mark` (graphite/soft-white) — sets the safety
-    /// tone without alarm. Hierarchical rendering lets the secondary
-    /// fill read at lower opacity, which keeps the symbol restrained at
-    /// hero size.
-    private var hero: some View {
-        Image(systemName: "lock.shield.fill")
-            .font(.system(size: 64, weight: .regular))
-            .symbolRenderingMode(.hierarchical)
-            .foregroundStyle(UniColors.Brand.mark)
-            .accessibilityHidden(true)
     }
 
     // MARK: - Copy block

@@ -434,6 +434,7 @@ struct UniButton: View {
         let isActive: Bool
         /// Optional FILL tint override for the glass variants (nil = default).
         var tintOverride: Color? = nil
+        @Environment(\.colorScheme) private var colorScheme
 
         @ViewBuilder
         func body(content: Content) -> some View {
@@ -441,7 +442,7 @@ struct UniButton: View {
             case .primary:
                 applyGlassProminent(content, activeTint: tintOverride ?? UniColors.Button.Primary.tint)
             case .secondary:
-                applyGlass(content, activeTint: tintOverride ?? UniColors.Button.Secondary.tint)
+                applySecondaryGlass(content, activeTint: tintOverride ?? UniColors.Button.Secondary.tint)
             case .destructive:
                 applyGlassProminent(content, activeTint: tintOverride ?? UniColors.Button.Destructive.tint)
             case .tertiary:
@@ -494,6 +495,18 @@ struct UniButton: View {
                     .buttonStyle(.glass)
                     .tint(UniColors.Button.Secondary.disabledTint)
                     .foregroundStyle(UniColors.Button.Secondary.disabledLabel)
+            }
+        }
+
+        /// Secondary CTAs need a raised neutral surface on dark backgrounds;
+        /// plain `.glass` collapses into black and reads disabled. In light
+        /// mode, keep the softer glass register.
+        @ViewBuilder
+        private func applySecondaryGlass(_ content: Content, activeTint: Color) -> some View {
+            if colorScheme == .dark && isActive {
+                applyGlassProminent(content, activeTint: activeTint)
+            } else {
+                applyGlass(content, activeTint: activeTint)
             }
         }
     }

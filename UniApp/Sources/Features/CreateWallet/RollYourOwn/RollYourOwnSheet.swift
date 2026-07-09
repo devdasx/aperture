@@ -254,7 +254,6 @@ private struct RollYourOwnKeypadView: View {
         .uniBottomActionBar {
             actionRegion
                 .padding(.horizontal, UniSpacing.l)
-                .padding(.bottom, UniSpacing.l)
         }
         .uniHaptic(.selection, trigger: keypressTrigger)
         .uniHaptic(.selectionDeselect, trigger: deleteTrigger)
@@ -528,7 +527,7 @@ private struct RollYourOwnPreviewView: View {
                 color: UniColors.Text.secondary
             )
             .fixedSize(horizontal: false, vertical: true)
-            wordsGrid
+            PhraseGrid(words: words)
             Spacer(minLength: 0)
         }
         .padding(.horizontal, UniSpacing.l)
@@ -539,7 +538,6 @@ private struct RollYourOwnPreviewView: View {
         .uniBottomActionBar {
             actionRegion
                 .padding(.horizontal, UniSpacing.l)
-                .padding(.bottom, UniSpacing.l)
         }
     }
 
@@ -556,30 +554,4 @@ private struct RollYourOwnPreviewView: View {
         }
     }
 
-    private var wordsGrid: some View {
-        let columns = [
-            GridItem(.flexible(), spacing: UniSpacing.s),
-            GridItem(.flexible(), spacing: UniSpacing.s)
-        ]
-        return LazyVGrid(columns: columns, spacing: UniSpacing.s) {
-            ForEach(Array(words.enumerated()), id: \.offset) { index, word in
-                HStack(spacing: UniSpacing.xs) {
-                    Text(verbatim: String(format: "%02d", index + 1))
-                        .font(UniTypography.caption2.monospacedDigit())
-                        .foregroundStyle(UniColors.Text.tertiary)
-                        .frame(minWidth: 22, alignment: .trailing)
-                    Text(verbatim: word)
-                        .font(UniTypography.body.weight(.semibold))
-                        .foregroundStyle(UniColors.Text.primary)
-                    Spacer(minLength: 0)
-                }
-                .padding(.horizontal, UniSpacing.s)
-                .padding(.vertical, UniSpacing.xs)
-                .background(
-                    RoundedRectangle(cornerRadius: UniRadius.m, style: .continuous)
-                        .fill(UniColors.SeedGrid.surface)
-                )
-            }
-        }
-    }
 }

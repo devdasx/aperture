@@ -49,7 +49,7 @@ struct UniEmptyState: View {
         /// where the wallet itself is the subject (holdings, activity,
         /// recovery, security).
         case iris
-        /// Full app-logo disc from `Brand/LogoCircle.imageset`. Use when
+        /// Full app-logo disc. Use when
         /// the empty surface is a top-level app destination and should
         /// carry Aperture's installed-app identity, not just the iris glyph.
         case logoCircle

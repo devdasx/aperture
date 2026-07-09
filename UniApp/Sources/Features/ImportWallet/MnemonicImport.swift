@@ -167,7 +167,6 @@ struct MnemonicEntryView: View {
             }
         }
         .padding(.horizontal, 24)
-        .padding(.bottom, UniSpacing.l)
     }
 
     // MARK: Phrase field

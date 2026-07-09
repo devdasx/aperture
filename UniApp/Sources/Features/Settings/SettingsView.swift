@@ -85,22 +85,20 @@ struct SettingsView: View {
     /// rebuilds propagate via SwiftUI's standard environment
     /// channel, so the path stays here.
     ///
-    /// **Last-screen restoration (2026-06-13).** Seeded from
-    /// `ScreenRestoration`'s mirror in `init` and mirrored back on
-    /// every change via `.onChange` below. On a cold launch within
-    /// the 2-minute window the user lands back on the Settings
-    /// sub-screen they left; `ScreenRestoration.resolveOnLaunch()`
-    /// clears the mirror beforehand for longer absences, so the seed
-    /// is an empty path then. The same seeding makes the stack
-    /// survive the root direction-flip rebuild (`AppRoot.
-    /// rootDirectionKey`) — the Choose-language screen stays put
-    /// when its own selection flips LTR ↔ RTL.
+    /// **Navigation mirror (2026-06-13, launch reset 2026-07-09).**
+    /// Seeded from `ScreenRestoration`'s mirror in `init` and mirrored back on
+    /// every change via `.onChange` below. New app processes clear the mirror
+    /// before this view is constructed; in-session root rebuilds, such as
+    /// direction flips, can still re-seed the current stack.
     // Typed stack (not the opaque `NavigationPath`) so restoration can
     // inspect it and refuse to re-open the auth-gated Security screen on
     // a cold launch — same pattern as `WalletHomeDestination`.
     @State private var navigationPath: [SettingsDestination]
     @State private var splitSelection: SettingsDestination?
     @State private var splitDetailPath: [SettingsDestination]
+    @State private var protectedNavigationDestination: SettingsDestination?
+    @State private var isShowingProtectedNavigationGate = false
+    @State private var isShowingSheetDesignPreview = false
 
     init(showsCloseButton: Bool = false, allowsSplitLayout: Bool = true) {
         self.showsCloseButton = showsCloseButton
@@ -165,6 +163,16 @@ struct SettingsView: View {
                 compactBody
             }
         }
+        .fullScreenCover(isPresented: $isShowingProtectedNavigationGate) {
+            protectedNavigationGate
+        }
+        .sheet(isPresented: $isShowingSheetDesignPreview) {
+            SheetDesignPreviewSheet()
+                .uniAppEnvironment()
+                .uniSheetDetents([.large])
+                .presentationDragIndicator(.hidden)
+                .presentationBackground(UniColors.Background.secondary)
+        }
     }
 
     private var usesSplitLayout: Bool {
@@ -193,10 +201,8 @@ struct SettingsView: View {
             }
             .onAppear { consumeDeepLink() }
             .onChange(of: settingsDeepLink) { _, _ in consumeDeepLink() }
-            // Last-screen restoration mirror (2026-06-13). Every push
-            // / pop lands in `ScreenRestoration`'s GRDB mirror
-            // so a force-quit needs no last-moment save. Consumed by
-            // `init` above on the next fresh identity.
+            // Navigation mirror for root rebuilds. Cold launch clears it
+            // before this view's `init`; live rebuilds can consume it.
             .onChange(of: navigationPath) { _, newPath in
                 ScreenRestoration.saveSettingsStack(newPath)
             }
@@ -268,7 +274,9 @@ struct SettingsView: View {
 
             // Section 2 — Security
             Section {
-                NavigationLink(value: SettingsDestination.security) {
+                Button {
+                    navigateToProtectedDestination(.security)
+                } label: {
                     SettingsRow(
                         systemImage: "lock.shield",
                         title: "Security",
@@ -276,6 +284,8 @@ struct SettingsView: View {
                         iconTint: .green
                     )
                 }
+                .buttonStyle(.uniListRow)
+                .tag(SettingsDestination.security)
                 .listRowBackground(UniColors.List.rowBackground)
             }
 
@@ -326,6 +336,21 @@ struct SettingsView: View {
                         iconTint: .orange
                     )
                 }
+                .listRowBackground(UniColors.List.rowBackground)
+            }
+
+            Section {
+                Button {
+                    isShowingSheetDesignPreview = true
+                } label: {
+                    SettingsRow(
+                        systemImage: "rectangle.bottomthird.inset.filled",
+                        title: "Sheet Design Preview",
+                        trailing: nil,
+                        iconTint: .blue
+                    )
+                }
+                .buttonStyle(.uniListRow)
                 .listRowBackground(UniColors.List.rowBackground)
             }
 
@@ -384,6 +409,64 @@ struct SettingsView: View {
         case .diagnostics:               DiagnosticsLogView()
         case .help:                      HelpAndSupportView()
         case .about:                     AboutView()
+        }
+    }
+
+    @ViewBuilder
+    private var protectedNavigationGate: some View {
+        NavigationStack {
+            PinCodeView(
+                mode: .verify,
+                onComplete: { _ in
+                    guard let destination = protectedNavigationDestination else {
+                        isShowingProtectedNavigationGate = false
+                        return
+                    }
+                    protectedNavigationDestination = nil
+                    isShowingProtectedNavigationGate = false
+                    completeProtectedNavigation(to: destination)
+                },
+                onCancel: {
+                    protectedNavigationDestination = nil
+                    isShowingProtectedNavigationGate = false
+                },
+                allowsBiometrics: false,
+                showsNavigationControls: false,
+                accessContext: .accessSecurity
+            )
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button {
+                        protectedNavigationDestination = nil
+                        isShowingProtectedNavigationGate = false
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 17, weight: .semibold))
+                    }
+                    .accessibilityLabel(Text("Cancel"))
+                }
+            }
+        }
+        .uniAppEnvironment()
+        .presentationBackground(UniColors.Background.primary)
+    }
+
+    private func navigateToProtectedDestination(_ destination: SettingsDestination) {
+        guard PinCodeStorage.hasPin else {
+            completeProtectedNavigation(to: destination)
+            return
+        }
+        protectedNavigationDestination = destination
+        isShowingProtectedNavigationGate = true
+    }
+
+    private func completeProtectedNavigation(to destination: SettingsDestination) {
+        if usesSplitLayout {
+            splitSelection = destination
+            splitDetailPath.removeAll()
+            saveSplitStack()
+        } else if navigationPath.last != destination {
+            navigationPath.append(destination)
         }
     }
 

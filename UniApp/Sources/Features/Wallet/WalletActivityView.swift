@@ -1045,11 +1045,7 @@ private struct ActivityPDFExportSheet: View {
     private var previewSection: some View {
         Section {
             HStack(spacing: UniSpacing.s) {
-                Image("LogoCircle")
-                    .resizable()
-                    .scaledToFit()
-                    .frame(width: 34, height: 34)
-                    .accessibilityHidden(true)
+                ApertureAppLogo(size: 34)
                 VStack(alignment: .leading, spacing: UniSpacing.xxs) {
                     Text(verbatim: previewText)
                         .font(UniTypography.body)

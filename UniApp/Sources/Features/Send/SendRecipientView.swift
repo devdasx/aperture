@@ -8,15 +8,13 @@ import UIKit
 /// warning / send count per recipient.
 ///
 /// **Redesign (2026-06-15 — Apple iOS 26).** The recipient fields use
-/// native SwiftUI `TextField` controls with the current platform style, not
-/// app-drawn field chrome. The address — the load-bearing artifact of this
-/// step — still expands vertically as the user types or pastes, never
-/// truncated.
+/// native SwiftUI `TextField` controls with the current platform style. The
+/// address — the load-bearing artifact of this step — still expands vertically
+/// as the user types or pastes, never truncated.
 ///
-/// **Layers (Rule #2 §B.3).** Content layer: native input fields, custom
-/// action chips, and all copy. This recipient screen avoids
-/// drop shadows and glass chips; the Send sheet chrome itself owns any system
-/// presentation material.
+/// **Layers (Rule #2 §B.3).** Content layer: native input fields, inline field
+/// utilities, and all copy. This recipient screen avoids drop shadows and glass
+/// chips; the Send sheet chrome itself owns any system presentation material.
 ///
 /// **Multi-recipient.** Chains whose protocol can pay many recipients in
 /// one transaction (UTXO, Solana, Stellar, TON, Cosmos, Sui, Polkadot,
@@ -273,41 +271,63 @@ struct SendRecipientView: View {
                             isDuplicate: isDuplicateAddress(entry),
                             focusBinding: $focusedEntry,
                             sendCount: { recents.sendCount(to: $0, chain: chain) },
+                            showsUtilityActions: offset == entries.count - 1,
+                            showsAddRecipient: isMulti,
+                            canAddRecipient: canAddMore,
+                            onPaste: {
+                                selectionTapCount &+= 1
+                                pasteFromClipboard()
+                            },
+                            onScan: {
+                                selectionTapCount &+= 1
+                                isScanning = true
+                            },
+                            onAddRecipient: {
+                                selectionTapCount &+= 1
+                                addEntry()
+                            },
                             onRemove: { remove(entry.id) }
                         )
                     }
                 }
             }
-
-            actionChips
-                .padding(.top, UniSpacing.xxs)
         }
     }
 
     @ViewBuilder
     private var recipientMemoForm: some View {
-        UniCard(padding: 0, cornerRadius: UniRadius.xl) {
-            VStack(spacing: 0) {
-                ForEach(Array($entries.enumerated()), id: \.element.id) { offset, $entry in
-                    RecipientRow(
-                        entry: $entry,
-                        chain: chain,
-                        index: offset + 1,
-                        showsIndex: isMulti && entries.count > 1,
-                        nameHint: nameHint,
-                        canRemove: entries.count > 1,
-                        isDuplicate: isDuplicateAddress(entry),
-                        focusBinding: $focusedEntry,
-                        sendCount: { recents.sendCount(to: $0, chain: chain) },
-                        onRemove: { remove(entry.id) }
-                    )
-
-                    UniDivider()
-                        .padding(.leading, UniSpacing.m)
-                }
-
-                recipientMemoInputRow
+        VStack(spacing: UniSpacing.s) {
+            ForEach(Array($entries.enumerated()), id: \.element.id) { offset, $entry in
+                RecipientRow(
+                    entry: $entry,
+                    chain: chain,
+                    index: offset + 1,
+                    showsIndex: isMulti && entries.count > 1,
+                    nameHint: nameHint,
+                    canRemove: entries.count > 1,
+                    isDuplicate: isDuplicateAddress(entry),
+                    focusBinding: $focusedEntry,
+                    sendCount: { recents.sendCount(to: $0, chain: chain) },
+                    showsUtilityActions: offset == entries.count - 1,
+                    showsAddRecipient: isMulti,
+                    canAddRecipient: canAddMore,
+                    onPaste: {
+                        selectionTapCount &+= 1
+                        pasteFromClipboard()
+                    },
+                    onScan: {
+                        selectionTapCount &+= 1
+                        isScanning = true
+                    },
+                    onAddRecipient: {
+                        selectionTapCount &+= 1
+                        addEntry()
+                    },
+                    onRemove: { remove(entry.id) }
+                )
             }
+
+            recipientMemoInputRow
         }
     }
 
@@ -315,7 +335,7 @@ struct SendRecipientView: View {
     private var recipientMemoInputRow: some View {
         switch chain {
         case .ripple:
-            VStack(alignment: .leading, spacing: UniSpacing.xs) {
+            RecipientFieldBox(minHeight: 72) {
                 NativeRecipientTextField(
                     text: $destinationTagText,
                     prompt: "Destination tag (optional)",
@@ -326,9 +346,8 @@ struct SendRecipientView: View {
                     forceLTR: true
                 )
             }
-            .padding(.vertical, UniSpacing.xs)
         case .stellar:
-            VStack(alignment: .leading, spacing: UniSpacing.xs) {
+            RecipientFieldBox(minHeight: 84) {
                 NativeRecipientTextField(
                     text: $stellarMemoText,
                     prompt: "Memo, ID, or hash",
@@ -339,7 +358,6 @@ struct SendRecipientView: View {
                     forceLTR: !stellarMemoInference.isTextLike
                 )
             }
-            .padding(.vertical, UniSpacing.xs)
         default:
             EmptyView()
         }
@@ -417,58 +435,6 @@ struct SendRecipientView: View {
         }
     }
 
-    /// Custom flat action chips (Paste / Scan / Add). They intentionally avoid
-    /// liquid-glass button styling and shadows on this recipient screen.
-    private var actionChips: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: UniSpacing.s) {
-                actionChip("Paste", systemImage: "doc.on.clipboard") { pasteFromClipboard() }
-                actionChip("Scan", systemImage: "qrcode.viewfinder") { isScanning = true }
-                if isMulti {
-                    actionChip("Add recipient", systemImage: "plus", isEnabled: canAddMore) { addEntry() }
-                }
-            }
-            .padding(.vertical, 2)
-        }
-        .scrollClipDisabled()
-    }
-
-    private func actionChip(
-        _ title: LocalizedStringKey,
-        systemImage: String? = nil,
-        isEnabled: Bool = true,
-        action: @escaping () -> Void
-    ) -> some View {
-        Button {
-            selectionTapCount &+= 1
-            action()
-        } label: {
-            HStack(spacing: UniSpacing.xxs) {
-                if let systemImage {
-                    Image(systemName: systemImage)
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(isEnabled ? UniColors.Icon.primary : UniColors.Icon.disabled)
-                }
-                Text(title)
-                    .font(UniTypography.footnote.weight(.semibold))
-                    .foregroundStyle(isEnabled ? UniColors.Text.primary : UniColors.Text.disabled)
-            }
-            .padding(.horizontal, UniSpacing.s)
-            .frame(height: 36)
-            .background(
-                Capsule(style: .continuous)
-                    .fill(isEnabled ? UniColors.Card.background : UniColors.Button.disabledFill)
-            )
-            .overlay {
-                Capsule(style: .continuous)
-                    .stroke(UniColors.Stroke.regular.opacity(isEnabled ? 0.22 : 0.12), lineWidth: 1)
-            }
-            .contentShape(Capsule())
-        }
-        .buttonStyle(.plain)
-        .disabled(!isEnabled)
-    }
-
     // MARK: - Continue (functional layer — floats above content)
 
     private var continueBar: some View {
@@ -479,7 +445,6 @@ struct SendRecipientView: View {
         )
         .padding(.horizontal, UniSpacing.l)
         .padding(.top, UniSpacing.s)
-        .padding(.bottom, UniSpacing.xs)
     }
 
     // MARK: - Section header
@@ -765,14 +730,40 @@ private struct NativeRecipientDirectionModifier: ViewModifier {
     }
 }
 
+private struct RecipientFieldBox<Content: View>: View {
+    let minHeight: CGFloat
+    let content: Content
+
+    init(minHeight: CGFloat, @ViewBuilder content: () -> Content) {
+        self.minHeight = minHeight
+        self.content = content()
+    }
+
+    var body: some View {
+        content
+            .font(UniTypography.body)
+            .foregroundStyle(UniColors.Input.text)
+            .tint(UniColors.Tint.accent)
+            .padding(.horizontal, UniSpacing.mPlus)
+            .padding(.vertical, UniSpacing.m)
+            .frame(maxWidth: .infinity, minHeight: minHeight, alignment: .topLeading)
+            .background(inputBackground)
+    }
+
+    private var inputBackground: some View {
+        RoundedRectangle(cornerRadius: UniRadius.textField, style: .continuous)
+            .fill(UniColors.Input.background)
+    }
+}
+
 // MARK: - One recipient row (owns its resolution)
 
-/// A single recipient row. The address itself is a native SwiftUI
-/// `TextField`; the app does not draw custom text-field chrome here.
+/// A single recipient row. The address itself is a native SwiftUI `TextField`
+/// in the same field layout used by the import wallet phrase field.
 ///
 /// Row anatomy (top to bottom): an optional index label (when more than one
-/// recipient), the full address field (expanding, LTR-locked) on a line with
-/// the trailing red remove control, and inline resolution feedback beneath.
+/// recipient), the full address field (expanding, LTR-locked) with inline
+/// Paste / Scan / Add-recipient utilities, and resolution feedback beneath.
 /// No leading disc — the person is identified by their address, which the
 /// field shows in full (Rule #7). Standard grouped-cell padding gives each
 /// row its own breathing room within the shared container.
@@ -793,6 +784,12 @@ private struct RecipientRow: View {
     /// earlier field on focus change.
     let focusBinding: FocusState<UUID?>.Binding
     let sendCount: (String) -> Int
+    let showsUtilityActions: Bool
+    let showsAddRecipient: Bool
+    let canAddRecipient: Bool
+    let onPaste: () -> Void
+    let onScan: () -> Void
+    let onAddRecipient: () -> Void
     let onRemove: () -> Void
 
     var body: some View {
@@ -804,33 +801,7 @@ private struct RecipientRow: View {
                     .padding(.top, UniSpacing.s)
             }
 
-            HStack(alignment: .top, spacing: 0) {
-                NativeRecipientTextField(
-                    text: $entry.text,
-                    prompt: nameHint == nil ? "Recipient address" : "Address or \(nameHint!)",
-                    label: "Recipient address",
-                    axis: .vertical,
-                    lineLimit: 4,
-                    keyboardType: .default,
-                    forceLTR: true,
-                    autocapitalization: .never,
-                    focusBinding: focusBinding,
-                    focusValue: entry.id
-                )
-
-                if canRemove {
-                    Button(action: onRemove) {
-                        Image(systemName: "minus.circle.fill")
-                            .font(.system(size: 22))
-                            .foregroundStyle(UniColors.Feedback.Error.foreground)
-                            .padding(.trailing, UniSpacing.m)
-                            .padding(.top, UniSpacing.s)
-                            .contentShape(Circle())
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel(Text("Remove recipient"))
-                }
-            }
+            addressField
 
             feedback
                 .padding(.trailing, UniSpacing.m)
@@ -838,6 +809,116 @@ private struct RecipientRow: View {
         }
         .task(id: entry.text) { await resolve() }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var prompt: String {
+        nameHint == nil ? "Recipient address" : "Address or \(nameHint!)"
+    }
+
+    private var addressField: some View {
+        ZStack(alignment: .bottomTrailing) {
+            TextField(
+                text: $entry.text,
+                prompt: Text(verbatim: prompt),
+                axis: .vertical
+            ) {
+                Text(verbatim: "Recipient address")
+            }
+            .focused(focusBinding, equals: entry.id)
+            .textFieldStyle(.automatic)
+            .textInputAutocapitalization(.never)
+            .autocorrectionDisabled(true)
+            .keyboardType(.default)
+            .submitLabel(.done)
+            .font(UniTypography.body)
+            .foregroundStyle(UniColors.Input.text)
+            .tint(UniColors.Tint.accent)
+            .lineLimit(4...8)
+            .padding(.leading, UniSpacing.mPlus)
+            .padding(.trailing, canRemove ? 56 : UniSpacing.mPlus)
+            .padding(.top, UniSpacing.m)
+            .padding(.bottom, showsUtilityActions ? 62 : UniSpacing.m)
+            .frame(maxWidth: .infinity, minHeight: 166, alignment: .topLeading)
+            .background(inputBackground)
+            .environment(\.layoutDirection, .leftToRight)
+
+            if canRemove {
+                Button(action: onRemove) {
+                    Image(systemName: "minus.circle.fill")
+                        .font(.system(size: 22))
+                        .foregroundStyle(UniColors.Feedback.Error.foreground)
+                        .frame(width: 44, height: 44)
+                        .contentShape(Circle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(Text("Remove recipient"))
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+                .padding(.top, 6)
+                .padding(.trailing, UniSpacing.xs)
+            }
+
+            if showsUtilityActions {
+                fieldUtilities
+                    .padding(.trailing, UniSpacing.s)
+                    .padding(.bottom, UniSpacing.s)
+            }
+        }
+    }
+
+    private var inputBackground: some View {
+        RoundedRectangle(cornerRadius: UniRadius.textField, style: .continuous)
+            .fill(UniColors.Input.background)
+    }
+
+    private var fieldUtilities: some View {
+        HStack(spacing: 8) {
+            fieldUtilityButton(
+                title: "Paste",
+                systemImage: "doc.on.clipboard",
+                accessibilityLabel: "Paste recipient address",
+                action: onPaste
+            )
+            fieldUtilityButton(
+                title: "Scan",
+                systemImage: "qrcode.viewfinder",
+                accessibilityLabel: "Scan recipient address",
+                action: onScan
+            )
+            if showsAddRecipient {
+                fieldUtilityButton(
+                    title: "Add recipient",
+                    systemImage: "plus",
+                    accessibilityLabel: "Add recipient",
+                    isEnabled: canAddRecipient,
+                    action: onAddRecipient
+                )
+            }
+        }
+    }
+
+    private func fieldUtilityButton(
+        title: LocalizedStringKey,
+        systemImage: String,
+        accessibilityLabel: LocalizedStringKey,
+        isEnabled: Bool = true,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Label(title, systemImage: systemImage)
+                .font(.system(size: 14, weight: .semibold))
+                .labelStyle(.titleAndIcon)
+                .foregroundStyle(isEnabled ? UniColors.Text.primary : UniColors.Text.disabled)
+                .padding(.horizontal, 12)
+                .frame(height: 38)
+                .background(.regularMaterial, in: Capsule(style: .continuous))
+                .overlay {
+                    Capsule(style: .continuous)
+                        .stroke(UniColors.Input.border.opacity(0.7), lineWidth: 1)
+                }
+        }
+        .buttonStyle(.plain)
+        .disabled(!isEnabled)
+        .accessibilityLabel(Text(accessibilityLabel))
     }
 
     @ViewBuilder

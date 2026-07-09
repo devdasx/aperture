@@ -93,6 +93,29 @@ struct ApertureIrisView: View {
     }
 }
 
+/// Canonical Aperture app-logo seal.
+///
+/// Use this for Aperture's own app identity. It adapts by appearance:
+/// light mode renders a dark seal with a light iris, while dark mode renders
+/// a light seal with a dark iris. Token, network, and wallet avatars should
+/// continue using their own logo components.
+struct ApertureAppLogo: View {
+    var size: CGFloat = 96
+    var irisScale: CGFloat = 0.66
+
+    var body: some View {
+        ZStack {
+            Circle()
+                .fill(UniColors.Brand.logoDisc)
+
+            ApertureIrisView(ringColor: UniColors.Brand.logoIris)
+                .frame(width: size * irisScale, height: size * irisScale)
+        }
+        .frame(width: size, height: size)
+        .accessibilityHidden(true)
+    }
+}
+
 // MARK: - Previews
 
 #Preview("Light — brand mark tint") {
@@ -119,4 +142,18 @@ struct ApertureIrisView: View {
     ApertureIrisView(rot: -0.55)
         .frame(width: 200, height: 200)
         .padding()
+}
+
+#Preview("App logo — light") {
+    ApertureAppLogo()
+        .padding()
+        .background(UniColors.Background.primary)
+        .preferredColorScheme(.light)
+}
+
+#Preview("App logo — dark") {
+    ApertureAppLogo()
+        .padding()
+        .background(UniColors.Background.primary)
+        .preferredColorScheme(.dark)
 }

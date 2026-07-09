@@ -61,7 +61,6 @@ struct BackupVerifyView: View {
         .uniBottomActionBar {
             actionRegion
                 .padding(.horizontal, UniSpacing.l)
-                .padding(.bottom, UniSpacing.l)
         }
         .navigationTitle(Text("Verify your recovery phrase"))
         .navigationBarTitleDisplayMode(.inline)

@@ -1083,7 +1083,6 @@ struct MarketDetailView: View {
         }
         .padding(.horizontal, 20)
         .padding(.top, 10)
-        .padding(.bottom, 10)
     }
 
     private var sendPrefill: SendView.AssetPrefill {

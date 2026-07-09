@@ -1,5 +1,4 @@
 import SwiftUI
-import UIKit
 
 /// The canonical PIN entry component per `CLAUDE.md` Rule #17 §A.
 ///
@@ -16,18 +15,53 @@ import UIKit
 ///   16-minute cap from the fifth failure) disables input with a
 ///   countdown under the dots — brute-force protection that survives
 ///   app kill. No wipe: the recovery path is the recovery phrase.
-///   `.verify` is Face ID-first by default; callers that must be
+///   `.verify` is biometric-first by default; callers that must be
 ///   passcode-only (Security gate, wallet removal, Reset Aperture —
 ///   user direction 2026-06-13) pass `allowsBiometrics: false`.
 ///
 /// **Design rationale (Rule #17 §H).** Every PIN entry in the app — first
 /// setup, unlock, transaction confirmation, Settings change — uses this
 /// one view. Users recognize the screen across contexts. Same dots, same
-/// native numeric keyboard. That muscle memory is itself a security property:
+/// in-app keypad. That muscle memory is itself a security property:
 /// a phishing surface that looks "almost right" reads as wrong.
 struct PinCodeView: View {
 
     // MARK: - Public surface
+
+    struct AccessContext: Equatable {
+        enum Icon: Equatable {
+            case aperture
+            case system(String)
+            case asset(chain: SupportedChain, symbol: String, contract: String?)
+        }
+
+        let title: String
+        let icon: Icon
+
+        static let unlockApp = AccessContext(title: "Unlock Aperture", icon: .aperture)
+        static let setPasscode = AccessContext(title: "Set Passcode", icon: .system("lock"))
+        static let confirmPasscode = AccessContext(title: "Confirm Passcode", icon: .system("checkmark.shield"))
+        static let accessSecurity = AccessContext(title: "Access Security Settings", icon: .system("lock.shield"))
+        static let changePasscode = AccessContext(title: "Change Passcode", icon: .system("key"))
+        static let turnOffPasscode = AccessContext(title: "Turn Off Passcode", icon: .system("lock.slash"))
+        static let resetAperture = AccessContext(title: "Reset Aperture", icon: .system("trash"))
+        static let removeWallet = AccessContext(title: "Remove Wallet", icon: .system("wallet.bifold"))
+        static let viewWalletSecrets = AccessContext(title: "View Wallet Secrets", icon: .system("key"))
+
+        static func signTransaction(chain: SupportedChain, symbol: String, contract: String?) -> AccessContext {
+            let cleanedSymbol = symbol.trimmingCharacters(in: .whitespacesAndNewlines)
+            let displaySymbol: String
+            if contract == nil, chain == .bitcoin, cleanedSymbol.caseInsensitiveCompare(chain.ticker) == .orderedSame {
+                displaySymbol = chain.displayName
+            } else {
+                displaySymbol = cleanedSymbol.isEmpty ? chain.displayName : cleanedSymbol.uppercased()
+            }
+            return AccessContext(
+                title: "Sign \(displaySymbol) Transaction",
+                icon: .asset(chain: chain, symbol: displaySymbol, contract: contract)
+            )
+        }
+    }
 
     enum Mode: Equatable {
         case set
@@ -58,7 +92,7 @@ struct PinCodeView: View {
     /// pick a fresh PIN.
     var onConfirmMismatch: (() -> Void)? = nil
     /// Biometric policy for `.verify` mode. Default `true` — every
-    /// pre-existing call site keeps the Face ID-first behavior
+    /// pre-existing call site keeps the biometric-first behavior
     /// unchanged (auto-prompt on entry).
     ///
     /// `false` makes the verify **passcode-only**: the `.task`
@@ -67,7 +101,7 @@ struct PinCodeView: View {
     ///
     /// Per user direction 2026-06-13, the passcode-only gates are:
     /// the Settings → Security entry gate, wallet removal, and Reset
-    /// Aperture. Face ID-first remains the policy everywhere else
+    /// Aperture. Biometric-first remains the policy everywhere else
     /// (app unlock, secret reveals, transaction signing).
     ///
     /// Ignored in `.set` / `.confirm` modes — they never offer
@@ -88,11 +122,14 @@ struct PinCodeView: View {
     /// options menu. Dismissal belongs to the presenter / native app bar, so
     /// this component does not add its own close button.
     var showsNavigationControls: Bool = true
+    /// Short, honest context shown in the nav bar so the user knows what the
+    /// passcode unlocks or authorizes before typing it.
+    var accessContext: AccessContext? = nil
 
     // MARK: - State
 
-    /// Current digit buffer. Only modified by the native numeric keyboard —
-    /// never by parent state. Always 0...6 digits, all `0`–`9`.
+    /// Current digit buffer. Only modified by this view's keypad — never by
+    /// parent state. Always 0...6 digits, all `0`–`9`.
     @State private var digits: String = ""
 
     /// Animation hook for the dot row. Bumped when the user enters a
@@ -104,9 +141,8 @@ struct PinCodeView: View {
     /// soon as the user types again.
     @State private var inlineError: InlineError? = nil
 
-    /// Haptic trigger for error events. Digit entry relies on the native
-    /// keyboard's own feedback; adding a second app-level haptic on every
-    /// keypress makes fast PIN entry heavier and can produce CoreAudio noise.
+    /// Haptic trigger for error events. Digit entry uses a lightweight
+    /// contextual tap directly from the keypad.
     @State private var errorTrigger: Int = 0
 
     /// Cached biometric service. Single instance per view so `biometryType`
@@ -125,7 +161,7 @@ struct PinCodeView: View {
 
     /// Countdown driver for the brute-force lockout — sleeps in 1-second
     /// beats until the persisted lockout window expires, then re-enables
-    /// keyboard input. Stored so `.onDisappear` can cancel it.
+    /// keypad input. Stored so `.onDisappear` can cancel it.
     @State private var lockoutTask: Task<Void, Never>? = nil
 
     /// Seconds remaining in the active brute-force lockout window.
@@ -142,60 +178,42 @@ struct PinCodeView: View {
     /// handoff's `.dots.ok` state. Cleared on teardown.
     @State private var didSucceed: Bool = false
 
-    /// Tracked task for the keyboard-dismiss → complete hop; cancelled on
-    /// `.onDisappear` so `onComplete` never fires into a gone parent.
+    /// Tracked task for the success/complete hop; cancelled on `.onDisappear`
+    /// so `onComplete` never fires into a gone parent.
     @State private var completionTask: Task<Void, Never>?
-    @State private var focusTask: Task<Void, Never>?
     @State private var biometricTask: Task<Void, Never>?
     @State private var isBiometricPromptActive: Bool = false
     @State private var isCompleting: Bool = false
     @State private var isVerifyingPin: Bool = false
 
-    /// Monotonic focus request for the hidden UIKit text field that owns the
-    /// real iOS number keyboard. Incrementing this asks UIKit for first
-    /// responder once; no FocusState loop is involved.
-    @State private var keyboardFocusRequest: Int = 0
-
-    /// Allows this screen to ask the hidden native field for focus. We request
-    /// focus on entry and on explicit taps only; UIKit owns the keyboard after
-    /// that. Continuously forcing first responder makes the keyboard fight
-    /// UIKit and is the source of visible input lag.
-    @State private var keyboardFocusAllowed: Bool = true
-
     // MARK: - Body
 
     var body: some View {
-        ZStack {
-            VStack(spacing: 0) {
-                Spacer(minLength: 0)
-                passcodePrompt
-                Spacer(minLength: 0)
-            }
-
-            nativeInputField
+        VStack(spacing: 0) {
+            Spacer(minLength: 0)
+            passcodePrompt
+            Spacer(minLength: 0)
+            keypad
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
-        .toolbar { navigationControlsToolbar }
-        .uniBottomActionBar { biometricFallbackButton }
-        .scrollDismissesKeyboard(.never)
-        .contentShape(Rectangle())
-        .onTapGesture { focusNativeKeyboard() }
+        .toolbar {
+            accessContextToolbar
+            navigationControlsToolbar
+        }
         .uniHaptic(.error, trigger: errorTrigger)
-        .onAppear { keyboardFocusAllowed = true }
         .task {
             guard case .verify = mode else {
-                focusNativeKeyboard(after: .milliseconds(220))
                 return
             }
             // Restore any persisted brute-force lockout before anything
             // else — the GRDB record survives app kill, so a user
             // who force-quits mid-lockout lands back in the countdown.
             refreshLockout()
-            // Auto-fire Face ID / Touch ID on `.verify` entry when
+            // Auto-fire biometrics on `.verify` entry when
             // the user has biometrics enabled. Matches iOS's own
-            // pattern (Settings → Touch ID & Passcode prompts Face
+            // pattern (Settings → Touch ID & Passcode prompts biometric
             // ID immediately rather than waiting for an icon tap).
             // Runs once per view instance via SwiftUI's `.task`
             // lifecycle — exactly the right cadence here. The user
@@ -212,21 +230,11 @@ struct PinCodeView: View {
                   biometricService.isAvailable,
                   PinCodePreference.isBiometricEnabled()
             else {
-                focusNativeKeyboard(after: .milliseconds(220))
                 return
             }
             await requestBiometricUnlock()
         }
-        .onChange(of: lockoutRemaining) { _, remaining in
-            if remaining > 0 {
-                focusTask?.cancel()
-            } else {
-                focusNativeKeyboard(after: .milliseconds(220))
-            }
-        }
         .onDisappear {
-            keyboardFocusAllowed = false
-            focusTask?.cancel()
             biometricTask?.cancel()
             clearTask?.cancel()
             verifyTask?.cancel()
@@ -241,12 +249,25 @@ struct PinCodeView: View {
     /// dots/status stay LTR so passcode progress always reads left-to-right.
     private var passcodePrompt: some View {
         VStack(spacing: 0) {
+            markView
+                .padding(.bottom, 20)
+
             titleView
                 .padding(.horizontal, 20)
 
+            if showsSubtitle {
+                Text(subtitleKey)
+                    .font(.system(size: 15, weight: .regular))
+                    .foregroundStyle(UniColors.Text.secondary)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.top, 10)
+                    .padding(.horizontal, 24)
+            }
+
             VStack(spacing: 0) {
                 dotRow
-                    .padding(.top, 22)
+                    .padding(.top, 26)
                     .padding(.vertical, 5)
                 statusLine
                     .padding(.top, 6)
@@ -258,34 +279,22 @@ struct PinCodeView: View {
         .padding(.bottom, 24)
     }
 
-    private var nativeInputField: some View {
-        PasscodeNativeInputField(
-            text: nativeDigitsBinding,
-            isEnabled: canFocusNativeKeyboard,
-            focusRequest: keyboardFocusRequest
-        )
-            .frame(width: 1, height: 1)
-            .opacity(0.01)
-            .allowsHitTesting(false)
-            .accessibilityHidden(true)
+    private var resolvedAccessContext: AccessContext {
+        if let accessContext { return accessContext }
+        switch mode {
+        case .set:
+            return .setPasscode
+        case .confirm:
+            return .confirmPasscode
+        case .verify:
+            return .unlockApp
+        }
     }
 
-    @ViewBuilder
-    private var biometricFallbackButton: some View {
-        if shouldOfferBiometricUnlock {
-            UniButton(
-                title: biometricActionTitle,
-                variant: .secondary,
-                systemImage: biometricSymbol,
-                isLoading: isBiometricPromptActive,
-                isEnabled: !isBiometricPromptActive
-            ) {
-                startBiometricUnlock()
-            }
-            .padding(.horizontal, 24)
-            .padding(.top, 8)
-            .padding(.bottom, 12)
-            .transition(.move(edge: .bottom).combined(with: .opacity))
+    @ToolbarContentBuilder
+    private var accessContextToolbar: some ToolbarContent {
+        ToolbarItem(placement: .principal) {
+            PasscodeAccessPill(context: resolvedAccessContext)
         }
     }
 
@@ -311,10 +320,14 @@ struct PinCodeView: View {
         }
     }
 
-    /// Handoff title — centered, no subtitle, no lock icon.
+    private var markView: some View {
+        ApertureAppLogo(size: 92, irisScale: 0.66)
+    }
+
+    /// Handoff title — centered, with a short mode-specific subtitle.
     private var titleView: some View {
         Text(titleKey)
-            .font(.system(size: 23, weight: .regular))
+            .font(.system(size: 24, weight: .medium))
             .foregroundStyle(UniColors.Text.primary)
             .multilineTextAlignment(.center)
             .fixedSize(horizontal: false, vertical: true)
@@ -322,9 +335,29 @@ struct PinCodeView: View {
 
     private var titleKey: LocalizedStringKey {
         switch mode {
-        case .set:     return "Create Passcode"
-        case .confirm: return "Confirm Passcode"
-        case .verify:  return "Enter Passcode"
+        case .set:     return "Turn on passcode"
+        case .confirm: return "Confirm passcode"
+        case .verify:  return "Enter passcode"
+        }
+    }
+
+    private var showsSubtitle: Bool {
+        switch mode {
+        case .set, .confirm:
+            return true
+        case .verify:
+            return false
+        }
+    }
+
+    private var subtitleKey: LocalizedStringKey {
+        switch mode {
+        case .set:
+            return "Enter a 6-digit passcode for this device."
+        case .confirm:
+            return "Re-enter your 6-digit passcode."
+        case .verify:
+            return "Enter your 6-digit passcode."
         }
     }
 
@@ -376,16 +409,11 @@ struct PinCodeView: View {
         lockoutRemaining > 0
     }
 
-    private var canRequestNativeKeyboardFocus: Bool {
-        UIApplication.shared.applicationState == .active
-    }
-
-    private var canFocusNativeKeyboard: Bool {
-        keyboardFocusAllowed
-            && !isCompleting
+    private var canAcceptKeypadInput: Bool {
+        !isCompleting
+            && !isVerifyingPin
             && !isBiometricPromptActive
             && !isLockedOut
-            && canRequestNativeKeyboardFocus
     }
 
     private var shouldOfferBiometricUnlock: Bool {
@@ -397,21 +425,11 @@ struct PinCodeView: View {
     }
 
     private var biometricSymbol: String {
-        switch biometricService.biometryType {
-        case .faceID: return "faceid"
-        case .touchID: return "touchid"
-        case .opticID: return "opticid"
-        case .none: return "lock.shield"
-        }
+        biometricService.biometryType.systemImageName
     }
 
-    private var biometricActionTitle: LocalizedStringKey {
-        switch biometricService.biometryType {
-        case .faceID: return "Use Face ID"
-        case .touchID: return "Use Touch ID"
-        case .opticID: return "Use Optic ID"
-        case .none: return "Use biometrics"
-        }
+    private var biometricActionTitle: String {
+        biometricService.biometryType.unlockActionTitle
     }
 
     /// The single status line under the dots (handoff `.errtx`, height 20).
@@ -485,27 +503,39 @@ struct PinCodeView: View {
         }
     }
 
-    // MARK: - Native keyboard input
+    // MARK: - Keypad input
 
-    private var nativeDigitsBinding: Binding<String> {
-        Binding(
-            get: { digits },
-            set: { applyNativeInput($0) }
+    private var keypad: some View {
+        PasscodeKeypad(
+            isEnabled: canAcceptKeypadInput,
+            showsBiometricKey: shouldOfferBiometricUnlock,
+            isBiometricLoading: isBiometricPromptActive,
+            biometricSymbol: biometricSymbol,
+            biometricLabel: biometricActionTitle,
+            canDelete: !digits.isEmpty,
+            onDigit: appendDigit,
+            onDelete: deleteDigit,
+            onBiometric: startBiometricUnlock
         )
+        .padding(.horizontal, 36)
+        .padding(.bottom, 28)
     }
 
-    private func focusNativeKeyboard(after delay: Duration = .zero) {
-        guard canFocusNativeKeyboard else { return }
-        focusTask?.cancel()
-        focusTask = Task { @MainActor in
-            if delay > .zero {
-                try? await Task.sleep(for: delay)
-            } else {
-                await Task.yield()
-            }
-            guard canFocusNativeKeyboard else { return }
-            keyboardFocusRequest &+= 1
+    private func appendDigit(_ digit: Int) {
+        guard canAcceptKeypadInput, digits.count < 6 else { return }
+        UniHapticEngine.shared.play(.contextualImpact(.tap))
+        inlineError = nil
+        digits.append(String(digit))
+        if digits.count == 6 {
+            evaluate()
         }
+    }
+
+    private func deleteDigit() {
+        guard canAcceptKeypadInput, !digits.isEmpty else { return }
+        UniHapticEngine.shared.play(.contextualImpact(.tap))
+        inlineError = nil
+        digits.removeLast()
     }
 
     private func startBiometricUnlock() {
@@ -519,13 +549,12 @@ struct PinCodeView: View {
     @MainActor
     private func requestBiometricUnlock() async {
         guard shouldOfferBiometricUnlock else {
-            focusNativeKeyboard(after: .milliseconds(180))
             return
         }
         guard !isBiometricPromptActive else { return }
         isBiometricPromptActive = true
         let result = await biometricService.authenticate(
-            reason: "Unlock Aperture with Face ID."
+            reason: biometricService.biometryType.unlockReason
         )
         guard !Task.isCancelled else {
             isBiometricPromptActive = false
@@ -533,32 +562,8 @@ struct PinCodeView: View {
         }
         isBiometricPromptActive = false
         if case .success = result {
-            completeAfterKeyboardDismiss("")
-        } else {
-            focusNativeKeyboard(after: .milliseconds(180))
+            completeAfterInputSettles("")
         }
-    }
-
-    private func applyNativeInput(_ rawValue: String) {
-        guard !isCompleting, !isVerifyingPin, !isLockedOut else { return }
-        let next = Self.normalizedDigits(from: rawValue, limit: 6)
-        guard next != digits else { return }
-        inlineError = nil
-        digits = next
-        if digits.count == 6 {
-            evaluate()
-        }
-    }
-
-    private static func normalizedDigits(from rawValue: String, limit: Int) -> String {
-        var output = ""
-        output.reserveCapacity(limit)
-        for character in rawValue {
-            guard let value = character.wholeNumberValue else { continue }
-            output.append(String(value))
-            if output.count == limit { break }
-        }
-        return output
     }
 
     // MARK: - Mode evaluation
@@ -568,7 +573,7 @@ struct PinCodeView: View {
         case .set:
             // Caller decides what "set complete" means — typically pushing
             // the confirm step.
-            completeAfterKeyboardDismiss(digits)
+            completeAfterInputSettles(digits)
         case .confirm(let expected):
             if digits == expected {
                 flashSuccessThenComplete(digits)
@@ -585,19 +590,16 @@ struct PinCodeView: View {
     /// biometric success skips it (no dots are involved). The hop is tracked
     /// so `onComplete` never fires into a parent after teardown.
     private func flashSuccessThenComplete(_ value: String) {
-        completeAfterKeyboardDismiss(value, successFlash: true)
+        completeAfterInputSettles(value, successFlash: true)
     }
 
-    private func completeAfterKeyboardDismiss(_ value: String, successFlash: Bool = false) {
+    private func completeAfterInputSettles(_ value: String, successFlash: Bool = false) {
         guard !isCompleting else { return }
         isCompleting = true
         if successFlash {
             UniHapticEngine.shared.play(.success)
             withAnimation(.easeOut(duration: 0.14)) { didSucceed = true }
         }
-        focusTask?.cancel()
-        keyboardFocusAllowed = false
-        KeyboardDismissal.dismiss()
         completionTask?.cancel()
         completionTask = Task { @MainActor in
             try? await Task.sleep(for: .milliseconds(successFlash ? 220 : 180))
@@ -612,7 +614,7 @@ struct PinCodeView: View {
     ///   consulted before the attempt; an active window rejects the
     ///   entry without burning PBKDF2 cycles.
     /// - The 100k-iteration derivation runs off the main thread via the
-    ///   async `PinCodeStorage.verify(_:)` — keyboard input stays responsive.
+    ///   async `PinCodeStorage.verify(_:)` — keypad input stays responsive.
     /// - Wrong PIN → `recordFailure()` persists the incremented count +
     ///   timestamp to GRDB; success → `clearFailures()`.
     private func verifyPin() {
@@ -625,7 +627,6 @@ struct PinCodeView: View {
         }
         let candidate = digits
         isVerifyingPin = true
-        focusTask?.cancel()
         verifyTask?.cancel()
         verifyTask = Task { @MainActor in
             let isValid = await PinCodeStorage.verify(candidate)
@@ -677,7 +678,6 @@ struct PinCodeView: View {
             try? await Task.sleep(for: .seconds(0.5))
             guard !Task.isCancelled else { return }
             digits = ""
-            focusNativeKeyboard(after: .milliseconds(40))
             if case .confirm = mode, let onConfirmMismatch {
                 try? await Task.sleep(for: .seconds(0.4))
                 guard !Task.isCancelled else { return }
@@ -715,129 +715,178 @@ private struct ShakeEffect: GeometryEffect {
     }
 }
 
-// MARK: - Native passcode input
+private struct PasscodeAccessPill: View {
+    let context: PinCodeView.AccessContext
 
-/// A hidden `UITextField` whose only job is to own the real iOS number
-/// keyboard. This avoids the SwiftUI `FocusState` re-focus cycle that can
-/// make the remote keyboard placeholder views fight their accessory/input
-/// constraints while the lock overlay window is becoming key.
-private struct PasscodeNativeInputField: UIViewRepresentable {
-    @Binding var text: String
+    var body: some View {
+        HStack(spacing: 7) {
+            icon
+
+            Text(verbatim: context.title)
+                .font(.system(size: 14, weight: .semibold))
+                .lineLimit(1)
+                .minimumScaleFactor(0.82)
+                .foregroundStyle(UniColors.Text.primary)
+        }
+        .padding(.horizontal, 12)
+        .frame(height: 34)
+        .glassEffect(.regular, in: Capsule(style: .continuous))
+        .contentShape(Capsule(style: .continuous))
+        .accessibilityElement(children: .combine)
+    }
+
+    @ViewBuilder
+    private var icon: some View {
+        switch context.icon {
+        case .aperture:
+            ApertureIrisView()
+                .frame(width: 18, height: 18)
+        case .system(let name):
+            Image(systemName: name)
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(UniColors.Text.primary)
+                .frame(width: 18, height: 18)
+        case .asset(let chain, let symbol, let contract):
+            CoinMark(chain: chain, tokenSymbol: symbol, contract: contract)
+                .frame(width: 20, height: 20)
+        }
+    }
+}
+
+// MARK: - Passcode keypad
+
+private struct PasscodeKeypad: View {
     let isEnabled: Bool
-    let focusRequest: Int
+    let showsBiometricKey: Bool
+    let isBiometricLoading: Bool
+    let biometricSymbol: String
+    let biometricLabel: String
+    let canDelete: Bool
+    let onDigit: (Int) -> Void
+    let onDelete: () -> Void
+    let onBiometric: () -> Void
 
-    func makeCoordinator() -> Coordinator {
-        Coordinator(text: $text)
-    }
+    var body: some View {
+        VStack(spacing: 18) {
+            digitRow([1, 2, 3])
+            digitRow([4, 5, 6])
+            digitRow([7, 8, 9])
 
-    func makeUIView(context: Context) -> UITextField {
-        let field = UITextField(frame: .zero)
-        field.delegate = context.coordinator
-        field.keyboardType = .numberPad
-        field.keyboardAppearance = .default
-        field.autocorrectionType = .no
-        field.autocapitalizationType = .none
-        field.spellCheckingType = .no
-        field.smartDashesType = .no
-        field.smartInsertDeleteType = .no
-        field.smartQuotesType = .no
-        field.textContentType = nil
-        field.inputAccessoryView = nil
-        field.borderStyle = .none
-        field.backgroundColor = .clear
-        field.textColor = .clear
-        field.tintColor = .clear
-        field.accessibilityElementsHidden = true
-        field.isAccessibilityElement = false
-        field.addTarget(
-            context.coordinator,
-            action: #selector(Coordinator.editingChanged(_:)),
-            for: .editingChanged
-        )
-        return field
-    }
-
-    func updateUIView(_ field: UITextField, context: Context) {
-        context.coordinator.text = $text
-
-        if field.text != text {
-            field.text = text
-        }
-
-        if field.isEnabled != isEnabled {
-            field.isEnabled = isEnabled
-        }
-
-        guard isEnabled else {
-            if field.isFirstResponder {
-                field.resignFirstResponder()
+            HStack(spacing: 0) {
+                biometricKey
+                digitButton(0)
+                deleteButton
             }
-            return
         }
+        .frame(maxWidth: 560)
+    }
 
-        guard context.coordinator.lastFocusRequest != focusRequest else { return }
-        context.coordinator.lastFocusRequest = focusRequest
-
-        DispatchQueue.main.async { [weak field] in
-            guard let field, field.window != nil, field.isEnabled else { return }
-            if !field.isFirstResponder {
-                field.becomeFirstResponder()
+    private func digitRow(_ digits: [Int]) -> some View {
+        HStack(spacing: 0) {
+            ForEach(digits, id: \.self) { digit in
+                digitButton(digit)
             }
         }
     }
 
-    static func dismantleUIView(_ field: UITextField, coordinator: Coordinator) {
-        field.removeTarget(coordinator, action: nil, for: .allEvents)
-        field.delegate = nil
-        if field.isFirstResponder {
-            field.resignFirstResponder()
+    private func digitButton(_ digit: Int) -> some View {
+        Button {
+            onDigit(digit)
+        } label: {
+            VStack(spacing: 2) {
+                Text(verbatim: String(digit))
+                    .font(.system(size: 31, weight: .regular, design: .rounded))
+                    .foregroundStyle(UniColors.Text.primary)
+                    .monospacedDigit()
+
+                Text(verbatim: letters(for: digit))
+                    .font(.system(size: 10, weight: .semibold, design: .rounded))
+                    .kerning(1.4)
+                    .foregroundStyle(UniColors.Text.secondary)
+                    .frame(height: 11)
+                    .opacity(letters(for: digit).isEmpty ? 0 : 1)
+            }
+            .frame(maxWidth: .infinity)
+        }
+        .buttonStyle(PasscodeKeyButtonStyle())
+        .disabled(!isEnabled)
+        .accessibilityLabel(Text(verbatim: String(digit)))
+    }
+
+    private func letters(for digit: Int) -> String {
+        switch digit {
+        case 2: return "ABC"
+        case 3: return "DEF"
+        case 4: return "GHI"
+        case 5: return "JKL"
+        case 6: return "MNO"
+        case 7: return "PQRS"
+        case 8: return "TUV"
+        case 9: return "WXYZ"
+        default: return ""
         }
     }
 
-    final class Coordinator: NSObject, UITextFieldDelegate {
-        var text: Binding<String>
-        var lastFocusRequest: Int = 0
-
-        init(text: Binding<String>) {
-            self.text = text
-        }
-
-        @objc func editingChanged(_ sender: UITextField) {
-            commit(sender.text ?? "", to: sender)
-        }
-
-        func textField(
-            _ textField: UITextField,
-            shouldChangeCharactersIn range: NSRange,
-            replacementString string: String
-        ) -> Bool {
-            let current = textField.text ?? ""
-            guard let swiftRange = Range(range, in: current) else { return false }
-            let candidate = current.replacingCharacters(in: swiftRange, with: string)
-            commit(candidate, to: textField)
-            return false
-        }
-
-        private func commit(_ rawValue: String, to field: UITextField) {
-            let normalized = Self.normalizedDigits(from: rawValue, limit: 6)
-            if field.text != normalized {
-                field.text = normalized
+    @ViewBuilder
+    private var biometricKey: some View {
+        if showsBiometricKey {
+            Button {
+                onBiometric()
+            } label: {
+                Group {
+                    if isBiometricLoading {
+                        ProgressView()
+                            .controlSize(.regular)
+                            .tint(UniColors.Text.tertiary)
+                    } else {
+                        Image(systemName: biometricSymbol)
+                            .font(.system(size: 24, weight: .regular))
+                            .foregroundStyle(UniColors.Text.tertiary)
+                    }
+                }
+                .frame(maxWidth: .infinity)
             }
-            if text.wrappedValue != normalized {
-                text.wrappedValue = normalized
-            }
+            .buttonStyle(PasscodeKeyButtonStyle())
+            .disabled(!isEnabled || isBiometricLoading)
+            .accessibilityLabel(Text(verbatim: biometricLabel))
+        } else {
+            Color.clear
+                .frame(maxWidth: .infinity)
+                .frame(height: PasscodeKeyButtonStyle.keyHeight)
+                .accessibilityHidden(true)
         }
+    }
 
-        private static func normalizedDigits(from rawValue: String, limit: Int) -> String {
-            var output = ""
-            output.reserveCapacity(limit)
-            for character in rawValue {
-                guard let value = character.wholeNumberValue else { continue }
-                output.append(String(value))
-                if output.count == limit { break }
-            }
-            return output
+    private var deleteButton: some View {
+        Button {
+            onDelete()
+        } label: {
+            Image(systemName: "delete.left")
+                .font(.system(size: 27, weight: .regular))
+                .foregroundStyle(canDelete && isEnabled ? UniColors.Text.primary : UniColors.Text.tertiary)
+                .frame(maxWidth: .infinity)
         }
+        .buttonStyle(PasscodeKeyButtonStyle())
+        .disabled(!isEnabled || !canDelete)
+        .accessibilityLabel(Text("Delete"))
+    }
+}
+
+private struct PasscodeKeyButtonStyle: ButtonStyle {
+    static let keyHeight: CGFloat = 72
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .frame(height: Self.keyHeight)
+            .contentShape(Circle())
+            .background {
+                Circle()
+                    .fill(UniColors.PinLock.keyPress)
+                    .frame(width: 68, height: 68)
+                    .opacity(configuration.isPressed ? 1 : 0)
+                    .scaleEffect(configuration.isPressed ? 1 : 0.72)
+            }
+            .animation(.snappy(duration: 0.16), value: configuration.isPressed)
     }
 }
 

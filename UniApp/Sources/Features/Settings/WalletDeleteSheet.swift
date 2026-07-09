@@ -109,7 +109,6 @@ struct WalletDeleteSheet: View {
                     }
                 }
                 .padding(.horizontal, UniSpacing.l)
-                .padding(.bottom, UniSpacing.l)
             }
         }
         // No passcode set → native destructive confirmation. Still zero
@@ -146,7 +145,8 @@ struct WalletDeleteSheet: View {
                         isShowingPasscodeGate = false
                     },
                     allowsBiometrics: false,
-                    showsNavigationControls: false
+                    showsNavigationControls: false,
+                    accessContext: .removeWallet
                 )
                 .toolbar {
                     ToolbarItem(placement: .topBarLeading) {

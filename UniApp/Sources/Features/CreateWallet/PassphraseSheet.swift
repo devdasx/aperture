@@ -56,9 +56,8 @@ struct PassphraseSheet: View {
     @State private var buffer: String = ""
 
     var body: some View {
-        UniSheet(title: "Optional passphrase") {
+        UniSheet(title: "Optional passphrase", icon: "key.viewfinder") {
             VStack(alignment: .leading, spacing: UniSpacing.l) {
-                hero
                 bodyCopy
                 input
                 footnoteLine
@@ -78,26 +77,6 @@ struct PassphraseSheet: View {
         }
         .onAppear {
             buffer = passphrase
-        }
-    }
-
-    // MARK: - Hero
-
-    /// Rule #16 §A.1 — a single quiet `key.viewfinder` glyph in
-    /// `UniColors.Brand.mark` (graphite/soft-white). The size is
-    /// restrained for a content-sized sheet — 40pt sits above the body
-    /// without competing with the `UniSheet` title row or inflating
-    /// the measured intrinsic height. The symbol carries the meaning
-    /// of the surface (an extra key, scrutinized) without alarm.
-    private var hero: some View {
-        HStack {
-            Spacer()
-            Image(systemName: "key.viewfinder")
-                .font(.system(size: 40, weight: .regular))
-                .symbolRenderingMode(.hierarchical)
-                .foregroundStyle(UniColors.Brand.mark)
-                .accessibilityHidden(true)
-            Spacer()
         }
     }
 

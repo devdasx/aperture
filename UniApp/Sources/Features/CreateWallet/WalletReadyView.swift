@@ -125,7 +125,6 @@ struct WalletReadyView: View {
                 }
             }
             .padding(.horizontal, UniSpacing.l)
-            .padding(.bottom, UniSpacing.l)
         }
     }
 

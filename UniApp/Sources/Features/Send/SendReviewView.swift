@@ -356,7 +356,6 @@ struct SendReviewView: View {
             )
             .padding(.horizontal, UniSpacing.l)
             .padding(.top, UniSpacing.s)
-            .padding(.bottom, UniSpacing.xs)
         }
     }
 
@@ -391,7 +390,12 @@ struct SendReviewView: View {
                 },
                 // Face ID auto-prompts here only when the user kept "Require
                 // Face ID for sending" on; off → passcode-only (no biometric).
-                allowsBiometrics: requireForSend
+                allowsBiometrics: requireForSend,
+                accessContext: .signTransaction(
+                    chain: chain,
+                    symbol: assetSymbol,
+                    contract: draft.tokenContract
+                )
             )
         }
         .background(UniColors.Background.primary.ignoresSafeArea())
@@ -698,7 +702,6 @@ private struct SendSentView: View {
             UniButton(title: "Done", variant: .primary, action: onDone)
                 .padding(.horizontal, UniSpacing.l)
                 .padding(.top, UniSpacing.s)
-                .padding(.bottom, UniSpacing.xs)
         }
     }
 
@@ -868,7 +871,6 @@ private struct SendFailedView: View {
             }
             .padding(.horizontal, UniSpacing.l)
             .padding(.top, UniSpacing.s)
-            .padding(.bottom, UniSpacing.xs)
         }
     }
 

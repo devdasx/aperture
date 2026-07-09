@@ -23,7 +23,7 @@ import SwiftUI
 ///
 /// **What changed:**
 /// - The mark itself: from `Brand/Mark.imageset` (bare iris) to
-///   `Brand/LogoCircle.imageset` (dark-circle + iris).
+///   `ApertureAppLogo` (adaptive app-logo seal + iris).
 /// - The mark bloom: a single restrained scale + opacity bloom
 ///   computed in `SplashChromeState` from the elapsed time — the
 ///   same cubic-bezier family the glow uses, one shot, no loops.
@@ -35,9 +35,9 @@ import SwiftUI
 /// third-party Lottie SPM package — a Rule #3 (native-only)
 /// violation in the UI layer. The bloom is now computed natively
 /// from the existing `TimelineView` clock; its final frame is the
-/// still `Image("LogoCircle")` itself, so the splash → onboarding
+/// still `ApertureAppLogo` itself, so the splash → onboarding
 /// shared-element transition stays pixel-aligned (both screens
-/// render the same `Image`).
+/// render the same adaptive logo view).
 struct SplashView: View {
     /// Logo namespace shared with the onboarding welcome slide via
     /// `AppRoot`. Both views attach `matchedGeometryEffect` to
@@ -213,17 +213,15 @@ struct SplashView: View {
 
     // MARK: - Logo
 
-    /// The new circle logo — dark gradient disc + white iris.
+    /// The adaptive app-logo seal.
     /// On splash entrance, the bloom is a native one-shot scale +
     /// opacity keyframe (`SplashChromeState.logoScale` /
     /// `.logoOpacity`) applied at the call site in `body`. Because
-    /// the bloom's final frame IS this still `Image`, the
-    /// matchedGeometryEffect handoff to onboarding is a single
-    /// contiguous Image transition — no asset replacement, no seam.
+    /// The bloom's final frame is the same semantic logo view used by
+    /// onboarding, so the matchedGeometryEffect handoff stays contiguous
+    /// while the logo respects light/dark appearance.
     private var logo: some View {
-        Image("LogoCircle")
-            .resizable()
-            .scaledToFit()
+        ApertureAppLogo(size: 80)
     }
 
     // MARK: - Wordmark

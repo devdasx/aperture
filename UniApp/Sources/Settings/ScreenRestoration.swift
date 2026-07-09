@@ -1,34 +1,17 @@
 import Foundation
 import SwiftUI
 
-/// Last-screen restoration across cold launches (2026-06-13, user
-/// direction, verbatim): *"i close the app totally and reopen it after
-/// 1 second, it asked for passcode and that's correct, but it doesn't
-/// open the last screen and that's not correct. only if i left the app
-/// for more than 2 minutes, it should navigate me to the main screen
-/// when entering the passcode, if less than 2 minutes, it should keep
-/// me in the same screen."*
+/// Navigation-state mirroring for live app rebuilds.
 ///
 /// **The contract.**
-/// - Every real `.background` entry stamps "the user left the app at T"
-///   (written by `AutoLockController.handleScenePhaseChange` — the same
-///   place that arms the auto-lock, BEFORE its PIN gate, because
-///   restoration is independent of the lock).
-/// - The two restorable `NavigationStack` paths (wallet home, Settings)
-///   are mirrored here continuously via `.onChange(of: navigationPath)`
-///   on their owning views — cheap (a handful of enum cases encoded as
-///   JSON) and it means a force-quit needs no last-moment save.
-/// - The selected tab needs no mirroring: `MainTabView` already
-///   persists it via `@GRDBStorage(MainTab.storageKey)`.
-/// - On cold launch, `UniAppApp.init()` calls `resolveOnLaunch()`
-///   exactly once, before the first view is constructed:
-///   - elapsed `< 120s` → keep everything; the views consume the
-///     persisted paths in their `init`s and the user lands back on the
-///     screen they left (beneath the independent lock overlay window,
-///     which sits above the content tree and needs no coordination).
-///   - elapsed `≥ 120s` (or no stamp — fresh install / crash while
-///     foregrounded) → clear both paths AND reset the selected tab to
-///     the wallet tab, so the user starts at the main screen.
+/// - A cold launch always starts from the Wallet tab root. If the app was
+///   fully closed, it must never reopen the last pushed screen or tab.
+/// - The wallet-home and Settings `NavigationStack` paths are still mirrored
+///   continuously so deliberate in-process rebuilds, such as an LTR/RTL
+///   language-direction flip, can re-seed the same screen.
+/// - `UniAppApp.init()` calls `resolveOnLaunch()` before the first view is
+///   constructed; that call clears both mirrored paths and resets the selected
+///   tab to Wallet.
 ///
 /// **Why GRDB app preferences, not Keychain.** This is small, non-secret UI
 /// state. The destination enums carry only routing identity —
@@ -39,24 +22,16 @@ import SwiftUI
 /// payload, exclude it from the Codable path or stop persisting that
 /// stack.
 ///
-/// **Composition with the Rule #12 §G root direction rebuild.** A
-/// mid-session LTR↔RTL flip recreates `RootGate`'s subtree
-/// (see `AppRoot.rootDirectionKey` in `UniAppApp.swift`); the freshly
-/// created views re-consume the continuously-mirrored paths, so the
-/// user stays on the screen where they flipped the language — the
-/// Choose-language picker survives its own direction flip. No special
-/// casing needed: the mirror always reflects the live paths.
+/// **Composition with the Rule #12 §G root direction rebuild.** After launch,
+/// a mid-session LTR↔RTL flip recreates `RootGate`'s subtree
+/// (see `AppRoot.rootDirectionKey` in `UniAppApp.swift`); the freshly created
+/// views re-consume the continuously-mirrored paths, so the user stays on the
+/// screen where they flipped the language. Cold launch is the only time the
+/// mirror is forcibly cleared.
 @MainActor
 enum ScreenRestoration {
 
-    /// The user's 2-minute window, verbatim from the direction above.
-    static let maxRestorationAge: TimeInterval = 120
-
     enum PreferenceKey {
-        /// `Double` (`timeIntervalSince1970`) of the most recent real
-        /// `.background` entry. Absent until the first backgrounding
-        /// after install.
-        static let leftAppAt = "restoration.leftAppAt"
         /// JSON-encoded `NavigationPath.CodableRepresentation` of the
         /// Settings tab's stack.
         static let settingsPath = "restoration.settingsPath"
@@ -65,47 +40,21 @@ enum ScreenRestoration {
         static let walletHomePath = "restoration.walletHomePath"
     }
 
-    // MARK: - Stamping (called on every real `.background` entry)
-
-    /// Record "the user left the app now". `.inactive` bounces (system
-    /// prompts, Control Center, app-switcher peeks) deliberately do NOT
-    /// stamp — same reasoning as the auto-lock contract: the user
-    /// hasn't left. Force-quit from the switcher delivers `.background`
-    /// before termination, so the stamp covers that path too.
-    static func stampBackground(now: Date = Date()) {
-        AppPreferenceStore.shared.set(now.timeIntervalSince1970, forKey: PreferenceKey.leftAppAt)
-    }
-
     // MARK: - Cold-launch resolution (called once, from `UniAppApp.init()`)
 
-    /// Decide restore-vs-reset for this process. Must run before any
-    /// view is constructed — the restorable views read the persisted
-    /// paths in their `init`s.
-    static func resolveOnLaunch(now: Date = Date()) {
-        let stamp = AppPreferenceStore.shared.double(PreferenceKey.leftAppAt, default: 0)
-        guard stamp > 0 else {
-            // Never backgrounded (fresh install) or the marker was
-            // wiped — nothing trustworthy to restore.
-            resetToMainScreen()
-            return
-        }
-        let elapsed = now.timeIntervalSince1970 - stamp
-        guard elapsed >= 0, elapsed < maxRestorationAge else {
-            // ≥ 2 minutes away (or a clock that moved backwards —
-            // distrust it): start at the main screen.
-            resetToMainScreen()
-            return
-        }
-        // < 2 minutes: leave the persisted tab + paths untouched.
-        // `MainTabView` restores the tab via `@GRDBStorage`;
-        // `WalletHomeView` / `SettingsView` consume their paths at init.
+    /// Clear any previous process' navigation state. Must run before any
+    /// view is constructed — `WalletHomeView` and `SettingsView` read the
+    /// mirrored paths in their `init`s.
+    static func resolveOnLaunch() {
+        resetToMainScreen()
     }
 
-    /// The ≥-2-minutes (or no-stamp) outcome: forget both stacks and
-    /// land the user on the wallet tab — "the main screen".
+    /// Forget both stacks and land the user on the wallet tab — "the main
+    /// screen".
     private static func resetToMainScreen() {
         AppPreferenceStore.shared.remove(PreferenceKey.settingsPath)
         AppPreferenceStore.shared.remove(PreferenceKey.walletHomePath)
+        AppPreferenceStore.shared.set("", forKey: "settingsDeepLink")
         AppPreferenceStore.shared.set(MainTab.wallet.rawValue, forKey: MainTab.storageKey)
     }
 

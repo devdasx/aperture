@@ -87,7 +87,8 @@ struct ResetApertureFlow: View {
                     },
                     onCancel: { isShowingPinGate = false },
                     allowsBiometrics: true,
-                    showsNavigationControls: false
+                    showsNavigationControls: false,
+                    accessContext: .resetAperture
                 )
                 .toolbar {
                     ToolbarItem(placement: .topBarLeading) {
@@ -376,19 +377,7 @@ struct ResetApertureFlow: View {
     /// The brand iris seal — an `--ink` disc with the iris in the `--surface`
     /// colour, matching the handoff.
     private func irisDisc(size: CGFloat, irisFraction: CGFloat = 0.82) -> some View {
-        ZStack {
-            Circle().fill(UniColors.Brand.mark)
-            // The iris fills ~82% of the disc to match the handoff (the seal's
-            // `mlogo` is 98px inside a 123px disc). A smaller fraction is passed
-            // for the wallet-picker avatar.
-            Image("IrisWatermarkWhite")
-                .resizable()
-                .renderingMode(.template)
-                .scaledToFit()
-                .foregroundStyle(UniColors.Background.secondary)
-                .frame(width: size * irisFraction, height: size * irisFraction)
-        }
-        .frame(width: size, height: size)
+        ApertureAppLogo(size: size, irisScale: irisFraction)
     }
 
     @ViewBuilder

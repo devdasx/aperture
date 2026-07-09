@@ -202,12 +202,9 @@ struct ChooseMethodScreen: View {
             // grouped options, not a list row.
             Section {
                 VStack(spacing: UniSpacing.xs) {
-                    Image("LogoCircle")
-                        .resizable().scaledToFit()
-                        .frame(width: 64, height: 64)
+                    ApertureAppLogo(size: 64)
                         .frame(maxWidth: .infinity)
                         .padding(.top, UniSpacing.s)
-                        .accessibilityHidden(true)
                     Text("Back up your wallet")
                         .font(.system(size: 25, weight: .bold))
                         .foregroundStyle(UniColors.Text.primary)
@@ -752,9 +749,7 @@ private struct BackupRing: View {
                     .trim(from: 0, to: max(0.02, progress))
                     .stroke(UniColors.Text.primary, style: StrokeStyle(lineWidth: 6, lineCap: .round))
                     .rotationEffect(.degrees(-90))
-                Image("LogoCircle")
-                    .resizable().scaledToFit()
-                    .frame(width: 60, height: 60)
+                ApertureAppLogo(size: 60)
                     .transition(reduceMotion ? .opacity : .scale.combined(with: .opacity))
             }
         }

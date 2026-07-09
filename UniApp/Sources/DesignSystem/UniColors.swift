@@ -255,7 +255,7 @@ enum UniColors {
             static let tint = Color(
                 uiColor: UIColor { traits in
                     traits.userInterfaceStyle == .dark
-                        ? .tertiarySystemGroupedBackground
+                        ? .systemBlue
                         : .label
                 }
             )
@@ -265,7 +265,13 @@ enum UniColors {
 
         enum Secondary {
             static let label = Color(uiColor: .label)
-            static let tint = Primary.tint
+            static let tint = Color(
+                uiColor: UIColor { traits in
+                    traits.userInterfaceStyle == .dark
+                        ? .tertiarySystemGroupedBackground
+                        : .label
+                }
+            )
             static let disabledTint = Color(uiColor: .quaternarySystemFill)
             static let disabledLabel = Color(uiColor: .tertiaryLabel)
         }
@@ -312,21 +318,15 @@ enum UniColors {
         }
 
         /// Primary CTA (`UniButton.primary` → `.glassProminent`).
-        ///
-        /// Button fill deliberately does NOT use `Color.accentColor`.
-        /// Aperture's accent is the brand mark color: Ink in light mode,
-        /// Cloud in dark mode. Cloud is perfect for marks, but terrible
-        /// as a prominent button fill on a black screen because white
-        /// glass + white glyphs disappear. Primary buttons are therefore
-        /// filled controls: brand ink in light mode, a raised control
-        /// surface in dark mode. The dark control surface is deliberately
-        /// one step above `Card.background`, so buttons and cards never
-        /// collapse into the same tone.
+        /// Light mode uses brand ink; dark mode uses the platform blue
+        /// action color so the primary action stays unmistakable.
         static let primaryLabel = Primary.label
         static let controlSurface = Primary.tint
         static let primaryTint = Primary.tint
 
-        /// Secondary CTA (`UniButton.secondary` → `.glass`).
+        /// Secondary CTA (`UniButton.secondary`). In dark mode the button
+        /// style promotes this neutral fill to raised glass so it does not
+        /// read like a disabled control.
         static let secondaryLabel = Secondary.label
         static let secondaryTint = Secondary.tint
 
@@ -372,15 +372,18 @@ enum UniColors {
     enum Input {
         /// Filled input surface. Kept independent from `Card` so text
         /// fields stay visibly editable on top of both light cards and
-        /// dark grouped pages.
-        static let background = Color(uiColor: .secondarySystemFill)
-        static let backgroundElevated = Color(uiColor: .tertiarySystemFill)
+        /// dark grouped pages. Uses the softer system fill tier so inputs
+        /// sit gently on the grouped page instead of reading as heavy gray
+        /// blocks.
+        static let background = Color(uiColor: .tertiarySystemFill)
+        static let focusedBackground = Color(uiColor: .secondarySystemGroupedBackground)
+        static let backgroundElevated = Color(uiColor: .quaternarySystemFill)
         static let text = Text.primary
         static let placeholder = Text.placeholder
         static let icon = Icon.secondary
         static let revealIcon = Icon.secondary
         static let border = Color.clear
-        static let focusedBorder = Color(uiColor: .separator)
+        static let focusedBorder = Color.clear
         static let disabledBackground = Color(uiColor: .quaternarySystemFill)
         static let disabledText = Text.disabled
     }
@@ -658,6 +661,11 @@ enum UniColors {
         /// soft white in dark mode. Use for the splash iris and the
         /// onboarding welcome-slide hero.
         static let mark = Color("BrandMark")
+        /// Adaptive app-logo seal surface. The seal intentionally inverts
+        /// with appearance: dark disc in light mode, white disc in dark mode.
+        static let logoDisc = Color(uiColor: .label)
+        /// Adaptive app-logo iris drawn inside `logoDisc`.
+        static let logoIris = Color(uiColor: .systemBackground)
     }
 
     // MARK: - WalletAvatar (curated per-wallet identity palette)

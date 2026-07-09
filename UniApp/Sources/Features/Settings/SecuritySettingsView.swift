@@ -7,148 +7,53 @@ import SwiftUI
 struct SecuritySettingsView: View {
     @GRDBStorage("pinEnabled") private var pinEnabled: Bool = false
     @GRDBStorage("biometricEnabled") private var biometricEnabled: Bool = false
-    // Per-action Face ID gate (2026-06-20). Secure default ON; only takes
-    // effect when Face ID is enabled. Enforced in SendReviewView.
+    // Per-action biometric gate (2026-06-20). Secure default ON; only takes
+    // effect when biometrics are enabled. Enforced in SendReviewView.
     @GRDBStorage(PinCodePreference.requireBiometricForSendKey) private var requireForSend: Bool = true
+    @GRDBStorage(PinCodePreference.forgotPasscodeResetEnabledKey) private var forgotPasscodeResetEnabled: Bool = false
+    @GRDBStorage(PinCodePreference.forgotPasscodeResetEducationSeenKey) private var forgotPasscodeResetEducationSeen: Bool = false
     // iOS-style "Erase Data": wipe the app after N failed lock-screen passcode
     // attempts. OFF by default; arming it shows a confirmation first. Enforced
     // in `AppLockView` against `PinCodeStorage`'s dedicated unlock counter.
     @GRDBStorage("eraseDataAfterFailedAttempts") private var eraseDataEnabled: Bool = false
     @GRDBStorage(AutoLockPreference.storageKey) private var autoLockRaw: Int = AutoLockPreference.defaultValue
-    @Environment(\.dismiss) private var dismiss
 
     @State private var isShowingPinSetup: Bool = false
     @State private var isShowingPinChange: Bool = false
     @State private var isShowingDisableVerify: Bool = false
     @State private var biometricAvailable: Bool = false
+    @State private var biometryType: BiometricService.BiometryType = .none
     /// Confirms ARMING "Erase Data" — a destructive auto-wipe, so it's never
     /// turned on by a single stray tap. Turning it OFF needs no confirm.
     @State private var isShowingEraseDataConfirm: Bool = false
-
-    /// Per the user's 2026-06-06 direction: entering Settings →
-    /// Security itself must be gated behind passcode, the same way
-    /// Apple gates Settings → Touch ID & Passcode.
-    ///
-    /// **Passcode-only since 2026-06-25 (user direction):** even when
-    /// Face ID is enabled for app unlock or sending, entering Security
-    /// must require the typed app passcode. The gate passes
-    /// `allowsBiometrics: false`, so `PinCodeView(.verify)` never
-    /// auto-prompts Face ID and never renders the biometric keypad key.
-    /// `isUnlocked` is `false` on first appear; the fullScreenCover below
-    /// shows the verify keypad. On successful verify we flip the flag and
-    /// dismiss the cover, revealing the real settings list. If the user
-    /// cancels the verify, the navigation pops back to the Settings root.
-    ///
-    /// **Cold-launch restoration (2026-06-17):** the Security route is
-    /// excluded from `ScreenRestoration`'s Settings stack
-    /// (`SettingsDestination.isColdLaunchRestorable == false`), so
-    /// closing + reopening the app never lands back inside Security —
-    /// the user returns to the Settings root and re-enters with a fresh
-    /// passcode prompt.
-    ///
-    /// **The flag means "this visit is authorized" (2026-06-13).**
-    /// A user who enters with NO passcode set is authorized by
-    /// definition — there is nothing to verify against — so
-    /// `onAppear` marks the visit unlocked. Without that, creating
-    /// a passcode mid-visit flipped `PinCodeStorage.hasPin` to true
-    /// while `isUnlocked` was still false, and the gate re-armed
-    /// against the very passcode the user had just typed twice:
-    /// the list vanished to the empty backdrop and a spurious
-    /// verify prompt appeared (user report 2026-06-13).
-    @State private var isUnlocked: Bool = false
+    /// First-enable education for the lock-screen forgot-passcode reset hatch.
+    /// The toggle remains off until the user explicitly enables it from the
+    /// sheet.
+    @State private var isShowingForgotPasscodeResetExplanation: Bool = false
 
     var body: some View {
-        Group {
-            if isUnlocked || !PinCodeStorage.hasPin {
-                content
-            } else {
-                // Empty backdrop while gating — the actual settings
-                // list is hidden behind the fullScreenCover, so a
-                // quick glance at the screen below the cover doesn't
-                // briefly leak the toggles before auth.
-                UniColors.Background.primary.ignoresSafeArea()
-            }
-        }
+        content
         .background(UniColors.Background.primary)
         .navigationTitle(Text("Security"))
         .navigationBarTitleDisplayMode(.large)
         .onAppear {
-            biometricAvailable = BiometricService().isAvailable
+            refreshBiometryState()
             syncBiometricActionTogglesWithMaster()
-            // No passcode ⇒ nothing to gate ⇒ the visit is
-            // authorized for its whole lifetime, including after a
-            // passcode is created mid-visit (see `isUnlocked` doc).
-            if !PinCodeStorage.hasPin {
-                isUnlocked = true
-            }
         }
-        .fullScreenCover(isPresented: shouldShowGate) {
-            NavigationStack {
-                PinCodeView(
-                    mode: .verify,
-                    onComplete: { _ in
-                        isUnlocked = true
-                    },
-                    onCancel: {
-                        // User declined to authenticate — pop back
-                        // to the previous Settings level.
-                        dismiss()
-                    },
-                    // Passcode-only per user direction 2026-06-25.
-                    // Face ID may be enabled inside Security for app
-                    // unlock / send actions, but it cannot be used to
-                    // enter this screen.
-                    allowsBiometrics: false,
-                    showsNavigationControls: false
-                )
-                .toolbar {
-                    ToolbarItem(placement: .topBarLeading) {
-                        Button { dismiss() } label: {
-                            Image(systemName: "xmark")
-                                .font(.system(size: 17, weight: .semibold))
-                        }
-                        .accessibilityLabel(Text("Cancel"))
-                    }
-                }
-            }
-            .uniAppEnvironment()
-            .presentationBackground(UniColors.Background.primary)
-        }
-    }
-
-    /// `fullScreenCover` binding that's `true` only when the user
-    /// is unauthenticated AND has a passcode set. Wallets with no
-    /// passcode (fresh installs, users who explicitly skipped)
-    /// fall through and see the list immediately — there's
-    /// nothing to gate.
-    private var shouldShowGate: Binding<Bool> {
-        Binding(
-            get: { !isUnlocked && PinCodeStorage.hasPin },
-            set: { _ in
-                // Intentionally inert. The cover's visibility is
-                // derived state — only `PinCodeView`'s `onComplete`
-                // may flip `isUnlocked`. Treating any dismissal of
-                // the cover (including Cancel) as success would be
-                // an authentication bypass; cancelling pops back to
-                // the Settings root via `onCancel` instead.
-            }
-        )
     }
 
     private var content: some View {
         List {
-            // LOCK — passcode + Face ID master toggle. BOTH are always
-            // visible so the user can always find Face ID (2026-06-20 user
-            // report: "I don't see Face ID to enable"). When no passcode is
-            // set, the Face ID toggle is greyed with a footer hint — exactly
-            // how iOS gates Face ID behind a passcode — instead of hiding it.
+            // LOCK — passcode + the current device biometric, if available.
+            // The biometric row is hidden when iOS reports no enrolled
+            // biometric policy, and its name/icon follow the hardware.
             Section {
                 if !pinEnabled {
                     pinRow // "Turn Passcode On"
                 }
                 if biometricAvailable {
                     // Disabled (greyed, non-interactive) until a passcode
-                    // exists — Face ID needs the passcode as its fallback.
+                    // exists — biometrics need the passcode as fallback.
                     biometricRow
                         .disabled(!pinEnabled)
                         .opacity(pinEnabled ? 1 : 0.5)
@@ -156,22 +61,22 @@ struct SecuritySettingsView: View {
             } header: {
                 Text("Lock").font(UniTypography.footnote).foregroundStyle(UniColors.Text.tertiary)
             } footer: {
-                Text(lockFooter)
+                Text(verbatim: lockFooter)
                     .font(UniTypography.footnote)
                     .foregroundStyle(UniColors.Text.tertiary)
                     .fixedSize(horizontal: false, vertical: true)
             }
 
-            // "Use Face ID For:" — iOS register. Shown whenever the device
-            // has Face ID; rows are greyed until Face ID is on (which needs a
-            // passcode), the same way iOS greys these until the master is on.
+            // "Use <biometry> For:" — iOS register. Shown whenever the
+            // current device has enrolled biometrics; rows are greyed until
+            // the master toggle is on.
             if biometricAvailable {
                 Section {
-                    faceIDActionRow("Sending transactions", isOn: $requireForSend)
+                    biometricActionRow("Sending transactions", isOn: $requireForSend)
                 } header: {
-                    Text("Use Face ID For").font(UniTypography.footnote).foregroundStyle(UniColors.Text.tertiary)
+                    Text(verbatim: "Use \(biometryType.displayName) For").font(UniTypography.footnote).foregroundStyle(UniColors.Text.tertiary)
                 } footer: {
-                    Text("Require Face ID before each of these actions. If Face ID fails, you can fall back to your passcode.")
+                    Text(verbatim: "Require \(biometryType.displayName) before each of these actions. If it fails, you can fall back to your passcode.")
                         .font(UniTypography.footnote)
                         .foregroundStyle(UniColors.Text.tertiary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -223,6 +128,7 @@ struct SecuritySettingsView: View {
                 // ERASE DATA — iOS-style auto-wipe after repeated wrong
                 // passcodes. Only offered once a passcode is set (there's
                 // nothing to fail without one). Disableable.
+                forgotPasscodeResetSection
                 eraseDataSection
             }
 
@@ -252,24 +158,33 @@ struct SecuritySettingsView: View {
         } message: {
             Text("After 10 failed passcode attempts, every wallet and all data on this iPhone will be erased. Make sure your recovery phrases are backed up — a wallet you didn't back up can't be recovered.")
         }
+        .sheet(isPresented: $isShowingForgotPasscodeResetExplanation) {
+            ForgotPasscodeResetEnableSheet(
+                resetSecurityItem: resetSecurityItemName,
+                onEnable: {
+                    forgotPasscodeResetEducationSeen = true
+                    forgotPasscodeResetEnabled = true
+                    isShowingForgotPasscodeResetExplanation = false
+                },
+                onCancel: {
+                    isShowingForgotPasscodeResetExplanation = false
+                }
+            )
+            .uniAppEnvironment()
+            .intrinsicHeightSheet()
+            .presentationBackground(UniColors.Background.primary)
+        }
         // navigationTitle / navigationBarTitleDisplayMode /
-        // background / onAppear / Security-gate fullScreenCover are
-        // all attached to the outer Group above. The per-action
-        // covers (PinSetup / PinChange / PinDisableVerify) stay
-        // here because they're only reachable once the user is
-        // unlocked and looking at this list.
+        // background / onAppear are attached to the outer view above.
+        // The per-action covers (PinSetup / PinChange /
+        // PinDisableVerify) stay here because they're only reachable
+        // once the user is already looking at this list.
         .fullScreenCover(isPresented: $isShowingPinSetup) {
             // Re-uses the canonical PIN setup flow per Rule #17.
             // On finish, pinEnabled has been written by PinSetupFlow's
-            // internal handler. Mark the visit authorized BEFORE
-            // dismissing — the user just chose and confirmed this
-            // passcode seconds ago; re-verifying it immediately is
-            // hostile and was the Bug-B loop (belt-and-braces with
-            // the `onAppear` authorization; this also covers the
-            // entered-with-no-PIN → created-one path directly).
+            // internal handler.
             PinSetupFlow(
                 onFinish: {
-                    isUnlocked = true
                     isShowingPinSetup = false
                 },
                 onBack:   { isShowingPinSetup = false }
@@ -301,7 +216,7 @@ struct SecuritySettingsView: View {
 
     // MARK: - Rows
 
-    /// iOS "Face ID & Passcode" register: a single blue "Turn Passcode On"
+    /// iOS passcode register: a single blue "Turn Passcode On"
     /// action row, no leading icon, no status pill (2026-06-20 user
     /// direction — match Apple's exact wording + style). The On state's
     /// Change / Turn-Off actions live in their own section below.
@@ -334,12 +249,12 @@ struct SecuritySettingsView: View {
             }
         )) {
             HStack(spacing: UniSpacing.s) {
-                Image(systemName: "faceid")
+                Image(systemName: biometryType.systemImageName)
                     .font(.system(size: 18, weight: .regular))
                     .foregroundStyle(UniColors.Icon.secondary)
                     .frame(width: 28, alignment: .center)
                     .accessibilityHidden(true)
-                Text("Face ID")
+                Text(verbatim: biometryType.displayName)
                     .font(UniTypography.body)
                     .foregroundStyle(UniColors.Text.primary)
             }
@@ -349,9 +264,9 @@ struct SecuritySettingsView: View {
         .listRowBackground(UniColors.List.rowBackground)
     }
 
-    /// A per-action Face ID toggle. Disabled (greyed) until Face ID is on,
-    /// matching iOS's "Use Face ID For" rows.
-    private func faceIDActionRow(_ title: LocalizedStringKey, isOn: Binding<Bool>) -> some View {
+    /// A per-action biometric toggle. Disabled (greyed) until biometrics are
+    /// on, matching iOS's "Use <biometry> For" rows.
+    private func biometricActionRow(_ title: LocalizedStringKey, isOn: Binding<Bool>) -> some View {
         UniToggle(isOn: isOn) {
             Text(title)
                 .font(UniTypography.body)
@@ -364,19 +279,58 @@ struct SecuritySettingsView: View {
     }
 
     /// Footer under the Lock section. Names what the passcode does and, when
-    /// no passcode is set, that Face ID needs one first (so the greyed Face ID
-    /// toggle above is explained rather than mysterious — 2026-06-20).
-    private var lockFooter: LocalizedStringKey {
+    /// no passcode is set, that biometrics need one first.
+    private var lockFooter: String {
         if pinEnabled {
-            return "Your passcode unlocks Aperture. Face ID is a faster shortcut to the same lock — you can always fall back to passcode."
+            if biometricAvailable {
+                return "Your passcode unlocks Aperture. \(biometryType.displayName) is a faster shortcut to the same lock — you can always fall back to passcode."
+            } else {
+                return "Your passcode unlocks Aperture and protects this iPhone's copy of your wallets."
+            }
         } else if biometricAvailable {
-            return "Without a passcode, your wallet is only protected by your iPhone's lock screen. Turn on a passcode to require authentication every time you open Aperture — and to use Face ID."
+            return "Without a passcode, your wallet is only protected by your iPhone's lock screen. Turn on a passcode to require authentication every time you open Aperture — and to use \(biometryType.displayName)."
         } else {
             return "Without a passcode, your wallet is only protected by your iPhone's lock screen. Turn on a passcode to require authentication every time you open Aperture."
         }
     }
 
     // MARK: - Erase Data section
+
+    /// Optional lock-screen recovery hatch. Off by default: if enabled, anyone
+    /// holding this unlocked iPhone can erase Aperture from the forgot-passcode
+    /// sheet. It never reveals secrets, but it does remove local wallet access.
+    private var forgotPasscodeResetSection: some View {
+        Section {
+            UniToggle(isOn: Binding(
+                get: { forgotPasscodeResetEnabled },
+                set: { newValue in
+                    if newValue {
+                        if forgotPasscodeResetEducationSeen {
+                            forgotPasscodeResetEnabled = true
+                        } else {
+                            isShowingForgotPasscodeResetExplanation = true
+                        }
+                    } else {
+                        forgotPasscodeResetEnabled = false
+                    }
+                }
+            )) {
+                Text("Reset from Forgot Passcode")
+                    .font(UniTypography.body)
+                    .foregroundStyle(UniColors.Text.primary)
+            }
+            .tint(UniColors.Button.Primary.tint)
+            .padding(.vertical, UniSpacing.xxs)
+            .listRowBackground(UniColors.List.rowBackground)
+        } header: {
+            Text("Recovery").font(UniTypography.footnote).foregroundStyle(UniColors.Text.tertiary)
+        } footer: {
+            Text("When enabled, the forgot-passcode sheet can erase Aperture from this iPhone. Use this only if every wallet is backed up, because local wallets, recovery phrases, passcodes, and app data are removed.")
+                .font(UniTypography.footnote)
+                .foregroundStyle(UniColors.Text.tertiary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
 
     /// iOS-style "Erase Data" — auto-wipe after repeated wrong passcodes.
     /// Destructive accent; arming it routes through a confirmation. The
@@ -411,9 +365,8 @@ struct SecuritySettingsView: View {
 
     @MainActor
     private func tryEnableBiometric() async {
-        let outcome = await BiometricService().authenticate(
-            reason: LocalizedStringResource("Enable Face ID for Aperture.")
-        )
+        let service = BiometricService()
+        let outcome = await service.authenticate(reason: service.biometryType.enableReason)
         if case .success = outcome {
             setBiometricEnabled(true)
             BiometricEnrollmentTracker.captureSnapshot(database: AppDatabase.shared)
@@ -431,6 +384,62 @@ struct SecuritySettingsView: View {
         guard pinEnabled, biometricEnabled else {
             requireForSend = false
             return
+        }
+    }
+
+    private func refreshBiometryState() {
+        let service = BiometricService()
+        biometricAvailable = service.isAvailable
+        biometryType = service.biometryType
+        if !service.isAvailable {
+            setBiometricEnabled(false)
+        }
+    }
+
+    private var resetSecurityItemName: String {
+        biometricAvailable ? "\(biometryType.displayName) setting" : "security settings"
+    }
+}
+
+private struct ForgotPasscodeResetEnableSheet: View {
+    let resetSecurityItem: String
+    let onEnable: () -> Void
+    let onCancel: () -> Void
+
+    var body: some View {
+        UniSheet(
+            title: "Enable lock-screen reset?",
+            icon: "exclamationmark.triangle",
+            iconTint: UniColors.Feedback.Warning.foreground
+        ) {
+            VStack(alignment: .leading, spacing: UniSpacing.m) {
+                UniBody(
+                    text: "This adds a Reset Aperture option to the forgot-passcode sheet.",
+                    color: UniColors.Text.secondary
+                )
+                .fixedSize(horizontal: false, vertical: true)
+
+                Text(verbatim: "It can help if you forget your passcode and have your recovery phrase backed up. Resetting erases every local wallet, recovery phrase, passcode, \(resetSecurityItem), and app cache from this iPhone.")
+                    .font(UniTypography.body)
+                    .foregroundStyle(UniColors.Text.secondary)
+                    .multilineTextAlignment(.leading)
+                .fixedSize(horizontal: false, vertical: true)
+
+                UniBody(
+                    text: "Only enable this if you understand that someone holding your unlocked iPhone could erase Aperture from the passcode screen. They cannot see your funds, but you would need your recovery phrase to restore access.",
+                    color: UniColors.Text.secondary
+                )
+                .fixedSize(horizontal: false, vertical: true)
+            }
+        } actions: {
+            VStack(spacing: UniSpacing.s) {
+                UniButton(title: "Enable Reset", variant: .destructive) {
+                    onEnable()
+                }
+                UniButton(title: "Not now", variant: .secondary) {
+                    onCancel()
+                }
+            }
         }
     }
 }
@@ -496,7 +505,7 @@ struct AutoLockPickerView: View {
                     .listRowBackground(UniColors.List.rowBackground)
                 }
             } footer: {
-                Text("Aperture locks when this much time has passed in the background. Re-opening requires PIN or Face ID.")
+                Text("Aperture locks when this much time has passed in the background. Re-opening requires authentication.")
                     .font(UniTypography.footnote)
                     .foregroundStyle(UniColors.Text.tertiary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -539,7 +548,8 @@ struct PinChangeFlow: View {
                             step = .setNew
                         },
                         onCancel: { onFinish() },
-                        showsNavigationControls: false
+                        showsNavigationControls: false,
+                        accessContext: .changePasscode
                     )
                 case .setNew:
                     PinCodeView(
@@ -613,7 +623,8 @@ struct PinDisableVerifyFlow: View {
                 mode: .verify,
                 onComplete: { _ in onSuccess() },
                 onCancel: { onCancel() },
-                showsNavigationControls: false
+                showsNavigationControls: false,
+                accessContext: .turnOffPasscode
             )
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {

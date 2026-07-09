@@ -10,9 +10,12 @@ struct PinSkipWarningSheet: View {
     let onSkipAnyway: () -> Void
 
     var body: some View {
-        UniSheet(title: "Skip passcode setup?") {
+        UniSheet(
+            title: "Skip passcode setup?",
+            icon: "exclamationmark.shield.fill",
+            iconTint: UniColors.Feedback.Warning.foreground
+        ) {
             VStack(alignment: .leading, spacing: UniSpacing.l) {
-                hero
                 copyBlock
                 footnoteLine
             }
@@ -27,18 +30,6 @@ struct PinSkipWarningSheet: View {
                     }
                 }
             }
-        }
-    }
-
-    private var hero: some View {
-        HStack {
-            Spacer()
-            Image(systemName: "exclamationmark.shield.fill")
-                .font(.system(size: 48, weight: .regular))
-                .symbolRenderingMode(.hierarchical)
-                .foregroundStyle(UniColors.Feedback.Warning.foreground)
-                .accessibilityHidden(true)
-            Spacer()
         }
     }
 

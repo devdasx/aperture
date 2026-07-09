@@ -6,7 +6,7 @@ import SwiftUI
 ///   1. Identity (welcome)
 ///   2. Reach (one wallet, many chains)
 ///   3. Self-custody (keys on device)
-///   4. Biometric protection (Face ID)
+///   4. Device protection
 ///   5. Recovery (the 24-word truth)
 ///   6. Receive (verb)
 ///   7. Send with real fees (verb + honesty)
@@ -62,8 +62,8 @@ struct OnboardingSlide: Identifiable, Sendable {
         OnboardingSlide(
             id: 3,
             illustration: .faceID,
-            title: "Locked by Face ID.",
-            body: "Every signature is gated by your biometrics. No password to forget."
+            title: "Locked by your device.",
+            body: "Every sensitive action can require your device lock. No account password to forget."
         ),
         OnboardingSlide(
             id: 4,

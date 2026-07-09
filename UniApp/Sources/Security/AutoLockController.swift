@@ -3,8 +3,8 @@ import OSLog
 
 /// Tracks the app's `ScenePhase` transitions so the wallet home can
 /// present the lock screen after the configured auto-lock duration of
-/// inactivity. Only activates when the user has a PIN set
-/// (`PinCodePreference.isPinEnabled()`); when PIN is disabled, this
+/// inactivity. Only activates when the user has PIN protection set
+/// (the preference flag or the actual `PinCodeStorage` material); when PIN is disabled, this
 /// controller stays idle and the wallet remains accessible whenever the
 /// scene is active.
 ///
@@ -19,7 +19,7 @@ import OSLog
 /// keeps every bit of its navigation and presentation state.
 ///
 /// **`.inactive` is NOT a departure (2026-06-13).** System UI — the
-/// paste-permission prompt, the Face ID sheet, in-app alerts, Control
+/// paste-permission prompt, biometric sheets, in-app alerts, Control
 /// Center, notification pulls, app-switcher peeks — drives the scene
 /// to `.inactive` without the app ever leaving the foreground.
 /// Stamping the departure there armed the lock on every system prompt
@@ -58,7 +58,7 @@ final class AutoLockController {
 
     /// When the scene most recently entered `.background`. Nil while the
     /// scene has not actually left the foreground — `.inactive` bounces
-    /// (system prompts, Face ID sheets) never set this.
+    /// (system prompts, biometric sheets) never set this.
     private var backgroundedAt: Date?
 
     private let log = Logger(subsystem: "com.thuglife.aperture", category: "auto-lock")
@@ -69,27 +69,28 @@ final class AutoLockController {
         self.isLocked = pinEnabled
     }
 
+    /// Called after app bootstrap, once GRDB preferences are configured.
+    /// `AutoLockController` is created as SwiftUI `@State` before
+    /// `UniAppApp.init()` completes, so an initial preference read can
+    /// legitimately observe the default. The actual PIN material is the
+    /// authoritative security source: if either the flag or PIN blobs exist,
+    /// a fresh launch must require unlock.
+    func refreshLaunchLockState() {
+        guard isPinProtectionActive() else {
+            isLocked = false
+            backgroundedAt = nil
+            return
+        }
+        isLocked = true
+    }
+
     /// Called from `UniAppApp`'s `.onChange(of: scenePhase)` with the
-    /// new phase. Reads the auto-lock duration + pinEnabled flag from
-    /// GRDB at call time so the controller doesn't need a View context.
+    /// new phase. Reads the auto-lock duration + current PIN-protection state
+    /// from GRDB at call time so the controller doesn't need a View context.
     func handleScenePhaseChange(_ phase: ScenePhase) {
         isSceneActive = (phase == .active)
 
-        // Last-screen restoration stamp (2026-06-13). A real
-        // `.background` entry is the moment the user leaves the app —
-        // including the force-quit path (iOS delivers `.background`
-        // before terminating a foregrounded app killed from the
-        // switcher). Stamped BEFORE the PIN gate below because
-        // restoration is independent of the lock and must work for
-        // users without a PIN. `.inactive` deliberately does not
-        // stamp — same "system prompts aren't departures" reasoning
-        // as the lock contract documented on this type.
-        if phase == .background {
-            ScreenRestoration.stampBackground()
-        }
-
-        let pinEnabled = PinCodePreference.isPinEnabled()
-        guard pinEnabled else {
+        guard isPinProtectionActive() else {
             // No PIN configured: never lock.
             isLocked = false
             backgroundedAt = nil
@@ -108,7 +109,7 @@ final class AutoLockController {
         case .inactive:
             // Deliberately a no-op for the lock (see the type doc):
             // system prompts hold the scene `.inactive` without leaving
-            // the app. Arming here would also let the unlock Face ID
+            // the app. Arming here would also let the unlock biometric
             // prompt re-arm the very lock it is unlocking — its own
             // sheet bounces `.inactive`, never `.background`.
             break
@@ -150,8 +151,12 @@ final class AutoLockController {
     /// Manually re-lock the wallet (e.g. a future "Lock now" button in
     /// Settings → Security). Idempotent.
     func lockNow() {
-        guard PinCodePreference.isPinEnabled() else { return }
+        guard isPinProtectionActive() else { return }
         isLocked = true
+    }
+
+    private func isPinProtectionActive() -> Bool {
+        PinCodePreference.isPinEnabled() || PinCodeStorage.hasPin
     }
 }
 

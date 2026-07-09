@@ -92,7 +92,6 @@ struct PrivateKeyEntryView: View {
         .uniBottomActionBar {
             continueRegion
                 .padding(.horizontal, UniSpacing.l)
-                .padding(.bottom, UniSpacing.l)
         }
         .sheet(isPresented: $isShowingGuide) {
             PrivateKeyGuideSheet(onDismiss: { isShowingGuide = false })
@@ -252,7 +251,6 @@ struct PrivateKeyReviewView: View {
                     }
                 }
                 .padding(.horizontal, UniSpacing.l)
-                .padding(.bottom, UniSpacing.l)
             }
         }
         .task {

@@ -3,7 +3,7 @@ import SwiftUI
 /// Full-screen lock surface shown over the app when
 /// `AutoLockController.isLocked` is `true`. Wraps the canonical
 /// `PinCodeView(mode: .verify)` per Rule #17 § H — same dots, same
-/// keypad, same Face ID fallback position as the create-wallet PIN
+/// keypad, same biometric fallback position as the create-wallet PIN
 /// screen. Muscle memory IS a security property.
 ///
 /// **Hosting (2026-06-13 — detached overlay window).** Rendered by
@@ -19,7 +19,7 @@ import SwiftUI
 /// **Background-return path:** if the time spent in `.background`
 /// exceeded `AutoLockPreference.resolvedDuration(...)`, this appears
 /// on the `.active` phase transition, beneath the fading privacy
-/// mask. `.inactive` bounces (system prompts, Face ID sheets) never
+/// mask. `.inactive` bounces (system prompts, biometric sheets) never
 /// arm it.
 ///
 /// **Forgot PIN:** routes to a Rule #16-honest sheet that explains
@@ -78,7 +78,8 @@ struct AppLockView: View {
                 attemptsRemaining: {
                     guard eraseDataEnabled else { return nil }
                     return max(0, PinCodeStorage.eraseDataThreshold - PinCodeStorage.unlockFailureCount())
-                }
+                },
+                accessContext: .unlockApp
             )
         }
         // Opaque backing. `AppLockView` used to ship inside a
@@ -94,7 +95,14 @@ struct AppLockView: View {
         // free.
         .background(UniColors.Background.primary.ignoresSafeArea())
         .sheet(isPresented: $isShowingForgotSheet) {
-            ForgotPinSheet()
+            ForgotPinSheet(
+                onResetAperture: {
+                    guard !isErasing else { return }
+                    isShowingForgotSheet = false
+                    isErasing = true
+                    Task { await eraseEverything() }
+                }
+            )
                 .uniAppEnvironment()
                 .intrinsicHeightSheet()
                 .presentationBackground(UniColors.Background.primary)
@@ -138,34 +146,75 @@ struct AppLockView: View {
 /// account, no server-side reset.
 private struct ForgotPinSheet: View {
     @Environment(\.dismiss) private var dismiss
+    @GRDBStorage(PinCodePreference.forgotPasscodeResetEnabledKey) private var resetFromForgotPasscodeEnabled: Bool = false
+
+    let onResetAperture: () -> Void
+
+    @State private var isConfirmingReset: Bool = false
+    @State private var biometricService = BiometricService()
 
     var body: some View {
-        UniSheet(title: "Forgot your passcode?") {
+        UniSheet(
+            title: "Forgot your passcode?",
+            icon: "key.slash",
+            iconTint: UniColors.Feedback.Warning.foreground
+        ) {
             VStack(alignment: .leading, spacing: UniSpacing.m) {
-                hero
                 UniBody(
                     text: "Aperture does not store your passcode. There is no reset link, no email recovery, no support team that can unlock your wallet for you.",
                     color: UniColors.Text.secondary
                 )
                 .fixedSize(horizontal: false, vertical: true)
-                UniBody(
-                    text: "To regain access, reinstall Aperture and restore your wallet from your recovery phrase. The phrase is the only key.",
-                    color: UniColors.Text.secondary
-                )
-                .fixedSize(horizontal: false, vertical: true)
+
+                if resetFromForgotPasscodeEnabled {
+                    Text(verbatim: "Because lock-screen reset is enabled, you can erase Aperture from this iPhone and set it up again. This removes every local wallet, recovery phrase, passcode, \(resetSecurityItemName), transaction cache, custom token, and app setting from this device.")
+                        .font(UniTypography.body)
+                        .foregroundStyle(UniColors.Text.secondary)
+                        .multilineTextAlignment(.leading)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                    UniBody(
+                        text: "Only continue if your recovery phrases are backed up. Any wallet that was not backed up cannot be recovered.",
+                        color: UniColors.Feedback.Error.foreground
+                    )
+                    .fixedSize(horizontal: false, vertical: true)
+                } else {
+                    UniBody(
+                        text: "To regain access, reinstall Aperture and restore your wallet from your recovery phrase. The phrase is the only key.",
+                        color: UniColors.Text.secondary
+                    )
+                    .fixedSize(horizontal: false, vertical: true)
+
+                    UniBody(
+                        text: "You can enable lock-screen reset later from Security settings while you still know your passcode. It is off by default so someone holding your phone cannot erase Aperture without your permission.",
+                        color: UniColors.Text.secondary
+                    )
+                    .fixedSize(horizontal: false, vertical: true)
+                }
             }
         } actions: {
-            UniButton(title: "Got it", variant: .primary) { dismiss() }
+            VStack(spacing: UniSpacing.s) {
+                if resetFromForgotPasscodeEnabled {
+                    UniButton(title: "Reset Aperture", variant: .destructive) {
+                        isConfirmingReset = true
+                    }
+                }
+                UniButton(title: "Got it", variant: resetFromForgotPasscodeEnabled ? .secondary : .primary) {
+                    dismiss()
+                }
+            }
+        }
+        .alert(Text("Erase Aperture from this iPhone?"), isPresented: $isConfirmingReset) {
+            Button("Cancel", role: .cancel) {}
+            Button("Erase Aperture", role: .destructive) {
+                onResetAperture()
+            }
+        } message: {
+            Text(verbatim: "This removes all local wallets, recovery phrases, passcodes, \(resetSecurityItemName), transaction history cache, custom tokens, and app data from this device. Wallets can only be restored from their recovery phrases.")
         }
     }
 
-    private var hero: some View {
-        Image(systemName: "key.slash")
-            .font(.system(size: 44, weight: .light))
-            .symbolRenderingMode(.hierarchical)
-            .foregroundStyle(UniColors.Feedback.Warning.foreground)
-            .frame(maxWidth: .infinity, alignment: .center)
-            .padding(.bottom, UniSpacing.s)
-            .accessibilityHidden(true)
+    private var resetSecurityItemName: String {
+        biometricService.isAvailable ? "\(biometricService.biometryType.displayName) settings" : "security settings"
     }
 }
