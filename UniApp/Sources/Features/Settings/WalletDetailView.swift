@@ -314,22 +314,6 @@ struct WalletDetailView: View {
                 }
             }
 
-            // Custom tokens — Aperture reads what the contract says
-            // about itself, the user adds tokens by pasting contract
-            // addresses. Row is always visible (no count gate); the
-            // empty state inside `CustomTokensListView` does its own
-            // calm "no custom tokens yet" treatment.
-            Section {
-                customTokensRow
-            } header: {
-                Text("Tokens").font(UniTypography.footnote).foregroundStyle(UniColors.Text.tertiary)
-            } footer: {
-                Text("Add ERC-20 / SPL tokens by pasting their contract or mint address. Aperture reads name, symbol, and decimals from chain.")
-                    .font(UniTypography.footnote)
-                    .foregroundStyle(UniColors.Text.tertiary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-
             Section {
                 deleteRow(wallet)
             } footer: {
@@ -539,31 +523,6 @@ struct WalletDetailView: View {
             .uniListRowHitTarget()
         }
         .buttonStyle(.uniListRow)
-        .listRowBackground(UniColors.List.rowBackground)
-    }
-
-    /// Custom Tokens row — pushes `CustomTokensListView`. Reactive to
-    /// the live count of user-added tokens via GRDB observation inside that
-    /// view; this row just opens it.
-    private var customTokensRow: some View {
-        // NavigationLink supplies its OWN trailing disclosure chevron in
-        // an inset-grouped List — so the row carries NO manual chevron
-        // (a second one was the "two arrows" the user saw, 2026-06-19).
-        NavigationLink {
-            CustomTokensListView()
-        } label: {
-            HStack(spacing: UniSpacing.s) {
-                Image(systemName: "tag")
-                    .font(.system(size: 17, weight: .regular))
-                    .foregroundStyle(UniColors.Icon.accent)
-                    .frame(width: 28)
-                Text("Custom tokens")
-                    .font(UniTypography.body)
-                    .foregroundStyle(UniColors.Text.primary)
-                Spacer()
-            }
-            .padding(.vertical, UniSpacing.xxs)
-        }
         .listRowBackground(UniColors.List.rowBackground)
     }
 

@@ -52,9 +52,9 @@ struct ReceiveView: View {
     @State private var didSeedAssetPrefill: Bool = false
 
     /// Whether the "Add custom token" sheet is presented. The Receive
-    /// screen's toolbar opens this — the active wallet's currently
-    /// available chains preselect the most likely target (the first
-    /// EVM chain we find, else Solana).
+    /// options menu opens this — the active wallet's currently available
+    /// chains preselect the most likely target (the first EVM chain we
+    /// find, else Solana).
     @State private var isShowingAddCustomToken: Bool = false
 
     /// The chain the user tapped that has no derived address on the
@@ -117,6 +117,12 @@ struct ReceiveView: View {
                 ToolbarItem(placement: .topBarTrailing) {
                     Menu {
                         Button {
+                            navigationPath.append(ReceiveDestination.customTokens)
+                        } label: {
+                            Label("Custom tokens", systemImage: "tag")
+                        }
+
+                        Button {
                             isShowingAddCustomToken = true
                         } label: {
                             Label("Add custom token", systemImage: "plus")
@@ -158,6 +164,8 @@ struct ReceiveView: View {
                         tokenSymbol: tokenSymbol,
                         address: address
                     )
+                case .customTokens:
+                    CustomTokensListView(initialChainForAdd: firstSupportedCustomTokenChain)
                 }
             }
         }
@@ -350,6 +358,7 @@ struct ReceiveView: View {
 enum ReceiveDestination: Hashable, Codable {
     case networkPicker(ReceiveAsset)
     case qr(chain: SupportedChain, tokenSymbol: String?, address: String)
+    case customTokens
 }
 
 // MARK: - Codable for ReceiveAsset

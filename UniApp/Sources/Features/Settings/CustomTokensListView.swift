@@ -1,8 +1,8 @@
 import SwiftUI
 
-/// Settings → Wallets → <wallet> → Custom tokens. Lists every token
-/// the user has added via `AddCustomTokenSheet`, sectioned by chain
-/// with row-level delete affordances and a toolbar `+` to add more.
+/// Receive → options → Custom tokens. Lists every token the user has
+/// added via `AddCustomTokenSheet`, sectioned by chain with row-level
+/// delete affordances and a toolbar `+` to add more.
 ///
 /// **Design intent (Rule #2 §D.1):** "what tokens have I added, and
 /// can I get rid of one?" — one screen, list-format, swipe-to-delete

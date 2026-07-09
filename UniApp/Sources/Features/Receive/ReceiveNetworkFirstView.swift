@@ -85,6 +85,8 @@ struct ReceiveNetworkFirstView: View {
                         tokenSymbol: tokenSymbol,
                         address: address
                     )
+                case .customTokens:
+                    CustomTokensListView(initialChainForAdd: firstSupportedCustomTokenChain)
                 }
             }
         }
@@ -243,6 +245,14 @@ struct ReceiveNetworkFirstView: View {
         return sortedChains.filter {
             $0.displayName.localizedStandardContains(query) || $0.ticker.localizedStandardContains(query)
         }
+    }
+
+    private var firstSupportedCustomTokenChain: SupportedChain {
+        for chain in availableChains where chain.family == .evm {
+            return chain
+        }
+        if availableChains.contains(.solana) { return .solana }
+        return .ethereum
     }
 
     private func totals(for chain: SupportedChain) -> AssetPickerHoldings.Totals {
