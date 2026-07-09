@@ -26,6 +26,27 @@ struct SendAssetListView: View {
         "\(availableChains.map(\.rawValue).joined(separator: ","))|\(customTokenRecords.count)|\(assetRecords.count)|\(holdings.fingerprint)"
     }
 
+    private var searchQuery: String {
+        searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var catalogAssets: [CatalogAsset] {
+        let seededAssets = AssetCatalog.assets(from: assetRecords)
+        return seededAssets.isEmpty ? AssetCatalog.allAssets : seededAssets
+    }
+
+    private var customTokenSnapshots: [CustomTokenSnapshot] {
+        customTokenRecords.map { CustomTokenSnapshot(from: $0) }
+    }
+
+    private var canOfferCustomTokenAdd: Bool {
+        !searchQuery.isEmpty && CustomTokenSupport.hasSupportedChain(in: availableChains)
+    }
+
+    private var canAttemptContractLookup: Bool {
+        ContractTokenDiscovery.canAttemptLookup(query: searchQuery, availableChains: availableChains)
+    }
+
     var body: some View {
         List {
             if availableChains.isEmpty {
@@ -48,8 +69,8 @@ struct SendAssetListView: View {
         .task(id: rowsKey) {
             let tokens = SendAsset.tokens(
                 availableChains: Set(availableChains),
-                customTokens: customTokenRecords.map { CustomTokenSnapshot(from: $0) },
-                catalogAssets: AssetCatalog.assets(from: assetRecords)
+                customTokens: customTokenSnapshots,
+                catalogAssets: catalogAssets
             )
             sortedTokens = AssetPickerSort.tokens(tokens, holdings: holdings)
             sortedNatives = AssetPickerSort.natives(availableChains, holdings: holdings)
@@ -59,7 +80,7 @@ struct SendAssetListView: View {
     // MARK: - Filtering
 
     private var filteredNatives: [SupportedChain] {
-        let q = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let q = searchQuery
         guard !q.isEmpty else { return sortedNatives }
         return sortedNatives.filter {
             $0.displayName.localizedStandardContains(q) || $0.ticker.localizedStandardContains(q)
@@ -67,11 +88,18 @@ struct SendAssetListView: View {
     }
 
     private var filteredTokens: [SendAsset] {
-        let q = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let q = searchQuery
         guard !q.isEmpty else { return sortedTokens }
-        return sortedTokens.filter { asset in
-            guard case let .token(symbol, name, _) = asset else { return false }
-            return name.localizedStandardContains(q) || symbol.localizedStandardContains(q)
+        return sortedTokens.compactMap { asset in
+            guard case let .token(symbol, name, descriptors) = asset else { return nil }
+            if name.localizedStandardContains(q) || symbol.localizedStandardContains(q) {
+                return asset
+            }
+            let matchingDescriptors = descriptors.filter {
+                ContractTokenDiscovery.contractMatches($0.contract, chain: $0.chain, query: q)
+            }
+            guard !matchingDescriptors.isEmpty else { return nil }
+            return SendAsset.token(symbol: symbol, name: name, tokens: matchingDescriptors)
         }
     }
 
@@ -130,12 +158,31 @@ struct SendAssetListView: View {
     @ViewBuilder
     private var noResultsSection: some View {
         Section {
-            UniListEmptyState(
-                title: "No assets match your search.",
-                detail: "Try a coin name, token name, or ticker.",
-                mark: .icon(systemName: "magnifyingglass"),
-                minHeight: 260
-            )
+            VStack(spacing: UniSpacing.m) {
+                UniEmptyState(
+                    title: "No assets match your search.",
+                    detail: canOfferCustomTokenAdd
+                        ? "If this is an ERC-20, Solana, or TRON token, add it by contract address."
+                        : "Try a coin name, token name, or ticker.",
+                    mark: .icon(systemName: "magnifyingglass")
+                )
+
+                if canOfferCustomTokenAdd, canAttemptContractLookup {
+                    ContractTokenSearchPrompt(
+                        query: searchQuery,
+                        availableChains: availableChains,
+                        catalogAssets: catalogAssets,
+                        customTokens: customTokenSnapshots,
+                        onAdded: {}
+                    )
+                    .padding(.horizontal, UniSpacing.m)
+                }
+            }
+            .frame(maxWidth: .infinity)
+            .frame(minHeight: 300)
+            .listRowBackground(Color.clear)
+            .listRowSeparator(.hidden)
+            .listRowInsets(EdgeInsets())
         }
     }
 

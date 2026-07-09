@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// Add Custom Token sheet — paste a contract / mint, Aperture fetches
 /// the rest.
@@ -56,6 +57,10 @@ struct AddCustomTokenSheet: View {
     @State private var editedSymbol: String = ""
     @State private var validatedContract: String? = nil
     @State private var fetchTask: Task<Void, Never>? = nil
+    @State private var isImportingCSV: Bool = false
+    @State private var isExportingCSV: Bool = false
+    @State private var csvExportDocument = CustomTokenCSVDocument()
+    @State private var csvAlert: CSVAlert?
 
     init(
         initialChain: SupportedChain? = nil,
@@ -125,6 +130,33 @@ struct AddCustomTokenSheet: View {
             // Switching chain re-validates and re-fetches.
             scheduleFetch()
         }
+        .fileImporter(
+            isPresented: $isImportingCSV,
+            allowedContentTypes: [.commaSeparatedText, .plainText],
+            allowsMultipleSelection: false
+        ) { result in
+            handleCSVImport(result)
+        }
+        .fileExporter(
+            isPresented: $isExportingCSV,
+            document: csvExportDocument,
+            contentType: .commaSeparatedText,
+            defaultFilename: "aperture-custom-tokens.csv"
+        ) { result in
+            if case .failure(let error) = result {
+                csvAlert = CSVAlert(
+                    title: "Couldn't export CSV",
+                    message: error.localizedDescription
+                )
+            }
+        }
+        .alert(item: $csvAlert) { alert in
+            Alert(
+                title: Text(alert.title),
+                message: Text(alert.message),
+                dismissButton: .default(Text("OK"))
+            )
+        }
     }
 
     // MARK: - Sections
@@ -132,6 +164,8 @@ struct AddCustomTokenSheet: View {
     @ViewBuilder
     private var networkSelectionScreen: some View {
         List {
+            csvSection
+
             if filteredNetworkChoices.isEmpty {
                 Section {
                     UniListEmptyState(
@@ -172,6 +206,50 @@ struct AddCustomTokenSheet: View {
         .listStyle(.insetGrouped)
         .scrollContentBackground(.hidden)
         .searchable(text: $networkSearchText, prompt: Text("Search"))
+    }
+
+    @ViewBuilder
+    private var csvSection: some View {
+        Section {
+            Button {
+                isImportingCSV = true
+            } label: {
+                Label("Import token list CSV", systemImage: "square.and.arrow.down")
+                    .font(UniTypography.body)
+                    .foregroundStyle(UniColors.Text.primary)
+            }
+            .buttonStyle(.uniListRow)
+            .listRowBackground(UniColors.List.rowBackground)
+
+            Button {
+                prepareCSVExport()
+            } label: {
+                Label("Export custom tokens CSV", systemImage: "square.and.arrow.up")
+                    .font(UniTypography.body)
+                    .foregroundStyle(UniColors.Text.primary)
+            }
+            .buttonStyle(.uniListRow)
+            .listRowBackground(UniColors.List.rowBackground)
+        } header: {
+            UniCaption(text: "Token lists", color: UniColors.Text.tertiary)
+        } footer: {
+            VStack(alignment: .leading, spacing: UniSpacing.xxs) {
+                UniFootnote(
+                    text: "CSV format: chain, contract, symbol, name, decimals, metadata_from_chain.",
+                    color: UniColors.Text.tertiary
+                )
+                UniFootnote(
+                    text: "Example: tron,TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t,USDT,Tether USD,6,true",
+                    color: UniColors.Text.tertiary
+                )
+                UniFootnote(
+                    text: "Use chain IDs like solana, tron, ethereum, base, arbitrum, polygon, bnbChain, optimism, avalanche, zkSync, scroll, celo, or opBNB.",
+                    color: UniColors.Text.tertiary
+                )
+            }
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(.top, UniSpacing.xs)
+        }
     }
 
     private var networkEmptyTitle: LocalizedStringKey {
@@ -474,6 +552,90 @@ struct AddCustomTokenSheet: View {
         step = .contractEntry
     }
 
+    private func prepareCSVExport() {
+        Task { @MainActor in
+            do {
+                let snapshots = try CustomTokenRepository(database: AppDatabase.shared).fetchAll()
+                let records = snapshots.map {
+                    CustomTokenRecord(
+                        id: $0.id,
+                        chainRaw: $0.chain.rawValue,
+                        contract: $0.contract,
+                        symbol: $0.symbol,
+                        name: $0.name,
+                        decimals: $0.decimals,
+                        addedAt: $0.addedAt,
+                        metadataFromChain: $0.metadataFromChain
+                    )
+                }
+                csvExportDocument = CustomTokenCSVDocument(text: CustomTokenCSV.export(records: records))
+                isExportingCSV = true
+            } catch {
+                csvAlert = CSVAlert(
+                    title: "Couldn't export CSV",
+                    message: "Aperture couldn't read your custom tokens from the local database."
+                )
+            }
+        }
+    }
+
+    private func handleCSVImport(_ result: Result<[URL], Error>) {
+        switch result {
+        case .failure(let error):
+            csvAlert = CSVAlert(title: "Couldn't import CSV", message: error.localizedDescription)
+        case .success(let urls):
+            guard let url = urls.first else { return }
+            importCSV(from: url)
+        }
+    }
+
+    private func importCSV(from url: URL) {
+        Task { @MainActor in
+            do {
+                let didStartAccess = url.startAccessingSecurityScopedResource()
+                defer {
+                    if didStartAccess {
+                        url.stopAccessingSecurityScopedResource()
+                    }
+                }
+                let text = try String(contentsOf: url, encoding: .utf8)
+                let parse = CustomTokenCSV.parse(text, allowedChains: availableChains)
+                var summary = CustomTokenCSV.ImportSummary(
+                    failed: parse.errors.count,
+                    errors: parse.errors
+                )
+                let repo = CustomTokenRepository(database: AppDatabase.shared)
+                for row in parse.rows {
+                    do {
+                        try repo.add(
+                            chain: row.chain,
+                            contract: row.contract,
+                            symbol: row.symbol,
+                            name: row.name,
+                            decimals: row.decimals,
+                            metadataFromChain: row.metadataFromChain
+                        )
+                        summary.added += 1
+                    } catch CustomTokenError.duplicate {
+                        summary.duplicates += 1
+                    } catch {
+                        summary.failed += 1
+                        summary.errors.append("Line \(row.line): couldn't save token.")
+                    }
+                }
+                if summary.added > 0 {
+                    UniHapticEngine.shared.fire(.success)
+                }
+                csvAlert = CSVAlert(title: summary.title, message: summary.message)
+            } catch {
+                csvAlert = CSVAlert(
+                    title: "Couldn't import CSV",
+                    message: "Aperture couldn't read this file as UTF-8 CSV."
+                )
+            }
+        }
+    }
+
     private func scheduleFetch() {
         // Cancel any in-flight fetch — the user changed something.
         fetchTask?.cancel()
@@ -648,6 +810,12 @@ struct AddCustomTokenSheet: View {
 // MARK: - Phase
 
 extension AddCustomTokenSheet {
+    struct CSVAlert: Identifiable, Equatable {
+        let id = UUID()
+        let title: String
+        let message: String
+    }
+
     enum Step: Equatable {
         case networkSelection
         case contractEntry

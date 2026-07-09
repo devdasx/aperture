@@ -37,12 +37,20 @@ struct ReceiveAssetListView: View {
         return seededAssets.isEmpty ? AssetCatalog.allAssets : seededAssets
     }
 
+    private var customTokenSnapshots: [CustomTokenSnapshot] {
+        customTokenRecords.map { CustomTokenSnapshot(from: $0) }
+    }
+
     private var searchQuery: String {
         searchText.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     private var canOfferCustomTokenAdd: Bool {
         !searchQuery.isEmpty && CustomTokenSupport.hasSupportedChain(in: availableChains)
+    }
+
+    private var canAttemptContractLookup: Bool {
+        ContractTokenDiscovery.canAttemptLookup(query: searchQuery, availableChains: availableChains)
     }
 
     var body: some View {
@@ -79,10 +87,30 @@ struct ReceiveAssetListView: View {
     private var filteredTokens: [ReceiveAsset] {
         let q = searchQuery
         guard !q.isEmpty else { return sortedTokens }
-        return sortedTokens.filter { asset in
-            guard case let .token(symbol, name, _) = asset else { return false }
-            return name.localizedStandardContains(q) || symbol.localizedStandardContains(q)
+        return sortedTokens.compactMap { asset in
+            guard case let .token(symbol, name, _) = asset else { return nil }
+            if name.localizedStandardContains(q) || symbol.localizedStandardContains(q) {
+                return asset
+            }
+            let matchingChains = matchingContractChains(symbol: symbol, asset: asset, query: q)
+            guard !matchingChains.isEmpty else { return nil }
+            return ReceiveAsset.token(symbol: symbol, name: name, chains: matchingChains)
         }
+    }
+
+    private func matchingContractChains(
+        symbol: String,
+        asset: ReceiveAsset,
+        query: String
+    ) -> [SupportedChain] {
+        guard case let .token(_, _, chains) = asset else { return [] }
+        return ContractTokenDiscovery.matchingChains(
+            symbol: symbol,
+            chains: chains,
+            query: query,
+            catalogAssets: catalogAssets,
+            customTokens: customTokenSnapshots
+        )
     }
 
     // MARK: - Sections
@@ -150,10 +178,21 @@ struct ReceiveAssetListView: View {
                 )
 
                 if canOfferCustomTokenAdd {
-                    UniButton(title: "Add custom token", variant: .secondary, systemImage: "plus") {
-                        onAddCustomToken()
+                    if canAttemptContractLookup {
+                        ContractTokenSearchPrompt(
+                            query: searchQuery,
+                            availableChains: availableChains,
+                            catalogAssets: catalogAssets,
+                            customTokens: customTokenSnapshots,
+                            onAdded: {}
+                        )
+                        .padding(.horizontal, UniSpacing.m)
+                    } else {
+                        UniButton(title: "Add custom token", variant: .secondary, systemImage: "plus") {
+                            onAddCustomToken()
+                        }
+                        .padding(.horizontal, UniSpacing.m)
                     }
-                    .padding(.horizontal, UniSpacing.m)
                 }
             }
             .frame(maxWidth: .infinity)

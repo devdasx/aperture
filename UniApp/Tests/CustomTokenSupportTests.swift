@@ -40,6 +40,44 @@ struct CustomTokenSupportTests {
         #expect(ContractValidator.validateTronContract("TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj60") == .invalid(.invalidCharacter))
     }
 
+    @Test("Contract search matches normalized TRON and EVM contracts")
+    func contractSearchMatchesNormalizedContracts() {
+        #expect(ContractTokenDiscovery.contractMatches(usdtTronContract, chain: .tron, query: usdtTronHex))
+        #expect(ContractTokenDiscovery.contractMatches(
+            "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+            chain: .ethereum,
+            query: "a0b86991c6218b36"
+        ))
+    }
+
+    @Test("Custom token CSV parses and exports token rows")
+    func customTokenCSVParsesAndExports() throws {
+        let csv = """
+        chain,contract,symbol,name,decimals,metadata_from_chain
+        tron,\(usdtTronContract),USDT,Tether USD,6,true
+        ethereum,0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48,USDC,USD Coin,6,true
+        """
+
+        let result = CustomTokenCSV.parse(csv, allowedChains: [.tron, .ethereum])
+        #expect(result.errors.isEmpty)
+        #expect(result.rows.count == 2)
+        #expect(result.rows.first?.contract == usdtTronContract)
+        #expect(result.rows.first?.metadataFromChain == true)
+
+        let exported = CustomTokenCSV.export(records: [
+            CustomTokenRecord(
+                chainRaw: SupportedChain.tron.rawValue,
+                contract: usdtTronContract,
+                symbol: "USDT",
+                name: "Tether USD",
+                decimals: 6,
+                metadataFromChain: true
+            )
+        ])
+        #expect(exported.contains(CustomTokenCSV.header))
+        #expect(exported.contains("tron,\(usdtTronContract),USDT,Tether USD,6,true"))
+    }
+
     @Test("Receive tokens include custom TRON token rows")
     func receiveTokensIncludeCustomTronRows() throws {
         let record = CustomTokenRecord(
